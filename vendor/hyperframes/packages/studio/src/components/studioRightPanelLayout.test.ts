@@ -172,6 +172,11 @@ describe("Studio right panel layout", () => {
     expect(panel).toContain('data-flat-inspector-surface="true"');
     expect(panel).toContain('data-flat-group-content="true"');
     expect(panel).toContain("data-flat-group={group.id}");
+    expect(panel).toContain('inspectorMode = "properties"');
+    expect(panel).toContain('inspectorMode === "animation"');
+    expect(panel).toContain("showInspectorChrome = true");
+    expect(panel).toContain("? visibleGroups.map");
+    expect(panel).toContain("const visibleGroups = groups.filter");
     expect(panel).toContain("px-[17px] pb-[15px] pt-2");
     expect(panel).not.toContain('className="border-l-2 border-[#20bbc0] pl-2"');
     expect(panel).not.toContain("min-h-0 flex-1 overflow-y-auto border-b");
@@ -380,12 +385,26 @@ describe("Studio right panel layout", () => {
     expect(textSection).toContain('"text-decoration-line"');
   });
 
-  it("combines layers and design while unifying animation and scene catalog tabs", () => {
+  it("separates selected-element animation editing from the effects catalog", () => {
     const source = readFileSync(new URL("./StudioRightPanel.tsx", import.meta.url), "utf8");
 
     expect(source).toContain('label={t("right.design")}');
+    expect(source).toContain('label={t("right.animation")}');
     expect(source).toContain('label={t("right.catalog")}');
-    expect(source).toContain('page="animation"');
+    expect(source).toContain('onClick={() => selectStudioPanel("animation")}');
+    expect(source).toContain(
+      'inspectorMode={rightPanelTab === "animation-properties" ? "animation" : "properties"}',
+    );
+    expect(source).toContain('showInspectorChrome={rightPanelTab !== "animation-properties"}');
+    expect(source).toContain('role="tablist"');
+    expect(source).toContain('t("right.animationTemplates")');
+    expect(source).toContain('t("right.animationProperties")');
+    expect(source).toContain(
+      'rightPanelTab === "animation" ? <AnimationTemplatesTab /> : propertyPanel',
+    );
+    expect(source).toContain('setRightPanelTab("animation-properties")');
+    expect(source).toContain('rightPanelTab === "catalog" || rightPanelTab === "effects"');
+    expect(source).toContain('<BlocksTab page="animation" onAddBlock={onAddBlock} />');
     expect(source).not.toContain("<LayersPanel />");
     expect(source).not.toContain("useInspectorSplitResize");
     expect(source).not.toContain('aria-label={t("right.resizePanes")}');
@@ -410,12 +429,19 @@ describe("Studio right panel layout", () => {
     expect(translations).toContain('"header.inspector": "Properties"');
     expect(translations).toContain('"header.inspector": "属性"');
     expect(translations).toContain('"right.renders": "Export"');
-    expect(translations).toContain('"right.catalog": "Animation"');
+    expect(translations).toContain('"right.animation": "Animation"');
+    expect(translations).toContain('"right.animationTemplates": "Animation templates"');
+    expect(translations).toContain('"right.animationProperties": "Animation properties"');
+    expect(translations).toContain('"right.catalog": "Effects"');
     expect(translations).toContain('"right.style": "主题"');
     expect(translations).not.toContain('"right.style": "风格"');
-    expect(translations).toContain('"right.catalog": "动画"');
+    expect(translations).toContain('"right.animation": "动画"');
+    expect(translations).toContain('"right.animationTemplates": "动画模板"');
+    expect(translations).toContain('"right.animationProperties": "动画属性"');
+    expect(translations).toContain('"right.catalog": "特效"');
     expect(panel).toContain('label={t("right.voice")}');
     expect(panel).toContain('label={t("right.style")}');
+    expect(panel).toContain('label={t("right.animation")}');
     expect(panel).toContain('label={t("right.assets")}');
     expect(panel).toContain('label={t("right.illustration")}');
     expect(panel).toContain('tooltip={t("right.illustrationTooltip")}');
@@ -534,6 +560,9 @@ describe("Studio right panel layout", () => {
     expect(layerHeader).toContain("hf-timeline-layer-header__status");
     expect(layerHeader).toContain("hf-timeline-layer-header__visibility");
     expect(layerHeader).toContain("hf-timeline-layer-header__reorder");
+    expect(layerHeader).toContain("data-layer-editability={editability}");
+    expect(layerHeader).toContain("data-layer-edit-status={status}");
+    expect(layerHeader).toContain('editability === "unavailable" ? "is-uneditable"');
     expect(toolbar).toContain("hf-timeline-toolbar");
     expect(toolbar).toContain("bg-[var(--hf-studio-toolbar-bg)]");
     expect(header).toContain("bg-[var(--hf-studio-header-bg)]");
@@ -542,8 +571,18 @@ describe("Studio right panel layout", () => {
     expect(styles).toContain("--hf-timeline-clip-bg: #18181b");
     expect(styles).toContain("--hf-timeline-clip-bg: #f5f6f9");
     expect(styles).toContain(".hf-timeline-layer-header.is-selected");
+    expect(styles).toContain(".hf-timeline-layer-header.is-uneditable:not(.is-selected)");
     expect(styles).toContain("background-color: #20bbc0 !important");
     expect(styles).toContain(".hf-timeline-ruler-label");
+  });
+
+  it("hides variable promotion chrome while preserving existing bindings", () => {
+    const source = readFileSync(new URL("./editor/PromotableControl.tsx", import.meta.url), "utf8");
+
+    expect(source).toContain("const SHOW_VARIABLE_PROMOTION_UI = false");
+    expect(source).toContain("SHOW_VARIABLE_PROMOTION_UI && bound");
+    expect(source).toContain("SHOW_VARIABLE_PROMOTION_UI && canPromote");
+    expect(source).toContain("onCommit: promote.setDefault");
   });
 
   it("uses the Figma timeline toolbar as the single editing-control surface", () => {
@@ -615,8 +654,13 @@ describe("Studio right panel layout", () => {
     expect(preview).toContain("refreshToken={slot.refreshToken}");
     expect(preview).toContain("visibleSlot");
     expect(preview).toContain("loadingSlot");
+    expect(preview).toContain("retiringSlot");
+    expect(preview).toContain('transition: retiring ? "opacity 140ms ease-out" : undefined');
     expect(preview).toContain("deferReveal={incoming}");
     expect(player).toContain("onReadyToReveal");
+    expect(player).toContain("isDeferredFrameVisuallyReady");
+    expect(player).toContain('doc.fonts?.status !== "loaded"');
+    expect(player).toContain("DEFERRED_VISUAL_READY_PAINTS = 2");
     expect(player).toContain('iframe.style.visibility = "hidden"');
     expect(previewPane).toContain("refreshToken={refreshKey}");
     expect(nleContext).toContain("refreshKey?: number");
@@ -675,12 +719,13 @@ describe("Studio right panel layout", () => {
     expect(catalog).toContain("new IntersectionObserver");
     expect(catalog).toContain('{ root: scrollRoot, rootMargin: "240px 0px", threshold: 0 }');
     expect(catalog).toContain("setTimeout(startPreview, 60)");
-    expect(catalog).toContain("PREVIEW_CLEAR_DELAY_MS = 140");
-    expect(catalog).toContain("onPreviewBlock={emitPreviewBlock}");
-    expect(catalog).toContain("compositionUrl: compositionPlaybackUrl");
-    expect(overlay).toContain("poster={blockPreview.posterUrl}");
-    expect(overlay).toContain('preload="auto"');
-    expect(overlay).toContain("onCanPlay={() => setVideoReady(true)}");
+    expect(catalog).toContain("setPreviewing(true)");
+    expect(catalog).toContain('setRightPanelTab("animation-properties")');
+    expect(catalog).toContain("src={compositionPlaybackUrl}");
+    expect(catalog).toContain('preload="auto"');
+    expect(catalog).toContain("onCanPlay={() => setPreviewReady(true)}");
+    expect(catalog).not.toContain("onPreviewBlock");
+    expect(overlay).not.toContain("BlockPreviewOverlay");
     expect(catalog).toContain("tabIndex={0}");
     expect(catalog).toContain('data-testid="block-catalog-card"');
     expect(catalog).toContain("collapsedSections");

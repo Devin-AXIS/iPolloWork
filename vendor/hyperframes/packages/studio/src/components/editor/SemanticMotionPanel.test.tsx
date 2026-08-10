@@ -104,7 +104,7 @@ describe("SemanticMotionPanel", () => {
     expect(resolveMotionTargetKind(selection(containerElement))).toBe("element");
   });
 
-  it("shows text presets and applies the selected stable preset id", () => {
+  it("keeps template selection out of the animation properties panel", () => {
     const title = document.createElement("h1");
     title.id = "title";
     title.textContent = "Title";
@@ -120,22 +120,12 @@ describe("SemanticMotionPanel", () => {
       ),
     );
 
-    const rise = Array.from(container.querySelectorAll("button")).find((button) =>
-      button.textContent?.includes("浮入"),
-    );
-    if (!(rise instanceof HTMLButtonElement)) throw new Error("Rise preset missing");
-    rise.click();
-    expect(onMutate).toHaveBeenCalledWith(
-      "text",
-      expect.objectContaining({
-        operation: "upsert",
-        phase: "enter",
-        presetId: "text.enter.rise",
-      }),
-    );
+    expect(container.textContent).toContain("请到“动画模板”中选择并应用一个模板");
+    expect(container.textContent).not.toContain("浮入");
+    expect(onMutate).not.toHaveBeenCalled();
   });
 
-  it("shows the shared preset flow for a general element", () => {
+  it("shows the same parameter-only empty state for a general element", () => {
     const card = document.createElement("div");
     card.id = "card";
     card.innerHTML = "<span>Nested content</span>";
@@ -151,19 +141,9 @@ describe("SemanticMotionPanel", () => {
       ),
     );
 
-    const slide = Array.from(container.querySelectorAll("button")).find((button) =>
-      button.textContent?.includes("滑入"),
-    );
-    if (!(slide instanceof HTMLButtonElement)) throw new Error("Element slide preset missing");
-    slide.click();
-    expect(onMutate).toHaveBeenCalledWith(
-      "element",
-      expect.objectContaining({
-        operation: "upsert",
-        phase: "enter",
-        presetId: "element.enter.slide",
-      }),
-    );
+    expect(container.textContent).toContain("请到“动画模板”中选择并应用一个模板");
+    expect(container.textContent).not.toContain("滑入");
+    expect(onMutate).not.toHaveBeenCalled();
   });
 
   it("restores a saved semantic animation as an editable preset", () => {
@@ -186,15 +166,14 @@ describe("SemanticMotionPanel", () => {
       ),
     );
 
-    const effect = container.querySelector('button[aria-label="动画效果"]');
-    expect(effect).toBeInstanceOf(HTMLButtonElement);
-    expect(effect?.textContent).toContain("浮入");
+    expect(container.textContent).toContain("浮入");
+    expect(container.querySelector('button[aria-label="动画效果"]')).toBeNull();
     expect(container.textContent).toContain("时长");
     expect(container.textContent).toContain("速度");
     expect(container.textContent).toContain("出现");
     expect(container.textContent).toContain("动作");
     expect(container.textContent).toContain("消失");
-    expect(container.textContent).not.toContain("速度曲线");
+    expect(container.textContent).toContain("速度曲线");
 
     const preview = Array.from(container.querySelectorAll("button")).find((button) =>
       button.textContent?.includes("预览动画"),
@@ -209,6 +188,49 @@ describe("SemanticMotionPanel", () => {
     if (!(fast instanceof HTMLButtonElement)) throw new Error("Fast speed action missing");
     fast.click();
     expect(onMutate).toHaveBeenLastCalledWith("text", expect.objectContaining({ duration: 0.45 }));
+  });
+
+  it("opens the applied background template phase and exposes its parameters", () => {
+    const background = document.createElement("div");
+    background.id = "background";
+    background.innerHTML = "<span>Nested surface content</span>";
+    const compiled = compileMotionInstance(
+      createMotionInstance({
+        presetId: "background.emphasis.molten-flow",
+        target: { selector: "#background", elementId: "background" },
+        targetKind: "element",
+        start: 0,
+      }),
+    );
+    const animation: GsapAnimation = {
+      id: "background-motion",
+      targetSelector: compiled.targetSelector,
+      method: "to",
+      position: compiled.position,
+      resolvedStart: compiled.position,
+      duration: compiled.duration,
+      properties: {},
+      extras: compiled.extras,
+    };
+
+    flushSync(() =>
+      root.render(
+        <SemanticMotionPanel
+          element={selection(background)}
+          animations={[animation]}
+          onMutate={vi.fn()}
+          onPreview={vi.fn()}
+        />,
+      ),
+    );
+
+    expect(container.textContent).toContain("熔光流动");
+    expect(container.textContent).toContain("颜色来源");
+    expect(container.querySelectorAll('button[data-flat-color-value-trigger="true"]')).toHaveLength(
+      3,
+    );
+    expect(container.textContent).toContain("亮度");
+    expect(container.textContent).not.toContain("当前阶段还没有动画");
   });
 
   it("rebuilds a saved semantic tween in place without reloading the preview", () => {

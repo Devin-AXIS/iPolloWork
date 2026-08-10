@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Prism Sweep</title>
+    <style>
+      * { box-sizing: border-box; }
+      html, body { width: 1920px; height: 1080px; margin: 0; overflow: hidden; }
+      body { background: #050609; color: #f9f9fb; font-family: Arial, sans-serif; }
+      .composition { position: relative; width: 100%; height: 100%; overflow: hidden; background: linear-gradient(115deg, #050609, #11131d 52%, #050609); }
+      .beam { position: absolute; top: -240px; bottom: -240px; left: -420px; width: 620px; transform: rotate(15deg); filter: blur(8px); background: linear-gradient(90deg, transparent, rgba(66,240,255,.25), rgba(255,84,181,.52), rgba(255,220,74,.35), transparent); mix-blend-mode: screen; }
+      .shard { position: absolute; left: 50%; top: 50%; width: 560px; height: 430px; transform: translate(-50%, -50%); clip-path: polygon(50% 0, 100% 100%, 0 100%); background: linear-gradient(140deg, rgba(255,255,255,.28), rgba(255,255,255,.03)); border: 1px solid rgba(255,255,255,.28); }
+      .copy { position: absolute; left: 130px; right: 130px; top: 330px; text-align: center; }
+      .kicker { color: #a8b5c7; font-size: 18px; font-weight: 800; letter-spacing: .34em; }
+      h1 { margin: 28px 0 0; font-size: 154px; line-height: .88; letter-spacing: -.075em; }
+      .cyan { text-shadow: -5px 0 0 rgba(62,224,255,.55), 5px 0 0 rgba(255,68,167,.45); }
+      .rule { position: absolute; left: 130px; right: 130px; bottom: 118px; height: 1px; background: rgba(255,255,255,.24); }
+      .meta { position: absolute; left: 130px; right: 130px; bottom: 72px; display: flex; justify-content: space-between; color: #9399a5; font-size: 16px; letter-spacing: .2em; }
+    </style>
+  </head>
+  <body>
+    <main class="composition" data-composition-id="opening-prism-sweep" data-width="1920" data-height="1080" data-start="0" data-duration="4.4">
+      <div class="beam" data-layout-ignore></div>
+      <div class="shard" data-layout-ignore></div>
+      <section class="copy" data-hf-id="ops-copy" data-layout-allow-overlap>
+        <div class="kicker">LIGHT / MATERIAL / MOTION</div>
+        <h1>See the story<br /><span class="cyan">in a new spectrum.</span></h1>
+      </section>
+      <div class="rule" data-layout-ignore></div>
+      <div class="meta"><span>PRISM STUDY 01</span><span>IPOLLOWORK</span></div>
+    </main>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.15.0/dist/gsap.min.js"></script>
+    <script>
+      window.__timelines = window.__timelines || {};
+      var timeline = gsap.timeline({ paused: true });
+      timeline
+        .fromTo(".beam", { x: -500, opacity: 0 }, { x: 2680, opacity: 1, duration: 1.8, ease: "power3.inOut" }, 0)
+        .from(".shard", { opacity: 0, scale: .72, rotation: -12, filter: "blur(18px)", duration: 1.25, ease: "power3.out" }, .38)
+        .from(".kicker", { opacity: 0, y: 18, duration: .62, ease: "power3.out" }, .78)
+        .from("h1", { opacity: 0, x: -56, filter: "blur(16px)", duration: 1.1, ease: "power4.out" }, .9)
+        .from(".cyan", { opacity: 0, x: 48, duration: .9, ease: "power3.out" }, 1.18)
+        .from(".rule", { scaleX: 0, transformOrigin: "left", duration: .9, ease: "power3.inOut" }, 1.6)
+        .from(".meta", { opacity: 0, duration: .6, ease: "none" }, 1.85);
+      window.__timelines["opening-prism-sweep"] = timeline;
+      window.addEventListener("hf-seek", function (event) { timeline.seek(Math.max(0, Math.min(event.detail.time, 4.4))); });
+      timeline.seek(0);
+    </script>
+  </body>
+</html>

@@ -1,0 +1,35 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "caption-editorial-snap",
+  "version": "1.0.0",
+  "type": "hyperframes:block",
+  "title": "Editorial Snap",
+  "description": "A high-contrast caption card snaps into alignment with a slight editorial tilt and a crisp overshoot.",
+  "kind": "effect",
+  "librarySection": "caption-animation",
+  "dimensions": { "width": 1920, "height": 1080 },
+  "duration": 4.1,
+  "tags": ["caption", "editorial", "snap", "card", "bold"],
+  "engine": { "name": "gsap", "version": "3.15.0", "seekable": true, "plugins": [] },
+  "source": { "provider": "ipollowork", "label": "iPolloWork Motion Library" },
+  "motionPreset": {
+    "version": 1,
+    "category": "caption",
+    "targets": ["caption", "text"],
+    "anchor": "clip-start",
+    "duration": 0.68,
+    "ease": "back.out(1.7)",
+    "keyframes": [
+      { "percentage": 0, "properties": { "opacity": 0, "y": 42, "rotation": -4, "scale": 0.9 } },
+      { "percentage": 66, "properties": { "opacity": 1, "y": -3, "rotation": 1, "scale": 1.04 } },
+      { "percentage": 100, "properties": { "opacity": 1, "y": 0, "rotation": 0, "scale": 1 } }
+    ]
+  },
+  "files": [
+    {
+      "path": "caption-editorial-snap.html",
+      "target": "compositions/caption-editorial-snap.html",
+      "type": "hyperframes:composition"
+    }
+  ]
+}

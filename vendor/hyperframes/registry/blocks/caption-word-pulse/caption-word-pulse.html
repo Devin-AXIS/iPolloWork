@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Word Pulse</title>
+    <style>
+      * { box-sizing: border-box; }
+      html, body { width: 1920px; height: 1080px; margin: 0; overflow: hidden; }
+      body { background: #15202b; color: #fff; font-family: Arial, sans-serif; }
+      .composition { position: relative; width: 100%; height: 100%; overflow: hidden; background: linear-gradient(135deg, #1d2936, #101821); }
+      .portrait { position: absolute; left: 50%; top: 44%; width: 540px; height: 540px; margin: -270px; border-radius: 48% 52% 42% 58%; background: linear-gradient(145deg, #ffb14a, #ff5b80 55%, #7156ff); box-shadow: 0 44px 120px rgba(0,0,0,.32); }
+      .portrait::after { content: ""; position: absolute; inset: 42px; border: 1px solid rgba(255,255,255,.45); border-radius: inherit; }
+      .label { position: absolute; left: 84px; top: 72px; color: #aebdca; font-size: 17px; font-weight: 800; letter-spacing: .28em; }
+      .caption-stage { position: absolute; left: 120px; right: 120px; bottom: 94px; display: flex; justify-content: center; }
+      .caption-content { display: flex; gap: .27em; align-items: baseline; padding: 28px 42px; border-radius: 24px; background: rgba(6,10,14,.84); border: 1px solid rgba(255,255,255,.16); box-shadow: 0 24px 80px rgba(0,0,0,.34); font-size: 60px; font-weight: 780; letter-spacing: -.035em; }
+      .word { display: inline-block; color: #fff; }
+    </style>
+  </head>
+  <body>
+    <main class="composition" data-composition-id="caption-word-pulse" data-width="1920" data-height="1080" data-start="0" data-duration="4.2">
+      <div class="label">CAPTION SYSTEM / WORD PULSE</div><div class="portrait" data-layout-ignore></div>
+      <div id="cwp-caption" class="caption-stage" data-hf-id="cwp-caption" data-ipw-caption="true">
+        <div id="cwp-content" class="caption-content" data-hf-id="cwp-content" data-ipw-caption-content="true"><span class="word">Great</span><span class="word">motion</span><span class="word">makes</span><span class="word">meaning</span><span class="word">land.</span></div>
+      </div>
+    </main>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.15.0/dist/gsap.min.js"></script>
+    <script>
+      window.__timelines = window.__timelines || {};
+      var words = document.querySelectorAll(".word");
+      var timeline = gsap.timeline({ paused: true });
+      timeline.set(words, { color: "#ffffff", scale: 1 }, 0);
+      words.forEach(function (word, index) {
+        var at = .32 + index * .62;
+        timeline.from(word, { opacity: 0, y: 20, duration: .34, ease: "power3.out" }, at - .12)
+          .to(word, { color: "#ffd166", scale: 1.12, duration: .24, ease: "back.out(1.5)" }, at)
+          .to(word, { color: "#ffffff", scale: 1, duration: .3, ease: "power2.out" }, at + .28);
+      });
+      window.__timelines["caption-word-pulse"] = timeline;
+      window.addEventListener("hf-seek", function (event) { timeline.seek(Math.max(0, Math.min(event.detail.time, 4.2))); });
+      timeline.seek(0);
+    </script>
+  </body>
+</html>

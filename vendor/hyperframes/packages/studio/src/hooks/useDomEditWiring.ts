@@ -8,6 +8,7 @@
  * the GSAP-aware geometry intercept logic.
  */
 import { useCallback, useEffect, useRef } from "react";
+import type { RegistryMotionPreset } from "@hyperframes/core/registry";
 import type { DomEditSelection } from "../components/editor/domEditingTypes";
 import { STUDIO_GSAP_PANEL_ENABLED } from "../components/editor/manualEditingAvailability";
 import { usePlayerStore } from "../player";
@@ -73,6 +74,12 @@ export interface UseDomEditWiringParams {
     sel: DomEditSelection,
     targetKind: MotionTargetKind,
     mutation: MotionMutationInput,
+     ) => Promise<void>;
+  applyGsapMotionPreset: (
+    sel: DomEditSelection,
+    preset: RegistryMotionPreset,
+    currentTime: number,
+    label: string,
   ) => Promise<void>;
   addGsapProperty: (sel: DomEditSelection, animId: string, prop: string) => Promise<void>;
   removeGsapProperty: (sel: DomEditSelection, animId: string, prop: string) => Promise<void>;
@@ -148,6 +155,7 @@ export function useDomEditWiring({
   deleteAllForSelector,
   addGsapAnimation,
   mutateMotion,
+  applyGsapMotionPreset,
   addGsapProperty,
   removeGsapProperty,
   updateGsapFromProperty,
@@ -268,6 +276,7 @@ export function useDomEditWiring({
     deleteAllForSelector,
     addGsapAnimation,
     mutateMotion,
+    applyGsapMotionPreset,
     addGsapProperty,
     removeGsapProperty,
     updateGsapFromProperty,

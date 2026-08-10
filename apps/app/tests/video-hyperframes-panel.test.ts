@@ -536,9 +536,15 @@ describe("HyperFrames Video Studio", () => {
       new URL("../src/components/ui/alert-dialog.tsx", import.meta.url),
       "utf8",
     );
+    const dialogSource = readFileSync(
+      new URL("../src/components/ui/dialog.tsx", import.meta.url),
+      "utf8",
+    );
 
     expect(alertDialogSource).toContain("fixed inset-0 isolate z-[80]");
     expect(alertDialogSource).toContain("top-1/2 left-1/2 z-[80]");
+    expect(dialogSource).toContain("fixed inset-0 isolate z-[80]");
+    expect(dialogSource).toContain("top-1/2 start-1/2 z-[80]");
   });
 
   test("wires Video Studio selected-element toolbar actions in Design order", () => {

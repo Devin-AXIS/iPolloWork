@@ -158,6 +158,8 @@ export function resolveOpenInspectorGroup({
 // fallow-ignore-next-line complexity
 export function PropertyPanelFlat({
   element,
+  inspectorMode = "properties",
+  showInspectorChrome = true,
   styles,
   sections,
   sourceLabel,
@@ -221,6 +223,8 @@ export function PropertyPanelFlat({
   | "projectId"
   | "projectDir"
   | "assets"
+  | "inspectorMode"
+  | "showInspectorChrome"
   | "previewIframeRef"
   | "onSetStyle"
   | "onSetAttribute"
@@ -295,6 +299,11 @@ export function PropertyPanelFlat({
     showEditableSections: boolean;
     currentTime: number;
   }) {
+  // Slider drags update the live iframe element directly; durable source
+  // persistence is deferred to pointer release by FlatSlider.
+  const previewInlineStyle = (property: string, value: string) => {
+    element.element.style.setProperty(property, value);
+  };
   const isTextEditable = isTextEditableSelection(element);
   const elementKind = resolveInspectorElementKind(element.tagName, isTextEditable);
   const headerElementKind =
@@ -308,19 +317,21 @@ export function PropertyPanelFlat({
   const showMotionTiming = Boolean(sections.timing);
   const gsapEffectHandlers =
     hasAnimationParameters && onMutateMotion ? { onMutateMotion } : null;
-  const showMotionEffects = gsapEffectHandlers !== null;
-  const availableGroupIds = [
-    ...(showMotionTiming ? ["timing"] : []),
-    ...(isTextEditable ? ["text"] : []),
-    ...(showEditableSections ? ["fill", "stroke", "appearance", "mask"] : []),
-    ...(sections.layout ? ["layout", "transform-3d"] : []),
-    ...(showMotionEffects ? ["animation"] : []),
-    ...(sections.colorGrading ? ["grade"] : []),
-    ...(sections.media ? ["media"] : []),
-  ];
+  const showMotionEffects = inspectorMode === "animation" && gsapEffectHandlers !== null;
+  const availableGroupIds =
+    inspectorMode === "animation"
+      ? [...(showMotionEffects ? ["animation"] : [])]
+      : [
+          ...(showMotionTiming ? ["timing"] : []),
+          ...(isTextEditable ? ["text"] : []),
+          ...(showEditableSections ? ["fill", "stroke", "appearance", "mask"] : []),
+          ...(sections.layout ? ["layout", "transform-3d"] : []),
+          ...(sections.colorGrading ? ["grade"] : []),
+          ...(sections.media ? ["media"] : []),
+        ];
   const orderedGroupIds = resolveInspectorGroupOrder({
     elementKind,
-    hasAnimationParameters,
+    hasAnimationParameters: showMotionEffects,
     availableGroupIds,
   });
   const orderedGroupKey = orderedGroupIds.join("|");
@@ -490,6 +501,7 @@ export function PropertyPanelFlat({
             gsapBorderRadius={gsapBorderRadius}
             disabled={!element.capabilities.canEditStyles}
             onSetStyle={onSetStyle}
+            onPreviewStyle={previewInlineStyle}
           />
         ),
       },
@@ -555,7 +567,7 @@ export function PropertyPanelFlat({
       ),
     });
   }
-  if (gsapEffectHandlers) {
+  if (showMotionEffects && gsapEffectHandlers) {
     groups.push({
       id: "animation",
       title: "Animation",
@@ -649,7 +661,8 @@ export function PropertyPanelFlat({
   // a dedicated region between the two fixed header stacks. When no group is
   // open, every group is just a collapsed header — there's no scrollable
   // middle region at all, since nothing is expanded.
-  groups.sort((a, b) => orderedGroupIds.indexOf(a.id) - orderedGroupIds.indexOf(b.id));
+  const visibleGroups = groups.filter((group) => availableGroupIds.includes(group.id));
+  visibleGroups.sort((a, b) => orderedGroupIds.indexOf(a.id) - orderedGroupIds.indexOf(b.id));
   return (
     <DesignPanelInputProvider ui="flat">
       <div
@@ -657,52 +670,67 @@ export function PropertyPanelFlat({
         data-preserve-studio-selection="true"
         data-testid="figma-property-inspector"
       >
-        <DesignPanelInputProvider section="header">
-          <PropertyPanelFlatHeader
-            name={element.label}
-            meta={`${sourceLabel} · ${element.tagName}`}
-            elementKind={headerElementKind}
-            onAskAgent={onAskAgent}
-          />
-        </DesignPanelInputProvider>
+        {showInspectorChrome ? (
+          <DesignPanelInputProvider section="header">
+            <PropertyPanelFlatHeader
+              name={element.label}
+              meta={`${sourceLabel} · ${element.tagName}`}
+              elementKind={headerElementKind}
+              onAskAgent={onAskAgent}
+            />
+          </DesignPanelInputProvider>
+        ) : null}
         <div
           data-flat-panel-body="true"
           data-flat-inspector-surface="true"
           className="min-h-0 flex-1 overflow-y-auto bg-panel-bg"
         >
-          {groups.map((group) => {
-            const isOpen = group.id === openGroupId;
-            return (
-              <DesignPanelInputProvider key={group.id} section={slugifyDesignInput(group.title)}>
-                <section data-flat-group={group.id} data-flat-group-open={isOpen || undefined}>
-                  <FlatGroupHeader
-                    title={group.title}
-                    isOpen={isOpen}
-                    onToggleOpen={() => toggleOpen(group.id)}
-                    accessory={isOpen ? group.accessory : undefined}
-                    summary={isOpen ? undefined : group.summary}
-                    animateEntrance={justToggledIds.includes(group.id)}
-                  />
-                  {isOpen && (
-                    <div
-                      data-flat-group-content="true"
-                      className={`${justToggledIds.includes(group.id) ? "hf-flat-group-enter " : ""}border-b-[0.5px] border-[var(--hf-studio-divider)] bg-panel-bg px-[17px] pb-[15px] pt-2`}
-                    >
-                      {group.content}
-                    </div>
-                  )}
-                </section>
-              </DesignPanelInputProvider>
-            );
-          })}
+          {showInspectorChrome
+            ? visibleGroups.map((group) => {
+                const isOpen = group.id === openGroupId;
+                return (
+                  <DesignPanelInputProvider
+                    key={group.id}
+                    section={slugifyDesignInput(group.title)}
+                  >
+                    <section data-flat-group={group.id} data-flat-group-open={isOpen || undefined}>
+                      <FlatGroupHeader
+                        title={group.title}
+                        isOpen={isOpen}
+                        onToggleOpen={() => toggleOpen(group.id)}
+                        accessory={isOpen ? group.accessory : undefined}
+                        summary={isOpen ? undefined : group.summary}
+                        animateEntrance={justToggledIds.includes(group.id)}
+                      />
+                      {isOpen && (
+                        <div
+                          data-flat-group-content="true"
+                          className={`${justToggledIds.includes(group.id) ? "hf-flat-group-enter " : ""}border-b-[0.5px] border-[var(--hf-studio-divider)] bg-panel-bg px-[17px] pb-[15px] pt-2`}
+                        >
+                          {group.content}
+                        </div>
+                      )}
+                    </section>
+                  </DesignPanelInputProvider>
+                );
+              })
+            : visibleGroups[0] && (
+                <DesignPanelInputProvider section={slugifyDesignInput(visibleGroups[0].title)}>
+                  <div data-flat-group-content="true" className="px-[17px] pb-[15px] pt-1">
+                    {visibleGroups[0].content}
+                  </div>
+                </DesignPanelInputProvider>
+              )}
         </div>
-        <DesignPanelInputProvider section="footer">
-          <PropertyPanelFlatFooter
-            recordingState={recordingState}
-            recordingDuration={recordingDuration}
-            onToggleRecording={onToggleRecording}
-          />
-        </DesignPanelInputProvider>
+        {showInspectorChrome ? (
+          <DesignPanelInputProvider section="footer">
+            <PropertyPanelFlatFooter
+              recordingState={recordingState}
+              recordingDuration={recordingDuration}
+              onToggleRecording={onToggleRecording}
+            />
+          </DesignPanelInputProvider>
+        ) : null}
       </div>
     </DesignPanelInputProvider>
   );

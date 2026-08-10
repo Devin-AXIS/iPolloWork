@@ -70,6 +70,14 @@ export const STUDIO_KEYFRAMES_ENABLED = resolveStudioBooleanEnvFlag(
   true,
 );
 
+// Keep motion-path editing available behind an explicit opt-in while its
+// on-canvas anchor/line UI is hidden from the default selection experience.
+export const STUDIO_MOTION_PATH_OVERLAY_ENABLED = resolveStudioBooleanEnvFlag(
+  env,
+  ["VITE_STUDIO_ENABLE_MOTION_PATH_OVERLAY"],
+  false,
+);
+
 export const STUDIO_RAZOR_TOOL_ENABLED = resolveStudioBooleanEnvFlag(
   env,
   ["VITE_STUDIO_ENABLE_RAZOR_TOOL", "VITE_STUDIO_RAZOR_TOOL_ENABLED"],

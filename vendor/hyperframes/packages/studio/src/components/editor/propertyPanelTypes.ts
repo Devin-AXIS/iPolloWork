@@ -25,6 +25,10 @@ export interface PropertyPanelProps {
   projectDir: string | null;
   assets: string[];
   element: DomEditSelection | null;
+  /** Controls whether the inspector shows element properties or the dedicated motion editor. */
+  inspectorMode?: "properties" | "animation";
+  /** Hides the selected-element and accordion chrome when a parent panel owns navigation. */
+  showInspectorChrome?: boolean;
   multiSelectCount?: number;
   multiSelectedElements?: DomEditSelection[];
   onGroupSelection?: () => void;

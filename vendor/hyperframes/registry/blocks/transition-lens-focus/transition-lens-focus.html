@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Lens Focus</title>
+    <style>
+      * { box-sizing: border-box; }
+      html, body { width: 1920px; height: 1080px; margin: 0; overflow: hidden; }
+      body { background: #101820; color: white; font-family: Arial, sans-serif; }
+      .composition { position: relative; width: 100%; height: 100%; overflow: hidden; }
+      .scene { position: absolute; inset: 0; display: grid; place-content: center; text-align: center; }
+      .outgoing { background: linear-gradient(135deg, #f0d77d, #e87565 56%, #49254d); color: #241415; }
+      .incoming { background: linear-gradient(135deg, #173044, #276b76 55%, #8ce0c6); color: #f6fffc; clip-path: circle(0% at 50% 50%); }
+      .orb { position: absolute; left: 50%; top: 50%; width: 520px; height: 520px; margin: -260px; border-radius: 50%; border: 3px solid rgba(255,255,255,.82); box-shadow: 0 0 0 28px rgba(255,255,255,.1), 0 0 80px rgba(0,0,0,.22); }
+      .label { font-size: 20px; font-weight: 900; letter-spacing: .32em; }
+      h1 { margin: 24px 0 0; font-size: 146px; line-height: .88; letter-spacing: -.074em; }
+    </style>
+  </head>
+  <body>
+    <main class="composition" data-composition-id="transition-lens-focus" data-width="1920" data-height="1080" data-start="0" data-duration="1.25">
+      <section class="scene outgoing" data-hf-id="tlf-outgoing" data-layout-allow-overlap data-layout-allow-occlusion><div><div class="label">WIDE ANGLE</div><h1>Find the subject.</h1></div></section>
+      <section class="scene incoming" data-hf-id="tlf-incoming" data-layout-allow-overlap data-layout-allow-occlusion><div><div class="label">IN FOCUS</div><h1>Hold the idea.</h1></div></section>
+      <div class="orb" data-layout-ignore></div>
+    </main>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.15.0/dist/gsap.min.js"></script>
+    <script>
+      window.__timelines = window.__timelines || {};
+      var timeline = gsap.timeline({ paused: true });
+      timeline
+        .to(".outgoing", { scale: 1.08, filter: "blur(18px)", duration: .95, ease: "power3.inOut" }, 0)
+        .to(".incoming", { clipPath: "circle(100% at 50% 50%)", duration: 1.05, ease: "expo.inOut" }, .08)
+        .from(".incoming > div", { scale: 1.14, filter: "blur(20px)", duration: 1, ease: "power3.out" }, .12)
+        .fromTo(".orb", { scale: .08, opacity: 0 }, { scale: 3.8, opacity: 1, duration: 1, ease: "expo.inOut" }, .02)
+        .to(".orb", { opacity: 0, duration: .2 }, .95);
+      window.__timelines["transition-lens-focus"] = timeline;
+      window.addEventListener("hf-seek", function (event) { timeline.seek(Math.max(0, Math.min(event.detail.time, 1.25))); });
+      timeline.seek(0);
+    </script>
+  </body>
+</html>

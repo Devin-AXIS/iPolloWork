@@ -37,6 +37,7 @@ import {
   type GestureKind,
   type GestureState,
   type GroupGestureState,
+  type DomEditPointerMoveSample,
   type ResizeHandle,
   type UseDomEditOverlayGesturesOptions,
   ROTATED_SNAP_BYPASS_DEGREES,
@@ -92,15 +93,12 @@ export function createDomEditOverlayGestureHandlers(opts: UseDomEditOverlayGestu
   ) => _startGesture(kind, e, opts, options);
 
   // fallow-ignore-next-line complexity
-  const onPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+  const processPointerMove = (e: DomEditPointerMoveSample) => {
     const g = opts.gestureRef.current;
     const groupG = opts.groupGestureRef.current;
     const sel = g?.selection ?? opts.selectionRef.current;
     const box = opts.boxRef.current;
     const blockedMove = opts.blockedMoveRef.current;
-    if (!blockedMove && !g && !groupG) {
-      opts.onCanvasPointerMoveRef.current(e, { preferClipAncestor: false });
-    }
 
     if (blockedMove && sel) {
       const dx = e.clientX - blockedMove.startX;
@@ -305,8 +303,57 @@ export function createDomEditOverlayGestureHandlers(opts: UseDomEditOverlayGestu
     }
   };
 
+  const pointerMoveSample = (e: React.PointerEvent<HTMLDivElement>): DomEditPointerMoveSample => ({
+    clientX: e.clientX,
+    clientY: e.clientY,
+    altKey: e.altKey,
+    shiftKey: e.shiftKey,
+  });
+
+  const cancelPendingPointerMove = () => {
+    if (opts.gestureMoveFrameRef.current !== null) {
+      cancelAnimationFrame(opts.gestureMoveFrameRef.current);
+      opts.gestureMoveFrameRef.current = null;
+    }
+    opts.pendingGestureMoveRef.current = null;
+  };
+
+  const flushPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    cancelPendingPointerMove();
+    if (
+      opts.blockedMoveRef.current ||
+      opts.gestureRef.current ||
+      opts.groupGestureRef.current
+    ) {
+      processPointerMove(pointerMoveSample(e));
+    }
+  };
+
+  const onPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (
+      !opts.blockedMoveRef.current &&
+      !opts.gestureRef.current &&
+      !opts.groupGestureRef.current
+    ) {
+      void opts.onCanvasPointerMoveRef.current(e, { preferClipAncestor: false });
+      return;
+    }
+
+    opts.pendingGestureMoveRef.current = pointerMoveSample(e);
+    if (opts.gestureMoveFrameRef.current !== null) return;
+    opts.gestureMoveFrameRef.current = requestAnimationFrame(() => {
+      opts.gestureMoveFrameRef.current = null;
+      const latest = opts.pendingGestureMoveRef.current;
+      opts.pendingGestureMoveRef.current = null;
+      if (latest) processPointerMove(latest);
+    });
+  };
+
   // fallow-ignore-next-line complexity
   const onPointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
+    // Land the exact release point even when several raw pointer events arrived
+    // between paint frames; the scheduled draft must never outlive the gesture.
+    flushPointerMove(e);
     opts.snapGuidesRef.current = null;
     const g = opts.gestureRef.current;
     const groupG = opts.groupGestureRef.current;
@@ -518,6 +565,7 @@ export function createDomEditOverlayGestureHandlers(opts: UseDomEditOverlayGestu
 
   // fallow-ignore-next-line complexity
   const clearPointerState = (selectionRef: RefObject<DomEditSelection | null>) => {
+    cancelPendingPointerMove();
     opts.snapGuidesRef.current = null;
     const groupG = opts.groupGestureRef.current;
     if (groupG) restoreGroupPathOffsets(groupG);

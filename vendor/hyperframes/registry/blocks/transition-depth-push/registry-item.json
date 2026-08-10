@@ -1,0 +1,35 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "transition-depth-push",
+  "version": "1.0.0",
+  "type": "hyperframes:block",
+  "title": "Depth Push",
+  "description": "The outgoing scene advances toward camera while the incoming surface resolves from depth with a clean focus pull.",
+  "kind": "effect",
+  "librarySection": "transition-animation",
+  "dimensions": { "width": 1920, "height": 1080 },
+  "duration": 1.3,
+  "tags": ["transition", "depth", "push", "focus", "cinematic"],
+  "engine": { "name": "gsap", "version": "3.15.0", "seekable": true, "plugins": [] },
+  "source": { "provider": "ipollowork", "label": "iPolloWork Motion Library" },
+  "motionPreset": {
+    "version": 1,
+    "category": "transition",
+    "targets": ["any", "text", "image", "shape", "group"],
+    "anchor": "playhead",
+    "duration": 0.9,
+    "ease": "power3.inOut",
+    "keyframes": [
+      { "percentage": 0, "properties": { "opacity": 0, "scale": 0.78, "filter": "blur(18px)" } },
+      { "percentage": 64, "properties": { "opacity": 1, "scale": 1.025, "filter": "blur(0px)" } },
+      { "percentage": 100, "properties": { "opacity": 1, "scale": 1, "filter": "blur(0px)" } }
+    ]
+  },
+  "files": [
+    {
+      "path": "transition-depth-push.html",
+      "target": "compositions/transition-depth-push.html",
+      "type": "hyperframes:composition"
+    }
+  ]
+}

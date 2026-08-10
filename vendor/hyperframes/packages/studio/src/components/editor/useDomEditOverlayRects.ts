@@ -4,6 +4,7 @@
  */
 import { useRef, useState, type RefObject } from "react";
 import { useMountEffect } from "../../hooks/useMountEffect";
+import { usePlayerStore } from "../../player";
 import { hugRectForElement } from "./domEditOverlayCrop";
 import { type DomEditSelection, findElementForSelection } from "./domEditing";
 import {
@@ -19,6 +20,9 @@ import {
   selectionCacheKey,
   toVisibleOverlayRect,
 } from "./domEditOverlayGeometry";
+
+const PAUSED_OVERLAY_FALLBACK_MS = 250;
+const CHILD_RECT_INTERVAL_MS = 180;
 
 function childRectsEqual(a: OverlayRect[], b: OverlayRect[]): boolean {
   if (a.length !== b.length) return false;
@@ -107,11 +111,47 @@ export function useDomEditOverlayRects({
 
   useMountEffect(() => {
     let frame = 0;
+    let geometryDirty = true;
+    let lastMeasureAt = 0;
+    let lastChildMeasureAt = 0;
+    let lastSelectionSignature = "";
+    let observedDocument: Document | null = null;
+    const mutationObserver = new MutationObserver(() => {
+      geometryDirty = true;
+    });
+    const resizeObserver = new ResizeObserver(() => {
+      geometryDirty = true;
+    });
+
+    const observeGeometry = (
+      doc: Document,
+      iframe: HTMLIFrameElement,
+      overlay: HTMLDivElement,
+    ) => {
+      if (observedDocument === doc) return;
+      mutationObserver.disconnect();
+      resizeObserver.disconnect();
+      observedDocument = doc;
+      mutationObserver.observe(doc.documentElement, {
+        attributes: true,
+        attributeFilter: ["class", "hidden", "style"],
+        characterData: true,
+        childList: true,
+        subtree: true,
+      });
+      resizeObserver.observe(iframe);
+      resizeObserver.observe(overlay);
+      geometryDirty = true;
+    };
 
     const clearAll = () => {
       setOverlayRect(null);
       setHoverRect(null);
       setGroupOverlayItems([]);
+      if (childRectsRef.current.length > 0) {
+        childRectsRef.current = [];
+        setChildRectsState([]);
+      }
     };
 
     const update = () => {
@@ -144,6 +184,35 @@ export function useDomEditOverlayRects({
         return;
       }
 
+      observeGeometry(doc, iframe, overlayEl);
+      const group = groupSelectionsRef.current;
+      const hoverSel = hoverSelectionRef.current;
+      const selectionSignature = [
+        sel ? selectionCacheKey(sel) : "none",
+        group.map(selectionCacheKey).join("|"),
+        hoverSel ? selectionCacheKey(hoverSel) : "none",
+      ].join("::");
+      const selectionChanged = selectionSignature !== lastSelectionSignature;
+      if (selectionChanged) {
+        lastSelectionSignature = selectionSignature;
+        geometryDirty = true;
+      }
+
+      const now = performance.now();
+      const isPlaying = usePlayerStore.getState().isPlaying;
+      if (
+        !isPlaying &&
+        !geometryDirty &&
+        !selectionChanged &&
+        now - lastMeasureAt < PAUSED_OVERLAY_FALLBACK_MS
+      ) {
+        return;
+      }
+      lastMeasureAt = now;
+      geometryDirty = false;
+      const shouldMeasureChildren =
+        selectionChanged || now - lastChildMeasureAt >= CHILD_RECT_INTERVAL_MS;
+
       if (sel) {
         const el = resolveElementForOverlay(
           doc,
@@ -166,8 +235,9 @@ export function useDomEditOverlayRects({
           // every frame for any single selection, so that gate matters here most.
           const nextRect = orientedGroupAwareOverlayRect(overlayEl, iframe, el);
           setOverlayRect(nextRect);
-          const descendants = el.querySelectorAll("*");
-          if (descendants.length > 0 && descendants.length <= 60) {
+          const descendants = shouldMeasureChildren ? el.querySelectorAll("*") : null;
+          if (descendants && descendants.length > 0 && descendants.length <= 60) {
+            lastChildMeasureAt = now;
             const nextChildRects: OverlayRect[] = [];
             for (let i = 0; i < descendants.length; i++) {
               const child = descendants[i] as HTMLElement;
@@ -179,7 +249,8 @@ export function useDomEditOverlayRects({
               childRectsRef.current = nextChildRects;
               setChildRectsState(nextChildRects);
             }
-          } else if (childRectsRef.current.length > 0) {
+          } else if (descendants && childRectsRef.current.length > 0) {
+            lastChildMeasureAt = now;
             childRectsRef.current = [];
             setChildRectsState([]);
           }
@@ -199,7 +270,6 @@ export function useDomEditOverlayRects({
         }
       }
 
-      const group = groupSelectionsRef.current;
       if (group.length > 0) {
         const nextGroupItems: GroupOverlayItem[] = [];
         const liveGroupKeys = new Set<string>();
@@ -225,7 +295,6 @@ export function useDomEditOverlayRects({
         setGroupOverlayItems([]);
       }
 
-      const hoverSel = hoverSelectionRef.current;
       const hoverMatchesSelection = Boolean(
         sel && hoverSel && selectionCacheKey(sel) === selectionCacheKey(hoverSel),
       );
@@ -253,7 +322,11 @@ export function useDomEditOverlayRects({
     };
 
     frame = requestAnimationFrame(update);
-    return () => cancelAnimationFrame(frame);
+    return () => {
+      cancelAnimationFrame(frame);
+      mutationObserver.disconnect();
+      resizeObserver.disconnect();
+    };
   });
 
   return {

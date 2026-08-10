@@ -85,6 +85,14 @@ export function TimelineLayerHeader({
             : status === "invalid-duration"
               ? "This layer has no valid editable duration"
               : "Editable";
+  const editability =
+    !first || status === "missing-target"
+      ? "unavailable"
+      : status === "editable" || status === "materializes-timing"
+        ? "editable"
+        : "limited";
+  const selectionTitle =
+    editability === "editable" ? label : `${label} · ${statusTitle}`;
   const canReorder = Boolean(
     first && elements.length === 1 && capabilities?.canMove && onReorderPointerDown,
   );
@@ -98,6 +106,8 @@ export function TimelineLayerHeader({
     <div
       className={`hf-timeline-layer-header sticky left-0 z-[12] flex flex-shrink-0 items-center ${
         selected ? "is-selected" : ""
+      } ${editability === "unavailable" ? "is-uneditable" : ""} ${
+        editability === "limited" ? "is-limited" : ""
       }`}
       style={{
         width: GUTTER,
@@ -110,6 +120,13 @@ export function TimelineLayerHeader({
       data-layer-kind={kind}
       data-layer-depth={depth}
       data-layer-group={bindingId ?? undefined}
+      data-layer-editability={editability}
+      data-layer-edit-status={status}
+      data-layer-element-id={first?.id}
+      data-layer-dom-id={first?.domId}
+      data-layer-hf-id={first?.hfId}
+      data-layer-source-file={first?.sourceFile}
+      data-layer-selector={first?.selector}
     >
       {first && expandable ? (
         <button
@@ -138,7 +155,7 @@ export function TimelineLayerHeader({
       <button
         type="button"
         className="hf-timeline-layer-header__select"
-        title={label}
+        title={tx(selectionTitle)}
         aria-label={tx(`Select ${label}`)}
         aria-pressed={selected}
         onPointerDown={(event) => event.stopPropagation()}

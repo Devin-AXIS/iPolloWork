@@ -104,6 +104,38 @@ describe("semantic motion mutation route", () => {
     expect(html).not.toContain("text.enter.typewriter");
   });
 
+  it("keeps variable-bound text unsplit while preserving the requested motion", async () => {
+    const variableSource = SOURCE.replace(
+      '<h1 id="headline" data-start="1" data-duration="5">',
+      '<h1 id="headline" data-var-text="title" data-start="1" data-duration="5">',
+    );
+    writeFileSync(join(projectDir, "index.html"), variableSource);
+
+    const response = await mutate({
+      type: "mutate-motion",
+      operation: "upsert",
+      targetSelector: "#headline",
+      elementId: "headline",
+      targetKind: "text",
+      phase: "enter",
+      presetId: "text.enter.fold-reveal",
+      parameters: { unit: "character" },
+    });
+
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    const instance = body.parsed.animations
+      .map((animation: { extras?: Record<string, unknown> }) =>
+        readMotionInstanceFromExtras(animation.extras),
+      )
+      .find(Boolean);
+    expect(instance.parameters.unit).toBe("whole");
+    const html = readFileSync(join(projectDir, "index.html"), "utf8");
+    expect(html).toContain('data-var-text="title"');
+    expect(html).toContain("text.enter.fold-reveal");
+    expect(html).not.toContain("data-ipw-motion-char");
+  });
+
   it("keeps phases independent and removes only the requested phase", async () => {
     for (const [phase, presetId] of [
       ["enter", "text.enter.rise"],
@@ -223,7 +255,7 @@ describe("semantic motion mutation route", () => {
     expect(response.status).toBe(200);
     const html = readFileSync(join(projectDir, "index.html"), "utf8");
     expect(html).toContain('<div data-ipw-animation-reference="element.enter.slide"');
-    expect(html).toContain('<span>Nested</span>');
+    expect(html).toContain("<span>Nested</span>");
     expect(html).not.toContain("data-ipw-motion-char");
   });
 });

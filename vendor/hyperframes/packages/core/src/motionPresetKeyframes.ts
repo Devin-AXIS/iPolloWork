@@ -23,11 +23,21 @@ function frame(
   return { percentage, properties, ...(ease ? { ease } : {}) };
 }
 
+function motionColor(
+  params: MotionParameters,
+  parameterId: string,
+  themeToken: string,
+  fallback: string,
+): string {
+  if (params.colorSource === "theme") return `var(${themeToken}, ${fallback})`;
+  return String(params[parameterId] ?? fallback);
+}
+
 export function buildPresetKeyframes(presetId: string, params: MotionParameters): MotionKeyframe[] {
   const intensity = Number(params.intensity ?? 1);
   const direction = String(params.direction ?? "up");
   const offset = directionOffset(direction, 42 * intensity);
-  const color = String(params.color ?? "#7c3aed");
+  const color = motionColor(params, "color", "--ipw-color-accent", "#7c3aed");
   switch (presetId) {
     case "text.enter.fade":
       return [frame(0, { opacity: 0 }), frame(100, { opacity: 1 })];
@@ -70,6 +80,157 @@ export function buildPresetKeyframes(presetId: string, params: MotionParameters)
         frame(55, { opacity: 0.75, x: 3 * intensity, filter: "blur(1px)" }),
         frame(100, { opacity: 1, x: 0, filter: "blur(0px)" }),
       ];
+    case "text.enter.blur-reveal": {
+      const blur = Number(params.blur ?? 14);
+      return [
+        frame(0, {
+          opacity: 0,
+          x: offset.x,
+          y: offset.y,
+          filter: `blur(${blur}px) saturate(0.72)`,
+          letterSpacing: `${0.08 * intensity}em`,
+        }),
+        frame(58, {
+          opacity: 0.82,
+          x: offset.x * 0.12,
+          y: offset.y * 0.12,
+          filter: `blur(${Math.max(1, blur * 0.16)}px) saturate(0.94)`,
+          letterSpacing: `${0.015 * intensity}em`,
+        }),
+        frame(100, {
+          opacity: 1,
+          x: 0,
+          y: 0,
+          filter: "blur(0px) saturate(1)",
+          letterSpacing: "0em",
+        }),
+      ];
+    }
+    case "text.enter.mask-sweep":
+      return [
+        frame(0, {
+          opacity: 0,
+          x: offset.x * 0.35,
+          y: offset.y * 0.35,
+          clipPath: wipeInset(direction, true),
+          filter: `blur(${Math.round(3 * intensity)}px)`,
+        }),
+        frame(100, {
+          opacity: 1,
+          x: 0,
+          y: 0,
+          clipPath: wipeInset(direction, false),
+          filter: "blur(0px)",
+        }),
+      ];
+    case "text.enter.fold-reveal": {
+      const perspective = Number(params.perspective ?? 700);
+      const horizontal = direction === "left" || direction === "right";
+      const sign = direction === "left" || direction === "up" ? -1 : 1;
+      return [
+        frame(0, {
+          opacity: 0,
+          rotationX: horizontal ? 0 : 86 * sign * intensity,
+          rotationY: horizontal ? 86 * sign * intensity : 0,
+          transformPerspective: perspective,
+          filter: `brightness(${Math.max(0.45, 1 - 0.3 * intensity)})`,
+        }),
+        frame(72, {
+          opacity: 1,
+          rotationX: horizontal ? 0 : -5 * sign * intensity,
+          rotationY: horizontal ? -5 * sign * intensity : 0,
+          transformPerspective: perspective,
+          filter: "brightness(1.08)",
+        }),
+        frame(100, {
+          opacity: 1,
+          rotationX: 0,
+          rotationY: 0,
+          transformPerspective: perspective,
+          filter: "brightness(1)",
+        }),
+      ];
+    }
+    case "motion.enter.content-reveal": {
+      const distance = Number(params.distance ?? 56);
+      const contentOffset = directionOffset(direction, distance);
+      return [
+        frame(0, {
+          opacity: Number(params.initialOpacity ?? 0),
+          scale: Number(params.initialScale ?? 0.92),
+          x: contentOffset.x,
+          y: contentOffset.y,
+          filter: "blur(5px)",
+        }),
+        frame(100, { opacity: 1, scale: 1, x: 0, y: 0, filter: "blur(0px)" }),
+      ];
+    }
+    case "motion.enter.gradual-focus": {
+      const distance = Number(params.distance ?? 28) * intensity;
+      const blur = Number(params.blur ?? 18) * intensity;
+      const focusOffset = directionOffset(direction, distance);
+      return [
+        frame(0, {
+          opacity: 0,
+          x: focusOffset.x,
+          y: focusOffset.y,
+          scale: Math.max(0.72, 1 - 0.08 * intensity),
+          filter: `blur(${blur}px) brightness(0.86)`,
+        }),
+        frame(64, {
+          opacity: 0.86,
+          x: focusOffset.x * 0.1,
+          y: focusOffset.y * 0.1,
+          scale: 1.015,
+          filter: `blur(${Math.max(1, blur * 0.12)}px) brightness(1.04)`,
+        }),
+        frame(100, { opacity: 1, x: 0, y: 0, scale: 1, filter: "blur(0px) brightness(1)" }),
+      ];
+    }
+    case "motion.enter.scan-reveal": {
+      const blur = Number(params.blur ?? 6) * intensity;
+      const contrast = Number(params.contrast ?? 1.25);
+      return [
+        frame(0, {
+          opacity: 0,
+          clipPath: wipeInset(direction, true),
+          filter: `blur(${blur}px) contrast(${contrast + 0.35}) brightness(1.35)`,
+        }),
+        frame(72, {
+          opacity: 1,
+          clipPath: wipeInset(direction, false),
+          filter: `blur(${Math.max(0.5, blur * 0.12)}px) contrast(${contrast}) brightness(1.08)`,
+        }),
+        frame(100, {
+          opacity: 1,
+          clipPath: wipeInset(direction, false),
+          filter: "blur(0px) contrast(1) brightness(1)",
+        }),
+      ];
+    }
+    case "element.enter.bounce-card": {
+      const rotation = Number(params.rotation ?? 8) * intensity;
+      const enterOffset = directionOffset(direction, 34 * intensity);
+      const sign = direction === "left" || direction === "up" ? -1 : 1;
+      return [
+        frame(0, {
+          opacity: 0,
+          x: enterOffset.x,
+          y: enterOffset.y,
+          scale: Math.max(0.55, 0.78 - 0.06 * intensity),
+          rotation: rotation * sign,
+        }),
+        frame(68, {
+          opacity: 1,
+          x: -enterOffset.x * 0.08,
+          y: -enterOffset.y * 0.08,
+          scale: 1.07 + 0.02 * intensity,
+          rotation: -rotation * 0.18 * sign,
+        }),
+        frame(86, { opacity: 1, x: 0, y: 0, scale: 0.985, rotation: rotation * 0.06 * sign }),
+        frame(100, { opacity: 1, x: 0, y: 0, scale: 1, rotation: 0 }),
+      ];
+    }
     case "element.enter.fade":
       return [frame(0, { opacity: 0 }), frame(100, { opacity: 1 })];
     case "element.enter.slide":
@@ -137,6 +298,261 @@ export function buildPresetKeyframes(presetId: string, params: MotionParameters)
         frame(65, { x: -2 * intensity, skewX: 0, textShadow: `${2 * intensity}px 0 ${color}` }),
         frame(100, { x: 0, skewX: 0, textShadow: "0 0 0 transparent" }),
       ];
+    case "text.emphasis.prism-glow":
+      return [
+        frame(0, { color, filter: "brightness(1) saturate(1)", letterSpacing: "0em" }),
+        frame(48, {
+          color,
+          filter: `brightness(${1 + 0.32 * intensity}) saturate(${1 + 0.55 * intensity})`,
+          letterSpacing: `${0.035 * intensity}em`,
+        }),
+        frame(100, { color, filter: "brightness(1) saturate(1)", letterSpacing: "0em" }),
+      ];
+    case "text.emphasis.shiny-sweep": {
+      const glow = Number(params.glow ?? 1);
+      const horizontalSign = direction === "left" ? -1 : 1;
+      return [
+        frame(0, {
+          color: "currentColor",
+          x: 0,
+          filter: "brightness(1) saturate(1)",
+          textShadow: "0 0 0 transparent",
+        }),
+        frame(45, {
+          color,
+          x: -2 * horizontalSign * intensity,
+          filter: `brightness(${1 + 0.4 * glow}) saturate(${1 + 0.35 * glow})`,
+          textShadow: `0 0 ${Math.round(12 * glow)}px ${color}`,
+        }),
+        frame(62, {
+          color,
+          x: 2 * horizontalSign * intensity,
+          filter: `brightness(${1 + 0.24 * glow}) saturate(${1 + 0.2 * glow})`,
+          textShadow: `0 0 ${Math.round(7 * glow)}px ${color}`,
+        }),
+        frame(100, {
+          color: "currentColor",
+          x: 0,
+          filter: "brightness(1) saturate(1)",
+          textShadow: "0 0 0 transparent",
+        }),
+      ];
+    }
+    case "text.emphasis.true-focus": {
+      const blur = Number(params.blur ?? 5) * intensity;
+      const focusScale = Number(params.focusScale ?? 1.06);
+      return [
+        frame(0, { opacity: 0.68, scale: 1, filter: `blur(${blur}px) brightness(0.86)` }),
+        frame(45, {
+          opacity: 1,
+          scale: focusScale,
+          filter: "blur(0px) brightness(1.12)",
+        }),
+        frame(72, { opacity: 0.86, scale: 1.01, filter: `blur(${blur * 0.24}px) brightness(1)` }),
+        frame(100, { opacity: 1, scale: 1, filter: "blur(0px) brightness(1)" }),
+      ];
+    }
+    case "motion.emphasis.soft-float": {
+      const distance = Number(params.distance ?? 12) * intensity;
+      const floatOffset = directionOffset(direction, distance);
+      return [
+        frame(0, { x: 0, y: 0, rotation: 0, scale: 1 }),
+        frame(50, {
+          x: -floatOffset.x,
+          y: -floatOffset.y,
+          rotation: 1.2 * intensity,
+          scale: 1 + 0.018 * intensity,
+        }),
+        frame(100, { x: 0, y: 0, rotation: 0, scale: 1 }),
+      ];
+    }
+    case "motion.emphasis.focus-tilt": {
+      const horizontal = direction === "left" || direction === "right";
+      const sign = direction === "left" || direction === "up" ? -1 : 1;
+      return [
+        frame(0, {
+          rotationX: 0,
+          rotationY: 0,
+          scale: 1,
+          transformPerspective: 800,
+        }),
+        frame(48, {
+          rotationX: horizontal ? -3 * intensity : sign * 7 * intensity,
+          rotationY: horizontal ? sign * 7 * intensity : 3 * intensity,
+          scale: 1 + 0.025 * intensity,
+          transformPerspective: 800,
+        }),
+        frame(100, {
+          rotationX: 0,
+          rotationY: 0,
+          scale: 1,
+          transformPerspective: 800,
+        }),
+      ];
+    }
+    case "motion.emphasis.magnetic-snap": {
+      const distance = Number(params.distance ?? 22) * intensity;
+      const overshoot = Number(params.overshoot ?? 0.35);
+      const pullOffset = directionOffset(direction, distance);
+      return [
+        frame(0, { x: 0, y: 0, scale: 1 }),
+        frame(34, {
+          x: -pullOffset.x,
+          y: -pullOffset.y,
+          scale: 1 + 0.035 * intensity,
+        }),
+        frame(68, {
+          x: pullOffset.x * overshoot,
+          y: pullOffset.y * overshoot,
+          scale: 1 - 0.012 * intensity,
+        }),
+        frame(100, { x: 0, y: 0, scale: 1 }),
+      ];
+    }
+    case "background.emphasis.molten-flow":
+    case "background.emphasis.aurora-breathe":
+    case "background.emphasis.prism-shift": {
+      const color1 = motionColor(params, "color1", "--ipw-color-bg", "#1B1640");
+      const color2 = motionColor(params, "color2", "--ipw-color-primary", "#6D4AFF");
+      const color3 = motionColor(params, "color3", "--ipw-color-accent", "#F3B8FF");
+      const brightness = Number(params.brightness ?? 1.1);
+      const glow = Number(params.glow ?? 1);
+      const swirl = Number(params.swirl ?? 0.6);
+      return [
+        frame(0, {
+          backgroundColor: color1,
+          filter: `brightness(${brightness}) saturate(${1 + glow * 0.18})`,
+          rotation: 0,
+          scale: 1,
+        }),
+        frame(32, {
+          backgroundColor: color2,
+          filter: `brightness(${brightness + glow * 0.16}) saturate(${1 + glow * 0.42})`,
+          rotation: 1.8 * swirl,
+          scale: 1 + 0.012 * glow,
+        }),
+        frame(68, {
+          backgroundColor: color3,
+          filter: `brightness(${brightness + glow * 0.08}) saturate(${1 + glow * 0.28})`,
+          rotation: -1.2 * swirl,
+          scale: 1 + 0.02 * glow,
+        }),
+        frame(100, {
+          backgroundColor: color1,
+          filter: `brightness(${brightness}) saturate(${1 + glow * 0.18})`,
+          rotation: 0,
+          scale: 1,
+        }),
+      ];
+    }
+    case "background.emphasis.light-rays": {
+      const color1 = motionColor(params, "color1", "--ipw-color-bg", "#0B1020");
+      const color2 = motionColor(params, "color2", "--ipw-color-primary", "#2563EB");
+      const color3 = motionColor(params, "color3", "--ipw-color-accent", "#FFFFFF");
+      const brightness = Number(params.brightness ?? 1.05);
+      const glow = Number(params.glow ?? 1.25);
+      const swirl = Number(params.swirl ?? 0.35);
+      return [
+        frame(0, {
+          backgroundColor: color1,
+          scale: 1,
+          rotation: -0.8 * swirl,
+          filter: `brightness(${brightness}) saturate(1) drop-shadow(0 0 0 transparent)`,
+        }),
+        frame(46, {
+          backgroundColor: color2,
+          scale: 1 + 0.025 * glow,
+          rotation: 1.4 * swirl,
+          filter: `brightness(${brightness + 0.25 * glow}) saturate(${1 + 0.35 * glow}) drop-shadow(0 0 ${Math.round(18 * glow)}px ${color3})`,
+        }),
+        frame(72, {
+          backgroundColor: color3,
+          scale: 1 + 0.012 * glow,
+          rotation: -0.6 * swirl,
+          filter: `brightness(${brightness + 0.12 * glow}) saturate(${1 + 0.18 * glow}) drop-shadow(0 0 ${Math.round(9 * glow)}px ${color2})`,
+        }),
+        frame(100, {
+          backgroundColor: color1,
+          scale: 1,
+          rotation: 0,
+          filter: `brightness(${brightness}) saturate(1) drop-shadow(0 0 0 transparent)`,
+        }),
+      ];
+    }
+    case "background.emphasis.grid-scan": {
+      const color1 = motionColor(params, "color1", "--ipw-color-bg", "#08111C");
+      const color2 = motionColor(params, "color2", "--ipw-color-primary", "#0F766E");
+      const color3 = motionColor(params, "color3", "--ipw-color-accent", "#5EEAD4");
+      const brightness = Number(params.brightness ?? 1);
+      const glow = Number(params.glow ?? 0.75);
+      const swirl = Number(params.swirl ?? 0.9);
+      return [
+        frame(0, {
+          backgroundColor: color1,
+          x: -5 * swirl,
+          scale: 1.02,
+          filter: `brightness(${brightness}) contrast(1) saturate(1)`,
+        }),
+        frame(26, {
+          backgroundColor: color2,
+          x: 4 * swirl,
+          scale: 1.035,
+          filter: `brightness(${brightness + 0.18 * glow}) contrast(${1 + 0.32 * glow}) saturate(${1 + 0.22 * glow})`,
+        }),
+        frame(54, {
+          backgroundColor: color3,
+          x: -2 * swirl,
+          scale: 1.025,
+          filter: `brightness(${brightness + 0.3 * glow}) contrast(${1 + 0.48 * glow}) saturate(${1 + 0.38 * glow})`,
+        }),
+        frame(78, {
+          backgroundColor: color2,
+          x: 3 * swirl,
+          scale: 1.03,
+          filter: `brightness(${brightness + 0.12 * glow}) contrast(${1 + 0.18 * glow}) saturate(${1 + 0.16 * glow})`,
+        }),
+        frame(100, {
+          backgroundColor: color1,
+          x: 0,
+          scale: 1,
+          filter: `brightness(${brightness}) contrast(1) saturate(1)`,
+        }),
+      ];
+    }
+    case "background.emphasis.iridescent-flow": {
+      const color1 = motionColor(params, "color1", "--ipw-color-bg", "#17122F");
+      const color2 = motionColor(params, "color2", "--ipw-color-primary", "#7C3AED");
+      const color3 = motionColor(params, "color3", "--ipw-color-accent", "#22D3EE");
+      const brightness = Number(params.brightness ?? 1.08);
+      const glow = Number(params.glow ?? 1.15);
+      const swirl = Number(params.swirl ?? -0.5);
+      return [
+        frame(0, {
+          backgroundColor: color1,
+          rotation: 0,
+          scale: 1,
+          filter: `brightness(${brightness}) saturate(${1 + 0.2 * glow}) hue-rotate(0deg)`,
+        }),
+        frame(33, {
+          backgroundColor: color2,
+          rotation: 1.4 * swirl,
+          scale: 1 + 0.018 * glow,
+          filter: `brightness(${brightness + 0.12 * glow}) saturate(${1 + 0.5 * glow}) hue-rotate(68deg)`,
+        }),
+        frame(67, {
+          backgroundColor: color3,
+          rotation: -1.1 * swirl,
+          scale: 1 + 0.026 * glow,
+          filter: `brightness(${brightness + 0.18 * glow}) saturate(${1 + 0.62 * glow}) hue-rotate(132deg)`,
+        }),
+        frame(100, {
+          backgroundColor: color1,
+          rotation: 0,
+          scale: 1,
+          filter: `brightness(${brightness}) saturate(${1 + 0.2 * glow}) hue-rotate(0deg)`,
+        }),
+      ];
+    }
     case "element.emphasis.lift":
       return [
         frame(0, { y: 0, scale: 1 }),
@@ -156,6 +572,47 @@ export function buildPresetKeyframes(presetId: string, params: MotionParameters)
         frame(65, { rotation: 3 * intensity }),
         frame(100, { rotation: 0 }),
       ];
+    case "element.emphasis.spotlight-card": {
+      const glow = Number(params.glow ?? 1);
+      return [
+        frame(0, { scale: 1, filter: "brightness(1) drop-shadow(0 0 0 transparent)" }),
+        frame(50, {
+          scale: 1 + 0.035 * intensity,
+          filter: `brightness(${1 + 0.22 * intensity}) drop-shadow(0 0 ${Math.round(18 * glow)}px ${color})`,
+        }),
+        frame(100, { scale: 1, filter: "brightness(1) drop-shadow(0 0 0 transparent)" }),
+      ];
+    }
+    case "element.emphasis.glare-sweep": {
+      const glow = Number(params.glow ?? 0.8);
+      const sign = direction === "left" ? -1 : 1;
+      return [
+        frame(0, {
+          x: 0,
+          skewX: 0,
+          scale: 1,
+          filter: "brightness(1) drop-shadow(0 0 0 transparent)",
+        }),
+        frame(42, {
+          x: -3 * sign * intensity,
+          skewX: 1.5 * sign * intensity,
+          scale: 1.018,
+          filter: `brightness(${1 + 0.38 * intensity}) drop-shadow(${4 * sign}px 0 ${Math.round(13 * glow)}px ${color})`,
+        }),
+        frame(66, {
+          x: 3 * sign * intensity,
+          skewX: -1 * sign * intensity,
+          scale: 1.01,
+          filter: `brightness(${1 + 0.2 * intensity}) drop-shadow(${-3 * sign}px 0 ${Math.round(7 * glow)}px ${color})`,
+        }),
+        frame(100, {
+          x: 0,
+          skewX: 0,
+          scale: 1,
+          filter: "brightness(1) drop-shadow(0 0 0 transparent)",
+        }),
+      ];
+    }
     case "text.exit.fade":
       return [frame(0, { opacity: 1 }), frame(100, { opacity: 0 })];
     case "text.exit.drift":

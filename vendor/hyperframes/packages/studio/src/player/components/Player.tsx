@@ -26,11 +26,14 @@ interface HyperframesPlayerElement extends HTMLElement {
   iframeElement: HTMLIFrameElement;
 }
 
+const MEDIA_HAVE_CURRENT_DATA = 2;
 const MEDIA_HAVE_FUTURE_DATA = 3;
 const MEDIA_NETWORK_NO_SOURCE = 3;
 
 const COMPOSITION_LOADING_OVERLAY_DELAY_MS = 400;
 const REFRESH_LOADING_OVERLAY_DELAY_MS = 220;
+const DEFERRED_VISUAL_READY_TIMEOUT_MS = 800;
+const DEFERRED_VISUAL_READY_PAINTS = 2;
 
 export function shouldShowCompositionLoadingOverlay(compositionLoading: boolean): boolean {
   return compositionLoading;
@@ -99,6 +102,64 @@ export function hasUnloadedAssets(iframe: HTMLIFrameElement, lastResult: boolean
     return false;
   } catch {
     return lastResult;
+  }
+}
+
+function isVisuallyActive(element: HTMLElement): boolean {
+  if (typeof element.checkVisibility === "function") {
+    return element.checkVisibility({ checkOpacity: true, checkVisibilityCSS: true });
+  }
+  const rect = element.getBoundingClientRect();
+  const style = element.ownerDocument.defaultView?.getComputedStyle(element);
+  return (
+    rect.width > 0 &&
+    rect.height > 0 &&
+    style?.display !== "none" &&
+    style?.visibility !== "hidden" &&
+    style?.opacity !== "0"
+  );
+}
+
+function documentHasPendingVisualAssets(doc: Document, depth = 0): boolean {
+  if (doc.fonts?.status !== "loaded") return true;
+
+  for (const image of doc.querySelectorAll<HTMLImageElement>("img")) {
+    if (isVisuallyActive(image) && (!image.complete || image.naturalWidth === 0)) return true;
+  }
+
+  for (const video of doc.querySelectorAll<HTMLVideoElement>("video")) {
+    if (
+      isVisuallyActive(video) &&
+      !video.error &&
+      video.networkState !== MEDIA_NETWORK_NO_SOURCE &&
+      video.readyState < MEDIA_HAVE_CURRENT_DATA
+    ) {
+      return true;
+    }
+  }
+
+  if (depth >= 2) return false;
+  for (const childFrame of doc.querySelectorAll<HTMLIFrameElement>("iframe")) {
+    if (!isVisuallyActive(childFrame)) continue;
+    try {
+      const childDoc = childFrame.contentDocument;
+      if (!childDoc || childDoc.readyState !== "complete") return true;
+      if (documentHasPendingVisualAssets(childDoc, depth + 1)) return true;
+    } catch {
+      // Cross-origin child frames cannot expose readiness. The two-paint gate
+      // below still prevents swapping on their first unpainted browser frame.
+    }
+  }
+
+  return false;
+}
+
+export function isDeferredFrameVisuallyReady(iframe: HTMLIFrameElement): boolean {
+  try {
+    const doc = iframe.contentDocument;
+    return Boolean(doc && doc.readyState === "complete" && !documentHasPendingVisualAssets(doc));
+  } catch {
+    return true;
   }
 }
 
@@ -229,9 +290,22 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
           // Studio restore the seek before revealing it.
           assignForwardedRef();
           onLoad();
+          let visibleAt = 0;
+          let readyPaints = 0;
           const notifyWhenRestored = () => {
             if (canceled) return;
-            if (iframe.style.visibility !== "hidden") {
+            if (iframe.style.visibility === "hidden") {
+              revealRaf = requestAnimationFrame(notifyWhenRestored);
+              return;
+            }
+            if (visibleAt === 0) visibleAt = performance.now();
+            const timedOut = performance.now() - visibleAt >= DEFERRED_VISUAL_READY_TIMEOUT_MS;
+            if (timedOut || isDeferredFrameVisuallyReady(iframe)) {
+              readyPaints += 1;
+            } else {
+              readyPaints = 0;
+            }
+            if (readyPaints >= DEFERRED_VISUAL_READY_PAINTS) {
               onReadyToReveal?.();
               return;
             }

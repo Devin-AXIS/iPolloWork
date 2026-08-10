@@ -1,0 +1,35 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "ending-iris-collapse",
+  "version": "1.0.0",
+  "type": "hyperframes:block",
+  "title": "Iris Collapse",
+  "description": "Concentric color fields collapse toward the identity mark and leave a decisive final-frame hold.",
+  "kind": "effect",
+  "librarySection": "ending-animation",
+  "dimensions": { "width": 1920, "height": 1080 },
+  "duration": 4.2,
+  "tags": ["ending", "iris", "geometric", "logo", "bold"],
+  "engine": { "name": "gsap", "version": "3.15.0", "seekable": true, "plugins": [] },
+  "source": { "provider": "ipollowork", "label": "iPolloWork Motion Library" },
+  "motionPreset": {
+    "version": 1,
+    "category": "ending",
+    "targets": ["any", "text", "image", "shape", "group"],
+    "anchor": "clip-end",
+    "duration": 1.1,
+    "ease": "expo.inOut",
+    "keyframes": [
+      { "percentage": 0, "properties": { "opacity": 1, "scale": 1, "rotation": 0 } },
+      { "percentage": 72, "properties": { "opacity": 1, "scale": 0.18, "rotation": 12 } },
+      { "percentage": 100, "properties": { "opacity": 0, "scale": 0, "rotation": 18 } }
+    ]
+  },
+  "files": [
+    {
+      "path": "ending-iris-collapse.html",
+      "target": "compositions/ending-iris-collapse.html",
+      "type": "hyperframes:composition"
+    }
+  ]
+}

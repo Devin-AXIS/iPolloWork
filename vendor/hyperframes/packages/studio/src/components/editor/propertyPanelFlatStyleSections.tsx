@@ -304,11 +304,13 @@ function FlatRadiusRow({
   gsapBorderRadius,
   disabled,
   onSetStyle,
+  onPreviewStyle,
 }: {
   styles: Record<string, string>;
   gsapBorderRadius?: { tl: number; tr: number; br: number; bl: number } | null;
   disabled: boolean;
   onSetStyle: (prop: string, value: string) => void | Promise<void>;
+  onPreviewStyle?: (prop: string, value: string) => void;
 }) {
   const radiusValue = gsapBorderRadius?.tl ?? parseNumericValue(styles["border-radius"]) ?? 0;
 
@@ -318,8 +320,13 @@ function FlatRadiusRow({
       value={formatNumericValue(radiusValue)}
       tier={resolveValueTier(styles["border-radius"], "0px")}
       disabled={disabled}
-      liveCommit
+      liveCommit={!onPreviewStyle}
       large
+      onPreview={(next) => {
+        const parsed = parseNumericValue(next);
+        if (parsed === null) return;
+        onPreviewStyle?.("border-radius", `${formatNumericValue(Math.max(0, parsed))}px`);
+      }}
       onCommit={(next) => {
         const parsed = parseNumericValue(next);
         if (parsed === null) return;
@@ -383,10 +390,12 @@ function FlatBlurSliders({
   styles,
   disabled,
   onSetStyle,
+  onPreviewStyle,
 }: {
   styles: Record<string, string>;
   disabled: boolean;
   onSetStyle: (prop: string, value: string) => void | Promise<void>;
+  onPreviewStyle?: (prop: string, value: string) => void;
 }) {
   const filterBlurValue = getCssFilterFunctionPx(styles.filter, "blur");
   const backdropBlurValue = getCssFilterFunctionPx(styles["backdrop-filter"], "blur");
@@ -401,6 +410,11 @@ function FlatBlurSliders({
         tier={filterBlurValue > 0 ? "explicitCustom" : "default"}
         displayValue={`${formatNumericValue(filterBlurValue)}px`}
         disabled={disabled}
+        commitMode={onPreviewStyle ? "release" : "live"}
+        onPreview={(next) =>
+          onPreviewStyle?.("filter", setCssFilterFunctionPx(styles.filter, "blur", next))
+        }
+        onPreviewCancel={() => onPreviewStyle?.("filter", styles.filter ?? "none")}
         onCommit={(next) =>
           void onSetStyle("filter", setCssFilterFunctionPx(styles.filter, "blur", next))
         }
@@ -413,6 +427,16 @@ function FlatBlurSliders({
         tier={backdropBlurValue > 0 ? "explicitCustom" : "default"}
         displayValue={`${formatNumericValue(backdropBlurValue)}px`}
         disabled={disabled}
+        commitMode={onPreviewStyle ? "release" : "live"}
+        onPreview={(next) =>
+          onPreviewStyle?.(
+            "backdrop-filter",
+            setCssFilterFunctionPx(styles["backdrop-filter"], "blur", next),
+          )
+        }
+        onPreviewCancel={() =>
+          onPreviewStyle?.("backdrop-filter", styles["backdrop-filter"] ?? "none")
+        }
         onCommit={(next) =>
           void onSetStyle(
             "backdrop-filter",
@@ -432,10 +456,12 @@ function FlatOpacitySlider({
   styles,
   disabled,
   onSetStyle,
+  onPreviewStyle,
 }: {
   styles: Record<string, string>;
   disabled: boolean;
   onSetStyle: (prop: string, value: string) => void | Promise<void>;
+  onPreviewStyle?: (prop: string, value: string) => void;
 }) {
   const opacityValue = Math.round((parseNumericValue(styles.opacity) ?? 1) * 100);
 
@@ -448,6 +474,9 @@ function FlatOpacitySlider({
       tier="explicitCustom"
       displayValue={`${opacityValue}%`}
       disabled={disabled}
+      commitMode={onPreviewStyle ? "release" : "live"}
+      onPreview={(next) => onPreviewStyle?.("opacity", formatNumericValue(next / 100))}
+      onPreviewCancel={() => onPreviewStyle?.("opacity", styles.opacity ?? "1")}
       onCommit={(next) => void onSetStyle("opacity", formatNumericValue(next / 100))}
     />
   );
@@ -457,10 +486,12 @@ function FlatAppearanceOpacityRow({
   styles,
   disabled,
   onSetStyle,
+  onPreviewStyle,
 }: {
   styles: Record<string, string>;
   disabled: boolean;
   onSetStyle: (prop: string, value: string) => void | Promise<void>;
+  onPreviewStyle?: (prop: string, value: string) => void;
 }) {
   const opacityValue = Math.round((parseNumericValue(styles.opacity) ?? 1) * 100);
   return (
@@ -469,8 +500,14 @@ function FlatAppearanceOpacityRow({
       value={String(opacityValue)}
       tier="explicitDefault"
       disabled={disabled}
-      liveCommit
+      liveCommit={!onPreviewStyle}
       large
+      onPreview={(next) => {
+        const parsed = parseNumericValue(next);
+        if (parsed === null) return;
+        const normalized = Math.max(0, Math.min(100, parsed));
+        onPreviewStyle?.("opacity", formatNumericValue(normalized / 100));
+      }}
       suffix={<span className="text-[10px] font-normal text-[#858a94]">%</span>}
       onCommit={(next) => {
         const parsed = parseNumericValue(next);
@@ -494,12 +531,19 @@ function FlatAppearanceShadowRow({
   styles,
   disabled,
   onSetStyle,
+  onPreviewStyle,
 }: {
   styles: Record<string, string>;
   disabled: boolean;
   onSetStyle: (prop: string, value: string) => void | Promise<void>;
+  onPreviewStyle?: (prop: string, value: string) => void;
 }) {
   const intensity = SHADOW_INTENSITY[inferBoxShadowPreset(styles["box-shadow"])];
+  const shadowValueFor = (next: number) => {
+    const preset: BoxShadowPreset =
+      next <= 0 ? "none" : next <= 33 ? "soft" : next <= 66 ? "lift" : "glow";
+    return buildBoxShadowPresetValue(preset, styles["box-shadow"]);
+  };
   return (
     <FlatSlider
       large
@@ -510,11 +554,10 @@ function FlatAppearanceShadowRow({
       tier="explicitCustom"
       displayValue={`${intensity}%`}
       disabled={disabled}
-      onCommit={(next) => {
-        const preset: BoxShadowPreset =
-          next <= 0 ? "none" : next <= 33 ? "soft" : next <= 66 ? "lift" : "glow";
-        void onSetStyle("box-shadow", buildBoxShadowPresetValue(preset, styles["box-shadow"]));
-      }}
+      commitMode={onPreviewStyle ? "release" : "live"}
+      onPreview={(next) => onPreviewStyle?.("box-shadow", shadowValueFor(next))}
+      onPreviewCancel={() => onPreviewStyle?.("box-shadow", styles["box-shadow"] ?? "none")}
+      onCommit={(next) => void onSetStyle("box-shadow", shadowValueFor(next))}
     />
   );
 }
@@ -527,6 +570,7 @@ export function FlatStyleSection({
   onSetStyle,
   onImportAssets,
   gsapBorderRadius,
+  onPreviewStyle,
 }: {
   projectId: string;
   element: DomEditSelection;
@@ -535,6 +579,7 @@ export function FlatStyleSection({
   onSetStyle: (prop: string, value: string) => void | Promise<void>;
   onImportAssets?: (files: FileList) => Promise<string[]>;
   gsapBorderRadius?: { tl: number; tr: number; br: number; bl: number } | null;
+  onPreviewStyle?: (prop: string, value: string) => void;
 }) {
   const styleEditingDisabled = !element.capabilities.canEditStyles;
   return (
@@ -553,15 +598,26 @@ export function FlatStyleSection({
         gsapBorderRadius={gsapBorderRadius}
         disabled={styleEditingDisabled}
         onSetStyle={onSetStyle}
+        onPreviewStyle={onPreviewStyle}
       />
       <FlatShadowBlendRows
         styles={styles}
         disabled={styleEditingDisabled}
         onSetStyle={onSetStyle}
       />
-      <FlatBlurSliders styles={styles} disabled={styleEditingDisabled} onSetStyle={onSetStyle} />
+      <FlatBlurSliders
+        styles={styles}
+        disabled={styleEditingDisabled}
+        onSetStyle={onSetStyle}
+        onPreviewStyle={onPreviewStyle}
+      />
       <FlatMaskSection styles={styles} disabled={styleEditingDisabled} onSetStyle={onSetStyle} />
-      <FlatOpacitySlider styles={styles} disabled={styleEditingDisabled} onSetStyle={onSetStyle} />
+      <FlatOpacitySlider
+        styles={styles}
+        disabled={styleEditingDisabled}
+        onSetStyle={onSetStyle}
+        onPreviewStyle={onPreviewStyle}
+      />
     </div>
   );
 }
@@ -571,11 +627,13 @@ export function FlatAppearanceSection({
   gsapBorderRadius,
   disabled,
   onSetStyle,
+  onPreviewStyle,
 }: {
   styles: Record<string, string>;
   gsapBorderRadius?: { tl: number; tr: number; br: number; bl: number } | null;
   disabled: boolean;
   onSetStyle: (prop: string, value: string) => void | Promise<void>;
+  onPreviewStyle?: (prop: string, value: string) => void;
 }) {
   return (
     <div className="hf-flat-responsive-grid grid grid-cols-2 gap-x-3 gap-y-2">
@@ -584,9 +642,20 @@ export function FlatAppearanceSection({
         gsapBorderRadius={gsapBorderRadius}
         disabled={disabled}
         onSetStyle={onSetStyle}
+        onPreviewStyle={onPreviewStyle}
       />
-      <FlatAppearanceOpacityRow styles={styles} disabled={disabled} onSetStyle={onSetStyle} />
-      <FlatAppearanceShadowRow styles={styles} disabled={disabled} onSetStyle={onSetStyle} />
+      <FlatAppearanceOpacityRow
+        styles={styles}
+        disabled={disabled}
+        onSetStyle={onSetStyle}
+        onPreviewStyle={onPreviewStyle}
+      />
+      <FlatAppearanceShadowRow
+        styles={styles}
+        disabled={disabled}
+        onSetStyle={onSetStyle}
+        onPreviewStyle={onPreviewStyle}
+      />
     </div>
   );
 }

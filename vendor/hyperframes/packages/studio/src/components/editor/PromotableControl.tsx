@@ -23,6 +23,8 @@ interface RenderArgs {
   bound: boolean;
 }
 
+const SHOW_VARIABLE_PROMOTION_UI = false;
+
 export function PromotableControl({
   channel,
   enabled = true,
@@ -77,9 +79,15 @@ export function PromotableControl({
   );
 
   return (
-    <div className={`relative ${bound ? "rounded-lg ring-1 ring-studio-accent/40" : ""}`}>
+    <div
+      className={`relative ${
+        SHOW_VARIABLE_PROMOTION_UI && bound
+          ? "rounded-lg ring-1 ring-studio-accent/40"
+          : ""
+      }`}
+    >
       {rendered}
-      {bound && (
+      {SHOW_VARIABLE_PROMOTION_UI && bound && (
         <span
           // Sits above the row (not on top of top-0) so it clears a value that
           // renders flush to the row's right edge, e.g. flat Font/Color rows.
@@ -89,7 +97,7 @@ export function PromotableControl({
           ◆ {promote.boundId}
         </span>
       )}
-      {canPromote && (
+      {SHOW_VARIABLE_PROMOTION_UI && canPromote && (
         <button
           type="button"
           title="Make this a variable"

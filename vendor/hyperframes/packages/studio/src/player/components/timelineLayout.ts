@@ -46,6 +46,70 @@ export const TRACKS_BOTTOM_PAD = Math.round(TRACK_H * 1.5);
  */
 export const TRACKS_LEFT_PAD = 8;
 
+export interface TimelineVisibleWindow {
+  firstTrackIndex: number;
+  lastTrackIndexExclusive: number;
+  startTime: number;
+  endTime: number;
+}
+
+/**
+ * Resolve the small portion of a large timeline that can affect the current
+ * viewport. Overscan keeps wheel/trackpad scrolling smooth without retaining
+ * every lane and clip in the DOM. The full canvas geometry remains unchanged,
+ * so drag, snapping, reveal, and scroll coordinates keep their existing
+ * contracts.
+ */
+export function getTimelineVisibleWindow(input: {
+  scrollLeft: number;
+  scrollTop: number;
+  viewportWidth: number;
+  viewportHeight: number;
+  pps: number;
+  trackCount: number;
+  displayDuration: number;
+  verticalOverscanRows?: number;
+  horizontalOverscanViewports?: number;
+}): TimelineVisibleWindow {
+  const trackCount = Math.max(0, Math.floor(input.trackCount));
+  const displayDuration = Math.max(0, input.displayDuration);
+  if (input.viewportWidth <= 0 || input.viewportHeight <= 0 || input.pps <= 0) {
+    return {
+      firstTrackIndex: 0,
+      lastTrackIndexExclusive: trackCount,
+      startTime: 0,
+      endTime: displayDuration,
+    };
+  }
+
+  const verticalOverscanRows = Math.max(0, Math.floor(input.verticalOverscanRows ?? 4));
+  const rowViewportStart = input.scrollTop - RULER_H - TRACKS_TOP_PAD;
+  const rowViewportEnd = input.scrollTop + input.viewportHeight - RULER_H - TRACKS_TOP_PAD;
+  const firstTrackIndex = Math.min(
+    trackCount,
+    Math.max(0, Math.floor(rowViewportStart / TRACK_H) - verticalOverscanRows),
+  );
+  const lastTrackIndexExclusive = Math.min(
+    trackCount,
+    Math.max(firstTrackIndex, Math.ceil(rowViewportEnd / TRACK_H) + verticalOverscanRows),
+  );
+
+  const horizontalOverscanViewports = Math.max(0, input.horizontalOverscanViewports ?? 1);
+  const overscanPx = input.viewportWidth * horizontalOverscanViewports;
+  const timelineViewportStart = input.scrollLeft - GUTTER - TRACKS_LEFT_PAD;
+  const timelineViewportEnd = input.scrollLeft + input.viewportWidth - GUTTER - TRACKS_LEFT_PAD;
+  const startTime = Math.min(
+    displayDuration,
+    Math.max(0, (timelineViewportStart - overscanPx) / input.pps),
+  );
+  const endTime = Math.min(
+    displayDuration,
+    Math.max(startTime, (timelineViewportEnd + overscanPx) / input.pps),
+  );
+
+  return { firstTrackIndex, lastTrackIndexExclusive, startTime, endTime };
+}
+
 /**
  * The y (content-space) of the top edge of track ROW index `row` (0 = first
  * displayed lane). The single source of truth for row→y — the ruler height plus

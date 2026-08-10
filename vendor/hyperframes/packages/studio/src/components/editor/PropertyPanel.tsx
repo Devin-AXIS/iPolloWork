@@ -267,7 +267,7 @@ export const PropertyPanel = memo(function PropertyPanel(props: PropertyPanelPro
     clipboardTimerRef.current = setTimeout(() => setClipboardCopied(false), 1500);
   };
 
-  if (STUDIO_FLAT_INSPECTOR_ENABLED) {
+  if (STUDIO_FLAT_INSPECTOR_ENABLED || props.inspectorMode === "animation") {
     // Forward the raw props (handlers, ids, assets, recording, fonts, etc.) and
     // the values the legacy path already computed above (so they aren't derived
     // twice). PropertyPanelFlat owns the one-open group state.

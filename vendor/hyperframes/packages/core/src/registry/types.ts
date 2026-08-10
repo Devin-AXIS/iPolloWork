@@ -52,7 +52,36 @@ export type RegistryItemLibrarySection =
   | "text-animation"
   | "interface-animation"
   | "transition-scene"
-  | "background-scene";
+  | "background-scene"
+  | "opening-animation"
+  | "ending-animation"
+  | "transition-animation"
+  | "caption-animation";
+
+export type RegistryMotionPresetCategory = "opening" | "ending" | "transition" | "caption";
+
+export type RegistryMotionPresetTarget = "any" | "text" | "caption" | "image" | "shape" | "group";
+
+export type RegistryMotionPresetAnchor = "clip-start" | "playhead" | "clip-end";
+
+export interface RegistryMotionPresetKeyframe {
+  /** Keyframe position expressed as a percentage from 0 through 100. */
+  percentage: number;
+  /** Literal GSAP values supported by Studio's animation property editor. */
+  properties: Record<string, number | string>;
+  /** Optional easing for the segment that arrives at this keyframe. */
+  ease?: string;
+}
+
+export interface RegistryMotionPreset {
+  version: 1;
+  category: RegistryMotionPresetCategory;
+  targets: RegistryMotionPresetTarget[];
+  anchor: RegistryMotionPresetAnchor;
+  duration: number;
+  ease: string;
+  keyframes: RegistryMotionPresetKeyframe[];
+}
 
 export interface RegistryItemSource {
   provider: string;
@@ -76,6 +105,8 @@ interface RegistryItemBase {
   kind?: RegistryItemKind;
   /** Explicit placement within the Studio animation and scene libraries. */
   librarySection?: RegistryItemLibrarySection;
+  /** Editable GSAP keyframes that Video Studio can apply to its current DOM selection. */
+  motionPreset?: RegistryMotionPreset;
   /** Item author / maintainer. */
   author?: string;
   /** URL for the author / creator credit. */

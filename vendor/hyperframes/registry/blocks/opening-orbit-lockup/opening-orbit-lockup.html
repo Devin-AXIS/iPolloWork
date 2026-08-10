@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Orbit Lockup</title>
+    <style>
+      * { box-sizing: border-box; }
+      html, body { width: 1920px; height: 1080px; margin: 0; overflow: hidden; }
+      body { background: #0b0817; color: #f7f4ff; font-family: Arial, sans-serif; }
+      .composition { position: relative; width: 100%; height: 100%; overflow: hidden; background: radial-gradient(circle at 50% 48%, #2b1955, #0b0817 58%); }
+      .orbit { position: absolute; left: 50%; top: 48%; border: 1px solid rgba(185,158,255,.38); border-radius: 50%; transform: translate(-50%, -50%); }
+      .orbit-a { width: 710px; height: 710px; }
+      .orbit-b { width: 510px; height: 510px; border-color: rgba(111,232,222,.34); }
+      .orbit-c { width: 320px; height: 320px; border-style: dashed; }
+      .satellite { position: absolute; left: calc(50% + 332px); top: 48%; width: 22px; height: 22px; margin: -11px; border-radius: 50%; background: #72eadf; box-shadow: 0 0 38px #72eadf; }
+      .lockup { position: absolute; inset: 0; display: grid; place-content: center; text-align: center; }
+      .mark { width: 108px; height: 108px; margin: 0 auto 42px; display: grid; place-items: center; border-radius: 50%; background: #f7f4ff; color: #21123f; font-size: 42px; font-weight: 900; }
+      .kicker { color: #72eadf; font-size: 18px; font-weight: 800; letter-spacing: .32em; }
+      h1 { margin: 22px 0 0; font-size: 116px; line-height: .94; letter-spacing: -.06em; }
+      .meta { position: absolute; left: 88px; right: 88px; bottom: 70px; display: flex; justify-content: space-between; color: #b1a8cb; font-size: 17px; letter-spacing: .18em; }
+    </style>
+  </head>
+  <body>
+    <main class="composition" data-composition-id="opening-orbit-lockup" data-width="1920" data-height="1080" data-start="0" data-duration="4.8">
+      <div class="orbit orbit-a" data-layout-ignore></div>
+      <div class="orbit orbit-b" data-layout-ignore></div>
+      <div class="orbit orbit-c" data-layout-ignore></div>
+      <div class="satellite" data-layout-ignore></div>
+      <section class="lockup" data-hf-id="ool-lockup" data-layout-allow-overlap>
+        <div class="mark">01</div>
+        <div class="kicker">A NEW SYSTEM</div>
+        <h1>Everything finds<br />its center.</h1>
+      </section>
+      <div class="meta"><span>IPOLLOWORK / MOTION</span><span>OPENING SEQUENCE</span></div>
+    </main>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.15.0/dist/gsap.min.js"></script>
+    <script>
+      window.__timelines = window.__timelines || {};
+      var timeline = gsap.timeline({ paused: true });
+      timeline
+        .from(".orbit-a", { opacity: 0, scale: .35, rotation: -80, duration: 1.5, ease: "expo.out" }, 0)
+        .from(".orbit-b", { opacity: 0, scale: 1.5, rotation: 70, duration: 1.4, ease: "expo.out" }, .16)
+        .from(".orbit-c", { opacity: 0, scale: .2, rotation: -120, duration: 1.45, ease: "expo.out" }, .28)
+        .from(".satellite", { opacity: 0, rotation: -240, transformOrigin: "-332px 0", duration: 1.8, ease: "power3.out" }, .2)
+        .from(".mark", { opacity: 0, scale: .5, rotation: -20, duration: .9, ease: "back.out(1.7)" }, .72)
+        .from(".kicker", { opacity: 0, y: 18, duration: .6, ease: "power3.out" }, 1.15)
+        .from("h1", { opacity: 0, y: 46, filter: "blur(12px)", duration: 1, ease: "power4.out" }, 1.3)
+        .from(".meta", { opacity: 0, duration: .7, ease: "none" }, 1.75);
+      window.__timelines["opening-orbit-lockup"] = timeline;
+      window.addEventListener("hf-seek", function (event) { timeline.seek(Math.max(0, Math.min(event.detail.time, 4.8))); });
+      timeline.seek(0);
+    </script>
+  </body>
+</html>

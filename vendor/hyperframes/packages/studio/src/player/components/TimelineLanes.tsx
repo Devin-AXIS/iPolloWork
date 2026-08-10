@@ -7,7 +7,13 @@ import { TimelineLayerHeader } from "./TimelineLayerHeader";
 import type { MusicBeatAnalysis } from "@hyperframes/core/beats";
 import { getTimelineEditCapabilities, resolveBlockedTimelineEditIntent } from "./timelineEditing";
 import type { TimelineTheme } from "./timelineTheme";
-import { TRACK_H, TRACKS_LEFT_PAD, CLIP_Y, CLIP_HANDLE_W } from "./timelineLayout";
+import {
+  TRACK_H,
+  TRACKS_LEFT_PAD,
+  CLIP_Y,
+  CLIP_HANDLE_W,
+  type TimelineVisibleWindow,
+} from "./timelineLayout";
 import {
   usePlayerStore,
   type TimelineElement,
@@ -58,6 +64,7 @@ export interface TimelineLaneBaseProps {
   ) => ReactNode;
   renderClipOverlay?: (element: TimelineElement) => ReactNode;
   onDrillDown?: (element: TimelineElement) => void;
+  onSeek?: (time: number) => void;
   onSelectElement?: (element: TimelineElement | null) => void;
   setHoveredClip: (key: string | null) => void;
   setShowPopover: (v: boolean) => void;
@@ -93,6 +100,7 @@ export interface TimelineLaneBaseProps {
    */
   onContextMenuLane?: (e: React.MouseEvent, track: number, time: number) => void;
   beatAnalysis?: MusicBeatAnalysis | null;
+  visibleWindow: TimelineVisibleWindow;
 }
 
 interface TimelineLanesProps extends TimelineLaneBaseProps {
@@ -128,6 +136,7 @@ export const TimelineLanes = memo(function TimelineLanes({
   renderClipContent,
   renderClipOverlay,
   onDrillDown,
+  onSeek,
   onSelectElement,
   setHoveredClip,
   setShowPopover,
@@ -150,6 +159,7 @@ export const TimelineLanes = memo(function TimelineLanes({
   onMoveAnimationSegment,
   onContextMenuLane,
   beatAnalysis,
+  visibleWindow,
   onToggleTrackHidden,
   onToggleTrackLocked,
   onResizeElement,
@@ -161,7 +171,13 @@ export const TimelineLanes = memo(function TimelineLanes({
   const expandedTimelineElementIds = usePlayerStore((state) => state.expandedTimelineElementIds);
   const expandableParentIds = useMemo(() => new Set(clipParentMap.values()), [clipParentMap]);
   const tracksByNumber = new Map(tracks);
-  const deferOffscreenLanes = displayTrackOrder.length >= 40;
+  const visibleTrackOrder = displayTrackOrder.slice(
+    visibleWindow.firstTrackIndex,
+    visibleWindow.lastTrackIndexExclusive,
+  );
+  const topSpacerHeight = visibleWindow.firstTrackIndex * TRACK_H;
+  const bottomSpacerHeight =
+    (displayTrackOrder.length - visibleWindow.lastTrackIndexExclusive) * TRACK_H;
   const collectGestureEligibleKeys = (
     canEdit: (element: TimelineElement) => boolean,
   ): ReadonlySet<string> => {
@@ -210,14 +226,10 @@ export const TimelineLanes = memo(function TimelineLanes({
 
   return (
     <>
+      {topSpacerHeight > 0 && <div aria-hidden="true" style={{ height: topSpacerHeight }} />}
       {
-        // NOTE (deliberate no-virtualization): lanes and their clips render via a
-        // plain `.map()` inside the scroll container rather than a windowing/virtualized
-        // list. NLE clip counts are small (dozens to low hundreds), so the DOM cost is
-        // bounded and virtualization's complexity isn't worth it. TODO: revisit and swap
-        // in a virtualizer if editorial workflows ever push very high clip counts.
         // fallow-ignore-next-line complexity
-        displayTrackOrder.map((trackNum) => {
+        visibleTrackOrder.map((trackNum) => {
           const els = tracksByNumber.get(trackNum) ?? [];
           const ts = trackStyles.get(trackNum) ?? getTrackStyle("");
           const isPendingTrack =
@@ -251,11 +263,7 @@ export const TimelineLanes = memo(function TimelineLanes({
             <div
               key={trackNum}
               className="hf-timeline-lane relative flex"
-              style={{
-                height: TRACK_H,
-                contentVisibility: deferOffscreenLanes ? "auto" : "visible",
-                containIntrinsicSize: deferOffscreenLanes ? `auto ${TRACK_H}px` : undefined,
-              }}
+              style={{ height: TRACK_H }}
             >
               <TimelineLayerHeader
                 track={trackNum}
@@ -274,8 +282,11 @@ export const TimelineLanes = memo(function TimelineLanes({
                   void onToggleTrackLocked?.(trackNum, locked);
                 }}
                 onSelect={(element) => {
-                  usePlayerStore.getState().clearSelectedElementIds();
-                  setSelectedElementId(element ? (element.key ?? element.id) : null);
+                  const elementKey = element ? (element.key ?? element.id) : null;
+                  usePlayerStore
+                    .getState()
+                    .setSelection(elementKey ? [elementKey] : [], elementKey);
+                  if (element) onSeek?.(Math.max(0, element.start));
                   onSelectElement?.(element);
                 }}
                 onToggleExpanded={(element) => {
@@ -342,6 +353,7 @@ export const TimelineLanes = memo(function TimelineLanes({
                     beatTimes={beatAnalysis?.beatTimes}
                     beatStrengths={beatAnalysis?.beatStrengths}
                     pps={pps}
+                    visibleTimeRange={visibleWindow}
                   />
                 )}
                 {isPendingTrack && (
@@ -361,7 +373,21 @@ export const TimelineLanes = memo(function TimelineLanes({
                 )}
                 {
                   // fallow-ignore-next-line complexity
-                  els.map((el) => {
+                  els
+                    .filter((el) => {
+                      const elementKey = el.key ?? el.id;
+                      const forceVisible =
+                        selectedElementId === elementKey ||
+                        selectedElementIds.has(elementKey) ||
+                        hoveredClip === elementKey ||
+                        draggedClip?.selectionKeys.has(elementKey) === true;
+                      return (
+                        forceVisible ||
+                        (el.start <= visibleWindow.endTime &&
+                          el.start + el.duration >= visibleWindow.startTime)
+                      );
+                    })
+                    .map((el) => {
                     const elementKey = el.key ?? el.id;
                     const clipStyle =
                       elementStyles.get(elementKey) ?? getTrackStyle(resolveTimelineKind(el));
@@ -573,8 +599,8 @@ export const TimelineLanes = memo(function TimelineLanes({
                             // browser dispatches click. Keep that selection stable instead
                             // of treating the follow-up click as a request to deselect it.
                             // Empty-lane clicks remain the explicit way to clear selection.
-                            usePlayerStore.getState().clearSelectedElementIds();
-                            setSelectedElementId(elementKey);
+                            usePlayerStore.getState().setSelection([elementKey], elementKey);
+                            onSeek?.(Math.max(0, previewElement.start));
                             onSelectElement?.(el);
                           }
                         }
@@ -652,6 +678,7 @@ export const TimelineLanes = memo(function TimelineLanes({
           );
         })
       }
+      {bottomSpacerHeight > 0 && <div aria-hidden="true" style={{ height: bottomSpacerHeight }} />}
     </>
   );
 });

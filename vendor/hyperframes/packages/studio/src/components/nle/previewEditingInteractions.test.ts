@@ -21,6 +21,30 @@ describe("preview editing interactions", () => {
     expect(source).not.toContain("exitPreviewFullscreenForInspector");
   });
 
+  it("keeps canvas, timeline, and inspector selection in one atomic set", () => {
+    const source = readFileSync(
+      new URL("../../hooks/useDomSelection.ts", import.meta.url),
+      "utf8",
+    );
+
+    expect(source).toContain("playerState.setSelection(selectedKeys, anchorKey");
+    expect(source).toContain("syncTimelineSelection(nextGroup, nextSelection)");
+    expect(source).toContain('rightPanelTabRef.current !== "animation"');
+    expect(source).toContain('rightPanelTabRef.current !== "animation-properties"');
+    expect(source).not.toContain("{ preserveSet: true }");
+  });
+
+  it("keeps the canvas selection outline visible in both animation views", () => {
+    const source = readFileSync(
+      new URL("../../hooks/useStudioContextValue.ts", import.meta.url),
+      "utf8",
+    );
+
+    expect(source).toContain('rightPanelTab === "animation"');
+    expect(source).toContain('rightPanelTab === "animation-properties"');
+    expect(source).toContain("selectionOverlayPanelActive &&");
+  });
+
   it("clears the active element when the user clicks blank preview canvas", () => {
     const source = readFileSync(
       new URL("../../hooks/usePreviewInteraction.ts", import.meta.url),
@@ -61,8 +85,27 @@ describe("preview editing interactions", () => {
 
     expect(source).toContain("setSelectedElementId(elementKey)");
     expect(source).toContain("onSelectElement?.(el)");
+    expect(source).toContain("onSeek?.(Math.max(0, previewElement.start))");
     expect(source).not.toContain("selectedElementId === elementKey && !hadMultiSelection");
     expect(source).not.toContain("onSelectElement?.(nextElement)");
+  });
+
+  it("updates a hierarchy-row selection atomically before syncing the inspector", () => {
+    const source = readFileSync(
+      new URL("../../player/components/TimelineLanes.tsx", import.meta.url),
+      "utf8",
+    );
+
+    expect(source).toContain(".setSelection(elementKey ? [elementKey] : [], elementKey)");
+    expect(source).toContain("if (element) onSeek?.(Math.max(0, element.start))");
+    expect(source).not.toContain("usePlayerStore.getState().clearSelectedElementIds();");
+  });
+
+  it("keeps expanded hierarchy nodes in the timeline-to-inspector sync set", () => {
+    const source = readFileSync(new URL("../../App.tsx", import.meta.url), "utf8");
+
+    expect(source).toContain("const selectionTimelineElements = useExpandedTimelineElements()");
+    expect(source).toContain("timelineElements: selectionTimelineElements");
   });
 
   it("keeps the selected element while the user interacts outside the preview surface", () => {
@@ -71,6 +114,22 @@ describe("preview editing interactions", () => {
     expect(source).not.toContain('document.addEventListener("pointerdown"');
     expect(source).not.toContain("clearSelectedElement");
     expect(source).not.toContain("ipollowork:video-studio-clear-selection");
+  });
+
+  it("hides the motion-path anchor from the default canvas selection", () => {
+    const overlaySource = readFileSync(new URL("./PreviewOverlays.tsx", import.meta.url), "utf8");
+    const availabilitySource = readFileSync(
+      new URL("../editor/manualEditingAvailability.ts", import.meta.url),
+      "utf8",
+    );
+
+    expect(overlaySource).toContain(
+      "STUDIO_MOTION_PATH_OVERLAY_ENABLED && STUDIO_KEYFRAMES_ENABLED",
+    );
+    expect(availabilitySource).toContain("VITE_STUDIO_ENABLE_MOTION_PATH_OVERLAY");
+    expect(availabilitySource).toContain(
+      "export const STUDIO_MOTION_PATH_OVERLAY_ENABLED = resolveStudioBooleanEnvFlag",
+    );
   });
 
   it("accepts project assets and animations on the video preview", () => {
@@ -105,36 +164,20 @@ describe("preview editing interactions", () => {
     expect(assetCardSource).toContain("setData(TIMELINE_ASSET_MIME");
     expect(assetCardSource).toContain("HtmlIllustrationPreview");
     expect(catalogSource).toContain("setData(TIMELINE_BLOCK_MIME");
-    expect(previewOverlaySource).toContain(
-      "const showComposition = Boolean(blockPreview.compositionUrl)",
-    );
-    expect(previewOverlaySource.indexOf("showComposition ? (")).toBeLessThan(
-      previewOverlaySource.indexOf("showVideo ? ("),
-    );
+    expect(catalogSource).toContain("src={compositionPlaybackUrl}");
+    expect(catalogSource).toContain("setPreviewing(true)");
+    expect(previewOverlaySource).not.toContain("blockPreview");
   });
 
-  it("reveals only selections that are visible at the paused playhead", () => {
+  it("keeps the authored paint order when playback pauses with a selection", () => {
     const sessionSource = readFileSync(
       new URL("../../hooks/useDomEditSession.ts", import.meta.url),
       "utf8",
     );
-    const layersSource = readFileSync(
-      new URL("../editor/LayersPanel.tsx", import.meta.url),
-      "utf8",
-    );
-    const revealSource = readFileSync(
-      new URL("../editor/useLayerRevealOverride.ts", import.meta.url),
-      "utf8",
-    );
 
     expect(sessionSource).toContain("useTimelineSelectionPreviewSync({");
-    expect(sessionSource).toContain("useLayerRevealOverride({");
-    expect(sessionSource).toContain("currentTime,");
-    expect(sessionSource).toContain("!isElementVisibleForOverlay(element)");
-    expect(sessionSource).toContain("scheduleReveal(element, 0)");
-    expect(revealSource).toContain("restore the runtime-authored visibility at the new");
-    expect(revealSource).toContain("currentTime, restoreReveal");
-    expect(layersSource).not.toContain("useLayerRevealOverride");
+    expect(sessionSource).not.toContain("useLayerRevealOverride({");
+    expect(sessionSource).not.toContain("scheduleReveal(element, 0)");
   });
 
   it("keeps off-frame timeline properties without drawing an invisible canvas selection", () => {

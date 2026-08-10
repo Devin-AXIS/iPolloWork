@@ -104,6 +104,13 @@ export interface BlockedMoveState {
   notified: boolean;
 }
 
+export interface DomEditPointerMoveSample {
+  clientX: number;
+  clientY: number;
+  altKey: boolean;
+  shiftKey: boolean;
+}
+
 export type FocusableDomEditOverlay = {
   focus(options?: FocusOptions): void;
 };
@@ -195,6 +202,8 @@ export type UseDomEditOverlayGesturesOptions = {
   gestureRef: RefObject<GestureState | null>;
   groupGestureRef: RefObject<GroupGestureState | null>;
   blockedMoveRef: RefObject<BlockedMoveState | null>;
+  gestureMoveFrameRef: RefObject<number | null>;
+  pendingGestureMoveRef: RefObject<DomEditPointerMoveSample | null>;
   rafPausedRef: RefObject<boolean>;
   suppressNextBoxClickRef: RefObject<boolean>;
   setOverlayRect: (next: OverlayRect | null) => void;

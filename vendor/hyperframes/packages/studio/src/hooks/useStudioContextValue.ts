@@ -85,6 +85,11 @@ export function useInspectorState(
     const designPanelActive =
       STUDIO_INSPECTOR_PANELS_ENABLED && inspectorTabActive && rightInspectorPanes.design;
     const inspectorPanelActive = layersPanelActive || designPanelActive;
+    const selectionOverlayPanelActive =
+      inspectorPanelActive ||
+      rightPanelTab === "variables" ||
+      rightPanelTab === "animation" ||
+      rightPanelTab === "animation-properties";
     return {
       layersPanelActive,
       designPanelActive,
@@ -93,12 +98,10 @@ export function useInspectorState(
         STUDIO_INSPECTOR_PANELS_ENABLED && !rightCollapsed && inspectorPanelActive,
       // Keep the selection box + motion path drawn even when the Inspector is
       // collapsed — closing the panel shouldn't visually deselect the element.
-      // The Variables tab also works against the canvas selection (bind card),
-      // so the selection outline stays visible there too.
+      // Variables and both Animation views also act on the canvas selection,
+      // so the selection outline stays visible on those editing surfaces too.
       shouldShowSelectedDomBounds:
-        (inspectorPanelActive || rightPanelTab === "variables") &&
-        !isPlaying &&
-        !isGestureRecording,
+        selectionOverlayPanelActive && !isPlaying && !isGestureRecording,
     };
   }, [rightPanelTab, rightInspectorPanes, rightCollapsed, isPlaying, isGestureRecording]);
 }

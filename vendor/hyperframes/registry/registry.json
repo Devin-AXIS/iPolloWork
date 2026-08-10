@@ -670,6 +670,70 @@
     {
       "name": "gsap-custom-wiggle-official",
       "type": "hyperframes:block"
+    },
+    {
+      "name": "opening-signal-assembly",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "opening-editorial-rise",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "opening-orbit-lockup",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "opening-prism-sweep",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "ending-brand-lockup",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "ending-iris-collapse",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "ending-slide-resolve",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "ending-signal-dissolve",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "transition-split-wipe",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "transition-depth-push",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "transition-lens-focus",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "transition-diagonal-slice",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "caption-phrase-lift",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "caption-word-pulse",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "caption-mask-reveal",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "caption-editorial-snap",
+      "type": "hyperframes:block"
     }
   ]
 }

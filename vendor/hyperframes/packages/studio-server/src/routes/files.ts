@@ -1188,6 +1188,10 @@ function executeMotionMutation(
     const duration = body.duration ?? prior?.instance.duration;
     const resolvedDuration = duration ?? (preset.phase === "emphasis" ? 0.8 : 0.65);
     const owner = readOwnerTiming(target);
+    const parameters = { ...priorParameters, ...body.parameters };
+    if (target.hasAttribute("data-var-text") && "unit" in parameters) {
+      parameters.unit = "whole";
+    }
     let instance;
     try {
       instance = createMotionInstance({
@@ -1203,7 +1207,7 @@ function executeMotionMutation(
           prior?.animation.resolvedStart ??
           defaultMotionStart(preset.phase, owner, resolvedDuration),
         duration: resolvedDuration,
-        parameters: { ...priorParameters, ...body.parameters },
+        parameters,
       });
     } catch (error) {
       return respond(
