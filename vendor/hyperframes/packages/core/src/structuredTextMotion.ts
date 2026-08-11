@@ -85,51 +85,66 @@ const MAX_ASSET_PATH_LENGTH = 256;
 const MAX_EASE_LENGTH = 96;
 const GSAP_EASE_PATTERN = /^(?:none|linear|(?:power[0-4]|sine|expo|circ|back|elastic|bounce|steps)(?:\.(?:in|out|inOut))?)(?:\(-?(?:\d+(?:\.\d+)?|\.\d+)(?:\s*,\s*-?(?:\d+(?:\.\d+)?|\.\d+))*\))?$/;
 
-type SegmenterResult = { segment: string; isWordLike?: boolean };
-type SegmenterConstructor = new (
-  locales?: string | string[],
-  options?: { granularity: "word" | "grapheme" },
-) => { segment(input: string): Iterable<SegmenterResult> };
-
-function getSegmenter(granularity: "word" | "grapheme") {
-  const Segmenter = (Intl as typeof Intl & { Segmenter?: SegmenterConstructor }).Segmenter;
-  return Segmenter ? new Segmenter("und", { granularity }) : undefined;
+export function segmentStructuredText(text: string, split: MotionTextUnit): string[] {
+  return segmentStructuredTextFallback(text, split);
 }
 
-export function segmentStructuredText(text: string, split: MotionTextUnit): string[] {
-  if (split === "whole") return text ? [text] : [];
-  const segmenter = getSegmenter(split === "word" ? "word" : "grapheme");
-  if (segmenter) {
-    const segments = Array.from(segmenter.segment(text));
-    return split === "word"
-      ? segments.filter((segment) => segment.isWordLike).map((segment) => segment.segment)
-      : segments.map((segment) => segment.segment);
-  }
-  return segmentStructuredTextFallback(text, split);
+type HangulClass = "L" | "V" | "T" | "LV" | "LVT";
+
+function hangulClass(codePoint: number): HangulClass | undefined {
+  if ((codePoint >= 0x1100 && codePoint <= 0x115f) || (codePoint >= 0xa960 && codePoint <= 0xa97c)) return "L";
+  if ((codePoint >= 0x1160 && codePoint <= 0x11a7) || (codePoint >= 0xd7b0 && codePoint <= 0xd7c6)) return "V";
+  if ((codePoint >= 0x11a8 && codePoint <= 0x11ff) || (codePoint >= 0xd7cb && codePoint <= 0xd7fb)) return "T";
+  if (codePoint >= 0xac00 && codePoint <= 0xd7a3) return (codePoint - 0xac00) % 28 === 0 ? "LV" : "LVT";
+  return undefined;
+}
+
+function joinsHangul(previous: number, current: number): boolean {
+  const previousClass = hangulClass(previous);
+  const currentClass = hangulClass(current);
+  return (
+    (previousClass === "L" && ["L", "V", "LV", "LVT"].includes(currentClass ?? "")) ||
+    ((previousClass === "LV" || previousClass === "V") && (currentClass === "V" || currentClass === "T")) ||
+    ((previousClass === "LVT" || previousClass === "T") && currentClass === "T")
+  );
+}
+
+function isRegionalIndicator(codePoint: number): boolean {
+  return codePoint >= 0x1f1e6 && codePoint <= 0x1f1ff;
 }
 
 export function segmentStructuredTextFallback(text: string, split: MotionTextUnit): string[] {
   if (split === "whole") return text ? [text] : [];
-  if (split === "word") return text.match(/[\p{L}\p{N}\p{M}_]+/gu) ?? [];
+  if (split === "word") {
+    return text.match(/[\p{L}\p{N}\p{M}_]+(?:['’\u2010-\u2015-][\p{L}\p{N}\p{M}_]+)*/gu) ?? [];
+  }
   const units: string[] = [];
   let joinNext = false;
+  let regionalIndicatorRun = 0;
+  let previousCodePoint: number | undefined;
   for (const codePoint of Array.from(text)) {
+    const numericCodePoint = codePoint.codePointAt(0)!;
     if (codePoint === "\u200d") {
       if (units.length > 0) units[units.length - 1] += codePoint;
       else units.push(codePoint);
       joinNext = true;
+      regionalIndicatorRun = 0;
+      previousCodePoint = numericCodePoint;
       continue;
     }
-    if (joinNext && units.length > 0) {
+    const regionalIndicator = isRegionalIndicator(numericCodePoint);
+    const joinsRegionalPair = regionalIndicator && regionalIndicatorRun % 2 === 1;
+    const joinsPreviousHangul = previousCodePoint !== undefined && joinsHangul(previousCodePoint, numericCodePoint);
+    if ((joinNext || joinsRegionalPair || joinsPreviousHangul) && units.length > 0) {
       units[units.length - 1] += codePoint;
       joinNext = false;
-      continue;
-    }
-    if ((/^\p{M}$/u.test(codePoint) || /^\p{Emoji_Modifier}$/u.test(codePoint)) && units.length > 0) {
+    } else if ((/^\p{M}$/u.test(codePoint) || /^\p{Emoji_Modifier}$/u.test(codePoint)) && units.length > 0) {
       units[units.length - 1] += codePoint;
-      continue;
+    } else {
+      units.push(codePoint);
     }
-    units.push(codePoint);
+    regionalIndicatorRun = regionalIndicator ? regionalIndicatorRun + 1 : 0;
+    previousCodePoint = numericCodePoint;
   }
   return units;
 }

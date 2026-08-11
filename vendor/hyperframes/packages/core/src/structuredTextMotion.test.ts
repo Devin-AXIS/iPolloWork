@@ -213,6 +213,16 @@ describe("structured text motion", () => {
       "\u{1F44F}\u{1F3FD}",
     ]);
     expect(segmentStructuredTextFallback("e\u{301}", "character")).toEqual(["e\u{301}"]);
+    expect(segmentStructuredText("Don't stop", "word")).toEqual(
+      segmentStructuredTextFallback("Don't stop", "word"),
+    );
+    expect(segmentStructuredText("\u{1F1E8}\u{1F1F3}\u{1F1FA}\u{1F1F8}", "character")).toEqual([
+      "\u{1F1E8}\u{1F1F3}",
+      "\u{1F1FA}\u{1F1F8}",
+    ]);
+    expect(segmentStructuredText("\u{1100}\u{1161}\u{11A8}", "character")).toEqual([
+      "\u{1100}\u{1161}\u{11A8}",
+    ]);
     expect(
       segmentStructuredTextFallback(
         "\u{1F468}\u{200D}\u{1F469}\u{200D}\u{1F467}\u{200D}\u{1F466}",
