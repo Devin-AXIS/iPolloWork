@@ -1,5 +1,11 @@
 import { MOTION_PRESETS } from "./motionPresetCatalog.js";
 import { buildPresetKeyframes } from "./motionPresetKeyframes.js";
+import {
+  compileStructuredTextMotion,
+  isStructuredTextPreset,
+  type CompiledStructuredTextMotion,
+  type StructuredTextRecipe,
+} from "./structuredTextMotion.js";
 
 export {
   MOTION_COLOR_SOURCE_PARAMETER,
@@ -46,6 +52,7 @@ export interface MotionPreset {
     preferredFor: string[];
     avoidFor: string[];
   };
+  structuredText?: StructuredTextRecipe;
 }
 
 export interface StableElementLocator {
@@ -90,6 +97,7 @@ export interface CompiledMotion {
   keyframes: MotionKeyframe[];
   ease: string;
   extras: Record<string, MotionParameterValue>;
+  structured?: CompiledStructuredTextMotion;
 }
 
 export interface MotionValidationIssue {
@@ -302,7 +310,7 @@ export function readMotionInstanceFromExtras(
   }
 }
 
-export function compileMotionInstance(instance: MotionInstance): CompiledMotion {
+export function compileMotionInstance(instance: MotionInstance, text = ""): CompiledMotion {
   const preset = getMotionPreset(instance.presetId);
   if (!preset) throw new Error(`Unknown motion preset: ${instance.presetId}`);
   if (preset.phase !== instance.phase)
@@ -323,7 +331,7 @@ export function compileMotionInstance(instance: MotionInstance): CompiledMotion 
         ? `${instance.target.selector} > [data-ipw-motion-word]`
         : instance.target.selector;
   const stagger = unit === "whole" ? 0 : Number(validated.parameters.stagger ?? 0);
-  return {
+  const compiled: CompiledMotion = {
     targetSelector,
     position: instance.start,
     duration: instance.duration,
@@ -338,6 +346,10 @@ export function compileMotionInstance(instance: MotionInstance): CompiledMotion 
       ...(stagger > 0 ? { stagger } : {}),
     },
   };
+  if (isStructuredTextPreset(preset)) {
+    compiled.structured = compileStructuredTextMotion(instance, text, preset.structuredText);
+  }
+  return compiled;
 }
 
 export function defaultMotionDuration(preset: MotionPreset): number {

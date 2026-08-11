@@ -237,6 +237,22 @@ export { fitTextFontSize } from "./text/index.js";
 export type { FitTextOptions, FitTextResult } from "./text/index.js";
 export { formatRenderOutputTimestamp } from "./utils/renderOutputTimestamp.js";
 
+export {
+  compileStructuredTextMotion,
+  createStructuredTextRng,
+  isStructuredTextPreset,
+  segmentStructuredText,
+  structuredMotionSelector,
+  structuredTextSeed,
+  validateStructuredTextRecipe,
+  type CompiledStructuredTextMotion,
+  type CompiledStructuredTrack,
+  type StructuredTextLayer,
+  type StructuredTextParticleSpec,
+  type StructuredTextRecipe,
+  type StructuredTextRole,
+} from "./structuredTextMotion.js";
+
 // Runtime helpers (composition-side)
 export { getVariables } from "./runtime/getVariables.js";
 export {
