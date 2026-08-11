@@ -8,6 +8,11 @@ import {
   permissionDetailRows,
 } from "../src/react-app/domains/session/chat/permission-approval-modal";
 
+const permissionPanelUrl = new URL(
+  "../src/react-app/domains/session/chat/permission-approval-modal.tsx",
+  import.meta.url,
+);
+
 function pendingPermission(overrides: Partial<PendingPermission> = {}): PendingPermission {
   return {
     id: "permission-1",
@@ -68,7 +73,7 @@ describe("permission approval modal helpers", () => {
     ]);
   });
 
-  test("keeps keyboard order on the safer one-shot approval before session approval", () => {
+  test("keeps keyboard order on the safer one-shot approval before session approval", async () => {
     const html = renderToStaticMarkup(
       React.createElement(PermissionApprovalPanel, {
         permission: pendingPermission(),
@@ -80,7 +85,11 @@ describe("permission approval modal helpers", () => {
       match[0].replace(/<[^>]*>/g, "").trim(),
     );
 
-    expect(buttonLabels).toEqual(["Deny", "Allow once", "Allow for session"]);
+    expect(buttonLabels).toEqual(["Deny", "Allow once"]);
+    expect(html).not.toContain("Allow for session");
+    const source = await Bun.file(permissionPanelUrl).text();
+    expect(source).toContain('props.respondPermission?.(props.permissionId, "always")');
+    expect(source).toContain('t("session.allow_for_session")');
   });
 
   test("uses readable labels for generic permission titles", () => {

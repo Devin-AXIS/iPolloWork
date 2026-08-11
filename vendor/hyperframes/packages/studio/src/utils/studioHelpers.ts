@@ -14,12 +14,15 @@ export interface AppToast {
 }
 
 export type RightPanelTab =
-    | "layers"
-    | "design"
-    | "voice"
-    | "style"
-    | "assets"
-    | "catalog"
+  | "layers"
+  | "design"
+  | "voice"
+  | "style"
+  | "illustration"
+  | "assets"
+  | "animation"
+  | "animation-properties"
+  | "catalog"
   | "effects"
   | "renders"
   | "block-params"
@@ -135,8 +138,26 @@ export function getHistoryShortcutLabel(action: "undo" | "redo"): string {
 
 type ElementMatchSelection = Pick<
   DomEditSelection,
-  "id" | "selector" | "selectorIndex" | "sourceFile" | "compositionSrc" | "isCompositionHost"
+  | "hfId"
+  | "id"
+  | "selector"
+  | "selectorIndex"
+  | "sourceFile"
+  | "compositionSrc"
+  | "isCompositionHost"
 >;
+
+function matchesByHfId(
+  selection: ElementMatchSelection,
+  element: TimelineElement,
+  selectionSourceFile: string,
+): boolean {
+  if (!selection.hfId) return false;
+  return (
+    element.hfId === selection.hfId &&
+    (element.sourceFile || "index.html") === selectionSourceFile
+  );
+}
 
 function matchesByDomId(
   selection: ElementMatchSelection,
@@ -171,6 +192,10 @@ export function findMatchingTimelineElementId(
   elements: TimelineElement[],
 ): string | null {
   const selectionSourceFile = selection.sourceFile || "index.html";
+  const byHfId = selection.hfId
+    ? elements.find((element) => matchesByHfId(selection, element, selectionSourceFile))
+    : undefined;
+  if (byHfId) return byHfId.key ?? byHfId.id;
   // Priority matters, not just "any of the three": a composition-host
   // selection always carries its OWN id/selector too (computed generically
   // for any element), so two repeated hosts sharing the same compositionSrc
@@ -179,9 +204,9 @@ export function findMatchingTimelineElementId(
   // scan let `.find()` stop at an EARLIER, unrelated host that merely shares
   // the compositionSrc, before the scan ever reached the correct id/selector
   // match further down the list — collapsing every repeated host to the
-  // first one. Try id, then selector, across the WHOLE list first; only fall
-  // back to the coarser compositionSrc-only match when neither identifies a
-  // specific element.
+  // first one. Try stable hf-id, then id and selector, across the WHOLE list
+  // first; only fall back to the coarser compositionSrc-only match when none
+  // identifies a specific element.
   const byId = selection.id
     ? elements.find((el) => matchesByDomId(selection, el, selectionSourceFile))
     : undefined;
@@ -217,13 +242,18 @@ export function findTimelineIdByAncestor(
 ): string | null {
   let ancestor = element?.parentElement ?? null;
   while (ancestor) {
-    const id = ancestor.id;
-    if (id) {
-      const match = elements.find(
-        (el) => el.domId === id && (el.sourceFile ?? "index.html") === sourceFile,
-      );
-      if (match) return match.key ?? match.id;
-    }
+    const candidate = ancestor;
+    const match = elements.find((timelineElement) => {
+      if ((timelineElement.sourceFile ?? "index.html") !== sourceFile) return false;
+      if (candidate.id && timelineElement.domId === candidate.id) return true;
+      if (!timelineElement.selector) return false;
+      try {
+        return candidate.matches(timelineElement.selector);
+      } catch {
+        return false;
+      }
+    });
+    if (match) return match.key ?? match.id;
     ancestor = ancestor.parentElement;
   }
   return null;
@@ -273,9 +303,20 @@ export type ToggleHiddenHandler = (
   hidden: boolean,
 ) => Promise<void> | void;
 
+type TimelineSelectionRange = Pick<TimelineElement, "start" | "duration"> &
+  Partial<Pick<TimelineElement, "id" | "timelineKind" | "compositionSrc" | "sourceFile">>;
+
+function isStandaloneEffectClip(element: TimelineSelectionRange): boolean {
+  if (element.timelineKind === "effect") return true;
+  if (element.id?.startsWith("effect-")) return true;
+  return [element.compositionSrc, element.sourceFile].some(
+    (path) => path != null && /(^|[\\/])effects[\\/]/i.test(path),
+  );
+}
+
 export function resolveTimelineSelectionSeekTime(
   currentTime: number,
-  element: Pick<TimelineElement, "start" | "duration"> | null | undefined,
+  element: TimelineSelectionRange | null | undefined,
 ): number | null {
   if (!element) return null;
   if (!Number.isFinite(element.start) || !Number.isFinite(element.duration)) return null;
@@ -283,8 +324,17 @@ export function resolveTimelineSelectionSeekTime(
   const start = Math.max(0, element.start);
   const end = Math.max(start, start + Math.max(0, element.duration));
   const time = Number.isFinite(currentTime) ? currentTime : start;
-
-  return clampNumber(time, start, end);
+  if (end === start) return start;
+  // Standalone effects commonly animate from a deliberately transparent first
+  // frame. In the paused editor, use the midpoint as a representative proof
+  // frame only when selection would otherwise land on an invisible boundary.
+  // Playback/export still seek the authored timeline from local time zero.
+  if (isStandaloneEffectClip(element) && (time <= start + 0.001 || time >= end - 0.001)) {
+    return start + (end - start) / 2;
+  }
+  // Runtime clip windows are end-exclusive. Seeking exactly to `end` leaves
+  // the selected layer hidden, so keep the inspection frame just inside it.
+  return clampNumber(time, start, Math.max(start, end - 0.001));
 }
 
 export function clampNumber(value: number, min: number, max: number): number {
@@ -301,6 +351,7 @@ export function collectHtmlIds(source: string): string[] {
 
 const DEFAULT_TIMELINE_ASSET_DURATION: Record<TimelineAssetKind, number> = {
   image: 3,
+  html: 5,
   video: 5,
   audio: 5,
 };
@@ -310,7 +361,7 @@ export async function resolveDroppedAssetDuration(
   assetPath: string,
   kind: TimelineAssetKind,
 ): Promise<number> {
-  if (kind === "image") return DEFAULT_TIMELINE_ASSET_DURATION.image;
+  if (kind === "image" || kind === "html") return DEFAULT_TIMELINE_ASSET_DURATION[kind];
 
   const media = document.createElement(kind === "video" ? "video" : "audio");
   media.preload = "metadata";
@@ -350,7 +401,7 @@ export async function resolveDroppedAssetDimensions(
   assetPath: string,
   kind: TimelineAssetKind,
 ): Promise<{ width: number; height: number } | null> {
-  if (kind === "audio") return null;
+  if (kind === "audio" || kind === "html") return null;
   const src = `/api/projects/${projectId}/preview/${assetPath}`;
 
   if (kind === "image") {

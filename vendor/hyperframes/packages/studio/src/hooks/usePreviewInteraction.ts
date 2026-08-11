@@ -1,7 +1,10 @@
-import { useCallback, useRef } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import { liveTime, usePlayerStore } from "../player";
 import { pauseStudioPreviewPlayback } from "../utils/studioPreviewHelpers";
-import { STUDIO_PREVIEW_SELECTION_ENABLED } from "../components/editor/manualEditingAvailability";
+import {
+  STUDIO_MULTI_SELECTION_ENABLED,
+  STUDIO_PREVIEW_SELECTION_ENABLED,
+} from "../components/editor/manualEditingAvailability";
 import { type DomEditSelection } from "../components/editor/domEditing";
 import type { ApplyDomSelectionOptions, ResolveDomSelectionOptions } from "./useDomSelection";
 
@@ -33,23 +36,9 @@ export interface UsePreviewInteractionParams {
     clientY: number,
     options?: ResolveDomSelectionOptions,
   ) => Promise<DomEditSelection | null>;
-  resolveAllDomSelectionsFromPreviewPoint: (
-    clientX: number,
-    clientY: number,
-  ) => Promise<DomEditSelection[]>;
   updateDomEditHoverSelection: (selection: DomEditSelection | null) => void;
-  /** Clears the active group scope when a click resolves outside it. */
-  setActiveGroupElement: (el: HTMLElement | null) => void;
 
   onClickToSource?: (selection: DomEditSelection) => void;
-}
-
-interface ClickCycleState {
-  x: number;
-  y: number;
-  candidates: DomEditSelection[];
-  index: number;
-  at: number;
 }
 
 export interface PreviewMouseDownOptions {
@@ -57,8 +46,12 @@ export interface PreviewMouseDownOptions {
   hoverSelection?: DomEditSelection | null;
 }
 
-const CYCLE_RADIUS_PX = 6;
-const CYCLE_WINDOW_MS = 600;
+interface PreviewHoverRequest {
+  clientX: number;
+  clientY: number;
+  preferClipAncestor: boolean;
+  sequence: number;
+}
 
 // ── Hook ──
 
@@ -69,12 +62,23 @@ export function usePreviewInteraction({
   showToast,
   applyDomSelection,
   resolveDomSelectionFromPreviewPoint,
-  resolveAllDomSelectionsFromPreviewPoint,
   updateDomEditHoverSelection,
-  setActiveGroupElement,
   onClickToSource,
 }: UsePreviewInteractionParams) {
-  const cycleRef = useRef<ClickCycleState | null>(null);
+  const hoverFrameRef = useRef<number | null>(null);
+  const pendingHoverRef = useRef<PreviewHoverRequest | null>(null);
+  const hoverSequenceRef = useRef(0);
+
+  const cancelPendingHover = useCallback(() => {
+    hoverSequenceRef.current += 1;
+    pendingHoverRef.current = null;
+    if (hoverFrameRef.current !== null) {
+      cancelAnimationFrame(hoverFrameRef.current);
+      hoverFrameRef.current = null;
+    }
+  }, []);
+
+  useEffect(() => cancelPendingHover, [cancelPendingHover]);
 
   const pausePreviewPlayback = useCallback(() => {
     const pausedTime = pauseStudioPreviewPlayback(previewIframeRef.current);
@@ -92,7 +96,6 @@ export function usePreviewInteraction({
       if (isPreviewTextSelectionSuppressingCanvas()) {
         e.preventDefault();
         e.stopPropagation();
-        cycleRef.current = null;
         return;
       }
       if (!STUDIO_PREVIEW_SELECTION_ENABLED || captionEditMode || compositionLoading) return;
@@ -106,18 +109,8 @@ export function usePreviewInteraction({
         if (wasPlaying) usePlayerStore.getState().setIsPlaying(true);
       };
 
-      const now = Date.now();
-      const prev = cycleRef.current;
-      const dx = prev ? e.clientX - prev.x : Infinity;
-      const dy = prev ? e.clientY - prev.y : Infinity;
-      const sameSpot =
-        prev !== null &&
-        Math.sqrt(dx * dx + dy * dy) < CYCLE_RADIUS_PX &&
-        now - prev.at < CYCLE_WINDOW_MS;
-
-      if (e.shiftKey) {
+      if (STUDIO_MULTI_SELECTION_ENABLED && e.shiftKey) {
         // Additive selection — no cycling
-        cycleRef.current = null;
         const nextSelection =
           (await resolveDomSelectionFromPreviewPoint(e.clientX, e.clientY, {
             preferClipAncestor: options?.preferClipAncestor ?? false,
@@ -130,57 +123,33 @@ export function usePreviewInteraction({
         }
         e.preventDefault();
         e.stopPropagation();
-        applyDomSelection(nextSelection, { additive: true, revealPanel: false });
+        applyDomSelection(nextSelection, { additive: true });
         return;
       }
 
-      if (sameSpot && prev) {
-        // Cycle to next candidate in z-stack
-        const nextIndex = (prev.index + 1) % prev.candidates.length;
-        const nextSel = prev.candidates[nextIndex];
-        cycleRef.current = { ...prev, index: nextIndex, at: now };
-        e.preventDefault();
-        e.stopPropagation();
-        applyDomSelection(nextSel, { revealPanel: false });
-        return;
-      }
-
-      // Fresh click — resolve topmost element
-      let nextSelection = await resolveDomSelectionFromPreviewPoint(e.clientX, e.clientY, {
+      // Every click resolves the deepest authored child at this point.
+      const nextSelection = await resolveDomSelectionFromPreviewPoint(e.clientX, e.clientY, {
         preferClipAncestor: options?.preferClipAncestor ?? false,
       });
-      // A null result while drilled into a group means the click landed OUTSIDE that
-      // group (resolveGroupCapture → out-of-scope). Drill-in isn't sticky: exit it and
-      // re-resolve at the top level so this click selects whatever's there (or the
-      // group as a unit). Without this, a stale drill-in keeps selecting children and
-      // the "first click selects the group" expectation breaks.
-      if (!nextSelection) {
-        setActiveGroupElement(null);
-        nextSelection = await resolveDomSelectionFromPreviewPoint(e.clientX, e.clientY, {
-          preferClipAncestor: options?.preferClipAncestor ?? false,
-          activeGroupElement: null,
-        });
-      }
-      nextSelection = nextSelection ?? options?.hoverSelection ?? null;
-      if (!nextSelection) {
-        cycleRef.current = null;
+      // The fresh point hit-test is authoritative for a plain click. Falling
+      // back to the prior hover cache here makes a direct click on blank space
+      // reselect the element the pointer just left instead of clearing it.
+      const resolvedSelection = nextSelection;
+      if (!resolvedSelection) {
+        e.preventDefault();
+        e.stopPropagation();
+        updateDomEditHoverSelection(null);
         applyDomSelection(null, { revealPanel: false });
         resumeIfNothingSelected();
         return;
       }
       e.preventDefault();
       e.stopPropagation();
-      applyDomSelection(nextSelection, { revealPanel: false });
+      applyDomSelection(resolvedSelection);
 
       if (!e.shiftKey && e.altKey && onClickToSource) {
-        onClickToSource(nextSelection);
+        onClickToSource(resolvedSelection);
       }
-
-      // Resolve all stacked candidates so a subsequent click at the same
-      // position can cycle to the next layer (issues #1124, #1125).
-      const all = await resolveAllDomSelectionsFromPreviewPoint(e.clientX, e.clientY);
-      cycleRef.current =
-        all.length > 1 ? { x: e.clientX, y: e.clientY, candidates: all, index: 0, at: now } : null;
     },
     [
       applyDomSelection,
@@ -188,42 +157,79 @@ export function usePreviewInteraction({
       compositionLoading,
       onClickToSource,
       pausePreviewPlayback,
-      resolveAllDomSelectionsFromPreviewPoint,
       resolveDomSelectionFromPreviewPoint,
-      setActiveGroupElement,
+      updateDomEditHoverSelection,
     ],
+  );
+
+  const resolveAndPublishHover = useCallback(
+    async (request: PreviewHoverRequest) => {
+      const nextSelection = await resolveDomSelectionFromPreviewPoint(
+        request.clientX,
+        request.clientY,
+        {
+          preferClipAncestor: request.preferClipAncestor,
+          skipSourceProbe: true,
+        },
+      );
+      // Point resolution crosses the iframe boundary and can finish out of order.
+      // Only the newest pointer sample is allowed to update the hover selection.
+      if (request.sequence !== hoverSequenceRef.current) return null;
+      updateDomEditHoverSelection(nextSelection);
+      return nextSelection;
+    },
+    [resolveDomSelectionFromPreviewPoint, updateDomEditHoverSelection],
   );
 
   const handlePreviewCanvasPointerMove = useCallback(
     // fallow-ignore-next-line complexity
     async (e: React.PointerEvent<HTMLDivElement>, options?: { preferClipAncestor?: boolean }) => {
       if (isPreviewTextSelectionSuppressingCanvas()) {
+        cancelPendingHover();
         updateDomEditHoverSelection(null);
         return null;
       }
       if (!STUDIO_PREVIEW_SELECTION_ENABLED || captionEditMode || compositionLoading) {
+        cancelPendingHover();
         updateDomEditHoverSelection(null);
         return null;
       }
 
-      const nextSelection = await resolveDomSelectionFromPreviewPoint(e.clientX, e.clientY, {
+      const request: PreviewHoverRequest = {
+        clientX: e.clientX,
+        clientY: e.clientY,
         preferClipAncestor: options?.preferClipAncestor ?? false,
-        skipSourceProbe: true,
-      });
-      updateDomEditHoverSelection(nextSelection);
-      return nextSelection;
+        sequence: ++hoverSequenceRef.current,
+      };
+
+      // Context-menu hit testing reuses this callback and awaits its result, so
+      // keep non-pointermove calls synchronous from the caller's perspective.
+      if (e.type !== "pointermove") return resolveAndPublishHover(request);
+
+      pendingHoverRef.current = request;
+      if (hoverFrameRef.current === null) {
+        hoverFrameRef.current = requestAnimationFrame(() => {
+          hoverFrameRef.current = null;
+          const latest = pendingHoverRef.current;
+          pendingHoverRef.current = null;
+          if (latest) void resolveAndPublishHover(latest);
+        });
+      }
+      return null;
     },
     [
+      cancelPendingHover,
       captionEditMode,
       compositionLoading,
-      resolveDomSelectionFromPreviewPoint,
+      resolveAndPublishHover,
       updateDomEditHoverSelection,
     ],
   );
 
   const handlePreviewCanvasPointerLeave = useCallback(() => {
+    cancelPendingHover();
     updateDomEditHoverSelection(null);
-  }, [updateDomEditHoverSelection]);
+  }, [cancelPendingHover, updateDomEditHoverSelection]);
 
   const handleBlockedDomMove = useCallback(
     (selection: DomEditSelection) => {

@@ -1,6 +1,6 @@
 /** @jsxImportSource react */
 import { useEffect, useMemo, useState } from "react";
-import { GripVertical, ListPlus, Trash2, X } from "lucide-react";
+import { ListPlus, Trash2, X } from "lucide-react";
 
 import { t } from "@/i18n";
 
@@ -8,7 +8,6 @@ export type QueuedMessagesPanelProps = {
   messages: string[];
   onRemove: (index: number) => void;
   onRemoveMany: (indices: number[]) => void;
-  onReorder: (fromIndex: number, toIndex: number) => void;
 };
 
 /**
@@ -21,7 +20,6 @@ export type QueuedMessagesPanelProps = {
 export function QueuedMessagesPanel(props: QueuedMessagesPanelProps) {
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedIndices, setSelectedIndices] = useState<Set<number>>(() => new Set());
-  const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
 
   useEffect(() => {
     setSelectedIndices((current) => {
@@ -58,7 +56,7 @@ export function QueuedMessagesPanel(props: QueuedMessagesPanelProps) {
   };
 
   return (
-    <div className="overflow-hidden border-b border-dls-border bg-transparent">
+    <div className="absolute bottom-full left-0 right-0 z-30 mb-2 overflow-hidden rounded-[18px] border border-dls-border bg-dls-surface shadow-[0_12px_36px_rgba(15,23,42,0.18)]">
       <div className="border-b border-dls-border px-4 py-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex items-center gap-2.5">
@@ -92,28 +90,8 @@ export function QueuedMessagesPanel(props: QueuedMessagesPanelProps) {
         {props.messages.map((message, index) => (
           <div
             key={index}
-            draggable
-            onDragStart={(event) => {
-              setDraggedIndex(index);
-              event.dataTransfer.effectAllowed = "move";
-              event.dataTransfer.setData("text/plain", String(index));
-            }}
-            onDragOver={(event) => {
-              event.preventDefault();
-              event.dataTransfer.dropEffect = "move";
-            }}
-            onDrop={(event) => {
-              event.preventDefault();
-              const from = draggedIndex ?? Number(event.dataTransfer.getData("text/plain"));
-              setDraggedIndex(null);
-              if (Number.isFinite(from)) props.onReorder(from, index);
-            }}
-            onDragEnd={() => setDraggedIndex(null)}
-            className={`flex items-start justify-between gap-3 rounded-xl border px-3 py-2.5 transition-colors ${draggedIndex === index ? "border-primary/40 bg-primary/5 opacity-70" : "border-gray-6 bg-gray-1"}`}
+            className="flex items-start justify-between gap-3 rounded-xl border border-gray-6 bg-gray-1 px-3 py-2.5"
           >
-            <span className="mt-0.5 flex size-5 shrink-0 cursor-grab items-center justify-center rounded-md text-gray-9 active:cursor-grabbing" title={t("composer.queued_drag_handle")}>
-              <GripVertical size={13} />
-            </span>
             {selectionMode ? (
               <input type="checkbox" checked={selectedIndices.has(index)} onChange={() => toggleSelection(index)} aria-label={t("composer.queued_select_item", { index: index + 1 })} className="mt-1 size-4 shrink-0 accent-primary" />
             ) : null}

@@ -6,8 +6,11 @@ import {
   useSyncExternalStore,
   type ReactNode,
 } from "react";
-import { PlayerControls } from "../../player";
-import type { TimelineElement } from "../../player";
+import {
+  CompositionRefreshLoadingOverlay,
+  PlayerControls,
+  usePlayerStore,
+} from "../../player";
 import { NLEPreview } from "./NLEPreview";
 import { CompositionBreadcrumb } from "./CompositionBreadcrumb";
 import { usePreviewBlockDrop } from "./usePreviewBlockDrop";
@@ -15,6 +18,7 @@ import { useNLEContext } from "./NLEContext";
 import { AssetPreviewOverlay } from "./AssetPreviewOverlay";
 import { useDomEditSelectionContext } from "../../contexts/DomEditContext";
 import { PreviewTextSelectionToolbar } from "./PreviewTextSelectionToolbar";
+import { useStudioPlaybackContext } from "../../contexts/StudioContext";
 
 function subscribeFullscreen(cb: () => void) {
   document.addEventListener("fullscreenchange", cb);
@@ -25,45 +29,29 @@ function getFullscreenElement() {
   return document.fullscreenElement;
 }
 
-// Clear the timeline selection when a pointer lands outside the composition
-// frame (clicks *inside* the frame are handled by the DOM-edit overlay).
-// fallow-ignore-next-line complexity
-function deselectIfPointerOutsideFrame(
-  e: React.PointerEvent,
-  iframe: HTMLIFrameElement | null,
-  onDeselect?: (element: null) => void,
-): void {
-  const el = iframe?.parentElement ?? iframe;
-  if (!el) return;
-  const rect = el.getBoundingClientRect();
-  const outside =
-    e.clientX < rect.left ||
-    e.clientX > rect.right ||
-    e.clientY < rect.top ||
-    e.clientY > rect.bottom;
-  if (outside) onDeselect?.(null);
-}
-
 export interface PreviewPaneProps {
   portrait?: boolean;
+  editingEnabled?: boolean;
   /** Slot for overlays rendered on top of the preview (cursors, highlights, etc.) */
   previewOverlay?: ReactNode;
-  onSelectTimelineElement?: (element: TimelineElement | null) => void;
   onPreviewBlockDrop?: (
     blockName: string,
     position: { left: number; top: number },
   ) => Promise<void> | void;
+  onPreviewAssetDrop?: (assetPath: string) => Promise<void> | void;
 }
 
 // fallow-ignore-next-line complexity
 export function PreviewPane({
   portrait,
+  editingEnabled = true,
   previewOverlay,
-  onSelectTimelineElement,
   onPreviewBlockDrop,
+  onPreviewAssetDrop,
 }: PreviewPaneProps) {
   const {
     projectId,
+    refreshKey,
     iframeRef,
     togglePlay,
     seek,
@@ -76,6 +64,8 @@ export function PreviewPane({
     previewCompositionSize,
     setPreviewCompositionSize,
   } = useNLEContext();
+  const { compositionLoading: studioCompositionLoading } = useStudioPlaybackContext();
+  const previewDeletePending = usePlayerStore((state) => state.previewDeletePending);
   const { domEditSelection } = useDomEditSelectionContext();
 
   const stageRefForDrop = useRef<HTMLDivElement | null>(null);
@@ -94,6 +84,7 @@ export function PreviewPane({
     compositionSize: previewCompositionSize,
     stageRef: stageRefForDrop as React.RefObject<HTMLDivElement | null>,
     onBlockDrop: onPreviewBlockDrop,
+    onAssetDrop: onPreviewAssetDrop,
   });
 
   // Preview-only fullscreen: fullscreen targets THIS pane's container, so the
@@ -101,7 +92,8 @@ export function PreviewPane({
   const containerRef = useRef<HTMLDivElement>(null);
   const [isStudioFullscreen, setIsStudioFullscreen] = useState(false);
   const fullscreenElement = useSyncExternalStore(subscribeFullscreen, getFullscreenElement);
-  const isNativeFullscreen = fullscreenElement === containerRef.current && fullscreenElement != null;
+  const isNativeFullscreen =
+    fullscreenElement === containerRef.current && fullscreenElement != null;
   const isFullscreen = isNativeFullscreen || isStudioFullscreen;
 
   useEffect(() => {
@@ -170,10 +162,9 @@ export function PreviewPane({
   return (
     <div
       ref={containerRef}
-      // Panel chrome (rounded border) is dropped in fullscreen so the preview
-      // fills the screen edge-to-edge.
+      // Panel chrome is dropped in fullscreen so the preview fills the screen edge-to-edge.
       className={`hf-preview-pane flex-1 min-h-0 flex flex-col overflow-hidden bg-neutral-950 ${
-        isFullscreen ? "" : "rounded-lg border border-neutral-800/50"
+        isFullscreen ? "" : "border-[0.5px] border-[var(--hf-studio-divider)]"
       } ${isStudioFullscreen ? "hf-preview-pane--studio-fullscreen" : ""}`}
       data-studio-fullscreen-target=""
       data-studio-fullscreen-active={isFullscreen ? "" : undefined}
@@ -181,9 +172,6 @@ export function PreviewPane({
       <div
         className="flex-1 min-h-0 relative overflow-hidden"
         data-preview-pan-surface="true"
-        onPointerDown={(e) =>
-          deselectIfPointerOutsideFrame(e, iframeRef.current, onSelectTimelineElement)
-        }
         onDragEnter={handlePreviewDragEnter}
         onDragOver={handlePreviewDragOver}
         onDragLeave={handlePreviewDragLeave}
@@ -192,6 +180,7 @@ export function PreviewPane({
         <div className="absolute inset-0 overflow-hidden">
           <NLEPreview
             projectId={projectId}
+            refreshToken={refreshKey}
             iframeRef={iframeRef}
             onIframeLoad={onIframeLoad}
             onCompositionLoadingChange={setCompositionLoading}
@@ -205,13 +194,16 @@ export function PreviewPane({
             <div className="absolute inset-2 z-40 rounded-lg border-2 border-dashed border-studio-accent/50 bg-studio-accent/[0.04] pointer-events-none" />
           )}
           <AssetPreviewOverlay />
+          {(previewDeletePending || (studioCompositionLoading && hasLoadedOnceRef.current)) && (
+            <CompositionRefreshLoadingOverlay />
+          )}
         </div>
-        {!isFullscreen && previewOverlay}
+        {!isFullscreen && editingEnabled && previewOverlay}
         <PreviewTextSelectionToolbar
           iframeRef={iframeRef}
           containerRef={containerRef}
-          activeSelection={domEditSelection}
-          hidden={timelineDisabled}
+          activeSelection={editingEnabled ? domEditSelection : null}
+          hidden={timelineDisabled || !editingEnabled}
         />
       </div>
       {/* Transport row: no own background or border — the controls sit flat on

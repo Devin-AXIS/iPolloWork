@@ -1,5 +1,52 @@
 import { describe, expect, test } from "bun:test";
 
+import { bundledPluginPackageIds } from "./plugin-package-catalog.js";
+import type { PluginPackageManifest } from "./plugin-package-manifest.js";
+
+const HAN_TEXT_RE = /\p{Script=Han}/u;
+
+function expectEnglishText(base: unknown, english: string | undefined, path: string): void {
+  if (typeof base !== "string" || !HAN_TEXT_RE.test(base)) return;
+  expect(english, `${path} requires an English translation`).toBeDefined();
+  expect(HAN_TEXT_RE.test(english ?? ""), `${path} English translation must not contain Han text`).toBe(false);
+}
+
+function expectCompleteEnglishLocalization(manifest: PluginPackageManifest): void {
+  const english = manifest.localization?.translations.en;
+  expect(manifest.localization?.defaultLocale).toBe("zh");
+  expect(english).toBeDefined();
+  if (!english) return;
+
+  expectEnglishText(manifest.name, english.name, "name");
+  expectEnglishText(manifest.description, english.description, "description");
+  expectEnglishText(manifest.category, english.category, "category");
+  expectEnglishText(manifest.composer?.prompt, english.composer?.prompt, "composer.prompt");
+  expectEnglishText(manifest.setup?.instructions, english.setup?.instructions, "setup.instructions");
+  expectEnglishText(manifest.setup?.primaryCta, english.setup?.primaryCta, "setup.primaryCta");
+  expectEnglishText(manifest.setup?.secondaryCta, english.setup?.secondaryCta, "setup.secondaryCta");
+
+  manifest.resources.forEach((resource) => {
+    const translation = english.resources?.[resource.id];
+    expectEnglishText(resource.label, translation?.label, `resources.${resource.id}.label`);
+    expectEnglishText(resource.description, translation?.description, `resources.${resource.id}.description`);
+  });
+  manifest.permissions?.forEach((permission) => {
+    expectEnglishText(permission.reason, english.permissions?.[permission.id]?.reason, `permissions.${permission.id}.reason`);
+  });
+  manifest.authorization?.methods.forEach((method) => {
+    const translation = english.authorizationMethods?.[method.id];
+    expectEnglishText(method.label, translation?.label, `authorizationMethods.${method.id}.label`);
+    expectEnglishText(method.description, translation?.description, `authorizationMethods.${method.id}.description`);
+    if (method.kind !== "secret-form") return;
+    method.fields.forEach((field) => {
+      const fieldTranslation = translation?.fields?.[field.id];
+      expectEnglishText(field.label, fieldTranslation?.label, `authorizationMethods.${method.id}.fields.${field.id}.label`);
+      expectEnglishText(field.description, fieldTranslation?.description, `authorizationMethods.${method.id}.fields.${field.id}.description`);
+      expectEnglishText(field.placeholder, fieldTranslation?.placeholder, `authorizationMethods.${method.id}.fields.${field.id}.placeholder`);
+    });
+  });
+}
+
 const legacyManifest = {
   schemaVersion: 1,
   id: "legacy-extension",
@@ -43,6 +90,71 @@ const packageManifest = {
 };
 
 describe("plugin package manifest", () => {
+  test("accepts localized display metadata and rejects invalid locale references", async () => {
+    const { validatePluginPackageManifest } = await import("./plugin-package-manifest.js");
+    const localized = {
+      ...packageManifest,
+      localization: {
+        defaultLocale: "zh",
+        translations: {
+          en: {
+            description: "Independent Acme research workflows.",
+            resources: { "acme-search": { label: "Acme Search" } },
+            permissions: { network: { reason: "Connect to Acme." } },
+            authorizationMethods: {
+              "api-key": {
+                label: "API key",
+                fields: { apiKey: { label: "API key" } },
+              },
+            },
+          },
+        },
+      },
+    };
+
+    expect(validatePluginPackageManifest(localized).success).toBe(true);
+
+    const invalid = validatePluginPackageManifest({
+      ...localized,
+      localization: {
+        defaultLocale: "english",
+        translations: {
+          en: {
+            description: " ",
+            resources: { missing: { label: "Missing" } },
+            permissions: { missing: { reason: "Missing" } },
+            authorizationMethods: {
+              missing: { label: "Missing" },
+              "api-key": { fields: { missing: { label: "Missing" } } },
+            },
+          },
+        },
+      },
+    });
+
+    expect(invalid.success).toBe(false);
+    if (invalid.success) throw new Error("Expected invalid localization metadata to be rejected");
+    expect(invalid.issues.map((issue) => issue.path)).toEqual(expect.arrayContaining([
+      "localization.defaultLocale",
+      "localization.translations.en.description",
+      "localization.translations.en.resources.missing",
+      "localization.translations.en.permissions.missing",
+      "localization.translations.en.authorizationMethods.missing",
+      "localization.translations.en.authorizationMethods.api-key.fields.missing",
+    ]));
+  });
+
+  test("ships complete English display metadata for every bundled package", async () => {
+    const { validatePluginPackageManifest } = await import("./plugin-package-manifest.js");
+    for (const pluginId of bundledPluginPackageIds) {
+      const value = await Bun.file(new URL(`../../../examples/plugin-packages/${pluginId}/ipollowork.plugin.json`, import.meta.url)).json();
+      const result = validatePluginPackageManifest(value);
+      expect(result.success, pluginId).toBe(true);
+      if (!result.success) throw new Error(`${pluginId}: ${JSON.stringify(result.issues)}`);
+      expectCompleteEnglishLocalization(result.manifest);
+    }
+  });
+
   test("accepts the complete Figma example package", async () => {
     const { validatePluginPackageManifest } = await import("./plugin-package-manifest.js");
     const manifest = await Bun.file(new URL("../../../examples/plugin-packages/figma/ipollowork.plugin.json", import.meta.url)).json();

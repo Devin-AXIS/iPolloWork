@@ -36,12 +36,14 @@ describe("Design system theme contract", () => {
     expect(source).toContain(":where([data-ipw-slide], section.slide, .slide-frame) { background: var(--ipw-color-bg) !important");
     expect(source).not.toContain(".cover > *");
     expect(source).toContain("border-radius: var(--ipw-card-radius) !important");
-    expect(source).not.toContain("box-shadow: var(--ipw-card-shadow) !important");
+    expect(source).toContain("box-shadow: var(--ipw-card-shadow) !important");
     expect(source).not.toContain(":where(button, [role=\"button\"], [class*=\"button\"], [class*=\"btn\"])");
     expect(source).toContain("html:root [data-ipw-brand-slot]");
     expect(source).toContain("width: 18px !important; height: 18px !important");
     expect(source).toContain("object-fit: contain !important");
     expect(source).toContain('import.meta.glob("./design-systems/design-systems/*/design-tokens.json"');
+    expect(source).not.toContain('as: "raw"');
+    expect(source.match(/query: "\?raw"/g)).toHaveLength(6);
     expect(source).toContain("buildDesignSystemPresetValues");
     expect(source).toContain('"--ipw-type-scale": themeTypeScale(tokens)');
   });
@@ -82,10 +84,10 @@ describe("Design system theme contract", () => {
     const source = await Bun.file(registryPath).text();
 
     expect(source).toContain("--ipw-original-font-size");
-    expect(source).toContain("--ipw-original-font-size: var(--text-4xl, 2.5rem)");
-    expect(source).toContain("--ipw-original-font-size: var(--text-base, 1rem)");
-    expect(source).toContain(':where([data-ipw-theme-role="accent"], .eyebrow, .kicker, [class~="accent"]) { --ipw-original-font-size: var(--text-xs, .75rem);');
-    expect(source).toContain(':where([data-ipw-theme-role="muted"], .lede, .lead, .subtitle, .description) { --ipw-original-font-size: var(--text-lg, 1.125rem);');
+    expect(source).toContain("--ipw-original-font-size: var(--ipw-od-text-4xl, 2.5rem)");
+    expect(source).toContain("--ipw-original-font-size: var(--ipw-od-text-base, 1rem)");
+    expect(source).toContain(':where([data-ipw-theme-role="accent"], .eyebrow, .kicker, [class~="accent"]) { --ipw-original-font-size: var(--ipw-od-text-xs, .75rem);');
+    expect(source).toContain(':where([data-ipw-theme-role="muted"], .lede, .lead, .subtitle, .description) { --ipw-original-font-size: var(--ipw-od-text-lg, 1.125rem);');
     expect(source).toContain("line-height: var(--leading-tight, 1.08) !important");
     expect(source).toContain("letter-spacing: var(--tracking-display, 0) !important");
     expect(source).toContain("font-size: calc(var(--ipw-original-font-size) * var(--ipw-type-scale)) !important");
@@ -124,7 +126,11 @@ describe("Design system theme contract", () => {
     expect(drawer).not.toContain("Reset all</Button>");
     expect(drawer).not.toContain(">当前主题<");
     expect(drawer).not.toContain(">应用主题<");
-    expect(drawer).toContain('PanelSection title="Background"');
+    expect(drawer).toContain('PanelSection title={t("design_system.embedded.background")}');
+    expect(drawer).toContain('mode === itemMode ? "bg-foreground text-background" : "bg-muted text-muted-foreground hover:bg-accent hover:text-foreground"');
+    expect(drawer).toContain('<Minus aria-hidden="true" className="size-4" />');
+    expect(drawer).not.toContain("backgroundSolidDefaultIcon");
+    expect(drawer).not.toContain("backgroundSolidActiveIcon");
     expect(drawer).toContain("DesignImageFitSelect");
     expect(drawer).toContain("buildDesignSystemPresetValues(theme)");
     expect(drawer).not.toContain("Image overlay");

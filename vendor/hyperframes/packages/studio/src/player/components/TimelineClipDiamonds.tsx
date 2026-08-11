@@ -28,7 +28,6 @@ interface TimelineClipDiamondsProps {
   /** Beat-dot strip is shown on this track → shrink diamonds + drop them into
    *  the bottom half so they clear the strip at the top. */
   beatsActive?: boolean;
-  accentColor: string;
   isSelected: boolean;
   currentPercentage: number;
   elementId: string;
@@ -51,7 +50,10 @@ interface TimelineClipDiamondsProps {
   suppressClickRef?: React.RefObject<boolean>;
 }
 
-const DIAMOND_RATIO = 0.8;
+const DIAMOND_HIT_RATIO = 0.8;
+const DIAMOND_VISUAL_SCALE = 0.5;
+const KEYFRAME_SELECTED_COLOR = "#FED953";
+const KEYFRAME_IDLE_COLOR = "#D9DDE3";
 // Percentage tolerance for rendering keyframes near clip boundaries. Keyframes
 // slightly outside [0, 100] (from rounding or stale cache during the async
 // persist → reload cycle) are still rendered (the clip is overflow-visible) at
@@ -71,7 +73,6 @@ export const TimelineClipDiamonds = memo(function TimelineClipDiamonds({
   clipWidthPx,
   clipHeightPx,
   beatsActive,
-  accentColor,
   isSelected,
   currentPercentage,
   elementId,
@@ -106,10 +107,11 @@ export const TimelineClipDiamonds = memo(function TimelineClipDiamonds({
 
   if (clipWidthPx < 20) return null;
 
-  // When the beat strip occupies the top band, shrink the diamonds and center
-  // them in the remaining bottom region so they don't collide with it.
-  const diamondSize = Math.round(clipHeightPx * (beatsActive ? 0.45 : DIAMOND_RATIO));
-  const half = diamondSize / 2;
+  // Keep the original hit target while rendering the diamond at 50% scale, so
+  // the smaller visual remains easy to click and drag.
+  const hitSize = Math.round(clipHeightPx * (beatsActive ? 0.45 : DIAMOND_HIT_RATIO));
+  const diamondSize = Math.max(4, Math.round(hitSize * DIAMOND_VISUAL_SCALE));
+  const half = hitSize / 2;
   const centerY = beatsActive ? BEAT_BAND_H + (clipHeightPx - BEAT_BAND_H) / 2 : clipHeightPx / 2;
   const sorted = keyframesData.keyframes
     .filter((kf) => kf.percentage >= KF_MIN_PCT && kf.percentage <= KF_MAX_PCT)
@@ -117,8 +119,7 @@ export const TimelineClipDiamonds = memo(function TimelineClipDiamonds({
   // Clip-%s of the sorted keyframes — the neighbour clamp (preview + drop) needs
   // the whole row to bound the dragged diamond between its immediate siblings.
   const sortedClipPcts = sorted.map((k) => k.percentage);
-  const baseColor = isSelected ? accentColor : "#a3a3a3";
-  const baseOpacity = isSelected ? 0.4 : 0.25;
+  const baseOpacity = isSelected ? 0.7 : 0.5;
   const canDrag = isSelected && !!onMoveKeyframe;
 
   return (
@@ -151,7 +152,7 @@ export const TimelineClipDiamonds = memo(function TimelineClipDiamonds({
               width: x2 - x1,
               height: 2,
               transform: "translateY(-1px)",
-              background: baseColor,
+              background: KEYFRAME_IDLE_COLOR,
               opacity: baseOpacity,
               borderRadius: 1,
             }}
@@ -171,7 +172,7 @@ export const TimelineClipDiamonds = memo(function TimelineClipDiamonds({
         const isKfSelected = selectedKeyframes.has(kfKey);
         const atPlayhead = isSelected && Math.abs(kf.percentage - currentPercentage) < 0.5;
         const isHighlighted = isKfSelected || atPlayhead;
-        const color = isHighlighted ? accentColor : "#a3a3a3";
+        const color = isHighlighted ? KEYFRAME_SELECTED_COLOR : KEYFRAME_IDLE_COLOR;
 
         const onPointerDown = (e: React.PointerEvent<HTMLButtonElement>) => {
           if (e.button !== 0) return;
@@ -212,8 +213,11 @@ export const TimelineClipDiamonds = memo(function TimelineClipDiamonds({
           if (!d || d.kfKey !== kfKey) {
             if (e.button !== 0) return;
             suppressNextClick();
-            if (e.shiftKey) onShiftClickKeyframe?.(elementId, kf.percentage);
-            else onClickKeyframe?.(kf.percentage);
+            if (e.shiftKey && onShiftClickKeyframe) {
+              onShiftClickKeyframe(elementId, kf.percentage);
+            } else {
+              onClickKeyframe?.(kf.percentage);
+            }
             return;
           }
           e.stopPropagation();
@@ -235,8 +239,11 @@ export const TimelineClipDiamonds = memo(function TimelineClipDiamonds({
             // back onto ~the same position — no real retime, so treat it as the
             // click it was. Otherwise a normal click with a few px of mouse/
             // trackpad drift silently does nothing: no selection, no move.
-            if (e.shiftKey) onShiftClickKeyframe?.(elementId, kf.percentage);
-            else onClickKeyframe?.(kf.percentage);
+            if (e.shiftKey && onShiftClickKeyframe) {
+              onShiftClickKeyframe(elementId, kf.percentage);
+            } else {
+              onClickKeyframe?.(kf.percentage);
+            }
           } else if (res.kind === "move" && res.toClipPct != null) {
             onMoveKeyframe?.(elementId, d.fromClipPct, res.toClipPct);
             // A retime still targeted this exact diamond — park/select it at its
@@ -255,8 +262,11 @@ export const TimelineClipDiamonds = memo(function TimelineClipDiamonds({
               left: leftPx,
               top: centerY,
               transform: "translateY(-50%)",
-              width: diamondSize,
-              height: diamondSize,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              width: hitSize,
+              height: hitSize,
               zIndex: isHighlighted ? 2 : 1,
               pointerEvents: "auto",
               background: "none",
@@ -280,7 +290,7 @@ export const TimelineClipDiamonds = memo(function TimelineClipDiamonds({
                 <path
                   d="M5 0L10 5L5 10L0 5Z"
                   fill="none"
-                  stroke={accentColor}
+                  stroke={KEYFRAME_SELECTED_COLOR}
                   strokeWidth="0.8"
                   opacity={0.5}
                 />
@@ -288,7 +298,7 @@ export const TimelineClipDiamonds = memo(function TimelineClipDiamonds({
               <path
                 d="M5 1L9 5L5 9L1 5Z"
                 fill={color}
-                opacity={isKfSelected || atPlayhead ? 1 : 0.55}
+                opacity={isKfSelected || atPlayhead ? 1 : 0.92}
               />
             </svg>
           </button>

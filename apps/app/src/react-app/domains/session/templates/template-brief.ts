@@ -7,6 +7,28 @@ export type TemplateBrief = {
   details: string;
 };
 
+export const TEMPLATE_BRIEF_REFERENCE_ACCEPT = [
+  ".pdf",
+  ".docx",
+  ".md",
+  ".txt",
+  ".png",
+  ".jpg",
+  ".jpeg",
+  ".webp",
+  ".csv",
+  ".json",
+  "application/pdf",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  "text/markdown",
+  "text/plain",
+  "text/csv",
+  "application/json",
+  "image/png",
+  "image/jpeg",
+  "image/webp",
+].join(",");
+
 export type TemplateBriefFields = TemplateBrief;
 
 type TemplateBriefField = {

@@ -61,6 +61,10 @@ const NATIVE_DEEP_LINK_EVENT = "ipollowork:deep-link-native";
 const TAURI_APP_IDENTIFIER = "com.differentai.ipollowork";
 const DEV_APP_IDENTIFIER = "com.differentai.ipollowork.dev";
 const isDevMode = process.env.IPOLLOWORK_DEV_MODE === "1";
+// Media Center runs inside Electron's embedded server. Expose the Chromium
+// network stack for provider traffic so it follows the desktop system proxy,
+// without replacing Node fetch for local OpenCode and workspace requests.
+Reflect.set(globalThis, Symbol.for("ipollowork.mediaProviderFetch"), electronNet.fetch.bind(electronNet));
 const APP_NAME =
   process.env.IPOLLOWORK_ELECTRON_APP_NAME?.trim() ||
   (isDevMode ? "iPollo - Dev" : "iPollo");
@@ -2330,7 +2334,19 @@ const desktopCommandHandlers = {
         defaultPath: options.defaultPath,
         filters: options.filters,
       });
-      return result.canceled ? null : (result.filePath ?? null);
+      const filePath = result.canceled ? null : (result.filePath ?? null);
+      if (!filePath) return null;
+      const data = args[1];
+      if (data !== undefined) {
+        if (data instanceof ArrayBuffer) {
+          await writeFile(filePath, new Uint8Array(data));
+        } else if (ArrayBuffer.isView(data)) {
+          await writeFile(filePath, new Uint8Array(data.buffer, data.byteOffset, data.byteLength));
+        } else {
+          throw new TypeError("saveFile data must be binary");
+        }
+      }
+      return filePath;
   },
   "importSkill": async (event, ...args) => {
       const projectDir = String(args[0] ?? "").trim();
@@ -2600,7 +2616,9 @@ const desktopCommandHandlers = {
         status: response.status,
         statusText: response.statusText,
         headers: Array.from(response.headers.entries()),
-        body: await response.text(),
+        body: init.responseType === "arrayBuffer"
+          ? await response.arrayBuffer()
+          : await response.text(),
       };
   },
   "__homeDir": async (event, ...args) => {
@@ -3002,6 +3020,21 @@ ipcMain.handle("ipollowork:hyperframes:set-simple-mode", async (event, enabled) 
       location.hash = path + '?' + params.toString();
       return true;
     };
+    const applyCanvasSelectionLive = (target, options = {}) => {
+      if (!target || (!target.id && !target.selector)) return false;
+      window.dispatchEvent(new CustomEvent('ipollowork:studio-apply-selection', {
+        detail: {
+          revealPanel: options.revealPanel === true,
+          selection: {
+            sourceFile: target.file || '',
+            id: target.id || undefined,
+            selector: target.selector || undefined,
+            selectorIndex: Number.isFinite(target.selectorIndex) ? target.selectorIndex : undefined,
+          },
+        },
+      }));
+      return true;
+    };
     const button = [...document.querySelectorAll('button')].find((node) =>
       node.getAttribute('title') === (enabled ? 'Hide sidebar' : 'Show sidebar') ||
       node.getAttribute('aria-label') === (enabled ? 'Hide sidebar' : 'Show sidebar')
@@ -3271,8 +3304,8 @@ ipcMain.handle("ipollowork:hyperframes:set-simple-mode", async (event, enabled) 
         iframe?.contentWindow?.__player?.seek?.(0);
       }, 120);
     }
-    if (window.__ipolloworkSimpleVideoListener !== 14) {
-      window.__ipolloworkSimpleVideoListener = 14;
+    if (window.__ipolloworkSimpleVideoListener !== 15) {
+      window.__ipolloworkSimpleVideoListener = 15;
       window.__ipolloworkVideoAdvancedExplicit = false;
       window.addEventListener('message', (event) => {
         const inspector = document.querySelector('button[aria-label="Inspector"]');
@@ -3300,7 +3333,7 @@ ipcMain.handle("ipollowork:hyperframes:set-simple-mode", async (event, enabled) 
         if (event.data?.type === 'ipollowork:hyperframes:native-selection-compact') {
           hideTextPanel();
           window.__ipolloworkVideoAdvancedExplicit = false;
-          applyCanvasSelection(event.data.target);
+          applyCanvasSelectionLive(event.data.target);
           if (inspector?.getAttribute('aria-pressed') === 'true') inspector.click();
           return;
         }
@@ -3313,14 +3346,10 @@ ipcMain.handle("ipollowork:hyperframes:set-simple-mode", async (event, enabled) 
           const target = event.data.target || (Number.isFinite(x) && Number.isFinite(y)
             ? iframe?.contentWindow?.__ipolloworkNativeTargetAtPoint?.(x, y)
             : null);
-          if (!applyCanvasSelection(target)) {
+          if (!applyCanvasSelectionLive(target, { revealPanel: true })) {
             iframe?.contentWindow?.__HF_PICKER_API?.enable?.();
             if (Number.isFinite(x) && Number.isFinite(y)) iframe?.contentWindow?.__HF_PICKER_API?.pickAtPoint?.(x, y, 0);
           }
-          window.setTimeout(() => {
-            const current = document.querySelector('button[aria-label="Inspector"]');
-            if (current?.getAttribute('aria-pressed') !== 'true') current?.click();
-          }, 40);
         }
       });
       document.addEventListener('click', (event) => {
@@ -3444,7 +3473,7 @@ ipcMain.handle("ipollowork:hyperframes:set-simple-mode", async (event, enabled) 
 
       const toolbarStyle = document.createElement('style');
       toolbarStyle.dataset.ipolloworkVideoToolbar = 'true';
-      toolbarStyle.textContent = '.ipollowork-video-toolbar{position:fixed;z-index:2147483647;display:none;align-items:center;gap:17px;padding:8px 16px;border:1px solid #ebebeb;border-radius:8px;background:#fff;box-shadow:0 4px 4.2px rgba(0,0,0,.09);font:400 12px/1.2 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#858a94;transform-origin:bottom center}.ipollowork-video-toolbar button{appearance:none;border:0;background:transparent;color:inherit;width:24px;height:24px;min-width:24px;padding:0;border-radius:4px;font:inherit;cursor:pointer;display:grid;place-items:center}.ipollowork-video-toolbar button:hover{background:#f3f4f6;color:#202228}.ipollowork-video-toolbar button[data-action="delete"]{color:#dc2626}.ipollowork-video-toolbar button[data-action="delete"]:hover{background:#fef2f2;color:#b91c1c}.ipollowork-video-toolbar button svg{width:18px;height:18px;stroke:currentColor;stroke-width:1.5;fill:none;stroke-linecap:round;stroke-linejoin:round}.ipollowork-video-toolbar .ow-tag{color:#858a94;font-size:10px;text-transform:uppercase}.ipollowork-video-toolbar .ow-size{font-size:16px}.ipollowork-video-toolbar .ow-color{width:18px;height:18px;min-width:18px;padding:0;border:3px solid white;border-radius:999px;box-shadow:0 0 0 1px rgba(15,23,42,.16)}.ipollowork-video-toolbar .ow-sep{width:1px;height:22.5px;background:#ebebeb}.ipollowork-video-colors{position:absolute;left:50%;bottom:48px;display:none;gap:6px;padding:7px;border:1px solid #ebebeb;border-radius:8px;background:#fff;box-shadow:0 8px 24px rgba(0,0,0,.12);transform:translateX(-50%)}.ipollowork-video-colors button{width:22px;height:22px;min-width:22px;padding:0;border-radius:999px;border:2px solid white;box-shadow:0 0 0 1px rgba(15,23,42,.13)}';
+      toolbarStyle.textContent = '.ipollowork-video-toolbar{position:fixed;z-index:2147483647;display:none;align-items:center;gap:17px;padding:8px 16px;border:1px solid #ebebeb;border-radius:8px;background:#fff;box-shadow:0 4px 4.2px rgba(0,0,0,.09);font:400 12px/1.2 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#858a94;transform-origin:bottom center}.ipollowork-video-toolbar button{appearance:none;border:0;background:transparent;color:inherit;width:24px;height:24px;min-width:24px;padding:0;border-radius:4px;font:inherit;cursor:pointer;display:grid;place-items:center}.ipollowork-video-toolbar button:hover{background:#f3f4f6;color:#202228}.ipollowork-video-toolbar button[data-action="delete"]{color:#dc2626}.ipollowork-video-toolbar button[data-action="delete"]:hover{background:#fef2f2;color:#b91c1c}.ipollowork-video-toolbar button svg{width:18px;height:18px;stroke:currentColor;stroke-width:1.5;fill:none;stroke-linecap:round;stroke-linejoin:round}.ipollowork-video-toolbar .ow-tag{color:#858a94;font-size:10px;text-transform:uppercase}.ipollowork-video-toolbar .ow-size{font-size:16px}.ipollowork-video-toolbar .ow-color{width:18px;height:18px;min-width:18px;padding:0;border:3px solid white;border-radius:999px;box-shadow:0 0 0 1px rgba(15,23,42,.16)}.ipollowork-video-toolbar .ow-sep{width:1px;height:22.5px;background:#ebebeb}.ipollowork-video-colors{position:absolute;left:50%;bottom:48px;display:none;gap:6px;padding:7px;border:1px solid #ebebeb;border-radius:8px;background:#fff;box-shadow:0 8px 24px rgba(0,0,0,.12);transform:translateX(-50%)}.ipollowork-video-colors button{width:22px;height:22px;min-width:22px;padding:0;border-radius:999px;border:2px solid white;box-shadow:0 0 0 1px rgba(15,23,42,.13)}[data-ipollowork-delete-pending="true"]{opacity:.35!important;pointer-events:none!important;transition:opacity .12s ease-out!important}';
       document.head.appendChild(toolbarStyle);
 
       const toolbar = document.createElement('div');
@@ -3608,17 +3637,27 @@ ipcMain.handle("ipollowork:hyperframes:set-simple-mode", async (event, enabled) 
         const target = element ? sourceTargetFor(element) || selectedTarget : selectedTarget;
         if (!element || !target) return;
         finishEditing();
+        hideToolbar();
+        element.setAttribute('data-ipollowork-delete-pending', 'true');
         try {
           const response = await fetch('/api/projects/' + encodeURIComponent(projectId) + '/file-mutations/remove-element/' + encodeURI(target.file), {
             method: 'POST',
             headers: { 'content-type': 'application/json' },
             body: JSON.stringify({ target: { selector: target.selector, selectorIndex: target.selectorIndex } }),
           });
-          if (!response.ok) return;
+          if (!response.ok) {
+            element.removeAttribute('data-ipollowork-delete-pending');
+            showToolbar(element);
+            return;
+          }
           element.remove();
-          hideToolbar();
-          postEditorMessage({ type: 'ipollowork:hyperframes:close-side-panels' });
-        } catch {}
+          selected = null;
+          selectedTarget = null;
+          selectedTextRange = null;
+        } catch {
+          element.removeAttribute('data-ipollowork-delete-pending');
+          showToolbar(element);
+        }
       };
 
       const displayScale = () => {
@@ -3815,7 +3854,7 @@ ipcMain.handle("ipollowork:hyperframes:set-simple-mode", async (event, enabled) 
           const target = sourceTargetFor(selected) || selectedTarget;
           const computed = getComputedStyle(selected);
           finishEditing();
-          toolbar.style.display = 'none';
+          showToolbar(selected);
           if (canEditText) {
             postEditorMessage({
               type: 'ipollowork:hyperframes:open-text-panel',
@@ -3851,6 +3890,11 @@ ipcMain.handle("ipollowork:hyperframes:set-simple-mode", async (event, enabled) 
         // stationary click is converted into lightweight text editing below.
         window.__HF_PICKER_API?.enable?.();
       }, true);
+      window.addEventListener('message', (event) => {
+        if (event.data?.type !== 'ipollowork:hyperframes:clear-selection') return;
+        finishEditing();
+        hideToolbar();
+      });
       document.addEventListener('pointermove', (event) => {
         if (!pendingPointer) return;
         if (Math.hypot(event.clientX - pendingPointer.x, event.clientY - pendingPointer.y) > 4) {

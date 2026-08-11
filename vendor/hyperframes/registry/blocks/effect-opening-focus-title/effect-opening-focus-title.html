@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=1920, height=1080" />
+  <title>焦点标题</title>
+  <style>
+    *{box-sizing:border-box}html,body{width:1920px;height:1080px;margin:0;overflow:hidden;background:transparent;font-family:var(--ipw-font-body,Inter,"PingFang SC",sans-serif)}
+    .fx{position:relative;width:100%;height:100%;overflow:hidden;background:var(--ipw-color-bg,#f6f4ef);color:var(--ipw-color-text,#151515)}
+    .grid{position:absolute;inset:0;background-image:linear-gradient(var(--ipw-color-border,rgba(21,21,21,.1)) 1px,transparent 1px),linear-gradient(90deg,var(--ipw-color-border,rgba(21,21,21,.1)) 1px,transparent 1px);background-size:120px 120px;opacity:.45}
+    .kicker{position:absolute;left:112px;top:92px;display:flex;align-items:center;gap:18px;font-size:22px;font-weight:760;letter-spacing:.22em;text-transform:uppercase}.dot{width:14px;height:14px;border-radius:50%;background:var(--ipw-color-accent,var(--ipw-color-primary,#20bbc0))}
+    .copy{position:absolute;left:108px;right:108px;top:300px}.mask{overflow:hidden}.title{margin:0;font-size:166px;line-height:.88;letter-spacing:-.065em;font-weight:820}.title em{font-family:var(--ipw-font-display,Georgia,serif);font-weight:500;color:var(--ipw-color-primary,#20bbc0)}
+    .meta{position:absolute;left:114px;bottom:102px;font-size:24px;color:var(--ipw-color-muted,#6d6d6d)}.rule{position:absolute;left:108px;right:108px;bottom:168px;height:2px;background:var(--ipw-color-border,rgba(21,21,21,.18));transform-origin:left}.beam{position:absolute;inset:-25% auto -25% -18%;width:26%;background:linear-gradient(90deg,transparent,color-mix(in srgb,var(--ipw-color-accent,var(--ipw-color-primary,#20bbc0)) 35%,transparent),transparent);transform:skewX(-12deg)}
+  </style>
+</head>
+<body>
+  <main class="fx" data-composition-id="effect-opening-focus-title" data-width="1920" data-height="1080" data-start="0" data-duration="3.2">
+    <div class="grid" data-layout-ignore></div><div class="beam" data-layout-ignore></div>
+    <div class="kicker"><i class="dot"></i><span>IPOLLO / OPENING</span></div>
+    <section class="copy" data-hf-id="opening-focus-copy"><div class="mask"><h1 class="title line-a">让每一个观点</h1></div><div class="mask"><h1 class="title line-b">拥有<em>被看见</em>的力量</h1></div></section>
+    <div class="rule"></div><div class="meta">A theme-aware opening effect clip · 2026</div>
+  </main>
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3.15.0/dist/gsap.min.js"></script>
+  <script>
+    window.__timelines=window.__timelines||{};var tl=gsap.timeline({paused:true});
+    tl.from('.grid',{opacity:0,duration:.55,ease:'none'},0).from('.kicker',{opacity:0,y:-22,duration:.55,ease:'power3.out'},.12).from('.line-a',{yPercent:112,rotation:1.5,duration:.88,ease:'power4.out'},.3).from('.line-b',{yPercent:112,rotation:-1.2,duration:.92,ease:'power4.out'},.52).from('.rule',{scaleX:0,duration:.8,ease:'power3.out'},.82).from('.meta',{opacity:0,y:18,duration:.55,ease:'power3.out'},1.05).to('.beam',{x:2420,duration:1.1,ease:'power2.inOut'},.18);
+    window.__timelines['effect-opening-focus-title']=tl;window.addEventListener('hf-seek',e=>tl.seek(Math.max(0,Math.min(e.detail.time,3.2))));tl.seek(0);
+  </script>
+</body>
+</html>

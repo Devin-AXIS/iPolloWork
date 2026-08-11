@@ -20,7 +20,7 @@ import {
 
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
-import { t } from "@/i18n";
+import { currentLocale, t } from "@/i18n";
 import type {
   iPolloWorkPluginAuthorizationFlow,
   iPolloWorkPluginAuthorizationState,
@@ -37,6 +37,7 @@ import {
   collectPluginPackageRelationships,
   derivePluginPrimaryAction,
   formatPluginPlatformError,
+  localizePluginPackageManifest,
   type PluginPackageRelationships,
 } from "./plugin-platform-state";
 
@@ -92,6 +93,7 @@ function statusText(state: iPolloWorkPluginAuthorizationState | undefined, requi
 }
 
 export function PluginPackagesPanel(props: PluginPackagesPanelProps) {
+  const locale = currentLocale();
   const [items, setItems] = useState<iPolloWorkPluginPackageItem[]>([]);
   const [catalogItems, setCatalogItems] = useState<iPolloWorkBundledPluginPackageItem[]>([]);
   const [authorizations, setAuthorizations] = useState<Record<string, iPolloWorkPluginAuthorizationState>>({});
@@ -250,8 +252,8 @@ export function PluginPackagesPanel(props: PluginPackagesPanelProps) {
 
   if (!props.client || !props.workspaceId) return null;
 
-  const selectedItem = items.find((item) => item.pluginId === props.selectedPluginId);
-  if (props.selectedPluginId && !selectedItem) {
+  const selectedSourceItem = items.find((item) => item.pluginId === props.selectedPluginId);
+  if (props.selectedPluginId && !selectedSourceItem) {
     return (
       <section className="w-full max-w-4xl py-2">
         <Button variant="ghost" size="sm" className="-ml-2 text-dls-secondary" onClick={() => props.onSelectPlugin(null)}>
@@ -264,8 +266,13 @@ export function PluginPackagesPanel(props: PluginPackagesPanelProps) {
       </section>
     );
   }
-  if (selectedItem) {
-    const item = selectedItem;
+  if (selectedSourceItem) {
+    const localizedManifest = localizePluginPackageManifest(
+      selectedSourceItem.manifest,
+      locale,
+      catalogItems.find((catalogItem) => catalogItem.pluginId === selectedSourceItem.pluginId)?.manifest.localization,
+    );
+    const item = { ...selectedSourceItem, name: localizedManifest.name, manifest: localizedManifest };
     const auth = authorizations[item.pluginId];
     const methods = item.manifest.authorization?.methods ?? [];
     const authorization = packageAuthorization(item, auth, props.mcpStatuses);
@@ -702,9 +709,10 @@ export function PluginPackagesPanel(props: PluginPackagesPanelProps) {
 
       <div className="divide-y divide-dls-border">
         {availableCatalogItems.map((item) => {
+          const manifest = localizePluginPackageManifest(item.manifest, locale);
           const iconUrl = resolveExtensionIconUrl({
-            iconSrc: item.manifest.icon?.src,
-            iconSlug: item.manifest.icon?.simpleIconSlug,
+            iconSrc: manifest.icon?.src,
+            iconSlug: manifest.icon?.simpleIconSlug,
           });
           return <div key={`catalog:${item.pluginId}`} className="flex flex-col gap-4 bg-blue-2/40 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex min-w-0 items-start gap-3">
@@ -713,15 +721,15 @@ export function PluginPackagesPanel(props: PluginPackagesPanelProps) {
               </div>
               <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-2">
-                  <span className="text-sm font-semibold text-dls-text">{item.name}</span>
+                  <span className="text-sm font-semibold text-dls-text">{manifest.name}</span>
                   <span className="rounded-full border border-dls-border px-2 py-0.5 font-mono text-[10px] text-dls-secondary">v{item.version}</span>
                   <span className="rounded-full bg-blue-3 px-2 py-0.5 text-[10px] text-blue-11">{t("plugin_platform.official_bundle")}</span>
                 </div>
-                <p className="mt-1 text-xs text-dls-secondary">{item.manifest.description}</p>
+                <p className="mt-1 text-xs text-dls-secondary">{manifest.description}</p>
                 <p className="mt-1 text-[11px] text-dls-secondary">
                   {t("plugin_platform.bundle_contents", {
-                    skills: item.manifest.resources.filter((resource) => resource.type === "skill").length,
-                    mcps: item.manifest.resources.filter((resource) => resource.type === "mcp").length,
+                    skills: manifest.resources.filter((resource) => resource.type === "skill").length,
+                    mcps: manifest.resources.filter((resource) => resource.type === "mcp").length,
                   })}
                 </p>
               </div>
@@ -736,7 +744,13 @@ export function PluginPackagesPanel(props: PluginPackagesPanelProps) {
             </Button>
           </div>;
         })}
-        {items.map((item) => {
+        {items.map((sourceItem) => {
+          const localizedManifest = localizePluginPackageManifest(
+            sourceItem.manifest,
+            locale,
+            catalogItems.find((catalogItem) => catalogItem.pluginId === sourceItem.pluginId)?.manifest.localization,
+          );
+          const item = { ...sourceItem, name: localizedManifest.name, manifest: localizedManifest };
           const auth = authorizations[item.pluginId];
           const authorization = packageAuthorization(item, auth, props.mcpStatuses);
           const connected = authorization.connected;

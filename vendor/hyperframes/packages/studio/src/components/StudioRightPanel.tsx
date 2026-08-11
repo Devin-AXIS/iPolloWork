@@ -1,18 +1,23 @@
-import { useCallback, useEffect, useRef, type MutableRefObject } from "react";
-import { PropertyPanel } from "./editor/PropertyPanel";
-import { LayersPanel } from "./editor/LayersPanel";
-import { CaptionPropertyPanel } from "../captions/components/CaptionPropertyPanel";
-import { BlockParamsPanel } from "./editor/BlockParamsPanel";
-import { RenderQueue } from "./renders/RenderQueue";
+import {
+  lazy,
+  Suspense,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type MutableRefObject,
+} from "react";
 import { PanelTabButton } from "./PanelTabButton";
 import { usePreviewVariablesStore } from "../hooks/previewVariablesStore";
 import type { RenderJob } from "./renders/useRenderQueue";
 import type { BlockParam } from "@hyperframes/core/registry";
+import { readMotionInstanceFromExtras } from "@hyperframes/core/motion-presets";
 import { STUDIO_INSPECTOR_PANELS_ENABLED } from "./editor/manualEditingAvailability";
 import type { Composition } from "@hyperframes/sdk";
 import type { EditHistoryKind } from "../utils/editHistory";
 import type { UseSlideshowPersistParams } from "../hooks/useSlideshowPersist";
-import { DesignPanelPromoteProvider } from "./DesignPanelPromoteProvider";
+import type { EffectInsertIntent } from "../utils/blockInstaller";
+import type { AnimationTemplateDraft } from "./sidebar/AnimationTemplatesTab";
 
 import { useStudioPlaybackContext, useStudioShellContext } from "../contexts/StudioContext";
 import { usePanelLayoutContext } from "../contexts/PanelLayoutContext";
@@ -27,11 +32,57 @@ import {
 } from "./studioColorGradingScope";
 import type { BackgroundRemovalProgress } from "./editor/propertyPanelTypes";
 import { timelineKeysForSelections, type ToggleHiddenHandler } from "../utils/studioHelpers";
-import { useInspectorSplitResize } from "../hooks/useInspectorSplitResize";
 import { useStudioI18n } from "../i18n";
 import { X } from "../icons/SystemIcons";
-import { BlocksTab, type BlockPreviewInfo } from "./sidebar/BlocksTab";
-import { AssetsTab } from "./sidebar/AssetsTab";
+import { postVideoAiSelectionToHost } from "./editor/domEditingAgentPrompt";
+import { MIN_RIGHT_PANEL_WIDTH } from "../hooks/usePanelLayout";
+
+const loadPropertyPanel = () =>
+  import("./editor/PropertyPanel").then((module) => ({ default: module.PropertyPanel }));
+const PropertyPanel = lazy(loadPropertyPanel);
+
+export const preloadStudioPropertyPanel = () => loadPropertyPanel();
+const DesignPanelPromoteProvider = lazy(() =>
+  import("./DesignPanelPromoteProvider").then((module) => ({
+    default: module.DesignPanelPromoteProvider,
+  })),
+);
+const CaptionPropertyPanel = lazy(() =>
+  import("../captions/components/CaptionPropertyPanel").then((module) => ({
+    default: module.CaptionPropertyPanel,
+  })),
+);
+const BlockParamsPanel = lazy(() =>
+  import("./editor/BlockParamsPanel").then((module) => ({ default: module.BlockParamsPanel })),
+);
+const RenderQueue = lazy(() =>
+  import("./renders/RenderQueue").then((module) => ({ default: module.RenderQueue })),
+);
+const loadBlocksTab = () =>
+  import("./sidebar/BlocksTab").then((module) => ({ default: module.BlocksTab }));
+const BlocksTab = lazy(loadBlocksTab);
+export const preloadStudioEffectsPanel = async (): Promise<void> => {
+  await Promise.all([
+    loadBlocksTab(),
+    import("../hooks/useBlockCatalog").then((module) => module.preloadBlockCatalog()),
+  ]);
+};
+const AnimationTemplatesTab = lazy(() =>
+  import("./sidebar/AnimationTemplatesTab").then((module) => ({
+    default: module.AnimationTemplatesTab,
+  })),
+);
+const AnimationPropertiesPanel = lazy(() =>
+  import("./editor/SemanticMotionPanel").then((module) => ({
+    default: module.AnimationPropertiesPanel,
+  })),
+);
+const AssetsTab = lazy(() =>
+  import("./sidebar/AssetsTab").then((module) => ({ default: module.AssetsTab })),
+);
+const IllustrationTab = lazy(() =>
+  import("./sidebar/IllustrationTab").then((module) => ({ default: module.IllustrationTab })),
+);
 
 export interface StudioRightPanelProps {
   designPanelActive: boolean;
@@ -69,8 +120,15 @@ export interface StudioRightPanelProps {
     files: Record<string, { before: string; after: string }>;
   }) => Promise<void>;
   onToggleElementHidden?: ToggleHiddenHandler;
-  onAddBlock?: (blockName: string) => void;
-  onPreviewBlock?: (preview: BlockPreviewInfo | null) => void;
+  onAddBlock?: (blockName: string, intent?: EffectInsertIntent) => void;
+}
+
+function animationSelectionKey(
+  selection: AnimationTemplateDraft["selection"] | null | undefined,
+): string | null {
+  if (!selection) return null;
+  const locator = selection.hfId ?? selection.id ?? selection.selector;
+  return locator ? `${selection.compositionPath}:${selection.sourceFile}:${locator}` : null;
 }
 
 // fallow-ignore-next-line complexity
@@ -89,7 +147,6 @@ export function StudioRightPanel({
   recordEdit,
   onToggleElementHidden,
   onAddBlock,
-  onPreviewBlock,
 }: StudioRightPanelProps) {
   const {
     rightWidth,
@@ -112,7 +169,7 @@ export function StudioRightPanel({
     renderQueue,
   } = useStudioShellContext();
   const { captionEditMode } = useStudioPlaybackContext();
-  const { t } = useStudioI18n();
+  const { t, tx } = useStudioI18n();
 
   const {
     domEditSelection,
@@ -133,7 +190,6 @@ export function StudioRightPanel({
     handleDomTextFieldStyleCommit,
     handleDomAddTextField,
     handleDomRemoveTextField,
-    handleAskAgent,
     selectedGsapAnimations,
     gsapMultipleTimelines,
     gsapUnsupportedTimelinePattern,
@@ -141,6 +197,7 @@ export function StudioRightPanel({
     handleGsapUpdateMeta,
     handleGsapDeleteAnimation,
     handleGsapAddAnimation,
+    handleMotionMutation,
     handleGsapAddProperty,
     handleGsapRemoveProperty,
     handleGsapUpdateFromProperty,
@@ -172,14 +229,8 @@ export function StudioRightPanel({
     fileTree,
   } = useFileManagerContext();
 
-  const {
-    layersPanePercent,
-    splitContainerRef,
-    handleInspectorSplitResizeStart,
-    handleInspectorSplitResizeMove,
-    handleInspectorSplitResizeEnd,
-  } = useInspectorSplitResize();
   const backgroundRemovalAbortRef = useRef<AbortController | null>(null);
+  const [pendingMotionDraft, setPendingMotionDraft] = useState<AnimationTemplateDraft | null>(null);
 
   useEffect(
     () => () => {
@@ -283,9 +334,80 @@ export function StudioRightPanel({
     const keys = timelineKeysForSelections(domEditGroupSelections, elements, activeCompPath);
     if (keys.length > 0) void onToggleElementHidden?.(keys, true);
   };
-  const propertyPanel = (
+  const singleDomEditSelection = domEditGroupSelections.length > 1 ? null : domEditSelection;
+  const propertyPanelContent = (
+    <PropertyPanel
+      projectId={projectId}
+      projectDir={projectDir}
+      assets={assets}
+      element={singleDomEditSelection}
+      inspectorMode={rightPanelTab === "animation-properties" ? "animation" : "properties"}
+      showInspectorChrome={rightPanelTab !== "animation-properties"}
+      multiSelectCount={domEditGroupSelections.length}
+      multiSelectedElements={domEditGroupSelections}
+      onGroupSelection={handleGroupSelection}
+      onHideAllSelected={handleHideAllSelected}
+      copiedAgentPrompt={copiedAgentPrompt}
+      onClearSelection={clearDomSelection}
+      onToggleElementHidden={onToggleElementHidden}
+      onUngroup={handleUngroupSelection}
+      onSetStyle={handleDomStyleCommit}
+      onSetAttribute={handleDomAttributeCommit}
+      onSetAttributes={handleDomAttributesCommit}
+      onSetAttributeLive={handleDomAttributeLiveCommit}
+      onApplyColorGradingScope={handleApplyColorGradingScope}
+      onSetHtmlAttribute={handleDomHtmlAttributeCommit}
+      onRemoveBackground={handleRemoveBackground}
+      onSetManualOffset={handleDomPathOffsetCommit}
+      onSetManualSize={handleDomBoxSizeCommit}
+      onSetManualRotation={handleDomRotationCommit}
+      onSetText={handleDomTextCommit}
+      onSetTextFieldStyle={handleDomTextFieldStyleCommit}
+      onAddTextField={handleDomAddTextField}
+      onRemoveTextField={handleDomRemoveTextField}
+      onAskAgent={
+        singleDomEditSelection
+          ? () => postVideoAiSelectionToHost(singleDomEditSelection)
+          : undefined
+      }
+      onImportAssets={handleImportFiles}
+      fontAssets={fontAssets}
+      onImportFonts={handleImportFonts}
+      previewIframeRef={previewIframeRef}
+      gsapAnimations={selectedGsapAnimations}
+      gsapMultipleTimelines={gsapMultipleTimelines}
+      gsapUnsupportedTimelinePattern={gsapUnsupportedTimelinePattern}
+      onUpdateGsapProperty={handleGsapUpdateProperty}
+      onUpdateGsapMeta={handleGsapUpdateMeta}
+      onDeleteGsapAnimation={handleGsapDeleteAnimation}
+      onAddGsapProperty={handleGsapAddProperty}
+      onRemoveGsapProperty={handleGsapRemoveProperty}
+      onUpdateGsapFromProperty={handleGsapUpdateFromProperty}
+      onAddGsapFromProperty={handleGsapAddFromProperty}
+      onRemoveGsapFromProperty={handleGsapRemoveFromProperty}
+      onAddGsapAnimation={handleGsapAddAnimation}
+      onMutateMotion={handleMotionMutation}
+      onCommitAnimatedProperty={commitAnimatedProperty}
+      onCommitAnimatedProperties={commitAnimatedProperties}
+      onAddKeyframe={handleGsapAddKeyframe}
+      onRemoveKeyframe={handleGsapRemoveKeyframe}
+      onConvertToKeyframes={(animId, duration) =>
+        handleGsapConvertToKeyframes(animId, undefined, duration)
+      }
+      onSeekToTime={(t) => usePlayerStore.getState().requestSeek(t)}
+      onSetArcPath={handleSetArcPath}
+      onUpdateArcSegment={handleUpdateArcSegment}
+      onUnroll={handleUnroll}
+      onUpdateKeyframeEase={handleUpdateKeyframeEase}
+      onSetAllKeyframeEases={handleSetAllKeyframeEases}
+      recordingState={recordingState}
+      recordingDuration={recordingDuration}
+      onToggleRecording={onToggleRecording}
+    />
+  );
+  const propertyPanel = singleDomEditSelection ? (
     <DesignPanelPromoteProvider
-      selection={domEditGroupSelections.length > 1 ? null : domEditSelection}
+      selection={singleDomEditSelection}
       projectId={projectId}
       activeCompPath={activeCompPath}
       showToast={showToast}
@@ -296,68 +418,52 @@ export function StudioRightPanel({
       domEditSaveTimestampRef={domEditSaveTimestampRef}
       forceReloadSharedSdkSession={forceReloadSdkSession}
     >
-      <PropertyPanel
-        projectId={projectId}
-        projectDir={projectDir}
-        assets={assets}
-        element={domEditGroupSelections.length > 1 ? null : domEditSelection}
-        multiSelectCount={domEditGroupSelections.length}
-        multiSelectedElements={domEditGroupSelections}
-        onGroupSelection={handleGroupSelection}
-        onHideAllSelected={handleHideAllSelected}
-        copiedAgentPrompt={copiedAgentPrompt}
-        onClearSelection={clearDomSelection}
-        onToggleElementHidden={onToggleElementHidden}
-        onUngroup={handleUngroupSelection}
-        onSetStyle={handleDomStyleCommit}
-        onSetAttribute={handleDomAttributeCommit}
-        onSetAttributes={handleDomAttributesCommit}
-        onSetAttributeLive={handleDomAttributeLiveCommit}
-        onApplyColorGradingScope={handleApplyColorGradingScope}
-        onSetHtmlAttribute={handleDomHtmlAttributeCommit}
-        onRemoveBackground={handleRemoveBackground}
-        onSetManualOffset={handleDomPathOffsetCommit}
-        onSetManualSize={handleDomBoxSizeCommit}
-        onSetManualRotation={handleDomRotationCommit}
-        onSetText={handleDomTextCommit}
-        onSetTextFieldStyle={handleDomTextFieldStyleCommit}
-        onAddTextField={handleDomAddTextField}
-        onRemoveTextField={handleDomRemoveTextField}
-        onAskAgent={handleAskAgent}
-        onImportAssets={handleImportFiles}
-        fontAssets={fontAssets}
-        onImportFonts={handleImportFonts}
-        previewIframeRef={previewIframeRef}
-        gsapAnimations={selectedGsapAnimations}
-        gsapMultipleTimelines={gsapMultipleTimelines}
-        gsapUnsupportedTimelinePattern={gsapUnsupportedTimelinePattern}
-        onUpdateGsapProperty={handleGsapUpdateProperty}
-        onUpdateGsapMeta={handleGsapUpdateMeta}
-        onDeleteGsapAnimation={handleGsapDeleteAnimation}
-        onAddGsapProperty={handleGsapAddProperty}
-        onRemoveGsapProperty={handleGsapRemoveProperty}
-        onUpdateGsapFromProperty={handleGsapUpdateFromProperty}
-        onAddGsapFromProperty={handleGsapAddFromProperty}
-        onRemoveGsapFromProperty={handleGsapRemoveFromProperty}
-        onAddGsapAnimation={handleGsapAddAnimation}
-        onCommitAnimatedProperty={commitAnimatedProperty}
-        onCommitAnimatedProperties={commitAnimatedProperties}
-        onAddKeyframe={handleGsapAddKeyframe}
-        onRemoveKeyframe={handleGsapRemoveKeyframe}
-        onConvertToKeyframes={(animId, duration) =>
-          handleGsapConvertToKeyframes(animId, undefined, duration)
-        }
-        onSeekToTime={(t) => usePlayerStore.getState().requestSeek(t)}
-        onSetArcPath={handleSetArcPath}
-        onUpdateArcSegment={handleUpdateArcSegment}
-        onUnroll={handleUnroll}
-        onUpdateKeyframeEase={handleUpdateKeyframeEase}
-        onSetAllKeyframeEases={handleSetAllKeyframeEases}
-        recordingState={recordingState}
-        recordingDuration={recordingDuration}
-        onToggleRecording={onToggleRecording}
-      />
+      {propertyPanelContent}
     </DesignPanelPromoteProvider>
+  ) : (
+    propertyPanelContent
+  );
+  const animationPanelActive =
+    rightPanelTab === "animation" || rightPanelTab === "animation-properties";
+  const hasSelectedSemanticMotion = selectedGsapAnimations.some(
+    (animation) => readMotionInstanceFromExtras(animation.extras) !== null,
+  );
+  const showAnimationProperties =
+    rightPanelTab === "animation-properties" &&
+    (pendingMotionDraft !== null || hasSelectedSemanticMotion);
+  const selectAnimationTemplate = useCallback(
+    (draft: AnimationTemplateDraft) => {
+      setPendingMotionDraft(draft);
+      setRightPanelTab("animation-properties");
+    },
+    [setRightPanelTab],
+  );
+  const currentAnimationSelectionKey = animationSelectionKey(domEditSelection);
+  const pendingAnimationSelectionKey = animationSelectionKey(pendingMotionDraft?.selection);
+  useEffect(() => {
+    if (
+      pendingMotionDraft &&
+      currentAnimationSelectionKey &&
+      currentAnimationSelectionKey !== pendingAnimationSelectionKey
+    ) {
+      setPendingMotionDraft(null);
+    }
+  }, [currentAnimationSelectionKey, pendingAnimationSelectionKey, pendingMotionDraft]);
+
+  const animationPanel = (
+    <div className="h-full min-h-0 overflow-hidden">
+      {showAnimationProperties ? (
+        <AnimationPropertiesPanel
+          draft={pendingMotionDraft}
+          element={singleDomEditSelection}
+          animations={selectedGsapAnimations}
+          onMutate={handleMotionMutation}
+          onApplied={() => setPendingMotionDraft(null)}
+        />
+      ) : (
+        <AnimationTemplatesTab onSelectTemplate={selectAnimationTemplate} />
+      )}
+    </div>
   );
 
   const renderQueuePanel = (
@@ -400,36 +506,60 @@ export function StudioRightPanel({
     />
   );
 
+  const postHostPanel = useCallback(
+    (panel: "voice" | "style") => {
+      if (window.parent !== window) {
+        window.parent.postMessage(
+          {
+            type: "ipollowork:video-studio-panel",
+            projectId,
+            panel,
+            width: rightWidth,
+          },
+          "*",
+        );
+      }
+    },
+    [projectId, rightWidth],
+  );
+
   const openHostPanel = (panel: "voice" | "style") => {
     setRightPanelTab(panel);
-    if (window.parent !== window) {
-      window.parent.postMessage({
-        type: "ipollowork:video-studio-panel",
-        projectId,
-        panel,
-      }, "*");
-    }
   };
 
   const closeHostPanel = useCallback(() => {
     if (window.parent !== window) {
-      window.parent.postMessage({
-        type: "ipollowork:video-studio-panel",
-        projectId,
-        panel: null,
-      }, "*");
+      window.parent.postMessage(
+        {
+          type: "ipollowork:video-studio-panel",
+          projectId,
+          panel: null,
+        },
+        "*",
+      );
     }
   }, [projectId]);
 
   useEffect(() => {
-    if (rightPanelTab !== "voice" && rightPanelTab !== "style") {
-      closeHostPanel();
+    if (rightPanelTab === "voice" || rightPanelTab === "style") {
+      postHostPanel(rightPanelTab);
+      return;
     }
-  }, [closeHostPanel, rightPanelTab]);
+    closeHostPanel();
+  }, [closeHostPanel, postHostPanel, rightPanelTab]);
 
   useEffect(() => () => closeHostPanel(), [closeHostPanel]);
 
-  const selectStudioPanel = (panel: "design" | "assets" | "catalog" | "effects") => {
+  const selectStudioPanel = (
+    panel:
+      | "design"
+      | "animation"
+      | "animation-properties"
+      | "illustration"
+      | "assets"
+      | "catalog"
+      | "effects",
+  ) => {
     closeHostPanel();
     setRightPanelTab(panel);
   };
@@ -438,14 +568,13 @@ export function StudioRightPanel({
 
   return (
     <>
-      {/* Vertical resize divider: 3px visible seam, 8px pointer-capture zone via
-          the absolutely-positioned inner hit area. */}
+      {/* 0.5px visual separator with an expanded pointer-capture zone. */}
       <div
         role="separator"
         aria-label={t("right.resizeInspector")}
         aria-orientation="vertical"
         tabIndex={0}
-        className="group relative w-[3px] flex-shrink-0 cursor-col-resize outline-none focus-visible:bg-studio-accent/20"
+        className="group relative w-[0.5px] flex-shrink-0 cursor-ew-resize outline-none focus-visible:bg-studio-accent/20"
         style={{ touchAction: "none" }}
         onPointerDown={(e) => handlePanelResizeStart("right", e)}
         onPointerMove={handlePanelResizeMove}
@@ -456,127 +585,140 @@ export function StudioRightPanel({
           e.preventDefault();
           // Panel is right-anchored: ArrowLeft grows it, ArrowRight shrinks it.
           const delta = e.key === "ArrowLeft" ? 16 : -16;
-          setRightWidth(Math.max(160, Math.min(600, rightWidth + delta)));
+          setRightWidth(Math.max(MIN_RIGHT_PANEL_WIDTH, Math.min(600, rightWidth + delta)));
         }}
       >
-        {/* Expanded hit zone: 8px wide, centered on the 3px seam */}
-        <div className="absolute inset-y-0 -left-[2.5px] w-2" />
-        {/* Visible hairline */}
-        <div className="absolute top-1/2 left-0 h-[52px] w-[3px] -translate-y-1/2 bg-white/12 transition-colors group-hover:bg-white/18 group-active:bg-white/24" />
+        <div className="absolute inset-y-0 left-1/2 w-2 -translate-x-1/2" />
+        <div className="absolute inset-y-0 left-0 w-[0.5px] bg-[var(--hf-studio-divider)] group-focus-visible:bg-studio-accent/60" />
       </div>
       <div
-        className="flex min-w-0 flex-shrink-0 flex-col overflow-hidden rounded-lg border border-neutral-800 bg-neutral-900"
-        style={{ width: rightWidth }}
+        className="flex min-w-0 flex-shrink-0 flex-col overflow-hidden border-[0.5px] border-[var(--hf-studio-divider)] bg-panel-bg"
+        style={{ width: rightWidth, minWidth: MIN_RIGHT_PANEL_WIDTH }}
       >
         {captionEditMode ? (
-          <CaptionPropertyPanel iframeRef={previewIframeRef} />
+          <Suspense
+            fallback={
+              <div className="h-full animate-pulse bg-panel-bg motion-reduce:animate-none" />
+            }
+          >
+            <CaptionPropertyPanel iframeRef={previewIframeRef} />
+          </Suspense>
         ) : (
           <>
-            <div className="flex min-w-0 items-center gap-1 overflow-hidden border-b border-neutral-800 px-3 py-2">
+            <div className="relative z-30 flex h-[49px] min-w-0 items-center overflow-hidden border-b-[0.5px] border-[var(--hf-studio-divider)] bg-panel-bg pl-3 pr-11">
               {exportDrawer ? (
                 <span className="min-w-0 flex-1 truncate text-xs font-semibold text-neutral-200">
                   {t("right.renders")}
                 </span>
-              ) : (<>
-              {STUDIO_INSPECTOR_PANELS_ENABLED && (
-                <>
-                  <PanelTabButton
-                    label={t("right.design")}
-                    tooltip={t("right.designTooltip")}
-                    active={inspectorTabActive}
-                    onClick={() => selectStudioPanel("design")}
-                  />
-                </>
+              ) : (
+                <div className="hf-inspector-tabs-scroll flex min-w-0 flex-1 items-center overflow-x-auto overflow-y-hidden pb-1">
+                  <div className="flex w-max items-center gap-[5px]">
+                    {STUDIO_INSPECTOR_PANELS_ENABLED && (
+                      <PanelTabButton
+                        label={t("right.design")}
+                        tooltip={t("right.designTooltip")}
+                        active={inspectorTabActive}
+                        onClick={() => selectStudioPanel("design")}
+                      />
+                    )}
+                    <PanelTabButton
+                      label={t("right.style")}
+                      tooltip={t("right.styleTooltip")}
+                      active={rightPanelTab === "style"}
+                      onClick={() => openHostPanel("style")}
+                    />
+                    <PanelTabButton
+                      label={t("right.animation")}
+                      tooltip={t("right.animationTooltip")}
+                      active={animationPanelActive}
+                      onClick={() => {
+                        setPendingMotionDraft(null);
+                        selectStudioPanel("animation");
+                      }}
+                    />
+                    <PanelTabButton
+                      label={t("right.catalog")}
+                      tooltip={t("right.catalogTooltip")}
+                      active={rightPanelTab === "catalog" || rightPanelTab === "effects"}
+                      onClick={() => selectStudioPanel("catalog")}
+                    />
+                    <PanelTabButton
+                      label={t("right.voice")}
+                      tooltip={t("right.voiceTooltip")}
+                      active={rightPanelTab === "voice"}
+                      onClick={() => openHostPanel("voice")}
+                    />
+                    <PanelTabButton
+                      label={t("right.illustration")}
+                      tooltip={t("right.illustrationTooltip")}
+                      active={rightPanelTab === "illustration"}
+                      onClick={() => selectStudioPanel("illustration")}
+                    />
+                    <PanelTabButton
+                      label={t("right.assets")}
+                      tooltip={t("right.assetsTooltip")}
+                      active={rightPanelTab === "assets"}
+                      onClick={() => selectStudioPanel("assets")}
+                    />
+                  </div>
+                </div>
               )}
-              <PanelTabButton
-                label={t("right.voice")}
-                tooltip={t("right.voiceTooltip")}
-                active={rightPanelTab === "voice"}
-                onClick={() => openHostPanel("voice")}
-              />
-              <PanelTabButton
-                label={t("right.style")}
-                tooltip={t("right.styleTooltip")}
-                active={rightPanelTab === "style"}
-                onClick={() => openHostPanel("style")}
-              />
-              <PanelTabButton
-                label={t("right.assets")}
-                tooltip={t("right.assetsTooltip")}
-                active={rightPanelTab === "assets"}
-                onClick={() => selectStudioPanel("assets")}
-              />
-              <PanelTabButton
-                label={t("right.catalog")}
-                tooltip={t("right.catalogTooltip")}
-                active={rightPanelTab === "catalog" || rightPanelTab === "effects"}
-                onClick={() => selectStudioPanel("catalog")}
-              />
-              </>)}
               <button
                 type="button"
-                onClick={() => { closeHostPanel(); setRightCollapsed(true); }}
-                className="ml-auto flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-md border border-transparent text-neutral-500 transition-colors hover:border-neutral-700 hover:bg-neutral-800 hover:text-neutral-200 active:scale-[0.96]"
-                aria-label="Close right panel"
-                title="Close right panel"
+                onClick={() => {
+                  closeHostPanel();
+                  setRightCollapsed(true);
+                }}
+                className="absolute right-3 top-1/2 z-20 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-md border border-transparent bg-panel-bg text-neutral-500 transition-colors hover:border-neutral-700 hover:bg-panel-input hover:text-neutral-200 active:scale-[0.96]"
+                aria-label={tx("Close right panel")}
+                title={tx("Close right panel")}
               >
                 <X size={14} weight="bold" />
               </button>
             </div>
-            <div className="min-h-0 min-w-0 flex-1 overflow-hidden">
-              {rightPanelTab === "block-params" && activeBlockParams ? (
-                <BlockParamsPanel
-                  blockName={activeBlockParams.blockName}
-                  blockTitle={activeBlockParams.blockTitle}
-                  params={activeBlockParams.params}
-                  compositionPath={activeBlockParams.compositionPath}
-                  onClose={onCloseBlockParams ?? (() => {})}
-                />
-              ) : rightPanelTab === "catalog" || rightPanelTab === "effects" ? (
-                <BlocksTab
-                  key="animation"
-                  page="animation"
-                  onAddBlock={onAddBlock}
-                  onPreviewBlock={onPreviewBlock}
-                />
-              ) : rightPanelTab === "assets" ? (
-                <AssetsTab
-                  projectId={projectId}
-                  assets={assets}
-                  onImport={handleImportFiles}
-                  onDelete={handleDeleteFile}
-                  onRename={handleRenameFile}
-                />
-              ) : rightPanelTab === "voice" || rightPanelTab === "style" ? (
-                <div className="grid h-full place-items-center px-6 text-center text-xs text-neutral-500">
-                  {rightPanelTab === "voice" ? t("right.voiceTooltip") : t("right.styleTooltip")}
+            <div className="min-h-0 min-w-0 flex-1 overflow-hidden pt-3">
+              <Suspense
+                fallback={
+                  <div className="h-full animate-pulse bg-panel-bg motion-reduce:animate-none" />
+                }
+              >
+                <div key={rightPanelTab} className="h-full min-h-0 min-w-0 overflow-hidden">
+                  {rightPanelTab === "block-params" && activeBlockParams ? (
+                    <BlockParamsPanel
+                      blockName={activeBlockParams.blockName}
+                      blockTitle={activeBlockParams.blockTitle}
+                      params={activeBlockParams.params}
+                      compositionPath={activeBlockParams.compositionPath}
+                      onClose={onCloseBlockParams ?? (() => {})}
+                    />
+                  ) : rightPanelTab === "catalog" || rightPanelTab === "effects" ? (
+                    <BlocksTab page="effects" onAddBlock={onAddBlock} />
+                  ) : animationPanelActive ? (
+                    animationPanel
+                  ) : rightPanelTab === "illustration" ? (
+                    <IllustrationTab />
+                  ) : rightPanelTab === "assets" ? (
+                    <AssetsTab
+                      projectId={projectId}
+                      assets={assets}
+                      onRefresh={refreshFileTree}
+                      onImport={handleImportFiles}
+                      onDelete={handleDeleteFile}
+                      onRename={handleRenameFile}
+                    />
+                  ) : rightPanelTab === "voice" || rightPanelTab === "style" ? (
+                    <div className="grid h-full place-items-center px-6 text-center text-xs text-neutral-500">
+                      {rightPanelTab === "voice"
+                        ? t("right.voiceTooltip")
+                        : t("right.styleTooltip")}
+                    </div>
+                  ) : inspectorTabActive ? (
+                    propertyPanel
+                  ) : (
+                    renderQueuePanel
+                  )}
                 </div>
-              ) : inspectorTabActive ? (
-                <div ref={splitContainerRef} className="flex h-full min-h-0 min-w-0 flex-col">
-                  <div
-                    className="min-h-[120px] overflow-hidden"
-                    style={{ flexBasis: `${layersPanePercent}%`, flexShrink: 0 }}
-                  >
-                    <LayersPanel />
-                  </div>
-                  <div
-                    role="separator"
-                    aria-label={t("right.resizePanes")}
-                    aria-orientation="horizontal"
-                    className="group flex h-2 flex-shrink-0 cursor-row-resize items-center justify-center border-y border-neutral-800 bg-neutral-900"
-                    style={{ touchAction: "none" }}
-                    onPointerDown={handleInspectorSplitResizeStart}
-                    onPointerMove={handleInspectorSplitResizeMove}
-                    onPointerUp={handleInspectorSplitResizeEnd}
-                    onPointerCancel={handleInspectorSplitResizeEnd}
-                  >
-                    <div className="h-px w-10 rounded-full bg-white/12 transition-colors group-hover:bg-white/24 group-active:bg-studio-accent/70" />
-                  </div>
-                  <div className="min-h-0 flex-1 overflow-hidden">{propertyPanel}</div>
-                </div>
-              ) : (
-                renderQueuePanel
-              )}
+              </Suspense>
             </div>
           </>
         )}

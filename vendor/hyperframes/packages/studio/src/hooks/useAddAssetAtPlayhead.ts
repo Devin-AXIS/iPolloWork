@@ -11,11 +11,12 @@ export function useAddAssetAtPlayhead(
   ) => unknown,
 ) {
   return useCallback(
-    (assetPath: string) =>
-      handleTimelineAssetDrop(assetPath, {
+    (assetPath: string): void => {
+      void handleTimelineAssetDrop(assetPath, {
         start: usePlayerStore.getState().currentTime,
         track: 0,
-      }),
+      });
+    },
     [handleTimelineAssetDrop],
   );
 }

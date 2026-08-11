@@ -1,6 +1,11 @@
 import { useState, useCallback, useRef, useEffect, memo } from "react";
+import { createPortal } from "react-dom";
 import { formatTime, frameToSeconds } from "../lib/time";
 import { Tooltip } from "../../components/ui";
+import keyboardIconSrc from "../../icons/figmaToolbarKeyboard.svg?url";
+import { useStudioI18n } from "../../i18n";
+
+const SHORTCUTS_TOOLBAR_SLOT_ID = "hf-shortcuts-toolbar-slot";
 
 const SHORTCUT_SECTIONS = [
   {
@@ -100,9 +105,25 @@ export const ShortcutsPanel = memo(function ShortcutsPanel({
   setOutPoint,
   onSeek,
 }: ShortcutsPanelProps) {
+  const { tx } = useStudioI18n();
   const [showShortcuts, setShowShortcuts] = useState(false);
   const [jumpFrame, setJumpFrame] = useState("");
+  const [toolbarSlot, setToolbarSlot] = useState<HTMLElement | null>(null);
   const shortcutsPanelRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const findSlot = () => {
+      const slot = document.getElementById(SHORTCUTS_TOOLBAR_SLOT_ID);
+      setToolbarSlot(slot);
+      return Boolean(slot);
+    };
+    if (findSlot()) return;
+    const observer = new MutationObserver(() => {
+      if (findSlot()) observer.disconnect();
+    });
+    observer.observe(document.body, { childList: true, subtree: true });
+    return () => observer.disconnect();
+  }, []);
 
   useEffect(() => {
     if (!showShortcuts) return;
@@ -141,48 +162,43 @@ export const ShortcutsPanel = memo(function ShortcutsPanel({
     [commitJumpFrame],
   );
 
-  return (
+  const panel = (
     <div ref={shortcutsPanelRef} className="relative flex-shrink-0">
-      <Tooltip label="Shortcuts and tools">
+      <Tooltip label={tx("Shortcuts and tools")}>
         <button
           type="button"
           onClick={() => setShowShortcuts((v) => !v)}
-          className={`w-6 h-6 flex items-center justify-center rounded border transition-colors ${
+          className={`flex h-6 w-6 items-center justify-center rounded transition-colors outline-none focus-visible:ring-2 focus-visible:ring-[#858a94]/35 ${
             showShortcuts
-              ? "border-neutral-600 text-neutral-200 bg-neutral-800"
-              : "border-neutral-800 text-neutral-600 hover:text-neutral-300 hover:border-neutral-600"
+              ? "bg-[#f2f2f0]"
+              : "hover:bg-[#f2f2f0]"
           }`}
-          aria-label="Shortcuts and tools"
+          aria-label={tx("Shortcuts and tools")}
           aria-expanded={showShortcuts}
         >
-          <svg
-            width="11"
-            height="11"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.75"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            aria-hidden="true"
-          >
-            <rect x="2" y="4" width="20" height="16" rx="2" />
-            <path d="M6 8h.01M10 8h.01M14 8h.01M18 8h.01M6 12h.01M10 12h.01M14 12h.01M18 12h.01M8 16h8" />
-          </svg>
+          <img src={keyboardIconSrc} width="16" height="16" alt="" aria-hidden="true" />
         </button>
       </Tooltip>
       {showShortcuts && (
         <div
-          className="hf-shortcuts-panel absolute bottom-full right-0 mb-2 z-50 rounded-lg shadow-xl min-w-[220px] overflow-y-auto"
+          className={`hf-shortcuts-panel z-[100] min-w-[220px] overflow-y-auto rounded-lg shadow-xl ${
+            toolbarSlot ? "fixed" : "absolute bottom-full right-0 mb-2"
+          }`}
           style={{
             background: "var(--hf-shortcuts-bg)",
             border: "1px solid var(--hf-shortcuts-border)",
             maxHeight: "min(280px, calc(100vh - 80px))",
+            ...(toolbarSlot && shortcutsPanelRef.current
+              ? {
+                  bottom: window.innerHeight - shortcutsPanelRef.current.getBoundingClientRect().top + 8,
+                  right: window.innerWidth - shortcutsPanelRef.current.getBoundingClientRect().right,
+                }
+              : {}),
           }}
         >
           <div className="px-3 pt-3 pb-2.5">
             <p className="text-[9px] font-medium text-neutral-500 uppercase tracking-wider mb-1.5">
-              Jump to frame
+              {tx("Jump to frame")}
             </p>
             <form onSubmit={handleJumpSubmit} className="flex items-center gap-1.5">
               <input
@@ -191,19 +207,19 @@ export const ShortcutsPanel = memo(function ShortcutsPanel({
                 disabled={disabled}
                 inputMode="numeric"
                 pattern="[0-9]*"
-                aria-label="Jump to frame"
-                placeholder="frame number"
+                aria-label={tx("Jump to frame")}
+                placeholder={tx("frame number")}
                 className="h-6 flex-1 rounded border border-neutral-700 bg-neutral-900 px-2 text-[10px] font-mono tabular-nums text-neutral-200 outline-none transition-colors placeholder:text-neutral-600 focus:border-studio-accent/60"
                 onKeyDown={handleJumpKeyDown}
                 onBlur={commitJumpFrame}
               />
-              <Tooltip label="Jump to frame">
+              <Tooltip label={tx("Jump to frame")}>
                 <button
                   type="submit"
                   disabled={disabled}
                   className="h-6 px-2 rounded border border-neutral-700 text-[10px] text-neutral-300 transition-colors hover:border-neutral-500 hover:bg-neutral-800 disabled:opacity-40"
                 >
-                  Go
+                  {tx("Go")}
                 </button>
               </Tooltip>
             </form>
@@ -211,7 +227,7 @@ export const ShortcutsPanel = memo(function ShortcutsPanel({
           <div className="hf-shortcuts-divider" />
           <div className="px-3 pt-2.5 pb-2">
             <p className="text-[9px] font-medium text-neutral-500 uppercase tracking-wider mb-1.5">
-              Work area
+              {tx("Work area")}
             </p>
             <div className="flex flex-col gap-1">
               <div className="flex items-center justify-between gap-2">
@@ -222,7 +238,7 @@ export const ShortcutsPanel = memo(function ShortcutsPanel({
                   >
                     I
                   </span>
-                  <span className="text-[10px] text-neutral-400">In-point</span>
+                  <span className="text-[10px] text-neutral-400">{tx("In-point")}</span>
                 </div>
                 <div className="flex items-center gap-1.5">
                   {inPoint !== null ? (
@@ -230,12 +246,12 @@ export const ShortcutsPanel = memo(function ShortcutsPanel({
                       <span className="font-mono text-[10px] text-neutral-300">
                         {formatTime(inPoint)}
                       </span>
-                      <Tooltip label="Clear in-point">
+                      <Tooltip label={tx("Clear in-point")}>
                         <button
                           type="button"
                           onClick={() => setInPoint(null)}
                           className="w-4 h-4 flex items-center justify-center rounded text-neutral-500 hover:text-neutral-200 transition-colors"
-                          aria-label="Clear in-point"
+                          aria-label={tx("Clear in-point")}
                         >
                           <svg
                             width="8"
@@ -263,7 +279,7 @@ export const ShortcutsPanel = memo(function ShortcutsPanel({
                   >
                     O
                   </span>
-                  <span className="text-[10px] text-neutral-400">Out-point</span>
+                  <span className="text-[10px] text-neutral-400">{tx("Out-point")}</span>
                 </div>
                 <div className="flex items-center gap-1.5">
                   {outPoint !== null ? (
@@ -271,12 +287,12 @@ export const ShortcutsPanel = memo(function ShortcutsPanel({
                       <span className="font-mono text-[10px] text-neutral-300">
                         {formatTime(outPoint)}
                       </span>
-                      <Tooltip label="Clear out-point">
+                      <Tooltip label={tx("Clear out-point")}>
                         <button
                           type="button"
                           onClick={() => setOutPoint(null)}
                           className="w-4 h-4 flex items-center justify-center rounded text-neutral-500 hover:text-neutral-200 transition-colors"
-                          aria-label="Clear out-point"
+                          aria-label={tx("Clear out-point")}
                         >
                           <svg
                             width="8"
@@ -303,7 +319,7 @@ export const ShortcutsPanel = memo(function ShortcutsPanel({
             {SHORTCUT_SECTIONS.map((section) => (
               <div key={section.title}>
                 <p className="text-[9px] font-medium text-neutral-500 uppercase tracking-wider mb-1.5">
-                  {section.title}
+                  {tx(section.title)}
                 </p>
                 <div className="flex flex-col gap-1">
                   {section.hints.map((hint) => (
@@ -314,7 +330,7 @@ export const ShortcutsPanel = memo(function ShortcutsPanel({
                       >
                         {hint.key}
                       </span>
-                      <span className="text-[10px] text-neutral-400">{hint.label}</span>
+                      <span className="text-[10px] text-neutral-400">{tx(hint.label)}</span>
                     </div>
                   ))}
                 </div>
@@ -325,4 +341,5 @@ export const ShortcutsPanel = memo(function ShortcutsPanel({
       )}
     </div>
   );
+  return toolbarSlot ? createPortal(panel, toolbarSlot) : panel;
 });

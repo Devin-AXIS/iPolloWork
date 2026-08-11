@@ -22,15 +22,13 @@ import { MediaSection } from "./propertyPanelMediaSection";
 import { ColorGradingSection } from "./propertyPanelColorGradingSection";
 import { domEditSelectionToFacts } from "./domEditingLayers";
 import { TextSection, StyleSections } from "./propertyPanelSections";
-import { GsapAnimationSection } from "./GsapAnimationSection";
 import { PropertyPanel3dTransform } from "./propertyPanel3dTransform";
 import { KeyframeNavigation } from "./KeyframeNavigation";
 import {
   STUDIO_FLAT_INSPECTOR_ENABLED,
-  STUDIO_GSAP_PANEL_ENABLED,
   STUDIO_KEYFRAMES_ENABLED,
 } from "./manualEditingAvailability";
-import { PropertyPanelFlat } from "./PropertyPanelFlat";
+import { PropertyPanelFlat, resolveInspectorElementKind } from "./PropertyPanelFlat";
 import { createGsapLivePreview } from "./gsapLivePreview";
 import { usePlayerStore, liveTime } from "../../player";
 import { TimingSection } from "./propertyPanelTimingSection";
@@ -117,16 +115,20 @@ export const PropertyPanel = memo(function PropertyPanel(props: PropertyPanelPro
   const { showToast } = useStudioShellContext();
   const [clipboardCopied, setClipboardCopied] = useState(false);
   const clipboardTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
-  const storeTime = usePlayerStore((s) => s.currentTime);
-  const isPlaying = usePlayerStore((s) => s.isPlaying);
-  const timelineElements = usePlayerStore((s) => s.elements);
-  const selectedElementId = usePlayerStore((s) => s.selectedElementId);
-  const selectedElementHidden = isSelectedElementHidden(timelineElements, selectedElementId);
+  // The inspector's empty state has no time-dependent content. Returning
+  // stable selector values here keeps opening Properties during playback from
+  // subscribing the empty panel to player ticks or timeline-array updates.
+  const storeTime = usePlayerStore((s) => (element ? s.currentTime : 0));
+  const isPlaying = usePlayerStore((s) => (element ? s.isPlaying : false));
+  const selectedElementId = usePlayerStore((s) => (element ? s.selectedElementId : null));
+  const selectedElementHidden = usePlayerStore((s) =>
+    element ? isSelectedElementHidden(s.elements, s.selectedElementId) : false,
+  );
   const visibilityToggleLabel = selectedElementHidden ? "Show element" : "Hide element";
   const liveTimeRef = useRef(storeTime);
   const [, forceRender] = useState(0);
   useEffect(() => {
-    if (!isPlaying) return;
+    if (!isPlaying || !element) return;
     let timerId: ReturnType<typeof setTimeout> | 0 = 0;
     const unsub = liveTime.subscribe((t) => {
       liveTimeRef.current = t;
@@ -265,24 +267,20 @@ export const PropertyPanel = memo(function PropertyPanel(props: PropertyPanelPro
     clipboardTimerRef.current = setTimeout(() => setClipboardCopied(false), 1500);
   };
 
-  if (STUDIO_FLAT_INSPECTOR_ENABLED) {
+  if (STUDIO_FLAT_INSPECTOR_ENABLED || props.inspectorMode === "animation") {
     // Forward the raw props (handlers, ids, assets, recording, fonts, etc.) and
     // the values the legacy path already computed above (so they aren't derived
     // twice). PropertyPanelFlat owns the one-open group state.
     return (
       <PropertyPanelFlat
         {...props}
-        key={selectionIdentityKey(element)}
+        key={resolveInspectorElementKind(element.tagName, sections.text)}
         element={element}
         styles={styles}
         sections={sections}
         sourceLabel={sourceLabel}
         gsapBorderRadius={gsapBorderRadius}
         showEditableSections={showEditableSections}
-        selectedElementHidden={selectedElementHidden}
-        selectedElementId={selectedElementId}
-        clipboardCopied={clipboardCopied}
-        onCopyElementInfo={handleCopyElementInfo}
         displayX={displayX}
         displayY={displayY}
         displayW={displayW}
@@ -306,7 +304,10 @@ export const PropertyPanel = memo(function PropertyPanel(props: PropertyPanelPro
   }
 
   const classicPanel = (
-    <div className="flex h-full min-h-0 flex-col overflow-hidden bg-panel-bg text-panel-text-1">
+    <div
+      className="flex h-full min-h-0 flex-col overflow-hidden bg-panel-bg text-panel-text-1"
+      data-preserve-studio-selection="true"
+    >
       <DesignPanelInputProvider section="header">
         <div className="px-4 py-3">
           <div className="flex items-center justify-between gap-4">
@@ -544,37 +545,6 @@ export const PropertyPanel = memo(function PropertyPanel(props: PropertyPanelPro
             </div>
           </Section>
         )}
-
-        {STUDIO_GSAP_PANEL_ENABLED &&
-          onUpdateGsapProperty &&
-          onUpdateGsapMeta &&
-          onDeleteGsapAnimation &&
-          onAddGsapProperty &&
-          onAddGsapAnimation && (
-            <GsapAnimationSection
-              animations={gsapAnimations}
-              ownerId={element.id}
-              ownerRange={
-                elDuration > 0 ? { start: elStart, duration: elDuration } : undefined
-              }
-              multipleTimelines={gsapMultipleTimelines}
-              unsupportedTimelinePattern={gsapUnsupportedTimelinePattern}
-              onUpdateProperty={onUpdateGsapProperty}
-              onUpdateMeta={onUpdateGsapMeta}
-              onDeleteAnimation={onDeleteGsapAnimation}
-              onAddProperty={onAddGsapProperty}
-              onRemoveProperty={onRemoveGsapProperty ?? (() => {})}
-              onUpdateFromProperty={onUpdateGsapFromProperty}
-              onAddFromProperty={onAddGsapFromProperty}
-              onRemoveFromProperty={onRemoveGsapFromProperty}
-              onAddAnimation={onAddGsapAnimation}
-              onSetArcPath={onSetArcPath}
-              onUpdateArcSegment={onUpdateArcSegment}
-              onUnroll={onUnroll}
-              onUpdateKeyframeEase={onUpdateKeyframeEase}
-              onSetAllKeyframeEases={onSetAllKeyframeEases}
-            />
-          )}
 
         {showEditableSections && (
           <StyleSections

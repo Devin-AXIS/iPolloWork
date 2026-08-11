@@ -1,7 +1,14 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
+import { formatProcessDuration } from "../src/components/chat/utils";
 
 describe("session output issue regressions", () => {
+  test("process duration uses a compact clock format", () => {
+    expect(formatProcessDuration(8_400)).toBe("00:08");
+    expect(formatProcessDuration(83_000)).toBe("01:23");
+    expect(formatProcessDuration(3_723_000)).toBe("1:02:03");
+  });
+
   test("session header offers full-session Markdown export", () => {
     const source = readFileSync(
       new URL("../src/react-app/domains/session/chat/session-page.tsx", import.meta.url),
@@ -94,6 +101,8 @@ describe("session output issue regressions", () => {
     expect(source).toContain("const isLatestAssistantGroup = items.some");
     expect(source).toContain("artifactFiles={isLatestAssistantGroup ? artifactFiles : undefined}");
     expect(source).toContain('title={showLatestArtifactsTitle ? t("session.outputs.latest_turn") : undefined}');
+    expect(source).toContain('status === "submitted" || status === "streaming" || status === "retrying"');
+    expect(source).toContain("{!isStreaming ? (");
   });
 
   test("video and presentation sessions show only scoped openable outputs", () => {
@@ -121,6 +130,22 @@ describe("session output issue regressions", () => {
     expect(sessionPageSource).toContain("openCurrentVideoStudio();");
   });
 
+  test("artifact catalog refresh is scoped to the output directory rather than message streaming", () => {
+    const sessionPageSource = readFileSync(
+      new URL("../src/react-app/domains/session/chat/session-page.tsx", import.meta.url),
+      "utf8",
+    );
+    const effectStart = sessionPageSource.indexOf(".listWorkspaceFiles(workspaceId, artifactDirectory)");
+    expect(effectStart).toBeGreaterThan(0);
+    const dependencyStart = sessionPageSource.indexOf("  }, [", effectStart);
+    const dependencyEnd = sessionPageSource.indexOf("  ]);", dependencyStart);
+    const dependencies = sessionPageSource.slice(dependencyStart, dependencyEnd);
+
+    expect(dependencies).toContain("artifactDirectory");
+    expect(dependencies).toContain("artifactScopeKey");
+    expect(dependencies).not.toContain("conversationMessages");
+  });
+
   test("template covers expose a retryable failure placeholder", () => {
     const marketSource = readFileSync(
       new URL("../src/react-app/domains/session/templates/template-market-dialog.tsx", import.meta.url),
@@ -141,9 +166,13 @@ describe("session output issue regressions", () => {
     }
   });
 
-  test("template market exposes category counts and clean import separators", () => {
+  test("template market exposes category counts, import details, and installed enterprise actions", () => {
     const source = readFileSync(
       new URL("../src/react-app/domains/session/templates/template-market-dialog.tsx", import.meta.url),
+      "utf8",
+    );
+    const sessionSource = readFileSync(
+      new URL("../src/react-app/domains/session/chat/session-page.tsx", import.meta.url),
       "utf8",
     );
 
@@ -151,5 +180,27 @@ describe("session output issue regressions", () => {
     expect(source).toContain("const allCount = React.useMemo");
     expect(source).toContain("categoryCounts.get(id) ?? 0");
     expect(source).toContain("{pendingImport.name} - {(pendingImport.size / 1024).toFixed(1)} KB");
+    expect(source).toContain("enterpriseMode ? (visibleEnterpriseResources.length");
+    expect(source).not.toContain("enterpriseMode ? (visible.length || visibleEnterpriseResources.length");
+    expect(sessionSource).toContain('listTemplates(props.runtimeWorkspaceId, "personal")');
+    expect(sessionSource).toContain('listEnterpriseResources(activeEnterprise, "template")');
+    expect(sessionSource).toContain("item.sourceType === \"local\" && item.installed");
+    expect(sessionSource).toContain("requestId !== templateCatalogRequestIdRef.current");
+    expect(source).toContain("enterpriseTemplateInstallations");
+    expect(source).toContain("resource.sourceTemplateId");
+    expect(source).toContain("return <TemplateCard template={installedTemplate}");
+    expect(source).toContain("primaryAction={action} primaryLabel={label} sourceLabel={sourceLabel}");
+  });
+
+  test("enterprise extensions reflect local package installation versions", () => {
+    const source = readFileSync(
+      new URL("../src/react-app/domains/settings/pages/extensions-view.tsx", import.meta.url),
+      "utf8",
+    );
+
+    expect(source).toContain("listPluginPackages(props.workspaceId)");
+    expect(source).toContain("installedEnterpriseExtensionVersions.get(resource.slug)");
+    expect(source).toContain('t("plugin_platform.status.installed")');
+    expect(source).toContain("currentVersionInstalled || !resource.latestVersion");
   });
 });

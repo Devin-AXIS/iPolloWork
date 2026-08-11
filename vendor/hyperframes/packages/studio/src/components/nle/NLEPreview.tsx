@@ -2,6 +2,7 @@ import { memo, useCallback, useEffect, useRef, useState, type RefObject } from "
 import { Player } from "../../player";
 import {
   DEFAULT_PREVIEW_ZOOM,
+  PREVIEW_ZOOM_RESET_EVENT,
   canStartPreviewPan,
   clampPreviewPan,
   clampPreviewZoomPercent,
@@ -14,6 +15,7 @@ import {
 import { readStudioUiPreferences, writeStudioUiPreferences } from "../../utils/studioUiPreferences";
 interface NLEPreviewProps {
   projectId: string;
+  refreshToken?: number;
   iframeRef: RefObject<HTMLIFrameElement | null>;
   onIframeLoad: () => void;
   onCompositionLoadingChange?: (loading: boolean) => void;
@@ -42,6 +44,13 @@ const PREVIEW_STAGE_INSET_PX = 16;
 interface PreviewCompositionSize {
   width: number;
   height: number;
+}
+
+interface PreviewPlayerSlot {
+  key: string;
+  projectId: string;
+  directUrl?: string;
+  refreshToken?: number;
 }
 
 function isPreviewAtFit(state: PreviewZoomState): boolean {
@@ -118,6 +127,7 @@ export function resolvePreviewStageSize(
 
 export const NLEPreview = memo(function NLEPreview({
   projectId,
+  refreshToken,
   iframeRef,
   onIframeLoad,
   onCompositionLoadingChange,
@@ -128,6 +138,28 @@ export const NLEPreview = memo(function NLEPreview({
   onCompositionSizeChange,
 }: NLEPreviewProps) {
   const activeKey = getPreviewPlayerKey({ projectId, directUrl });
+  const requestedSlot: PreviewPlayerSlot = {
+    key: `${activeKey}:${refreshToken ?? 0}`,
+    projectId,
+    directUrl,
+    refreshToken,
+  };
+  const [visibleSlot, setVisibleSlot] = useState<PreviewPlayerSlot>(requestedSlot);
+  const [loadingSlot, setLoadingSlot] = useState<PreviewPlayerSlot | null>(null);
+  const [retiringSlot, setRetiringSlot] = useState<PreviewPlayerSlot | null>(null);
+  const loadingSlotKeyRef = useRef<string | null>(null);
+  const retireTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  loadingSlotKeyRef.current = loadingSlot?.key ?? null;
+  useEffect(() => {
+    if (requestedSlot.key === visibleSlot.key || requestedSlot.key === loadingSlot?.key) return;
+    setLoadingSlot(requestedSlot);
+  }, [requestedSlot.key, projectId, directUrl, refreshToken, visibleSlot.key, loadingSlot?.key]);
+  useEffect(
+    () => () => {
+      if (retireTimerRef.current) clearTimeout(retireTimerRef.current);
+    },
+    [],
+  );
   const viewportRef = useRef<HTMLDivElement>(null);
   const stageRef = useRef<HTMLDivElement>(null);
   const previewIframeRef = useRef<HTMLIFrameElement | null>(null);
@@ -138,7 +170,6 @@ export const NLEPreview = memo(function NLEPreview({
   const [stageSize, setStageSize] = useState(() => resolvePreviewStageSize(0, 0, null, portrait));
 
   const zoomRef = useRef<PreviewZoomState>(loadInitialZoom());
-  const [settledZoom, setSettledZoom] = useState<PreviewZoomState>(() => zoomRef.current);
   const hudRef = useRef<HTMLDivElement>(null);
   const hudTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const settleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -238,13 +269,6 @@ export const NLEPreview = memo(function NLEPreview({
         zoomingRef.current = false;
         const final = zoomRef.current;
         writeStudioUiPreferences({ previewZoom: final });
-        setSettledZoom((prev) =>
-          prev.zoomPercent === final.zoomPercent &&
-          prev.panX === final.panX &&
-          prev.panY === final.panY
-            ? prev
-            : final,
-        );
         if (showHud) {
           const hud = hudRef.current;
           if (hud) {
@@ -264,6 +288,14 @@ export const NLEPreview = memo(function NLEPreview({
     (next: PreviewZoomState) => applyTransform(next, true),
     [applyTransform],
   );
+
+  useEffect(() => {
+    const viewport = viewportRef.current;
+    if (!viewport) return;
+    const resetZoom = () => applyZoom(DEFAULT_PREVIEW_ZOOM);
+    viewport.addEventListener(PREVIEW_ZOOM_RESET_EVENT, resetZoom);
+    return () => viewport.removeEventListener(PREVIEW_ZOOM_RESET_EVENT, resetZoom);
+  }, [applyZoom]);
 
   const applyPan = useCallback(
     (next: PreviewZoomState) => applyTransform(next, false),
@@ -462,6 +494,7 @@ export const NLEPreview = memo(function NLEPreview({
         className="hf-preview-surface relative flex-1 flex items-center justify-center p-2 overflow-hidden min-h-0 outline-none focus:ring-1 focus:ring-studio-accent/40 bg-neutral-950"
         tabIndex={0}
         aria-label="Composition preview"
+        data-preview-zoom-controller="true"
       >
         <div className="absolute inset-2 flex items-center justify-center pointer-events-none">
           <div
@@ -486,25 +519,58 @@ export const NLEPreview = memo(function NLEPreview({
                 style={{ position: "absolute", inset: 0, zIndex: 0 }}
               />
             )}
-            <Player
-              key={activeKey}
-              ref={setPreviewIframeRef}
-              projectId={directUrl ? undefined : projectId}
-              directUrl={directUrl}
-              onLoad={() => {
-                updateCompositionSizeFromPreview();
-                onIframeLoad();
-                applyInitialZoom();
-              }}
-              onCompositionLoadingChange={onCompositionLoadingChange}
-              portrait={portrait}
-              suppressLoadingOverlay={suppressLoadingOverlay}
-              style={
-                directUrl?.includes("/components/")
-                  ? { position: "absolute", inset: 0, zIndex: 1 }
-                  : undefined
-              }
-            />
+            {[
+              ...(retiringSlot && retiringSlot.key !== visibleSlot.key ? [retiringSlot] : []),
+              visibleSlot,
+              ...(loadingSlot ? [loadingSlot] : []),
+            ].map((slot) => {
+              const incoming = slot.key === loadingSlot?.key;
+              const retiring = slot.key === retiringSlot?.key;
+              const active = slot.key === visibleSlot.key;
+              return (
+                <Player
+                  key={slot.key}
+                  ref={setPreviewIframeRef}
+                  projectId={slot.directUrl ? undefined : slot.projectId}
+                  directUrl={slot.directUrl}
+                  refreshToken={slot.refreshToken}
+                  deferReveal={incoming}
+                  onReadyToReveal={
+                    incoming
+                      ? () => {
+                          if (loadingSlotKeyRef.current !== slot.key) return;
+                          if (retireTimerRef.current) clearTimeout(retireTimerRef.current);
+                          setRetiringSlot(visibleSlot);
+                          setVisibleSlot(slot);
+                          setLoadingSlot(null);
+                          retireTimerRef.current = setTimeout(() => {
+                            retireTimerRef.current = null;
+                            setRetiringSlot(null);
+                          }, 160);
+                        }
+                      : undefined
+                  }
+                  onLoad={() => {
+                    updateCompositionSizeFromPreview();
+                    onIframeLoad();
+                    applyInitialZoom();
+                  }}
+                  onCompositionLoadingChange={active ? onCompositionLoadingChange : undefined}
+                  portrait={portrait}
+                  suppressLoadingOverlay={suppressLoadingOverlay}
+                  style={{
+                    position: "absolute",
+                    inset: 0,
+                    zIndex:
+                      (slot.directUrl?.includes("/components/") ? 1 : 0) +
+                      (retiring ? 2 : incoming ? 1 : 0),
+                    opacity: incoming || retiring ? 0 : 1,
+                    pointerEvents: incoming || retiring ? "none" : undefined,
+                    transition: retiring ? "opacity 140ms ease-out" : undefined,
+                  }}
+                />
+              );
+            })}
           </div>
         </div>
         <div
@@ -513,17 +579,6 @@ export const NLEPreview = memo(function NLEPreview({
           style={{ opacity: 0, transition: "opacity 200ms ease-in" }}
           aria-live="polite"
         />
-        {!isPreviewAtFit(settledZoom) && (
-          <button
-            type="button"
-            className="absolute bottom-3 right-3 z-50 rounded-md px-2.5 py-1 text-xs font-medium text-white/80 bg-black/50 backdrop-blur-sm hover:bg-black/70 hover:text-white transition-colors"
-            onClick={() => applyZoom(DEFAULT_PREVIEW_ZOOM)}
-            aria-label="Reset zoom to fit"
-            data-testid="preview-reset-zoom"
-          >
-            {Math.round(settledZoom.zoomPercent)}% — Reset
-          </button>
-        )}
       </div>
     </div>
   );

@@ -98,6 +98,11 @@ export interface TimelinePaneProps {
   ) => Promise<void> | void;
   onBlockedEditAttempt?: (element: TimelineElement, intent: BlockedTimelineEditIntent) => void;
   onSelectTimelineElement?: (element: TimelineElement | null) => void;
+  onRenameTimelineElement?: (element: TimelineElement, label: string) => Promise<void> | void;
+  onContextMenuTimelineElement?: (
+    element: TimelineElement,
+    anchor: { x: number; y: number },
+  ) => void;
 }
 
 // fallow-ignore-next-line complexity
@@ -111,6 +116,8 @@ export function TimelinePane({
   onBlockDrop,
   onBlockedEditAttempt,
   onSelectTimelineElement,
+  onRenameTimelineElement,
+  onContextMenuTimelineElement,
 }: TimelinePaneProps) {
   const {
     seek,
@@ -250,12 +257,12 @@ export function TimelinePane({
       {/* Timeline section — inner padding (not margin) keeps the divider's
           height math exact while giving the panel a gap from the shell edges. */}
       <div
-        className="hf-timeline-section relative flex flex-col flex-shrink-0 px-px pb-px"
+        className="hf-timeline-section relative flex flex-col flex-shrink-0"
         style={{ height: timelineH }}
         aria-disabled={timelineDisabled || undefined}
       >
         <div
-          className="hf-timeline-pane flex flex-col flex-1 min-h-0 overflow-hidden rounded-lg border border-neutral-800/50 bg-neutral-950"
+          className="hf-timeline-pane flex flex-col flex-1 min-h-0 overflow-hidden border-[0.5px] border-[var(--hf-studio-divider)] bg-neutral-950"
           onDoubleClick={(e) => {
             if ((e.target as HTMLElement).closest("[data-clip]")) return;
             if (timelineDisabled) return;
@@ -280,6 +287,8 @@ export function TimelinePane({
             onBlockedEditAttempt={onBlockedEditAttempt}
             onSplitElement={handleSplitElement}
             onSelectElement={onSelectTimelineElement}
+            onRenameElement={onRenameTimelineElement}
+            onContextMenuElement={onContextMenuTimelineElement}
           />
         </div>
         {timelineFooter && <div className="flex-shrink-0">{timelineFooter}</div>}

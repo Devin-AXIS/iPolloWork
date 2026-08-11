@@ -21,8 +21,15 @@ import { useTimelineEditPinning } from "./useTimelineEditPinning";
 import { useTimelineStackingSync } from "./useTimelineStackingSync";
 import { useTimelineGeometry } from "./useTimelineGeometry";
 import { useTimelineTrackDerivations } from "./useTimelineTrackDerivations";
-import { GUTTER, TRACKS_LEFT_PAD, generateTicks, getTimelineCanvasHeight } from "./timelineLayout";
+import {
+  GUTTER,
+  TRACKS_LEFT_PAD,
+  generateTicks,
+  getTimelineCanvasHeight,
+  getTimelineVisibleWindow,
+} from "./timelineLayout";
 import { useTimelineScrollViewport } from "./useTimelineScrollViewport";
+import { useTimelineRevealClip } from "./useTimelineRevealClip";
 import { STUDIO_PREVIEW_FPS } from "../lib/time";
 import { useResolvedTimelineEditCallbacks } from "./useResolvedTimelineEditCallbacks";
 import type { TimelineProps } from "./TimelineTypes";
@@ -53,7 +60,6 @@ export const Timeline = memo(function Timeline({
   onFileDrop,
   onAssetDrop,
   onBlockDrop,
-  onDeleteElement: _onDeleteElement,
   onMoveElement: onMoveElementOverride,
   onMoveElements: onMoveElementsOverride,
   onResizeElement: onResizeElementOverride,
@@ -61,6 +67,8 @@ export const Timeline = memo(function Timeline({
   onBlockedEditAttempt: onBlockedEditAttemptOverride,
   onSplitElement: onSplitElementOverride,
   onSelectElement,
+  onRenameElement,
+  onContextMenuElement,
   theme: themeOverrides,
 }: TimelineProps = {}) {
   const {
@@ -69,7 +77,6 @@ export const Timeline = memo(function Timeline({
     onResizeElement,
     onResizeElements,
     onBlockedEditAttempt,
-    onSplitElement,
     onRazorSplitAll,
     onDeleteKeyframe,
     onDeleteAllKeyframes,
@@ -91,6 +98,8 @@ export const Timeline = memo(function Timeline({
   const rawElements = usePlayerStore((s) => s.elements);
   const expandedElements = useExpandedTimelineElements();
   const keyframeCache = usePlayerStore((s) => s.keyframeCache);
+  const clipParentMap = usePlayerStore((s) => s.clipParentMap);
+  const expandableIds = useMemo(() => new Set(clipParentMap.values()), [clipParentMap]);
   const displayElements = useMemo(
     () =>
       expandedElements.filter((element) => {
@@ -101,9 +110,13 @@ export const Timeline = memo(function Timeline({
         const hasAnimation =
           (cacheEntry?.animationSegments?.length ?? 0) > 0 ||
           (cacheEntry?.keyframes.length ?? 0) > 0;
-        return shouldDisplayTimelineElement(element, hasAnimation);
+        return shouldDisplayTimelineElement(
+          element,
+          hasAnimation,
+          expandableIds.has(element.domId ?? element.id),
+        );
       }),
-    [expandedElements, keyframeCache],
+    [expandableIds, expandedElements, keyframeCache],
   );
   const beatAnalysis = usePlayerStore((s) => s.beatAnalysis);
   const musicElement = usePlayerStore((s) => s.elements.find(isMusicTrack) ?? null);
@@ -145,12 +158,6 @@ export const Timeline = memo(function Timeline({
 
   const [showPopover, setShowPopover] = useState(false);
   const [kfContextMenu, setKfContextMenu] = useState<KeyframeDiamondContextMenuState | null>(null);
-  const [clipContextMenu, setClipContextMenu] = useState<{
-    x: number;
-    y: number;
-    element: TimelineElement;
-  } | null>(null);
-
   const setContainerRef = useCallback((el: HTMLDivElement | null) => {
     containerRef.current = el;
   }, []);
@@ -179,7 +186,6 @@ export const Timeline = memo(function Timeline({
   const fitPpsRef = useRef(100);
 
   const {
-    pinZoomBeforeEdit,
     setRangeSelectionRef,
     pinnedOnMoveElement,
     pinnedOnMoveElements,
@@ -228,6 +234,7 @@ export const Timeline = memo(function Timeline({
     blockedClipRef,
     suppressClickRef,
     syncClipDragAutoScroll,
+    dragPreviewStore,
   } = useTimelineClipDrag({
     scrollRef,
     ppsRef,
@@ -261,11 +268,15 @@ export const Timeline = memo(function Timeline({
   }, [draggedClip, trackOrder]);
 
   const totalH = getTimelineCanvasHeight(displayTrackOrder.length);
-  const { viewportWidth, showShortcutHint, setScrollRef } = useTimelineScrollViewport(scrollRef, [
-    timelineReady,
-    displayElements.length,
-    totalH,
-  ]);
+  const {
+    viewportWidth,
+    viewportHeight,
+    scrollLeft,
+    scrollTop,
+    showShortcutHint,
+    setScrollRef,
+    syncScrollViewport,
+  } = useTimelineScrollViewport(scrollRef, [timelineReady, displayElements.length, totalH]);
   const selectedKeyframes = usePlayerStore((s) => s.selectedKeyframes);
   const toggleSelectedKeyframe = usePlayerStore((s) => s.toggleSelectedKeyframe);
 
@@ -298,6 +309,33 @@ export const Timeline = memo(function Timeline({
     isDragging,
     scrollRef,
     lastScrollLeftRef,
+  });
+
+  const visibleWindow = useMemo(
+    () =>
+      getTimelineVisibleWindow({
+        scrollLeft,
+        scrollTop,
+        viewportWidth,
+        viewportHeight,
+        pps,
+        trackCount: displayTrackOrder.length,
+        displayDuration,
+      }),
+    [
+      displayDuration,
+      displayTrackOrder.length,
+      pps,
+      scrollLeft,
+      scrollTop,
+      viewportHeight,
+      viewportWidth,
+    ],
+  );
+  useTimelineRevealClip(scrollRef, {
+    elements: displayElements,
+    displayTrackOrder,
+    pps,
   });
 
   const laneGapStrips = useTimelineGapHighlights({
@@ -437,6 +475,7 @@ export const Timeline = memo(function Timeline({
         className={`hf-timeline-scroll ${zoomMode === "fit" ? "overflow-x-hidden" : "overflow-x-auto"} overflow-y-auto h-full outline-none`}
         onScroll={(e) => {
           lastScrollLeftRef.current = e.currentTarget.scrollLeft; // restored across post-edit reload
+          syncScrollViewport(e.currentTarget);
         }}
         onDragOver={handleAssetDragOver}
         onDragLeave={() => clearDropPreview()}
@@ -467,6 +506,7 @@ export const Timeline = memo(function Timeline({
           rangeSelection={rangeSelection}
           marqueeRect={marqueeRect}
           laneGapStrips={laneGapStrips}
+          visibleWindow={visibleWindow}
           theme={theme}
           displayTrackOrder={displayTrackOrder}
           trackOrder={trackOrder}
@@ -477,6 +517,7 @@ export const Timeline = memo(function Timeline({
           selectedElementIds={selectedElementIds}
           hoveredClip={hoveredClip}
           draggedClip={draggedClip}
+          dragPreviewStore={dragPreviewStore}
           resizingClip={resizingClip}
           isScrubbing={isScrubbing}
           blockedClipRef={blockedClipRef}
@@ -486,7 +527,10 @@ export const Timeline = memo(function Timeline({
           renderClipOverlay={renderClipOverlay}
           playheadRef={playheadRef}
           onDrillDown={onDrillDown}
+          onSeek={onSeek}
           onSelectElement={onSelectElement}
+          onRenameElement={onRenameElement}
+          onContextMenuElement={onContextMenuElement}
           setHoveredClip={setHoveredClip}
           setShowPopover={setShowPopover}
           setRangeSelection={setRangeSelection}
@@ -537,16 +581,8 @@ export const Timeline = memo(function Timeline({
               currentEase: kf?.ease ?? kfData?.ease,
             });
           }}
-          onContextMenuClip={(e, el) => {
-            e.preventDefault();
-            setSelectedElementId(el.key ?? el.id);
-            onSelectElement?.(el);
-            dismissGapMenu();
-            setClipContextMenu({ x: e.clientX, y: e.clientY, element: el });
-          }}
           onContextMenuLane={(e, track, time) => {
             if (draggedClip?.started || resizingClip) return;
-            setClipContextMenu(null);
             openGapMenu({ x: e.clientX, y: e.clientY, track, time });
           }}
         />
@@ -575,12 +611,6 @@ export const Timeline = memo(function Timeline({
         onChangeKeyframeEase={onChangeKeyframeEase}
         onMoveKeyframeToPlayhead={onMoveKeyframeToPlayhead}
         keyframeCache={keyframeCache}
-        clipContextMenu={clipContextMenu}
-        setClipContextMenu={setClipContextMenu}
-        currentTime={currentTime}
-        onSplitElement={onSplitElement}
-        pinZoomBeforeEdit={pinZoomBeforeEdit}
-        onDeleteElement={_onDeleteElement}
         gapContextMenu={gapMenuModel}
         onDismissGapContextMenu={dismissGapMenu}
         onCloseTrackGap={closeTrackGap}

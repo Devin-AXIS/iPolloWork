@@ -1,4 +1,5 @@
 import { useCallback, useRef } from "react";
+import { useStudioI18n } from "../../i18n";
 
 export const MIN_TIMELINE_H = 100;
 export const MIN_PREVIEW_H = 120;
@@ -21,6 +22,7 @@ export function TimelineResizeDivider({
   containerRef: React.RefObject<HTMLDivElement | null>;
   disabled: boolean;
 }) {
+  const { tx } = useStudioI18n();
   const isDragging = useRef(false);
   const timelineHRef = useRef(timelineH);
   timelineHRef.current = timelineH;
@@ -73,20 +75,19 @@ export function TimelineResizeDivider({
   );
 
   return (
-    // Horizontal resize divider: 3px visible seam (h-[3px]), 8px pointer-capture
-    // zone via the absolutely-positioned inner hit area so the layout gap stays
-    // at 3px while draggability is preserved over the full 8px band.
+    // The visible separator matches the 0.5px neutral hairline shared by all
+    // Studio panes; the absolutely positioned hit area keeps resizing easy.
     <div
       role="separator"
       aria-orientation="horizontal"
-      aria-label="Resize timeline (arrow keys)"
+      aria-label={tx("Resize timeline (arrow keys)")}
       aria-valuenow={Math.round(timelineH)}
       aria-valuemin={MIN_TIMELINE_H}
       aria-valuemax={Math.round(
         (containerRef.current?.getBoundingClientRect().height ?? 600) - MIN_PREVIEW_H,
       )}
       tabIndex={0}
-      className="group relative h-[3px] flex-shrink-0 cursor-row-resize z-10 outline-none focus-visible:bg-studio-accent/20"
+      className="group relative h-[0.5px] flex-shrink-0 cursor-row-resize z-10 outline-none focus-visible:bg-studio-accent/20"
       style={{ touchAction: "none" }}
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
@@ -94,10 +95,8 @@ export function TimelineResizeDivider({
       onPointerCancel={handlePointerUp}
       onKeyDown={handleKeyDown}
     >
-      {/* Expanded hit zone: 8px tall, centered on the 3px seam */}
-      <div className="absolute inset-x-0 -top-[2.5px] h-2" />
-      {/* Visible hairline — invisible at rest, subtle wash on hover/drag/focus */}
-      <div className="hf-timeline-divider h-[3px] w-full bg-transparent transition-colors group-hover:bg-white/12 group-active:bg-white/18 group-focus-visible:bg-studio-accent/60" />
+      <div className="absolute inset-x-0 top-1/2 h-2 -translate-y-1/2" />
+      <div className="hf-timeline-divider h-[0.5px] w-full bg-[var(--hf-studio-divider)] transition-colors group-focus-visible:bg-studio-accent/60" />
     </div>
   );
 }

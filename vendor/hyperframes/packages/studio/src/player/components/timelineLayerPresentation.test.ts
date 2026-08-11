@@ -3,12 +3,15 @@ import type { TimelineElement } from "../store/playerStore";
 import {
   buildTimelineColorIndexes,
   resolveTimelineBindingId,
+  resolveTimelineClipLabel,
   resolveTimelineKind,
   resolveTimelineColorGroupKey,
   resolveTimelineLayerDepth,
   resolveTimelineLayerLabel,
+  resolveTimelineLayerSourceTarget,
   shouldDisplayTimelineElement,
 } from "./timelineLayerPresentation";
+import { getTimelinePaletteStyle, getTimelineTrackStyle } from "./timelineTheme";
 
 function element(overrides: Partial<TimelineElement> = {}): TimelineElement {
   return {
@@ -54,6 +57,44 @@ describe("timeline layer presentation", () => {
     ).toBe(2);
   });
 
+  test("uses an independent clip caption without changing the tree label", () => {
+    const clip = element({ label: "Tree node", clipLabel: "Edited clip caption" });
+    expect(resolveTimelineLayerLabel([clip], 0)).toBe("Tree node");
+    expect(resolveTimelineClipLabel(clip)).toBe("Edited clip caption");
+  });
+
+  test("keeps composition-row renames on the authored host file", () => {
+    expect(
+      resolveTimelineLayerSourceTarget(
+        element({
+          id: "opening-editorial-rise",
+          domId: "opening-editorial-rise",
+          hfId: "hf-host",
+          selector: "#opening-editorial-rise",
+          compositionSrc: "compositions/opening-editorial-rise.html",
+        }),
+        null,
+      ),
+    ).toEqual({
+      id: "opening-editorial-rise",
+      hfId: "hf-host",
+      selector: "#opening-editorial-rise",
+      selectorIndex: undefined,
+      sourceFile: "index.html",
+    });
+
+    expect(
+      resolveTimelineLayerSourceTarget(
+        element({
+          id: "nested-scene",
+          sourceFile: "compositions\\parent.html",
+          compositionSrc: "compositions/nested-scene.html",
+        }),
+        "index.html",
+      ).sourceFile,
+    ).toBe("compositions/parent.html");
+  });
+
   test("keeps bound colors together and independent colors distinct", () => {
     const boundA = element({ id: "bound-a", timelineGroupId: "brand" });
     const boundB = element({ id: "bound-b", timelineGroupId: "brand" });
@@ -70,6 +111,23 @@ describe("timeline layer presentation", () => {
     );
   });
 
+  test("uses one neutral clip style for every timeline kind and palette index", () => {
+    const expected = {
+      accent: "#20BBC0",
+      clip: "var(--hf-timeline-clip-bg)",
+      clipActive: "var(--hf-timeline-clip-active)",
+      border: "var(--hf-timeline-clip-border)",
+      hover: "var(--hf-timeline-clip-hover)",
+      dragging: "#20BBC0",
+      label: "var(--hf-timeline-clip-text)",
+    };
+
+    expect(getTimelineTrackStyle("text")).toEqual(expected);
+    expect(getTimelineTrackStyle("audio")).toEqual(expected);
+    expect(getTimelinePaletteStyle(0)).toEqual(expected);
+    expect(getTimelinePaletteStyle(11)).toEqual(expected);
+  });
+
   test("exposes authored binding metadata without inventing a group", () => {
     expect(
       resolveTimelineBindingId([
@@ -82,10 +140,7 @@ describe("timeline layer presentation", () => {
 
   test("hides only implicit structural wrappers", () => {
     expect(
-      shouldDisplayTimelineElement(
-        element({ id: "chrome", timingSource: "implicit" }),
-        false,
-      ),
+      shouldDisplayTimelineElement(element({ id: "chrome", timingSource: "implicit" }), false),
     ).toBe(false);
     expect(
       shouldDisplayTimelineElement(
@@ -109,6 +164,16 @@ describe("timeline layer presentation", () => {
       shouldDisplayTimelineElement(
         element({ id: "authored-wrapper", timingSource: "authored" }),
         false,
+      ),
+    ).toBe(true);
+  });
+
+  test("keeps an implicit structural parent visible when it owns selectable children", () => {
+    expect(
+      shouldDisplayTimelineElement(
+        element({ id: "topbar", timingSource: "implicit", tag: "header" }),
+        false,
+        true,
       ),
     ).toBe(true);
   });

@@ -1,7 +1,13 @@
 import { memo, useCallback, useEffect, useRef, useState } from "react";
-import { MagnetStraight, GridFour, Path } from "@phosphor-icons/react";
+import { createPortal } from "react-dom";
 import { readStudioUiPreferences, writeStudioUiPreferences } from "../../utils/studioUiPreferences";
 import { usePlayerStore } from "../../player/store/playerStore";
+import magnetIconSrc from "../../icons/figmaToolbarMagnet.svg?url";
+import gridIconSrc from "../../icons/figmaToolbarGrid.svg?url";
+import { useStudioI18n } from "../../i18n";
+
+const SNAP_TOOLBAR_SLOT_ID = "hf-canvas-snap-toolbar-slot";
+const GRID_TOOLBAR_SLOT_ID = "hf-canvas-grid-toolbar-slot";
 
 const SNAP_DEFAULTS = {
   snapEnabled: true,
@@ -10,7 +16,6 @@ const SNAP_DEFAULTS = {
   snapToGrid: false,
 };
 
-// fallow-ignore-next-line complexity
 function readSnapPrefs() {
   const prefs = readStudioUiPreferences();
   return {
@@ -32,20 +37,37 @@ interface SnapToolbarProps {
 
 // fallow-ignore-next-line complexity
 export const SnapToolbar = memo(function SnapToolbar({ onSnapChange }: SnapToolbarProps) {
+  const { tx } = useStudioI18n();
   const [prefs, setPrefs] = useState(readSnapPrefs);
   const [gridPopoverOpen, setGridPopoverOpen] = useState(false);
-  // Motion-path "set destination" toggle — shown only when the selected element
-  // can take a path; arms a single canvas click to place it (MotionPathOverlay).
-  const motionPathCreateAvailable = usePlayerStore((s) => s.motionPathCreateAvailable);
-  const motionPathArmed = usePlayerStore((s) => s.motionPathArmed);
-  const setMotionPathArmed = usePlayerStore((s) => s.setMotionPathArmed);
+  const [toolbarSlots, setToolbarSlots] = useState<{
+    snap: HTMLElement | null;
+    grid: HTMLElement | null;
+  }>({ snap: null, grid: null });
   const popoverRef = useRef<HTMLDivElement>(null);
   const gridButtonRef = useRef<HTMLButtonElement>(null);
 
+  useEffect(() => {
+    const findSlots = () => {
+      const snap = document.getElementById(SNAP_TOOLBAR_SLOT_ID);
+      const grid = document.getElementById(GRID_TOOLBAR_SLOT_ID);
+      setToolbarSlots((current) =>
+        current.snap === snap && current.grid === grid ? current : { snap, grid },
+      );
+      return Boolean(snap && grid);
+    };
+    if (findSlots()) return;
+    const observer = new MutationObserver(() => {
+      if (findSlots()) observer.disconnect();
+    });
+    observer.observe(document.body, { childList: true, subtree: true });
+    return () => observer.disconnect();
+  }, []);
+
   const updatePrefs = useCallback(
     (patch: Partial<typeof prefs>) => {
-      setPrefs((prev) => {
-        const next = { ...prev, ...patch };
+      setPrefs((previous) => {
+        const next = { ...previous, ...patch };
         writeStudioUiPreferences(patch);
         onSnapChange?.(next);
         return next;
@@ -55,7 +77,9 @@ export const SnapToolbar = memo(function SnapToolbar({ onSnapChange }: SnapToolb
   );
 
   const toggleSnap = useCallback(() => {
-    updatePrefs({ snapEnabled: !prefs.snapEnabled });
+    const enabled = !prefs.snapEnabled;
+    updatePrefs({ snapEnabled: enabled });
+    usePlayerStore.getState().setTimelineSnapEnabled(enabled);
   }, [prefs.snapEnabled, updatePrefs]);
 
   const toggleGrid = useCallback(() => {
@@ -63,19 +87,14 @@ export const SnapToolbar = memo(function SnapToolbar({ onSnapChange }: SnapToolb
   }, [prefs.gridVisible, updatePrefs]);
 
   useEffect(() => {
-    // fallow-ignore-next-line complexity
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.defaultPrevented) return;
-      const t = e.target;
-      if (t instanceof HTMLInputElement || t instanceof HTMLTextAreaElement) return;
-      if (t instanceof HTMLElement && t.isContentEditable) return;
-      if (t instanceof HTMLIFrameElement) return;
-      if (e.key === "s" && !e.metaKey && !e.ctrlKey && !e.altKey) {
-        e.preventDefault();
-        updatePrefs({ snapEnabled: !readSnapPrefs().snapEnabled });
-      }
-      if (e.key === "g" && !e.metaKey && !e.ctrlKey && !e.altKey) {
-        e.preventDefault();
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.defaultPrevented) return;
+      const target = event.target;
+      if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement) return;
+      if (target instanceof HTMLElement && target.isContentEditable) return;
+      if (target instanceof HTMLIFrameElement) return;
+      if (event.key === "g" && !event.metaKey && !event.ctrlKey && !event.altKey) {
+        event.preventDefault();
         updatePrefs({ gridVisible: !readSnapPrefs().gridVisible });
       }
     };
@@ -85,8 +104,8 @@ export const SnapToolbar = memo(function SnapToolbar({ onSnapChange }: SnapToolb
 
   useEffect(() => {
     if (!gridPopoverOpen) return;
-    const handleClickOutside = (e: MouseEvent) => {
-      const target = e.target as Node;
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as Node;
       if (popoverRef.current?.contains(target) || gridButtonRef.current?.contains(target)) return;
       setGridPopoverOpen(false);
     };
@@ -94,96 +113,94 @@ export const SnapToolbar = memo(function SnapToolbar({ onSnapChange }: SnapToolb
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [gridPopoverOpen]);
 
-  return (
-    <div
-      className="absolute top-2 right-2 z-50 flex items-center gap-1"
-      onPointerDown={(e) => e.stopPropagation()}
-    >
-      {motionPathCreateAvailable && (
-        <button
-          type="button"
-          className={`rounded-md p-1.5 transition-colors ${
-            motionPathArmed
-              ? "bg-studio-accent/20 text-studio-accent"
-              : "bg-black/40 text-white/60 hover:bg-black/60 hover:text-white/80"
-          }`}
-          onClick={() => setMotionPathArmed(!motionPathArmed)}
-          title={
-            motionPathArmed ? "Click the canvas to set the destination" : "Set motion destination"
-          }
-          aria-label="Set motion destination"
-        >
-          <Path size={16} weight={motionPathArmed ? "fill" : "regular"} />
-        </button>
-      )}
+  const iconButton =
+    "flex h-6 w-6 shrink-0 items-center justify-center rounded transition-colors outline-none hover:bg-[#f2f2f0] focus-visible:ring-2 focus-visible:ring-[#858a94]/35";
+  const snapControls = (
+    <div className="flex items-center gap-2" onPointerDown={(event) => event.stopPropagation()}>
       <button
         type="button"
-        className={`rounded-md p-1.5 transition-colors ${
-          prefs.snapEnabled
-            ? "bg-studio-accent/20 text-studio-accent"
-            : "bg-black/40 text-white/60 hover:bg-black/60 hover:text-white/80"
-        }`}
+        className={`${iconButton} ${prefs.snapEnabled ? "bg-[#f2f2f0]" : ""}`}
         onClick={toggleSnap}
-        title={prefs.snapEnabled ? "Snap enabled (S)" : "Snap disabled (S)"}
-        aria-label="Toggle snap"
+        title={tx(prefs.snapEnabled ? "Snapping enabled" : "Snapping disabled")}
+        aria-label={tx("Toggle snapping")}
+        aria-pressed={prefs.snapEnabled}
       >
-        <MagnetStraight size={16} weight={prefs.snapEnabled ? "fill" : "regular"} />
+        <img src={magnetIconSrc} width="16" height="16" alt="" aria-hidden="true" />
       </button>
+    </div>
+  );
 
-      <div className="relative">
-        <button
-          ref={gridButtonRef}
-          type="button"
-          className={`rounded-md p-1.5 transition-colors ${
-            prefs.gridVisible
-              ? "bg-studio-accent/20 text-studio-accent"
-              : "bg-black/40 text-white/60 hover:bg-black/60 hover:text-white/80"
-          }`}
-          onClick={toggleGrid}
-          onContextMenu={(e) => {
-            e.preventDefault();
-            setGridPopoverOpen((v) => !v);
-          }}
-          title={prefs.gridVisible ? "Grid visible (G)" : "Grid hidden (G)"}
-          aria-label="Toggle grid"
-        >
-          <GridFour size={16} weight={prefs.gridVisible ? "fill" : "regular"} />
-        </button>
+  const gridControl = (
+    <button
+      ref={gridButtonRef}
+      type="button"
+      className={`${iconButton} ${prefs.gridVisible ? "bg-[#f2f2f0]" : ""}`}
+      onClick={toggleGrid}
+      onContextMenu={(event) => {
+        event.preventDefault();
+        setGridPopoverOpen((open) => !open);
+      }}
+      title={tx(prefs.gridVisible ? "Grid visible (G)" : "Grid hidden (G)")}
+      aria-label={tx("Toggle grid")}
+      aria-pressed={prefs.gridVisible}
+    >
+      <img src={gridIconSrc} width="16" height="16" alt="" aria-hidden="true" />
+    </button>
+  );
 
-        {gridPopoverOpen && (
-          <div
-            ref={popoverRef}
-            className="absolute right-0 top-full mt-1 rounded-lg bg-neutral-800 border border-neutral-700 p-3 shadow-xl min-w-[180px]"
-          >
-            <label className="flex items-center justify-between text-xs text-white/80 mb-2">
-              <span>Grid spacing</span>
-              <input
-                type="number"
-                min={10}
-                max={500}
-                step={10}
-                value={prefs.gridSpacing}
-                onChange={(e) => {
-                  const val = Number.parseInt(e.target.value, 10);
-                  if (Number.isFinite(val) && val >= 10 && val <= 500) {
-                    updatePrefs({ gridSpacing: val });
-                  }
-                }}
-                className="w-16 rounded bg-neutral-900 border border-neutral-600 px-1.5 py-0.5 text-xs text-white text-right tabular-nums outline-none focus:border-studio-accent"
-              />
-            </label>
-            <label className="flex items-center gap-2 text-xs text-white/80 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={prefs.snapToGrid}
-                onChange={() => updatePrefs({ snapToGrid: !prefs.snapToGrid })}
-                className="accent-studio-accent"
-              />
-              <span>Snap to grid</span>
-            </label>
-          </div>
-        )}
-      </div>
+  const gridButtonRect = gridButtonRef.current?.getBoundingClientRect();
+  const gridPopover = gridPopoverOpen && gridButtonRect &&
+    createPortal(
+      <div
+        ref={popoverRef}
+        className="fixed z-[100] min-w-[180px] rounded-lg border border-neutral-700 bg-neutral-800 p-3 shadow-xl"
+        style={{ top: gridButtonRect.bottom + 4, right: window.innerWidth - gridButtonRect.right }}
+      >
+        <label className="mb-2 flex items-center justify-between text-xs text-white/80">
+          <span>{tx("Grid spacing")}</span>
+          <input
+            type="number"
+            min={10}
+            max={500}
+            step={10}
+            value={prefs.gridSpacing}
+            onChange={(event) => {
+              const value = Number.parseInt(event.target.value, 10);
+              if (Number.isFinite(value) && value >= 10 && value <= 500) {
+                updatePrefs({ gridSpacing: value });
+              }
+            }}
+            className="w-16 rounded border border-neutral-600 bg-neutral-900 px-1.5 py-0.5 text-right text-xs tabular-nums text-white outline-none focus:border-studio-accent"
+          />
+        </label>
+        <label className="flex cursor-pointer items-center gap-2 text-xs text-white/80">
+          <input
+            type="checkbox"
+            checked={prefs.snapToGrid}
+            onChange={() => updatePrefs({ snapToGrid: !prefs.snapToGrid })}
+            className="accent-studio-accent"
+          />
+          <span>{tx("Snap to grid")}</span>
+        </label>
+      </div>,
+      document.body,
+    );
+
+  if (toolbarSlots.snap && toolbarSlots.grid) {
+    return (
+      <>
+        {createPortal(snapControls, toolbarSlots.snap)}
+        {createPortal(gridControl, toolbarSlots.grid)}
+        {gridPopover}
+      </>
+    );
+  }
+
+  return (
+    <div className="absolute right-2 top-2 z-50 flex items-center gap-1">
+      {snapControls}
+      {gridControl}
+      {gridPopover}
     </div>
   );
 });

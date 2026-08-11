@@ -111,6 +111,26 @@ describe("video artifact entry routing", () => {
     )).toEqual([currentEntry, unrelatedHtml, stylesheet]);
   });
 
+  test("shows one newest video entry when the same file is discovered through multiple paths", () => {
+    const entryPath = videoProjectEntryPath("ses_video");
+    const context: ArtifactInteractionContext = { kind: "video", entryPath };
+    const earlierEntry = {
+      ...htmlArtifact(`workspaces/ws_local/${entryPath}`),
+      messageIndex: 1,
+      updatedAt: 100,
+    };
+    const finalEntry = {
+      ...htmlArtifact(entryPath),
+      messageIndex: 2,
+      updatedAt: 200,
+    };
+
+    expect(selectArtifactContextOutputs(
+      [earlierEntry, finalEntry],
+      context,
+    )).toEqual([finalEntry]);
+  });
+
   test("shows only the presentation entry and slide files from its session directory", () => {
     const entryPath = "design/ses_slides/index.html";
     const context: ArtifactInteractionContext = { kind: "presentation", entryPath };

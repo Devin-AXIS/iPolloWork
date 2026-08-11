@@ -19,6 +19,7 @@ export type {
 export {
   findElementForSelection,
   findElementForTimelineElement,
+  isElementComputedVisible,
   isLargeRasterDomEditSelection,
   resolveVisualDomEditSelectionTarget,
 } from "./domEditingElement";

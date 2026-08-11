@@ -1,7 +1,7 @@
 {
   "name": "@ipollowork/app",
   "private": true,
-  "version": "0.19.0",
+  "version": "0.20.0",
   "type": "module",
   "scripts": {
     "test": "bun test --isolate tests/",
@@ -49,7 +49,7 @@
     "@ipollowork/types": "workspace:*",
     "@ipollowork/ui": "workspace:*",
     "@lexical/react": "^0.35.0",
-    "@opencode-ai/sdk": "^1.17.11",
+    "@opencode-ai/sdk": "^1.18.16",
     "@shikijs/transformers": "^4.0.2",
     "@tanstack/react-query": "^5.90.3",
     "@xterm/addon-fit": "^0.11.0",
@@ -62,15 +62,16 @@
     "emojilib": "^4.0.3",
     "fuzzysort": "^3.1.0",
     "html2canvas-pro": "2.2.4",
-    "jszip": "3.10.1",
     "jsonc-parser": "^3.2.1",
     "jspdf": "^4.2.1",
+    "jszip": "3.10.1",
     "lexical": "^0.35.0",
     "lucide-react": "^0.577.0",
     "marked": "^17.0.1",
     "marked-emoji": "^2.0.3",
     "marked-shiki": "^1.2.1",
     "motion": "^12.38.0",
+    "pdfjs-dist": "^5.4.624",
     "pptxgenjs": "3.12.0",
     "react": "catalog:",
     "react-dom": "catalog:",
@@ -90,10 +91,10 @@
     "@types/react": "^19.2.2",
     "@types/react-dom": "^19.2.2",
     "@vitejs/plugin-react": "^5.0.4",
+    "@xmldom/xmldom": "0.8.13",
     "babel-plugin-react-compiler": "^1.0.0",
     "tailwindcss": "^4.1.18",
     "typescript": "^5.6.3",
     "vite": "^6.0.1"
-  },
-  "packageManager": "pnpm@10.27.0"
+  }
 }

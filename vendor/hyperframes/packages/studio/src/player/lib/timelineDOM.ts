@@ -8,7 +8,7 @@
  * Pure functions (no React, no store reads) — testable in isolation.
  */
 
-import type { TimelineElement } from "../store/playerStore";
+import type { DomClipChild, TimelineElement } from "../store/playerStore";
 import type { ClipManifestClip } from "./playbackTypes";
 import { resolveCssStackingContextId } from "@hyperframes/core/runtime/stacking-context";
 import { readClipTiming } from "@hyperframes/core/composition-contract";
@@ -25,6 +25,7 @@ import {
   buildTimelineElementIdentity,
   getTimelineElementIdentity,
   isTimelineIgnoredElement,
+  readTimelineClipLabel,
   readTimelineElementZIndex,
 } from "./timelineElementHelpers";
 
@@ -37,6 +38,8 @@ export {
   resolveMediaElement,
   // fallow-ignore-next-line unused-exports
   applyMediaMetadataFromElement,
+  getImplicitTimelineLayerLabel,
+  isImplicitTimelineLayerCandidate,
   getTimelineElementSelector,
   // fallow-ignore-next-line unused-exports
   getTimelineElementSourceFile,
@@ -96,6 +99,8 @@ export function createTimelineElementFromManifestClip(params: {
 }): TimelineElement {
   const { clip, fallbackIndex, doc } = params;
   let hostEl = params.hostEl ?? null;
+  const manifestClipLabel = clip.timelineClipLabel?.trim();
+  const clipLabel = readTimelineClipLabel(hostEl) ?? (manifestClipLabel || undefined);
   const label = getTimelineElementDisplayLabel({
     id: clip.id,
     label: clip.label,
@@ -129,6 +134,7 @@ export function createTimelineElementFromManifestClip(params: {
   const entry: TimelineElement = {
     id: identity.id,
     label,
+    clipLabel,
     key: identity.key,
     tag: resolveClipTag(clip),
     start: clip.start,
@@ -256,6 +262,7 @@ export function createImplicitTimelineLayersFromDOM(
       id: identity.id,
       key: identity.key,
       label,
+      clipLabel: readTimelineClipLabel(child),
       selector,
       selectorIndex,
       sourceFile,
@@ -275,6 +282,97 @@ export function createImplicitTimelineLayersFromDOM(
   }
 
   return layers;
+}
+
+/** Collect addressable untimed descendants without coupling them to runtime tree parsing. */
+export function collectDomClipChildren(
+  doc: Document,
+  clips: readonly ClipManifestClip[],
+  resolvedClipHosts: ReadonlyMap<ClipManifestClip, Element>,
+): { children: DomClipChild[]; parentMap: Map<string, string> } {
+  const children: DomClipChild[] = [];
+  const parentMap = new Map<string, string>();
+  const collectedTreeIds = new Set<string>();
+  const resolvedHostElements = new Set(resolvedClipHosts.values());
+
+  const collect = (parentEl: Element, parentId: string, hostId: string) => {
+    for (const child of Array.from(parentEl.children)) {
+      // A resolved timed host owns its own descendant tree. Crossing this
+      // boundary would attach those descendants to an earlier outer clip; the
+      // global identity de-duplication would then keep the wrong timing forever.
+      if (resolvedHostElements.has(child)) continue;
+      let childParentId = parentId;
+      try {
+        const selector = getTimelineElementSelector(child);
+        if (selector) {
+          const htmlChild = child as HTMLElement;
+          const sourceFile = getTimelineElementSourceFile(child);
+          const selectorIndex = getTimelineElementSelectorIndex(doc, child, selector);
+          const domId = htmlChild.id || undefined;
+          const hfId = child.getAttribute("data-hf-id") || undefined;
+          const treeId =
+            domId ?? hfId ?? `${sourceFile ?? "index.html"}:${selector}:${selectorIndex ?? 0}`;
+          childParentId = treeId;
+          if (!collectedTreeIds.has(treeId)) {
+            collectedTreeIds.add(treeId);
+            const isGroup = child.hasAttribute("data-hf-group");
+            children.push({
+              id: treeId,
+              domId,
+              hfId,
+              selector,
+              selectorIndex,
+              sourceFile,
+              parentId,
+              hostId,
+              label:
+                (isGroup ? child.getAttribute("data-hf-group") : null) ||
+                getImplicitTimelineLayerLabel(htmlChild),
+              clipLabel: readTimelineClipLabel(child),
+              tagName: child.tagName.toLowerCase(),
+              stackingContextId: resolveCssStackingContextId(child),
+            });
+            parentMap.set(treeId, parentId);
+          }
+        }
+      } catch {
+        // Keep traversing: one unsupported node must not erase its sibling tree.
+      }
+      collect(child, childParentId, hostId);
+    }
+  };
+
+  for (const clip of clips) {
+    if (!clip.id) continue;
+    const hostEl = resolvedClipHosts.get(clip);
+    if (!hostEl) continue;
+    const innerRoot =
+      clip.kind === "composition" ? (hostEl.querySelector("[data-hf-inner-root]") ?? hostEl) : hostEl;
+    collect(innerRoot, clip.id, clip.id);
+  }
+
+  const compositionRoot = doc.querySelector("[data-composition-id]");
+  if (compositionRoot) {
+    for (const child of Array.from(compositionRoot.children)) {
+      if (!isImplicitTimelineLayerCandidate(compositionRoot, child)) continue;
+      const selector = getTimelineElementSelector(child);
+      if (!selector) continue;
+      const selectorIndex = getTimelineElementSelectorIndex(doc, child, selector);
+      const sourceFile = getTimelineElementSourceFile(child);
+      const identity = buildTimelineElementIdentity({
+        preferredId: child.id || null,
+        label: getImplicitTimelineLayerLabel(child),
+        fallbackIndex: 0,
+        domId: child.id || undefined,
+        selector,
+        selectorIndex,
+        sourceFile,
+      });
+      collect(child, identity.id, identity.id);
+    }
+  }
+
+  return { children, parentMap };
 }
 
 /**
@@ -328,6 +426,7 @@ export function parseTimelineFromDOM(doc: Document, rootDuration: number): Timel
     const entry: TimelineElement = {
       id: identity.id,
       label,
+      clipLabel: readTimelineClipLabel(el),
       key: identity.key,
       tag: tagLower,
       start,

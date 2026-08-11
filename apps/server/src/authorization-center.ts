@@ -4,6 +4,7 @@ import { createAliyunOssV4Request, createS3V4Request } from "./object-storage-si
 export const AUTHORIZATION_SERVICE_IDS = [
   "openai-images",
   "aliyun-bailian",
+  "minimax-media",
   "volcengine-video",
   "aliyun-oss",
   "wasabi",
@@ -229,6 +230,8 @@ export async function testAuthorizationService(
       return fetchAuthorizationTest("https://dashscope.aliyuncs.com/compatible-mode/v1/models", {
         headers: { Authorization: `Bearer ${resolved.values.DASHSCOPE_API_KEY}` },
       });
+    case "minimax-media":
+      return { ok: true, detail: "MiniMax API key saved. Speech synthesis verifies it when used." };
     case "volcengine-video":
       return fetchAuthorizationTest(
         "https://ark.cn-beijing.volces.com/api/v3/contents/generations/tasks?page_num=1&page_size=1",

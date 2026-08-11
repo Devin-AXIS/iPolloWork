@@ -1,0 +1,38 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "ending-signal-dissolve",
+  "version": "1.0.0",
+  "type": "hyperframes:block",
+  "title": "Signal Dissolve",
+  "description": "A quiet field of signal dots assembles the final statement, then softens into a refined digital afterimage.",
+  "kind": "effect",
+  "librarySection": "ending-animation",
+  "dimensions": { "width": 1920, "height": 1080 },
+  "duration": 4.6,
+  "tags": ["ending", "signal", "dots", "dissolve", "technology"],
+  "engine": { "name": "gsap", "version": "3.15.0", "seekable": true, "plugins": [] },
+  "source": { "provider": "ipollowork", "label": "iPolloWork Motion Library" },
+  "motionPreset": {
+    "version": 1,
+    "category": "ending",
+    "targets": ["any", "text", "image", "shape", "group"],
+    "anchor": "clip-end",
+    "duration": 1.15,
+    "ease": "power2.inOut",
+    "keyframes": [
+      { "percentage": 0, "properties": { "opacity": 1, "scale": 1, "filter": "blur(0px)" } },
+      {
+        "percentage": 58,
+        "properties": { "opacity": 0.72, "scale": 1.025, "filter": "blur(3px)" }
+      },
+      { "percentage": 100, "properties": { "opacity": 0, "scale": 1.08, "filter": "blur(18px)" } }
+    ]
+  },
+  "files": [
+    {
+      "path": "ending-signal-dissolve.html",
+      "target": "compositions/ending-signal-dissolve.html",
+      "type": "hyperframes:composition"
+    }
+  ]
+}

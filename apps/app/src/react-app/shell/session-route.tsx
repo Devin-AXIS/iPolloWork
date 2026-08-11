@@ -9,11 +9,8 @@ import {
 import { useNavigate } from "react-router-dom";
 import { toast } from "@/components/ui/sonner";
 import type {
-  AgentPartInput,
-  FilePartInput,
   ProviderListResponse,
   SessionStatus,
-  TextPartInput,
 } from "@opencode-ai/sdk/v2/client";
 import type { PptxCompatibility, TemplateCategory } from "@ipollowork/types/templates";
 
@@ -37,7 +34,6 @@ import {
 import { buildiPolloWorkEnvRuntimeKey } from "@/app/lib/ipollowork-env-runtime";
 import type { iPolloWorkServerInfo } from "@/app/lib/desktop";
 import type {
-  ComposerAttachment,
   ComposerDraft,
   ModelRef,
   SlashCommandOption,
@@ -73,10 +69,8 @@ import {
   applySessionRevert,
   destroyWorkspaceSessionResources,
 } from "@/react-app/domains/session/sync/session-sync";
-import { firstLineLocalFileParts } from "@/react-app/domains/session/sync/prompt-file-parts";
 import {
   designHtmlThemeSystemContext,
-  designAiSelectionInstruction,
   type DesignAiSelectionContext,
 } from "@/react-app/domains/session/design/design-ai-selection";
 import { useDesignAiSelectionStore } from "@/react-app/domains/session/design/design-ai-selection-store";
@@ -87,7 +81,6 @@ import { useModelBehavior } from "@/react-app/domains/session/surface/use-model-
 import { tokenStarModelSupportsEffort } from "@/react-app/domains/connections/provider-auth/tokenstar-provider";
 import { useSessionFindStore } from "@/react-app/domains/session/surface/find-store";
 import { useModelPicker } from "@/react-app/domains/session/modals/use-model-picker";
-import { appMentionInstruction } from "@/react-app/domains/session/surface/composer/app-mentions";
 import { CreateRemoteWorkspaceModal } from "@/react-app/domains/workspace/create-remote-workspace-modal";
 import { useSessionProviderAuth } from "@/react-app/domains/connections/provider-auth/use-session-provider-auth";
 import { useMcpConnectedCount } from "@/react-app/domains/connections/use-mcp-connected-count";
@@ -96,6 +89,9 @@ import type { iPolloWorkSessionType, iPolloWorkTemplateId } from "@/react-app/do
 import { readSessionType, sessionTypeForTemplate, setSessionType } from "@/react-app/domains/session/sidebar/session-type";
 import {
   shouldInjectVideoTaskContext,
+  videoCompositionHasVoiceover,
+  videoProjectEntryPath,
+  videoPromptRequestsVoiceoverContext,
   videoTaskSystemContext,
 } from "@/react-app/domains/session/video/video-project";
 import { useRemoteWorkspaceConnectionEditor } from "@/react-app/domains/workspace/use-remote-workspace-connection-editor";
@@ -147,26 +143,12 @@ import {
   useProviderListQuery,
 } from "@/react-app/infra/provider-list-query";
 import { resolvePreferredSelectableChatModel } from "@/react-app/infra/preferred-chat-model";
-
-/**
- * Serialize an SDK error value into a string that parseSessionError can parse.
- * Preserves the original shape (name, data, message) as JSON when possible,
- * so the session surface can detect ProviderModelNotFoundError and offer
- * recovery actions like "Change model".
- */
-function serializeSDKError(error: unknown): string {
-  if (error instanceof Error) return error.message;
-  if (typeof error === "string") return error;
-  if (typeof error === "object" && error !== null) {
-    try {
-      return JSON.stringify(error);
-    } catch {
-      const msg = (error as Record<string, unknown>).message;
-      return typeof msg === "string" ? msg : String(error);
-    }
-  }
-  return String(error);
-}
+import {
+  designSelectionContextsForDraft,
+  draftToParts,
+  promptDesignSelectionContexts,
+  serializeSDKError,
+} from "./session-prompt";
 
 function describeTaskCreateError(error: unknown) {
   const message = describeRouteError(error);
@@ -202,191 +184,6 @@ function focusPromptSoon() {
 // All workspace-scoped server URLs/clients/tokens come from
 // `resolveWorkspaceEndpoint` in apps/app/src/app/lib/workspace-endpoint.ts.
 // Don't compose `<baseUrl>/workspace/<id>` here.
-
-async function fileToDataUrl(file: File, mimeType: string) {
-  return await new Promise<string>((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onerror = () => reject(new Error(`Failed to read attachment: ${file.name}`));
-    reader.onload = () => resolve(typeof reader.result === "string" ? reader.result : "");
-    reader.readAsDataURL(new Blob([file], { type: mimeType }));
-  });
-}
-
-function attachmentMime(attachment: ComposerAttachment) {
-  if (attachment.kind === "image") return attachment.mimeType;
-  if (attachment.mimeType === "application/pdf") return attachment.mimeType;
-  // Everything else is sent as text; unsupported binary mimes poison
-  // server-side session history (see sync/attachment-support.ts).
-  return "text/plain";
-}
-
-type DesignSelectionScope = {
-  sessionId: string;
-  workspaceId: string;
-};
-
-type DesignSelectionWorkspaceClient = {
-  readWorkspaceFile: (workspaceId: string, path: string) => Promise<{ content: string; updatedAt?: number | null }>;
-  writeWorkspaceFile: (workspaceId: string, payload: { path: string; content: string; baseUpdatedAt?: number | null }) => Promise<{ updatedAt?: number | null }>;
-};
-
-type DesignSelectionStore = Pick<typeof useDesignAiSelectionStore, "getState">;
-
-export function designSelectionContextsForDraft(
-  draft: ComposerDraft,
-  designSelectionStore: DesignSelectionStore,
-  scope: DesignSelectionScope | undefined,
-) {
-  const contexts = new Map<string, DesignAiSelectionContext>();
-  const errors: string[] = [];
-  for (const part of draft.parts) {
-    if (part.type !== "design-selection") continue;
-    const context = designSelectionStore.getState().contexts[part.contextId];
-    if (!context) {
-      errors.push("The selected Design element is no longer available.");
-      continue;
-    }
-    if (!scope || context.sessionId !== scope.sessionId) {
-      errors.push("The selected Design element does not belong to this session.");
-      continue;
-    }
-    if (context.workspaceId !== scope.workspaceId) {
-      errors.push("The selected Design element does not belong to this workspace.");
-      continue;
-    }
-    contexts.set(context.id, context);
-  }
-  if (errors.length > 0) throw new Error(errors[0]);
-  if (contexts.size > 1) throw new Error("Only one Design element can be edited at a time.");
-  return [...contexts.values()];
-}
-
-export async function promptDesignSelectionContexts(input: {
-  contexts: DesignAiSelectionContext[];
-  workspaceClient: DesignSelectionWorkspaceClient;
-  prompt: () => Promise<{ error?: unknown }>;
-  designSelectionStore?: DesignSelectionStore;
-}) {
-  const designSelectionStore = input.designSelectionStore ?? useDesignAiSelectionStore;
-  try {
-    for (const context of input.contexts) {
-      const current = await input.workspaceClient.readWorkspaceFile(context.workspaceId, context.filePath);
-      const prepared = await input.workspaceClient.writeWorkspaceFile(context.workspaceId, {
-        path: context.filePath,
-        content: current.content,
-        baseUpdatedAt: current.updatedAt ?? null,
-      });
-      const rebased = designSelectionStore.getState().rebasePendingContext(context.id, {
-        beforeHtml: current.content,
-        baseUpdatedAt: prepared.updatedAt ?? current.updatedAt ?? null,
-      });
-      if (!rebased) throw new Error("The selected Design element is no longer ready for an AI update.");
-      designSelectionStore.getState().markRunning(context.id);
-    }
-    const result = await input.prompt();
-    if (result.error) throw new Error(serializeSDKError(result.error));
-    return result;
-  } catch (error) {
-    for (const context of input.contexts) designSelectionStore.getState().fail(context.id);
-    throw error;
-  }
-}
-
-export async function draftToParts(
-  draft: ComposerDraft,
-  workspaceRoot: string,
-  designSelectionStore: DesignSelectionStore = useDesignAiSelectionStore,
-  scope?: DesignSelectionScope,
-) {
-  const parts: Array<TextPartInput | FilePartInput | AgentPartInput> = [];
-  const root = workspaceRoot.trim();
-
-  const toAbsolutePath = (path: string) => {
-    const trimmed = path.trim();
-    if (!trimmed) return "";
-    if (trimmed.startsWith("/")) return trimmed;
-    if (/^[a-zA-Z]:\\/.test(trimmed)) return trimmed;
-    if (!root) return "";
-    return `${root}/${trimmed}`.replace(/\/\/+/g, "/");
-  };
-
-  const filenameFromPath = (path: string) => {
-    const normalized = path.replace(/\\/g, "/");
-    const segments = normalized.split("/").filter(Boolean);
-    return segments[segments.length - 1] ?? "file";
-  };
-
-  const designContexts = new Map(
-    designSelectionContextsForDraft(draft, designSelectionStore, scope).map((context) => [context.id, context]),
-  );
-  const expandedDesignContextIds = new Set<string>();
-  for (const part of draft.parts) {
-    if (part.type === "design-selection") {
-      if (expandedDesignContextIds.has(part.contextId)) continue;
-      const context = designContexts.get(part.contextId);
-      if (!context) throw new Error("The selected Design element is no longer available.");
-      expandedDesignContextIds.add(part.contextId);
-      parts.push({
-        type: "text",
-        text: designAiSelectionInstruction(context),
-        synthetic: true,
-      });
-      continue;
-    }
-    if (part.type === "text") {
-      parts.push({
-        type: "text",
-        text: part.text,
-        ...(part.synthetic ? { synthetic: true } : {}),
-      });
-      continue;
-    }
-    if (part.type === "paste") {
-      parts.push({ type: "text", text: part.text });
-      continue;
-    }
-    if (part.type === "agent") {
-      parts.push({ type: "agent", name: part.name });
-      continue;
-    }
-    if (part.type === "skill") {
-      parts.push({ type: "text", text: `Load [skill ${part.name}] and follow its instructions.` });
-      continue;
-    }
-    if (part.type === "app") {
-      parts.push({ type: "text", text: appMentionInstruction(part.name) });
-      continue;
-    }
-    if (part.type === "file") {
-      const absolute = toAbsolutePath(part.path);
-      if (!absolute) continue;
-      parts.push({
-        type: "file",
-        mime: "text/plain",
-        url: `file://${absolute}`,
-        filename: filenameFromPath(part.path),
-      });
-    }
-  }
-
-  parts.push(...firstLineLocalFileParts(draft.resolvedText ?? draft.text, root));
-
-  parts.push(
-    ...(await Promise.all(
-      draft.attachments.map(async (attachment) => {
-        const mime = attachmentMime(attachment);
-        return {
-          type: "file" as const,
-          url: await fileToDataUrl(attachment.file, mime),
-          filename: attachment.name,
-          mime,
-        };
-      }),
-    )),
-  );
-
-  return parts;
-}
 
 // Module-scoped so the first-run loader survives route remounts during boot
 // (component state would reset and flash the underlying page). Reset only on
@@ -949,9 +746,9 @@ export function SessionRoute() {
       },
       onSendDraft: async (draft: ComposerDraft, sessionId: string) => {
         const targetSessionId = sessionId.trim() || selectedSessionId;
-        if (!targetSessionId) return;
+        if (!targetSessionId) return false;
         const text = (draft.resolvedText ?? draft.text).trim();
-        if (!text && draft.attachments.length === 0) return;
+        if (!text && draft.attachments.length === 0) return false;
         // One-shot provider selection on the first send whenever no user-added
         // provider is connected. The free default model being usable is the
         // normal case here, not a reason to skip the step.
@@ -964,7 +761,7 @@ export function SessionRoute() {
         ) {
           pendingProviderDraftRef.current = { draft, sessionId: targetSessionId };
           setProviderStepOpen(true);
-          return;
+          return false;
         }
         if (selectedModelUnavailable) {
           toast.error("Selected model is unavailable.", {
@@ -983,7 +780,7 @@ export function SessionRoute() {
               },
             },
           });
-          return;
+          return false;
         }
 
         captureAnalyticsEvent("task_message_sent", {
@@ -1011,7 +808,7 @@ export function SessionRoute() {
 
         if (draft.mode === "shell") {
           await shellInSession(opencodeClient, targetSessionId, text);
-          return;
+          return true;
         }
 
         if (draft.command) {
@@ -1023,7 +820,7 @@ export function SessionRoute() {
           if (result.error) {
             throw new Error(serializeSDKError(result.error));
           }
-          return;
+          return true;
         }
 
         const designSelectionScope = selectedWorkspaceEndpoint
@@ -1040,17 +837,20 @@ export function SessionRoute() {
           useDesignAiSelectionStore,
           designSelectionScope,
         );
-        const envSystemContext = await buildiPolloWorkEnvSystemContext(client, {
-          cacheKey: targetSessionId,
-          runtimeKey: environmentRuntimeKey,
-        });
         const capabilitySystemContext = draft.capability?.instruction ?? null;
         // Template-session metadata is authoritative. The in-memory surface
         // cache is used only for legacy sessions created before that record
         // existed, so an already-open Video Studio still gets its contract.
-        let sessionTemplate = selectedWorkspaceEndpoint
-          ? await selectedWorkspaceEndpoint.client.getTemplateSession(selectedWorkspaceEndpoint.workspaceId, targetSessionId).catch(() => null)
-          : null;
+        const [envSystemContext, initialSessionTemplate] = await Promise.all([
+          buildiPolloWorkEnvSystemContext(client, {
+            cacheKey: targetSessionId,
+            runtimeKey: environmentRuntimeKey,
+          }),
+          selectedWorkspaceEndpoint
+            ? selectedWorkspaceEndpoint.client.getTemplateSession(selectedWorkspaceEndpoint.workspaceId, targetSessionId).catch(() => null)
+            : Promise.resolve(null),
+        ]);
+        let sessionTemplate = initialSessionTemplate;
         // Claim a pre-template Studio project before the prompt is sent. This
         // is the one-time migration that makes the persisted session record,
         // the agent contract, and the right-side Studio point at one path.
@@ -1058,14 +858,27 @@ export function SessionRoute() {
           sessionTemplate = await selectedWorkspaceEndpoint.client.adoptLegacyVideoSession(selectedWorkspaceEndpoint.workspaceId, targetSessionId).catch(() => null);
         }
         const cachedSessionType = readSessionType(targetSessionId);
-        const videoSystemContext = shouldInjectVideoTaskContext(
+        const isVideoTask = shouldInjectVideoTaskContext(
           sessionTemplate?.manifest.surface,
           cachedSessionType,
-        )
+        );
+        let includeVoiceoverContext = isVideoTask && videoPromptRequestsVoiceoverContext(
+          draft.capability?.id,
+          [draft.resolvedText ?? draft.text, draft.capability?.instruction].filter(Boolean).join("\n"),
+        );
+        if (isVideoTask && !includeVoiceoverContext && selectedWorkspaceEndpoint) {
+          const entryPath = sessionTemplate?.state.entry ?? videoProjectEntryPath(targetSessionId);
+          const entry = await selectedWorkspaceEndpoint.client
+            .readWorkspaceFile(selectedWorkspaceEndpoint.workspaceId, entryPath)
+            .catch(() => null);
+          includeVoiceoverContext = videoCompositionHasVoiceover(entry?.content);
+        }
+        const videoSystemContext = isVideoTask
           ? videoTaskSystemContext(
               targetSessionId,
               selectedWorkspaceRoot,
               sessionTemplate?.manifest.surface === "video" ? sessionTemplate.manifest : null,
+              { includeVoiceover: includeVoiceoverContext },
             )
           : null;
         const isDesignTask = sessionTemplate?.surface === "design";
@@ -1164,6 +977,7 @@ export function SessionRoute() {
             ...(systemContext ? { system: systemContext } : {}),
           }),
         });
+        return true;
       },
       onDraftChange: () => {
         // Draft persistence will be wired once the full React shell owns session state.

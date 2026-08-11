@@ -28,6 +28,7 @@ import type { PersistTimelineEditInput } from "./timelineEditingHelpers";
 import type { TimelineStackingReorderIntent } from "../player/components/timelineEditing";
 import {
   useTimelineElementVisibilityEditing,
+  useTimelineTrackLockEditing,
   useTimelineTrackVisibilityEditing,
 } from "./timelineTrackVisibility";
 import { useTimelineGroupEditing } from "./useTimelineGroupEditing";
@@ -36,10 +37,41 @@ import { cutoverCommittedOrThrow, sdkTimingPersist } from "../utils/sdkCutover";
 import type { UseTimelineEditingOptions } from "./useTimelineEditingTypes";
 import { getStudioSaveErrorMessage } from "../utils/studioSaveDiagnostics";
 import { getTimelineEditCapabilities } from "../player/components/timelineEditing";
+import { findElementForTimelineElement } from "../components/editor/domEditing";
 
 type TimelineMoveUpdates = Pick<TimelineElement, "start" | "track"> & {
   stackingReorder?: TimelineStackingReorderIntent | null;
 };
+
+function removeLiveTimelineElement(
+  iframe: HTMLIFrameElement | null,
+  element: TimelineElement,
+  activeCompPath: string | null,
+): { restore: () => void } | null {
+  let doc: Document | null = null;
+  try {
+    doc = iframe?.contentDocument ?? null;
+  } catch {
+    return null;
+  }
+  if (!doc) return null;
+  const target = findElementForTimelineElement(doc, element, {
+    activeCompositionPath: activeCompPath,
+    isMasterView: true,
+  });
+  if (!target || target === doc.body || target === doc.documentElement || !target.parentNode) {
+    return null;
+  }
+  const parent = target.parentNode;
+  const nextSibling = target.nextSibling;
+  target.remove();
+  return {
+    restore: () => {
+      if (target.isConnected) return;
+      parent.insertBefore(target, nextSibling?.parentNode === parent ? nextSibling : null);
+    },
+  };
+}
 
 export function useTimelineEditing({
   projectId,
@@ -64,6 +96,7 @@ export function useTimelineEditing({
   projectIdRef.current = projectId;
 
   const editQueueRef = useRef(Promise.resolve());
+  const timelineDeleteInFlightRef = useRef<Promise<void> | null>(null);
   const lastBlockedTimelineToastAtRef = useRef(0);
 
   const enqueueEdit = useCallback(
@@ -396,6 +429,20 @@ export function useTimelineEditing({
     forceReloadSdkSession,
   });
 
+  const handleToggleTrackLocked = useTimelineTrackLockEditing({
+    projectIdRef,
+    activeCompPath,
+    timelineElements,
+    showToast,
+    writeProjectFile,
+    recordEdit,
+    domEditSaveTimestampRef,
+    previewIframeRef,
+    pendingTimelineEditPathRef,
+    isRecordingRef,
+    forceReloadSdkSession,
+  });
+
   const handleToggleElementHidden = useTimelineElementVisibilityEditing({
     projectIdRef,
     activeCompPath,
@@ -412,114 +459,152 @@ export function useTimelineEditing({
   // fallow-ignore-next-line complexity
   const handleTimelineElementDelete = useCallback(
     // fallow-ignore-next-line complexity
-    async (element: TimelineElement) => {
+    (element: TimelineElement): Promise<void> => {
       if (isRecordingRef?.current) {
         showToast("Cannot edit timeline while recording", "error");
-        return;
+        return Promise.resolve();
       }
       const pid = projectIdRef.current;
-      if (!pid) throw new Error("No active project");
-      const label = getTimelineElementLabel(element);
-
-      const targetPath = element.sourceFile || activeCompPath || "index.html";
-      try {
-        const originalContent = await readFileContent(pid, targetPath);
-
-        const patchTarget = buildPatchTarget(element);
-        if (!patchTarget) {
-          throw new Error(`Timeline element ${element.id} is missing a patchable target`);
-        }
-
-        const removeResponse = await fetch(
-          `/api/projects/${pid}/file-mutations/remove-element/${encodeURIComponent(targetPath)}`,
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ target: patchTarget }),
-          },
-        );
-        if (!removeResponse.ok) {
-          const data = (await removeResponse.json().catch(() => ({}))) as { error?: unknown };
-          const detail = typeof data.error === "string" ? `: ${data.error}` : "";
-          // DOM-only media rows can outlive the source element after another
-          // edit or a preview reload. Treat that stale row as already removed
-          // so Delete remains idempotent instead of showing a misleading 404.
-          if (removeResponse.status === 404 && data.error === "element not found in source file") {
-            usePlayerStore
-              .getState()
-              .setElements(
-                timelineElements.filter((te) => (te.key ?? te.id) !== (element.key ?? element.id)),
-              );
-            usePlayerStore.getState().setSelectedElementId(null);
-            reloadPreview();
-            showToast(`${label} 已经从源文件移除，时间轴已同步。`, "info");
-            return;
-          }
-          throw new Error(`Failed to delete ${element.id} from ${targetPath}${detail}`);
-        }
-
-        const removeData = (await removeResponse.json()) as {
-          changed?: boolean;
-          content?: string;
-          version?: string;
-        };
-        observeProjectFileVersion?.(
-          targetPath,
-          removeData.version ?? removeResponse.headers.get("etag"),
-        );
-        const removedContent =
-          typeof removeData.content === "string" ? removeData.content : originalContent;
-        // Content-driven duration: shrink the composition to the furthest
-        // remaining clip end, read from the post-removal SOURCE (raw
-        // data-duration), so deleting the last/longest clip removes trailing
-        // empty space. Measured from the source, not the store, whose
-        // durations are runtime-truncated.
-        const deleteContentEnd = furthestClipEndFromSource(removedContent);
-        const patchedContent = setCompositionDurationToContent(removedContent, deleteContentEnd);
-        // Optimistically reflect the shrunk length in the readout/seek bar,
-        // rolling it back if the persist below fails (see captureDurationRollback).
-        const rollbackDuration = captureDurationRollback(previewIframeRef.current);
-        if (deleteContentEnd > 0 && targetPath === (activeCompPath || "index.html")) {
-          usePlayerStore.getState().setDuration(deleteContentEnd);
-        }
-
-        domEditSaveTimestampRef.current = Date.now();
-        try {
-          if (patchedContent !== removedContent) {
-            await writeProjectFile(targetPath, patchedContent, removedContent);
-          }
-          await recordEdit({
-            label: "Delete timeline clip",
-            kind: "timeline",
-            files: { [targetPath]: { before: originalContent, after: patchedContent } },
-          });
-        } catch (error) {
-          rollbackDuration();
-          try {
-            await writeProjectFile(targetPath, originalContent, patchedContent);
-          } catch {}
-          throw error;
-        }
-
-        usePlayerStore
-          .getState()
-          .setElements(
-            timelineElements.filter((te) => (te.key ?? te.id) !== (element.key ?? element.id)),
-          );
-        usePlayerStore.getState().setSelectedElementId(null);
-        forceReloadSdkSession?.();
-        reloadPreview();
-        showToast(`Deleted ${label}. Use Undo to restore it.`, "info");
-      } catch (error) {
-        const message = error instanceof Error ? error.message : "Failed to delete timeline clip";
-        showToast(message);
+      if (!pid) {
+        showToast("No active project", "error");
+        return Promise.resolve();
       }
+      if (timelineDeleteInFlightRef.current) return timelineDeleteInFlightRef.current;
+      const label = getTimelineElementLabel(element);
+      const targetPath = element.sourceFile || activeCompPath || "index.html";
+      const patchTarget = buildPatchTarget(element);
+      if (!patchTarget) {
+        showToast(`Timeline element ${element.id} is missing a patchable target`);
+        return Promise.resolve();
+      }
+
+      const state = usePlayerStore.getState();
+      const storeSnapshot = {
+        elements: state.elements,
+        domClipChildren: state.domClipChildren,
+        selectedElementId: state.selectedElementId,
+        selectedElementIds: state.selectedElementIds,
+        activeKeyframePct: state.activeKeyframePct,
+        motionPathArmed: state.motionPathArmed,
+      };
+      const liveRemoval = removeLiveTimelineElement(
+        previewIframeRef.current,
+        element,
+        activeCompPath,
+      );
+      state.removeElementReferences({
+        elementKey: element.key ?? element.id,
+        hfId: element.hfId,
+        domId: element.domId,
+        selector: element.selector,
+        selectorIndex: element.selectorIndex,
+        sourceFile: targetPath,
+      });
+      let loadingShown = false;
+      const loadingTimer = window.setTimeout(() => {
+        loadingShown = true;
+        usePlayerStore.getState().setPreviewDeletePending(true);
+      }, 120);
+
+      const operation = (async () => {
+        try {
+          const originalContent = await readFileContent(pid, targetPath);
+
+          const removeResponse = await fetch(
+            `/api/projects/${pid}/file-mutations/remove-element/${encodeURIComponent(targetPath)}`,
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ target: patchTarget }),
+            },
+          );
+          if (!removeResponse.ok) {
+            const data = (await removeResponse.json().catch(() => ({}))) as { error?: unknown };
+            const detail = typeof data.error === "string" ? `: ${data.error}` : "";
+            // DOM-only media rows can outlive the source element after another
+            // edit or a preview reload. Treat that stale row as already removed
+            // so Delete remains idempotent instead of showing a misleading 404.
+            if (
+              removeResponse.status === 404 &&
+              data.error === "element not found in source file"
+            ) {
+              forceReloadSdkSession?.();
+              if (!liveRemoval) reloadPreview();
+              showToast(`${label} 已经从源文件移除，时间轴已同步。`, "info");
+              return;
+            }
+            throw new Error(`Failed to delete ${element.id} from ${targetPath}${detail}`);
+          }
+
+          const removeData = (await removeResponse.json()) as {
+            changed?: boolean;
+            content?: string;
+            version?: string;
+          };
+          observeProjectFileVersion?.(
+            targetPath,
+            removeData.version ?? removeResponse.headers.get("etag"),
+          );
+          const removedContent =
+            typeof removeData.content === "string" ? removeData.content : originalContent;
+          // Content-driven duration: shrink the composition to the furthest
+          // remaining clip end, read from the post-removal SOURCE (raw
+          // data-duration), so deleting the last/longest clip removes trailing
+          // empty space. Measured from the source, not the store, whose
+          // durations are runtime-truncated.
+          const deleteContentEnd = furthestClipEndFromSource(removedContent);
+          const patchedContent = setCompositionDurationToContent(removedContent, deleteContentEnd);
+          // Optimistically reflect the shrunk length in the readout/seek bar,
+          // rolling it back if the persist below fails (see captureDurationRollback).
+          const rollbackDuration = captureDurationRollback(previewIframeRef.current);
+          if (deleteContentEnd > 0 && targetPath === (activeCompPath || "index.html")) {
+            usePlayerStore.getState().setDuration(deleteContentEnd);
+          }
+
+          domEditSaveTimestampRef.current = Date.now();
+          try {
+            if (patchedContent !== removedContent) {
+              await writeProjectFile(targetPath, patchedContent, removedContent);
+            }
+            await recordEdit({
+              label: "Delete timeline clip",
+              kind: "timeline",
+              files: { [targetPath]: { before: originalContent, after: patchedContent } },
+            });
+          } catch (error) {
+            rollbackDuration();
+            try {
+              await writeProjectFile(targetPath, originalContent, patchedContent);
+            } catch {}
+            throw error;
+          }
+
+          forceReloadSdkSession?.();
+          if (!liveRemoval) reloadPreview();
+          showToast(`Deleted ${label}. Use Undo to restore it.`, "info");
+        } catch (error) {
+          liveRemoval?.restore();
+          usePlayerStore.setState(storeSnapshot);
+          const message =
+            error instanceof Error ? error.message : "Failed to delete timeline clip";
+          showToast(message);
+        } finally {
+          window.clearTimeout(loadingTimer);
+          if (loadingShown) usePlayerStore.getState().setPreviewDeletePending(false);
+        }
+      })();
+      timelineDeleteInFlightRef.current = operation;
+      void operation.finally(() => {
+        if (timelineDeleteInFlightRef.current === operation) {
+          timelineDeleteInFlightRef.current = null;
+        }
+      });
+      return operation;
     },
     [
       activeCompPath,
       recordEdit,
       showToast,
-      timelineElements,
       writeProjectFile,
       domEditSaveTimestampRef,
       reloadPreview,
@@ -581,6 +666,7 @@ export function useTimelineEditing({
     handleTimelineElementMove,
     handleTimelineElementResize,
     handleToggleTrackHidden,
+    handleToggleTrackLocked,
     handleToggleElementHidden,
     handleTimelineElementDelete,
     handleTimelineElementSplit: handleRazorSplit,

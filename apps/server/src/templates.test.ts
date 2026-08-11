@@ -1,14 +1,16 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { Database } from "bun:sqlite";
+import { createHash } from "node:crypto";
+import { execFileSync } from "node:child_process";
 import { existsSync } from "node:fs";
-import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, readdir, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { deflateRawSync } from "node:zlib";
-import { IPOLLOWORK_PACKAGE_EXTENSION, TEMPLATE_AUTHORING_ID_PREFIX, TEMPLATE_STYLE_LABELS, type TemplateCategory, type TemplateManifestV1 } from "@ipollowork/types/templates";
+import { IPOLLOWORK_PACKAGE_EXTENSION, MAX_TEMPLATE_PACKAGE_BYTES, TEMPLATE_AUTHORING_ID_PREFIX, TEMPLATE_STYLE_LABELS, type TemplateCategory, type TemplateManifestV1 } from "@ipollowork/types/templates";
 import type { ServerConfig, WorkspaceInfo } from "./types.js";
-import { adoptLegacyVideoSession, createTemplateAuthoringSession, importTemplate, installBundledTemplate, listTemplates, materializeTemplate, migrateTemplateSessionSnapshots, parseTemplateLibraryScope, readTemplateSession, resolveBundledTemplatesRoot, saveTemplateFromSession, uninstallTemplate, validateTemplateFromSession, validateTemplatePackageDirectory } from "./templates.js";
+import { adoptLegacyVideoSession, createTemplateAuthoringSession, exportLocalTemplatePackage, exportTemplateFromSession, importTemplate, installBundledTemplate, listTemplates, materializeTemplate, migrateTemplateSessionSnapshots, parseTemplateLibraryScope, readTemplateSession, resolveBundledTemplatesRoot, saveTemplateFromSession, uninstallTemplate, validateTemplateFromSession, validateTemplatePackageDirectory } from "./templates.js";
 
 const previousRuntimeDb = process.env.IPOLLOWORK_RUNTIME_DB;
 const previousBundledTemplatesDir = process.env.IPOLLOWORK_BUNDLED_TEMPLATES_DIR;
@@ -760,10 +762,16 @@ describe("template installations", () => {
   });
 
   test("build copies strict PPTX-compatible templates into the embedded server catalog", async () => {
-    const builtTemplatesRoot = join(dirname(fileURLToPath(import.meta.url)), "..", "dist", "bundled-templates");
-    for (const templateId of pptxCompatibleTemplateIds) {
-      expect(existsSync(join(builtTemplatesRoot, templateId, "manifest.json"))).toBe(true);
-      expect(existsSync(join(builtTemplatesRoot, `${templateId}${IPOLLOWORK_PACKAGE_EXTENSION}`))).toBe(true);
+    const root = await mkdtemp(join(tmpdir(), "ipw-built-templates-"));
+    const builtTemplatesRoot = join(root, "bundled-templates");
+    try {
+      execFileSync(process.execPath, [join(dirname(fileURLToPath(import.meta.url)), "..", "script", "copy-bundled-templates.mjs"), builtTemplatesRoot]);
+      for (const templateId of pptxCompatibleTemplateIds) {
+        expect(existsSync(join(builtTemplatesRoot, templateId, "manifest.json"))).toBe(true);
+        expect(existsSync(join(builtTemplatesRoot, `${templateId}${IPOLLOWORK_PACKAGE_EXTENSION}`))).toBe(true);
+      }
+    } finally {
+      await rm(root, { recursive: true, force: true });
     }
   });
 
@@ -878,6 +886,30 @@ describe("template installations", () => {
     await expect(importTemplate(serverConfig, "alpha", localPackage(), "slides")).rejects.toMatchObject({ code: "template_category_mismatch" });
     await expect(importTemplate(serverConfig, "alpha", localPackage("local.invalid-video", { category: "video", surface: "video" }), "video")).rejects.toMatchObject({ code: "invalid_template_manifest" });
     await expect(importTemplate(serverConfig, "alpha", localPackage("local.future-package", { schemaVersion: 2 }), "site")).rejects.toMatchObject({ code: "unsupported_template_schema" });
+  });
+
+  test("reimports equivalent .ipwp and legacy .ipwt content without a false version conflict", async () => {
+    const root = await mkdtemp(join(tmpdir(), "ipw-import-identity-"));
+    const runtimeDb = join(root, "runtime.sqlite");
+    process.env.IPOLLOWORK_RUNTIME_DB = runtimeDb;
+    const serverConfig = config(root);
+    const archive = localPackage("local.compatible-package");
+    await importTemplate(serverConfig, "alpha", archive, "site");
+
+    const legacyArchiveHash = createHash("sha256").update(archive).digest("hex");
+    const sqlite = new Database(runtimeDb);
+    sqlite.query("UPDATE template_installations SET package_hash = ? WHERE workspace_id = ? AND template_id = ?")
+      .run(legacyArchiveHash, "__ipollowork_personal__", "local.compatible-package");
+    sqlite.close();
+
+    await expect(importTemplate(serverConfig, "alpha", archive, "site")).resolves.toMatchObject({ manifest: { id: "local.compatible-package" } });
+    const migrated = new Database(runtimeDb, { readonly: true });
+    const row = migrated.query<{ packageHash: string }, [string, string]>(
+      "SELECT package_hash AS packageHash FROM template_installations WHERE workspace_id = ? AND template_id = ?",
+    ).get("__ipollowork_personal__", "local.compatible-package");
+    migrated.close();
+    expect(row?.packageHash).not.toBe(legacyArchiveHash);
+    await rm(root, { recursive: true, force: true });
   });
 
   test("auto-detects imported categories while preserving scoped import checks", async () => {
@@ -1038,6 +1070,121 @@ describe("template installations", () => {
     const instantiated = await materializeTemplate(serverConfig, ws, first.manifest.id, "saved_copy");
     expect(await readFile(join(ws.path, instantiated.state.entry), "utf8")).toBe(sourceEntry);
   });
+
+  test("exports a current video session without installing it in My templates", async () => {
+    const root = await mkdtemp(join(tmpdir(), "ipw-video-session-export-"));
+    process.env.IPOLLOWORK_RUNTIME_DB = join(root, "runtime.sqlite");
+    const serverConfig = config(root);
+    const ws = workspace(root, "alpha");
+    await createTemplateAuthoringSession(serverConfig, ws, { sessionId: "video_export_only", category: "video" });
+    const videoRoot = join(ws.path, "video", "video_export_only");
+    const bgm = Buffer.from([0x49, 0x44, 0x33, 0x04, 0x00, 0x00]);
+    await mkdir(join(videoRoot, "assets"), { recursive: true });
+    await writeFile(join(videoRoot, "assets", "bgm.mp3"), bgm);
+    await writeFile(
+      join(videoRoot, "index.html"),
+      (await readFile(join(videoRoot, "index.html"), "utf8")).replace(
+        "</body>",
+        '  <audio src="assets/bgm.mp3" data-track="audio" data-clip="bgm" data-start="0" data-duration="8"></audio>\n</body>',
+      ),
+    );
+    const before = (await listTemplates(serverConfig, ws.id)).filter((item) => item.sourceType === "local");
+
+    const exported = await exportTemplateFromSession(serverConfig, ws, {
+      sessionId: "video_export_only",
+      category: "video",
+      title: "Exported video",
+    });
+
+    expect(exported.archive.subarray(0, 2).toString("ascii")).toBe("PK");
+    expect(exported.archive.includes(Buffer.from("assets/bgm.mp3"))).toBe(true);
+    expect(exported.manifest).toMatchObject({ title: "Exported video", surface: "video", version: "1.0.0" });
+    expect((await listTemplates(serverConfig, ws.id)).filter((item) => item.sourceType === "local")).toEqual(before);
+    const imported = await importTemplate(serverConfig, ws.id, exported.archive, "video");
+    expect(imported).toMatchObject({ sourceType: "local", manifest: { id: exported.manifest.id, surface: "video" } });
+    const materialized = await materializeTemplate(serverConfig, ws, imported.manifest.id, "video_export_only_roundtrip");
+    expect(await readFile(join(ws.path, "video", "video_export_only_roundtrip", "assets", "bgm.mp3"))).toEqual(bgm);
+    expect(await readFile(join(ws.path, materialized.state.entry), "utf8")).toContain('src="assets/bgm.mp3"');
+    await rm(root, { recursive: true, force: true });
+  });
+
+  test("exports a saved video deterministically and imports the canonical package again", async () => {
+    const root = await mkdtemp(join(tmpdir(), "ipw-video-export-"));
+    process.env.IPOLLOWORK_RUNTIME_DB = join(root, "runtime.sqlite");
+    const serverConfig = config(root);
+    const ws = workspace(root, "alpha");
+    await createTemplateAuthoringSession(serverConfig, ws, { sessionId: "video_export", category: "video" });
+    const backupDirectory = join(ws.path, "video", "video_export", ".hyperframes", "backup");
+    const backupFile = join(backupDirectory, "2026-08-05T09-41-42-645Z-aW5kZXguaHRtbA");
+    await mkdir(backupDirectory, { recursive: true });
+    await writeFile(backupFile, "session-only backup");
+    const saved = await saveTemplateFromSession(serverConfig, ws, { sessionId: "video_export", category: "video", title: "Reusable video" });
+
+    const first = await exportLocalTemplatePackage(serverConfig, ws.id, saved.manifest.id);
+    const second = await exportLocalTemplatePackage(serverConfig, ws.id, saved.manifest.id);
+    expect(first.archive.equals(second.archive)).toBe(true);
+    expect(first.archive.subarray(0, 2).toString("ascii")).toBe("PK");
+    expect(first.digest).toBe(createHash("sha256").update(first.archive).digest("hex"));
+    expect(first.manifest).toEqual(saved.manifest);
+    expect(first.archive.includes(Buffer.from(".hyperframes/backup/"))).toBe(false);
+    expect(existsSync(backupFile)).toBe(true);
+
+    const imported = await importTemplate(serverConfig, ws.id, first.archive, "video");
+    expect(imported).toMatchObject({ sourceType: "local", manifest: { id: saved.manifest.id, surface: "video" } });
+    const materialized = await materializeTemplate(serverConfig, ws, imported.manifest.id, "video_roundtrip");
+    const entry = await readFile(join(ws.path, materialized.state.entry), "utf8");
+    expect(entry).toContain("data-composition-variables");
+    expect(entry).toContain("data-composition-id");
+    expect(entry).toContain("data-track");
+    expect(existsSync(join(ws.path, "video", "video_roundtrip", ".hyperframes", "backup"))).toBe(false);
+    await rm(root, { recursive: true, force: true });
+  });
+
+  test("rejects missing, non-personal, symbolic-link, non-static and oversized template exports", async () => {
+    const root = await mkdtemp(join(tmpdir(), "ipw-export-boundaries-"));
+    const runtimeDb = join(root, "runtime.sqlite");
+    process.env.IPOLLOWORK_RUNTIME_DB = runtimeDb;
+    const serverConfig = config(root);
+    const ws = workspace(root, "alpha");
+    await expect(exportLocalTemplatePackage(serverConfig, ws.id, "personal.missing")).rejects.toMatchObject({ code: "local_template_not_found" });
+    await expect(exportLocalTemplatePackage(serverConfig, ws.id, "personal.missing", parseTemplateLibraryScope("enterprise:ent_export"))).rejects.toMatchObject({ code: "personal_template_export_required" });
+
+    const installed = await importTemplate(serverConfig, ws.id, localPackage(), "site");
+    const sqlite = new Database(runtimeDb);
+    const row = sqlite.query<{ packagePath: string }, [string, string]>(
+      "SELECT package_path AS packagePath FROM template_installations WHERE workspace_id = ? AND template_id = ?",
+    ).get("__ipollowork_personal__", installed.manifest.id);
+    sqlite.close();
+    if (!row) throw new Error("Expected the local template to be installed");
+
+    await writeFile(join(row.packagePath, "source.ts"), "export {}\n");
+    await expect(exportLocalTemplatePackage(serverConfig, ws.id, installed.manifest.id)).rejects.toMatchObject({ code: "invalid_template_package" });
+    await rm(join(row.packagePath, "source.ts"));
+
+    await symlink("manifest.json", join(row.packagePath, "linked.json"));
+    await expect(exportLocalTemplatePackage(serverConfig, ws.id, installed.manifest.id)).rejects.toMatchObject({ code: "invalid_template_package" });
+    await rm(join(row.packagePath, "linked.json"));
+
+    const maximumFileBytes = MAX_TEMPLATE_PACKAGE_BYTES / 2;
+    await writeFile(join(row.packagePath, "oversized.bin"), Buffer.alloc(maximumFileBytes + 1));
+    await expect(exportLocalTemplatePackage(serverConfig, ws.id, installed.manifest.id)).rejects.toMatchObject({ code: "template_package_too_large" });
+    await rm(join(row.packagePath, "oversized.bin"));
+
+    const maximumFile = Buffer.alloc(maximumFileBytes);
+    await writeFile(join(row.packagePath, "first.bin"), maximumFile);
+    await writeFile(join(row.packagePath, "second.bin"), maximumFile);
+    await expect(exportLocalTemplatePackage(serverConfig, ws.id, installed.manifest.id)).rejects.toMatchObject({ code: "template_package_too_large" });
+    await rm(join(row.packagePath, "first.bin"));
+    await rm(join(row.packagePath, "second.bin"));
+
+    const existingFiles = Object.keys(await readPackageFiles(row.packagePath)).length;
+    for (let start = 0; start < 1_001 - existingFiles; start += 100) {
+      const count = Math.min(100, (1_001 - existingFiles) - start);
+      await Promise.all(Array.from({ length: count }, (_, index) => writeFile(join(row.packagePath, `extra-${start + index}.txt`), "")));
+    }
+    await expect(exportLocalTemplatePackage(serverConfig, ws.id, installed.manifest.id)).rejects.toMatchObject({ code: "template_package_too_large" });
+    await rm(root, { recursive: true, force: true });
+  }, 30_000);
 
   test("saves a current design as a personal reusable template", async () => {
     const root = await mkdtemp(join(tmpdir(), "ipw-save-template-"));

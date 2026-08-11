@@ -18,13 +18,15 @@ export function PanelTabButton({
         type="button"
         onClick={onClick}
         aria-pressed={active}
-        className={`h-8 rounded-xl px-3 text-[11px] font-medium transition-colors active:scale-[0.98] ${
+        aria-label={label}
+        style={active ? { color: "#ffffff" } : undefined}
+        className={`relative z-10 h-7 rounded-[7px] px-[11px] text-[11px] font-medium transition-[background-color,color,transform] active:scale-[0.98] ${
           active
-            ? "bg-neutral-800 text-white"
-            : "text-neutral-500 hover:bg-neutral-800/70 hover:text-neutral-200"
+            ? "bg-[#171816] shadow-[0_1px_2px_rgba(0,0,0,0.18)]"
+            : "text-[#858a94] hover:bg-panel-input"
         }`}
       >
-        {label}
+        <span className="relative z-10 whitespace-nowrap text-current">{label}</span>
       </button>
     </Tooltip>
   );

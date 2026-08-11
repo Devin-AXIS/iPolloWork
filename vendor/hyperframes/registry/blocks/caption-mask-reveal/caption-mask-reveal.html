@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Mask Reveal</title>
+    <style>
+      * { box-sizing: border-box; }
+      html, body { width: 1920px; height: 1080px; margin: 0; overflow: hidden; }
+      body { background: #d9e6e8; color: #172326; font-family: Arial, sans-serif; }
+      .composition { position: relative; width: 100%; height: 100%; overflow: hidden; background: linear-gradient(150deg, #eef5f4, #c8dfe2 52%, #88adb6); }
+      .frame { position: absolute; left: 220px; right: 220px; top: 120px; bottom: 240px; border-radius: 42px; background: linear-gradient(135deg, #315d67, #182d37); box-shadow: 0 48px 120px rgba(25,53,61,.25); }
+      .frame::after { content: ""; position: absolute; left: 12%; top: 18%; width: 42%; height: 64%; border-radius: 999px 999px 180px 180px; background: linear-gradient(160deg, #f2bb69, #df6d59); }
+      .caption-stage { position: absolute; left: 170px; right: 170px; bottom: 92px; display: flex; justify-content: center; }
+      .caption-shell { overflow: hidden; border-radius: 18px; background: #f7f2e8; box-shadow: 10px 10px 0 #1b8991; }
+      .caption-content { padding: 24px 38px; font-size: 56px; font-weight: 820; letter-spacing: -.035em; }
+      .label { position: absolute; left: 80px; top: 66px; font-size: 17px; font-weight: 900; letter-spacing: .27em; }
+    </style>
+  </head>
+  <body>
+    <main class="composition" data-composition-id="caption-mask-reveal" data-width="1920" data-height="1080" data-start="0" data-duration="4">
+      <div class="label">CAPTION SYSTEM / MASK REVEAL</div><div class="frame" data-layout-ignore></div>
+      <div id="cmr-caption" class="caption-stage" data-hf-id="cmr-caption" data-ipw-caption="true">
+        <div class="caption-shell"><div id="cmr-content" class="caption-content" data-hf-id="cmr-content" data-ipw-caption-content="true">Reveal the point exactly when it matters.</div></div>
+      </div>
+    </main>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.15.0/dist/gsap.min.js"></script>
+    <script>
+      window.__timelines = window.__timelines || {};
+      var timeline = gsap.timeline({ paused: true });
+      timeline
+        .from(".caption-shell", { scaleX: 0, transformOrigin: "left", duration: .72, ease: "power4.inOut" }, .2)
+        .from("#cmr-content", { yPercent: 115, clipPath: "inset(100% 0 0 0)", duration: .72, ease: "power4.out" }, .48)
+        .to("#cmr-content", { opacity: .9, duration: .28, yoyo: true, repeat: 1 }, 2.5);
+      window.__timelines["caption-mask-reveal"] = timeline;
+      window.addEventListener("hf-seek", function (event) { timeline.seek(Math.max(0, Math.min(event.detail.time, 4))); });
+      timeline.seek(0);
+    </script>
+  </body>
+</html>

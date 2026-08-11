@@ -1,6 +1,7 @@
 import { memo } from "react";
 import { createPortal } from "react-dom";
 import { useContextMenuDismiss } from "../../hooks/useContextMenuDismiss";
+import { useStudioI18n } from "../../i18n";
 
 export interface KeyframeDiamondContextMenuState {
   x: number;
@@ -29,6 +30,7 @@ export const KeyframeDiamondContextMenu = memo(function KeyframeDiamondContextMe
   onDeleteAll,
   onMoveToPlayhead,
 }: KeyframeDiamondContextMenuProps) {
+  const { tx } = useStudioI18n();
   const menuRef = useContextMenuDismiss(onClose);
 
   const menuWidth = 200;
@@ -55,7 +57,7 @@ export const KeyframeDiamondContextMenu = memo(function KeyframeDiamondContextMe
             onClose();
           }}
         >
-          Move to Playhead
+          {tx("Move to Playhead")}
         </button>
       )}
 
@@ -68,7 +70,7 @@ export const KeyframeDiamondContextMenu = memo(function KeyframeDiamondContextMe
           onClose();
         }}
       >
-        Delete Keyframe
+        {tx("Delete Keyframe")}
       </button>
 
       <button
@@ -79,7 +81,7 @@ export const KeyframeDiamondContextMenu = memo(function KeyframeDiamondContextMe
           onClose();
         }}
       >
-        Delete All Keyframes
+        {tx("Delete All Keyframes")}
       </button>
     </div>,
     document.body,

@@ -1,13 +1,13 @@
-import { useCallback } from "react";
+import { useCallback, useRef, type MutableRefObject } from "react";
 import { usePlayerStore } from "../player";
 import {
   readProjectFileContent,
-  saveProjectFilesWithHistory,
   type DomEditCommitBaseParams,
 } from "../utils/studioFileHistory";
 import { createStudioSaveHttpError } from "../utils/studioSaveDiagnostics";
 import {
   buildDomEditPatchTarget,
+  findElementForSelection,
   readHfId,
   type DomEditSelection,
 } from "../components/editor/domEditing";
@@ -21,8 +21,11 @@ import {
 } from "../components/editor/useLayerRevealOverride";
 import type { CommitDomEditPatchBatches, DomEditPatchBatch } from "./domEditCommitTypes";
 import { cutoverCommittedOrThrow, type CutoverResult } from "../utils/sdkCutover";
+import { findMatchingTimelineElementId } from "../utils/studioHelpers";
 
 interface UseElementLifecycleOpsParams extends DomEditCommitBaseParams {
+  previewIframeRef: MutableRefObject<HTMLIFrameElement | null>;
+  queueDomEditSave: <T>(save: () => Promise<T>) => Promise<T>;
   /** Route delete through SDK when session resolves the hf-id. */
   onTrySdkDelete?: (
     hfId: string,
@@ -34,7 +37,7 @@ interface UseElementLifecycleOpsParams extends DomEditCommitBaseParams {
   /** Resync the SDK session after a server-fallback delete. */
   forceReloadSdkSession?: () => void;
   commitDomEditPatchBatches: CommitDomEditPatchBatches;
-  /** Stage 7 Step 3b: called after a successful server-side element delete (shadow). */
+  /** Called after any successful element delete. */
   onElementDeleted?: (selection: DomEditSelection) => void;
 }
 
@@ -43,6 +46,48 @@ interface UseElementLifecycleOpsParams extends DomEditCommitBaseParams {
 // laneChangeGestureSeq precedent in timelineClipDragCommit.ts: the key only has
 // to be unique per gesture and identical across the gesture's records.
 let zReorderGestureSeq = 0;
+
+function removeLivePreviewElement(
+  iframe: HTMLIFrameElement | null,
+  selection: DomEditSelection,
+  activeCompPath: string | null,
+): { restore: () => void } | null {
+  let doc: Document | null = null;
+  try {
+    doc = iframe?.contentDocument ?? null;
+  } catch {
+    return null;
+  }
+  if (!doc) return null;
+  const element =
+    selection.element?.ownerDocument === doc && selection.element.isConnected
+      ? selection.element
+      : findElementForSelection(doc, selection, activeCompPath);
+  if (!element || element === doc.body || element === doc.documentElement) return null;
+  const parent = element.parentNode;
+  if (!parent) return null;
+  const nextSibling = element.nextSibling;
+  element.remove();
+  return {
+    restore: () => {
+      if (element.isConnected) return;
+      parent.insertBefore(element, nextSibling?.parentNode === parent ? nextSibling : null);
+    },
+  };
+}
+
+function syncDeletedElementFromTimeline(selection: DomEditSelection): void {
+  const store = usePlayerStore.getState();
+  const timelineKey = findMatchingTimelineElementId(selection, store.elements);
+  store.removeElementReferences({
+    elementKey: timelineKey ?? undefined,
+    hfId: selection.hfId,
+    domId: selection.id || undefined,
+    selector: selection.selector,
+    selectorIndex: selection.selectorIndex,
+    sourceFile: selection.sourceFile || undefined,
+  });
+}
 
 /**
  * Undo coalesce key for ONE z-reorder gesture — unique per call. The key
@@ -70,6 +115,8 @@ export function zReorderCoalesceKey(
 
 export function useElementLifecycleOps({
   activeCompPath,
+  previewIframeRef,
+  queueDomEditSave,
   showToast,
   writeProjectFile,
   domEditSaveTimestampRef,
@@ -83,86 +130,135 @@ export function useElementLifecycleOps({
   commitDomEditPatchBatches,
   onElementDeleted,
 }: UseElementLifecycleOpsParams) {
+  const deleteInFlightRef = useRef<Promise<void> | null>(null);
   // fallow-ignore-next-line complexity
   const handleDomEditElementDelete = useCallback(
     // fallow-ignore-next-line complexity
-    async (selection: DomEditSelection) => {
+    (selection: DomEditSelection): Promise<void> => {
       const pid = projectIdRef.current;
-      if (!pid) return;
+      if (!pid) return Promise.resolve();
+      if (deleteInFlightRef.current) return deleteInFlightRef.current;
       const label = selection.label || selection.id || selection.selector || selection.tagName;
-
       const targetPath = selection.sourceFile || activeCompPath || "index.html";
-      try {
-        const originalContent = await readProjectFileContent(pid, targetPath);
-
-        const patchTarget = buildDomEditPatchTarget(selection);
-        if (!patchTarget.id && !patchTarget.selector && !patchTarget.hfId) {
-          throw new Error("Selected element has no patchable target");
-        }
-
-        if (onTrySdkDelete && selection.hfId) {
-          const handled = await onTrySdkDelete(selection.hfId, originalContent, targetPath);
-          if (cutoverCommittedOrThrow(handled)) {
-            clearDomSelection();
-            usePlayerStore.getState().setSelectedElementId(null);
-            showToast(`Deleted ${label}. Use Undo to restore it.`, "info");
-            return;
-          }
-        }
-
-        domEditSaveTimestampRef.current = Date.now();
-        const removeResponse = await fetch(
-          `/api/projects/${pid}/file-mutations/remove-element/${encodeURIComponent(targetPath)}`,
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ target: patchTarget }),
-          },
-        );
-        if (!removeResponse.ok) {
-          throw await createStudioSaveHttpError(
-            removeResponse,
-            `Failed to delete element from ${targetPath}`,
-          );
-        }
-
-        const removeData = (await removeResponse.json()) as { changed?: boolean; content?: string };
-        const patchedContent =
-          typeof removeData.content === "string" ? removeData.content : originalContent;
-        // ponytail: the server remove-element route (removeElementFromHtml) strips
-        // only the element node — it does NOT cascade-remove GSAP tweens targeting
-        // it, unlike the SDK path (removeElement → cascadeRemoveAnimations). This
-        // fallback runs only when the element isn't in the SDK doc (e.g. runtime-
-        // generated / unaddressable), where targeting tweens are unlikely. Upgrade
-        // path: cascade in removeElementFromHtml by selector/hf-id to fully match.
-        await saveProjectFilesWithHistory({
-          projectId: pid,
-          label: "Delete element",
-          kind: "timeline",
-          files: { [targetPath]: patchedContent },
-          readFile: async () => originalContent,
-          writeFile: writeProjectFile,
-          recordEdit: editHistory.recordEdit,
-        });
-
-        clearDomSelection();
-        usePlayerStore.getState().setSelectedElementId(null);
-        // Server wrote the file; resync the stale in-memory SDK doc so a later
-        // SDK edit doesn't resurrect the deleted element.
-        forceReloadSdkSession?.();
-        reloadPreview();
-        onElementDeleted?.(selection);
-        showToast(`Deleted ${label}. Use Undo to restore it.`, "info");
-      } catch (error) {
-        const message = error instanceof Error ? error.message : "Failed to delete element";
-        showToast(message);
+      const patchTarget = buildDomEditPatchTarget(selection);
+      if (!patchTarget.id && !patchTarget.selector && !patchTarget.hfId) {
+        showToast("Selected element has no patchable target");
+        return Promise.resolve();
       }
+
+      // Immediate local feedback; persistence and history remain one queued transaction.
+      const liveRemoval = removeLivePreviewElement(
+        previewIframeRef.current,
+        selection,
+        activeCompPath,
+      );
+      const state = usePlayerStore.getState();
+      const storeSnapshot = {
+        elements: state.elements,
+        domClipChildren: state.domClipChildren,
+        selectedElementId: state.selectedElementId,
+        selectedElementIds: state.selectedElementIds,
+        activeKeyframePct: state.activeKeyframePct,
+        motionPathArmed: state.motionPathArmed,
+      };
+      syncDeletedElementFromTimeline(selection);
+      let loadingShown = false;
+      const loadingTimer = window.setTimeout(() => {
+        loadingShown = true;
+        usePlayerStore.getState().setPreviewDeletePending(true);
+      }, 120);
+
+      const operation = (async () => {
+        try {
+          await queueDomEditSave(async () => {
+            const originalContent = await readProjectFileContent(pid, targetPath);
+            domEditSaveTimestampRef.current = Date.now();
+
+            if (onTrySdkDelete && selection.hfId) {
+              const handled = await onTrySdkDelete(selection.hfId, originalContent, targetPath);
+              if (cutoverCommittedOrThrow(handled)) {
+                clearDomSelection();
+                if (!liveRemoval) reloadPreview();
+                onElementDeleted?.(selection);
+                showToast(`Deleted ${label}. Use Undo to restore it.`, "info");
+                return;
+              }
+            }
+
+            const removeResponse = await fetch(
+              `/api/projects/${pid}/file-mutations/remove-element/${encodeURIComponent(targetPath)}`,
+              {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ target: patchTarget }),
+              },
+            );
+            if (!removeResponse.ok) {
+              throw await createStudioSaveHttpError(
+                removeResponse,
+                `Failed to delete element from ${targetPath}`,
+              );
+            }
+
+            const removeData = (await removeResponse.json()) as {
+              changed?: boolean;
+              content?: string;
+            };
+            const patchedContent =
+              typeof removeData.content === "string" ? removeData.content : originalContent;
+            // ponytail: this fallback strips only the element node; unlike the
+            // SDK path, it cannot cascade-remove GSAP tweens for an unaddressable
+            // runtime element until the server patcher gains equivalent support.
+            // The endpoint already wrote the source; only record its exact bytes.
+            try {
+              await editHistory.recordEdit({
+                label: "Delete element",
+                kind: "timeline",
+                files: { [targetPath]: { before: originalContent, after: patchedContent } },
+              });
+            } catch (error) {
+              try {
+                await writeProjectFile(targetPath, originalContent, patchedContent);
+              } catch (rollbackError) {
+                throw new AggregateError(
+                  [error, rollbackError],
+                  "Failed to record delete history and rollback did not complete",
+                );
+              }
+              throw error;
+            }
+
+            clearDomSelection();
+            // Server wrote the file; resync the stale in-memory SDK doc so a later
+            // SDK edit doesn't resurrect the deleted element.
+            forceReloadSdkSession?.();
+            if (!liveRemoval) reloadPreview();
+            onElementDeleted?.(selection);
+            showToast(`Deleted ${label}. Use Undo to restore it.`, "info");
+          });
+        } catch (error) {
+          liveRemoval?.restore();
+          usePlayerStore.setState(storeSnapshot);
+          const message = error instanceof Error ? error.message : "Failed to delete element";
+          showToast(message);
+        } finally {
+          window.clearTimeout(loadingTimer);
+          if (loadingShown) usePlayerStore.getState().setPreviewDeletePending(false);
+        }
+      })();
+      deleteInFlightRef.current = operation;
+      void operation.finally(() => {
+        if (deleteInFlightRef.current === operation) deleteInFlightRef.current = null;
+      });
+      return operation;
     },
     [
       activeCompPath,
       clearDomSelection,
       domEditSaveTimestampRef,
       editHistory.recordEdit,
+      queueDomEditSave,
+      previewIframeRef,
       onTrySdkDelete,
       onElementDeleted,
       forceReloadSdkSession,

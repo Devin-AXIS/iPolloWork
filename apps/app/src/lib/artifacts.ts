@@ -177,17 +177,19 @@ export function selectArtifactContextOutputs(
   context?: ArtifactInteractionContext,
 ) {
   if (!context) return artifacts;
-  return artifacts.filter((artifact) => (
-    isConversationOutputArtifact(artifact)
-    && canOpenArtifactInContext(artifact, context)
-  ));
+  const outputs = artifacts.filter(isConversationOutputArtifact);
+  if (context.kind === "video") {
+    return selectTemplateEntryArtifacts(outputs, context.entryPath);
+  }
+  return outputs.filter((artifact) => canOpenArtifactInContext(artifact, context));
 }
 
-/** A template-backed chat turn exposes one Design entry, never its implementation assets. */
+/** A template-backed chat turn exposes one final entry, never duplicate discovery records or implementation assets. */
 export function selectTemplateEntryArtifacts(artifacts: ArtifactItem[], templateEntryPath: string) {
-  const exactEntry = artifacts.find((artifact) => (
+  const exactEntries = artifacts.filter((artifact) => (
     artifact.type === "html" && artifactPathMatchesTarget(artifact.path, templateEntryPath)
   ));
+  const exactEntry = exactEntries.sort(compareArtifactsForPrimary)[0];
   if (exactEntry) return [exactEntry];
 
   const entryName = getArtifactName(normalizeArtifactPath(templateEntryPath)).toLowerCase();

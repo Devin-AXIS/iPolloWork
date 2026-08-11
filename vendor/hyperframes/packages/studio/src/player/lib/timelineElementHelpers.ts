@@ -68,6 +68,12 @@ export function readTimelineElementZIndex(el: Element): number {
   return 0;
 }
 
+/** Read the editor-only clip caption without coupling it to the layer-tree label. */
+export function readTimelineClipLabel(el: Element | null | undefined): string | undefined {
+  const label = el?.getAttribute("data-timeline-clip-label")?.trim();
+  return label || undefined;
+}
+
 function readDurationAttribute(el: Element | null | undefined): number {
   if (!el) return 0;
   const duration =
@@ -247,6 +253,7 @@ export function getTimelineElementSelector(el: Element): string | undefined {
     const classes = el.className.split(/\s+/).filter(Boolean);
     const firstClass = classes.find((className) => className !== "clip") ?? classes[0];
     if (firstClass) return `.${CSS.escape(firstClass)}`;
+    return el.tagName.toLowerCase();
   }
   return undefined;
 }
@@ -281,11 +288,15 @@ export function buildTimelineElementKey(params: {
   selector?: string;
   selectorIndex?: number;
   sourceFile?: string;
+  previewHostId?: string;
 }): string {
   const scope = params.sourceFile ?? "index.html";
-  if (params.domId) return `${scope}#${params.domId}`;
-  if (params.selector) return `${scope}:${params.selector}:${params.selectorIndex ?? 0}`;
-  return `${scope}:${params.id}:${params.fallbackIndex}`;
+  const sourceKey = params.domId
+    ? `${scope}#${params.domId}`
+    : params.selector
+      ? `${scope}:${params.selector}:${params.selectorIndex ?? 0}`
+      : `${scope}:${params.id}:${params.fallbackIndex}`;
+  return params.previewHostId ? `${params.previewHostId}::${sourceKey}` : sourceKey;
 }
 
 export function buildTimelineElementIdentity(params: {
@@ -375,6 +386,7 @@ function nodeMatchesManifestClip(node: Element, clip: ClipManifestClip): boolean
 function findTimelineDomNode(doc: Document, id: string): Element | null {
   return (
     doc.getElementById(id) ??
+    doc.querySelector(`[data-hf-id="${CSS.escape(id)}"]`) ??
     doc.querySelector(`[data-composition-id="${CSS.escape(id)}"]`) ??
     doc.querySelector(`.${CSS.escape(id)}`) ??
     null
@@ -394,7 +406,14 @@ export function findTimelineDomNodeForClip(
   const exact = candidates.find((node) => nodeMatchesManifestClip(node, clip));
   if (exact) return exact;
 
-  return candidates[fallbackIndex] ?? null;
+  const indexedFallback = getTimelineDomNodes(doc)[fallbackIndex];
+  if (indexedFallback && !usedNodes.has(indexedFallback)) return indexedFallback;
+
+  // `candidates` already excludes every claimed host. Indexing that compacted
+  // list with the original manifest index skips additional nodes on every
+  // fallback and shifts all later clip bindings. The first remaining node is
+  // the only order-preserving fallback once exact identity/timing failed.
+  return candidates[0] ?? null;
 }
 
 // ---------------------------------------------------------------------------

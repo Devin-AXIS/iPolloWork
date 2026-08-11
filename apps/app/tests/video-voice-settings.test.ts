@@ -4,10 +4,12 @@ import {
   DEFAULT_COSYVOICE_MODEL,
   MAX_VOICE_SAMPLE_BYTES,
   migrateVideoVoiceoverSettings,
+  parseVideoVoiceDisplayMetadata,
   parseVideoVoiceoverSettings,
   serializeVideoVoiceoverSettings,
   synthesizedAudioUrl,
   validateVoiceSampleFile,
+  videoVoiceDisplayMetadata,
   videoVoiceoverSettingsPath,
   voiceSampleWorkspacePath,
 } from "../src/react-app/domains/session/video/video-voice";
@@ -66,5 +68,13 @@ describe("video voiceover settings", () => {
       output: { audio_url: "https://audio.example.test/legacy.mp3" },
     })).toBe("https://audio.example.test/legacy.mp3");
     expect(synthesizedAudioUrl({ output: { audio: {} } })).toBe("");
+  });
+
+  test("round-trips the voice reference displayed in the AI conversation", () => {
+    const reference = { voiceId: "longanyang", model: DEFAULT_COSYVOICE_MODEL, label: "配音 · 龙安阳" };
+    const metadata = videoVoiceDisplayMetadata(reference);
+
+    expect(parseVideoVoiceDisplayMetadata(`Capability context\n${metadata}\nVoice instructions`)).toEqual(reference);
+    expect(parseVideoVoiceDisplayMetadata("Selected video voiceover reference:")).toBeNull();
   });
 });

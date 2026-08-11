@@ -1,6 +1,7 @@
 "use client"
 
 import { Tool } from "@/components/ui/tool"
+import { t } from "@/i18n"
 import type { ApplyPatchToolPart } from "@/lib/build-in-tools"
 
 interface ApplyPatchToolProps {
@@ -9,14 +10,14 @@ interface ApplyPatchToolProps {
 
 function getApplyPatchToolTitle(part: ApplyPatchToolPart): string | null {
   if (part.state === "output-error") {
-    return "Apply patch attempted"
+    return t("tool_status.apply_patch_attempted")
   }
 
   if (part.state !== "output-available") {
     return null
   }
 
-  return "Apply patch"
+  return t("tool_status.apply_patch")
 }
 
 export function ApplyPatchTool({ part }: ApplyPatchToolProps) {

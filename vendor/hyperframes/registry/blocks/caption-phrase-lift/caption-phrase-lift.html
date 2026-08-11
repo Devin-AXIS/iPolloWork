@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Phrase Lift</title>
+    <style>
+      * { box-sizing: border-box; }
+      html, body { width: 1920px; height: 1080px; margin: 0; overflow: hidden; }
+      body { background: #14131a; color: #fff; font-family: Inter, sans-serif; }
+      .composition { position: relative; width: 100%; height: 100%; overflow: hidden; background: radial-gradient(circle at 50% 26%, #343043, #14131a 62%); }
+      .speaker { position: absolute; left: 50%; top: 43%; width: 330px; height: 330px; transform: translate(-50%, -50%); border-radius: 50%; background: linear-gradient(145deg, #8668ff, #f0669a); box-shadow: 0 46px 110px rgba(0,0,0,.38); }
+      .speaker::after { content: ""; position: absolute; inset: 28px; border: 1px solid rgba(255,255,255,.34); border-radius: 50%; }
+      .caption-stage { position: absolute; left: 170px; right: 170px; bottom: 108px; height: 190px; display: flex; align-items: center; justify-content: center; overflow: hidden; }
+      .caption-content { position: absolute; max-width: 1420px; padding: 28px 44px; border: 1px solid rgba(255,255,255,.14); border-radius: 28px; background: rgba(11,10,16,.78); box-shadow: 0 22px 70px rgba(0,0,0,.3); font-size: 62px; font-weight: 740; line-height: 1.08; letter-spacing: -.035em; text-align: center; backdrop-filter: blur(20px); }
+      .accent { color: #bfaeff; }
+      .label { position: absolute; left: 84px; top: 76px; color: #aaa3b7; font-size: 18px; font-weight: 700; letter-spacing: .24em; text-transform: uppercase; }
+    </style>
+  </head>
+  <body>
+    <main class="composition" data-composition-id="caption-phrase-lift" data-width="1920" data-height="1080" data-start="0" data-duration="4.2">
+      <div class="label">Caption system / Phrase lift</div>
+      <div class="speaker" data-layout-ignore></div>
+      <div id="cpl-caption" class="caption-stage" data-hf-id="cpl-caption" data-ipw-caption="true" data-layout-allow-overlap data-layout-allow-occlusion>
+        <div id="cpl-content-one" class="caption-content" data-hf-id="cpl-content-one" data-ipw-caption-content="true">Make every <span class="accent">sentence</span> easy to follow.</div>
+        <div id="cpl-content-two" class="caption-content" data-hf-id="cpl-content-two" data-ipw-caption-content="true">Motion should support the voice, not fight it.</div>
+      </div>
+    </main>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.15.0/dist/gsap.min.js"></script>
+    <script>
+      (function () {
+        window.__timelines = window.__timelines || {};
+        var timeline = gsap.timeline({ paused: true });
+        timeline
+          .set("#cpl-content-one", { autoAlpha: 0 }, 0)
+          .set("#cpl-content-two", { autoAlpha: 0 }, 0)
+          .fromTo("#cpl-content-one", { autoAlpha: 0, y: 36, scale: 0.97, filter: "blur(8px)" }, { autoAlpha: 1, y: 0, scale: 1, filter: "blur(0px)", duration: 0.72, ease: "power3.out" }, 0)
+          .set("#cpl-content-one", { autoAlpha: 0 }, 2)
+          .fromTo("#cpl-content-two", { autoAlpha: 0, y: 36, scale: 0.97, filter: "blur(8px)" }, { autoAlpha: 1, y: 0, scale: 1, filter: "blur(0px)", duration: 0.72, ease: "power3.out" }, 2)
+          .set("#cpl-content-two", { autoAlpha: 0 }, 4.2);
+        window.__timelines["caption-phrase-lift"] = timeline;
+        window.addEventListener("hf-seek", function (event) { timeline.seek(Math.max(0, Math.min(event.detail.time, 4.2))); });
+        timeline.seek(0);
+      })();
+    </script>
+  </body>
+</html>

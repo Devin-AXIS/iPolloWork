@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Signal Assembly</title>
+    <style>
+      * { box-sizing: border-box; }
+      html, body { width: 1920px; height: 1080px; margin: 0; overflow: hidden; }
+      body { background: #07111f; color: #f6fbff; font-family: Inter, sans-serif; }
+      .composition { position: relative; width: 100%; height: 100%; overflow: hidden; background: radial-gradient(circle at 72% 34%, #163b4d 0, #07111f 38%, #040912 100%); }
+      .grid { position: absolute; inset: 0; opacity: .22; background-image: linear-gradient(rgba(91,224,214,.18) 1px, transparent 1px), linear-gradient(90deg, rgba(91,224,214,.18) 1px, transparent 1px); background-size: 72px 72px; mask-image: linear-gradient(90deg, transparent, #000 24%, #000 78%, transparent); }
+      .signal { position: absolute; left: 122px; top: 126px; width: 10px; height: 10px; border-radius: 50%; background: #5be0d6; box-shadow: 0 0 42px #5be0d6; }
+      .rule { position: absolute; left: 122px; right: 122px; top: 132px; height: 2px; transform-origin: left; background: linear-gradient(90deg, #5be0d6, rgba(91,224,214,0)); }
+      .frame { position: absolute; inset: 204px 150px 168px; border: 1px solid rgba(187,242,238,.2); border-radius: 32px; background: linear-gradient(135deg, rgba(11,28,46,.92), rgba(6,14,26,.72)); box-shadow: 0 50px 140px rgba(0,0,0,.36); }
+      .content { position: absolute; left: 238px; top: 300px; width: 1340px; }
+      .kicker { color: #5be0d6; font-size: 22px; font-weight: 700; letter-spacing: .34em; text-transform: uppercase; }
+      h1 { max-width: 1240px; margin: 30px 0 0; font-size: 146px; line-height: .89; letter-spacing: -.065em; text-wrap: balance; }
+      .sub { max-width: 780px; margin-top: 42px; color: #a8bbc9; font-size: 30px; line-height: 1.4; }
+      .index { position: absolute; right: 210px; bottom: 186px; color: rgba(220,247,245,.62); font-size: 18px; letter-spacing: .2em; }
+    </style>
+  </head>
+  <body>
+    <main class="composition" data-composition-id="opening-signal-assembly" data-width="1920" data-height="1080" data-start="0" data-duration="4.8">
+      <div class="grid" data-layout-ignore></div>
+      <div class="signal" data-layout-ignore></div>
+      <div class="rule" data-layout-ignore></div>
+      <div class="frame" data-layout-ignore></div>
+      <section class="content" data-hf-id="osa-content" data-layout-allow-overlap>
+        <div class="kicker" data-hf-id="osa-kicker">SYSTEM / 01</div>
+        <h1 data-hf-id="osa-title">Ideas become motion.</h1>
+        <p class="sub" data-hf-id="osa-subtitle">A precise opening for product stories, chapters, and modern brand films.</p>
+      </section>
+      <div class="index">IPOLLOWORK · MOTION SYSTEM</div>
+    </main>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.15.0/dist/gsap.min.js"></script>
+    <script>
+      window.__timelines = window.__timelines || {};
+      var timeline = gsap.timeline({ paused: true });
+      timeline
+        .from(".rule", { scaleX: 0, duration: 1.1, ease: "power3.inOut" }, 0)
+        .from(".signal", { x: 1550, opacity: 0, duration: 1.05, ease: "power3.inOut" }, 0)
+        .from(".frame", { opacity: 0, scale: 0.97, filter: "blur(18px)", duration: 1.2, ease: "power3.out" }, 0.42)
+        .from(".kicker", { opacity: 0, x: -36, duration: 0.72, ease: "power3.out" }, 0.72)
+        .from("h1", { opacity: 0, y: 74, filter: "blur(14px)", duration: 1.15, ease: "power4.out" }, 0.88)
+        .from(".sub", { opacity: 0, y: 28, duration: 0.82, ease: "power3.out" }, 1.38)
+        .from(".index", { opacity: 0, duration: 0.7, ease: "power2.out" }, 1.72);
+      window.__timelines["opening-signal-assembly"] = timeline;
+      window.addEventListener("hf-seek", function (event) { timeline.seek(Math.max(0, Math.min(event.detail.time, 4.8))); });
+      timeline.seek(0);
+    </script>
+  </body>
+</html>

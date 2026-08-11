@@ -99,6 +99,34 @@ describe("route workspaces", () => {
     ]);
   });
 
+  test("filters blank default sessions from user-visible history", () => {
+    const sessions = {
+      ws: [
+        routeSession("blank-generated", {
+          title: "New session - 2026-08-06T04:00:00.000Z",
+          time: { created: 1000, updated: 1000 },
+        }),
+        routeSession("blank-localized", {
+          title: "新建会话",
+          time: { created: 2000, updated: 2000 },
+        }),
+        routeSession("active-default", {
+          title: "New session - 2026-08-06T04:00:00.000Z",
+          time: { created: 3000, updated: 3500 },
+        }),
+        routeSession("named", {
+          title: "Real work",
+          time: { created: 4000, updated: 4000 },
+        }),
+      ],
+    };
+
+    expect(userVisibleSessionsByWorkspaceId(sessions).ws.map((session) => session.id)).toEqual([
+      "active-default",
+      "named",
+    ]);
+  });
+
   test("requires an exact orchestrator agent to retain delegated children", () => {
     const sessions = {
       ws: [

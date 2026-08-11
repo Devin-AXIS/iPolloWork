@@ -1,7 +1,13 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, test } from "bun:test";
 
 import { getCloudSettingsTabs } from "../src/react-app/domains/settings/shell/settings-page";
 import { parseSettingsPath } from "../src/react-app/shell/settings-route";
+
+const settingsRouteSource = readFileSync(
+  new URL("../src/react-app/shell/settings-route.tsx", import.meta.url),
+  "utf8",
+);
 
 describe("settings route parsing", () => {
   test("redirects the settings root to preferences while keeping the overview route available", () => {
@@ -40,5 +46,9 @@ describe("settings route parsing", () => {
       extensionsSection: "all",
       pluginPackageId: "figma",
     });
+  });
+
+  test("returns to the task that opened settings", () => {
+    expect(settingsRouteSource).toContain("workspaceSessionRoute(selectedWorkspaceId, navigationSessionId)");
   });
 });

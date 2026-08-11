@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect, useMemo } from "react";
-import { FONT_EXT } from "../utils/mediaTypes";
+import { FONT_EXT, isHtmlIllustrationAsset } from "../utils/mediaTypes";
 import { fontFamilyFromAssetPath, type ImportedFontAsset } from "../components/editor/fontAssets";
 
 interface UseFileTreeOptions {
@@ -47,11 +47,35 @@ export function useFileTree({ projectId, projectIdRef }: UseFileTreeOptions) {
     if (data.files) setFileTree(data.files);
   }, [projectIdRef]);
 
+  useEffect(() => {
+    if (!projectId) return;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const scheduleRefresh = () => {
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(() => void refreshFileTree(), 120);
+    };
+    if (import.meta.hot) {
+      import.meta.hot.on("hf:file-change", scheduleRefresh);
+      return () => {
+        if (timer) clearTimeout(timer);
+        import.meta.hot?.off?.("hf:file-change", scheduleRefresh);
+      };
+    }
+    const events = new EventSource("/api/events");
+    events.addEventListener("file-change", scheduleRefresh);
+    return () => {
+      if (timer) clearTimeout(timer);
+      events.close();
+    };
+  }, [projectId, refreshFileTree]);
+
   const compositions = compositionPaths;
 
   const assets = useMemo(
     () =>
-      fileTree.filter((f) => !f.endsWith(".html") && !f.endsWith(".md") && !f.endsWith(".json")),
+      fileTree.filter(
+        (f) => isHtmlIllustrationAsset(f) || (!f.endsWith(".html") && !f.endsWith(".md") && !f.endsWith(".json")),
+      ),
     [fileTree],
   );
 

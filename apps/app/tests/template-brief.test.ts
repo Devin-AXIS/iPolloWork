@@ -1,7 +1,12 @@
 import { beforeEach, describe, expect, test } from "bun:test";
 
 import { setLocale } from "../src/i18n";
-import { isVideoStudioReady, templateBriefConfigFor, templateBriefPrompt } from "../src/react-app/domains/session/templates/template-brief";
+
+import {
+  isVideoStudioReady,
+  templateBriefConfigFor,
+  templateBriefPrompt,
+} from "../src/react-app/domains/session/templates/template-brief";
 
 describe("template brief", () => {
   beforeEach(() => {
@@ -124,4 +129,5 @@ describe("template brief", () => {
     expect(prompt).toContain("template-specific class names");
     expect(prompt).toContain("do not rebuild it as a generic split hero");
   });
+
 });

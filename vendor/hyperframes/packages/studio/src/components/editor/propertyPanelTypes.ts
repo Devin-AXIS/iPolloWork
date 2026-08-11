@@ -2,6 +2,7 @@ import type { RefObject } from "react";
 import type { ArcPathSegment, GsapAnimation } from "@hyperframes/parsers/gsap-parser";
 import type { DomEditSelection } from "./domEditing";
 import type { ImportedFontAsset } from "./fontAssets";
+import type { MotionMutationInput, MotionTargetKind } from "@hyperframes/core/motion-presets";
 
 export interface BackgroundRemovalProgress {
   status: "processing" | "complete" | "failed";
@@ -24,6 +25,10 @@ export interface PropertyPanelProps {
   projectDir: string | null;
   assets: string[];
   element: DomEditSelection | null;
+  /** Controls whether the inspector shows element properties or the dedicated motion editor. */
+  inspectorMode?: "properties" | "animation";
+  /** Hides the selected-element and accordion chrome when a parent panel owns navigation. */
+  showInspectorChrome?: boolean;
   multiSelectCount?: number;
   multiSelectedElements?: DomEditSelection[];
   onGroupSelection?: () => void;
@@ -64,7 +69,7 @@ export interface PropertyPanelProps {
   onSetTextFieldStyle: (fieldKey: string, property: string, value: string) => void;
   onAddTextField: (afterFieldKey?: string) => string | Promise<string | null> | null;
   onRemoveTextField: (fieldKey: string) => void;
-  onAskAgent: () => void;
+  onAskAgent?: () => void;
   onToggleElementHidden?: (elementKey: string, hidden: boolean) => void | Promise<void>;
   onImportAssets?: (files: FileList, dir?: string) => Promise<string[]>;
   fontAssets?: ImportedFontAsset[];
@@ -85,6 +90,11 @@ export interface PropertyPanelProps {
   onAddGsapFromProperty?: (animId: string, prop: string) => void;
   onRemoveGsapFromProperty?: (animId: string, prop: string) => void;
   onAddGsapAnimation?: (method: "to" | "from" | "set" | "fromTo") => void;
+  onMutateMotion?: (
+    targetKind: MotionTargetKind,
+    mutation: MotionMutationInput,
+    selectionOverride?: DomEditSelection | null,
+  ) => void | Promise<void>;
   onSetArcPath?: (
     animId: string,
     config: {

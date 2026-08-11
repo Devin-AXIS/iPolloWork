@@ -3,6 +3,7 @@ import JSZip from "jszip";
 
 import en from "../src/i18n/locales/en";
 import zh from "../src/i18n/locales/zh";
+import type { iPolloWorkExtensionManifest } from "../src/app/extensions";
 import { createiPolloWorkServerClient } from "../src/app/lib/ipollowork-server";
 
 const manifest = {
@@ -33,6 +34,84 @@ const manifest = {
 };
 
 describe("plugin developer and user flow", () => {
+  test("localizes plugin display metadata without changing runtime identity", async () => {
+    const { localizePluginPackageManifest } = await import("../src/react-app/domains/settings/plugin-platform-state.js");
+    const localizedManifest: iPolloWorkExtensionManifest = {
+      schemaVersion: 1,
+      id: "localized-plugin",
+      name: "本地化插件",
+      description: "中文描述",
+      category: "开发者工具",
+      source: { format: "ipollowork-extension-manifest", origin: "builtin", trusted: true },
+      composer: { prompt: "使用插件" },
+      setup: { instructions: "连接插件", primaryCta: "连接", secondaryCta: "帮助" },
+      resources: [{ type: "skill", id: "localized-skill", label: "本地化技能", description: "技能描述", path: ".opencode/skills/localized-skill/SKILL.md" }],
+      permissions: [{ id: "network", reason: "访问网络" }],
+      authorization: {
+        required: true,
+        methods: [{
+          id: "api-key",
+          kind: "secret-form",
+          label: "连接插件",
+          description: "填写密钥",
+          fields: [{ id: "apiKey", label: "密钥", placeholder: "请输入密钥" }],
+        }],
+      },
+      localization: {
+        defaultLocale: "zh",
+        translations: {
+          en: {
+            name: "Localized Plugin",
+            description: "English description",
+            category: "Developer Tools",
+            composer: { prompt: "Use the plugin" },
+            setup: { instructions: "Connect the plugin", primaryCta: "Connect", secondaryCta: "Help" },
+            resources: { "localized-skill": { label: "Localized Skill", description: "Skill description" } },
+            permissions: { network: { reason: "Access the network" } },
+            authorizationMethods: {
+              "api-key": {
+                label: "Connect plugin",
+                description: "Enter a key",
+                fields: { apiKey: { label: "Key", placeholder: "Enter a key" } },
+              },
+            },
+          },
+          fr: {
+            name: "Extension localisée",
+            resources: { "localized-skill": { label: "Compétence localisée" } },
+          },
+        },
+      },
+    };
+
+    expect(localizePluginPackageManifest(localizedManifest, "zh")).toBe(localizedManifest);
+    const english = localizePluginPackageManifest(localizedManifest, "en");
+    expect(english).toMatchObject({
+      id: "localized-plugin",
+      name: "Localized Plugin",
+      description: "English description",
+      category: "Developer Tools",
+      composer: { prompt: "Use the plugin" },
+      setup: { instructions: "Connect the plugin", primaryCta: "Connect", secondaryCta: "Help" },
+      resources: [{ id: "localized-skill", label: "Localized Skill", description: "Skill description", path: ".opencode/skills/localized-skill/SKILL.md" }],
+      permissions: [{ id: "network", reason: "Access the network" }],
+      authorization: { methods: [{ id: "api-key", label: "Connect plugin", fields: [{ id: "apiKey", label: "Key", placeholder: "Enter a key" }] }] },
+    });
+    expect(localizePluginPackageManifest(localizedManifest, "fr")).toMatchObject({
+      name: "Extension localisée",
+      description: "English description",
+      setup: { instructions: "Connect the plugin" },
+      resources: [{ label: "Compétence localisée", description: "Skill description" }],
+      permissions: [{ reason: "Access the network" }],
+      authorization: { methods: [{ fields: [{ label: "Key" }] }] },
+    });
+
+    const installedOlderManifest: iPolloWorkExtensionManifest = { ...localizedManifest, localization: undefined };
+    const catalogBacked = localizePluginPackageManifest(installedOlderManifest, "en", localizedManifest.localization);
+    expect(catalogBacked.description).toBe("English description");
+    expect(catalogBacked.resources[0]?.path).toBe(".opencode/skills/localized-skill/SKILL.md");
+  });
+
   test("derives exactly one simple primary action from package state", async () => {
     const { derivePluginPrimaryAction } = await import("../src/react-app/domains/settings/plugin-platform-state.js");
 

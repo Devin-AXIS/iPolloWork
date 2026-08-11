@@ -6,6 +6,9 @@ import type { iPolloWorkSessionSnapshot } from "../../../../app/lib/ipollowork-s
 import { safeStringify } from "../../../../app/utils";
 import { SYNTHETIC_SESSION_ERROR_MESSAGE_PREFIX } from "../../../../app/types";
 import { parseDesignAiSelectionDisplayMetadata } from "../design/design-ai-selection";
+import { parseHyperframesAnimationDisplayMetadata } from "@/app/lib/hyperframes-effect-params";
+import { parseVideoVoiceDisplayMetadata } from "../video/video-voice";
+import { parseVideoIllustrationDisplayMetadata } from "../video/video-illustration";
 import {
   parseDynamicToolUIPart,
   parseStructuredOutputUIPart,
@@ -190,18 +193,43 @@ function mapSnapshotToolParts(part: ToolPart): UIMessage["parts"] {
 export function snapshotToUIMessages(snapshot: iPolloWorkSessionSnapshot): UIMessage[] {
   return snapshot.messages.flatMap((message) => {
     const created = message.info.time?.created;
+    const completed = message.info.time && "completed" in message.info.time
+      ? message.info.time.completed
+      : undefined;
     const uiMessage = {
       id: message.info.id,
       role: message.info.role,
-      ...(typeof created === "number" ? { metadata: { opencode: { created } } } : {}),
+      ...(typeof created === "number" || typeof completed === "number"
+        ? { metadata: { opencode: {
+            ...(typeof created === "number" ? { created } : {}),
+            ...(typeof completed === "number" ? { completed } : {}),
+          } } }
+        : {}),
       parts: message.parts.flatMap<UIMessage["parts"][number]>((part) => {
         if (part.type === "text") {
           if (part.synthetic) {
+            const metadataParts: UIMessage["parts"] = [];
             const selection = parseDesignAiSelectionDisplayMetadata(part.text);
-            return selection ? [{
+            if (selection) metadataParts.push({
               type: "data-design-selection" as const,
-              data: { ...selection, partId: part.id },
-            }] : [];
+              data: { ...selection, partId: `${part.id}:design-selection` },
+            });
+            const animations = parseHyperframesAnimationDisplayMetadata(part.text);
+            if (animations) metadataParts.push({
+              type: "data-animation-references" as const,
+              data: { items: animations, partId: `${part.id}:animation-references` },
+            });
+            const voice = parseVideoVoiceDisplayMetadata(part.text);
+            if (voice) metadataParts.push({
+              type: "data-voice-reference" as const,
+              data: { ...voice, partId: `${part.id}:voice-reference` },
+            });
+            const illustration = parseVideoIllustrationDisplayMetadata(part.text);
+            if (illustration) metadataParts.push({
+              type: "data-illustration-reference" as const,
+              data: { ...illustration, partId: `${part.id}:illustration-reference` },
+            });
+            return metadataParts;
           }
           if (part.ignored) return [];
           return [{

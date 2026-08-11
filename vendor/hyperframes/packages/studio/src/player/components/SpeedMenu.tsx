@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, memo } from "react";
 import { trackStudioEvent } from "../../utils/studioTelemetry";
 import { Tooltip } from "../../components/ui";
+import { useStudioI18n } from "../../i18n";
 
 const SPEED_OPTIONS = [0.25, 0.5, 1, 1.5, 2] as const;
 
@@ -15,6 +16,7 @@ export const SpeedMenu = memo(function SpeedMenu({
   setPlaybackRate,
   disabled,
 }: SpeedMenuProps) {
+  const { tx } = useStudioI18n();
   const [showSpeedMenu, setShowSpeedMenu] = useState(false);
   const speedMenuContainerRef = useRef<HTMLDivElement>(null);
 
@@ -36,21 +38,23 @@ export const SpeedMenu = memo(function SpeedMenu({
 
   return (
     <div ref={speedMenuContainerRef} className="relative flex-shrink-0">
-      <Tooltip label="Playback speed">
+      <Tooltip label={tx("Playback speed")}>
         <button
           type="button"
           onClick={() => setShowSpeedMenu((v) => !v)}
           disabled={disabled}
-          className="w-10 px-2 py-1 rounded-md text-[10px] font-mono tabular-nums transition-colors"
-          style={{ color: "#71717A", background: "rgba(255,255,255,0.04)" }}
+          className={`flex h-6 min-w-10 items-center justify-center whitespace-nowrap rounded border-[0.5px] border-[#858a94] px-1.5 text-xs font-medium tabular-nums text-[#59616d] transition-colors hover:bg-[#e8eaed] disabled:opacity-40 ${
+            showSpeedMenu ? "bg-[#e8eaed]" : "bg-transparent"
+          }`}
+          aria-label={tx(`Playback speed ${playbackRate}x`)}
+          aria-expanded={showSpeedMenu}
         >
           {playbackRate === 1 ? "1x" : `${playbackRate}x`}
         </button>
       </Tooltip>
       {showSpeedMenu && (
         <div
-          className="absolute bottom-full right-0 mb-1.5 rounded-lg shadow-xl z-50 min-w-[56px] overflow-hidden"
-          style={{ background: "#161618", border: "1px solid rgba(255,255,255,0.08)" }}
+          className="absolute bottom-full right-0 z-50 mb-1.5 min-w-16 overflow-hidden rounded-lg border border-[var(--hf-panel-border-input)] bg-[var(--hf-panel-bg)] p-1 shadow-xl"
         >
           {SPEED_OPTIONS.map((rate) => (
             <button
@@ -60,18 +64,12 @@ export const SpeedMenu = memo(function SpeedMenu({
                 setPlaybackRate(rate);
                 setShowSpeedMenu(false);
               }}
-              className="block w-full px-3 py-1.5 text-[11px] text-left font-mono tabular-nums transition-colors"
-              style={{
-                color: rate === playbackRate ? "#FAFAFA" : "#71717A",
-                background: rate === playbackRate ? "rgba(255,255,255,0.06)" : "transparent",
-              }}
-              onMouseEnter={(e) => {
-                if (rate !== playbackRate)
-                  e.currentTarget.style.background = "rgba(255,255,255,0.04)";
-              }}
-              onMouseLeave={(e) => {
-                if (rate !== playbackRate) e.currentTarget.style.background = "transparent";
-              }}
+              className={`block w-full rounded px-3 py-1.5 text-left font-mono text-[11px] tabular-nums transition-colors ${
+                rate === playbackRate
+                  ? "bg-[var(--hf-panel-hover)] font-semibold text-[var(--hf-panel-text-0)]"
+                  : "text-[var(--hf-panel-text-3)] hover:bg-[var(--hf-panel-bg-inset)] hover:text-[var(--hf-panel-text-1)]"
+              }`}
+              aria-pressed={rate === playbackRate}
             >
               {rate}x
             </button>

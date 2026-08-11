@@ -1,4 +1,6 @@
 import { useTrackDesignInput } from "../../contexts/DesignPanelInputContext";
+import { useStudioI18n } from "../../i18n";
+import { FlipHorizontal, FlipVertical, RotateCw } from "../../icons/SystemIcons";
 import { FlatRow, FlatSegmentedRow, FlatSelectRow } from "./propertyPanelFlatPrimitives";
 import { KeyframeNavigation } from "./KeyframeNavigation";
 import { formatPxMetricValue } from "./propertyPanelHelpers";
@@ -39,6 +41,11 @@ interface GeometryRowsProps {
   ) => Promise<void>;
   onRemoveKeyframe?: (animId: string, pct: number) => void;
   onConvertToKeyframes?: (animId: string) => void;
+  large?: boolean;
+}
+
+export function flipScaleValue(value: number | undefined): number {
+  return typeof value === "number" && Number.isFinite(value) && value !== 0 ? -value : -1;
 }
 
 function KeyframeGutter({
@@ -70,9 +77,8 @@ function KeyframeGutter({
 >) {
   const track = useTrackDesignInput();
   if (!STUDIO_KEYFRAMES_ENABLED || !gsapAnimId) return null;
-  const hasKeyframesOnProp = Boolean(navKeyframes?.some((kf) => property in kf.properties));
   return (
-    <span data-flat-kf-gutter="true" style={{ opacity: hasKeyframesOnProp ? 1 : 0.3 }}>
+    <span data-flat-kf-gutter="true" className="flex flex-none items-center">
       <KeyframeNavigation
         property={property}
         keyframes={navKeyframes}
@@ -119,6 +125,7 @@ export function LayoutGeometryRows({
   onCommitAnimatedProperty,
   onRemoveKeyframe,
   onConvertToKeyframes,
+  large,
 }: GeometryRowsProps) {
   const gutterProps = {
     element,
@@ -138,6 +145,7 @@ export function LayoutGeometryRows({
         value={formatPxMetricValue(displayX)}
         tier={displayX === 0 ? "default" : "explicitCustom"}
         disabled={manualOffsetEditingDisabled}
+        large={large}
         onCommit={(next) => commitManualOffset("x", next)}
         suffix={<KeyframeGutter property="x" displayValue={displayX} {...gutterProps} />}
       />
@@ -146,30 +154,36 @@ export function LayoutGeometryRows({
         value={formatPxMetricValue(displayY)}
         tier={displayY === 0 ? "default" : "explicitCustom"}
         disabled={manualOffsetEditingDisabled}
+        large={large}
         onCommit={(next) => commitManualOffset("y", next)}
         suffix={<KeyframeGutter property="y" displayValue={displayY} {...gutterProps} />}
       />
+      {!large && (
+        <>
+          <FlatRow
+            label="W"
+            value={formatPxMetricValue(displayW)}
+            tier="default"
+            disabled={manualSizeEditingDisabled}
+            onCommit={(next) => commitManualSize("width", next)}
+            suffix={<KeyframeGutter property="width" displayValue={displayW} {...gutterProps} />}
+          />
+          <FlatRow
+            label="H"
+            value={formatPxMetricValue(displayH)}
+            tier="default"
+            disabled={manualSizeEditingDisabled}
+            onCommit={(next) => commitManualSize("height", next)}
+            suffix={<KeyframeGutter property="height" displayValue={displayH} {...gutterProps} />}
+          />
+        </>
+      )}
       <FlatRow
-        label="W"
-        value={formatPxMetricValue(displayW)}
-        tier="default"
-        disabled={manualSizeEditingDisabled}
-        onCommit={(next) => commitManualSize("width", next)}
-        suffix={<KeyframeGutter property="width" displayValue={displayW} {...gutterProps} />}
-      />
-      <FlatRow
-        label="H"
-        value={formatPxMetricValue(displayH)}
-        tier="default"
-        disabled={manualSizeEditingDisabled}
-        onCommit={(next) => commitManualSize("height", next)}
-        suffix={<KeyframeGutter property="height" displayValue={displayH} {...gutterProps} />}
-      />
-      <FlatRow
-        label="Angle"
+        label={large ? "Rotation" : "Angle"}
         value={`${displayR}°`}
         tier="default"
         disabled={manualRotationEditingDisabled}
+        large={large}
         onCommit={(next) => commitManualRotation(next.replace("°", ""))}
         suffix={<KeyframeGutter property="rotation" displayValue={displayR} {...gutterProps} />}
       />
@@ -204,19 +218,20 @@ export function LayoutFlexBlock({
   onSetStyle: (prop: string, value: string) => void | Promise<void>;
   disabled: boolean;
 }) {
+  const { tx } = useStudioI18n();
   const isFlex = styles.display === "flex" || styles.display === "inline-flex";
   if (!isFlex) return null;
   const direction = styles["flex-direction"] || "row";
   return (
     <div className="border-l-2 border-panel-border-input py-0.5 pl-[10px]">
       <div className="mb-[3px] text-[9px] font-semibold uppercase tracking-[0.12em] text-panel-text-5">
-        Flex
+        {tx("Flex")}
       </div>
       <FlatSegmentedRow
         label="Direction"
         options={[
-          { key: "row", node: "→ Row", label: "Row", active: direction === "row" },
-          { key: "column", node: "Column", label: "Column", active: direction === "column" },
+          { key: "row", node: tx("→ Row"), label: "Row", active: direction === "row" },
+          { key: "column", node: tx("Column"), label: "Column", active: direction === "column" },
         ]}
         disabled={disabled}
         onChange={(next) => void onSetStyle("flex-direction", next)}
@@ -298,10 +313,7 @@ export function LayoutTransform3DBlock({
   onLivePreviewProps?: (element: DomEditSelection, props: Record<string, number>) => void;
 }) {
   return (
-    <div className="border-t border-panel-hairline pt-2.5">
-      <div className="mb-[3px] text-[9px] font-semibold uppercase tracking-[0.12em] text-panel-text-5">
-        3D Transform
-      </div>
+    <div>
       <PropertyPanel3dTransform
         gsapRuntimeValues={gsapRuntimeValues}
         gsapAnimId={gsapAnimId}
@@ -340,44 +352,41 @@ interface FlatLayoutSectionProps
   styles: Record<string, string>;
   onSetStyle: (prop: string, value: string) => void | Promise<void>;
   disabled: boolean;
+  include3d?: boolean;
 }
 
-export function FlatLayoutSection({
-  element,
-  styles,
-  onSetStyle,
-  disabled,
-  gsapRuntimeValues,
-  resolveAnimIdForProp,
-  gsapKeyframes,
-  elStart,
-  elDuration,
-  onCommitAnimatedProperties,
-  onSeekToTime,
-  onLivePreviewProps,
-  ...geometry
-}: FlatLayoutSectionProps) {
+export function FlatLayoutSection(props: FlatLayoutSectionProps) {
+  const { tx } = useStudioI18n();
   return (
-    <div className="space-y-1.5">
-      <LayoutGeometryRows element={element} {...geometry} />
-      <LayoutZIndexRow styles={styles} onSetStyle={onSetStyle} />
-      <LayoutFlexBlock styles={styles} onSetStyle={onSetStyle} disabled={disabled} />
-      <LayoutTransform3DBlock
-        gsapRuntimeValues={gsapRuntimeValues}
-        gsapAnimId={geometry.gsapAnimId}
-        resolveAnimIdForProp={resolveAnimIdForProp}
-        gsapKeyframes={gsapKeyframes}
-        currentPct={geometry.currentPct}
-        elStart={elStart}
-        elDuration={elDuration}
-        element={element}
-        onCommitAnimatedProperty={geometry.onCommitAnimatedProperty}
-        onCommitAnimatedProperties={onCommitAnimatedProperties}
-        onSeekToTime={onSeekToTime}
-        onRemoveKeyframe={geometry.onRemoveKeyframe}
-        onConvertToKeyframes={geometry.onConvertToKeyframes}
-        onLivePreviewProps={onLivePreviewProps}
-      />
+    <div className="hf-flat-responsive-grid grid grid-cols-2 gap-2">
+      <LayoutGeometryRows {...props} large />
+      <div className="grid h-[34px] grid-cols-3 gap-[5px]">
+        <button
+          type="button"
+          aria-label={tx("Rotate clockwise")}
+          disabled={props.manualRotationEditingDisabled}
+          onClick={() => props.commitManualRotation(String((props.displayR + 90) % 360))}
+          className="flex h-[34px] items-center justify-center rounded-[6px] bg-panel-input text-[#858a94] transition-colors hover:text-[#24262b] disabled:cursor-not-allowed"
+        >
+          <RotateCw size={16} />
+        </button>
+        <button
+          type="button"
+          aria-label={tx("Flip horizontally (unavailable)")}
+          disabled
+          className="flex h-[34px] items-center justify-center rounded-[6px] bg-panel-input text-[#858a94] disabled:cursor-not-allowed"
+        >
+          <FlipHorizontal size={16} />
+        </button>
+        <button
+          type="button"
+          aria-label={tx("Flip vertically (unavailable)")}
+          disabled
+          className="flex h-[34px] items-center justify-center rounded-[6px] bg-panel-input text-[#858a94] disabled:cursor-not-allowed"
+        >
+          <FlipVertical size={16} />
+        </button>
+      </div>
     </div>
   );
 }

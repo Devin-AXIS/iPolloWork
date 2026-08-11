@@ -8,6 +8,7 @@
  * the GSAP-aware geometry intercept logic.
  */
 import { useCallback, useEffect, useRef } from "react";
+import type { RegistryMotionPreset } from "@hyperframes/core/registry";
 import type { DomEditSelection } from "../components/editor/domEditingTypes";
 import { STUDIO_GSAP_PANEL_ENABLED } from "../components/editor/manualEditingAvailability";
 import { usePlayerStore } from "../player";
@@ -18,6 +19,12 @@ import { useGsapInteractionFailureTelemetry } from "./useGsapInteractionFailureT
 import { useGsapSelectionHandlers } from "./useGsapSelectionHandlers";
 import type { PatchTarget } from "../utils/sourcePatcher";
 import type { SidebarTab } from "../components/sidebar/LeftSidebar";
+import type { MotionMutationInput, MotionTargetKind } from "@hyperframes/core/motion-presets";
+import {
+  collectTimelineAncestorIds,
+  resolveTimelineTreeSelectionId,
+  resolveTimelineTreeSelectionKey,
+} from "../player/lib/timelineTreeSelection";
 
 export interface UseDomEditWiringParams {
   projectId: string | null;
@@ -62,6 +69,17 @@ export interface UseDomEditWiringParams {
     sel: DomEditSelection,
     method: "to" | "from" | "set" | "fromTo",
     time: number,
+  ) => Promise<void>;
+  mutateMotion: (
+    sel: DomEditSelection,
+    targetKind: MotionTargetKind,
+    mutation: MotionMutationInput,
+     ) => Promise<void>;
+  applyGsapMotionPreset: (
+    sel: DomEditSelection,
+    preset: RegistryMotionPreset,
+    currentTime: number,
+    label: string,
   ) => Promise<void>;
   addGsapProperty: (sel: DomEditSelection, animId: string, prop: string) => Promise<void>;
   removeGsapProperty: (sel: DomEditSelection, animId: string, prop: string) => Promise<void>;
@@ -136,6 +154,8 @@ export function useDomEditWiring({
   deleteGsapAnimation,
   deleteAllForSelector,
   addGsapAnimation,
+  mutateMotion,
+  applyGsapMotionPreset,
   addGsapProperty,
   removeGsapProperty,
   updateGsapFromProperty,
@@ -150,6 +170,10 @@ export function useDomEditWiring({
   removeAllKeyframes,
   handleDomManualEditsReset,
 }: UseDomEditWiringParams) {
+  const timelineElements = usePlayerStore((state) => state.elements);
+  const clipManifest = usePlayerStore((state) => state.clipManifest);
+  const clipParentMap = usePlayerStore((state) => state.clipParentMap);
+  const domClipChildren = usePlayerStore((state) => state.domClipChildren);
   // ── Click-to-source navigation ──
 
   const onClickToSource = useCallback(
@@ -169,14 +193,34 @@ export function useDomEditWiring({
   // ── DOM selection -> timeline element sync ──
 
   useEffect(() => {
-    if (!domEditSelection?.id) return;
-    const { selectedElementId, elements, setSelectedElementId } = usePlayerStore.getState();
-    const matchKey = elements.find(
-      (el) => el.domId === domEditSelection.id || el.id === domEditSelection.id,
-    );
-    const key = matchKey ? (matchKey.key ?? matchKey.id) : null;
-    if (key && key !== selectedElementId) setSelectedElementId(key);
-  }, [domEditSelection?.id]);
+    if (!domEditSelection) return;
+    const store = usePlayerStore.getState();
+    const selectionIdentity = {
+      elementId: domEditSelection.id ?? undefined,
+      hfId: domEditSelection.hfId,
+      sourceFile: domEditSelection.sourceFile,
+      selector: domEditSelection.selector,
+      selectorIndex: domEditSelection.selectorIndex,
+      elements: timelineElements,
+      manifest: clipManifest ?? [],
+      domClipChildren,
+    };
+    const treeId = resolveTimelineTreeSelectionId(selectionIdentity);
+    if (!treeId) return;
+    const key = resolveTimelineTreeSelectionKey(selectionIdentity);
+    store.expandTimelineElementIds(collectTimelineAncestorIds(treeId, clipParentMap));
+    if (key !== store.selectedElementId) store.setSelectedElementId(key);
+  }, [
+    clipManifest,
+    clipParentMap,
+    domClipChildren,
+    domEditSelection?.hfId,
+    domEditSelection?.id,
+    domEditSelection?.selector,
+    domEditSelection?.selectorIndex,
+    domEditSelection?.sourceFile,
+    timelineElements,
+  ]);
 
   // ── GSAP cache sync ──
 
@@ -209,7 +253,11 @@ export function useDomEditWiring({
     STUDIO_GSAP_PANEL_ENABLED ? (projectId ?? null) : null,
     gsapSourceFile,
     domEditSelection
-      ? { id: domEditSelection.id ?? null, selector: domEditSelection.selector ?? null }
+      ? {
+          id: domEditSelection.id ?? null,
+          hfId: domEditSelection.hfId ?? null,
+          selector: domEditSelection.selector ?? null,
+        }
       : null,
     gsapCacheVersion,
     // Pass the preview iframe so class/selector tweens (e.g. `.dot`) resolve to
@@ -231,6 +279,8 @@ export function useDomEditWiring({
     deleteGsapAnimation,
     deleteAllForSelector,
     addGsapAnimation,
+    mutateMotion,
+    applyGsapMotionPreset,
     addGsapProperty,
     removeGsapProperty,
     updateGsapFromProperty,

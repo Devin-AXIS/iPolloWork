@@ -10,18 +10,16 @@
 
 import { useCallback } from "react";
 import { liveTime, usePlayerStore } from "../store/playerStore";
-import type { TimelineElement, DomClipChild } from "../store/playerStore";
-import { resolveCssStackingContextId } from "@hyperframes/core/runtime/stacking-context";
+import type { TimelineElement } from "../store/playerStore";
 import type { PlaybackAdapter, ClipManifestClip, IframeWindow } from "../lib/playbackTypes";
 import {
   parseTimelineFromDOM,
+  collectDomClipChildren,
   createTimelineElementFromManifestClip,
   findTimelineDomNodeForClip,
   createImplicitTimelineLayersFromDOM,
   buildStandaloneRootTimelineElement,
   getTimelineElementSelector,
-  getTimelineElementSelectorIndex,
-  getTimelineElementSourceFile,
   readTimelineDurationFromDocument,
 } from "../lib/timelineDOM";
 import {
@@ -62,10 +60,10 @@ interface UseTimelineSyncCallbacksParams {
  * playhead (the clamp below is the one sanctioned move — content shrank past it).
  */
 /**
- * Undo the `visibility: hidden` that refreshPlayer sets across a full reload.
- * Safe to call when the iframe was never hidden (idempotent no-op). Every reload
- * completion + failure path funnels through here so the preview can never get
- * stuck invisible.
+ * Reveal a deferred replacement iframe after its runtime and seek position are
+ * ready. Safe to call for an ordinary visible iframe (idempotent no-op). Every
+ * reload completion + failure path funnels through here so a staged player can
+ * never get stuck invisible.
  */
 export function revealIframe(iframe: HTMLIFrameElement | null): void {
   if (iframe && iframe.style.visibility === "hidden") {
@@ -154,10 +152,21 @@ export function useTimelineSyncCallbacks({
         (clip) => !clip.parentCompositionId || !clipCompositionIds.has(clip.parentCompositionId),
       );
       let iframeDoc: Document | null = null;
+      const parentMap = new Map<string, string>();
       try {
         iframeDoc = iframeRef.current?.contentDocument ?? null;
       } catch {
         iframeDoc = null;
+      }
+      const resolvedClipHosts = new Map<ClipManifestClip, Element>();
+      if (iframeDoc) {
+        const usedHostElements = new Set<Element>();
+        data.clips.forEach((clip, index) => {
+          const host = findTimelineDomNodeForClip(iframeDoc, clip, index, usedHostElements);
+          if (!host) return;
+          usedHostElements.add(host);
+          resolvedClipHosts.set(clip, host);
+        });
       }
 
       try {
@@ -165,7 +174,6 @@ export function useTimelineSyncCallbacks({
           | (Window & { __clipTree?: import("@hyperframes/core/runtime/clipTree").ClipTree })
           | null;
         const clipTree = iframeWin?.__clipTree;
-        const parentMap = new Map<string, string>();
         if (clipTree) {
           const walk = (nodes: typeof clipTree.roots) => {
             for (const node of nodes) {
@@ -175,64 +183,23 @@ export function useTimelineSyncCallbacks({
           };
           walk(clipTree.roots);
         }
-
-        // Descend into each sub-composition host: its internal elements (group
-        // wrappers + their children) carry no `data-start`, so the clip
-        // tree/manifest never enumerate them. Surface them studio-side as DOM
-        // children + parent links so the timeline can expand a sub-comp/group
-        // row to show them. Manifest stays lean (timed clips only).
-        const domClipChildren: DomClipChild[] = [];
-        if (iframeDoc) {
-          for (const clip of data.clips) {
-            if (clip.kind !== "composition" || !clip.id) continue;
-            const hostEl = iframeDoc.getElementById(clip.id);
-            if (!hostEl) continue;
-            const hostId = clip.id;
-            const innerRoot = hostEl.querySelector("[data-hf-inner-root]") ?? hostEl;
-            // Collect the sub-comp's id'd descendants (grouped OR ungrouped) so they
-            // expand into timeline rows. Descends through id-less structural wrappers
-            // (the inlined sub-comp body), and one level into groups for drill-in.
-            const collect = (parentEl: Element, parentId: string) => {
-              for (const child of Array.from(parentEl.children)) {
-                if (!child.id) {
-                  collect(child, parentId); // unwrap id-less structural containers
-                  continue;
-                }
-                const isGroup = child.hasAttribute("data-hf-group");
-                const selector = getTimelineElementSelector(child);
-                domClipChildren.push({
-                  id: child.id,
-                  hfId: child.getAttribute("data-hf-id") || undefined,
-                  selector,
-                  selectorIndex: selector
-                    ? getTimelineElementSelectorIndex(iframeDoc, child, selector)
-                    : undefined,
-                  sourceFile: getTimelineElementSourceFile(child),
-                  parentId,
-                  hostId,
-                  label: isGroup ? child.getAttribute("data-hf-group") || child.id : child.id,
-                  tagName: child.tagName.toLowerCase(),
-                  stackingContextId: resolveCssStackingContextId(child),
-                });
-                parentMap.set(child.id, parentId);
-                if (isGroup) collect(child, child.id);
-              }
-            };
-            collect(innerRoot, hostId);
-          }
-        }
-        usePlayerStore.getState().setClipParentMap(parentMap);
-        usePlayerStore.getState().setDomClipChildren(domClipChildren);
       } catch {
         // cross-origin or __clipTree not available — maps stay empty
       }
 
-      const usedHostEls = new Set<Element>();
+      if (iframeDoc) {
+        const domHierarchy = collectDomClipChildren(iframeDoc, data.clips, resolvedClipHosts);
+        for (const [childId, parentId] of domHierarchy.parentMap) {
+          parentMap.set(childId, parentId);
+        }
+        usePlayerStore.getState().setDomClipChildren(domHierarchy.children);
+      } else {
+        usePlayerStore.getState().setDomClipChildren([]);
+      }
+      usePlayerStore.getState().setClipParentMap(parentMap);
+
       const els: TimelineElement[] = filtered.map((clip, index) => {
-        const hostEl = iframeDoc
-          ? findTimelineDomNodeForClip(iframeDoc, clip, index, usedHostEls)
-          : null;
-        if (hostEl) usedHostEls.add(hostEl);
+        const hostEl = resolvedClipHosts.get(clip) ?? null;
         return createTimelineElementFromManifestClip({
           clip,
           fallbackIndex: index,
@@ -334,10 +301,10 @@ export function useTimelineSyncCallbacks({
     const guardTime = startTime > 0.001 ? Math.max(0, startTime - 0.001) : 0.001;
     adapter.seek(guardTime);
     adapter.seek(startTime);
-    // The correct frame is now rendered — reveal the iframe that refreshPlayer hid
-    // for the reload, so the user sees the restored frame directly (never the raw
-    // all-clips DOM). Cleared unconditionally: any later failure path must not leave
-    // the preview stuck invisible.
+    // The correct frame is now rendered — reveal a deferred replacement iframe so
+    // the user sees the restored frame directly (never the raw all-clips DOM).
+    // Ordinary in-place initialization is unchanged because revealIframe is an
+    // idempotent no-op for an already-visible frame.
     revealIframe(iframeRef.current);
     // Keep non-React listeners such as the capture link and time display in sync
     // with the initial adapter seek on iframe load.

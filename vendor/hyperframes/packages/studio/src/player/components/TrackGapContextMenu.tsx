@@ -1,6 +1,7 @@
 import { memo } from "react";
 import { createPortal } from "react-dom";
 import { useContextMenuDismiss } from "../../hooks/useContextMenuDismiss";
+import { useStudioI18n } from "../../i18n";
 
 interface TrackGapContextMenuProps {
   x: number;
@@ -30,7 +31,7 @@ interface TrackGapContextMenuProps {
  * an inapplicable action dims with a tooltip explaining why, rather than
  * vanishing into a one-item menu. Hovering an actionable row highlights the
  * gap strip(s) it would close (via onHoverAction → TimelineCanvas overlay).
- * Styling mirrors ClipContextMenu.
+ * Uses the same compact floating-menu treatment as the other timeline overlays.
  */
 export const TrackGapContextMenu = memo(function TrackGapContextMenu({
   x,
@@ -44,6 +45,7 @@ export const TrackGapContextMenu = memo(function TrackGapContextMenu({
   onCloseAllGaps,
   onHoverAction,
 }: TrackGapContextMenuProps) {
+  const { tx } = useStudioI18n();
   const menuRef = useContextMenuDismiss(onClose);
 
   const menuWidth = 200;
@@ -83,7 +85,7 @@ export const TrackGapContextMenu = memo(function TrackGapContextMenu({
         type="button"
         className={itemClass(canCloseGap)}
         disabled={!canCloseGap}
-        title={closeGapTitle}
+        title={closeGapTitle ? tx(closeGapTitle) : undefined}
         onPointerEnter={() => onHoverAction(canCloseGap ? "close-gap" : null)}
         onClick={() => {
           if (!canCloseGap) return;
@@ -91,7 +93,7 @@ export const TrackGapContextMenu = memo(function TrackGapContextMenu({
           onClose();
         }}
       >
-        <span>Close gap</span>
+        <span>{tx("Close gap")}</span>
         {gapWidth != null && (
           <span className="text-neutral-500 text-[10px] ml-3">{gapWidth.toFixed(2)}s</span>
         )}
@@ -100,7 +102,7 @@ export const TrackGapContextMenu = memo(function TrackGapContextMenu({
         type="button"
         className={itemClass(canCloseAllGaps)}
         disabled={!canCloseAllGaps}
-        title={closeAllTitle}
+        title={closeAllTitle ? tx(closeAllTitle) : undefined}
         onPointerEnter={() => onHoverAction(canCloseAllGaps ? "close-all" : null)}
         onClick={() => {
           if (!canCloseAllGaps) return;
@@ -108,7 +110,7 @@ export const TrackGapContextMenu = memo(function TrackGapContextMenu({
           onClose();
         }}
       >
-        <span>Close all gaps</span>
+        <span>{tx("Close all gaps")}</span>
       </button>
     </div>,
     document.body,

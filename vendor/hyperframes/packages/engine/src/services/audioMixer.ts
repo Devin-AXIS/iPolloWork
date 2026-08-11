@@ -205,25 +205,30 @@ export function parseAudioElements(html: string): AudioElement[] {
   const visiting = new Set<RefResolverEl>();
   const resolveStart = (el: RefResolverEl): number =>
     el.getAttribute("data-start") ? resolveReferencedStart(document, el, startCache, visiting) : 0;
-  // `end` stays a plain numeric read (the mixer derives the real segment length
-  // from data-duration / natural media downstream); guard NaN so a malformed
-  // value never poisons the mix instead of falling back to 0.
+  // Resolve the authored clip window before falling back to media probing.
+  // Studio-authored audio uses `data-duration`; ignoring it unnecessarily made
+  // otherwise complete local tracks depend on ffprobe being installed.
   const parseEnd = (raw: string | null): number => {
     const end = raw ? parseFloat(raw) : 0;
     return Number.isFinite(end) ? end : 0;
+  };
+  const resolveEnd = (el: RefResolverEl, start: number): number => {
+    const duration = parseEnd(el.getAttribute("data-duration"));
+    return duration > 0 ? start + duration : parseEnd(el.getAttribute("data-end"));
   };
 
   // <audio> and <video data-has-audio> tracks differ only in the emitted id
   // and `type`; everything else (timing, layer, volume) is read identically.
   const build = (el: RefResolverEl, id: string, type: AudioElement["type"]): AudioElement => {
+    const start = resolveStart(el);
     const mediaStartAttr = el.getAttribute("data-media-start");
     const layerAttr = el.getAttribute("data-layer");
     const volumeAttr = el.getAttribute("data-volume");
     return {
       id,
       src: el.getAttribute("src") as string,
-      start: resolveStart(el),
-      end: parseEnd(el.getAttribute("data-end")),
+      start,
+      end: resolveEnd(el, start),
       mediaStart: mediaStartAttr ? parseFloat(mediaStartAttr) : 0,
       layer: layerAttr ? parseInt(layerAttr) : 0,
       volume: volumeAttr ? parseFloat(volumeAttr) : 1.0,

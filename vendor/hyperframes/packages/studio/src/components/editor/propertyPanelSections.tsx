@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ChangeEvent } from "react";
-import { Plus, Type } from "../../icons/SystemIcons";
+import { Type } from "../../icons/SystemIcons";
 import { isTextEditableSelection, type DomEditSelection } from "./domEditing";
 import type { ImportedFontAsset } from "./fontAssets";
 import { FIELD, LABEL, normalizeTextMetricValue, RESPONSIVE_GRID } from "./propertyPanelHelpers";
@@ -135,19 +135,17 @@ export function TextAreaField({
 
   if (flat) {
     return (
-      <div className="border-l-2 border-panel-border-input py-0.5 pl-[10px]">
-        <div className="mb-[3px] text-[9px] font-semibold uppercase tracking-[0.12em] text-panel-text-5">
-          {label}
-        </div>
+      <div className="flex min-h-[43px] items-center rounded-[9px] border border-[#99b8f2] bg-panel-bg px-4 py-2 focus-within:border-[#4f8fe8] focus-within:ring-1 focus-within:ring-[#4f8fe8]/20">
         <textarea
           ref={textareaRef}
           value={draft}
           disabled={disabled}
-          rows={2}
+          rows={1}
+          aria-label={label}
           onFocus={handleFocus}
           onChange={handleChange}
           onBlur={handleBlur}
-          className="w-full resize-none bg-transparent font-mono text-[11px] leading-normal text-panel-text-0 outline-none disabled:cursor-not-allowed disabled:text-panel-text-4"
+          className="w-full resize-none bg-transparent font-sans text-[14px] font-normal leading-[20px] text-[#24262b] outline-none disabled:cursor-not-allowed disabled:text-panel-text-4 dark:text-panel-text-1"
         />
       </div>
     );
@@ -402,7 +400,6 @@ export function TextSection({
   onImportFonts,
   onSetText,
   onSetTextFieldStyle,
-  onAddTextField,
   onRemoveTextField,
   hideOwnHeading = false,
 }: {
@@ -420,7 +417,6 @@ export function TextSection({
    *  false so the legacy (non-flat) call site is unaffected. */
   hideOwnHeading?: boolean;
 }) {
-  const track = useTrackDesignInput();
   const hasTextControls = isTextEditableSelection(element);
   const [activeTextFieldKey, setActiveTextFieldKey] = useState<string | null>(
     element.textFields[0]?.key ?? null,
@@ -464,22 +460,7 @@ export function TextSection({
   const content = (
     <div className="space-y-4">
       <div className="grid gap-1.5">
-        <div className="flex min-w-0 flex-wrap items-center justify-between gap-2">
-          <span className={LABEL}>Text layers</span>
-          <button
-            type="button"
-            onClick={() => {
-              track("button", "Add text field");
-              void Promise.resolve(onAddTextField(activeField.key)).then((nextKey) => {
-                if (nextKey) setActiveTextFieldKey(nextKey);
-              });
-            }}
-            className="inline-flex h-7 max-w-full items-center gap-1.5 rounded-lg border border-neutral-700 bg-neutral-950 px-2.5 text-[11px] font-medium text-neutral-300 transition-colors hover:border-neutral-600 hover:text-white"
-          >
-            <Plus size={12} className="flex-shrink-0" />
-            <span className="truncate">Add text</span>
-          </button>
-        </div>
+        <span className={LABEL}>Text layers</span>
         <div className="grid gap-2">
           {textFields.map((field, index) => {
             const active = field.key === activeField.key;

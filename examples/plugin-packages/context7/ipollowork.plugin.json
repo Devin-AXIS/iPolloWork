@@ -12,8 +12,36 @@
   },
   "icon": { "simpleIconSlug": "semanticscholar" },
   "composer": { "prompt": "使用 Context7 插件确认库、版本和官方文档，再回答实现或升级问题。" },
+  "localization": {
+    "defaultLocale": "zh",
+    "translations": {
+      "en": {
+        "description": "Retrieve version-aware official documentation for traceable implementation, upgrade, and technical decisions.",
+        "category": "Developer Tools",
+        "composer": { "prompt": "Use the Context7 plugin to confirm the library, version, and official documentation before answering implementation or upgrade questions." },
+        "resources": {
+          "context7-mcp": {
+            "label": "Context7 Remote MCP",
+            "description": "Retrieve version-aware product and development library documentation without OAuth."
+          },
+          "context7-docs-research": {
+            "label": "Official Documentation Research",
+            "description": "Resolve the target library and answer a specific technical question with a small set of relevant documentation."
+          },
+          "context7-version-aware-implementation": {
+            "label": "Version-Aware Implementation",
+            "description": "Align the current dependency version with official APIs, migration notes, and examples."
+          }
+        },
+        "permissions": {
+          "network": { "reason": "Connect to the Context7 remote MCP and retrieve the product or library documentation requested by the user." },
+          "workspace-read": { "reason": "Read project dependencies and versions to select matching documentation." }
+        }
+      }
+    }
+  },
   "package": {
-    "version": "1.0.0",
+    "version": "1.0.1",
     "publisher": { "id": "ipollowork", "name": "iPolloWork" },
     "compatibility": { "ipollowork": ">=0.18.0", "opencode": ">=1.18.0" },
     "updateId": "ipollowork/context7",

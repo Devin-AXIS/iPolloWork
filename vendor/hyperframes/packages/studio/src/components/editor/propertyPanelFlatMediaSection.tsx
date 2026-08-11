@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useTrackDesignInput } from "../../contexts/DesignPanelInputContext";
+import { useStudioI18n } from "../../i18n";
 import { Check, ClipboardList } from "../../icons/SystemIcons";
 import type { DomEditSelection } from "./domEditing";
 import {
@@ -39,6 +40,7 @@ export function FlatMediaSection({
   ) => Promise<BackgroundRemovalResult>;
 }) {
   const track = useTrackDesignInput();
+  const { tx } = useStudioI18n();
   const isVideo = element.tagName === "video";
   const isAudio = element.tagName === "audio";
   const isImage = element.tagName === "img";
@@ -117,7 +119,7 @@ export function FlatMediaSection({
   };
 
   return (
-    <div className="space-y-1.5">
+    <div className="space-y-2">
       <div className="flex min-h-8 items-center justify-between gap-2">
         <span className="flex min-w-0 items-center gap-2">
           <span className="h-5 w-8 flex-shrink-0 rounded-[3px] bg-panel-surface" />
@@ -138,14 +140,14 @@ export function FlatMediaSection({
           className="flex flex-shrink-0 items-center gap-1 text-[10px] text-panel-text-3 hover:text-panel-text-1"
         >
           {copied ? <Check size={11} /> : <ClipboardList size={11} />}
-          {copied ? "Copied" : "Copy"}
+          {tx(copied ? "Copied" : "Copy")}
         </button>
       </div>
       {isVisualMedia && (
         <div className="ml-[1px] border-l-2 border-panel-border-input py-1 pl-[10px]">
           <div className="flex min-h-6 items-center justify-between">
             <span className="flex items-baseline gap-[7px]">
-              <span className="text-[11px] font-semibold text-panel-text-1">Cutout</span>
+              <span className="text-[11px] font-semibold text-panel-text-1">{tx("Cutout")}</span>
               <span className="font-mono text-[9px] text-panel-text-4">
                 transparent {isVideo ? "WebM" : "PNG"}
               </span>
@@ -156,13 +158,13 @@ export function FlatMediaSection({
               disabled={!canRemoveBackground || removeBusy}
               onClick={() => void runBackgroundRemoval()}
               className="flex items-center gap-1 text-[10px] font-medium text-panel-accent disabled:cursor-not-allowed disabled:opacity-50"
-              title={
+              title={tx(
                 canRemoveBackground
                   ? "Remove background and save a transparent asset"
                   : "Select a project-local image or video asset"
-              }
+              )}
             >
-              {removeBusy ? "Working" : "Remove BG"}
+              {tx(removeBusy ? "Working" : "Remove BG")}
             </button>
           </div>
           <FlatSelectRow
@@ -179,7 +181,7 @@ export function FlatMediaSection({
             <div className="mt-1 space-y-1">
               <div className="flex items-center justify-between text-[10px] text-panel-text-4">
                 <span className="min-w-0 flex-1 truncate">
-                  {removeProgress.error ?? removeProgress.stage ?? "Processing"}
+                  {removeProgress.error ?? tx(removeProgress.stage ?? "Processing")}
                 </span>
                 <span>{Math.round(removeProgress.progress)}%</span>
               </div>
@@ -204,6 +206,13 @@ export function FlatMediaSection({
             max={100}
             tier={volumePercent === 100 ? "default" : "explicitCustom"}
             displayValue={`${volumePercent}%`}
+            commitMode="release"
+            onPreview={(next) => {
+              (el as HTMLMediaElement).volume = next / 100;
+            }}
+            onPreviewCancel={() => {
+              (el as HTMLMediaElement).volume = volume;
+            }}
             onCommit={(next) => void onSetAttribute("volume", formatNumericValue(next / 100))}
           />
           <FlatSlider
@@ -213,6 +222,13 @@ export function FlatMediaSection({
             max={300}
             tier={playbackRate === 1 ? "default" : "explicitCustom"}
             displayValue={`${formatNumericValue(playbackRate)}x`}
+            commitMode="release"
+            onPreview={(next) => {
+              (el as HTMLMediaElement).playbackRate = next / 100;
+            }}
+            onPreviewCancel={() => {
+              (el as HTMLMediaElement).playbackRate = playbackRate;
+            }}
             onCommit={(next) =>
               void onSetAttribute("playback-rate", formatNumericValue(next / 100))
             }
@@ -224,6 +240,7 @@ export function FlatMediaSection({
             max={mediaStartMax * 100}
             tier={mediaStart === 0 ? "default" : "explicitCustom"}
             displayValue={formatTimingValue(mediaStart)}
+            commitMode="release"
             onCommit={(next) => void onSetAttribute("media-start", (next / 100).toFixed(2))}
           />
           <FlatToggle

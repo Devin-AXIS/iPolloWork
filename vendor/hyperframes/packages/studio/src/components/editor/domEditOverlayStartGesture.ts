@@ -34,6 +34,10 @@ import {
 import { collectSnapContext, buildExcludeElements } from "./snapTargetCollection";
 import { logResize, resetResizeMoveLog } from "../../utils/resizeDebug";
 
+function isLiveSelectionLocked(selection: DomEditSelection): boolean {
+  return selection.element.closest("[data-timeline-locked]") !== null;
+}
+
 export function startGroupDrag(
   e: React.PointerEvent<HTMLElement>,
   opts: UseDomEditOverlayGesturesOptions,
@@ -42,7 +46,9 @@ export function startGroupDrag(
   if (items.length <= 1) return false;
 
   const blockedSelection = items.find(
-    (item) => !item.selection.capabilities.canApplyManualOffset,
+    (item) =>
+      isLiveSelectionLocked(item.selection) ||
+      !item.selection.capabilities.canApplyManualOffset,
   )?.selection;
   if (blockedSelection) {
     e.preventDefault();
@@ -116,6 +122,12 @@ export function startGesture(
   const overlayEl = opts.overlayRef.current;
   if (!sel || !rect) return false;
   if (kind !== "drag" && !box) return false;
+  if (isLiveSelectionLocked(sel)) {
+    e.preventDefault();
+    e.stopPropagation();
+    opts.onBlockedMoveRef.current(sel);
+    return false;
+  }
   const mode: GestureState["mode"] =
     kind === "rotate" ? "rotation" : kind === "drag" ? "path-offset" : "box-size";
   if (kind === "drag" && !sel.capabilities.canApplyManualOffset) return false;

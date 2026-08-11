@@ -8,6 +8,7 @@ import { useZOrderCrossedFlash, ZOrderCrossedFlash } from "./useZOrderCrossedFla
 import { useCanvasContextMenuState } from "./useCanvasContextMenuState";
 import {
   type BlockedMoveState,
+  type DomEditPointerMoveSample,
   type DomEditGroupPathOffsetCommit,
   type FocusableDomEditOverlay,
   type GestureState,
@@ -31,6 +32,7 @@ import { startOffCanvasIndicatorRefresh } from "./offCanvasIndicatorRefresh";
 import { CanvasContextMenu } from "./CanvasContextMenu";
 import type { ZOrderAction, ZOrderPatch } from "./canvasContextMenuZOrder";
 import { getPreviewTargetFromPointer } from "../../utils/studioPreviewHelpers";
+import { STUDIO_MULTI_SELECTION_ENABLED } from "./manualEditingAvailability";
 
 declare global {
   interface Window {
@@ -153,11 +155,24 @@ export const DomEditOverlay = memo(function DomEditOverlay({
   const gestureRef = useRef<GestureState | null>(null);
   const groupGestureRef = useRef<GroupGestureState | null>(null);
   const blockedMoveRef = useRef<BlockedMoveState | null>(null);
+  const gestureMoveFrameRef = useRef<number | null>(null);
+  const pendingGestureMoveRef = useRef<DomEditPointerMoveSample | null>(null);
   const suppressNextBoxClickRef = useRef(false);
   const suppressNextBoxMouseDownRef = useRef(false);
   const suppressNextOverlayMouseDownRef = useRef(false);
   const snapGuidesRef = useRef<SnapGuidesState | null>(null);
   const rafPausedRef = useRef(false);
+
+  useEffect(
+    () => () => {
+      if (gestureMoveFrameRef.current !== null) {
+        cancelAnimationFrame(gestureMoveFrameRef.current);
+      }
+      gestureMoveFrameRef.current = null;
+      pendingGestureMoveRef.current = null;
+    },
+    [],
+  );
 
   const selectionRef = useRef(selection);
   selectionRef.current = selection;
@@ -269,6 +284,8 @@ export const DomEditOverlay = memo(function DomEditOverlay({
     gestureRef,
     groupGestureRef,
     blockedMoveRef,
+    gestureMoveFrameRef,
+    pendingGestureMoveRef,
     rafPausedRef,
     suppressNextBoxClickRef,
     setOverlayRect,
@@ -319,7 +336,7 @@ export const DomEditOverlay = memo(function DomEditOverlay({
     () => resolveDomEditGroupOverlayRect(groupOverlayItems.map((item) => item.rect)),
     [groupOverlayItems],
   );
-  const hasGroupSelection = groupSelections.length > 1;
+  const hasGroupSelection = STUDIO_MULTI_SELECTION_ENABLED && groupSelections.length > 1;
   const groupCanMove =
     hasGroupSelection &&
     groupOverlayItems.length > 1 &&
@@ -346,7 +363,7 @@ export const DomEditOverlay = memo(function DomEditOverlay({
     // extend beyond the composition rect into the gray zone, and users need
     // to select/deselect them by clicking there.
     onCanvasMouseDown(event, { hoverSelection: hoverSelectionRef.current });
-    if (event.shiftKey) {
+    if (STUDIO_MULTI_SELECTION_ENABLED && event.shiftKey) {
       suppressNextBoxMouseDownRef.current = true;
       suppressNextBoxClickRef.current = true;
     }
@@ -360,7 +377,7 @@ export const DomEditOverlay = memo(function DomEditOverlay({
       return;
     }
     if (!allowCanvasMovement || event.button !== 0) return;
-    if (event.shiftKey) {
+    if (STUDIO_MULTI_SELECTION_ENABLED && event.shiftKey) {
       // Use the already-updated hover selection rather than re-resolving async
       const candidate = hoverSelectionRef.current;
       if (!candidate) return;
@@ -382,7 +399,12 @@ export const DomEditOverlay = memo(function DomEditOverlay({
     // an element IS under the pointer — starting a marquee here would swallow
     // the selection mousedown and the click would silently select nothing.
     // Confirm emptiness with a fresh SYNCHRONOUS hit-test before committing.
-    if (!hoverSelectionRef.current && onMarqueeSelectRef.current && compRect.width > 0) {
+    if (
+      STUDIO_MULTI_SELECTION_ENABLED &&
+      !hoverSelectionRef.current &&
+      onMarqueeSelectRef.current &&
+      compRect.width > 0
+    ) {
       const iframe = iframeRef.current;
       const freshTarget = iframe
         ? getPreviewTargetFromPointer(
@@ -540,21 +562,16 @@ export const DomEditOverlay = memo(function DomEditOverlay({
         activeCompositionPathRef={activeCompositionPathRef}
         onSelectionChangeRef={onSelectionChangeRef}
       />
-      <MarqueeOverlay candidateRects={marquee.candidateRects} marqueeRect={marquee.marqueeRect} />
+      {STUDIO_MULTI_SELECTION_ENABLED && (
+        <MarqueeOverlay candidateRects={marquee.candidateRects} marqueeRect={marquee.marqueeRect} />
+      )}
       {contextMenu && (
         <CanvasContextMenu
           x={contextMenu.x}
           y={contextMenu.y}
           selection={contextMenu.sel}
           onClose={closeContextMenu}
-          onDelete={
-            onDeleteSelection
-              ? (sel) => {
-                  closeContextMenu();
-                  onDeleteSelection(sel);
-                }
-              : undefined
-          }
+          onDelete={onDeleteSelection ? () => onDeleteSelection(contextMenu.sel) : undefined}
           onApplyZIndex={
             onApplyZIndex
               ? (patches, action, crossed) => {

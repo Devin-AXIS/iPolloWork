@@ -35,6 +35,8 @@ import {
   createBackgroundRemovalJob,
   consumeFileWriteReceipt,
   getMimeType,
+  loadRegistryPreviewAssetFromRoot,
+  loadRegistryPreviewFromRoot,
   type PreviewApiAdapter,
   type ResolvedProject,
   type RenderJobState,
@@ -424,6 +426,29 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
   const studioDir = resolveDistDir();
   const runtimePath = resolveRuntimePath();
   const watcher = createProjectWatcher(projectDir);
+  // The bundled registry is immutable for one preview-server lifetime. The
+  // effects catalog is fetched before a user can insert from it, so keeping the
+  // parsed items and name index here removes the same full disk scan from every
+  // subsequent insertion. Restarting the preview server invalidates the cache.
+  const bundledRegistryRoot = resolveBundledRegistryRoot();
+  let bundledRegistryItems: RegistryItem[] | null = null;
+  let bundledRegistryItemsByName: Map<string, RegistryItem> | null = null;
+  const getBundledRegistryItems = (): RegistryItem[] | null => {
+    if (!bundledRegistryRoot) return null;
+    if (bundledRegistryItems) return bundledRegistryItems;
+    bundledRegistryItems = loadBundledRegistryItems(bundledRegistryRoot);
+    bundledRegistryItemsByName = new Map();
+    for (const item of bundledRegistryItems) {
+      if (!bundledRegistryItemsByName.has(item.name)) {
+        bundledRegistryItemsByName.set(item.name, item);
+      }
+    }
+    return bundledRegistryItems;
+  };
+  const getBundledRegistryItem = (blockName: string): RegistryItem | undefined => {
+    getBundledRegistryItems();
+    return bundledRegistryItemsByName?.get(blockName);
+  };
 
   // ── CLI adapter for the shared studio API ──────────────────────────────
 
@@ -713,8 +738,8 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
     },
 
     async listRegistryCatalog() {
-      const bundledRegistryRoot = resolveBundledRegistryRoot();
-      if (bundledRegistryRoot) return loadBundledRegistryItems(bundledRegistryRoot);
+      const items = getBundledRegistryItems();
+      if (items) return items;
 
       const { listRegistryItems, loadAllItems } = await import("../registry/resolver.js");
       const entries = await listRegistryItems();
@@ -724,12 +749,19 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
       return loadAllItems(blockAndComponentEntries);
     },
 
+    async loadRegistryPreview({ blockName }) {
+      if (!bundledRegistryRoot) return null;
+      return loadRegistryPreviewFromRoot(bundledRegistryRoot, blockName);
+    },
+
+    async loadRegistryPreviewAsset({ blockName, assetPath }) {
+      if (!bundledRegistryRoot) return null;
+      return loadRegistryPreviewAssetFromRoot(bundledRegistryRoot, blockName, assetPath);
+    },
+
     async installRegistryBlock(opts) {
-      const bundledRegistryRoot = resolveBundledRegistryRoot();
       if (bundledRegistryRoot) {
-        const item = loadBundledRegistryItems(bundledRegistryRoot).find(
-          (candidate) => candidate.name === opts.blockName,
-        );
+        const item = getBundledRegistryItem(opts.blockName);
         if (!item) throw new Error(`Item "${opts.blockName}" not found in bundled registry`);
         const written = installBundledRegistryItem(bundledRegistryRoot, item, opts.project.dir);
         rewriteWrittenToHostViewport(opts.project.dir, written);

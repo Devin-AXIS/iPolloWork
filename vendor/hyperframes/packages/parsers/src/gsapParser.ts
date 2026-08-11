@@ -586,6 +586,7 @@ const DROPPED_VAR_KEYS = new Set(["onComplete", "onStart", "onUpdate", "onRepeat
 
 /** Keys that belong in `extras` — non-editable GSAP config that must survive round-trips. */
 const EXTRAS_KEYS = new Set([
+  "data",
   "stagger",
   "yoyo",
   "repeat",
@@ -1560,6 +1561,7 @@ export function addAnimationWithKeyframesToScript(
   }>,
   ease?: string,
   easeEach?: string,
+  extras?: Record<string, unknown>,
 ): { script: string; id: string } {
   let parsed: ParsedGsapAst;
   try {
@@ -1576,6 +1578,9 @@ export function addAnimationWithKeyframesToScript(
   const kfCode = buildKeyframeObjectCode(keyframes, easeEach ? { easeEach } : undefined);
   const varEntries = [`keyframes: ${kfCode}`, `duration: ${valueToCode(duration)}`];
   if (ease) varEntries.push(`ease: ${JSON.stringify(ease)}`);
+  for (const [key, value] of Object.entries(extras ?? {})) {
+    varEntries.push(`${safeKey(key)}: ${valueToCode(value)}`);
+  }
   const posCode = valueToCode(position);
   const stmtCode = `${parsed.timelineVar}.to(${selector}, { ${varEntries.join(", ")} }, ${posCode});`;
 
@@ -1729,7 +1734,16 @@ const STUDIO_HOLD_MARKER = "hf-hold";
 /** True for a `tl.set(...)` this module emitted to hold a keyframe before its tween.
  * The Studio filters these out so they never appear as user keyframes/diamonds. */
 export function isStudioHoldSet(anim: GsapAnimation): boolean {
-  return anim.method === "set" && anim.properties?.data === STUDIO_HOLD_MARKER;
+  const extra = anim.extras?.data;
+  let data = extra;
+  if (typeof extra === "string" && extra.startsWith("__raw:")) {
+    try {
+      data = JSON.parse(extra.slice(6));
+    } catch {
+      data = extra.slice(6).replace(/^['"]|['"]$/g, "");
+    }
+  }
+  return anim.method === "set" && data === STUDIO_HOLD_MARKER;
 }
 
 /**

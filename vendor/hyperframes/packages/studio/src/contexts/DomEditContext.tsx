@@ -48,6 +48,8 @@ export interface DomEditActionsValue extends Pick<
   | "handleGsapDeleteAnimation"
   | "handleGsapDeleteAllForElement"
   | "handleGsapAddAnimation"
+  | "handleMotionMutation"
+  | "handleGsapApplyMotionPreset"
   | "handleGsapAddProperty"
   | "handleGsapRemoveProperty"
   | "handleGsapUpdateFromProperty"
@@ -177,6 +179,8 @@ export function DomEditProvider({
     handleGsapDeleteAnimation,
     handleGsapDeleteAllForElement,
     handleGsapAddAnimation,
+    handleMotionMutation,
+    handleGsapApplyMotionPreset,
     handleGsapAddProperty,
     handleGsapRemoveProperty,
     handleGsapUpdateFromProperty,
@@ -260,6 +264,8 @@ export function DomEditProvider({
       handleGsapDeleteAnimation,
       handleGsapDeleteAllForElement,
       handleGsapAddAnimation,
+      handleMotionMutation,
+      handleGsapApplyMotionPreset,
       handleGsapAddProperty,
       handleGsapRemoveProperty,
       handleGsapUpdateFromProperty,
@@ -329,6 +335,8 @@ export function DomEditProvider({
       handleGsapDeleteAnimation,
       handleGsapDeleteAllForElement,
       handleGsapAddAnimation,
+      handleMotionMutation,
+      handleGsapApplyMotionPreset,
       handleGsapAddProperty,
       handleGsapRemoveProperty,
       handleGsapUpdateFromProperty,

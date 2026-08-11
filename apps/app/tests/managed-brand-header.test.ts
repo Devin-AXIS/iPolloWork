@@ -10,11 +10,14 @@ describe("managed brand header", () => {
   test("shows a round 24-pixel organization logo next to the application name", () => {
     const source = readFileSync(sidebarPath, "utf8");
 
+    expect(source).toContain("activeEnterprise.logoUrl ?? DEFAULT_BRAND_LOGO_URL");
     expect(source).toContain("brandLogoUrl ?? shellConfig.brandLogoDataUrl ?? DEFAULT_BRAND_LOGO_URL");
+    expect(source).toContain("activeEnterprise?.name ?? brandAppName");
     expect(source).toContain('className="size-6 shrink-0 rounded-full object-cover"');
     expect(source).toContain('data-testid="brand-logo"');
     expect(source).not.toContain('data-testid="brand-logo-placeholder"');
     expect(source).toContain('data-testid="brand-app-name"');
+    expect(source).toContain("title={effectiveBrandAppName}");
     expect(source).toMatch(/className="flex h-14 shrink-0 items-center/);
   });
 

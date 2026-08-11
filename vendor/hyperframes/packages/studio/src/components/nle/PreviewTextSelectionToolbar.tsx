@@ -8,8 +8,11 @@ import {
 } from "react";
 import { SlidersHorizontal, Sparkle, Trash } from "@phosphor-icons/react";
 import { type DomEditSelection } from "../editor/domEditing";
+import { postVideoAiSelectionToHost } from "../editor/domEditingAgentPrompt";
 import { useDomEditActionsContext } from "../../contexts/DomEditContext";
 import { resolveBoundedOverlayPosition } from "./boundedOverlay";
+import { useStudioI18n } from "../../i18n";
+import { isElementVisibleForOverlay } from "../editor/domEditOverlayGeometry";
 
 type TextFormatAction = "bold" | "italic" | "strike" | "code" | "link";
 type TextFormatState = Record<TextFormatAction, boolean>;
@@ -291,6 +294,7 @@ export function PreviewTextSelectionToolbar({
   activeSelection,
   hidden,
 }: PreviewTextSelectionToolbarProps) {
+  const { tx } = useStudioI18n();
   const { applyDomSelection, buildDomSelectionFromTarget, handleDomEditElementDelete, handleDomInnerHtmlCommit } =
     useDomEditActionsContext();
   const [state, setState] = useState<TextSelectionState | null>(null);
@@ -322,7 +326,15 @@ export function PreviewTextSelectionToolbar({
     const iframe = iframeRef.current;
     const doc = iframe?.contentDocument;
     const element = activeSelection?.element;
-    if (hidden || !iframe || !doc || !element || !element.isConnected) return null;
+    if (
+      hidden ||
+      !iframe ||
+      !doc ||
+      !element ||
+      !element.isConnected ||
+      !isElementVisibleForOverlay(element)
+    )
+      return null;
     const showTextControls = isTextLeafElement(element);
     const range = doc.createRange();
     range.selectNodeContents(element);
@@ -394,24 +406,6 @@ export function PreviewTextSelectionToolbar({
     [activeSelection, buildDomSelectionFromTarget, handleDomInnerHtmlCommit],
   );
 
-  const applyFormat = useCallback(
-    async (action: TextFormatAction) => {
-      const current = stateRef.current;
-      if (!current?.showTextControls) return;
-      const nextHtml = removeSelectionMarkers(
-        toggleMarkedSelectionFormat(
-          current.markedHtml,
-          action,
-          current.activeFormats[action],
-        ),
-      );
-      await commitSelectedHtml(nextHtml, current, { keepToolbar: true });
-      const next = buildToolbarState();
-      if (next) setState(next);
-    },
-    [buildToolbarState, commitSelectedHtml],
-  );
-
   const updateReplacementPreview = useCallback(
     (value: string) => {
       const current = stateRef.current;
@@ -460,29 +454,7 @@ export function PreviewTextSelectionToolbar({
 
   const askAiAboutSelection = useCallback(() => {
     if (!activeSelection) return;
-    const element = activeSelection.element;
-    const computed = element.ownerDocument.defaultView?.getComputedStyle(element);
-    window.parent?.postMessage({
-      type: "ipollowork:hyperframes:ask-ai-selection",
-      target: {
-        file: activeSelection.sourceFile || "index.html",
-        hfId: activeSelection.hfId,
-        id: activeSelection.id ?? undefined,
-        selector: activeSelection.selector,
-        selectorIndex: activeSelection.selectorIndex,
-      },
-      tag: element.tagName.toLowerCase(),
-      text: element.textContent || "",
-      src: element.getAttribute("src") || "",
-      alt: element.getAttribute("alt") || "",
-      styles: {
-        color: computed?.color ?? "",
-        backgroundColor: computed?.backgroundColor ?? "",
-        fontSize: computed?.fontSize ?? "",
-        fontWeight: computed?.fontWeight ?? "",
-        opacity: computed?.opacity ?? "",
-      },
-    }, "*");
+    postVideoAiSelectionToHost(activeSelection);
     stateRef.current = null;
     setState(null);
   }, [activeSelection]);
@@ -500,11 +472,11 @@ export function PreviewTextSelectionToolbar({
         event.preventDefault();
       }}
       role="toolbar"
-      aria-label="Element editing"
+      aria-label={tx("Element editing")}
     >
       {state.showTextControls && (
         <div className="hf-preview-text-toolbar__text-controls">
-          <span className="px-2 text-[11px] font-medium">Text</span>
+          <span className="px-2 text-[11px] font-medium">{tx("Text")}</span>
           <input
             className="hf-preview-text-toolbar__input"
             value={replacementText}
@@ -527,20 +499,15 @@ export function PreviewTextSelectionToolbar({
             onBlur={() => {
               if (stateRef.current) void replaceSelection();
             }}
-            aria-label="Edit element text"
+            aria-label={tx("Edit element text")}
           />
-          <button type="button" className="hf-preview-text-toolbar__button" aria-pressed={state.activeFormats.bold} onClick={() => applyFormat("bold")}>B</button>
-          <button type="button" className="hf-preview-text-toolbar__button italic" aria-pressed={state.activeFormats.italic} onClick={() => applyFormat("italic")}>I</button>
-          <button type="button" className="hf-preview-text-toolbar__button line-through" aria-pressed={state.activeFormats.strike} onClick={() => applyFormat("strike")}>S</button>
-          <button type="button" className="hf-preview-text-toolbar__button font-mono" aria-pressed={state.activeFormats.code} onClick={() => applyFormat("code")}>&lt;/&gt;</button>
-          <button type="button" className="hf-preview-text-toolbar__button" aria-pressed={state.activeFormats.link} onClick={() => applyFormat("link")}>Link</button>
         </div>
       )}
       <button
         type="button"
         className="hf-preview-text-toolbar__button hf-preview-text-toolbar__icon-button"
-        aria-label="Open Design properties"
-        title="Design"
+        aria-label={tx("Open Design properties")}
+        title={tx("Design")}
         onClick={openDesignProperties}
       >
         <SlidersHorizontal size={18} />
@@ -548,8 +515,8 @@ export function PreviewTextSelectionToolbar({
       <button
         type="button"
         className="hf-preview-text-toolbar__button hf-preview-text-toolbar__icon-button"
-        aria-label="Ask AI about selected element"
-        title="Ask AI"
+        aria-label={tx("Ask AI about selected element")}
+        title={tx("Ask AI")}
         onClick={askAiAboutSelection}
       >
         <Sparkle size={18} />
@@ -558,8 +525,11 @@ export function PreviewTextSelectionToolbar({
       <button
         type="button"
         className="hf-preview-text-toolbar__button hf-preview-text-toolbar__icon-button hf-preview-text-toolbar__delete-button"
-        aria-label="Delete selected element"
-        title="Delete"
+        aria-label={tx("Delete selected element")}
+        title={tx("Delete")}
+        // Keep the text input focused until click removes the toolbar. Otherwise
+        // its blur save races the delete and can write the element back.
+        onPointerDown={(event) => event.preventDefault()}
         onClick={deleteSelectedElement}
       >
         <Trash size={18} />

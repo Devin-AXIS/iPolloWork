@@ -24,8 +24,8 @@ describe("Design property number fields", () => {
     expect(source).toContain("onPointerDown={beginDrag}");
     expect(source).toContain('window.addEventListener("pointermove", move)');
     expect(source).toContain('className="min-w-0 flex-1 cursor-ew-resize');
-    expect(source).toContain('<DragNumberField label="Width"');
-    expect(source).toContain('<DragNumberField label="Height"');
+    expect(source).toContain('<DragNumberField label={t("design.properties.field.width")}');
+    expect(source).toContain('<DragNumberField label={t("design.properties.field.height")}');
     expect(source).toContain('active={aspectRatioLocked}');
     expect(source).toContain('applySize("width", value, remember)');
     expect(source).toContain('applySize("height", value, remember)');
@@ -34,8 +34,8 @@ describe("Design property number fields", () => {
   test("keeps font size on the left and font weight on the right with preset menus", async () => {
     const source = await Bun.file(inspectorUrl).text();
 
-    const sizeField = '<FontPresetField label="Size" value={String(fontSize)} presets={FONT_SIZE_PRESETS} onChange={(value, remember) => applyPixels("fontSize", value, remember)} />';
-    const weightField = '<FontPresetField label="Weight" value={selection.styles.fontWeight || "400"} presets={FONT_WEIGHT_PRESETS} onChange={(value) => onApplyField("fontWeight", value)} />';
+    const sizeField = '<FontPresetField editableNumber label={t("design.properties.field.size")} value={String(fontSize)} presets={FONT_SIZE_PRESETS} onChange={(value, remember) => applyPixels("fontSize", value, remember)} />';
+    const weightField = '<FontPresetField label={t("design.properties.field.weight")} value={selection.styles.fontWeight || "400"} presets={FONT_WEIGHT_PRESETS} onChange={(value) => onApplyField("fontWeight", value)} />';
 
     expect(source.indexOf(sizeField)).toBeGreaterThanOrEqual(0);
     expect(source.indexOf(weightField)).toBeGreaterThan(source.indexOf(sizeField));
@@ -46,8 +46,8 @@ describe("Design property number fields", () => {
 
   test("renders text controls before position while retaining x and y bindings", async () => {
     const source = await Bun.file(inspectorUrl).text();
-    const textSection = '<InspectorSection title="Text">';
-    const positionSection = '<InspectorSection title="Position">';
+    const textSection = '<InspectorSection title={t("design.properties.section.text")}>';
+    const positionSection = '<InspectorSection title={t("design.properties.section.position")}>';
 
     expect(source.indexOf(textSection)).toBeGreaterThanOrEqual(0);
     expect(source.indexOf(positionSection)).toBeGreaterThan(source.indexOf(textSection));
@@ -55,11 +55,17 @@ describe("Design property number fields", () => {
     expect(source).toContain('onApplyField("top", `${value}px`, remember)');
   });
 
-  test("keeps position alignment buttons neutral until selected", async () => {
+  test("matches the Figma position alignment groups and uses spatial edge icons", async () => {
     const source = await Bun.file(inspectorUrl).text();
 
-    expect(source).toContain('<PropertyButton aria-label="Align left"><AlignLeft /></PropertyButton>');
-    expect(source).not.toContain('<PropertyButton active aria-label="Align left"><AlignLeft /></PropertyButton>');
+    expect(source).toContain('className="mt-1 flex gap-3"');
+    expect(source).toContain('className="grid min-w-0 flex-1 grid-cols-3 gap-0.5"');
+    expect(source).toContain('aria-label="Align left" onClick={() => onAlign("left")}><AlignStartVertical />');
+    expect(source).toContain('aria-label="Align right" onClick={() => onAlign("right")}><AlignEndVertical />');
+    expect(source).toContain('aria-label="Align top" onClick={() => onAlign("top")}><AlignVerticalJustifyStart />');
+    expect(source).toContain('aria-label="Align bottom" onClick={() => onAlign("bottom")}><AlignVerticalJustifyEnd />');
+    expect(source).toContain('className="h-[34px]"');
+    expect(source).toContain('{!isMultiSelection ? <>');
   });
 
   test("uses a lazy searchable font picker with self-rendered options", async () => {
@@ -94,7 +100,7 @@ describe("Design property number fields", () => {
     expect(source).toContain("selectionCount: number");
     expect(source).toContain("mixedStyleFields: readonly DesignStyleField[]");
     expect(source).toContain("const isMixed = (field: DesignStyleField)");
-    expect(source).toContain("Batch selection");
+    expect(source).toContain('t("design.properties.layer.batch"');
     expect(source).toContain("MixedValueHint");
     expect(source).toContain("{!isMultiSelection && selection.canEditText ?");
   });
@@ -103,8 +109,8 @@ describe("Design property number fields", () => {
     const source = await Bun.file(inspectorUrl).text();
     const colorFieldSource = await Bun.file(colorFieldUrl).text();
 
-    expect(source).toContain('<ColorField label="Text color" mixed={isMixed("color")} value={selection.styles.color || "#000000"} onChange={(value, remember) => onApplyField("color", value, remember)} />');
-    expect(source).toContain('<ColorField label="Background color" mixed={isMixed("backgroundColor")} value={selection.styles.backgroundColor || "#000000"} onChange={(value, remember) => onApplyField("backgroundColor", value, remember)} />');
+    expect(source).toContain('<ColorField label={t("design.properties.field.text_color")} mixed={isMixed("color")} value={selection.styles.color || "#000000"} onChange={(value, remember) => onApplyField("color", value, remember)} />');
+    expect(source).toContain('<ColorField label={t("design.properties.field.background_color")} mixed={isMixed("backgroundColor")} value={selection.styles.backgroundColor || "#000000"} onChange={(value, remember) => onApplyField("backgroundColor", value, remember)} />');
     expect(colorFieldSource).toContain('aria-label={`Design ${label.toLowerCase()} value`}');
     expect(colorFieldSource).toContain("Choose {label.toLowerCase()}");
   });
@@ -112,6 +118,7 @@ describe("Design property number fields", () => {
   test("applies mixed batch typography buttons instead of toggling from the primary style", async () => {
     const source = await Bun.file(inspectorUrl).text();
 
+    expect(source).toContain('"grid h-9 w-full min-w-0 place-items-center');
     expect(source).toContain('isMixed("fontWeight") ? "700" : numericValue(selection.styles.fontWeight, 400) >= 600 ? "400" : "700"');
     expect(source).toContain('isMixed("fontStyle") ? "italic" : selection.styles.fontStyle === "italic" ? "normal" : "italic"');
     expect(source).toContain('isMixed("textDecoration") ? ensureDecoration(selection.styles.textDecoration, "underline") : toggleDecoration(selection.styles.textDecoration, "underline")');
@@ -154,24 +161,27 @@ describe("Design property number fields", () => {
   test("passes selection summary metadata to the inspector", async () => {
     const source = await Bun.file(panelUrl).text();
     expect(source).toContain("isMultiSelection={isMultiSelection}");
-    expect(source).toContain("selectionCount={selectionSummary.selectionCount}");
-    expect(source).toContain("mixedStyleFields={selectionSummary.mixedStyleFields}");
+    expect(source).toContain("selectionCount={selectionSummary?.selectionCount ?? 0}");
+    expect(source).toContain("mixedStyleFields={selectionSummary?.mixedStyleFields ?? []}");
+    expect(source).toContain("onAlign={alignSelection}");
+    expect(source).toContain("type: \"align\"");
+    expect(source).toContain("rememberHistory();");
   });
 
   test("connects layer link, lock, and delete actions with shared icon states", async () => {
     const source = await Bun.file(inspectorUrl).text();
     const panelSource = await Bun.file(panelUrl).text();
 
-    expect(source).toContain('label={selection.href ? "Edit link" : "Add link"}');
+    expect(source).toContain('label={selection.href ? t("design.properties.action.edit_link") : t("design.properties.action.add_link")}');
     expect(source).toContain('onChange={(event) => setLinkDraft(event.currentTarget.value)}');
     expect(source).toContain('onApplyField("href", href, true)');
     expect(source).toContain('setLinkOpen(Boolean(selection.href))');
     expect(source).toContain('type="submit" size="sm"');
-    expect(source).toContain('>保存</Button>');
-    expect(source).toContain('label={selection.locked ? "Unlock layer" : "Lock layer"}');
-    expect(source).toContain('label="Delete layer"');
-    expect(source).toContain('hover:bg-[#f4f5f8] hover:text-[#202228] active:bg-black active:text-white');
-    expect(source).toContain('active && "bg-black text-white hover:bg-black hover:text-white"');
+    expect(source).toContain('>{t("design.properties.action.save")}</Button>');
+    expect(source).toContain('label={selection.locked ? t("design.properties.action.unlock_layer") : t("design.properties.action.lock_layer")}');
+    expect(source).toContain('label={t("design.properties.action.delete_layer")}');
+    expect(source).toContain("hover:bg-muted hover:text-foreground active:bg-foreground active:text-background");
+    expect(source).toContain('active && "bg-foreground text-background hover:bg-foreground hover:text-background"');
     expect(panelSource).toContain("const toggleSelectionLock = () => {");
     expect(panelSource).toContain('type: "lock"');
     expect(panelSource).toContain('onDelete={() => setDeleteConfirmationOpen(true)}');
@@ -185,6 +195,6 @@ describe("Design property number fields", () => {
     expect(source).toContain('value={selection.html}');
     expect(source).toContain('aria-label="Selected element HTML code"');
     expect(source).toContain('h-[220px]');
-    expect(source.indexOf(htmlSection)).toBeGreaterThan(source.indexOf('<InspectorSection title="Appearance">'));
+    expect(source.indexOf(htmlSection)).toBeGreaterThan(source.indexOf('<InspectorSection title={t("design.properties.section.appearance")}>'));
   });
 });

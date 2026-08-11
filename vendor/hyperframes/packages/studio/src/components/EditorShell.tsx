@@ -1,7 +1,7 @@
-import { useCallback, type ReactNode } from "react";
+import { useCallback, useRef, useState, type ReactNode } from "react";
 import { PreviewPane } from "./nle/PreviewPane";
 import { TimelinePane } from "./nle/TimelinePane";
-import { PreviewOverlays } from "./nle/PreviewOverlays";
+import { PreviewOverlays, useCommitDomZOrder } from "./nle/PreviewOverlays";
 import {
   useTimelineEditCallbacks,
   type TimelineEditCallbackDeps,
@@ -12,15 +12,30 @@ import { StudioFeedbackBar } from "./StudioFeedbackBar";
 import { useStudioPlaybackContext, useStudioShellContext } from "../contexts/StudioContext";
 import { useDomEditActionsContext } from "../contexts/DomEditContext";
 import { TimelineEditProvider } from "../contexts/TimelineEditContext";
-import type { TimelineElement } from "../player";
-import type { BlockPreviewInfo } from "./sidebar/BlocksTab";
+import { usePlayerStore, type TimelineElement } from "../player";
 import type { GestureRecordingState } from "./editor/GestureRecordControl";
+import { useAddAssetAtPlayhead } from "../hooks/useAddAssetAtPlayhead";
+import { useStudioI18n } from "../i18n";
+import {
+  resolveTimelineClipLabel,
+  resolveTimelineLayerSourceTarget,
+} from "../player/components/timelineLayerPresentation";
+import { rebaseExpandedTimelineEdit } from "../utils/timelineToolbarSelection";
+import { CanvasContextMenu } from "./editor/CanvasContextMenu";
+import type { DomEditSelection } from "./editor/domEditing";
 
 type RenderClipContent = (
   element: TimelineElement,
   style: { clip: string; label: string },
 ) => ReactNode;
 type TimelineDropPlacement = Pick<TimelineElement, "start" | "track">;
+
+interface TimelineClipContextMenuState {
+  x: number;
+  y: number;
+  element: TimelineElement;
+  selection: DomEditSelection | null;
+}
 
 // The seven move/resize/split/razor handlers come from TimelineEditCallbackDeps
 // (shared with useTimelineEditCallbacks); the rest are drop + wiring props.
@@ -31,6 +46,8 @@ export interface EditorShellProps extends TimelineEditCallbackDeps {
   right: ReactNode;
   /** Hide the whole shell (e.g. while the storyboard view is active). */
   hidden?: boolean;
+  /** Playback-only workspace: preview canvas + transport, without editing chrome. */
+  previewOnly?: boolean;
   timelineToolbar: ReactNode;
   renderClipContent: RenderClipContent;
   handleTimelineElementDelete: (element: TimelineElement) => Promise<void> | void;
@@ -53,7 +70,6 @@ export interface EditorShellProps extends TimelineEditCallbackDeps {
   setCompIdToSrc: (map: Map<string, string>) => void;
   setCompositionLoading: (loading: boolean) => void;
   shouldShowSelectedDomBounds: boolean;
-  blockPreview?: BlockPreviewInfo | null;
   isGestureRecording?: boolean;
   recordingState?: GestureRecordingState;
   onToggleRecording?: () => void;
@@ -67,6 +83,7 @@ export function EditorShell({
   left,
   right,
   hidden,
+  previewOnly = false,
   timelineToolbar,
   renderClipContent,
   handleTimelineElementDelete,
@@ -79,6 +96,7 @@ export function EditorShell({
   handleTimelineElementResize,
   handleTimelineGroupResize,
   handleToggleTrackHidden,
+  handleToggleTrackLocked,
   handleBlockedTimelineEdit,
   handleTimelineElementSplit,
   handleRazorSplit,
@@ -89,13 +107,46 @@ export function EditorShell({
   isGestureRecording,
   recordingState,
   onToggleRecording,
-  blockPreview,
   gestureOverlay,
 }: EditorShellProps) {
   const { projectId, activeCompPath, setActiveCompPath, handlePreviewIframeRef } =
     useStudioShellContext();
   const { refreshKey, captionEditMode, refreshPreviewDocumentVersion } = useStudioPlaybackContext();
-  const { handleTimelineElementSelect } = useDomEditActionsContext();
+  const {
+    buildDomSelectionForTimelineElement,
+    handleDomAttributesCommit,
+    handleTimelineElementSelect,
+  } = useDomEditActionsContext();
+
+  const handleTimelineElementRename = useCallback(
+    async (element: TimelineElement, label: string) => {
+      const selection = await buildDomSelectionForTimelineElement(element);
+      if (!selection) return;
+      const renameSelection = element.compositionSrc
+        ? (() => {
+            const target = resolveTimelineLayerSourceTarget(element, activeCompPath);
+            return {
+              ...selection,
+              ...target,
+              compositionPath: target.sourceFile,
+            };
+          })()
+        : selection;
+      await handleDomAttributesCommit(
+        renameSelection,
+        { "timeline-label": label },
+        "Rename timeline layer",
+      );
+      usePlayerStore.getState().updateElement(element.key ?? element.id, { label });
+      refreshPreviewDocumentVersion();
+    },
+    [
+      buildDomSelectionForTimelineElement,
+      activeCompPath,
+      handleDomAttributesCommit,
+      refreshPreviewDocumentVersion,
+    ],
+  );
 
   const timelineEditCallbacks = useTimelineEditCallbacks({
     handleTimelineElementMove,
@@ -103,6 +154,7 @@ export function EditorShell({
     handleTimelineElementResize,
     handleTimelineGroupResize,
     handleToggleTrackHidden,
+    handleToggleTrackLocked,
     handleBlockedTimelineEdit,
     handleTimelineElementSplit,
     handleRazorSplit,
@@ -132,9 +184,11 @@ export function EditorShell({
           <EditorShellBody
             left={left}
             right={right}
+            previewOnly={previewOnly}
             captionEditMode={captionEditMode}
             onSelectTimelineElement={handleTimelineElementSelect}
-            onPreviewBlockDrop={handlePreviewBlockDrop}
+            onRenameTimelineElement={handleTimelineElementRename}
+            onPreviewBlockDrop={previewOnly ? undefined : handlePreviewBlockDrop}
             timelineToolbar={timelineToolbar}
             renderClipContent={renderClipContent}
             onFileDrop={handleTimelineFileDrop}
@@ -142,19 +196,20 @@ export function EditorShell({
             onBlockDrop={handleTimelineBlockDrop}
             onDeleteElement={handleTimelineElementDelete}
             previewOverlay={
-              <PreviewOverlays
-                shouldShowSelectedDomBounds={shouldShowSelectedDomBounds}
-                blockPreview={blockPreview}
-                isGestureRecording={isGestureRecording}
-                recordingState={recordingState}
-                onToggleRecording={onToggleRecording}
-                gestureOverlay={gestureOverlay}
-              />
+              previewOnly ? null : (
+                <PreviewOverlays
+                  shouldShowSelectedDomBounds={shouldShowSelectedDomBounds}
+                  isGestureRecording={isGestureRecording}
+                  recordingState={recordingState}
+                  onToggleRecording={onToggleRecording}
+                  gestureOverlay={gestureOverlay}
+                />
+              )
             }
           />
         </NLEProvider>
       </TimelineEditProvider>
-      <StudioFeedbackBar />
+      {!previewOnly && <StudioFeedbackBar />}
     </div>
   );
 }
@@ -162,9 +217,11 @@ export function EditorShell({
 interface EditorShellBodyProps {
   left: ReactNode;
   right: ReactNode;
+  previewOnly: boolean;
   captionEditMode: boolean;
   previewOverlay: ReactNode;
   onSelectTimelineElement: (element: TimelineElement | null) => void;
+  onRenameTimelineElement: (element: TimelineElement, label: string) => Promise<void> | void;
   onPreviewBlockDrop?: (
     blockName: string,
     position: { left: number; top: number },
@@ -180,9 +237,11 @@ interface EditorShellBodyProps {
 function EditorShellBody({
   left,
   right,
+  previewOnly,
   captionEditMode,
   previewOverlay,
   onSelectTimelineElement,
+  onRenameTimelineElement,
   onPreviewBlockDrop,
   timelineToolbar,
   renderClipContent,
@@ -191,7 +250,110 @@ function EditorShellBody({
   onBlockDrop,
   onDeleteElement,
 }: EditorShellBodyProps) {
+  const { tx } = useStudioI18n();
+  const { activeCompPath, showToast } = useStudioShellContext();
+  const { refreshPreviewDocumentVersion } = useStudioPlaybackContext();
+  const {
+    applyDomSelection,
+    buildDomSelectionForTimelineElement,
+    handleDomAttributesCommit,
+    handleDomEditElementDelete,
+    handleDomZIndexReorderCommit,
+  } = useDomEditActionsContext();
   const { compositionStack, updateCompositionStack, containerRef } = useNLEContext();
+  const handlePreviewAssetDrop = useAddAssetAtPlayhead(onAssetDrop);
+  const commitDomZOrder = useCommitDomZOrder(handleDomZIndexReorderCommit);
+  const [timelineClipContextMenu, setTimelineClipContextMenu] =
+    useState<TimelineClipContextMenuState | null>(null);
+  const contextMenuRequestRef = useRef(0);
+  const clipRenameVersionRef = useRef(new Map<string, number>());
+
+  const closeTimelineClipContextMenu = useCallback(() => {
+    contextMenuRequestRef.current += 1;
+    setTimelineClipContextMenu(null);
+  }, []);
+
+  const openTimelineClipContextMenu = useCallback(
+    (element: TimelineElement, anchor: { x: number; y: number }) => {
+      const request = ++contextMenuRequestRef.current;
+      setTimelineClipContextMenu({ ...anchor, element, selection: null });
+
+      void buildDomSelectionForTimelineElement(element)
+        .then((selection) => {
+          if (request !== contextMenuRequestRef.current) return;
+          if (selection) applyDomSelection(selection, { revealPanel: false });
+          setTimelineClipContextMenu((current) =>
+            current && (current.element.key ?? current.element.id) === (element.key ?? element.id)
+              ? { ...current, selection }
+              : current,
+          );
+        })
+        .catch(() => undefined);
+    },
+    [applyDomSelection, buildDomSelectionForTimelineElement],
+  );
+
+  const renameTimelineClip = useCallback(
+    async (label: string) => {
+      const current = timelineClipContextMenu;
+      if (!current) return;
+      const selection =
+        current.selection ?? (await buildDomSelectionForTimelineElement(current.element));
+      if (!selection) throw new Error("Timeline clip source element was not found");
+
+      const renameSelection = current.element.compositionSrc
+        ? (() => {
+            const target = resolveTimelineLayerSourceTarget(current.element, activeCompPath);
+            return { ...selection, ...target, compositionPath: target.sourceFile };
+          })()
+        : selection;
+      const elementKey = current.element.key ?? current.element.id;
+      const previousClipLabel = current.element.clipLabel;
+      const commitVersion = (clipRenameVersionRef.current.get(elementKey) ?? 0) + 1;
+      clipRenameVersionRef.current.set(elementKey, commitVersion);
+      let saved = false;
+      usePlayerStore.getState().updateElement(elementKey, { clipLabel: label });
+      // The durable file mutation/history write can take a few seconds. Keep
+      // it in the existing serialized save queue, but don't hold the context
+      // menu open while it finishes: the optimistic label is already visible.
+      void handleDomAttributesCommit(
+        renameSelection,
+        { "timeline-clip-label": label },
+        "Rename timeline clip",
+        {
+          // Perform one deliberate preview refresh after a successful commit;
+          // the generic refresh + selection resync used to reload twice.
+          skipRefresh: true,
+          refreshAfter: false,
+          onSettled: (ok) => {
+            saved = ok;
+          },
+        },
+      )
+        .then(() => {
+          if (clipRenameVersionRef.current.get(elementKey) !== commitVersion) return;
+          if (!saved) {
+            usePlayerStore.getState().updateElement(elementKey, { clipLabel: previousClipLabel });
+            return;
+          }
+          refreshPreviewDocumentVersion();
+        })
+        .catch(() => {
+          if (clipRenameVersionRef.current.get(elementKey) !== commitVersion) return;
+          usePlayerStore.getState().updateElement(elementKey, { clipLabel: previousClipLabel });
+          showToast(tx("Couldn't rename clip. Try again."), "error");
+        });
+    },
+    [
+      activeCompPath,
+      buildDomSelectionForTimelineElement,
+      handleDomAttributesCommit,
+      refreshPreviewDocumentVersion,
+      showToast,
+      timelineClipContextMenu,
+      tx,
+    ],
+  );
 
   // Keyboard: Escape to pop composition level
   const handleKeyDown = useCallback(
@@ -214,43 +376,86 @@ function EditorShellBody({
     >
       {/* Top row: [left | preview | right] — outer padding + the 8px resize
           seams give the panels CapCut-style separation on the dark canvas. */}
-      <div className="flex flex-row flex-1 min-h-0 px-px pt-px">
-        <div className="flex min-w-0 flex-1 flex-col">
-          <div className="flex min-h-0 min-w-0 flex-1">
-            {left}
-            <div className="flex-1 min-w-0 flex flex-col relative">
-              <PreviewPane
-                previewOverlay={previewOverlay}
-                onSelectTimelineElement={onSelectTimelineElement}
-                onPreviewBlockDrop={onPreviewBlockDrop}
-              />
-            </div>
-          </div>
-
-          <TimelinePane
-            timelineToolbar={timelineToolbar}
-            renderClipContent={renderClipContent}
-            onFileDrop={onFileDrop}
-            onAssetDrop={onAssetDrop}
-            onBlockDrop={onBlockDrop}
-            onDeleteElement={onDeleteElement}
-            onSelectTimelineElement={onSelectTimelineElement}
-            timelineFooter={
-              captionEditMode ? (
-                <div className="border-t border-neutral-800/30 flex-shrink-0" style={{ height: 60 }}>
-                  <div className="flex items-center gap-1.5 px-2 py-0.5">
-                    <span className="text-[9px] font-medium text-neutral-500 uppercase tracking-wider">
-                      Captions
-                    </span>
-                  </div>
-                  <CaptionTimeline pixelsPerSecond={100} />
-                </div>
-              ) : undefined
-            }
-          />
+      {previewOnly ? (
+        <div className="flex min-h-0 flex-1 p-px">
+          <PreviewPane editingEnabled={false} />
         </div>
-        {right}
-      </div>
+      ) : (
+        <div className="flex flex-row flex-1 min-h-0">
+          <div className="flex min-w-0 flex-1 flex-col">
+            <div className="flex min-h-0 min-w-0 flex-1">
+              {left}
+              <div className="flex-1 min-w-0 flex flex-col relative">
+                <PreviewPane
+                  previewOverlay={previewOverlay}
+                  onPreviewBlockDrop={onPreviewBlockDrop}
+                  onPreviewAssetDrop={handlePreviewAssetDrop}
+                />
+              </div>
+            </div>
+
+            <TimelinePane
+              timelineToolbar={timelineToolbar}
+              renderClipContent={renderClipContent}
+              onFileDrop={onFileDrop}
+              onAssetDrop={onAssetDrop}
+              onBlockDrop={onBlockDrop}
+              onDeleteElement={onDeleteElement}
+              onSelectTimelineElement={onSelectTimelineElement}
+              onRenameTimelineElement={onRenameTimelineElement}
+              onContextMenuTimelineElement={openTimelineClipContextMenu}
+              timelineFooter={
+                captionEditMode ? (
+                  <div
+                    className="border-t border-neutral-800/30 flex-shrink-0"
+                    style={{ height: 60 }}
+                  >
+                    <div className="flex items-center gap-1.5 px-2 py-0.5">
+                      <span className="text-[9px] font-medium text-neutral-500 uppercase tracking-wider">
+                        {tx("Captions")}
+                      </span>
+                    </div>
+                    <CaptionTimeline pixelsPerSecond={100} />
+                  </div>
+                ) : undefined
+              }
+            />
+          </div>
+          {right}
+          {timelineClipContextMenu && (
+            <CanvasContextMenu
+              x={timelineClipContextMenu.x}
+              y={timelineClipContextMenu.y}
+              selection={timelineClipContextMenu.selection}
+              renameValue={resolveTimelineClipLabel(timelineClipContextMenu.element)}
+              onRename={renameTimelineClip}
+              onDelete={() => {
+                if (timelineClipContextMenu.selection) {
+                  void handleDomEditElementDelete(timelineClipContextMenu.selection);
+                  return;
+                }
+                const element = rebaseExpandedTimelineEdit(
+                  timelineClipContextMenu.element,
+                  timelineClipContextMenu.element.start,
+                ).element;
+                void onDeleteElement(element);
+              }}
+              onApplyZIndex={
+                timelineClipContextMenu.selection
+                  ? (patches, action, crossed) =>
+                      commitDomZOrder(
+                        timelineClipContextMenu.selection as DomEditSelection,
+                        patches,
+                        action,
+                        crossed,
+                      )
+                  : undefined
+              }
+              onClose={closeTimelineClipContextMenu}
+            />
+          )}
+        </div>
+      )}
     </div>
   );
 }

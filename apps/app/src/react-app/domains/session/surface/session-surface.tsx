@@ -4,7 +4,7 @@ import type { UIMessage } from "ai";
 import { useQuery } from "@tanstack/react-query";
 import type { SessionStatus } from "@opencode-ai/sdk/v2/client";
 import type { TemplateCatalogItem } from "@ipollowork/types/templates";
-import { Check, Film, Minimize2, X } from "lucide-react";
+import { Check, Minimize2, X } from "lucide-react";
 import { toast } from "@/components/ui/sonner";
 
 import { captureAnalyticsEvent } from "@/app/lib/analytics";
@@ -19,11 +19,13 @@ import type {
   iPolloWorkServerClient,
   iPolloWorkSessionSnapshot,
 } from "@/app/lib/ipollowork-server";
-import { hyperframesSelectionPayload } from "@/app/lib/hyperframes-effect-params";
+import {
+  hyperframesAnimationDisplayMetadata,
+  hyperframesSelectionPayload,
+} from "@/app/lib/hyperframes-effect-params";
 import type {
   ComposerAttachment,
   ComposerDraft,
-  ComposerPart,
   McpServerEntry,
   McpStatusMap,
   ModelRef,
@@ -39,11 +41,25 @@ import {
 import { useControlAction, type iPolloWorkControlAction } from "@/react-app/shell/control/control-provider";
 import { attemptSilentMcpReauth } from "@/react-app/domains/connections/mcp-silent-reauth";
 import { ReactSessionComposer } from "./composer/composer";
-import { decodeComposerMentionValue, encodeComposerMentionValue, type ComposerMentionKind } from "./composer/mention-encoding";
+import { encodeComposerMentionValue, type ComposerMentionKind } from "./composer/mention-encoding";
+import {
+  failedDraftRetrySurface,
+  parseComposerParts,
+  shouldPreserveComposerDraftAfterSendFailure,
+} from "./composer/composer-draft";
 import { desktopBridge } from "@/app/lib/desktop";
 import { publicAssetUrl } from "@/app/lib/public-asset";
 import { parseSlashCommandInvocation } from "./composer/slash-command";
 import { useDesignAiSelectionStore } from "../design/design-ai-selection-store";
+import {
+  videoVoiceDisplayMetadata,
+  type VideoVoiceAiReference,
+} from "../video/video-voice";
+import {
+  parseVideoIllustrationReference,
+  videoIllustrationReferenceInstruction,
+  type VideoIllustrationAiReference,
+} from "../video/video-illustration";
 import { DevProfiler } from "@/react-app/shell/dev-profiler";
 import { useShellConfig } from "@/react-app/shell/shell-config";
 import { useReactRenderWatchdog } from "@/react-app/shell/react-render-watchdog";
@@ -85,73 +101,6 @@ import { MessageListProvider, type DispatchAction } from "@/components/chat/mess
 import { OpenTargetProvider, type OpenTargetOptions } from "@/lib/target-provider";
 import type { ThreadStatus } from "@/lib/messages";
 
-type ParseComposerPartsInput = {
-  mentions: Record<string, ComposerMentionKind>;
-  pasteParts: Array<{ id: string; label: string; text: string; lines: number }>;
-  designSelectionLabel: (contextId: string) => string | undefined;
-};
-
-export function parseComposerParts(text: string, input: ParseComposerPartsInput): ComposerPart[] {
-  const parts: ComposerPart[] = [];
-  const segments = text.split(/(\[\[design-ai:[a-zA-Z0-9_-]+\]\]|\[pasted text [^\]]+\]|\[skill [^\]]+\]|@[^\s@]+)/);
-  for (const segment of segments) {
-    if (!segment) continue;
-    const designSelectionMatch = segment.match(/^\[\[design-ai:([a-zA-Z0-9_-]+)\]\]$/);
-    if (designSelectionMatch?.[1]) {
-      const contextId = designSelectionMatch[1];
-      parts.push({
-        type: "design-selection",
-        contextId,
-        label: input.designSelectionLabel(contextId) ?? "Design selection",
-      });
-      continue;
-    }
-    const pasteMatch = segment.match(/^\[pasted text (.+)\]$/);
-    if (pasteMatch) {
-      const target = input.pasteParts.find((item) => item.label === pasteMatch[1]);
-      if (target) {
-        parts.push({ type: "paste", id: target.id, label: target.label, text: target.text, lines: target.lines });
-        continue;
-      }
-    }
-    const skillMatch = segment.match(/^\[skill (.+)\]$/);
-    if (skillMatch?.[1]) {
-      parts.push({ type: "skill", name: skillMatch[1] });
-      continue;
-    }
-    if (segment.startsWith("@")) {
-      const value = decodeComposerMentionValue(segment.slice(1));
-      const kind = input.mentions[value];
-      if (kind === "agent") {
-        parts.push({ type: "agent", name: value });
-        continue;
-      }
-      if (kind === "file") {
-        parts.push({ type: "file", path: value, label: value });
-        continue;
-      }
-      if (kind === "app") {
-        parts.push({ type: "app", name: value });
-        continue;
-      }
-    }
-    parts.push({ type: "text", text: segment });
-  }
-  return parts;
-}
-
-export function shouldPreserveComposerDraftAfterSendFailure(draft: ComposerDraft) {
-  return draft.parts.some((part) => part.type === "design-selection");
-}
-
-export function failedDraftRetrySurface(draft: ComposerDraft) {
-  return shouldPreserveComposerDraftAfterSendFailure(draft) ? "composer" : "queue";
-}
-
-export function replaceDesignSelectionToken(draft: string, token: string) {
-  const withoutPrevious = draft.replace(/\[\[design-ai:[a-zA-Z0-9_-]+\]\]\s*/g, "").trimEnd();
-  return `${withoutPrevious}${withoutPrevious ? "\n" : ""}${token} `;
-}
 import {
   EnvironmentVariableProvider,
   type ApplyEnvironmentChangesResult,
@@ -161,6 +110,12 @@ const EMPTY_TRANSCRIPT: UIMessage[] = [];
 const IDLE_STATUS: SessionStatus = { type: "idle" };
 const DEFAULT_COMPOSER_CONTROL_TEXT = "Help me outline the next iPolloWork task.";
 const SESSION_SURFACE_SELECTOR = "[data-session-surface-id]";
+const ACTIVE_SESSION_ACTIVITY_STATUSES = new Set<SessionActivityStatus>([
+  "thinking",
+  "responding",
+  "waiting",
+  "compacting",
+]);
 
 type SessionError = {
   message: string;
@@ -188,7 +143,7 @@ export type SessionSurfaceProps = {
   selectedModel: ModelRef;
   onModelPickerOpenChange: (open: boolean) => void;
   onModelChange: (model: ModelRef) => void;
-  onSendDraft: (draft: ComposerDraft, sessionId: string) => void;
+  onSendDraft: (draft: ComposerDraft, sessionId: string) => boolean | Promise<boolean>;
   onDraftChange: (draft: ComposerDraft) => void;
   attachmentsEnabled: boolean;
   attachmentsDisabledReason: string | null;
@@ -507,11 +462,36 @@ function StarterCapabilityChip({ capability, onClear }: { capability: StarterCap
 function AnimationChip({ animation, onClear }: { animation: HyperframesAnimationSelection; onClear: () => void }) {
   const configuredCount = Object.keys(animation.values).length;
   return (
-    <div className="inline-flex h-7 max-w-full items-center gap-1.5 rounded-full border border-emerald-500/25 bg-emerald-500/8 px-2.5 text-[11px] text-dls-text shadow-sm">
-      <Film className="size-3.5 shrink-0 text-emerald-600" aria-hidden />
-      <span className="max-w-[12rem] truncate font-medium">{animation.item.title}</span>
-      {configuredCount ? <span className="rounded-full bg-emerald-500/12 px-1.5 text-[9px] text-emerald-700">{t("new_conversation.animations.customized", { count: configuredCount })}</span> : null}
-      <button type="button" className="inline-flex size-4 shrink-0 items-center justify-center rounded-full text-dls-secondary hover:bg-emerald-500/15 hover:text-dls-text" aria-label={t("new_conversation.animations.remove", { title: animation.item.title })} onClick={onClear}>
+    <div
+      className="inline-flex max-w-full items-center gap-1 rounded-full border border-violet-6/35 bg-violet-3/20 py-1 pl-2.5 pr-1.5 text-xs font-medium text-violet-11"
+      data-composer-token="animation-reference"
+      title={animation.item.title}
+    >
+      <span className="max-w-[13rem] truncate">{animation.item.title}</span>
+      {configuredCount ? <span className="rounded-full bg-violet-4 px-1.5 text-[9px] text-violet-11">{t("new_conversation.animations.customized", { count: configuredCount })}</span> : null}
+      <button type="button" className="inline-flex size-4 shrink-0 items-center justify-center rounded-full text-violet-10 transition-colors hover:bg-violet-4 hover:text-violet-12 active:bg-violet-5" aria-label={t("new_conversation.animations.remove", { title: animation.item.title })} onClick={onClear}>
+        <X className="size-3" aria-hidden />
+      </button>
+    </div>
+  );
+}
+
+function VoiceChip({ reference, onClear }: { reference: VideoVoiceAiReference; onClear: () => void }) {
+  return (
+    <div className="inline-flex max-w-full items-center gap-1 rounded-full border border-violet-6/35 bg-violet-3/20 py-1 pl-2.5 pr-1.5 text-xs font-medium text-violet-11" data-composer-token="voice-reference" title={reference.label}>
+      <span className="max-w-[13rem] truncate">{reference.label}</span>
+      <button type="button" className="inline-flex size-4 shrink-0 items-center justify-center rounded-full text-violet-10 transition-colors hover:bg-violet-4 hover:text-violet-12 active:bg-violet-5" aria-label={`Remove voice reference: ${reference.label}`} onClick={onClear}>
+        <X className="size-3" aria-hidden />
+      </button>
+    </div>
+  );
+}
+
+function IllustrationChip({ reference, onClear }: { reference: VideoIllustrationAiReference; onClear: () => void }) {
+  return (
+    <div className="inline-flex max-w-full items-center gap-1 rounded-full border border-violet-6/35 bg-violet-3/20 py-1 pl-2.5 pr-1.5 text-xs font-medium text-violet-11" data-composer-token="illustration-reference" title={reference.repository}>
+      <span className="max-w-[13rem] truncate">插画 · {reference.label}</span>
+      <button type="button" className="inline-flex size-4 shrink-0 items-center justify-center rounded-full text-violet-10 transition-colors hover:bg-violet-4 hover:text-violet-12 active:bg-violet-5" aria-label={`Remove illustration reference: ${reference.label}`} onClick={onClear}>
         <X className="size-3" aria-hidden />
       </button>
     </div>
@@ -528,11 +508,27 @@ function animationSelectionInstruction(animations: HyperframesAnimationSelection
     return `${reference}\nEffect configuration: ${JSON.stringify(hyperframesSelectionPayload(selection))}`;
   }).join("\n\n");
   return [
+    hyperframesAnimationDisplayMetadata(animations),
     "Selected HyperFrames animation references:",
     choices,
     "Use /hyperframes and treat these as the user's explicit motion direction for the video.",
-    "Install or adapt the selected registry items where they support the story. Apply the supplied variables through HyperFrames data-variable-values/getVariables so preview and deterministic render use the same values.",
-    "Do not paste unrelated demo content and do not force every selection into every scene. Preserve the visual characteristics that motivated each selection while producing one coherent video.",
+    "Adapt the supplied reference and variables directly through HyperFrames data-variable-values/getVariables so preview and deterministic render use the same values. The selection payload is complete: do not run package installation, registry catalog, update, or version commands.",
+    "Every selected reference is a required deliverable: apply each at least once, mark its owning implementation element with data-ipw-animation-reference equal to the registry name, and include every selected registry name in the final validator's requirements.animationReferences array.",
+    "Do not paste unrelated demo content or force a selection into every scene. Preserve the visual characteristics that motivated each selection while producing one coherent video.",
+  ].join("\n");
+}
+
+const DEFAULT_VOICEOVER_PROMPT = "请用这段话给我视频做配音";
+
+function voiceReferenceInstruction(reference: VideoVoiceAiReference | null) {
+  if (!reference) return null;
+  return [
+    videoVoiceDisplayMetadata(reference),
+    "Selected video voiceover reference:",
+    `- Voice: ${reference.label}`,
+    `- Voice ID: ${reference.voiceId}`,
+    `- Model: ${reference.model}`,
+    "Use the current video session's voiceover.json and the Video voiceover contract to synthesize and synchronize the narration requested by the user.",
   ].join("\n");
 }
 
@@ -567,7 +563,6 @@ export function SessionSurface(props: SessionSurfaceProps) {
   const queuedDrafts = useComposerStateStore((state) => getComposerQueuedDrafts(state, props.sessionId));
   const appendQueuedDraft = useComposerStateStore((state) => state.appendQueuedDraft);
   const removeQueuedDraftFromStore = useComposerStateStore((state) => state.removeQueuedDraft);
-  const clearQueuedDrafts = useComposerStateStore((state) => state.clearQueuedDrafts);
   const prependQueuedDrafts = useComposerStateStore((state) => state.prependQueuedDrafts);
   const [error, setError] = useState<SessionError | null>(null);
   const [sending, setSending] = useState(false);
@@ -587,6 +582,9 @@ export function SessionSurface(props: SessionSurfaceProps) {
   const [animationCatalogError, setAnimationCatalogError] = useState<string | null>(null);
   const [animationCatalogRevision, setAnimationCatalogRevision] = useState(0);
   const [selectedAnimations, setSelectedAnimations] = useState<HyperframesAnimationSelection[]>([]);
+  const [selectedVoiceReference, setSelectedVoiceReference] = useState<VideoVoiceAiReference | null>(null);
+  const [selectedIllustrationReference, setSelectedIllustrationReference] = useState<VideoIllustrationAiReference | null>(null);
+  const runActivityObservedRef = useRef(false);
 
   useEffect(() => {
     const addAnimationReference = (event: Event) => {
@@ -598,10 +596,46 @@ export function SessionSurface(props: SessionSurfaceProps) {
         ...current.filter((animation) => animation.item.name !== item.name),
         { item, values: {} },
       ]);
+      toast.success(t("new_conversation.animations.added_to_ai"));
     };
     window.addEventListener("ipollowork:add-animation-reference", addAnimationReference);
     return () => window.removeEventListener("ipollowork:add-animation-reference", addAnimationReference);
   }, [props.sessionId]);
+
+  useEffect(() => {
+    const addIllustrationReference = (event: Event) => {
+      const detail = (event as CustomEvent<{ sessionId?: unknown; reference?: unknown }>).detail;
+      if (detail?.sessionId !== props.sessionId) return;
+      const reference = parseVideoIllustrationReference(detail.reference);
+      if (!reference) return;
+      setSelectedIllustrationReference(reference);
+      const defaultPrompt = "请根据当前视频 HTML 中的内容，为我生成一张适合当前视频使用的插画。";
+      const current = getComposerDraft(useComposerStateStore.getState(), props.sessionId).trimEnd();
+      if (!current.includes(defaultPrompt)) setComposerDraft(props.sessionId, `${current}${current ? "\n" : ""}${defaultPrompt}`);
+      toast.success("AI 插画已添加到对话框");
+      window.dispatchEvent(new Event("ipollowork:focusPrompt"));
+    };
+    window.addEventListener("ipollowork:add-illustration-reference", addIllustrationReference);
+    return () => window.removeEventListener("ipollowork:add-illustration-reference", addIllustrationReference);
+  }, [props.sessionId, setComposerDraft]);
+
+  useEffect(() => {
+    const addVoiceReference = (event: Event) => {
+      const detail = (event as CustomEvent<{ sessionId?: unknown; reference?: unknown }>).detail;
+      if (detail?.sessionId !== props.sessionId || !detail.reference || typeof detail.reference !== "object") return;
+      const candidate = detail.reference as Partial<VideoVoiceAiReference>;
+      if (!candidate.voiceId?.trim() || !candidate.model?.trim() || !candidate.label?.trim()) return;
+      setSelectedVoiceReference({ voiceId: candidate.voiceId.trim(), model: candidate.model.trim(), label: candidate.label.trim() });
+      const current = getComposerDraft(useComposerStateStore.getState(), props.sessionId).trimEnd();
+      if (!current.includes(DEFAULT_VOICEOVER_PROMPT)) {
+        setComposerDraft(props.sessionId, `${current}${current ? "\n" : ""}${DEFAULT_VOICEOVER_PROMPT}`);
+      }
+      toast.success(t("new_conversation.animations.added_to_ai"));
+      window.dispatchEvent(new Event("ipollowork:focusPrompt"));
+    };
+    window.addEventListener("ipollowork:add-voice-reference", addVoiceReference);
+    return () => window.removeEventListener("ipollowork:add-voice-reference", addVoiceReference);
+  }, [props.sessionId, setComposerDraft]);
   const composerShellRef = useRef<HTMLDivElement>(null);
   const hydratedKeyRef = useRef<string | null>(null);
   const autoOpenedTargetRef = useRef<string | null>(null);
@@ -642,6 +676,7 @@ export function SessionSurface(props: SessionSurfaceProps) {
     hydratedKeyRef.current = null;
     setError(null);
     setSending(false);
+    runActivityObservedRef.current = false;
     setShowDelayedLoading(false);
     setAwaitingAssistantBaseline(null);
     // Composer draft state lives in the shared store keyed by session id, so
@@ -737,7 +772,8 @@ export function SessionSurface(props: SessionSurfaceProps) {
     cachedRendered: rendered,
   });
   const liveStatus = statusState ?? snapshot?.status ?? IDLE_STATUS;
-  const chatStreaming = sending || liveStatus.type === "busy" || liveStatus.type === "retry";
+  const activityRunActive = ACTIVE_SESSION_ACTIVITY_STATUSES.has(sessionActivityStatus);
+  const chatStreaming = sending || liveStatus.type === "busy" || liveStatus.type === "retry" || activityRunActive;
   const status = useMemo((): ThreadStatus => {
     if (sending) {
       return "submitted";
@@ -901,7 +937,9 @@ export function SessionSurface(props: SessionSurfaceProps) {
     }
     const slashCommand = parseSlashCommandInvocation(resolved);
     const animationInstruction = animationSelectionInstruction(selectedAnimations);
-    const capabilityInstruction = [starterCapability?.instruction, animationInstruction]
+    const voiceInstruction = voiceReferenceInstruction(selectedVoiceReference);
+    const illustrationInstruction = selectedIllustrationReference ? videoIllustrationReferenceInstruction(selectedIllustrationReference) : null;
+    const capabilityInstruction = [starterCapability?.instruction, animationInstruction, voiceInstruction, illustrationInstruction]
       .filter((value): value is string => Boolean(value))
       .join("\n\n");
     return {
@@ -911,11 +949,11 @@ export function SessionSurface(props: SessionSurfaceProps) {
       text,
       resolvedText: resolved,
       capability: capabilityInstruction
-        ? { id: selectedAnimations.length ? "hyperframes-animation-selection" : starterCapability!.id, instruction: capabilityInstruction }
+        ? { id: selectedAnimations.length ? "hyperframes-animation-selection" : selectedVoiceReference ? "video-voice-reference" : selectedIllustrationReference ? "video-illustration-reference" : starterCapability!.id, instruction: capabilityInstruction }
         : undefined,
       command: slashCommand ?? undefined,
     };
-  }, [mentions, pasteParts, selectedAnimations, starterCapability]);
+  }, [mentions, pasteParts, selectedAnimations, selectedIllustrationReference, selectedVoiceReference, starterCapability]);
 
   const handleComposerDraftChange = useCallback((value: string) => {
     setComposerDraft(props.sessionId, value);
@@ -929,18 +967,17 @@ export function SessionSurface(props: SessionSurfaceProps) {
     }
   };
 
-  // Core sender shared by initial send and steered follow-ups. OpenCode
-  // accepts follow-up user turns mid-run (steering) — the running loop picks
-  // up the new message — so this is safe to call while the agent is busy.
+  // Core sender used only while the session is idle. Busy follow-ups remain
+  // in the local queue until the current run has completed.
   const sendDraft = useCallback(async (nextDraft: ComposerDraft, draftAttachments: ComposerAttachment[]) => {
     setError(null);
     // Record the prompt for Up/Down recall in the composer (#2012).
     appendComposerHistory(props.sessionId, nextDraft.text);
-    useSessionActivityStore.getState().setRunStatus(props.workspaceId, props.sessionId, { type: "busy" });
+    runActivityObservedRef.current = false;
     setSending(true);
     setAwaitingAssistantBaseline(renderedMessages.length);
     try {
-      await props.onSendDraft(nextDraft, props.sessionId);
+      const dispatched = await props.onSendDraft(nextDraft, props.sessionId);
       if (selectedAnimations.length) {
         recordInspectorEvent("composer.hyperframes_sent", {
           workspaceId: props.workspaceId,
@@ -951,7 +988,15 @@ export function SessionSurface(props: SessionSurfaceProps) {
       draftAttachments.forEach(revokeAttachmentPreview);
       setStarterCapability(null);
       setSelectedAnimations([]);
-      setSending(false);
+      setSelectedVoiceReference(null);
+      setSelectedIllustrationReference(null);
+      // promptAsync resolves once the run is accepted, before generation
+      // finishes. Keep the optimistic busy latch until the session's idle
+      // event; only release immediately when the route did not dispatch.
+      if (!dispatched) {
+        runActivityObservedRef.current = false;
+        setSending(false);
+      }
     } catch (nextError) {
       const parsed = parseSessionError(nextError);
       captureAnalyticsEvent("task_send_failed", {});
@@ -959,6 +1004,7 @@ export function SessionSurface(props: SessionSurfaceProps) {
       useSessionActivityStore.getState().setError(props.workspaceId, props.sessionId, parsed.message);
       if (!shouldPreserveComposerDraftAfterSendFailure(nextDraft)) setComposerDraft(props.sessionId, "");
       setAwaitingAssistantBaseline(null);
+      runActivityObservedRef.current = false;
       setSending(false);
       throw nextError;
     }
@@ -973,7 +1019,7 @@ export function SessionSurface(props: SessionSurfaceProps) {
   // share the same immediate path.
   const handleSend = useCallback(async () => {
     const text = draft.trim();
-    if (!text && attachments.length === 0) return;
+    if (!text && attachments.length === 0 && selectedAnimations.length === 0 && !selectedVoiceReference && !selectedIllustrationReference) return;
     // A user can select Video and type directly into the centred first-prompt
     // composer. Mark it before the request is sent so SessionPage opens the
     // session-owned Studio while the agent is creating the composition.
@@ -986,32 +1032,28 @@ export function SessionSurface(props: SessionSurfaceProps) {
       await sendDraft(nextDraft, sentAttachments);
       clearComposer();
     } catch {}
-  }, [attachments, buildDraft, clearComposer, draft, isEmptyConversation, newConversationMode, props.onActivateVideoStudio, props.sessionId, sendDraft, setComposerDraft]);
-
-  const handleSteer = handleSend;
+  }, [attachments, buildDraft, clearComposer, draft, isEmptyConversation, newConversationMode, props.onActivateVideoStudio, props.sessionId, selectedAnimations.length, selectedIllustrationReference, selectedVoiceReference, sendDraft, setComposerDraft]);
 
   // Queue: hold the draft locally and clear the composer. The drain effect
   // sends it once the session reports idle.
   const handleQueue = useCallback(() => {
     const text = draft.trim();
-    if (!text && attachments.length === 0) return;
+    if (!text && attachments.length === 0 && selectedAnimations.length === 0 && !selectedVoiceReference && !selectedIllustrationReference) return;
     appendQueuedDraft(props.sessionId, buildDraft(text, attachments));
     clearComposer();
     setStarterCapability(null);
     setSelectedAnimations([]);
-  }, [appendQueuedDraft, attachments, buildDraft, clearComposer, draft, props.sessionId]);
+    setSelectedVoiceReference(null);
+    setSelectedIllustrationReference(null);
+  }, [appendQueuedDraft, attachments, buildDraft, clearComposer, draft, props.sessionId, selectedAnimations.length, selectedIllustrationReference, selectedVoiceReference]);
 
   const removeQueuedDraft = useCallback((index: number) => {
     removeQueuedDraftFromStore(props.sessionId, index);
   }, [props.sessionId, removeQueuedDraftFromStore]);
   const removeQueuedDrafts = useComposerStateStore((state) => state.removeQueuedDrafts);
-  const reorderQueuedDraft = useComposerStateStore((state) => state.reorderQueuedDraft);
   const removeManyQueuedDrafts = useCallback((indices: number[]) => {
     removeQueuedDrafts(props.sessionId, indices);
   }, [props.sessionId, removeQueuedDrafts]);
-  const reorderQueuedDrafts = useCallback((fromIndex: number, toIndex: number) => {
-    reorderQueuedDraft(props.sessionId, fromIndex, toIndex);
-  }, [props.sessionId, reorderQueuedDraft]);
 
   // One label per queued draft, kept index-aligned with `queuedDrafts` so the
   // panel's remove action targets the correct entry. Attachment-only drafts
@@ -1029,10 +1071,8 @@ export function SessionSurface(props: SessionSurfaceProps) {
   const handleAbort = useCallback(async () => {
     if (!chatStreaming) return;
     setError(null);
-    // Stop means stop: drop queued follow-ups before aborting, otherwise the
-    // queue-drain effect below re-prompts the agent the moment the abort
-    // lands and the session reports idle (#2014).
-    clearQueuedDrafts(props.sessionId);
+    // Abort only the active run. Queued follow-ups stay intact and the drain
+    // effect below starts the next one after the session reports idle.
     // The prompt was sent through a directory-scoped client (session-route
     // passes the workspace root), so the abort must target the same scope —
     // without it the server resolves the default project, finds no live run,
@@ -1048,7 +1088,7 @@ export function SessionSurface(props: SessionSurfaceProps) {
     }
     captureAnalyticsEvent("task_run_stopped", {});
     await snapshotQuery.refetch();
-  }, [chatStreaming, clearQueuedDrafts, opencodeClient, props.sessionId, props.workspaceRoot, snapshotQuery.refetch]);
+  }, [chatStreaming, opencodeClient, props.sessionId, props.workspaceRoot, snapshotQuery.refetch]);
 
   const handleDismissError = useCallback(() => {
     setError(null);
@@ -1056,10 +1096,18 @@ export function SessionSurface(props: SessionSurfaceProps) {
   }, [props.sessionId, props.workspaceId]);
 
   useEffect(() => {
-    if (liveStatus.type === "idle") {
-      setSending(false);
+    if (liveStatus.type === "busy" || liveStatus.type === "retry" || activityRunActive) {
+      runActivityObservedRef.current = true;
+      return;
     }
-  }, [liveStatus.type]);
+    if (!sending || liveStatus.type !== "idle") return;
+    // Ignore an idle snapshot left over from before promptAsync accepted this
+    // request. Release the optimistic latch only after this run was observed,
+    // or after new assistant output proves it actually ran.
+    if (!runActivityObservedRef.current && !assistantOutputAfterAwaitStart) return;
+    runActivityObservedRef.current = false;
+    setSending(false);
+  }, [activityRunActive, assistantOutputAfterAwaitStart, liveStatus.type, sending]);
 
   // Drain one queued follow-up each time the session goes idle. The ref guards
   // against re-entrancy while the send is in flight.
@@ -1245,13 +1293,13 @@ export function SessionSurface(props: SessionSurfaceProps) {
     label: "Send the composer prompt",
     description: "Send the currently visible composer draft to the active session.",
     sideEffect: "mutation",
-    disabled: props.modelUnavailable || (!draft.trim() && attachments.length === 0) || model.transitionState !== "idle",
+    disabled: props.modelUnavailable || (!draft.trim() && attachments.length === 0 && selectedAnimations.length === 0 && !selectedVoiceReference && !selectedIllustrationReference) || model.transitionState !== "idle",
     targetRef: composerShellRef,
     execute: async () => {
       await handleSend();
       return true;
     },
-  }), [attachments.length, draft, handleSend, model.transitionState, props.modelUnavailable]);
+  }), [attachments.length, draft, handleSend, model.transitionState, props.modelUnavailable, selectedAnimations.length, selectedIllustrationReference, selectedVoiceReference]);
   useControlAction(composerSendControlAction);
 
   const composerStopControlAction = useMemo<iPolloWorkControlAction>(() => ({
@@ -1519,7 +1567,6 @@ export function SessionSurface(props: SessionSurfaceProps) {
           mentions={mentions}
           onDraftChange={handleComposerDraftChange}
           onSend={handleSend}
-          onSteer={handleSteer}
           onQueue={handleQueue}
           onStop={handleAbort}
           busy={chatStreaming}
@@ -1533,6 +1580,7 @@ export function SessionSurface(props: SessionSurfaceProps) {
           onModelChange={props.onModelChange}
           onConfigureModels={props.onConfigureModels}
           attachments={attachments}
+          hasPromptContext={selectedAnimations.length > 0 || Boolean(selectedVoiceReference) || Boolean(selectedIllustrationReference)}
           onAttachFiles={handleAttachFiles}
           onRemoveAttachment={handleRemoveAttachment}
           attachmentsEnabled={props.attachmentsEnabled}
@@ -1570,18 +1618,20 @@ export function SessionSurface(props: SessionSurfaceProps) {
           onUploadInboxFiles={props.onUploadInboxFiles ?? handleUploadInboxFiles}
           layout={layout}
           placeholder={isEmptyConversation ? newConversationPlaceholder(newConversationMode) : undefined}
-          compactTopSpacing={Boolean(starterCapability || selectedAnimations.length || props.activeQuestion || (props.todos ?? []).some((todo) => todo.content.trim()) || props.activePermission || queuedMessages.length > 0)}
+          compactTopSpacing={Boolean(starterCapability || selectedAnimations.length || selectedVoiceReference || selectedIllustrationReference || props.activeQuestion || (props.todos ?? []).some((todo) => todo.content.trim()) || props.activePermission || queuedMessages.length > 0)}
           topAccessory={
-            starterCapability || selectedAnimations.length || props.activeQuestion || (props.todos ?? []).some((todo) => todo.content.trim()) || props.activePermission || queuedMessages.length > 0 ? (
+            starterCapability || selectedAnimations.length || selectedVoiceReference || selectedIllustrationReference || props.activeQuestion || (props.todos ?? []).some((todo) => todo.content.trim()) || props.activePermission || queuedMessages.length > 0 ? (
               <div>
-                {starterCapability || selectedAnimations.length ? (
+                {starterCapability || selectedAnimations.length || selectedVoiceReference || selectedIllustrationReference ? (
                   <div className="mx-4 mt-2 flex flex-wrap gap-1.5">
                     {starterCapability ? <StarterCapabilityChip capability={starterCapability} onClear={() => setStarterCapability(null)} /> : null}
                     {selectedAnimations.map((animation) => <AnimationChip key={animation.item.name} animation={animation} onClear={() => setSelectedAnimations((current) => current.filter((item) => item.item.name !== animation.item.name))} />)}
+                    {selectedVoiceReference ? <VoiceChip reference={selectedVoiceReference} onClear={() => setSelectedVoiceReference(null)} /> : null}
+                    {selectedIllustrationReference ? <IllustrationChip reference={selectedIllustrationReference} onClear={() => setSelectedIllustrationReference(null)} /> : null}
                   </div>
                 ) : null}
                 {queuedMessages.length > 0 ? (
-                  <QueuedMessagesPanel messages={queuedMessages} onRemove={removeQueuedDraft} onRemoveMany={removeManyQueuedDrafts} onReorder={reorderQueuedDrafts} />
+                  <QueuedMessagesPanel messages={queuedMessages} onRemove={removeQueuedDraft} onRemoveMany={removeManyQueuedDrafts} />
                 ) : null}
                 {props.activeQuestion ? (
                   <QuestionPanel

@@ -2,6 +2,7 @@ import { z } from "zod";
 
 const SEMVER_RE = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/;
 const COMPATIBILITY_RE = /^(?:\*|(?:\^|~|>=|<=|>|<)?\s*\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)(?:\s+(?:\|\||-)\s+(?:\^|~|>=|<=|>|<)?\s*\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)?$/;
+const LOCALE_RE = /^[a-z]{2,3}(?:-[A-Za-z0-9]{2,8})*$/;
 const ID_RE = /^[a-z0-9]+(?:[._/-][a-z0-9]+)*$/;
 const SIMPLE_ID_RE = /^[a-z0-9]+(?:[._-][a-z0-9]+)*$/;
 const FIELD_ID_RE = /^[A-Za-z][A-Za-z0-9._-]*$/;
@@ -180,6 +181,49 @@ const packageSchema = z.object({
     algorithm: z.literal("sha256"),
     value: z.string().regex(/^[a-f0-9]{64}$/i),
   }).strict().optional(),
+  signature: z.object({
+    algorithm: z.literal("ed25519"),
+    keyId: z.string().regex(SIMPLE_ID_RE),
+    value: z.string().regex(/^[A-Za-z0-9+/]{86}==$/, "must be a base64 Ed25519 signature"),
+  }).strict().optional(),
+}).strict();
+
+const localizedTextSchema = z.string().trim().min(1);
+
+const extensionTranslationSchema = z.object({
+  name: localizedTextSchema.optional(),
+  description: localizedTextSchema.optional(),
+  category: localizedTextSchema.optional(),
+  composer: z.object({ prompt: localizedTextSchema.optional() }).strict().optional(),
+  setup: z.object({
+    instructions: localizedTextSchema.optional(),
+    primaryCta: localizedTextSchema.optional(),
+    secondaryCta: localizedTextSchema.optional(),
+  }).strict().optional(),
+  resources: z.record(z.string().min(1), z.object({
+    label: localizedTextSchema.optional(),
+    description: localizedTextSchema.optional(),
+  }).strict()).optional(),
+  permissions: z.record(z.string().min(1), z.object({
+    reason: localizedTextSchema.optional(),
+  }).strict()).optional(),
+  authorizationMethods: z.record(z.string().min(1), z.object({
+    label: localizedTextSchema.optional(),
+    description: localizedTextSchema.optional(),
+    fields: z.record(z.string().min(1), z.object({
+      label: localizedTextSchema.optional(),
+      description: localizedTextSchema.optional(),
+      placeholder: localizedTextSchema.optional(),
+    }).strict()).optional(),
+  }).strict()).optional(),
+}).strict();
+
+const localizationSchema = z.object({
+  defaultLocale: z.string().regex(LOCALE_RE, "must be a valid locale tag"),
+  translations: z.record(
+    z.string().regex(LOCALE_RE, "must be a valid locale tag"),
+    extensionTranslationSchema,
+  ).refine((translations) => Object.keys(translations).length > 0, "must contain at least one translation"),
 }).strict();
 
 const manifestSchema = z.object({
@@ -207,6 +251,7 @@ const manifestSchema = z.object({
   defaultHidden: z.boolean().optional(),
   platform: z.array(z.enum(["darwin", "linux", "windows", "web"])).optional(),
   package: packageSchema.optional(),
+  localization: localizationSchema.optional(),
   permissions: z.array(z.object({
     id: permissionIdSchema,
     reason: z.string().min(1),
@@ -246,6 +291,34 @@ const manifestSchema = z.object({
       context.addIssue({ code: "custom", path: ["authorization", "methods", index, "id"], message: "authorization method ID must be unique" });
     }
     methodIds.add(method.id);
+  });
+
+  const permissionIds: Set<string> = new Set(manifest.permissions?.map((permission) => permission.id) ?? []);
+  const methodsById = new Map(manifest.authorization?.methods.map((method) => [method.id, method]) ?? []);
+  Object.entries(manifest.localization?.translations ?? {}).forEach(([locale, translation]) => {
+    Object.keys(translation.resources ?? {}).forEach((resourceId) => {
+      if (!resourceIds.has(resourceId)) {
+        context.addIssue({ code: "custom", path: ["localization", "translations", locale, "resources", resourceId], message: "references an unknown resource" });
+      }
+    });
+    Object.keys(translation.permissions ?? {}).forEach((permissionId) => {
+      if (!permissionIds.has(permissionId)) {
+        context.addIssue({ code: "custom", path: ["localization", "translations", locale, "permissions", permissionId], message: "references an unknown permission" });
+      }
+    });
+    Object.entries(translation.authorizationMethods ?? {}).forEach(([methodId, methodTranslation]) => {
+      const method = methodsById.get(methodId);
+      if (!method) {
+        context.addIssue({ code: "custom", path: ["localization", "translations", locale, "authorizationMethods", methodId], message: "references an unknown authorization method" });
+        return;
+      }
+      const fieldIds = new Set(method.kind === "secret-form" ? method.fields.map((field) => field.id) : []);
+      Object.keys(methodTranslation.fields ?? {}).forEach((fieldId) => {
+        if (!fieldIds.has(fieldId)) {
+          context.addIssue({ code: "custom", path: ["localization", "translations", locale, "authorizationMethods", methodId, "fields", fieldId], message: "references an unknown authorization field" });
+        }
+      });
+    });
   });
 
   if (manifest.package?.entrypoints.opencode) {

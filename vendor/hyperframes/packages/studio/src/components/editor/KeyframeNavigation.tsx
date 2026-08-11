@@ -1,5 +1,7 @@
 import { memo } from "react";
 import { KeyframeDiamond, type DiamondState } from "./KeyframeDiamond";
+import { PROP_LABELS } from "./gsapAnimationConstants";
+import { useStudioI18n } from "../../i18n";
 
 interface KeyframeNavigationProps {
   property: string;
@@ -53,7 +55,7 @@ function ArrowLeft({ disabled }: { disabled: boolean }) {
     >
       <path
         d="M5 1L1 5L5 9"
-        stroke="#a3a3a3"
+        stroke="#858A94"
         strokeWidth="1.4"
         strokeLinecap="round"
         strokeLinejoin="round"
@@ -73,7 +75,7 @@ function ArrowRight({ disabled }: { disabled: boolean }) {
     >
       <path
         d="M1 1L5 5L1 9"
-        stroke="#a3a3a3"
+        stroke="#858A94"
         strokeWidth="1.4"
         strokeLinecap="round"
         strokeLinejoin="round"
@@ -92,6 +94,8 @@ export const KeyframeNavigation = memo(function KeyframeNavigation({
   onRemoveKeyframe,
   onConvertToKeyframes,
 }: KeyframeNavigationProps) {
+  const { tx } = useStudioI18n();
+  const propertyLabel = PROP_LABELS[property] ?? property;
   // Find keyframes that contain this property
   const propertyKeyframes = keyframes?.filter((kf) => property in kf.properties) ?? [];
 
@@ -150,10 +154,10 @@ export const KeyframeNavigation = memo(function KeyframeNavigation({
         size={9}
         title={
           diamondState === "ghost"
-            ? `Convert ${property} to keyframes`
+            ? tx(`Convert ${propertyLabel} to keyframes`)
             : diamondState === "active"
-              ? `Remove ${property} keyframe`
-              : `Add ${property} keyframe`
+              ? tx(`Remove ${propertyLabel} keyframe`)
+              : tx(`Add ${propertyLabel} keyframe`)
         }
       />
       <button

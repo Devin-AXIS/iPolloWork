@@ -23,10 +23,11 @@
  * ─────────────────────────────────────────────────────────────────────────────
  */
 
-import { memo } from "react";
+import { memo, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type { DomEditSelection } from "./domEditing";
 import { useContextMenuDismiss } from "../../hooks/useContextMenuDismiss";
+import { useStudioI18n } from "../../i18n";
 import {
   isZOrderActionEnabled,
   resolveCrossedNeighbor,
@@ -40,8 +41,11 @@ interface CanvasContextMenuProps {
   x: number;
   /** Viewport y of the right-click event. */
   y: number;
-  selection: DomEditSelection;
+  selection: DomEditSelection | null;
   onClose: () => void;
+  /** Optional independent timeline-clip caption editor. */
+  renameValue?: string;
+  onRename?: (label: string) => Promise<void> | void;
   /**
    * Called with the resolved z-order patch list and the menu action that
    * produced it (the action feeds the undo coalesce key, so two DIFFERENT
@@ -69,12 +73,12 @@ interface CanvasContextMenuProps {
    */
   onZOrderCrossed?: (crossed: HTMLElement, action: ZOrderAction) => void;
   /**
-   * Delete the selected element. Wire to handleDomEditElementDelete from
-   * useDomEditActionsContext — same path as the Delete/Backspace hotkey.
+   * Delete the caller-owned target. Canvas callers capture their DOM selection;
+   * timeline callers capture their clip and use the normal timeline delete path.
    * Absent when the caller wires no delete persist path (e.g. a legacy mount):
    * the Delete item is then hidden rather than shown as a silent no-op.
    */
-  onDelete?: (selection: DomEditSelection) => void;
+  onDelete?: () => void;
 }
 
 type ZAction = "bring-forward" | "send-backward" | "bring-to-front" | "send-to-back";
@@ -145,31 +149,55 @@ export const CanvasContextMenu = memo(function CanvasContextMenu({
   onApplyZIndex,
   onZOrderCrossed,
   onDelete,
+  renameValue,
+  onRename,
 }: CanvasContextMenuProps) {
+  const { tx } = useStudioI18n();
   const menuRef = useContextMenuDismiss(onClose);
+  const [renaming, setRenaming] = useState(false);
+  const [renameDraft, setRenameDraft] = useState(renameValue ?? "");
+  const [renamePending, setRenamePending] = useState(false);
+  const [renameError, setRenameError] = useState<string | null>(null);
+  const renameInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (!renaming) setRenameDraft(renameValue ?? "");
+  }, [renameValue, renaming]);
+
+  useEffect(() => {
+    if (!renaming) return;
+    renameInputRef.current?.focus();
+    renameInputRef.current?.select();
+  }, [renaming]);
 
   // Gate each item group on the presence of its persist handler. Without the
   // handler the action can't be persisted, so showing it would be a dead-end:
   // a z-write reverts on reload and Delete silently no-ops. Hide the group
   // instead. If nothing is actionable (a legacy mount with no handlers at all),
   // don't render the menu — an empty menu is itself a dead-end.
-  const hasZActions = Boolean(onApplyZIndex);
+  const hasZActions = Boolean(selection && onApplyZIndex);
+  const hasRename = Boolean(onRename);
   const hasDelete = Boolean(onDelete);
-  const hasDivider = hasZActions && hasDelete;
+  const hasDivider = hasZActions && (hasRename || hasDelete);
 
   // Overflow correction — match ClipContextMenu approach. Only the rendered
   // groups contribute height (keeps positioning correct when a group is hidden).
   const menuWidth = 200;
   const menuHeight =
-    8 + (hasZActions ? Z_ACTIONS.length * 28 : 0) + (hasDivider ? 1 : 0) + (hasDelete ? 28 : 0) + 8; // padding + items + divider + delete + padding
+    8 +
+    (hasZActions ? Z_ACTIONS.length * 28 : 0) +
+    (hasDivider ? 1 : 0) +
+    (hasRename ? (renaming ? 42 : 28) : 0) +
+    (hasDelete ? 28 : 0) +
+    8;
   const overflowY = y + menuHeight - window.innerHeight;
   const adjustedX = x + menuWidth > window.innerWidth ? x - menuWidth : x;
   const adjustedY = overflowY > 0 ? y - overflowY - 8 : y;
 
-  const el = selection.element;
+  const el = selection?.element ?? null;
 
   function handleZAction(action: ZAction) {
-    if (!onApplyZIndex) return;
+    if (!el || !onApplyZIndex) return;
     const patches = resolveZOrderChange(el, action);
     if (patches === null) return;
     // Resolve the crossed neighbor BEFORE the commit path mutates live styles —
@@ -189,11 +217,35 @@ export const CanvasContextMenu = memo(function CanvasContextMenu({
 
   function handleDelete() {
     if (!onDelete) return;
-    onDelete(selection);
+    onDelete();
     onClose();
   }
 
-  if (!hasZActions && !hasDelete) return null;
+  async function commitRename() {
+    if (!onRename || renamePending) return;
+    const nextLabel = renameDraft.trim();
+    if (!nextLabel) {
+      renameInputRef.current?.focus();
+      return;
+    }
+    if (nextLabel === renameValue?.trim()) {
+      onClose();
+      return;
+    }
+    setRenameError(null);
+    setRenamePending(true);
+    try {
+      await onRename(nextLabel);
+      setRenamePending(false);
+      onClose();
+    } catch {
+      setRenamePending(false);
+      setRenameError(tx("Couldn't rename clip. Try again."));
+      renameInputRef.current?.focus();
+    }
+  }
+
+  if (!hasZActions && !hasRename && !hasDelete) return null;
 
   // The menu is portaled to document.body, but in the React tree it is still a
   // child of the DomEditOverlay <div>. React synthetic events bubble through the
@@ -225,7 +277,7 @@ export const CanvasContextMenu = memo(function CanvasContextMenu({
     >
       {hasZActions &&
         Z_ACTIONS.map(({ action, label }) => {
-          const enabled = isZOrderActionEnabled(el, action);
+          const enabled = el ? isZOrderActionEnabled(el, action) : false;
           return (
             <button
               key={action}
@@ -250,12 +302,76 @@ export const CanvasContextMenu = memo(function CanvasContextMenu({
               {/* Icon inherits the item's text color via currentColor, so the
                   disabled muted tone applies to both icon and label. */}
               <ZActionIcon action={action} />
-              <span>{label}</span>
+              <span>{tx(label)}</span>
             </button>
           );
         })}
 
       {hasDivider && <div className="my-1 border-t border-neutral-700/60" />}
+
+      {hasRename &&
+        (renaming ? (
+          <form
+            className="px-2 py-1"
+            onSubmit={(event) => {
+              event.preventDefault();
+              void commitRename();
+            }}
+          >
+            <div className="flex items-center gap-1.5">
+              <input
+                ref={renameInputRef}
+                data-testid="timeline-clip-rename-input"
+                className="min-w-0 flex-1 rounded border border-neutral-600 bg-neutral-800 px-2 py-1 text-xs text-neutral-100 outline-none focus:border-emerald-400 disabled:opacity-60"
+                value={renameDraft}
+                aria-label={tx("Rename clip")}
+                disabled={renamePending}
+                onChange={(event) => {
+                  setRenameDraft(event.target.value);
+                  setRenameError(null);
+                }}
+                onKeyDown={(event) => {
+                  if (event.key !== "Escape" || renamePending) return;
+                  event.preventDefault();
+                  event.stopPropagation();
+                  setRenaming(false);
+                }}
+              />
+              <button
+                type="button"
+                aria-busy={renamePending}
+                disabled={renamePending}
+                className="min-w-10 rounded bg-emerald-500 px-2 py-1 text-[10px] font-medium text-neutral-950 hover:bg-emerald-400 disabled:cursor-wait disabled:opacity-70"
+                onPointerDown={(event) => {
+                  if (event.button !== 0 || renamePending) return;
+                  event.preventDefault();
+                  event.stopPropagation();
+                  void commitRename();
+                }}
+              >
+                {renamePending ? tx("Saving…") : tx("Save")}
+              </button>
+            </div>
+            {renameError && (
+              <p role="alert" className="mt-1 text-[10px] leading-tight text-red-400">
+                {renameError}
+              </p>
+            )}
+          </form>
+        ) : (
+          <button
+            type="button"
+            className="w-full flex items-center px-3 py-1.5 text-xs text-left text-neutral-300 hover:bg-neutral-800 cursor-pointer"
+            onPointerDown={(event) => {
+              if (event.button !== 0) return;
+              event.preventDefault();
+              event.stopPropagation();
+              setRenaming(true);
+            }}
+          >
+            <span>{tx("Rename clip")}</span>
+          </button>
+        ))}
 
       {hasDelete && (
         <button
@@ -268,7 +384,7 @@ export const CanvasContextMenu = memo(function CanvasContextMenu({
             handleDelete();
           }}
         >
-          <span>Delete</span>
+          <span>{tx("Delete")}</span>
           <span className="text-neutral-500 text-[10px] ml-3">⌫</span>
         </button>
       )}

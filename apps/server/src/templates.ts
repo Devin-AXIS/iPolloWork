@@ -1,11 +1,12 @@
 import { createHash, randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
-import { cp, mkdir, mkdtemp, readFile, readdir, rename, rm, stat, writeFile } from "node:fs/promises";
+import { cp, lstat, mkdir, mkdtemp, readFile, readdir, rename, rm, stat, writeFile } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
-import { basename, dirname, extname, join, posix, resolve, sep } from "node:path";
+import { basename, dirname, extname, join, posix, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { inflateRaw } from "node:zlib";
+import { importNodeSqlite } from "./node-sqlite.js";
 import {
   MAX_TEMPLATE_PACKAGE_BYTES,
   templateCategorySchema,
@@ -67,9 +68,11 @@ function templateLibraryId(scope: string | null | undefined): string {
 const ALLOWED_EXTENSIONS = new Set([
   ".html", ".css", ".js", ".mjs", ".json", ".svg", ".png", ".jpg", ".jpeg",
   ".webp", ".gif", ".avif", ".woff", ".woff2", ".ttf", ".otf", ".txt", ".md",
-  ".glb", ".gltf", ".bin",
+  ".glb", ".gltf", ".bin", ".mp3", ".wav", ".m4a", ".aac", ".ogg", ".oga",
+  ".opus", ".mp4", ".webm", ".mov",
 ]);
 const EXECUTABLE_EXTENSIONS = new Set([".exe", ".dll", ".com", ".bat", ".cmd", ".sh", ".ps1", ".app", ".dmg", ".pkg"]);
+const SESSION_TEMPLATE_EXCLUDED_PATHS = ["brief.json", "template.json", "renders", "captures", "exports", ".hyperframes/backup"];
 const HYPERFRAMES_VARIABLE_TYPES = new Set(["string", "number", "color", "boolean", "enum"]);
 const CURRENT_IPOLLOWORK_LOGO_URL = "assets/ipollowork-logo.svg?v=20260729";
 const SLIDE_DOCUMENT_PATTERN = /\bdata-ipw-slide(?:\s|=|>)|\bclass\s*=\s*["'](?:[^"']*\s)?(?:slide|slide-frame)(?=\s|["'])|\bclassName\s*=\s*["'](?:slide|slide-frame)["']|\bclassList\.add\(\s*["'](?:slide|slide-frame)["']/i;
@@ -203,7 +206,7 @@ async function openTemplateDb(path: string): Promise<TemplateDb> {
       upsertSession: (row) => { upsertSession.run(row.workspaceId, row.sessionId, row.surface, row.templateId, row.version, row.sourceType, row.entry, row.briefPath, row.manifestJson, row.createdAt); },
     };
   }
-  const { DatabaseSync } = await import("node:sqlite");
+  const { DatabaseSync } = await importNodeSqlite();
   const sqlite = new DatabaseSync(path);
   sqlite.exec(sql);
   const get = sqlite.prepare("SELECT workspace_id AS workspaceId, template_id AS templateId, version, source_type AS sourceType, package_path AS packagePath, package_hash AS packageHash, status, manifest_json AS manifestJson, installed_at AS installedAt, updated_at AS updatedAt FROM template_installations WHERE workspace_id = ? AND template_id = ?");
@@ -544,10 +547,14 @@ async function installDirectory(input: {
     const db = await templateDb(input.config);
     const current = db.get(input.workspaceId, input.manifest.id);
     if (!isDevelopmentVersion(pkg.version) && compareVersions(input.manifest.minimumAppVersion, pkg.version) > 0) throw new ApiError(409, "template_requires_newer_app", `This template requires iPolloWork ${input.manifest.minimumAppVersion} or newer`);
-    if (current?.status === "installed" && current.version === input.manifest.version && current.packageHash === input.hash && existsSync(current.packagePath)) {
-      return { manifest: input.manifest, sourceType: input.sourceType, installed: true, installedVersion: current.version, updateAvailable: false, verified: input.sourceType !== "local" };
+    if (current?.status === "installed" && current.version === input.manifest.version && existsSync(current.packagePath)) {
+      const currentHash = current.packageHash === input.hash ? input.hash : await hashDirectory(current.packagePath);
+      if (currentHash === input.hash) {
+        if (current.packageHash !== input.hash) db.upsert({ ...current, packageHash: input.hash, updatedAt: Date.now() });
+        return { manifest: input.manifest, sourceType: input.sourceType, installed: true, installedVersion: current.version, updateAvailable: false, verified: input.sourceType !== "local" };
+      }
+      throw new ApiError(409, "template_version_conflict", "A different package with this template version is already installed");
     }
-    if (current?.status === "installed" && current.version === input.manifest.version && current.packageHash !== input.hash) throw new ApiError(409, "template_version_conflict", "A different package with this template version is already installed");
     const finalDirectory = join(templatesRoot(input.config), input.workspaceId, input.manifest.id, input.manifest.version);
     const tempParent = await mkdtemp(join(tmpdir(), "ipollowork-template-"));
     const staged = join(tempParent, "package");
@@ -608,7 +615,6 @@ export async function importTemplate(config: ServerConfig, workspaceId: string, 
   const category = declaredCategory ? templateCategorySchema.safeParse(declaredCategory) : null;
   if (category && !category.success) throw new ApiError(400, "invalid_template_category", "Choose a supported template category before importing");
   const buffer = Buffer.from(archive);
-  const hash = createHash("sha256").update(buffer).digest("hex");
   const tempParent = await mkdtemp(join(tmpdir(), "ipollowork-import-"));
   const sourceDirectory = join(tempParent, "package");
   try {
@@ -623,7 +629,7 @@ export async function importTemplate(config: ServerConfig, workspaceId: string, 
       throw new ApiError(400, "template_category_mismatch", "The selected template category does not match manifest.json");
     }
     if (manifest.id.startsWith("ipollowork.")) throw new ApiError(400, "reserved_template_id", "Local templates cannot use the reserved ipollowork.* namespace");
-    return await installDirectory({ config, workspaceId: templateLibraryId(scope), sourceType: "local", sourceDirectory, manifest, hash });
+    return await installDirectory({ config, workspaceId: templateLibraryId(scope), sourceType: "local", sourceDirectory, manifest, hash: await hashDirectory(sourceDirectory) });
   } finally { await rm(tempParent, { recursive: true, force: true }); }
 }
 
@@ -746,9 +752,9 @@ function authoringEntry(manifest: TemplateManifestV1) {
   <style>
     * { box-sizing: border-box; }
     html, body { width: 100%; height: 100%; margin: 0; }
-    body { overflow: hidden; background: var(--ipw-color-bg); color: var(--ipw-color-text); font-family: var(--ipw-font-body); }
-    .scene { position: absolute; inset: 0; display: grid; place-items: center; padding: 96px; background: var(--ipw-color-bg); }
-    h1 { max-width: 14ch; margin: 0; color: var(--accent, var(--ipw-color-primary)); font: 700 96px/1 var(--ipw-font-display); text-align: center; }
+    body { overflow: hidden; background: var(--ipw-color-bg); color: var(--ipw-color-text); font-family: var(--ipw-font-body); line-height: var(--ipw-body-line-height); }
+    .scene { position: absolute; inset: 0; display: grid; place-items: center; padding: var(--ipw-page-padding); background: var(--ipw-color-bg); border-radius: var(--ipw-card-radius); }
+    h1 { max-width: 14ch; margin: 0; color: var(--accent, var(--ipw-color-primary)); font: 700 calc(96px * var(--ipw-type-scale))/1 var(--ipw-font-display); text-align: center; text-shadow: var(--ipw-card-shadow); }
   </style>
   <link rel="stylesheet" href="design-tokens.css" data-ipw-design-tokens>
 </head>
@@ -939,13 +945,7 @@ async function prepareSessionPackage(config: ServerConfig, workspace: WorkspaceI
   const directory = join(tempParent, "package");
   try {
     await cp(sourceRoot, directory, { recursive: true, errorOnExist: true });
-    await Promise.all([
-      "brief.json",
-      "template.json",
-      "renders",
-      "captures",
-      "exports",
-    ].map((name) => rm(join(directory, name), { recursive: true, force: true })));
+    await Promise.all(SESSION_TEMPLATE_EXCLUDED_PATHS.map((name) => rm(join(directory, name), { recursive: true, force: true })));
     const issues = await normalizeStagedCover(directory);
     const manifest = await readManifest(directory);
     if (manifest.surface !== snapshot.surface) throw new ApiError(409, "template_surface_changed", "Template surface cannot be changed while authoring");
@@ -978,7 +978,7 @@ async function prepareLegacySessionPackage(
   const directory = join(tempParent, "package");
   try {
     await cp(sourceRoot, directory, { recursive: true, errorOnExist: true });
-    await Promise.all(["brief.json", "template.json", "renders", "captures", "exports"].map((name) => rm(join(directory, name), { recursive: true, force: true })));
+    await Promise.all(SESSION_TEMPLATE_EXCLUDED_PATHS.map((name) => rm(join(directory, name), { recursive: true, force: true })));
     const manifest = templateManifestV1Schema.parse({
       schemaVersion: 1,
       id: `personal.legacy.${randomUUID()}`,
@@ -1067,7 +1067,7 @@ export async function validateTemplateFromSession(
   }
 }
 
-export async function saveTemplateFromSession(config: ServerConfig, workspace: WorkspaceInfo, input: {
+type TemplateFromSessionInput = {
   sessionId: string;
   category: TemplateCategory;
   title: string;
@@ -1075,7 +1075,9 @@ export async function saveTemplateFromSession(config: ServerConfig, workspace: W
   subcategory?: string;
   style?: string;
   tags?: string[];
-}, scope: TemplateLibraryScope = "personal") {
+};
+
+async function prepareTemplateFromSession(config: ServerConfig, workspace: WorkspaceInfo, input: TemplateFromSessionInput, scope: TemplateLibraryScope) {
   const category = templateCategorySchema.safeParse(input.category);
   if (!category.success) throw new ApiError(400, "invalid_template_category", "Unsupported template category");
   const title = input.title.trim().slice(0, 96);
@@ -1089,7 +1091,7 @@ export async function saveTemplateFromSession(config: ServerConfig, workspace: W
     if (isApiError(error) && error.code === "template_session_not_found") {
       prepared = await prepareLegacySessionPackage(config, workspace, { sessionId: input.sessionId, category: category.data, title, description: input.description });
     } else {
-      throw new ApiError(409, "template_validation_failed", "Fix template validation issues before saving", { issues: [validationIssue(error)] });
+      throw new ApiError(409, "template_validation_failed", "Fix template validation issues before saving or exporting", { issues: [validationIssue(error)] });
     }
   }
   try {
@@ -1114,14 +1116,34 @@ export async function saveTemplateFromSession(config: ServerConfig, workspace: W
     });
     await writeFile(join(prepared.directory, "manifest.json"), `${JSON.stringify(template, null, 2)}\n`, "utf8");
     const verified = await readManifest(prepared.directory);
+    return { ...prepared, manifest: verified };
+  } catch (error) {
+    await prepared.dispose();
+    throw error;
+  }
+}
+
+export async function saveTemplateFromSession(config: ServerConfig, workspace: WorkspaceInfo, input: TemplateFromSessionInput, scope: TemplateLibraryScope = "personal") {
+  const prepared = await prepareTemplateFromSession(config, workspace, input, scope);
+  try {
     return await installDirectory({
       config,
       workspaceId: templateLibraryId(scope),
       sourceType: "local",
       sourceDirectory: prepared.directory,
-      manifest: verified,
+      manifest: prepared.manifest,
       hash: await hashDirectory(prepared.directory),
     });
+  } finally {
+    await prepared.dispose();
+  }
+}
+
+export async function exportTemplateFromSession(config: ServerConfig, workspace: WorkspaceInfo, input: TemplateFromSessionInput) {
+  const prepared = await prepareTemplateFromSession(config, workspace, input, "personal");
+  try {
+    const packaged = await archiveTemplateDirectory(prepared.directory);
+    return { ...packaged, manifest: prepared.manifest };
   } finally {
     await prepared.dispose();
   }
@@ -1157,6 +1179,97 @@ export async function readTemplateCover(config: ServerConfig, workspaceId: strin
   const extension = extname(cover).toLowerCase();
   const contentType = extension === ".svg" ? "image/svg+xml" : extension === ".png" ? "image/png" : extension === ".webp" ? "image/webp" : "image/jpeg";
   return { data, contentType };
+}
+
+async function packageDirectoryFiles(directory: string): Promise<ZipEntry[]> {
+  const files: ZipEntry[] = [];
+  let archiveBytes = 22;
+  async function visit(current: string) {
+    const entries = await readdir(current, { withFileTypes: true });
+    entries.sort((left, right) => left.name < right.name ? -1 : left.name > right.name ? 1 : 0);
+    for (const entry of entries) {
+      const absolute = join(current, entry.name);
+      const name = relative(directory, absolute).split(sep).join("/");
+      if (entry.isSymbolicLink()) throw new ApiError(400, "invalid_template_package", `Symbolic links are not allowed: ${name}`);
+      if (entry.isDirectory()) {
+        await visit(absolute);
+        continue;
+      }
+      const metadata = await lstat(absolute);
+      if (!entry.isFile() || !metadata.isFile()) throw new ApiError(400, "invalid_template_package", `Unsupported template file: ${name}`);
+      const safeName = validateStaticFile(name, metadata.mode);
+      const encodedName = Buffer.from(safeName);
+      if (encodedName.byteLength > 0xffff) throw new ApiError(400, "invalid_template_package", `Template path is too long: ${safeName}`);
+      if (files.length >= MAX_FILES) throw new ApiError(413, "template_package_too_large", "Template package contains more than 1,000 files");
+      if (metadata.size > MAX_FILE_BYTES) throw new ApiError(413, "template_package_too_large", `${safeName} exceeds 25 MB`);
+      const data = await readFile(absolute);
+      if (data.byteLength > MAX_FILE_BYTES) throw new ApiError(413, "template_package_too_large", `${safeName} exceeds 25 MB`);
+      archiveBytes += data.byteLength + 76 + (encodedName.byteLength * 2);
+      if (archiveBytes > MAX_TEMPLATE_PACKAGE_BYTES) throw new ApiError(413, "template_package_too_large", "Template package exceeds 50 MB");
+      files.push({ name: safeName, data });
+    }
+  }
+  await visit(directory);
+  return files;
+}
+
+function createStoredZip(files: readonly ZipEntry[]): Buffer {
+  const localParts: Buffer[] = [];
+  const centralParts: Buffer[] = [];
+  let offset = 0;
+  for (const file of files) {
+    const name = Buffer.from(file.name);
+    const checksum = crc32(file.data);
+    const local = Buffer.alloc(30);
+    local.writeUInt32LE(0x04034b50, 0);
+    local.writeUInt16LE(20, 4);
+    local.writeUInt16LE(0x0800, 6);
+    local.writeUInt32LE(checksum, 14);
+    local.writeUInt32LE(file.data.byteLength, 18);
+    local.writeUInt32LE(file.data.byteLength, 22);
+    local.writeUInt16LE(name.byteLength, 26);
+    localParts.push(local, name, file.data);
+
+    const central = Buffer.alloc(46);
+    central.writeUInt32LE(0x02014b50, 0);
+    central.writeUInt16LE(20, 4);
+    central.writeUInt16LE(20, 6);
+    central.writeUInt16LE(0x0800, 8);
+    central.writeUInt32LE(checksum, 16);
+    central.writeUInt32LE(file.data.byteLength, 20);
+    central.writeUInt32LE(file.data.byteLength, 24);
+    central.writeUInt16LE(name.byteLength, 28);
+    central.writeUInt32LE(offset, 42);
+    centralParts.push(central, name);
+    offset += local.byteLength + name.byteLength + file.data.byteLength;
+  }
+  const centralSize = centralParts.reduce((size, part) => size + part.byteLength, 0);
+  const end = Buffer.alloc(22);
+  end.writeUInt32LE(0x06054b50, 0);
+  end.writeUInt16LE(files.length, 8);
+  end.writeUInt16LE(files.length, 10);
+  end.writeUInt32LE(centralSize, 12);
+  end.writeUInt32LE(offset, 16);
+  return Buffer.concat([...localParts, ...centralParts, end]);
+}
+
+async function archiveTemplateDirectory(directory: string) {
+  const archive = createStoredZip(await packageDirectoryFiles(directory));
+  if (archive.byteLength > MAX_TEMPLATE_PACKAGE_BYTES) throw new ApiError(413, "template_package_too_large", "Template package exceeds 50 MB");
+  return { archive, digest: createHash("sha256").update(archive).digest("hex") };
+}
+
+export async function exportLocalTemplatePackage(config: ServerConfig, workspaceId: string, templateId: string, scope: TemplateLibraryScope = "personal") {
+  if (scope !== "personal") throw new ApiError(400, "personal_template_export_required", "Only personal templates can be exported");
+  const row = (await templateDb(config)).get(templateLibraryId(scope), templateId);
+  if (!row || row.status !== "installed" || row.sourceType !== "local" || !existsSync(row.packagePath)) {
+    throw new ApiError(404, "local_template_not_found", "Only installed personal templates can be exported");
+  }
+  const manifest = await readManifest(row.packagePath);
+  if (manifest.id !== row.templateId || manifest.version !== row.version) {
+    throw new ApiError(400, "invalid_template_manifest", "Template changed after installation");
+  }
+  return { ...await archiveTemplateDirectory(row.packagePath), manifest };
 }
 
 function sessionRoot(workspace: WorkspaceInfo, sessionId: string, surface: TemplateSurface = "design"): string {

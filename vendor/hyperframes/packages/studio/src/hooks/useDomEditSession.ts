@@ -1,6 +1,6 @@
-import { useCallback } from "react";
+import { useCallback, useEffect } from "react";
 import { trackStudioEvent } from "../utils/studioTelemetry";
-import type { SelectElementOptions, TimelineElement } from "../player";
+import { usePlayerStore, type SelectElementOptions, type TimelineElement } from "../player";
 import type { ImportedFontAsset } from "../components/editor/fontAssets";
 import type { EditHistoryKind } from "../utils/editHistory";
 import type { RightPanelTab } from "../utils/studioHelpers";
@@ -19,6 +19,7 @@ import { useGsapCacheVersion } from "./useGsapTweenCache";
 import { useDomEditWiring } from "./useDomEditWiring";
 import { useGsapAwareEditing } from "./useGsapAwareEditing";
 import { useStudioSelectionPublisher } from "./useStudioSelectionPublisher";
+import { useTimelineSelectionPreviewSync } from "./useTimelineSelectionPreviewSync";
 
 // ── Types ──
 
@@ -127,7 +128,6 @@ export function useDomEditSession({
     clearDomSelection,
     buildDomSelectionFromTarget,
     resolveDomSelectionFromPreviewPoint,
-    resolveAllDomSelectionsFromPreviewPoint,
     updateDomEditHoverSelection,
     buildDomSelectionForTimelineElement,
     handleTimelineElementSelect,
@@ -147,6 +147,21 @@ export function useDomEditSession({
     previewIframe,
     refreshKey,
     rightPanelTab,
+  });
+
+  const selectedElementId = usePlayerStore((state) => state.selectedElementId);
+  const selectedElementIds = usePlayerStore((state) => state.selectedElementIds);
+
+  useTimelineSelectionPreviewSync({
+    selectedElementId,
+    selectedElementIds,
+    timelineElements,
+    domEditSelection,
+    domEditGroupSelections,
+    activeCompPath,
+    buildDomSelectionForTimelineElement,
+    applyDomSelection,
+    applyMarqueeSelection,
   });
 
   // ── Agent modal ──
@@ -192,6 +207,8 @@ export function useDomEditSession({
     deleteGsapAnimation,
     deleteAllForSelector,
     addGsapAnimation,
+    mutateMotion,
+    applyGsapMotionPreset,
     addGsapProperty,
     removeGsapProperty,
     updateGsapFromProperty,
@@ -370,6 +387,8 @@ export function useDomEditSession({
     handleGsapDeleteAnimation,
     handleGsapDeleteAllForElement,
     handleGsapAddAnimation,
+    handleMotionMutation,
+    handleGsapApplyMotionPreset,
     handleGsapAddProperty,
     handleGsapRemoveProperty,
     handleGsapUpdateFromProperty,
@@ -410,6 +429,8 @@ export function useDomEditSession({
     deleteGsapAnimation,
     deleteAllForSelector,
     addGsapAnimation,
+    mutateMotion,
+    applyGsapMotionPreset,
     addGsapProperty,
     removeGsapProperty,
     updateGsapFromProperty,
@@ -440,9 +461,7 @@ export function useDomEditSession({
     showToast,
     applyDomSelection,
     resolveDomSelectionFromPreviewPoint,
-    resolveAllDomSelectionsFromPreviewPoint,
     updateDomEditHoverSelection,
-    setActiveGroupElement,
     onClickToSource,
   });
 
@@ -574,6 +593,8 @@ export function useDomEditSession({
     handleGsapDeleteAnimation,
     handleGsapDeleteAllForElement,
     handleGsapAddAnimation,
+    handleMotionMutation,
+    handleGsapApplyMotionPreset,
     handleGsapAddProperty,
     handleGsapRemoveProperty,
     handleGsapUpdateFromProperty,

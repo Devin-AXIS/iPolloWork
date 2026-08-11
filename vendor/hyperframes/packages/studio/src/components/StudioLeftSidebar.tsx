@@ -7,14 +7,13 @@ import { usePanelLayoutContext } from "../contexts/PanelLayoutContext";
 import { useStudioShellContext } from "../contexts/StudioContext";
 import { useFileManagerContext } from "../contexts/FileManagerContext";
 import { getPersistedRenderSettings } from "./renders/renderSettings";
-import type { BlockPreviewInfo } from "./sidebar/BlocksTab";
 import { useStudioI18n } from "../i18n";
+import type { EffectInsertIntent } from "../utils/blockInstaller";
 
 export interface StudioLeftSidebarProps {
   leftSidebarRef: RefObject<LeftSidebarHandle | null>;
   onSelectComposition: (comp: string) => void;
-  onAddBlock: (blockName: string) => void;
-  onPreviewBlock?: (preview: BlockPreviewInfo | null) => void;
+  onAddBlock: (blockName: string, intent?: EffectInsertIntent) => void;
   onLint: () => void;
   linting: boolean;
   lintFindingCount?: number;
@@ -27,7 +26,6 @@ export function StudioLeftSidebar({
   leftSidebarRef,
   onSelectComposition,
   onAddBlock,
-  onPreviewBlock,
   onLint,
   linting,
   lintFindingCount,
@@ -150,7 +148,6 @@ export function StudioLeftSidebar({
         lintFindingsByFile={lintFindingsByFile}
         onToggleCollapse={toggleLeftSidebar}
         onAddBlock={onAddBlock}
-        onPreviewBlock={onPreviewBlock}
         onAddAssetToTimeline={onAddAssetToTimeline}
       />
       {/* Vertical resize divider: 3px visible seam, 8px pointer-capture zone via
@@ -162,7 +159,7 @@ export function StudioLeftSidebar({
         aria-label={t("sidebar.resize")}
         aria-orientation="vertical"
         tabIndex={0}
-        className="group relative w-[3px] flex-shrink-0 cursor-col-resize outline-none focus-visible:bg-studio-accent/20"
+        className="group relative w-[3px] flex-shrink-0 cursor-ew-resize outline-none focus-visible:bg-studio-accent/20"
         style={{ touchAction: "none" }}
         onPointerDown={(e) => handlePanelResizeStart("left", e)}
         onPointerMove={handlePanelResizeMove}

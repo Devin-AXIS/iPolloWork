@@ -415,6 +415,7 @@ export function collectRuntimeTimelinePayload(params: {
       assetUrl: resolveNodeAssetUrl(node),
       timelineRole: node.getAttribute("data-timeline-role"),
       timelineLabel: node.getAttribute("data-timeline-label"),
+      timelineClipLabel: node.getAttribute("data-timeline-clip-label"),
       timelineGroup: node.getAttribute("data-timeline-group"),
       timelinePriority: parseNum(node.getAttribute("data-timeline-priority")),
     });
@@ -524,6 +525,7 @@ export function collectRuntimeTimelinePayload(params: {
             assetUrl: null,
             timelineRole: el.getAttribute("data-timeline-role"),
             timelineLabel: el.getAttribute("data-timeline-label"),
+            timelineClipLabel: el.getAttribute("data-timeline-clip-label"),
             timelineGroup: el.getAttribute("data-timeline-group"),
             timelinePriority: parseNum(el.getAttribute("data-timeline-priority")),
           });
@@ -579,6 +581,7 @@ export function collectRuntimeTimelinePayload(params: {
         assetUrl: null,
         timelineRole,
         timelineLabel: el.getAttribute("data-timeline-label"),
+        timelineClipLabel: el.getAttribute("data-timeline-clip-label"),
         timelineGroup: el.getAttribute("data-timeline-group"),
         timelinePriority: parseNum(el.getAttribute("data-timeline-priority")),
       });

@@ -1,14 +1,16 @@
 import { useState, useCallback, useRef, useEffect } from "react";
-import type { SelectElementOptions, TimelineElement } from "../player";
-import {
-  getAllPreviewTargetsFromPointer,
-  getPreviewTargetFromPointer,
-} from "../utils/studioPreviewHelpers";
+import { usePlayerStore, type SelectElementOptions, type TimelineElement } from "../player";
+import { getPreviewTargetFromPointer } from "../utils/studioPreviewHelpers";
 import {
   findMatchingTimelineElementId,
   findTimelineIdByAncestor,
   type RightPanelTab,
 } from "../utils/studioHelpers";
+import {
+  collectTimelineAncestorIds,
+  resolveTimelineTreeSelectionId,
+  resolveTimelineTreeSelectionKey,
+} from "../player/lib/timelineTreeSelection";
 import {
   domEditSelectionsTargetSame,
   domEditSelectionInGroup,
@@ -16,7 +18,10 @@ import {
   replaceDomEditGroupSelection,
   seedDomEditGroupWithSelection,
 } from "../utils/domEditHelpers";
-import { STUDIO_INSPECTOR_PANELS_ENABLED } from "../components/editor/manualEditingAvailability";
+import {
+  STUDIO_INSPECTOR_PANELS_ENABLED,
+  STUDIO_MULTI_SELECTION_ENABLED,
+} from "../components/editor/manualEditingAvailability";
 import {
   findElementForSelection,
   findElementForTimelineElement,
@@ -31,6 +36,8 @@ export interface ApplyDomSelectionOptions {
   revealPanel?: boolean;
   additive?: boolean;
   preserveGroup?: boolean;
+  /** Clear only the canvas overlay while retaining the timeline/tree selection. */
+  preserveTimelineSelection?: boolean;
 }
 
 export interface ResolveDomSelectionOptions {
@@ -85,10 +92,6 @@ export interface UseDomSelectionReturn {
     clientY: number,
     options?: ResolveDomSelectionOptions,
   ) => Promise<DomEditSelection | null>;
-  resolveAllDomSelectionsFromPreviewPoint: (
-    clientX: number,
-    clientY: number,
-  ) => Promise<DomEditSelection[]>;
   updateDomEditHoverSelection: (selection: DomEditSelection | null) => void;
   buildDomSelectionForTimelineElement: (
     element: TimelineElement,
@@ -145,22 +148,62 @@ export function useDomSelection({
 
   // ── Callbacks ──
 
+  const syncTimelineSelection = useCallback(
+    (selections: DomEditSelection[], anchorSelection: DomEditSelection | null) => {
+      const playerState = usePlayerStore.getState();
+      const selectedKeys: string[] = [];
+      let anchorKey: string | null = null;
+
+      for (const selection of selections) {
+        const treeSelection = {
+          elementId: selection.id ?? undefined,
+          hfId: selection.hfId,
+          sourceFile: selection.sourceFile,
+          selector: selection.selector,
+          selectorIndex: selection.selectorIndex,
+          elements: timelineElements,
+          manifest: playerState.clipManifest ?? [],
+          domClipChildren: playerState.domClipChildren,
+        };
+        const treeId = resolveTimelineTreeSelectionId(treeSelection);
+        const treeKey = treeId ? resolveTimelineTreeSelectionKey(treeSelection) : "";
+        if (treeId) {
+          playerState.expandTimelineElementIds(
+            collectTimelineAncestorIds(treeId, playerState.clipParentMap),
+          );
+        }
+        const key =
+          treeKey ||
+          findMatchingTimelineElementId(selection, timelineElements) ||
+          findTimelineIdByAncestor(
+            selection.element,
+            timelineElements,
+            selection.sourceFile || "index.html",
+          );
+        if (!key) continue;
+        if (!selectedKeys.includes(key)) selectedKeys.push(key);
+        if (anchorSelection && domEditSelectionsTargetSame(selection, anchorSelection)) {
+          anchorKey = key;
+        }
+      }
+
+      // Canvas, timeline, and inspector consume the same atomic set. Updating
+      // the anchor separately can momentarily produce an empty set and causes
+      // the preview-selection sync effect to clear a valid canvas hit.
+      playerState.setSelection(selectedKeys, anchorKey ?? selectedKeys[0] ?? null);
+    },
+    [timelineElements],
+  );
+
   const applyDomSelection = useCallback(
     // fallow-ignore-next-line complexity
-    (
-      selection: DomEditSelection | null,
-      options?: {
-        revealPanel?: boolean;
-        additive?: boolean;
-        preserveGroup?: boolean;
-      },
-    ) => {
+    (selection: DomEditSelection | null, options?: ApplyDomSelectionOptions) => {
       if (!selection) {
         domEditSelectionRef.current = null;
         domEditGroupSelectionsRef.current = [];
         setDomEditSelection(null);
         setDomEditGroupSelections([]);
-        setSelectedTimelineElementId(null);
+        if (!options?.preserveTimelineSelection) setSelectedTimelineElementId(null);
         return;
       }
       if (!STUDIO_INSPECTOR_PANELS_ENABLED) {
@@ -172,19 +215,20 @@ export function useDomSelection({
         return;
       }
 
-      const isAdditiveSelection = Boolean(options?.additive);
+      const isAdditiveSelection = STUDIO_MULTI_SELECTION_ENABLED && Boolean(options?.additive);
+      const preserveGroup = STUDIO_MULTI_SELECTION_ENABLED && Boolean(options?.preserveGroup);
       const currentSelection = domEditSelectionRef.current;
       const previousGroup = domEditGroupSelectionsRef.current;
       const currentGroup = isAdditiveSelection
         ? seedDomEditGroupWithSelection(previousGroup, currentSelection)
         : previousGroup;
       const wasInGroup = domEditSelectionInGroup(currentGroup, selection);
-      const nextGroup = options?.preserveGroup
+      const nextGroup = preserveGroup
         ? replaceDomEditGroupSelection(currentGroup, selection)
         : isAdditiveSelection
           ? toggleDomEditGroupSelection(currentGroup, selection)
           : [selection];
-      const nextSelection = options?.preserveGroup
+      const nextSelection = preserveGroup
         ? selection
         : isAdditiveSelection && wasInGroup
           ? domEditSelectionsTargetSame(currentSelection, selection)
@@ -208,29 +252,27 @@ export function useDomSelection({
       }
 
       if (nextSelection) {
-        if (options?.revealPanel !== false) {
+        // Element selection should stay independent from inspector visibility.
+        // Only explicit inspector-oriented actions may reveal the right panel.
+        if (options?.revealPanel === true) {
           setRightCollapsed(false);
           // Keep the Variables tab in place — selecting elements is part of the bind
           // flow there; yanking to Design would lose the context.
-          if (rightPanelTabRef.current !== "variables") {
+          if (
+            rightPanelTabRef.current !== "variables" &&
+            rightPanelTabRef.current !== "animation" &&
+            rightPanelTabRef.current !== "animation-properties"
+          ) {
             setRightPanelTab("design");
           }
         }
-        const nextSelectedTimelineId =
-          findMatchingTimelineElementId(nextSelection, timelineElements) ??
-          findTimelineIdByAncestor(
-            nextSelection.element,
-            timelineElements,
-            nextSelection.sourceFile || "index.html",
-          );
-        // Late marquee notify: a primary already in the live set must not collapse it.
-        setSelectedTimelineElementId(nextSelectedTimelineId, { preserveSet: true });
+        syncTimelineSelection(nextGroup, nextSelection);
         return;
       }
 
       setSelectedTimelineElementId(null);
     },
-    [setSelectedTimelineElementId, timelineElements, setRightCollapsed, setRightPanelTab],
+    [setSelectedTimelineElementId, setRightCollapsed, setRightPanelTab, syncTimelineSelection],
   );
 
   const clearDomSelection = useCallback(() => {
@@ -295,6 +337,7 @@ export function useDomSelection({
       }
       const target = getPreviewTargetFromPointer(iframe, clientX, clientY, activeCompPath);
       if (!target) return null;
+      const owningGroup = target.closest<HTMLElement>("[data-hf-group]");
       return buildDomSelectionFromTarget(
         target,
         options && "activeGroupElement" in options
@@ -306,29 +349,9 @@ export function useDomSelection({
           : {
               preferClipAncestor: options?.preferClipAncestor,
               skipSourceProbe: options?.skipSourceProbe,
+              activeGroupElement: owningGroup,
             },
       );
-    },
-    [activeCompPath, buildDomSelectionFromTarget, captionEditMode, previewIframeRef],
-  );
-
-  const resolveAllDomSelectionsFromPreviewPoint = useCallback(
-    // fallow-ignore-next-line complexity
-    async (clientX: number, clientY: number): Promise<DomEditSelection[]> => {
-      const iframe = previewIframeRef.current;
-      if (!iframe || captionEditMode) return [];
-      try {
-        if (iframe.contentDocument) reapplyPositionEditsAfterSeek(iframe.contentDocument);
-      } catch {
-        /* cross-origin guard */
-      }
-      const targets = getAllPreviewTargetsFromPointer(iframe, clientX, clientY, activeCompPath);
-      const results: DomEditSelection[] = [];
-      for (const target of targets) {
-        const sel = await buildDomSelectionFromTarget(target, { skipSourceProbe: true });
-        if (sel) results.push(sel);
-      }
-      return results;
     },
     [activeCompPath, buildDomSelectionFromTarget, captionEditMode, previewIframeRef],
   );
@@ -358,11 +381,21 @@ export function useDomSelection({
         compIdToSrc,
         isMasterView,
       });
-      return targetElement
-        ? buildDomSelectionFromTarget(targetElement, {
-            preferClipAncestor: false,
-          })
-        : null;
+      // Property selection is independent from current-frame visibility. The
+      // overlay geometry layer suppresses its box for hidden elements while the
+      // inspector keeps the authored DOM target editable.
+      if (!targetElement) return null;
+
+      // A timeline-tree click names an exact authored node. Resolve inside its
+      // nearest group so canvas group-capture semantics do not replace that
+      // explicit child with the group wrapper. Canvas clicks still retain their
+      // existing group/drill-in behavior through the default resolver path.
+      const owningGroup = targetElement.closest<HTMLElement>("[data-hf-group]");
+      return buildDomSelectionFromTarget(targetElement, {
+        preferClipAncestor: false,
+        skipSourceProbe: true,
+        activeGroupElement: owningGroup,
+      });
     },
     [activeCompPath, buildDomSelectionFromTarget, compIdToSrc, isMasterView, previewIframeRef],
   );
@@ -376,10 +409,28 @@ export function useDomSelection({
         return;
       }
 
-      const selection = await buildDomSelectionForTimelineElement(element);
-      // A newer selection superseded this one while we were resolving — drop the stale result.
-      if (seq !== timelineSelectSeqRef.current) return;
-      if (selection) applyDomSelection(selection);
+      try {
+        const selection = await buildDomSelectionForTimelineElement(element);
+        // A newer selection superseded this one while we were resolving — drop the stale result.
+        if (seq !== timelineSelectSeqRef.current) return;
+        if (selection) {
+          applyDomSelection(selection);
+          return;
+        }
+        applyDomSelection(null, {
+          revealPanel: false,
+          preserveTimelineSelection: true,
+        });
+      } catch {
+        // Generated compositions can contain detached nodes, inaccessible nested
+        // iframes, or CSS that fails while resolving inspector metadata. Timeline
+        // selection must remain usable even when that element cannot be inspected.
+        if (seq !== timelineSelectSeqRef.current) return;
+        applyDomSelection(null, {
+          revealPanel: false,
+          preserveTimelineSelection: true,
+        });
+      }
     },
     [applyDomSelection, buildDomSelectionForTimelineElement],
   );
@@ -445,21 +496,9 @@ export function useDomSelection({
       setDomEditSelection(nextSelection);
       setDomEditGroupSelections(nextGroup);
 
-      if (nextSelection) {
-        setSelectedTimelineElementId(
-          findMatchingTimelineElementId(nextSelection, timelineElements),
-        );
-      } else {
-        setSelectedTimelineElementId(null);
-      }
+      syncTimelineSelection(nextGroup, nextSelection);
     },
-    [
-      activeCompPath,
-      buildDomSelectionFromTarget,
-      setSelectedTimelineElementId,
-      timelineElements,
-      previewIframeRef,
-    ],
+    [activeCompPath, buildDomSelectionFromTarget, previewIframeRef, syncTimelineSelection],
   );
 
   // ── Effects ──
@@ -521,6 +560,10 @@ export function useDomSelection({
         if (!additive) applyDomSelection(null, { revealPanel: false });
         return;
       }
+      if (!STUDIO_MULTI_SELECTION_ENABLED) {
+        applyDomSelection(selections[0], { revealPanel: false });
+        return;
+      }
       const current = domEditSelectionRef.current;
       const currentGroup = domEditGroupSelectionsRef.current;
       let nextGroup: DomEditSelection[];
@@ -541,16 +584,9 @@ export function useDomSelection({
       domEditGroupSelectionsRef.current = nextGroup;
       setDomEditSelection(nextSelection);
       setDomEditGroupSelections(nextGroup);
-      const nextTimelineId =
-        findMatchingTimelineElementId(nextSelection, timelineElements) ??
-        findTimelineIdByAncestor(
-          nextSelection.element,
-          timelineElements,
-          nextSelection.sourceFile || "index.html",
-        );
-      setSelectedTimelineElementId(nextTimelineId);
+      syncTimelineSelection(nextGroup, nextSelection);
     },
-    [applyDomSelection, timelineElements, setSelectedTimelineElementId],
+    [applyDomSelection, syncTimelineSelection],
   );
 
   // Disabled inspector effect
@@ -582,7 +618,6 @@ export function useDomSelection({
     clearDomSelection,
     buildDomSelectionFromTarget,
     resolveDomSelectionFromPreviewPoint,
-    resolveAllDomSelectionsFromPreviewPoint,
     updateDomEditHoverSelection,
     buildDomSelectionForTimelineElement,
     handleTimelineElementSelect,

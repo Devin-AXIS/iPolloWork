@@ -1,7 +1,7 @@
 {
   "name": "@ipollowork/desktop",
   "private": true,
-  "version": "0.19.0",
+  "version": "0.20.0",
   "description": "iPolloWork desktop shell",
   "author": {
     "name": "iPolloWork",
@@ -28,7 +28,7 @@
   "dependencies": {
     "@ffmpeg-installer/ffmpeg": "^1.1.0",
     "@ffprobe-installer/ffprobe": "^2.1.2",
-    "@opencode-ai/sdk": "^1.17.11",
+    "@opencode-ai/sdk": "^1.18.16",
     "better-sqlite3": "^11.10.0",
     "drizzle-orm": "^0.45.1",
     "electron-updater": "^6.3.9",
@@ -44,6 +44,5 @@
     "electron": "^35.0.0",
     "electron-builder": "^25.1.8",
     "electron-devtools-installer": "^4.0.0"
-  },
-  "packageManager": "pnpm@10.27.0"
+  }
 }

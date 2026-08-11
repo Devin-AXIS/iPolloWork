@@ -1,5 +1,6 @@
 import { memo, useCallback, useRef } from "react";
 import { useCaptionStore } from "../store";
+import { STUDIO_MULTI_SELECTION_ENABLED } from "../../components/editor/manualEditingAvailability";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -94,7 +95,7 @@ export const CaptionTimeline = memo(function CaptionTimeline({
   const handleBlockClick = useCallback(
     (e: React.MouseEvent, segId: string) => {
       e.stopPropagation();
-      selectSegment(segId, e.shiftKey);
+      selectSegment(segId, STUDIO_MULTI_SELECTION_ENABLED && e.shiftKey);
     },
     [selectSegment],
   );
@@ -159,7 +160,7 @@ export const CaptionTimeline = memo(function CaptionTimeline({
             >
               {/* Left edge drag handle */}
               <div
-                className="absolute left-0 top-0 bottom-0 cursor-col-resize z-20"
+                className="absolute left-0 top-0 bottom-0 cursor-ew-resize z-20"
                 style={{ width: 6 }}
                 onPointerDown={(e) => handleEdgePointerDown(e, segId, "start", seg.start, seg.end)}
               />
@@ -174,7 +175,7 @@ export const CaptionTimeline = memo(function CaptionTimeline({
 
               {/* Right edge drag handle */}
               <div
-                className="absolute right-0 top-0 bottom-0 cursor-col-resize z-20"
+                className="absolute right-0 top-0 bottom-0 cursor-ew-resize z-20"
                 style={{ width: 6 }}
                 onPointerDown={(e) => handleEdgePointerDown(e, segId, "end", seg.start, seg.end)}
               />

@@ -7,13 +7,17 @@ import { join } from "node:path";
 import type { EnvService } from "../env-file.js";
 import type { ServerConfig } from "../types.js";
 import {
+  MEDIA_EXTENSION_ACTIONS,
   MEDIA_EXTENSION_ID,
   callMediaExtensionAction,
+  estimateVoiceoverDurationSeconds,
   planSceneVoiceoverTiming,
   validateVoiceoverTimelineHtml,
 } from "./media-center.js";
 
 const nativeFetch = globalThis.fetch;
+const mediaProviderFetchKey = Symbol.for("ipollowork.mediaProviderFetch");
+const nativeMediaProviderFetch: unknown = Reflect.get(globalThis, mediaProviderFetchKey);
 const directories: string[] = [];
 
 const config = {
@@ -28,9 +32,21 @@ function env(values: Record<string, string>): EnvService {
 
 afterEach(async () => {
   globalThis.fetch = nativeFetch;
+  if (nativeMediaProviderFetch === undefined) Reflect.deleteProperty(globalThis, mediaProviderFetchKey);
+  else Reflect.set(globalThis, mediaProviderFetchKey, nativeMediaProviderFetch);
   while (directories.length) {
     const directory = directories.pop();
     if (directory) await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("describes workspace speech synthesis as an installed iPolloWork capability", () => {
+  const speechActions = MEDIA_EXTENSION_ACTIONS.filter((action) => action.action.startsWith("speech_synthesize"));
+  expect(speechActions).toHaveLength(3);
+  for (const action of speechActions) {
+    expect(action.description).toContain("Built-in iPolloWork");
+    expect(action.description.toLowerCase()).toContain("without");
+    expect(action.description.toLowerCase()).toContain("external cli");
   }
 });
 
@@ -47,6 +63,11 @@ async function workspaceConfig() {
 }
 
 describe("Media Center extension", () => {
+  test("estimates multilingual narration duration before provider synthesis", () => {
+    expect(estimateVoiceoverDurationSeconds("这是八个汉字的旁白。")).toBeGreaterThan(2);
+    expect(estimateVoiceoverDurationSeconds("Five clear words for this scene.")).toBeGreaterThan(2);
+  });
+
   test("allocates narration inside its scene and reports the exact downstream shift", () => {
     expect(planSceneVoiceoverTiming(4, 3, 4.5)).toEqual({
       startSeconds: 4,
@@ -91,6 +112,22 @@ describe("Media Center extension", () => {
     </body>`);
 
     expect(result).toMatchObject({ valid: true, sceneCount: 2, voiceoverCount: 2, issues: [] });
+  });
+
+  test("binds narration to marked captions while preserving richer scene content", () => {
+    const narration = "乔丹六次夺冠，并六次当选总决赛 MVP。关键时刻的统治力定义了一个时代。";
+    const result = validateVoiceoverTimelineHtml(`<!doctype html><body>
+      <main data-composition-id="main" data-duration="12">
+        <section id="jordan" class="scene clip" data-start="0" data-duration="12">
+          <h1>Michael Jordan</h1>
+          <strong>6× Champion</strong><span>Chicago Bulls · 1984–1998</span>
+          <p data-ipw-narration-source="true">${narration}</p>
+        </section>
+        <audio data-ipw-voiceover="true" data-ipw-scene-id="jordan" data-ipw-scene-text="${narration}" data-ipw-narration-text="${narration}" data-start="0" data-duration="11"></audio>
+      </main>
+    </body>`);
+
+    expect(result).toMatchObject({ valid: true, sceneCount: 1, voiceoverCount: 1, issues: [] });
   });
 
   test("rejects narration metadata that no longer matches the scene's visible text", () => {
@@ -154,6 +191,29 @@ describe("Media Center extension", () => {
 
     expect(result.valid).toBe(false);
     expect(result.issues.map((issue) => issue.code)).toContain("manual_voiceover_playback");
+  });
+
+  test("rejects captions whose hidden animation target cannot resolve", () => {
+    const result = validateVoiceoverTimelineHtml(`
+      <main data-composition-id="main" data-duration="4">
+        <section id="scene" class="scene clip" data-start="0" data-duration="4"></section>
+        <div data-hf-id="caption-one" data-ipw-caption="true" class="clip caption" data-start="0" data-duration="4">Caption</div>
+      </main>
+      <style>.caption { opacity: 0; }</style>
+      <script>timeline.to('#caption-one', { opacity: 1 });</script>
+    `);
+    expect(result.issues).toContainEqual(expect.objectContaining({ code: "caption_animation_target_missing" }));
+  });
+
+  test("rejects infinite caption animation that cannot be sought deterministically", () => {
+    const result = validateVoiceoverTimelineHtml(`
+      <main data-composition-id="main" data-duration="4">
+        <section id="scene" class="scene clip" data-start="0" data-duration="4"></section>
+        <div id="caption-one" data-ipw-caption="true" class="clip caption" data-start="0" data-duration="4">Caption</div>
+      </main>
+      <style>.caption { animation: flicker .1s infinite; }</style>
+    `);
+    expect(result.issues).toContainEqual(expect.objectContaining({ code: "non_seek_safe_caption_animation" }));
   });
 
   test("rejects legacy frame timelines that only describe a longer narrated video in script", () => {
@@ -248,6 +308,25 @@ describe("Media Center extension", () => {
     expect((result as any).result.output.issues.map((issue: any) => issue.code)).toContain("voiceover_assets_unreferenced");
   });
 
+  test("rejects timeline voiceover references whose files are missing", async () => {
+    const workspace = await workspaceConfig();
+    await writeFile(join(workspace.root, "video.html"), `<!doctype html><main data-composition-id="main" data-duration="5">
+      <section id="intro" class="scene clip" data-start="0" data-duration="5">Intro</section>
+      <audio src="./assets/voiceover-missing.mp3" data-ipw-voiceover="true" data-ipw-scene-id="intro" data-ipw-scene-text="Intro" data-ipw-narration-text="Intro" data-start="0" data-duration="4"></audio>
+    </main>`);
+
+    const result = await callMediaExtensionAction(
+      workspace.config,
+      env({}),
+      "voiceover_timeline_validate",
+      { sourcePath: "video.html" },
+      { directory: workspace.root },
+    );
+
+    expect(result).toMatchObject({ ok: true, result: { output: { valid: false } } });
+    expect(JSON.stringify(result)).toContain("voiceover_assets_missing");
+  });
+
   test("rejects underscore voiceover files present in assets but missing from the timeline", async () => {
     const workspace = await workspaceConfig();
     await writeFile(join(workspace.root, "video.html"), `<!doctype html><main data-composition-id="main" data-duration="5">
@@ -285,6 +364,52 @@ describe("Media Center extension", () => {
     expect(result).toMatchObject({ ok: true, result: { output: { valid: true, voiceoverCount: 1 } } });
   });
 
+  test("rejects completion when explicitly requested media deliverables are absent", () => {
+    const result = validateVoiceoverTimelineHtml(`<!doctype html><main data-composition-id="main" data-duration="5">
+      <section id="intro" class="scene clip" data-start="0" data-duration="5">Intro</section>
+    </main>`, {
+      requirements: {
+        voiceover: true,
+        captions: true,
+        bgm: true,
+        animationReferences: ["caption-clip-wipe"],
+      },
+    });
+
+    expect(result.valid).toBe(false);
+    expect(result.issues.map((issue) => issue.code)).toEqual(expect.arrayContaining([
+      "required_voiceover_missing",
+      "required_captions_missing",
+      "required_bgm_missing",
+      "required_animation_missing",
+    ]));
+  });
+
+  test("accepts requested media only when the timeline contains every deliverable", () => {
+    const result = validateVoiceoverTimelineHtml(`<!doctype html><main data-composition-id="main" data-duration="5.25">
+      <section id="intro" class="scene clip" data-start="0" data-duration="5.25"><span data-ipw-narration-source="true">Intro</span></section>
+      <div class="clip" data-ipw-caption="true" data-ipw-animation-reference="caption-clip-wipe" data-start="0" data-duration="5">Intro</div>
+      <audio src="./assets/voiceover-intro.mp3" data-ipw-voiceover="true" data-ipw-scene-id="intro" data-ipw-scene-text="Intro" data-ipw-narration-text="Intro" data-start="0" data-duration="5"></audio>
+      <audio src="./assets/bgm.mp3" data-ipw-bgm="true" data-start="0" data-duration="5.25" data-track-index="11"></audio>
+    </main>`, {
+      mediaAssets: ["assets/voiceover-intro.mp3", "assets/bgm.mp3"],
+      requirements: {
+        voiceover: true,
+        captions: true,
+        bgm: true,
+        animationReferences: ["caption-clip-wipe"],
+      },
+    });
+
+    expect(result).toMatchObject({
+      valid: true,
+      voiceoverCount: 1,
+      captionCount: 1,
+      bgmCount: 1,
+      animationReferences: ["caption-clip-wipe"],
+    });
+  });
+
   test("rejects narration that differs from its visible scene text before calling Model Studio", async () => {
     const workspace = await workspaceConfig();
     let requested = false;
@@ -316,16 +441,17 @@ describe("Media Center extension", () => {
     frame.set([0xff, 0xfb, 0x90, 0x00]); // MPEG-1 Layer III, 128 kbps, 44.1 kHz.
     const mp3 = Buffer.concat(Array.from({ length: 100 }, () => frame));
     let request = 0;
-    globalThis.fetch = ((input) => {
+    globalThis.fetch = ((input, init) => {
       request += 1;
       if (request === 1) {
         expect(String(input)).toContain("SpeechSynthesizer");
-        return Promise.resolve(new Response(JSON.stringify({ output: { audio: { url: "https://audio.example.test/scene.mp3" } } }), {
+        return Promise.resolve(new Response(JSON.stringify({ output: { audio: { url: "http://dashscope-result-bj.oss-cn-beijing.aliyuncs.com/scene.mp3?Expires=42" } } }), {
           status: 200,
           headers: { "content-type": "application/json" },
         }));
       }
-      expect(String(input)).toBe("https://audio.example.test/scene.mp3");
+      expect(String(input)).toBe("https://dashscope-result-bj.oss-cn-beijing.aliyuncs.com/scene.mp3?Expires=42");
+      expect(init?.redirect).toBe("error");
       return Promise.resolve(new Response(mp3, { status: 200, headers: { "content-type": "audio/mpeg" } }));
     }) as typeof fetch;
 
@@ -380,6 +506,173 @@ describe("Media Center extension", () => {
     const expectedDuration = 100 * 1152 / 44_100;
     expect(Math.abs(measuredDuration - expectedDuration)).toBeLessThan(0.001);
     expect(await readFile(join(workspace.root, "video/session/assets/voiceover-scene-1.mp3"))).toEqual(mp3);
+  });
+
+  test("synthesizes an ordered voiceover batch concurrently and returns cumulative timeline shifts", async () => {
+    const workspace = await workspaceConfig();
+    const frame = Buffer.alloc(417);
+    frame.set([0xff, 0xfb, 0x90, 0x00]);
+    const mp3 = Buffer.concat(Array.from({ length: 100 }, () => frame));
+    let activeSynthesisRequests = 0;
+    let maximumSynthesisRequests = 0;
+    globalThis.fetch = (async (input, init) => {
+      const url = String(input);
+      if (!url.includes("SpeechSynthesizer")) {
+        return new Response(mp3, { status: 200, headers: { "content-type": "audio/mpeg" } });
+      }
+      activeSynthesisRequests += 1;
+      maximumSynthesisRequests = Math.max(maximumSynthesisRequests, activeSynthesisRequests);
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      activeSynthesisRequests -= 1;
+      const body = JSON.parse(String(init?.body));
+      const sceneName = body.input.text === "Intro" ? "intro" : "details";
+      return new Response(JSON.stringify({ output: { audio: { url: `https://dashscope-result-bj.oss-cn-beijing.aliyuncs.com/${sceneName}.mp3` } } }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    }) as typeof fetch;
+
+    const result = await callMediaExtensionAction(
+      workspace.config,
+      env({ DASHSCOPE_API_KEY: "sk-bailian-secret" }),
+      "speech_synthesize_workspace_batch",
+      {
+        scenes: [
+          { text: "Intro", sceneId: "intro", sceneText: "Intro", sceneStart: 0, sceneDuration: 1, outputPath: "video/session/assets/voiceover-batch-intro.mp3" },
+          { text: "Details", sceneId: "details", sceneText: "Details", sceneStart: 1, sceneDuration: 1, outputPath: "video/session/assets/voiceover-batch-details.mp3" },
+        ],
+        compositionPath: "video/session/index.html",
+        voice: "longyingmu_v3",
+      },
+      { directory: workspace.root },
+    );
+
+    expect(maximumSynthesisRequests).toBe(2);
+    expect(result).toMatchObject({
+      result: {
+        output: {
+          sceneCount: 2,
+          totalShiftSeconds: expect.any(Number),
+          rootDurationMustBeAtLeastSeconds: expect.any(Number),
+          items: [
+            {
+              sceneId: "intro",
+              originalSceneStart: 0,
+              sceneStart: 0,
+              cumulativeShiftAfterSeconds: expect.any(Number),
+              audioElementHtml: expect.stringContaining('src="./assets/voiceover-batch-intro.mp3"'),
+            },
+            {
+              sceneId: "details",
+              originalSceneStart: 1,
+              sceneStart: expect.any(Number),
+              cumulativeShiftAfterSeconds: expect.any(Number),
+              audioElementHtml: expect.stringContaining('src="./assets/voiceover-batch-details.mp3"'),
+            },
+          ],
+        },
+      },
+    });
+    expect(await readFile(join(workspace.root, "video/session/assets/voiceover-batch-intro.mp3"))).toEqual(mp3);
+    expect(await readFile(join(workspace.root, "video/session/assets/voiceover-batch-details.mp3"))).toEqual(mp3);
+  });
+
+  test("reuses identical synthesized narration without changing workspace output paths", async () => {
+    const workspace = await workspaceConfig();
+    const frame = Buffer.alloc(417);
+    frame.set([0xff, 0xfb, 0x90, 0x00]);
+    const mp3 = Buffer.concat(Array.from({ length: 100 }, () => frame));
+    let synthesisRequests = 0;
+    let downloadRequests = 0;
+    globalThis.fetch = ((input) => {
+      if (String(input).includes("SpeechSynthesizer")) {
+        synthesisRequests += 1;
+        return Promise.resolve(new Response(JSON.stringify({ output: { audio: { url: "https://dashscope-result-bj.oss-cn-beijing.aliyuncs.com/cache-test.mp3" } } }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }));
+      }
+      downloadRequests += 1;
+      return Promise.resolve(new Response(mp3, { status: 200, headers: { "content-type": "audio/mpeg" } }));
+    }) as typeof fetch;
+
+    const common = {
+      text: "Unique resumable narration cache test",
+      sceneId: "cache-scene",
+      sceneText: "Unique resumable narration cache test",
+      sceneStart: 0,
+      sceneDuration: 2,
+      voice: "longyingmu_v3",
+    };
+    for (const revision of ["first", "second"]) {
+      await callMediaExtensionAction(
+        workspace.config,
+        env({ DASHSCOPE_API_KEY: "sk-cache-test" }),
+        "speech_synthesize_workspace_file",
+        { ...common, outputPath: `video/session/assets/voiceover-cache-${revision}.mp3` },
+        { directory: workspace.root },
+      );
+    }
+
+    expect(synthesisRequests).toBe(1);
+    expect(downloadRequests).toBe(1);
+    expect(await readFile(join(workspace.root, "video/session/assets/voiceover-cache-first.mp3"))).toEqual(mp3);
+    expect(await readFile(join(workspace.root, "video/session/assets/voiceover-cache-second.mp3"))).toEqual(mp3);
+  });
+
+  test("rejects narration that cannot fit a requested duration before provider synthesis", async () => {
+    const workspace = await workspaceConfig();
+    const narration = "这是需要保留页面事实但明显无法塞进五秒镜头的详细旁白。".repeat(12);
+    let requested = false;
+    Reflect.set(globalThis, mediaProviderFetchKey, () => {
+      requested = true;
+      throw new Error("provider must not be called");
+    });
+
+    await expect(callMediaExtensionAction(
+      workspace.config,
+      env({ DASHSCOPE_API_KEY: "sk-bailian-secret" }),
+      "speech_synthesize_workspace_batch",
+      {
+        scenes: [{
+          text: narration,
+          sceneId: "details",
+          sceneText: narration,
+          sceneStart: 0,
+          sceneDuration: 5,
+          outputPath: "video/session/assets/voiceover-too-long.mp3",
+        }],
+        targetDurationSeconds: 5,
+      },
+      { directory: workspace.root },
+    )).rejects.toMatchObject({ code: "voiceover_target_duration_exceeded" });
+    expect(requested).toBe(false);
+  });
+
+  test("rejects synthesized audio URLs outside Model Studio result storage", async () => {
+    const workspace = await workspaceConfig();
+    let requests = 0;
+    globalThis.fetch = ((input, init) => {
+      requests += 1;
+      expect(String(input)).toContain("SpeechSynthesizer");
+      return Promise.resolve(new Response(JSON.stringify({ output: { audio: { url: "https://127.0.0.1/private.mp3" } } }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }));
+    }) as typeof fetch;
+
+    await expect(callMediaExtensionAction(workspace.config, env({ DASHSCOPE_API_KEY: "sk-bailian-secret" }), "speech_synthesize_workspace_file", {
+      text: "Visible narration",
+      sceneId: "scene-hook",
+      sceneText: "Visible narration",
+      sceneStart: 0,
+      sceneDuration: 2,
+      outputPath: "video/session/assets/voiceover-scene-unsafe.mp3",
+    }, { directory: workspace.root })).rejects.toMatchObject({
+      code: "bailian_audio_url_invalid",
+      message: "Alibaba Model Studio returned an unsafe synthesized audio URL.",
+    });
+    expect(requests).toBe(1);
   });
 
   test("keeps the Model Studio key server-side while synthesizing speech", async () => {
@@ -448,6 +741,7 @@ describe("Media Center extension", () => {
         model: "speech-2.8-hd",
         text: "hello",
         stream: false,
+        output_format: "hex",
         voice_setting: { voice_id: "female-qn-qingse" },
       });
       return Promise.resolve(new Response(JSON.stringify({
@@ -490,7 +784,7 @@ describe("Media Center extension", () => {
     const result = await callMediaExtensionAction(config, env({ MINIMAX_API_KEY: "mm-test-key-0000" }), "speech_synthesize", {
       provider: "minimax",
       region: "cn_zh",
-      text: "你好",
+      text: "hello",
     }, {});
 
     expect(result).toMatchObject({ ok: true, result: { provider: "minimax" } });
@@ -501,10 +795,13 @@ describe("Media Center extension", () => {
       const body = JSON.parse(String(init?.body));
       expect(body).toMatchObject({
         model: "speech-2.6-hd",
-        output_format: "mp3",
-        voice_setting: { voice_id: "male-qn-qingse" },
-        audio_setting: { sample_rate: 32000 },
-        pronunciation_dict: { text: "你好", pinyin: "ni hao" },
+        language_boost: "auto",
+        output_format: "url",
+        voice_setting: { voice_id: "English_expressive_narrator", speed: 1.1, emotion: "happy" },
+        audio_setting: { sample_rate: 32000, bitrate: 128000, format: "mp3", channel: 1 },
+        pronunciation_dict: { tone: ["Omg/Oh my god"] },
+        voice_modify: { pitch: 1, intensity: 2, timbre: -1 },
+        subtitle_enable: true,
       });
       return Promise.resolve(new Response(JSON.stringify({
         base_resp: { status_code: 0 },
@@ -517,16 +814,20 @@ describe("Media Center extension", () => {
       text: "hello",
       model: "speech-2.6-hd",
       format: "mp3",
-      voice: "male-qn-qingse",
-      audioSetting: { sample_rate: 32000 },
-      pronunciationDict: { text: "你好", pinyin: "ni hao" },
+      outputFormat: "url",
+      languageBoost: "auto",
+      voiceSetting: { voice_id: "English_expressive_narrator", speed: 1.1, emotion: "happy" },
+      audioSetting: { sample_rate: 32000, bitrate: 128000, channel: 1 },
+      pronunciationDict: { tone: ["Omg/Oh my god"] },
+      voiceModify: { pitch: 1, intensity: 2, timbre: -1 },
+      subtitleEnable: true,
     }, {});
 
     expect(result).toMatchObject({ ok: true, result: { provider: "minimax" } });
   });
 
   test("explains MiniMax non-zero status codes", async () => {
-    globalThis.fetch = ((_input, _init) => {
+    globalThis.fetch = ((_input: Parameters<typeof fetch>[0], _init?: Parameters<typeof fetch>[1]) => {
       return Promise.resolve(new Response(JSON.stringify({
         base_resp: { status_code: 2004, status_msg: "Invalid parameter" },
         data: {},
@@ -540,6 +841,42 @@ describe("Media Center extension", () => {
       status: 502,
       code: "minimax_request_failed",
       message: "Invalid parameter",
+    });
+  });
+
+  test("rejects unsupported MiniMax speech options before requesting audio", async () => {
+    let requested = false;
+    globalThis.fetch = ((_input: Parameters<typeof fetch>[0], _init?: Parameters<typeof fetch>[1]) => {
+      requested = true;
+      throw new Error("MiniMax must not be called");
+    }) as unknown as typeof fetch;
+
+    for (const [options, code] of [
+      [{ model: "unsupported-model" }, "invalid_minimax_model"],
+      [{ format: "aac" }, "invalid_minimax_audio_format"],
+      [{ outputFormat: "binary" }, "invalid_minimax_output_format"],
+    ] as const) {
+      await expect(callMediaExtensionAction(config, env({ MINIMAX_API_KEY: "mm-test-key-0000" }), "speech_synthesize", {
+        provider: "minimax",
+        text: "hello",
+        ...options,
+      }, {})).rejects.toMatchObject({ code });
+    }
+    expect(requested).toBe(false);
+  });
+
+  test("rejects a successful MiniMax response without audio data", async () => {
+    globalThis.fetch = ((_input, _init) => Promise.resolve(new Response(JSON.stringify({
+      base_resp: { status_code: 0, status_msg: "success" },
+      data: { status: 2 },
+    }), { status: 200, headers: { "content-type": "application/json" } }))) as typeof fetch;
+
+    await expect(callMediaExtensionAction(config, env({ MINIMAX_API_KEY: "mm-test-key-0000" }), "speech_synthesize", {
+      provider: "minimax",
+      text: "hello",
+    }, {})).rejects.toMatchObject({
+      status: 502,
+      code: "minimax_response_invalid",
     });
   });
 
@@ -636,6 +973,81 @@ describe("Media Center extension", () => {
     expect(JSON.stringify(result)).not.toContain("sk-bailian-secret");
     expect(JSON.stringify(result)).not.toContain("oss-secret");
     expect(JSON.stringify(result)).not.toContain("x-oss-signature=");
+  });
+
+  test("uses Electron's injected provider fetch without replacing local server fetch", async () => {
+    let providerFetchCalled = false;
+    Reflect.set(globalThis, mediaProviderFetchKey, (async (input: string | URL | Request) => {
+      providerFetchCalled = true;
+      expect(String(input)).toBe("https://dashscope.aliyuncs.com/api/v1/services/audio/tts/customization");
+      return new Response(JSON.stringify({ output: { voice_list: [] } }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    }) as typeof fetch);
+    globalThis.fetch = (() => {
+      throw new Error("Node fetch must remain unused for media provider traffic in Electron");
+    }) as unknown as typeof fetch;
+
+    const result = await callMediaExtensionAction(config, env({ DASHSCOPE_API_KEY: "sk-bailian-secret" }), "voice_list", {}, {});
+
+    expect(providerFetchCalled).toBe(true);
+    expect(result).toMatchObject({ ok: true, result: { output: { items: [] } } });
+  });
+
+  test("clones a workspace sample through Bailian temporary storage when object storage is not configured", async () => {
+    const { root, config: workspace } = await workspaceConfig();
+    const requests: string[] = [];
+    globalThis.fetch = (async (input, init) => {
+      const url = String(input);
+      requests.push(`${init?.method ?? "GET"} ${url}`);
+      if (url.includes("/api/v1/uploads?")) {
+        expect(init?.method).toBe("GET");
+        return new Response(JSON.stringify({
+          data: {
+            policy: "encoded-policy",
+            signature: "upload-signature",
+            upload_dir: "dashscope-instant/account/date/request",
+            upload_host: "https://dashscope-file-test.oss-cn-beijing.aliyuncs.com",
+            oss_access_key_id: "temporary-access-key",
+            x_oss_object_acl: "private",
+            x_oss_forbid_overwrite: "true",
+          },
+        }), { status: 200, headers: { "content-type": "application/json" } });
+      }
+      if (url === "https://dashscope-file-test.oss-cn-beijing.aliyuncs.com") {
+        expect(init?.body).toBeInstanceOf(FormData);
+        const form = init?.body as FormData;
+        expect(form.get("OSSAccessKeyId")).toBe("temporary-access-key");
+        expect(form.get("key")).toMatch(/^dashscope-instant\/account\/date\/request\/.+\.wav$/);
+        expect(form.get("file")).toBeInstanceOf(Blob);
+        return new Response(null, { status: 200 });
+      }
+      expect(url).toBe("https://dashscope.aliyuncs.com/api/v1/services/audio/tts/customization");
+      expect(init?.headers).toMatchObject({
+        Authorization: "Bearer sk-bailian-secret",
+        "X-DashScope-OssResourceResolve": "enable",
+      });
+      const body = JSON.parse(String(init?.body));
+      expect(body.input.url).toMatch(/^oss:\/\/dashscope-instant\/account\/date\/request\/.+\.wav$/);
+      return new Response(JSON.stringify({ output: { voice_id: "ipw-bailian-temp-voice" } }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    }) as typeof fetch;
+
+    const result = await callMediaExtensionAction(
+      workspace,
+      env({ DASHSCOPE_API_KEY: "sk-bailian-secret" }),
+      "voice_clone_workspace_file",
+      { sourcePath: "sample.wav" },
+      { directory: root },
+    );
+
+    expect(result).toMatchObject({ ok: true, result: { output: { voiceId: "ipw-bailian-temp-voice", model: "cosyvoice-v3-flash" } } });
+    expect(requests).toHaveLength(3);
+    expect(JSON.stringify(result)).not.toContain("sk-bailian-secret");
+    expect(JSON.stringify(result)).not.toContain("temporary-access-key");
   });
 
   test("collects the documented streaming file-translation response without exposing the key", async () => {

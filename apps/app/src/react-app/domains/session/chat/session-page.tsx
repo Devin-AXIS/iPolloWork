@@ -19,7 +19,7 @@ import {
 } from "@/app/lib/enterprise-connections";
 import { getDisplaySessionTitle } from "../../../../app/lib/session-title";
 import type { BootPhase } from "../../../../app/lib/startup-boot";
-import { openDesktopPath, revealDesktopItemInDir, type WorkspaceInfo } from "../../../../app/lib/desktop";
+import { openDesktopPath, revealDesktopItemInDir, saveFile, type WorkspaceInfo } from "../../../../app/lib/desktop";
 import type {
   ComposerDraft,
   PendingPermission,
@@ -61,7 +61,8 @@ import { AppSidebar } from "../sidebar/app-sidebar";
 import type { iPolloWorkSessionType, iPolloWorkTemplateId } from "../sidebar/app-sidebar-provider";
 import { readSessionType, sessionTypeForTemplate, setSessionType } from "../sidebar/session-type";
 import { useSessionManagementStore } from "../sidebar/session-management-store";
-import { replaceDesignSelectionToken, SessionSurface, type SessionSurfaceProps } from "../surface/session-surface";
+import { SessionSurface, type SessionSurfaceProps } from "../surface/session-surface";
+import { replaceDesignSelectionToken } from "../surface/composer/composer-draft";
 import { getComposerDraft, useComposerStateStore } from "../surface/composer-state-store";
 import {
   SidebarInset,
@@ -88,10 +89,30 @@ import { designAiSelectionToken, type DesignAiSelectionContext } from "../design
 import { useDesignAiSelectionStore } from "../design/design-ai-selection-store";
 import { waitForTemplateEntrySurface } from "../templates/template-entry-route";
 import { loadTemplateSession } from "../templates/template-session-probe";
-import { TemplateSaveDialog } from "../templates/template-save-dialog";
+import { TemplateSaveDialog, type TemplateSaveInput, type TemplateSaveMode } from "../templates/template-save-dialog";
 import { VideoPanel } from "../video/video-panel";
 import { videoProjectEntryPath } from "../video/video-project";
-import { templateBriefConfigFor, templateBriefPrompt, type TemplateBrief } from "../templates/template-brief";
+import {
+  TEMPLATE_BRIEF_REFERENCE_ACCEPT,
+  templateBriefConfigFor,
+  templateBriefPrompt,
+  type TemplateBrief,
+} from "../templates/template-brief";
+import {
+  canSendOriginalReference,
+  ingestReferenceFile,
+  isReferenceFile,
+} from "../references/ingestion";
+import { inferTemplateBriefFromIngestions } from "../references/brief-autofill";
+import {
+  buildTemplateReferenceSubmitPayload,
+  revokeTemplateReferenceAttachmentPreviews,
+} from "../references/template-reference-submit";
+import type { TemplateReferenceItem } from "../references/types";
+export {
+  buildTemplateReferenceSubmitPayload,
+  revokeTemplateReferenceAttachmentPreviews,
+} from "../references/template-reference-submit";
 import { TemplateMarketDialog } from "../templates/template-market-dialog";
 import { savePromptTemplate } from "@/react-app/domains/session/templates/prompt-template-store";
 import { SidePanel, type SidePanelLauncherItem } from "../panel/side-panel";
@@ -116,6 +137,9 @@ const AUTO_RESTORE_WORKSPACE_WIDTH = 600;
 const MIN_DESIGN_PANEL_WIDTH = 420;
 const MIN_RIGHT_PANEL_WIDTH = 320;
 const NARROW_LAYOUT_WIDTH = 960;
+const VIDEO_PANEL_DEFAULT_WIDTH = 1120;
+const SESSION_SHELL_TRANSITION_MS = 220;
+const SESSION_SHELL_TRANSITION_EASING = "cubic-bezier(0.22, 1, 0.36, 1)";
 type SessionPanelView = SidePanelItem | "launcher";
 type TemplateSessionData = {
   sessionId: string;
@@ -402,20 +426,123 @@ function DesignStarter({ client, workspaceId, templates, loading, busyId, error,
           const selectedCategory = categories.find((item) => item.id === category);
           return <div>
             <div className="mb-3 flex items-center justify-between"><button type="button" className="text-xs text-dls-secondary hover:text-dls-text" onClick={() => setCategory(null)}>← {t("templates.starter.back_to_categories")}</button><button type="button" disabled={busyId !== null} onClick={() => importRef.current?.click()} className="inline-flex h-7 items-center gap-1.5 rounded-lg border border-dls-border px-2 text-[11px] font-medium text-dls-secondary transition hover:bg-dls-hover hover:text-dls-text disabled:opacity-50"><Upload className="size-3" />{t("template_market.import_package")}</button><input ref={importRef} type="file" accept={TEMPLATE_PACKAGE_FILE_ACCEPT} className="hidden" onChange={(event) => { const file = event.currentTarget.files?.[0]; if (file) setPendingImport(file); event.currentTarget.value = ""; }} /></div>
-            {pendingImport ? <div className="mb-3 flex items-center gap-3 rounded-xl border border-primary/20 bg-primary/5 p-3"><div className="grid size-8 shrink-0 place-items-center rounded-lg bg-primary/10 text-primary"><Upload className="size-3.5" /></div><div className="min-w-0 flex-1"><div className="truncate text-xs font-medium">{pendingImport.name}</div><div className="text-[10px] text-dls-secondary">{(pendingImport.size / 1024).toFixed(1)} KB · {t("templates.starter.file_type", { type: selectedCategory ? t(selectedCategory.labelKey) : "" })}</div></div><button type="button" disabled={busyId !== null} onClick={() => setPendingImport(null)} className="text-[11px] text-dls-secondary hover:text-dls-text disabled:opacity-50">{t("common.cancel")}</button><button type="button" disabled={busyId !== null} onClick={async () => { if (await onImport(pendingImport, serverCategory)) setPendingImport(null); }} className="inline-flex h-7 items-center rounded-lg bg-primary px-2.5 text-[11px] font-medium text-primary-foreground disabled:opacity-50">{busyId === "import" ? <LoaderCircle className="mr-1.5 size-3 animate-spin" /> : null}{t("template_market.install")}</button></div> : null}
+            {pendingImport ? <div className="mb-3 flex items-center gap-3 rounded-xl border border-primary/20 bg-primary/5 p-3"><div className="grid size-8 shrink-0 place-items-center rounded-lg bg-primary/10 text-primary"><Upload className="size-3.5" /></div><div className="min-w-0 flex-1"><div className="truncate text-xs font-medium">{pendingImport.name}</div><div className="text-[10px] text-dls-secondary">{(pendingImport.size / 1024).toFixed(1)} KB / {t("templates.starter.file_type", { type: selectedCategory ? t(selectedCategory.labelKey) : "" })}</div></div><button type="button" disabled={busyId !== null} onClick={() => setPendingImport(null)} className="text-[11px] text-dls-secondary hover:text-dls-text disabled:opacity-50">{t("common.cancel")}</button><button type="button" disabled={busyId !== null} onClick={async () => { if (await onImport(pendingImport, serverCategory)) setPendingImport(null); }} className="inline-flex h-7 items-center rounded-lg bg-primary px-2.5 text-[11px] font-medium text-primary-foreground disabled:opacity-50">{busyId === "import" ? <LoaderCircle className="mr-1.5 size-3 animate-spin" /> : null}{t("template_market.install")}</button></div> : null}
             {visible.length ? <div className="grid gap-3 sm:grid-cols-2">{visible.map((item) => <article key={item.manifest.id} className="group relative overflow-hidden rounded-2xl border border-dls-border bg-dls-surface transition hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-lg"><button type="button" className="block w-full text-left" onClick={() => setPreviewTemplate(item)} aria-label={t("template_market.preview_aria", { title: item.manifest.title })}><TemplateCover client={client} workspaceId={workspaceId} template={item} alt={t("template_market.cover_alt", { title: item.manifest.title })} /></button><div className="p-4"><div className="flex items-start justify-between gap-2"><div><div className="flex flex-wrap items-center gap-2 text-sm font-semibold">{item.manifest.title}{isPptxCompatibleTemplate(item.manifest) ? <span className="rounded bg-primary/10 px-1.5 py-0.5 text-[9px] font-medium text-primary">{t("template_market.pptx_compatible")}</span> : null}{item.sourceType === "local" ? <span className="rounded bg-dls-hover px-1.5 py-0.5 text-[9px] font-medium text-dls-secondary">{t("new_conversation.templates.local")}</span> : null}{item.updateAvailable ? <span className="rounded bg-primary/10 px-1.5 py-0.5 text-[9px] font-medium text-primary">{t("template_market.update")}</span> : null}</div><div className="mt-1 line-clamp-2 text-xs leading-5 text-dls-secondary">{item.manifest.description}</div><div className="mt-1 text-[10px] text-dls-secondary/75">{item.manifest.source.name}</div></div><details className="relative"><summary className="grid size-7 cursor-pointer list-none place-items-center rounded-lg text-dls-secondary hover:bg-dls-hover"><Ellipsis className="size-4" /></summary><div className="absolute right-0 top-8 z-20 w-36 rounded-xl border border-dls-border bg-dls-surface p-1 text-xs shadow-xl"><div className="px-2 py-1.5 text-[10px] text-dls-secondary">{item.manifest.source.license}</div>{item.installed ? <button type="button" onClick={() => onUninstall(item.manifest.id)} className="w-full rounded-lg px-2 py-1.5 text-left hover:bg-dls-hover">{t("template_market.uninstall_template")}</button> : null}{item.updateAvailable ? <button type="button" onClick={() => onInstall(item.manifest.id)} className="w-full rounded-lg px-2 py-1.5 text-left hover:bg-dls-hover">{t("template_market.update_template")}</button> : null}</div></details></div><div className="mt-4 flex items-center gap-2"><button type="button" onClick={() => setPreviewTemplate(item)} className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-dls-border px-3 text-xs font-medium text-dls-text transition hover:bg-dls-hover"><Eye className="size-3.5" />{t("template_market.preview")}</button><button type="button" disabled={busyId !== null} onClick={() => item.updateAvailable || !item.installed ? onInstall(item.manifest.id) : onChoose(item.manifest.id)} className="inline-flex h-8 items-center rounded-lg bg-primary px-3 text-xs font-medium text-primary-foreground disabled:opacity-50">{busyId === item.manifest.id ? <LoaderCircle className="mr-1.5 size-3 animate-spin" /> : null}{item.updateAvailable ? t("template_market.update") : item.installed ? t("template_market.use_template") : t("template_market.install")}</button></div></div></article>)}</div> : <div className="rounded-2xl border border-dls-border bg-dls-surface p-6 text-center"><p className="text-sm font-medium">{t("templates.starter.empty_title")}</p><p className="mt-1 text-xs text-dls-secondary">{t("templates.starter.empty_description")}</p></div>}
           </div>;
         })()}
       </div>
     </div>
-    <Dialog open={Boolean(previewTemplate)} onOpenChange={(open) => { if (!open) setPreviewTemplate(null); }}><DialogContent className="max-w-[960px] gap-0 overflow-hidden p-0 sm:max-w-[960px]">{previewTemplate ? <><div className="aspect-video overflow-hidden bg-dls-hover"><TemplateCover client={client} workspaceId={workspaceId} template={previewTemplate} className="h-full" alt={t("template_market.preview_alt", { title: previewTemplate.manifest.title })} /></div><div className="flex flex-col gap-4 border-t border-dls-border px-6 py-5 sm:flex-row sm:items-end sm:justify-between"><div className="min-w-0"><DialogTitle className="text-lg">{previewTemplate.manifest.title}</DialogTitle><DialogDescription className="mt-2 max-w-2xl text-xs leading-5">{previewTemplate.manifest.description}</DialogDescription><p className="mt-2 text-[10px] text-dls-secondary">{previewTemplate.manifest.source.name} / {previewTemplate.manifest.source.license}</p></div><div className="flex shrink-0 gap-2"><Button variant="outline" size="sm" className="rounded-xl" onClick={() => setPreviewTemplate(null)}>{t("common.back")}</Button><Button size="sm" className="rounded-xl" disabled={busyId !== null} onClick={() => { setPreviewTemplate(null); if (previewTemplate.updateAvailable || !previewTemplate.installed) onInstall(previewTemplate.manifest.id); else onChoose(previewTemplate.manifest.id); }}>{busyId === previewTemplate.manifest.id ? <LoaderCircle className="size-3.5 animate-spin" /> : null}{previewTemplate.updateAvailable ? t("template_market.update_template") : previewTemplate.installed ? t("template_market.use_template") : t("template_market.install_template")}</Button></div></div></> : null}</DialogContent></Dialog>
+    <Dialog open={Boolean(previewTemplate)} onOpenChange={(open) => { if (!open) setPreviewTemplate(null); }}><DialogContent className="max-w-[960px] gap-0 overflow-hidden p-0 sm:max-w-[960px]">{previewTemplate ? <><div className="aspect-video overflow-hidden bg-dls-hover"><TemplateCover client={client} workspaceId={workspaceId} template={previewTemplate} className="h-full" alt={t("template_market.preview_alt", { title: previewTemplate.manifest.title })} /></div><div className="relative z-10 flex flex-col gap-5 border-t border-dls-border bg-dls-surface px-6 pb-5 pt-8 sm:flex-row sm:items-end sm:justify-between"><div className="min-w-0 flex-1"><div className="flex min-h-7 items-center"><DialogTitle className="text-lg">{previewTemplate.manifest.title}</DialogTitle></div><DialogDescription className="mt-2 line-clamp-2 max-w-2xl text-xs leading-5">{previewTemplate.manifest.description}</DialogDescription><p className="mt-2 text-[10px] text-dls-secondary">{previewTemplate.manifest.source.name} / {previewTemplate.manifest.source.license}</p></div><div className="flex shrink-0 gap-2"><Button variant="outline" size="sm" className="rounded-xl" onClick={() => setPreviewTemplate(null)}>{t("common.back")}</Button><Button size="sm" className="rounded-xl" disabled={busyId !== null} onClick={() => { setPreviewTemplate(null); if (previewTemplate.updateAvailable || !previewTemplate.installed) onInstall(previewTemplate.manifest.id); else onChoose(previewTemplate.manifest.id); }}>{busyId === previewTemplate.manifest.id ? <LoaderCircle className="size-3.5 animate-spin" /> : null}{previewTemplate.updateAvailable ? t("template_market.update_template") : previewTemplate.installed ? t("template_market.use_template") : t("template_market.install_template")}</Button></div></div></> : null}</DialogContent></Dialog>
   </>);
 }
 
-function TemplateBriefCard({ template, onSubmit, onClose }: { template: TemplateManifestV1; onSubmit: (brief: TemplateBrief) => void; onClose: () => void | Promise<void> }) {
+function TemplateBriefCard({ template, onSubmit, onClose }: { template: TemplateManifestV1; onSubmit: (brief: TemplateBrief, references: TemplateReferenceItem[]) => void; onClose: () => void | Promise<void> }) {
   const config = templateBriefConfigFor(template);
   const [brief, setBrief] = useState<TemplateBrief>({ title: "", audience: "", details: "" });
-  return <div className="flex min-h-0 flex-1 items-center justify-center overflow-auto px-6 py-10"><div className="w-full max-w-xl overflow-hidden rounded-3xl border border-dls-border bg-dls-surface shadow-[var(--dls-card-shadow)]"><div className={cn("relative p-5 pr-14", template.surface === "video" ? "bg-gradient-to-br from-slate-950 via-indigo-950 to-slate-900 text-white" : "bg-gradient-to-br from-stone-100 via-orange-50 to-white")}><Button type="button" variant="ghost" size="icon-sm" className={cn("absolute right-4 top-4 rounded-full", template.surface === "video" ? "text-white/70 hover:text-white" : "text-dls-secondary hover:text-dls-text")} aria-label={t("common.close")} onClick={() => void onClose()}><X className="size-4" /></Button><p className={cn("text-xs font-medium", template.surface === "video" ? "text-indigo-200" : "text-dls-secondary")}>{template.title} · {config.label}</p><h2 className="mt-1 text-lg font-semibold">{config.heading}</h2><p className={cn("mt-1 text-sm", template.surface === "video" ? "text-white/65" : "text-dls-secondary")}>{config.description}</p></div><div className="space-y-4 p-5">{config.fields.map((field) => <label key={field.key} className="block text-sm font-medium">{field.label}{field.optional ? <span className="ml-1 text-xs font-normal text-dls-secondary">{t("common.optional_parens")}</span> : null}<Input value={brief[field.key]} onChange={(event) => { const value = event.currentTarget.value; setBrief((current) => ({ ...current, [field.key]: value })); }} placeholder={field.placeholder} className="mt-2" /></label>)}<Button className="w-full" disabled={!brief.title.trim() || !brief.audience.trim()} onClick={() => onSubmit({ title: brief.title.trim(), audience: brief.audience.trim(), details: brief.details.trim() })}>{config.submitLabel}</Button></div></div></div>;
+  const [references, setReferences] = useState<TemplateReferenceItem[]>([]);
+  const [referenceBusy, setReferenceBusy] = useState(false);
+  const referenceInputRef = useRef<HTMLInputElement>(null);
+  const referencesRef = useRef<TemplateReferenceItem[]>([]);
+
+  const updateReferences = (updater: (current: TemplateReferenceItem[]) => TemplateReferenceItem[]) => {
+    const next = updater(referencesRef.current);
+    referencesRef.current = next;
+    setReferences(next);
+  };
+
+  const applyReferenceBriefAutofill = (inferred: TemplateBrief) => {
+    if (!inferred.title && !inferred.audience && !inferred.details) return;
+    setBrief((current) => ({
+      title: current.title.trim() ? current.title : inferred.title,
+      audience: current.audience.trim() ? current.audience : inferred.audience,
+      details: current.details.trim() ? current.details : inferred.details,
+    }));
+    toast.success(t("templates.brief.reference_autofilled"));
+  };
+
+  const addReferenceFiles = async (files: File[]) => {
+    if (!files.length) return;
+    const unsupported = files.filter((file) => !isReferenceFile(file));
+    const supported = files.filter((file) => isReferenceFile(file));
+    if (unsupported.length) {
+      toast.warning(
+        unsupported.length === 1
+          ? t("templates.brief.reference_unsupported_one", { name: unsupported[0]?.name ?? "" })
+          : t("templates.brief.reference_unsupported_many", { count: unsupported.length }),
+        { description: t("templates.brief.reference_supported_formats") },
+      );
+    }
+    if (!supported.length) return;
+    setReferenceBusy(true);
+    const pending = supported.map((file) => ({
+      id: `${file.name}-${file.lastModified}-${Math.random().toString(36).slice(2)}`,
+      file,
+      fileName: file.name,
+      mimeType: file.type || "application/octet-stream",
+      size: file.size,
+      status: "parsing" as const,
+      sendOriginal: false,
+    }));
+    updateReferences((current) => [...current, ...pending]);
+
+    try {
+      const results = await Promise.all(pending.map(async (item): Promise<TemplateReferenceItem> => {
+        try {
+          const ingestion = await ingestReferenceFile(item.file);
+          const status: TemplateReferenceItem["status"] = ingestion.quality === "high" || ingestion.quality === "medium" ? "ready" : ingestion.quality === "low" ? "weak" : "failed";
+          return { ...item, mimeType: ingestion.mimeType, status, ingestion };
+        } catch (error) {
+          toast.warning(t("templates.brief.reference_status_failed"), {
+            description: error instanceof Error ? error.message : item.fileName,
+          });
+          return { ...item, status: "failed" };
+        }
+      }));
+      const activeResults = results.filter((result) => referencesRef.current.some((reference) => reference.id === result.id));
+      updateReferences((current) => current.map((item) => activeResults.find((result) => result.id === item.id) ?? item));
+      applyReferenceBriefAutofill(inferTemplateBriefFromIngestions(
+        activeResults.flatMap((result) => result.ingestion ? [result.ingestion] : []),
+      ));
+    } finally {
+      setReferenceBusy(false);
+    }
+  };
+
+  const removeReference = (id: string) => {
+    updateReferences((current) => current.filter((item) => item.id !== id));
+  };
+
+  return <div className="flex min-h-0 flex-1 items-center justify-center overflow-auto px-6 py-10">
+    <div className="w-full max-w-xl overflow-hidden rounded-3xl border border-dls-border bg-dls-surface shadow-[var(--dls-card-shadow)]">
+      <div className={cn("relative p-5 pr-14", template.surface === "video" ? "bg-gradient-to-br from-slate-950 via-indigo-950 to-slate-900 text-white" : "bg-gradient-to-br from-stone-100 via-orange-50 to-white")}>
+        <Button type="button" variant="ghost" size="icon-sm" className={cn("absolute right-4 top-4 rounded-full", template.surface === "video" ? "text-white/70 hover:text-white" : "text-dls-secondary hover:text-dls-text")} aria-label={t("common.close")} onClick={() => void onClose()}><X className="size-4" /></Button>
+        <p className={cn("text-xs font-medium", template.surface === "video" ? "text-indigo-200" : "text-dls-secondary")}>{template.title} / {config.label}</p>
+        <h2 className="mt-1 text-lg font-semibold">{config.heading}</h2>
+        <p className={cn("mt-1 text-sm", template.surface === "video" ? "text-white/65" : "text-dls-secondary")}>{config.description}</p>
+      </div>
+      <div className="space-y-4 p-5">
+        {config.fields.map((field) => <label key={field.key} className="block text-sm font-medium">{field.label}{field.optional ? <span className="ml-1 text-xs font-normal text-dls-secondary">{t("common.optional_parens")}</span> : null}<Input value={brief[field.key]} onChange={(event) => { const value = event.currentTarget.value; setBrief((current) => ({ ...current, [field.key]: value })); }} placeholder={field.placeholder} className="mt-2" /></label>)}
+        <div className="rounded-xl border border-dls-border bg-dls-canvas/45 p-3">
+          <div className="flex items-start justify-between gap-3">
+            <div><div className="text-sm font-medium">{t("templates.brief.reference_label")}<span className="ml-1 text-xs font-normal text-dls-secondary">{t("common.optional_parens")}</span></div><p className="mt-1 text-xs leading-5 text-dls-secondary">{t("templates.brief.reference_description")}</p></div>
+            <Button type="button" variant="outline" size="sm" className="h-8 shrink-0 rounded-lg px-2.5 text-xs" disabled={referenceBusy} onClick={() => referenceInputRef.current?.click()}>{referenceBusy ? <LoaderCircle className="size-3 animate-spin" /> : <Upload className="size-3" />}{t("templates.brief.reference_upload")}</Button>
+            <input ref={referenceInputRef} type="file" multiple accept={TEMPLATE_BRIEF_REFERENCE_ACCEPT} className="hidden" onChange={(event) => { const files = Array.from(event.currentTarget.files ?? []); event.currentTarget.value = ""; void addReferenceFiles(files); }} />
+          </div>
+          {references.length ? <div className="mt-3 grid gap-2">{references.map((reference) => <div key={reference.id} className="flex min-w-0 items-center gap-2 rounded-lg border border-dls-border bg-dls-surface px-2.5 py-2">
+            <FileText className="size-3.5 shrink-0 text-dls-secondary" />
+            <div className="min-w-0 flex-1">
+              <div className="truncate text-xs font-medium">{reference.fileName}</div>
+              <div className="text-[10px] text-dls-secondary">{reference.status === "parsing" ? t("templates.brief.reference_status_parsing") : reference.status === "ready" ? t("templates.brief.reference_status_ready", { quality: reference.ingestion?.quality ?? "high" }) : reference.status === "weak" ? t("templates.brief.reference_status_weak") : t("templates.brief.reference_status_failed")}</div>
+              {reference.ingestion?.warnings[0] ? <div className="truncate text-[10px] text-dls-secondary" title={reference.ingestion.warnings[0]}>{reference.ingestion?.warnings[0]}</div> : null}
+            </div>
+            <Button type="button" variant={reference.sendOriginal ? "secondary" : "ghost"} size="sm" className="h-7 shrink-0 rounded-lg px-2 text-[10px]" disabled={reference.status === "parsing" || !canSendOriginalReference(reference.file)} onClick={() => updateReferences((current) => current.map((item) => item.id === reference.id ? { ...item, sendOriginal: !item.sendOriginal } : item))}>{reference.sendOriginal ? t("templates.brief.reference_send_original_on") : t("templates.brief.reference_send_original_off")}</Button>
+            <Button type="button" variant="ghost" size="icon-sm" className="size-7 shrink-0 rounded-lg text-dls-secondary hover:text-dls-text" aria-label={t("templates.brief.reference_remove", { name: reference.fileName })} onClick={() => removeReference(reference.id)}><X className="size-3.5" /></Button>
+          </div>)}</div> : null}
+        </div>
+        <Button className="w-full" disabled={!brief.title.trim() || !brief.audience.trim() || referenceBusy} onClick={() => onSubmit({ title: brief.title.trim(), audience: brief.audience.trim(), details: brief.details.trim() }, references)}>{config.submitLabel}</Button>
+      </div>
+    </div>
+  </div>;
 }
 
 export function SessionPage(props: SessionPageProps) {
@@ -461,6 +588,7 @@ export function SessionPage(props: SessionPageProps) {
   const [templateCatalogLoading, setTemplateCatalogLoading] = useState(false);
   const [templateCatalogError, setTemplateCatalogError] = useState<string | null>(null);
   const [templateBusyId, setTemplateBusyId] = useState<string | null>(null);
+  const templateCatalogRequestIdRef = useRef(0);
   const templateImportInFlightRef = useRef(false);
   const [templateMarketOpen, setTemplateMarketOpen] = useState(false);
   const [cloudSignInComingSoonOpen, setCloudSignInComingSoonOpen] = useState(false);
@@ -469,12 +597,18 @@ export function SessionPage(props: SessionPageProps) {
   const [templateSaveOpen, setTemplateSaveOpen] = useState(false);
   const [templateValidationReport, setTemplateValidationReport] = useState<TemplateValidationReport | null>(null);
   const [templateValidationBusy, setTemplateValidationBusy] = useState(false);
-  const [templateSaveBusy, setTemplateSaveBusy] = useState(false);
+  const [templateSaveMode, setTemplateSaveMode] = useState<TemplateSaveMode | null>(null);
+  const changeTemplateResourceScope = useCallback((scope: WorkContextId) => {
+    templateCatalogRequestIdRef.current += 1;
+    setTemplateResourceScope(scope);
+    setTemplateCatalog([]);
+    setEnterpriseTemplateResources([]);
+    setTemplateCatalogLoading(false);
+    setTemplateCatalogError(null);
+  }, []);
   useEffect(() => {
-    const nextScope = readActiveWorkContextId();
-    setTemplateResourceScope(nextScope);
-    if (nextScope === "personal") setEnterpriseTemplateResources([]);
-  }, [activeEnterprise?.id]);
+    changeTemplateResourceScope(readActiveWorkContextId());
+  }, [activeEnterprise?.id, changeTemplateResourceScope]);
   const [sessionTypeRevision, setSessionTypeRevision] = useState(0);
   const selectedSessionType = useMemo(() => (
     props.selectedSessionId && typeof window !== "undefined"
@@ -562,7 +696,6 @@ export function SessionPage(props: SessionPageProps) {
   }, [
     artifactDirectory,
     artifactScopeKey,
-    conversationMessages,
     props.ipolloworkServerClient,
     props.runtimeWorkspaceId,
   ]);
@@ -607,19 +740,36 @@ export function SessionPage(props: SessionPageProps) {
   }, [prioritizeRightPanel, props.selectedSessionId, setSidePanelState]);
   const refreshTemplateCatalog = useCallback(async () => {
     if (!props.ipolloworkServerClient || !props.runtimeWorkspaceId) return;
+    const requestId = ++templateCatalogRequestIdRef.current;
     setTemplateCatalogLoading(true);
     setTemplateCatalogError(null);
     try {
-      const localCatalog = await props.ipolloworkServerClient.listTemplates(props.runtimeWorkspaceId, templateResourceScope);
-      setTemplateCatalog(localCatalog.items);
-      if (templateResourceScope !== "personal" && activeEnterprise) {
-        setEnterpriseTemplateResources(await listEnterpriseResources(activeEnterprise, "template"));
+      if (templateResourceScope === "personal") {
+        const localCatalog = await props.ipolloworkServerClient.listTemplates(props.runtimeWorkspaceId, "personal");
+        if (requestId !== templateCatalogRequestIdRef.current) return;
+        setTemplateCatalog(localCatalog.items);
+        setEnterpriseTemplateResources([]);
+      } else if (activeEnterprise) {
+        const [enterpriseResources, installedCatalog] = await Promise.all([
+          listEnterpriseResources(activeEnterprise, "template"),
+          props.ipolloworkServerClient.listTemplates(props.runtimeWorkspaceId, templateResourceScope),
+        ]);
+        if (requestId !== templateCatalogRequestIdRef.current) return;
+        setTemplateCatalog(installedCatalog.items.filter((item) => item.sourceType === "local" && item.installed));
+        setEnterpriseTemplateResources(enterpriseResources);
       } else {
+        setTemplateCatalog([]);
         setEnterpriseTemplateResources([]);
       }
     }
-    catch (error) { setTemplateCatalogError(error instanceof Error ? error.message : t("templates.error_load")); }
-    finally { setTemplateCatalogLoading(false); }
+    catch (error) {
+      if (requestId === templateCatalogRequestIdRef.current) {
+        setTemplateCatalogError(error instanceof Error ? error.message : t("templates.error_load"));
+      }
+    }
+    finally {
+      if (requestId === templateCatalogRequestIdRef.current) setTemplateCatalogLoading(false);
+    }
   }, [activeEnterprise, props.ipolloworkServerClient, props.runtimeWorkspaceId, templateResourceScope]);
   const getTemplateCover = useCallback((templateId: string) => {
     if (!props.ipolloworkServerClient || !props.runtimeWorkspaceId) {
@@ -669,11 +819,24 @@ export function SessionPage(props: SessionPageProps) {
     }, props.selectedSessionId);
     setTemplateSaveOpen(false);
   }, [props.selectedSessionId, props.surface, templateValidationReport]);
-  const saveCurrentTemplate = useCallback(async (input: { title: string; description: string }) => {
+  const saveTemplatePackageFile = useCallback((packageFile: { filename: string | null; data: ArrayBuffer }) => {
+    if (!packageFile.filename) throw new Error(t("template_market.export_filename_missing"));
+    return saveFile({
+      title: t("template_market.export_package"),
+      defaultPath: packageFile.filename,
+      filters: [{ name: "iPolloWork Template", extensions: ["ipwp"] }],
+    }, packageFile.data);
+  }, []);
+  const exportPersonalTemplateFile = useCallback(async (templateId: string) => {
+    if (!props.ipolloworkServerClient || !props.runtimeWorkspaceId) throw new Error(t("template_market.export_unavailable"));
+    const packageFile = await props.ipolloworkServerClient.exportTemplatePackage(props.runtimeWorkspaceId, templateId, "personal");
+    return saveTemplatePackageFile(packageFile);
+  }, [props.ipolloworkServerClient, props.runtimeWorkspaceId, saveTemplatePackageFile]);
+  const saveCurrentTemplate = useCallback(async (input: TemplateSaveInput) => {
     if (!props.ipolloworkServerClient || !props.runtimeWorkspaceId || !props.selectedSessionId || !currentTemplateSessionData) return;
-    setTemplateSaveBusy(true);
+    setTemplateSaveMode(input.mode);
     try {
-      await props.ipolloworkServerClient.saveTemplateFromSession(props.runtimeWorkspaceId, {
+      const templateRequest = {
         sessionId: props.selectedSessionId,
         category: currentTemplateSessionData.manifest.category,
         title: input.title,
@@ -681,7 +844,16 @@ export function SessionPage(props: SessionPageProps) {
         subcategory: currentTemplateSessionData.manifest.subcategory,
         style: currentTemplateSessionData.manifest.style,
         tags: currentTemplateSessionData.manifest.tags,
-      }, "personal");
+      };
+      if (input.mode === "export") {
+        const packageFile = await props.ipolloworkServerClient.exportTemplateFromSession(props.runtimeWorkspaceId, templateRequest);
+        const filePath = await saveTemplatePackageFile(packageFile);
+        if (!filePath) return;
+        setTemplateSaveOpen(false);
+        toast.success(t("template_market.exported"));
+        return;
+      }
+      await props.ipolloworkServerClient.saveTemplateFromSession(props.runtimeWorkspaceId, templateRequest, "personal");
       const personalCatalog = await props.ipolloworkServerClient.listTemplates(props.runtimeWorkspaceId, "personal");
       setTemplateCatalog(personalCatalog.items);
       setTemplateResourceScope("personal");
@@ -694,9 +866,9 @@ export function SessionPage(props: SessionPageProps) {
       toast.error(error instanceof Error ? error.message : t("template_authoring.needs_attention"));
       await validateCurrentTemplate();
     } finally {
-      setTemplateSaveBusy(false);
+      setTemplateSaveMode(null);
     }
-  }, [currentTemplateSessionData, props.ipolloworkServerClient, props.runtimeWorkspaceId, props.selectedSessionId, validateCurrentTemplate]);
+  }, [currentTemplateSessionData, props.ipolloworkServerClient, props.runtimeWorkspaceId, props.selectedSessionId, saveTemplatePackageFile, validateCurrentTemplate]);
   useEffect(() => {
     setTemplateSessionData(null);
     setTemplateSaveOpen(false);
@@ -785,6 +957,17 @@ export function SessionPage(props: SessionPageProps) {
     catch (error) { toast.error(error instanceof Error ? error.message : t("templates.error_uninstall")); }
     finally { setTemplateBusyId(null); }
   }, [props.ipolloworkServerClient, props.runtimeWorkspaceId, refreshTemplateCatalog, templateResourceScope]);
+  const exportPersonalTemplate = useCallback(async (template: TemplateCatalogItem) => {
+    setTemplateBusyId(`export:${template.manifest.id}`);
+    try {
+      const filePath = await exportPersonalTemplateFile(template.manifest.id);
+      if (filePath) toast.success(t("template_market.exported"));
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : t("template_market.export_failed"));
+    } finally {
+      setTemplateBusyId(null);
+    }
+  }, [exportPersonalTemplateFile]);
   const importDesignTemplate = useCallback(async (file: File, category?: TemplateManifestV1["category"]): Promise<boolean> => {
     if (!props.ipolloworkServerClient || !props.runtimeWorkspaceId || templateImportInFlightRef.current) return false;
     if (file.size > MAX_TEMPLATE_PACKAGE_BYTES) {
@@ -813,17 +996,23 @@ export function SessionPage(props: SessionPageProps) {
       const file = await downloadEnterpriseResource(activeEnterprise, resource);
       await importDesignTemplate(file);
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : t("enterprise_connection.enterprise_resources_error"));
+      const message = error instanceof Error ? error.message : "";
+      toast.error(message === "desktop_binary_fetch_requires_restart"
+        ? t("enterprise_connection.desktop_restart_required")
+        : message || t("enterprise_connection.enterprise_resources_error"));
     } finally {
       setTemplateBusyId(null);
     }
   }, [activeEnterprise, importDesignTemplate, templateResourceScope]);
-  const submitTemplateBrief = useCallback(async (brief: TemplateBrief) => {
+  const submitTemplateBrief = useCallback(async (brief: TemplateBrief, references: TemplateReferenceItem[]) => {
     if (!props.ipolloworkServerClient || !props.runtimeWorkspaceId || !props.selectedSessionId) return;
     const templateSession = currentTemplateSessionData;
     if (!templateSession) return;
     const { manifest: template, state } = templateSession;
-    await props.ipolloworkServerClient.writeWorkspaceFile(props.runtimeWorkspaceId, {
+    let referencePayload: Awaited<ReturnType<typeof buildTemplateReferenceSubmitPayload>> | undefined;
+    try {
+      referencePayload = await buildTemplateReferenceSubmitPayload(references);
+      await props.ipolloworkServerClient.writeWorkspaceFile(props.runtimeWorkspaceId, {
       path: state.briefPath,
       content: JSON.stringify({
         templateId: template.id,
@@ -833,30 +1022,47 @@ export function SessionPage(props: SessionPageProps) {
         pptxCompatibility: template.pptxCompatibility,
         sourcePath: state.entry,
         applyChecklist: template.applyChecklist,
+        referenceFiles: references.map((reference) => ({
+          name: reference.fileName,
+          mimeType: reference.mimeType,
+          size: reference.size,
+          quality: reference.ingestion?.quality ?? "failed",
+          sourceMode: reference.ingestion?.sourceMode ?? "memory",
+          sentOriginal: reference.sendOriginal && canSendOriginalReference(reference.file),
+        })),
         ...brief,
       }, null, 2),
       baseUpdatedAt: null,
-    });
-    setTemplateSessionData((current) => current?.sessionId === props.selectedSessionId ? { ...current, hasBrief: true } : current);
-    setTemplateSessionRevision((value) => value + 1);
-    setDismissedTemplateBriefSessionIds((current) => {
-      if (!props.selectedSessionId || !current.has(props.selectedSessionId)) return current;
-      const next = new Set(current);
-      next.delete(props.selectedSessionId);
-      return next;
-    });
-    const prompt = templateBriefPrompt({ template, entryPath: state.entry, briefPath: state.briefPath });
-    const visibleTemplateMessage = t("templates.applied", { title: template.title });
-    props.surface?.onSendDraft({
-      mode: "prompt",
-      parts: [
-        { type: "text", text: visibleTemplateMessage },
-        { type: "text", text: prompt, synthetic: true },
-      ],
-      attachments: [],
-      text: visibleTemplateMessage,
-      resolvedText: visibleTemplateMessage,
-    }, props.selectedSessionId);
+      });
+      setTemplateSessionData((current) => current?.sessionId === props.selectedSessionId ? { ...current, hasBrief: true } : current);
+      setTemplateSessionRevision((value) => value + 1);
+      setDismissedTemplateBriefSessionIds((current) => {
+        if (!props.selectedSessionId || !current.has(props.selectedSessionId)) return current;
+        const next = new Set(current);
+        next.delete(props.selectedSessionId);
+        return next;
+      });
+      const prompt = templateBriefPrompt({ template, entryPath: state.entry, briefPath: state.briefPath });
+      const referencePrompt = referencePayload.contextPack.promptText.trim();
+      const visibleTemplateMessage = t("templates.applied", { title: template.title });
+      props.surface?.onSendDraft({
+        mode: "prompt",
+        parts: [
+          { type: "text", text: visibleTemplateMessage },
+          { type: "text", text: prompt, synthetic: true },
+          ...(referencePrompt ? [{ type: "text" as const, text: referencePrompt, synthetic: true }] : []),
+        ],
+        attachments: referencePayload.attachments,
+        text: visibleTemplateMessage,
+        resolvedText: visibleTemplateMessage,
+      }, props.selectedSessionId);
+    } catch (error) {
+      toast.error(t("templates.brief.submit_failed"), {
+        description: error instanceof Error ? error.message : undefined,
+      });
+    } finally {
+      if (referencePayload) revokeTemplateReferenceAttachmentPreviews(referencePayload.attachments);
+    }
   }, [currentTemplateSessionData, props.ipolloworkServerClient, props.runtimeWorkspaceId, props.selectedSessionId, props.surface]);
   const closeTemplateBrief = useCallback(async () => {
     const sessionId = props.selectedSessionId;
@@ -1093,6 +1299,7 @@ export function SessionPage(props: SessionPageProps) {
   });
   const [browserPanelDefaultWidth, setBrowserPanelDefaultWidth] = useState(browserPanelWidth);
   const [rightPanelManuallyResized, setRightPanelManuallyResized] = useState(false);
+  const [rightPanelResizing, setRightPanelResizing] = useState(false);
   const rightPanelElementRef = useRef<HTMLElement>(null);
   const [videoStudioExpanded, setVideoStudioExpanded] = useState(false);
   const [rightPanelExpanded, setRightPanelExpanded] = useState(false);
@@ -1107,15 +1314,21 @@ export function SessionPage(props: SessionPageProps) {
     ? MIN_DESIGN_PANEL_WIDTH
     : MIN_RIGHT_PANEL_WIDTH;
   const visibleLeftSidebarWidth = shellConfig.sidebar && sidebarOpen ? effectiveLeftSidebarWidth : 0;
+  const workspaceWidthAfterLeftSidebar = Math.max(0, viewportWidth - visibleLeftSidebarWidth);
+  const mainWorkspaceMinWidth = Math.min(
+    MAIN_WORKSPACE_MIN_WIDTH,
+    workspaceWidthAfterLeftSidebar,
+  );
   const availableRightPanelWidth = Math.max(
     0,
-    viewportWidth - visibleLeftSidebarWidth - MAIN_WORKSPACE_MIN_WIDTH,
+    workspaceWidthAfterLeftSidebar - mainWorkspaceMinWidth,
   );
   const effectiveRightPanelMinWidth = Math.min(availableRightPanelWidth, desiredRightPanelWidth);
+  const preferredVideoPanelWidth = rightPanelManuallyResized
+    ? browserPanelDefaultWidth
+    : Math.max(browserPanelDefaultWidth, VIDEO_PANEL_DEFAULT_WIDTH);
   const preferredBrowserPanelWidth = effectiveSidePanelView === "video"
-    ? rightPanelManuallyResized
-      ? browserPanelDefaultWidth
-      : Math.max(browserPanelDefaultWidth, 1120)
+    ? preferredVideoPanelWidth
     : effectiveSidePanelView === "launcher"
       ? 320
       : effectiveSidePanelView === "outputs"
@@ -1133,6 +1346,15 @@ export function SessionPage(props: SessionPageProps) {
   const sidebarProviderStyle: CSSProperties & Record<"--sidebar-width", string> = {
     "--sidebar-width": `${effectiveLeftSidebarWidth}px`,
   };
+  const sessionShellTransition = [
+    `width ${SESSION_SHELL_TRANSITION_MS}ms ${SESSION_SHELL_TRANSITION_EASING}`,
+    `min-width ${SESSION_SHELL_TRANSITION_MS}ms ${SESSION_SHELL_TRANSITION_EASING}`,
+    `opacity ${Math.round(SESSION_SHELL_TRANSITION_MS * 0.75)}ms ease-out`,
+  ].join(", ");
+  const rightPanelTransitionStyle: CSSProperties = {
+    transition: rightPanelResizing ? "none" : sessionShellTransition,
+    opacity: sidePanelOpen ? 1 : 0,
+  };
   const availableMainWorkspaceWidth = viewportWidth
     - (shellConfig.sidebar && sidebarOpen ? effectiveLeftSidebarWidth : 0)
     - (sidePanelOpen ? effectiveBrowserPanelWidth : 0);
@@ -1145,10 +1367,6 @@ export function SessionPage(props: SessionPageProps) {
   const expandedRightPanelWorkspaceWidth = viewportWidth
     - visibleLeftSidebarWidth
     - (autoCollapsedSidePanelRef.current ? effectiveBrowserPanelWidth : 0);
-  const mainWorkspaceMinWidth = Math.min(
-    MAIN_WORKSPACE_MIN_WIDTH,
-    Math.max(0, viewportWidth - visibleLeftSidebarWidth),
-  );
   const sidebarVisuallyCollapsed = !sidebarOpen;
   useEffect(() => {
     const handleResize = () => setViewportWidth(window.innerWidth);
@@ -1227,6 +1445,7 @@ export function SessionPage(props: SessionPageProps) {
   }, [closeExpandedWorkSurface, props.sidebar.onOpenSessionSearch]);
   const startRightPanelResize = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
     if (event.button !== 0 || !sidePanelOpen || rightWorkspaceExpanded) return;
+    setRightPanelResizing(true);
     const workspaceWidth = viewportWidth - visibleLeftSidebarWidth;
     const maximumWidth = Math.max(
       effectiveRightPanelMinWidth,
@@ -1262,6 +1481,7 @@ export function SessionPage(props: SessionPageProps) {
       document.body.style.removeProperty("user-select");
       rightPanel?.style.removeProperty("will-change");
       rightPanel?.style.removeProperty("pointer-events");
+      setRightPanelResizing(false);
       if (resizeHandle.hasPointerCapture(event.pointerId)) {
         resizeHandle.releasePointerCapture(event.pointerId);
       }
@@ -1450,14 +1670,10 @@ export function SessionPage(props: SessionPageProps) {
   const openLeftSidebar = useCallback(() => {
     userOpenedSidebarWhileNarrowRef.current = true;
     autoCollapsedSidebarRef.current = false;
-    if (sidePanelOpen) {
-      autoCollapsedSidePanelRef.current = effectiveSidePanelView;
-      userOpenedSidePanelWhileNarrowRef.current = false;
-      closeRightPane({ preserveAutoCollapse: true });
-    }
     setSidebarOpen(true);
-  }, [closeRightPane, effectiveSidePanelView, setSidebarOpen, sidePanelOpen]);
+  }, [setSidebarOpen]);
   useEffect(() => {
+    if (sidebarOpen && userOpenedSidebarWhileNarrowRef.current) return;
     if (
       (
         sidebarOpen
@@ -2103,11 +2319,10 @@ export function SessionPage(props: SessionPageProps) {
         open={sidebarOpen}
         onOpenChange={handleSidebarOpenChange}
         className={cn(
-          "relative min-h-0 flex-1 mac:bg-transparent",
+          "relative min-h-0 flex-1 mac:bg-transparent **:data-[slot=sidebar-container]:duration-[220ms] **:data-[slot=sidebar-gap]:duration-[220ms] **:data-[slot=sidebar-container]:ease-[cubic-bezier(0.22,1,0.36,1)] **:data-[slot=sidebar-gap]:ease-[cubic-bezier(0.22,1,0.36,1)]",
           leftSidebarResizing &&
             "**:data-[slot=sidebar-container]:transition-none **:data-[slot=sidebar-gap]:transition-none",
           !shellConfig.sidebar && "**:data-[slot=sidebar-container]:hidden **:data-[slot=sidebar-gap]:hidden",
-          rightWorkspaceExpanded && "**:data-[slot=sidebar-gap]:!w-0",
         )}
         style={sidebarProviderStyle}
       >
@@ -2196,8 +2411,17 @@ export function SessionPage(props: SessionPageProps) {
                 <TooltipContent>{sidePanelOpen ? t("session.right_panel_close") : t("session.right_panel_open")}</TooltipContent>
               </Tooltip>
             ) : null}
-            <div className={cn("min-w-0 flex-1", rightWorkspaceExpanded && "invisible pointer-events-none")} style={{ minWidth: rightWorkspaceExpanded ? 0 : mainWorkspaceMinWidth }}>
-              <main className="flex h-full min-w-0 flex-col overflow-hidden border-r border-[#EAEAEA] [border-right-width:0.5px]">
+            <div
+              className={cn(
+                "min-w-0 flex-1 transition-[width,min-width,opacity]",
+                rightWorkspaceExpanded && "invisible pointer-events-none",
+              )}
+              style={{
+                minWidth: rightWorkspaceExpanded ? 0 : mainWorkspaceMinWidth,
+                transition: sessionShellTransition,
+              }}
+            >
+              <main className="flex h-full min-w-0 flex-col overflow-hidden border-r border-border/40 dark:border-white/[0.055]">
           <header className={cn(
             "relative z-10 h-10 shrink-0 items-center justify-between border-b border-border px-4 [border-bottom-width:0.5px] md:px-6 mac:titlebar-drag mac:backdrop-blur-2xl mac:backdrop-saturate-150 @container/titlebar",
             mainHeaderHidden ? "hidden" : "flex",
@@ -2409,7 +2633,7 @@ export function SessionPage(props: SessionPageProps) {
                           onImport={importDesignTemplate}
                         />
                       ) : currentTemplateSessionData && !hasTemplateBrief && !templateBriefDismissed ? (
-                        <TemplateBriefCard template={currentTemplateSessionData.manifest} onSubmit={(brief) => void submitTemplateBrief(brief)} onClose={() => void closeTemplateBrief()} />
+                        <TemplateBriefCard template={currentTemplateSessionData.manifest} onSubmit={(brief, references) => void submitTemplateBrief(brief, references)} onClose={() => void closeTemplateBrief()} />
                       ) : <SessionSurface
                         key={`${props.runtimeWorkspaceId}:${props.selectedSessionId}`}
                         // Spread `surface` first so the explicit per-workspace
@@ -2598,7 +2822,10 @@ export function SessionPage(props: SessionPageProps) {
                 <aside
                   ref={rightPanelElementRef}
                   className="min-h-0 shrink-0 overflow-hidden lg:flex lg:flex-col"
-                  style={{ width: sidePanelOpen ? effectiveBrowserPanelWidth : 0 }}
+                  style={{
+                    width: sidePanelOpen ? effectiveBrowserPanelWidth : 0,
+                    ...rightPanelTransitionStyle,
+                  }}
                 >
                   {sidePanelOpen && effectiveSidePanelView === "launcher" ? (
                     <div className="flex h-full flex-col bg-background px-6 pt-16 text-[#6B7280] min-[960px]:px-10 min-[960px]:pt-[44vh]">
@@ -2698,6 +2925,18 @@ export function SessionPage(props: SessionPageProps) {
         </SidebarInset>
       </SidebarProvider>
 
+      <TemplateSaveDialog
+        open={templateSaveOpen}
+        template={currentTemplateSessionData?.manifest ?? null}
+        report={templateValidationReport}
+        validating={templateValidationBusy}
+        savingMode={templateSaveMode}
+        onOpenChange={setTemplateSaveOpen}
+        onValidate={() => void validateCurrentTemplate()}
+        onRepair={repairCurrentTemplate}
+        onSave={(input) => void saveCurrentTemplate(input)}
+      />
+
       {props.ipolloworkServerClient && props.runtimeWorkspaceId ? <TemplateMarketDialog
         open={templateMarketOpen}
         onOpenChange={setTemplateMarketOpen}
@@ -2709,11 +2948,12 @@ export function SessionPage(props: SessionPageProps) {
         enterprise={activeEnterprise}
         resourceScope={templateResourceScope}
         enterpriseResources={enterpriseTemplateResources}
-        onResourceScopeChange={setTemplateResourceScope}
+        onResourceScopeChange={changeTemplateResourceScope}
         onInstallEnterprise={(resource) => void installEnterpriseTemplate(resource)}
         onRefresh={refreshTemplateCatalog}
         onInstall={(templateId) => void installDesignTemplate(templateId)}
         onUninstall={(templateId) => void uninstallDesignTemplate(templateId)}
+        onExport={(template) => void exportPersonalTemplate(template)}
         onImport={importDesignTemplate}
         canCreate={props.selectedWorkspaceDisplay.workspaceType === "local"}
         onCreate={(input) => props.sidebar.onCreateTemplateAuthoring(props.selectedWorkspaceId, input)}

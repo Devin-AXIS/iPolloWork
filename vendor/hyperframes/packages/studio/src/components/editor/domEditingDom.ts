@@ -213,9 +213,9 @@ export function escapeCssString(value: string): string {
     .replace(/\f/g, "\\c ");
 }
 
-export function querySelectorAllSafely(doc: Document, selector: string): Element[] {
+export function querySelectorAllSafely(root: ParentNode, selector: string): Element[] {
   try {
-    return Array.from(doc.querySelectorAll(selector));
+    return Array.from(root.querySelectorAll(selector));
   } catch {
     return [];
   }
@@ -247,7 +247,12 @@ export function buildStableSelector(el: HTMLElement): string | undefined {
   const group = el.getAttribute("data-hf-group");
   if (group) return `[data-hf-group="${escapeCssString(group)}"]`;
 
-  return getPreferredClassSelector(el);
+  // Plain authored elements (for example h2/p/span children) are still stable
+  // when paired with the source-scoped selectorIndex carried by every DOM edit
+  // target. Returning their tag keeps the editor and timeline on the same
+  // addressing contract instead of silently promoting the selection to a
+  // parent that happens to have an id or class.
+  return getPreferredClassSelector(el) ?? el.tagName.toLowerCase();
 }
 
 function getPreferredClassSelector(el: HTMLElement): string | undefined {
@@ -295,7 +300,7 @@ export function getSelectorIndex(
   sourceFile: string,
   activeCompositionPath: string | null,
 ): number | undefined {
-  if (!selector?.startsWith(".")) return undefined;
+  if (!selector) return undefined;
 
   return getSourceScopedSelectorIndex(doc, el, selector, sourceFile, (candidate) =>
     isHtmlElement(candidate)

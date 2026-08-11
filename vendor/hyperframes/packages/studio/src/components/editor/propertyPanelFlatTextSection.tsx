@@ -1,18 +1,22 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { useTrackDesignInput } from "../../contexts/DesignPanelInputContext";
-import { Plus, X } from "../../icons/SystemIcons";
+import { useStudioI18n } from "../../i18n";
+import {
+  AlignCenter,
+  AlignLeft,
+  AlignRight,
+  ListBullets,
+  ListNumbers,
+  TextIndent,
+  X,
+} from "../../icons/SystemIcons";
 import { isTextEditableSelection, type DomEditSelection } from "./domEditing";
 import type { ImportedFontAsset } from "./fontAssets";
 import { normalizeTextMetricValue } from "./propertyPanelHelpers";
-import { ColorField } from "./propertyPanelColor";
 import { FontFamilyField } from "./propertyPanelFont";
 import { PromotableControl } from "./PromotableControl";
-import { FlatRow, FlatSegmentedRow } from "./propertyPanelFlatPrimitives";
-import {
-  resolveValueTier,
-  VALUE_TIER_LABEL_CLASS,
-  VALUE_TIER_VALUE_CLASS,
-} from "./propertyPanelValueTier";
+import { FlatRow, FlatSelectRow } from "./propertyPanelFlatPrimitives";
+import { resolveValueTier } from "./propertyPanelValueTier";
 import {
   detectAvailableWeights,
   formatTextFieldPreview,
@@ -26,19 +30,62 @@ import {
 /*  Flat text section (design_handoff_studio_inspector, #10a)          */
 /* ------------------------------------------------------------------ */
 
-const ALIGN_OPTIONS = [
-  { key: "left", label: "left", node: "L" },
-  { key: "center", label: "center", node: "C" },
-  { key: "right", label: "right", node: "R" },
-  { key: "justify", label: "justify", node: "J" },
-];
+const FONT_SIZE_OPTIONS = [
+  "8",
+  "10",
+  "12",
+  "14",
+  "16",
+  "18",
+  "20",
+  "24",
+  "28",
+  "32",
+  "40",
+  "48",
+  "64",
+  "72",
+  "96",
+].map((size) => ({ value: `${size}px`, label: size }));
 
-const CASE_OPTIONS = [
-  { key: "none", label: "none", node: "–" },
-  { key: "uppercase", label: "uppercase", node: "AG" },
-  { key: "lowercase", label: "lowercase", node: "ag" },
-  { key: "capitalize", label: "capitalize", node: "Ag" },
-];
+export function toggleDecoration(
+  current: string,
+  decoration: "underline" | "line-through",
+): string {
+  const values = new Set(current === "none" ? [] : current.split(/\s+/).filter(Boolean));
+  if (values.has(decoration)) values.delete(decoration);
+  else values.add(decoration);
+  return values.size > 0 ? Array.from(values).join(" ") : "none";
+}
+
+export function TextIconButton({
+  label,
+  active = false,
+  disabled = false,
+  children,
+  onClick,
+}: {
+  label: string;
+  active?: boolean;
+  disabled?: boolean;
+  children: ReactNode;
+  onClick?: () => void;
+}) {
+  const { tx } = useStudioI18n();
+  return (
+    <button
+      type="button"
+      aria-label={tx(label)}
+      aria-pressed={disabled ? undefined : active}
+      title={disabled ? `${tx(label)}（此图层暂不可用）` : tx(label)}
+      disabled={disabled}
+      onClick={onClick}
+      className="hf-text-icon-button flex h-[34px] min-w-0 flex-1 items-center justify-center rounded-[8px] border-[0.5px] border-transparent transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#20bbc0]/50 disabled:cursor-not-allowed disabled:opacity-45"
+    >
+      {children}
+    </button>
+  );
+}
 
 function FlatTextFieldEditor({
   field,
@@ -63,11 +110,13 @@ function FlatTextFieldEditor({
     field.computedStyles["font-family"] || styles["font-family"] || "",
   );
   const align = getTextStyleValue(field, styles, "text-align", "start");
-  const textTransform = getTextStyleValue(field, styles, "text-transform", "none");
   const fontStyle = getTextStyleValue(field, styles, "font-style", "normal");
+  const decoration = getTextStyleValue(field, styles, "text-decoration-line", "none");
+  const numericWeight = Number.parseInt(weight, 10);
+  const bold = weight === "bold" || (!Number.isNaN(numericWeight) && numericWeight >= 600);
 
   return (
-    <>
+    <div className="space-y-3" data-flat-text-controls="true">
       <PromotableControl channel={{ kind: "text" }} enabled={field.source === "self"}>
         {({ value, onCommit }) => (
           <TextAreaField
@@ -86,6 +135,7 @@ function FlatTextFieldEditor({
         {({ value, onCommit }) => (
           <FontFamilyField
             flat
+            valueOnly
             value={
               value ?? (field.computedStyles["font-family"] || styles["font-family"] || "inherit")
             }
@@ -95,136 +145,148 @@ function FlatTextFieldEditor({
           />
         )}
       </PromotableControl>
-      <FlatRow
-        label="Size"
-        value={field.computedStyles["font-size"] || styles["font-size"] || "16px"}
-        tier={resolveValueTier(field.inlineStyles["font-size"], styles["font-size"] || "16px")}
-        liveCommit
-        onCommit={(next) => onSetTextFieldStyle(field.key, "font-size", next)}
-      />
-      <div className="flex min-h-[30px] items-center justify-between">
-        <span
-          className={
-            VALUE_TIER_LABEL_CLASS[resolveValueTier(field.inlineStyles["font-weight"], "400")]
-          }
-          style={{ fontSize: 11 }}
-        >
-          Weight
-        </span>
-        <label className="flex items-center gap-1.5 border-b border-panel-border-input/50 pb-px hover:border-panel-border-input">
-          <select
-            value={weight}
-            onChange={(e) => {
-              track("select", "Weight");
-              onSetTextFieldStyle(field.key, "font-weight", e.target.value);
-            }}
-            className={`appearance-none bg-transparent text-right font-mono text-[11px] outline-none ${
-              VALUE_TIER_VALUE_CLASS[resolveValueTier(field.inlineStyles["font-weight"], "400")]
-            }`}
-          >
-            {(weightOptions.includes(weight) ? weightOptions : [weight, ...weightOptions]).map(
-              (option) => (
-                <option key={option} value={option}>
-                  {WEIGHT_LABELS[option] ?? option}
-                </option>
-              ),
-            )}
-          </select>
-          <svg
-            width="10"
-            height="10"
-            viewBox="0 0 10 10"
-            fill="currentColor"
-            className="flex-shrink-0 text-panel-text-5"
-          >
-            <path d="M2 3l3 4 3-4z" />
-          </svg>
-        </label>
+      <div className="hf-flat-responsive-grid grid grid-cols-2 gap-3">
+        <FlatSelectRow
+          label="Weight"
+          ariaLabel="Font style"
+          value={weight}
+          valueOnly
+          options={(weightOptions.includes(weight)
+            ? weightOptions
+            : [weight, ...weightOptions]
+          ).map((option) => ({
+            value: option,
+            label: WEIGHT_LABELS[option]?.replace(/^\d+ · /, "") ?? option,
+          }))}
+          tier={resolveValueTier(field.inlineStyles["font-weight"], "400")}
+          onChange={(next) => onSetTextFieldStyle(field.key, "font-weight", next)}
+        />
+        <FlatSelectRow
+          label="Size"
+          value={field.computedStyles["font-size"] || styles["font-size"] || "16px"}
+          valueOnly
+          options={FONT_SIZE_OPTIONS}
+          tier={resolveValueTier(field.inlineStyles["font-size"], styles["font-size"] || "16px")}
+          onChange={(next) => onSetTextFieldStyle(field.key, "font-size", next)}
+        />
       </div>
-      <FlatRow
-        label="Letter spacing"
-        value={getTextStyleValue(field, styles, "letter-spacing", "0px")}
-        tier={resolveValueTier(field.inlineStyles["letter-spacing"], "0px")}
-        onCommit={(next) =>
-          onSetTextFieldStyle(
-            field.key,
-            "letter-spacing",
-            normalizeTextMetricValue("letter-spacing", next),
-          )
-        }
-        onReset={() => onSetTextFieldStyle(field.key, "letter-spacing", "")}
-      />
-      <FlatRow
-        label="Line height"
-        value={getTextStyleValue(field, styles, "line-height", "normal")}
-        tier={resolveValueTier(field.inlineStyles["line-height"], "normal")}
-        onCommit={(next) =>
-          onSetTextFieldStyle(
-            field.key,
-            "line-height",
-            normalizeTextMetricValue("line-height", next),
-          )
-        }
-        onReset={() => onSetTextFieldStyle(field.key, "line-height", "")}
-      />
-      <FlatSegmentedRow
-        label="Align"
-        options={ALIGN_OPTIONS.map((option) => ({
-          key: option.key,
-          node: option.node,
-          label: option.label,
-          active:
-            align === option.key ||
-            (option.key === "left" && align === "start") ||
-            (option.key === "right" && align === "end"),
-        }))}
-        onChange={(next) => {
-          // Re-clicking the option that's already visually active for a
-          // logical value (authored "start"/"end") must not rewrite it to
-          // the physical "left"/"right" — that destroys the logical
-          // semantics and is wrong for RTL content. Only write when the
-          // user actually picked a different alignment.
-          if ((next === "left" && align === "start") || (next === "right" && align === "end")) {
-            return;
+      <div className="hf-flat-responsive-grid grid grid-cols-2 gap-3">
+        <FlatRow
+          label="Line height"
+          value={getTextStyleValue(field, styles, "line-height", "normal")}
+          tier={resolveValueTier(field.inlineStyles["line-height"], "normal")}
+          onCommit={(next) =>
+            onSetTextFieldStyle(
+              field.key,
+              "line-height",
+              normalizeTextMetricValue("line-height", next),
+            )
           }
-          onSetTextFieldStyle(field.key, "text-align", next);
-        }}
-      />
-      <FlatSegmentedRow
-        label="Case · Style"
-        options={[
-          ...CASE_OPTIONS.map((option) => ({
-            key: option.key,
-            node: option.node,
-            label: option.label,
-            active: textTransform === option.key,
-          })),
-          { key: "normal", node: "A", label: "upright", active: fontStyle === "normal" },
-          { key: "italic", node: "A", label: "italic", active: fontStyle === "italic" },
-        ]}
-        spacerAfterIndex={2}
-        onChange={(next) => {
-          if (next === "normal" || next === "italic") {
-            onSetTextFieldStyle(field.key, "font-style", next);
-          } else {
-            onSetTextFieldStyle(field.key, "text-transform", next);
+          onReset={() => onSetTextFieldStyle(field.key, "line-height", "")}
+        />
+        <FlatRow
+          label="Letter spacing"
+          value={getTextStyleValue(field, styles, "letter-spacing", "0px")}
+          tier={resolveValueTier(field.inlineStyles["letter-spacing"], "0px")}
+          onCommit={(next) =>
+            onSetTextFieldStyle(
+              field.key,
+              "letter-spacing",
+              normalizeTextMetricValue("letter-spacing", next),
+            )
           }
-        }}
-      />
-      <PromotableControl
-        channel={{ kind: "style", prop: "color" }}
-        enabled={field.source === "self"}
-      >
-        {({ value, onCommit }) => (
-          <ColorField
-            flat
-            label="Color"
-            value={value ?? getTextFieldColor(field, styles)}
-            onCommit={onCommit ?? ((next) => onSetTextFieldStyle(field.key, "color", next))}
-          />
-        )}
-      </PromotableControl>
-    </>
+          onReset={() => onSetTextFieldStyle(field.key, "letter-spacing", "")}
+        />
+      </div>
+      <div className="hf-flat-responsive-grid grid grid-cols-2 gap-3">
+        <div className="flex min-w-0 gap-1" role="group" aria-label="Text alignment">
+          {(
+            [
+              ["left", "Align left", AlignLeft],
+              ["center", "Align center", AlignCenter],
+              ["right", "Align right", AlignRight],
+            ] as const
+          ).map(([key, label, Icon]) => (
+            <TextIconButton
+              key={key}
+              label={label}
+              active={
+                align === key ||
+                (key === "left" && align === "start") ||
+                (key === "right" && align === "end")
+              }
+              onClick={() => {
+                if ((key === "left" && align === "start") || (key === "right" && align === "end")) {
+                  return;
+                }
+                onSetTextFieldStyle(field.key, "text-align", key);
+              }}
+            >
+              <Icon size={16} />
+            </TextIconButton>
+          ))}
+        </div>
+        <div className="flex min-w-0 gap-1" role="group" aria-label="List formatting">
+          <TextIconButton label="Bulleted list" disabled>
+            <ListBullets size={16} />
+          </TextIconButton>
+          <TextIconButton label="Numbered list" disabled>
+            <ListNumbers size={16} />
+          </TextIconButton>
+          <TextIconButton label="Increase indent" disabled>
+            <TextIndent size={16} />
+          </TextIconButton>
+        </div>
+      </div>
+      <div className="flex min-w-0 gap-1" role="group" aria-label="Text formatting">
+        <TextIconButton
+          label="Bold"
+          active={bold}
+          onClick={() => onSetTextFieldStyle(field.key, "font-weight", bold ? "400" : "700")}
+        >
+          <span className="text-[16px] font-semibold">B</span>
+        </TextIconButton>
+        <TextIconButton
+          label="Italic"
+          active={fontStyle === "italic"}
+          onClick={() =>
+            onSetTextFieldStyle(
+              field.key,
+              "font-style",
+              fontStyle === "italic" ? "normal" : "italic",
+            )
+          }
+        >
+          <span className="text-[16px] italic">I</span>
+        </TextIconButton>
+        <TextIconButton
+          label="Underline"
+          active={decoration.split(/\s+/).includes("underline")}
+          onClick={() =>
+            onSetTextFieldStyle(
+              field.key,
+              "text-decoration-line",
+              toggleDecoration(decoration, "underline"),
+            )
+          }
+        >
+          <span className="text-[16px] underline underline-offset-2">U</span>
+        </TextIconButton>
+        <TextIconButton
+          label="Strikethrough"
+          active={decoration.split(/\s+/).includes("line-through")}
+          onClick={() =>
+            onSetTextFieldStyle(
+              field.key,
+              "text-decoration-line",
+              toggleDecoration(decoration, "line-through"),
+            )
+          }
+        >
+          <span className="text-[16px] line-through">S</span>
+        </TextIconButton>
+      </div>
+    </div>
   );
 }
 
@@ -235,7 +297,6 @@ export function FlatTextSection({
   onImportFonts,
   onSetText,
   onSetTextFieldStyle,
-  onAddTextField,
   onRemoveTextField,
 }: {
   element: DomEditSelection;
@@ -247,7 +308,6 @@ export function FlatTextSection({
   onAddTextField: (afterFieldKey?: string) => string | Promise<string | null> | null;
   onRemoveTextField: (fieldKey: string) => void;
 }) {
-  const track = useTrackDesignInput();
   const [activeFieldKey, setActiveFieldKey] = useState<string | null>(
     element.textFields[0]?.key ?? null,
   );
@@ -267,17 +327,12 @@ export function FlatTextSection({
 
   if (textFields.length > 1) {
     return (
-      <div className="space-y-2.5">
+      <div className="space-y-2">
         <FlatTextLayerList
           fields={textFields}
           activeFieldKey={activeField.key}
           styles={styles}
           onSelect={setActiveFieldKey}
-          onAdd={() =>
-            void Promise.resolve(onAddTextField(activeField.key)).then((nextKey) => {
-              if (nextKey) setActiveFieldKey(nextKey);
-            })
-          }
           onRemove={onRemoveTextField}
         />
         <FlatTextFieldEditor
@@ -295,7 +350,7 @@ export function FlatTextSection({
   }
 
   return (
-    <div className="space-y-2.5">
+    <div className="space-y-3" data-flat-text-editor="true">
       <FlatTextFieldEditor
         field={activeField}
         styles={styles}
@@ -304,17 +359,6 @@ export function FlatTextSection({
         onSetText={onSetText}
         onSetTextFieldStyle={onSetTextFieldStyle}
       />
-      <button
-        type="button"
-        onClick={() => {
-          track("button", "Add text field");
-          void onAddTextField(activeField.key);
-        }}
-        className="mt-0.5 flex items-center gap-[5px] text-[10px] text-panel-text-4 hover:text-panel-text-2"
-      >
-        <Plus size={10} />
-        Add text field
-      </button>
     </div>
   );
 }
@@ -332,14 +376,12 @@ export function FlatTextLayerList({
   activeFieldKey,
   styles,
   onSelect,
-  onAdd,
   onRemove,
 }: {
   fields: DomEditSelection["textFields"];
   activeFieldKey: string;
   styles: Record<string, string>;
   onSelect: (fieldKey: string) => void;
-  onAdd: () => void;
   onRemove: (fieldKey: string) => void;
 }) {
   const track = useTrackDesignInput();
@@ -390,18 +432,6 @@ export function FlatTextLayerList({
           );
         })}
       </div>
-      <button
-        type="button"
-        data-flat-text-layer-add="true"
-        onClick={() => {
-          track("button", "Add text field");
-          onAdd();
-        }}
-        className="mt-1 flex items-center gap-[5px] text-[10px] text-panel-text-4 hover:text-panel-text-2"
-      >
-        <Plus size={10} />
-        Add text field
-      </button>
     </div>
   );
 }

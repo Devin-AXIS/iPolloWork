@@ -1,25 +1,32 @@
 /** @jsxImportSource react */
 import * as React from "react";
-import { AlertTriangle, CheckCircle2, Loader2, Sparkles } from "lucide-react";
+import { AlertTriangle, Download, Loader2, Sparkles } from "lucide-react";
 import type { TemplateManifestV1, TemplateValidationReport } from "@ipollowork/types/templates";
 
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { t } from "@/i18n";
 
+export type TemplateSaveMode = "save" | "export";
+
+export type TemplateSaveInput = {
+  title: string;
+  description: string;
+  mode: TemplateSaveMode;
+};
+
 type TemplateSaveDialogProps = {
   open: boolean;
   template: TemplateManifestV1 | null;
   report: TemplateValidationReport | null;
   validating: boolean;
-  saving: boolean;
+  savingMode: TemplateSaveMode | null;
   onOpenChange: (open: boolean) => void;
   onValidate: () => void;
   onRepair: () => void;
-  onSave: (input: { title: string; description: string }) => void;
+  onSave: (input: TemplateSaveInput) => void;
 };
 
 export function TemplateSaveDialog(props: TemplateSaveDialogProps) {
@@ -31,16 +38,11 @@ export function TemplateSaveDialog(props: TemplateSaveDialogProps) {
     setDescription(props.template.description);
   }, [props.open, props.template]);
 
-  const categoryLabel = props.template?.pptxCompatibility
-    ? t("template_authoring.type.pptx")
-    : props.template
-      ? t(`template_market.category.${props.template.category}`)
-      : "";
   const errors = props.report?.issues.filter((issue) => issue.severity === "error") ?? [];
   const ready = props.report?.ready === true && errors.length === 0;
 
   return (
-    <Dialog open={props.open} onOpenChange={(open) => { if (!props.saving) props.onOpenChange(open); }}>
+    <Dialog open={props.open} onOpenChange={(open) => { if (!props.savingMode) props.onOpenChange(open); }}>
       <DialogContent className="max-w-xl gap-0 overflow-hidden p-0">
         <DialogHeader className="border-b border-border px-6 py-5 pr-14">
           <DialogTitle>{t("template_authoring.save_as_template")}</DialogTitle>
@@ -55,18 +57,10 @@ export function TemplateSaveDialog(props: TemplateSaveDialogProps) {
             {t("template_authoring.description")}
             <Textarea className="mt-2 min-h-20 resize-none" value={description} maxLength={240} onChange={(event) => setDescription(event.currentTarget.value)} />
           </label>
-          {props.template ? (
-            <div className="flex flex-wrap items-center gap-2 rounded-xl border border-border bg-muted/25 px-3 py-2.5">
-              <Badge variant="secondary">{categoryLabel}</Badge>
-              <Badge variant="outline">{props.template.style}</Badge>
-              <span className="text-xs text-muted-foreground">{props.template.subcategory}</span>
-              <span className="ml-auto text-[11px] text-muted-foreground">{t("template_authoring.category_locked")}</span>
-            </div>
-          ) : null}
-          <div className="rounded-xl border border-border px-3 py-3" aria-live="polite">
+          {props.validating || !ready ? <div className="rounded-xl border border-border px-3 py-3" aria-live="polite">
             <div className="flex items-center gap-2">
-              {props.validating ? <Loader2 className="size-4 animate-spin text-primary" /> : ready ? <CheckCircle2 className="size-4 text-emerald-600" /> : <AlertTriangle className="size-4 text-amber-600" />}
-              <span className="text-sm font-medium">{props.validating ? t("template_authoring.validating") : ready ? t("template_authoring.ready") : t("template_authoring.needs_attention")}</span>
+              {props.validating ? <Loader2 className="size-4 animate-spin text-primary" /> : <AlertTriangle className="size-4 text-amber-600" />}
+              <span className="text-sm font-medium">{props.validating ? t("template_authoring.validating") : t("template_authoring.needs_attention")}</span>
               {!props.validating ? <Button variant="ghost" size="sm" className="ml-auto h-7" onClick={props.onValidate}>{t("template_authoring.revalidate")}</Button> : null}
             </div>
             {props.report?.issues.length ? (
@@ -75,13 +69,17 @@ export function TemplateSaveDialog(props: TemplateSaveDialogProps) {
               </ul>
             ) : null}
             {!props.validating && !ready ? <Button variant="outline" size="sm" className="mt-3" onClick={props.onRepair}><Sparkles className="size-3.5" />{t("template_authoring.ask_ai_to_fix")}</Button> : null}
-          </div>
+          </div> : null}
         </div>
-        <DialogFooter className="border-t border-border px-6 py-4">
-          <Button variant="outline" disabled={props.saving} onClick={() => props.onOpenChange(false)}>{t("common.cancel")}</Button>
-          <Button disabled={!ready || !title.trim() || props.saving} onClick={() => props.onSave({ title: title.trim(), description: description.trim() })}>
-            {props.saving ? <Loader2 className="size-4 animate-spin" /> : null}
-            {t("template_authoring.save")}
+        <DialogFooter className="mx-0 mb-0 mt-4 flex-wrap border-t border-border px-6 py-5">
+          <Button variant="ghost" disabled={props.savingMode !== null} onClick={() => props.onOpenChange(false)}>{t("common.cancel")}</Button>
+          <Button variant="outline" disabled={!ready || !title.trim() || props.savingMode !== null} onClick={() => props.onSave({ title: title.trim(), description: description.trim(), mode: "save" })}>
+            {props.savingMode === "save" ? <Loader2 className="size-4 animate-spin" /> : null}
+            {t("template_authoring.save_to_my_templates")}
+          </Button>
+          <Button disabled={!ready || !title.trim() || props.savingMode !== null} onClick={() => props.onSave({ title: title.trim(), description: description.trim(), mode: "export" })}>
+            {props.savingMode === "export" ? <Loader2 className="size-4 animate-spin" /> : <Download className="size-4" />}
+            {t("template_authoring.export")}
           </Button>
         </DialogFooter>
       </DialogContent>

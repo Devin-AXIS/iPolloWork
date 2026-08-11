@@ -71,6 +71,7 @@ describe("timeline drag axis intent", () => {
 
     expect(preview.previewStart).toBe(CLIP.start);
     expect(preview.desiredTrack).not.toBe(CLIP.track);
+    expect(preview.insertRow).not.toBeNull();
     expect(preview.snapTime).toBeNull();
     expect(preview.snapType).toBeNull();
   });

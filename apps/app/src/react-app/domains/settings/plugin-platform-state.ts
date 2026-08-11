@@ -1,4 +1,10 @@
-import type { iPolloWorkExtensionManifest } from "../../../app/extensions";
+import type {
+  iPolloWorkExtensionLocalization,
+  iPolloWorkExtensionManifest,
+  iPolloWorkExtensionTranslation,
+  iPolloWorkPluginAuthorizationMethodTranslation,
+  iPolloWorkPluginAuthorizationMethod,
+} from "../../../app/extensions";
 
 export type PluginPrimaryActionKind = "install" | "connect" | "open" | "update" | "repair";
 
@@ -8,6 +14,99 @@ export type PluginPackageRelationships = {
   skillNames: string[];
   installedMcpServerNames: string[];
 };
+
+type PluginTranslationLayers = {
+  current: iPolloWorkExtensionTranslation | undefined;
+  english: iPolloWorkExtensionTranslation | undefined;
+};
+
+function translationLayersForLocale(
+  localization: iPolloWorkExtensionLocalization | undefined,
+  locale: string,
+): PluginTranslationLayers | null {
+  if (!localization || locale === localization.defaultLocale) return null;
+  const current = localization.translations[locale];
+  const english = locale === "en" ? undefined : localization.translations.en;
+  return current || english ? { current, english } : null;
+}
+
+function localizeAuthorizationMethod(
+  method: iPolloWorkPluginAuthorizationMethod,
+  currentTranslation: iPolloWorkPluginAuthorizationMethodTranslation | undefined,
+  englishTranslation: iPolloWorkPluginAuthorizationMethodTranslation | undefined,
+): iPolloWorkPluginAuthorizationMethod {
+  const label = currentTranslation?.label ?? englishTranslation?.label ?? method.label;
+  const description = currentTranslation?.description ?? englishTranslation?.description ?? method.description;
+  if (method.kind !== "secret-form") return { ...method, label, description };
+  return {
+    ...method,
+    label,
+    description,
+    fields: method.fields.map((field) => {
+      const currentField = currentTranslation?.fields?.[field.id];
+      const englishField = englishTranslation?.fields?.[field.id];
+      return {
+        ...field,
+        label: currentField?.label ?? englishField?.label ?? field.label,
+        description: currentField?.description ?? englishField?.description ?? field.description,
+        placeholder: currentField?.placeholder ?? englishField?.placeholder ?? field.placeholder,
+      };
+    }),
+  };
+}
+
+export function localizePluginPackageManifest(
+  manifest: iPolloWorkExtensionManifest,
+  locale: string,
+  catalogLocalization?: iPolloWorkExtensionLocalization,
+): iPolloWorkExtensionManifest {
+  const translations = translationLayersForLocale(manifest.localization ?? catalogLocalization, locale);
+  if (!translations) return manifest;
+  const { current, english } = translations;
+  return {
+    ...manifest,
+    name: current?.name ?? english?.name ?? manifest.name,
+    description: current?.description ?? english?.description ?? manifest.description,
+    category: current?.category ?? english?.category ?? manifest.category,
+    composer: manifest.composer
+      ? { ...manifest.composer, prompt: current?.composer?.prompt ?? english?.composer?.prompt ?? manifest.composer.prompt }
+      : manifest.composer,
+    setup: manifest.setup
+      ? {
+          ...manifest.setup,
+          instructions: current?.setup?.instructions ?? english?.setup?.instructions ?? manifest.setup.instructions,
+          primaryCta: current?.setup?.primaryCta ?? english?.setup?.primaryCta ?? manifest.setup.primaryCta,
+          secondaryCta: current?.setup?.secondaryCta ?? english?.setup?.secondaryCta ?? manifest.setup.secondaryCta,
+        }
+      : manifest.setup,
+    resources: manifest.resources.map((resource) => {
+      const currentResource = current?.resources?.[resource.id];
+      const englishResource = english?.resources?.[resource.id];
+      return {
+        ...resource,
+        label: currentResource?.label ?? englishResource?.label ?? resource.label,
+        description: currentResource?.description ?? englishResource?.description ?? resource.description,
+      };
+    }),
+    permissions: manifest.permissions?.map((permission) => ({
+      ...permission,
+      reason: current?.permissions?.[permission.id]?.reason
+        ?? english?.permissions?.[permission.id]?.reason
+        ?? permission.reason,
+    })),
+    authorization: manifest.authorization
+      ? {
+          ...manifest.authorization,
+          methods: manifest.authorization.methods.map((method) =>
+            localizeAuthorizationMethod(
+              method,
+              current?.authorizationMethods?.[method.id],
+              english?.authorizationMethods?.[method.id],
+            )),
+        }
+      : manifest.authorization,
+  };
+}
 
 export function collectPluginPackageRelationships(
   installed: PluginPackageRelationshipSource[],

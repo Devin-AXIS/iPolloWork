@@ -53,6 +53,7 @@ export interface ClipManifestClip {
   assetUrl: string | null;
   timelineRole?: string | null;
   timelineLabel?: string | null;
+  timelineClipLabel?: string | null;
   timelineGroup?: string | null;
   timelinePriority?: number | null;
 }

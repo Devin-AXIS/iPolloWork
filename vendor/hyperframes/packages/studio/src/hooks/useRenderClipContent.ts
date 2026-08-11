@@ -1,9 +1,11 @@
 import { createElement, useCallback, type ReactNode } from "react";
-import { VideoThumbnail, type TimelineElement } from "../player";
+import { CompositionThumbnail, VideoThumbnail, type TimelineElement } from "../player";
 import { AudioWaveform } from "../player/components/AudioWaveform";
-import { ImageThumbnail } from "../player/components/ImageThumbnail";
 import { TimelineClipContent } from "../player/components/TimelineClipContent";
-import { resolveTimelineKind } from "../player/components/timelineLayerPresentation";
+import {
+  resolveTimelineClipLabel,
+  resolveTimelineKind,
+} from "../player/components/timelineLayerPresentation";
 import { encodePreviewPath, resolveMediaPreviewUrl } from "../player/components/thumbnailUtils";
 import { formatTime } from "../player/lib/time";
 
@@ -38,10 +40,7 @@ function trimFractions(element: TimelineElement): { start?: number; end?: number
   const mediaStart = element.playbackStart ?? 0;
   const rate = element.playbackRate ?? 1;
   const start = Math.max(0, Math.min(1, mediaStart / sourceDuration));
-  const end = Math.max(
-    start,
-    Math.min(1, (mediaStart + element.duration * rate) / sourceDuration),
-  );
+  const end = Math.max(start, Math.min(1, (mediaStart + element.duration * rate) / sourceDuration));
   return { start, end };
 }
 
@@ -71,27 +70,74 @@ function renderAudioClip(
 
 interface UseRenderClipContentOptions {
   projectIdRef: { current: string | null };
-  compIdToSrc: Map<string, string>;
   activePreviewUrl: string | null;
-  effectiveTimelineDuration: number;
+}
+
+export interface TimelineThumbnailPreview {
+  previewUrl: string;
+  selector: string;
+  selectorIndex?: number;
+  seekTime: number;
+  duration: number;
+}
+
+function escapeCssAttributeValue(value: string): string {
+  return value.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+}
+
+function resolveTimelineElementSelector(element: TimelineElement): string | null {
+  if (element.selector?.trim()) return element.selector;
+  if (element.hfId?.trim()) {
+    return `[data-hf-id="${escapeCssAttributeValue(element.hfId)}"]`;
+  }
+  if (element.domId?.trim()) {
+    return `[id="${escapeCssAttributeValue(element.domId)}"]`;
+  }
+  return null;
+}
+
+/** Resolve the authored document and local time used for a timeline crop. */
+export function resolveTimelineThumbnailPreview(
+  element: TimelineElement,
+  projectId: string,
+  activePreviewUrl: string | null,
+): TimelineThumbnailPreview | null {
+  const selector = resolveTimelineElementSelector(element);
+  if (!selector) return null;
+
+  const sourceFile = element.sourceFile?.replace(/\\/g, "/");
+  const previewUrl =
+    sourceFile && sourceFile !== "index.html"
+      ? `/api/projects/${projectId}/preview/comp/${encodePreviewPath(sourceFile)}`
+      : (activePreviewUrl ?? `/api/projects/${projectId}/preview`);
+  const seekTime = Math.max(0, element.start - (element.expandedParentStart ?? 0));
+
+  return {
+    previewUrl,
+    selector,
+    selectorIndex: element.selectorIndex,
+    seekTime,
+    duration: Math.max(0.01, element.duration),
+  };
 }
 
 /**
- * Renders one compact visual owner per clip. Static layers use an icon/bar,
- * video alone uses a filmstrip, and audio alone owns a waveform. Avoiding
- * per-element composition captures prevents duplicate preview renders.
+ * Renders one compact visual owner per clip. Static authored layers use a
+ * lazily captured crop, video uses a filmstrip, and audio owns a waveform.
  */
-export function useRenderClipContent({ projectIdRef }: UseRenderClipContentOptions) {
+export function useRenderClipContent({
+  projectIdRef,
+  activePreviewUrl,
+}: UseRenderClipContentOptions) {
   return useCallback(
     (element: TimelineElement, style: { clip: string; label: string }): ReactNode => {
       const projectId = projectIdRef.current;
       const kind = resolveTimelineKind(element);
-      const label = element.label?.trim() || element.domId?.trim() || element.id;
+      const label = resolveTimelineClipLabel(element);
       const timecode = formatTime(element.duration);
 
       if ((kind === "music" || kind === "voiceover" || kind === "audio") && projectId) {
         return createElement(TimelineClipContent, {
-          kind,
           label,
           timecode,
           variant: "audio",
@@ -99,26 +145,9 @@ export function useRenderClipContent({ projectIdRef }: UseRenderClipContentOptio
         });
       }
 
-      if ((kind === "image" || kind === "logo") && element.src) {
-        const imageSrc = projectId
-          ? resolveMediaPreviewUrl(element.src, projectId)
-          : element.src;
-        return createElement(TimelineClipContent, {
-          kind,
-          label,
-          variant: "bar",
-          leadingVisual: createElement(ImageThumbnail, {
-            imageSrc,
-          }),
-        });
-      }
-
       if (kind === "video" && element.src) {
-        const videoSrc = projectId
-          ? resolveMediaPreviewUrl(element.src, projectId)
-          : element.src;
+        const videoSrc = projectId ? resolveMediaPreviewUrl(element.src, projectId) : element.src;
         return createElement(TimelineClipContent, {
-          kind,
           label,
           timecode,
           variant: "media",
@@ -131,8 +160,26 @@ export function useRenderClipContent({ projectIdRef }: UseRenderClipContentOptio
         });
       }
 
-      return createElement(TimelineClipContent, { kind, label, variant: "bar" });
+      if (projectId) {
+        const preview = resolveTimelineThumbnailPreview(element, projectId, activePreviewUrl);
+        if (preview) {
+          return createElement(TimelineClipContent, {
+            label,
+            timecode,
+            variant: "media",
+            body: createElement(CompositionThumbnail, {
+              ...preview,
+              label: "",
+              labelColor: style.label,
+              loading: "lazy",
+              minLoadWidth: 52,
+            }),
+          });
+        }
+      }
+
+      return createElement(TimelineClipContent, { label, variant: "bar" });
     },
-    [projectIdRef],
+    [activePreviewUrl, projectIdRef],
   );
 }

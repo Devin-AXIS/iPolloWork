@@ -1,4 +1,5 @@
 import { watch, type FSWatcher } from "node:fs";
+import { basename } from "node:path";
 
 export type FileChangeListener = (relativePath: string) => void;
 
@@ -30,7 +31,9 @@ export function shouldWatchProjectFile(filename: string): boolean {
 }
 
 export function createProjectWatcher(projectDir: string): ProjectWatcher {
+  const projectDirName = basename(projectDir);
   const listeners = new Set<FileChangeListener>();
+  const pendingPaths = new Set<string>();
   let debounceTimer: ReturnType<typeof setTimeout> | null = null;
   let watcher: FSWatcher | null = null;
 
@@ -38,12 +41,22 @@ export function createProjectWatcher(projectDir: string): ProjectWatcher {
     watcher = watch(projectDir, { recursive: true }, (_event, filename) => {
       if (!filename) return;
       const relativePath = filename.toString();
+      // macOS may emit a synthetic event for the watched directory itself when
+      // recursive watching starts. It is not a project-relative file change
+      // and must not be forwarded to reload clients.
+      if (relativePath === projectDirName) return;
       if (!shouldWatchProjectFile(relativePath)) return;
 
+      pendingPaths.add(relativePath);
       if (debounceTimer) clearTimeout(debounceTimer);
       debounceTimer = setTimeout(() => {
-        for (const fn of listeners) {
-          fn(relativePath);
+        debounceTimer = null;
+        const changedPaths = [...pendingPaths];
+        pendingPaths.clear();
+        for (const relativePath of changedPaths) {
+          for (const fn of listeners) {
+            fn(relativePath);
+          }
         }
       }, DEBOUNCE_MS);
     });
@@ -69,6 +82,7 @@ export function createProjectWatcher(projectDir: string): ProjectWatcher {
     },
     close() {
       if (debounceTimer) clearTimeout(debounceTimer);
+      pendingPaths.clear();
       watcher?.close();
       listeners.clear();
     },

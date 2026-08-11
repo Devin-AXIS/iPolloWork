@@ -32,6 +32,7 @@ import { ExtensionDetailModal } from "../../../design-system/extension-detail-mo
 import {
   isOrgMcpConnectionItem,
   orgMcpConnectionActionLabel,
+  skillDescriptionForLocale,
   type ExtensionItem,
 } from "../extension-items";
 import {
@@ -46,7 +47,7 @@ import {
 } from "../../../../app/mcp";
 import type { McpServerEntry, McpStatusMap } from "../../../../app/types";
 import { formatRelativeTime, isDesktopRuntime, isWindowsPlatform } from "../../../../app/utils";
-import { t } from "../../../../i18n";
+import { currentLocale, t, type Language } from "../../../../i18n";
 import { Button } from "@/components/ui/button";
 import { ConfirmModal } from "../../../design-system/modals/confirm-modal";
 import { AddMcpModal } from "../../connections/modals/add-mcp-modal";
@@ -240,6 +241,7 @@ type ExtensionFilter = "all" | "mcp" | "skill" | "plugin";
 
 export function McpView(props: McpViewProps) {
   const showHeader = props.showHeader !== false;
+  const locale = currentLocale();
   const [detailEntry, setDetailEntry] = useState<McpDirectoryInfo | null>(null);
   const [detailSkill, setDetailSkill] = useState<SkillItem | null>(null);
   const [detailSkillContent, setDetailSkillContent] = useState<string | null>(null);
@@ -589,6 +591,7 @@ export function McpView(props: McpViewProps) {
             return skill.name.toLowerCase().includes(q) || (skill.description ?? "").toLowerCase().includes(q);
           })
         }
+        locale={locale}
         installedPlugins={
           (props.installedPlugins ?? []).filter((plugin) => {
             if (!showHidden && isiPolloWorkExtensionHidden(`plugin:${plugin.pluginId}`)) return false;
@@ -803,7 +806,7 @@ export function McpView(props: McpViewProps) {
             open={!!detailSkill}
             onClose={() => { setDetailSkill(null); setDetailSkillContent(null); }}
             name={detailSkill.name}
-            description={detailSkill.description ?? "Installed skill"}
+            description={skillDescriptionForLocale(detailSkill.description, locale)}
             kind="skill"
             connected={true}
             hidden={hidden}
@@ -922,6 +925,7 @@ function McpQuickConnectSection(props: {
   installedSkills?: SkillItem[];
   installedPlugins?: CloudImportedPlugin[];
   installedOrgMcpItems?: ExtensionItem[];
+  locale: Language;
   busy: boolean;
   connectingName: string | null;
   isEntryHidden: (entry: McpDirectoryInfo) => boolean;
@@ -987,7 +991,7 @@ function McpQuickConnectSection(props: {
             <ExtensionCard
               key={`skill:${skill.name}`}
               name={skill.name}
-              description={skill.description ?? "Installed skill"}
+              description={skillDescriptionForLocale(skill.description, props.locale)}
               kind="skill"
               connected={true}
               hidden={hidden}

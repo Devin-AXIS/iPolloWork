@@ -1,17 +1,11 @@
 ﻿/** @jsxImportSource react */
 import * as React from "react";
-import { Check, ChevronDown, GripVertical, Palette, RotateCcw, SlidersHorizontal, X } from "lucide-react";
+import { Check, ChevronDown, Grip, GripVertical, Image as ImageIcon, Minus, Palette, RotateCcw, SlidersHorizontal, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { t } from "@/i18n";
 import { cn } from "@/lib/utils";
-import backgroundGradientIcon from "./assets/background-gradient.svg";
-import backgroundImageIcon from "./assets/background-image.svg";
-import backgroundNoneIcon from "./assets/background-none.svg";
-import backgroundSolidActiveIcon from "./assets/background-solid-active.svg";
-import backgroundSolidDefaultIcon from "./assets/background-solid-default.svg";
-import designSystemRefreshIcon from "./assets/design-system-refresh.svg";
 import designSystemSearchIcon from "./assets/design-system-search.svg";
 import designSystemChevronUpIcon from "./assets/design-system-chevron-up.svg";
 
@@ -26,6 +20,7 @@ import {
 } from "./design-system-registry";
 import type { DesignTokenValues } from "./design-system-files";
 import { DesignColorField } from "./design-color-field";
+import { DesignGradientPicker } from "./design-gradient-picker";
 import { DesignImageFitSelect, type DesignImageFitMode } from "./design-image-fit-select";
 import { DesignPanelSelect } from "./design-panel-select";
 
@@ -81,6 +76,10 @@ const DEFAULTS = {
   "--ipw-card-border": "#e6e4e0",
   "--ipw-card-radius": "14px",
   "--ipw-card-shadow": "0 12px 32px rgba(28,27,26,.10)",
+  "--ipw-motion-style": "none",
+  "--ipw-motion-duration": "0ms",
+  "--ipw-motion-distance": "0px",
+  "--ipw-motion-ease": "linear",
   "--ipw-card-blur": "0px",
 } as const;
 
@@ -99,6 +98,7 @@ type DesignSystemDrawerProps = {
   initialValues?: DesignTokenValues;
   onClose: () => void;
   onTokenChange: (name: string, value: string) => void;
+  onTokenChangeMany?: (values: DesignTokenValues) => void;
   onApplyDesignSystem?: (theme: DesignSystemTheme) => void;
   onChooseBackgroundImage?: () => void;
 };
@@ -124,6 +124,7 @@ export function DesignSystemDrawer({
   initialValues,
   onClose,
   onTokenChange,
+  onTokenChangeMany,
   onApplyDesignSystem,
   onChooseBackgroundImage,
 }: DesignSystemDrawerProps) {
@@ -225,13 +226,33 @@ export function DesignSystemDrawer({
 
   const updateMany = React.useCallback((next: DesignTokenValues) => {
     setValues((current) => ({ ...current, ...next }));
+    if (onTokenChangeMany) {
+      onTokenChangeMany(next);
+      return;
+    }
     Object.entries(next).forEach(([name, value]) => {
       if (typeof value === "string") onTokenChange(name, value);
     });
-  }, [onTokenChange]);
+  }, [onTokenChange, onTokenChangeMany]);
 
   const resetAll = React.useCallback(() => {
-    updateMany(Object.fromEntries(selectedThemeControls.map((control) => [control.storageName, control.value])));
+    const themeDefaults = Object.fromEntries(selectedThemeControls.map((control) => [control.storageName, control.value]));
+    updateMany({
+      ...themeDefaults,
+      "--ipw-type-scale": "1",
+      "--ipw-body-line-height": "1.55",
+      "--ipw-button-radius": "8px",
+      "--ipw-card-radius": "14px",
+      "--ipw-page-padding": "32px",
+      "--ipw-section-space": "80px",
+      "--ipw-card-shadow": "0 12px 32px rgba(28,27,26,.10)",
+      "--ipw-motion-style": "none",
+      "--ipw-motion-duration": "0ms",
+      "--ipw-motion-distance": "0px",
+      "--ipw-motion-ease": "linear",
+      "--ipw-font-display": DEFAULTS["--ipw-font-display"],
+      "--ipw-font-body": DEFAULTS["--ipw-font-body"],
+    });
   }, [selectedThemeControls, updateMany]);
   const resetThemeColors = React.useCallback(() => {
     const presetValues = selectedTheme ? buildDesignSystemPresetValues(selectedTheme) : DEFAULTS;
@@ -524,7 +545,7 @@ function EmbeddedDesignSystemControls({
   const [presetOpen, setPresetOpen] = React.useState(false);
   const [query, setQuery] = React.useState("");
   const [category, setCategory] = React.useState("All");
-  const [motion, setMotion] = React.useState("none");
+  const motion = values["--ipw-motion-style"] ?? "none";
   const backgroundMode = backgroundModeFor(values);
   const categories = React.useMemo(
     () => ["All", ...new Set(DESIGN_SYSTEM_THEMES.map((theme) => theme.category))],
@@ -538,6 +559,10 @@ function EmbeddedDesignSystemControls({
     });
   }, [category, query]);
   const colorValues = themeControlColors(values, selectedTheme);
+  const presetColorValues = themeControlColors(selectedTheme ? buildDesignSystemPresetValues(selectedTheme) : DEFAULTS, selectedTheme);
+  const canResetThemeColors = colorValues.some((value, index) => (
+    normalizeHex(value, "#ffffff") !== normalizeHex(presetColorValues[index] ?? "#ffffff", "#ffffff")
+  ));
   const themeTokens = selectedTheme ? parseCssVariableMap(selectedTheme.tokensCss) : {};
   const displayFont = resolveThemeTokenValue(values["--ipw-font-display"], themeTokens) ?? DEFAULTS["--ipw-font-display"];
   const bodyFont = resolveThemeTokenValue(values["--ipw-font-body"], themeTokens) ?? DEFAULTS["--ipw-font-body"];
@@ -561,15 +586,15 @@ function EmbeddedDesignSystemControls({
   return (
     <div className="min-h-0 flex-1 overflow-y-auto bg-background text-foreground">
       <div className="space-y-0">
-        <PanelSection title="Style preset">
+        <PanelSection title={t("design_system.embedded.style_preset")}>
           <button type="button" className="flex h-16 w-full items-center gap-3 rounded-[9px] border border-border p-2 text-left hover:border-ring" onClick={() => setPresetOpen((open) => !open)} aria-expanded={presetOpen}>
             <ThemeThumbnail colors={colorValues} />
-            <span className="min-w-0 flex-1"><span className="block truncate text-[13px] font-semibold">{selectedTheme?.name ?? "Custom"}</span><span className="mt-1 block truncate text-[11px] text-muted-foreground">{selectedTheme?.description ?? "Your current style preset"}</span></span>
+            <span className="min-w-0 flex-1"><span className="block truncate text-[13px] font-semibold">{selectedTheme?.name ?? t("design_system.embedded.custom")}</span><span className="mt-1 block truncate text-[11px] text-muted-foreground">{selectedTheme?.description ?? t("design_system.embedded.current_style_preset")}</span></span>
             {presetOpen ? <img src={designSystemChevronUpIcon} alt="" className="size-4 shrink-0" /> : <ChevronDown className="size-4 shrink-0 text-muted-foreground" />}
           </button>
           {presetOpen ? <div className="mt-3 h-[474px] rounded-xl border border-border p-3 shadow-[0_8px_18px_rgba(37,41,49,0.11)]">
-            <div className="relative"><img src={designSystemSearchIcon} alt="" className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2" /><Input value={query} onChange={(event) => setQuery(event.currentTarget.value)} placeholder="Search presets..." className="h-[34px] rounded-lg border-0 bg-muted pl-[34px] text-[12px] shadow-none" /></div>
-            <div className="mt-[9px] flex gap-[5px] overflow-x-auto pb-1">{categories.map((item) => <button key={item} type="button" className={cn("h-[27px] shrink-0 rounded-[7px] px-2 text-[11px] transition-colors", category === item ? "bg-foreground text-background" : "bg-muted text-muted-foreground hover:bg-accent")} onClick={() => setCategory(item)}>{item}</button>)}</div>
+            <div className="relative"><img src={designSystemSearchIcon} alt="" className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2" /><Input value={query} onChange={(event) => setQuery(event.currentTarget.value)} placeholder={t("design_system.embedded.search_presets")} className="h-[34px] rounded-lg border-0 bg-muted pl-[34px] text-[12px] shadow-none" /></div>
+            <div className="mt-[9px] flex gap-[5px] overflow-x-auto pb-1">{categories.map((item) => <button key={item} type="button" className={cn("h-[27px] shrink-0 rounded-[7px] px-2 text-[11px] transition-colors", category === item ? "bg-foreground text-background" : "bg-muted text-muted-foreground hover:bg-accent")} onClick={() => setCategory(item)}>{item === "All" ? t("design_system.embedded.category_all") : item}</button>)}</div>
             <div className="mt-[9px] max-h-[340px] space-y-[5px] overflow-y-auto">{themes.map((theme) => {
               const active = theme.id === currentThemeId;
               return <button key={theme.id} type="button" className={cn("flex h-16 w-full items-center gap-2.5 rounded-[9px] border p-2 text-left transition-colors", active ? "border-ring bg-accent" : "border-transparent bg-background hover:bg-muted")} onClick={() => { onApplyTheme(theme); setPresetOpen(false); }}>
@@ -579,63 +604,87 @@ function EmbeddedDesignSystemControls({
           </div> : null}
         </PanelSection>
 
-        <PanelSection title="Theme Colors">
-          <div className="flex items-center gap-[11px]">{THEME_COLOR_TOKEN_NAMES.map((name, index) => <ColorSwatch key={name} label={["Primary", "Secondary", "Background"][index] ?? name} value={colorValues[index] ?? DEFAULTS[name]} onChange={(value) => onTokenChange(name, value)} />)}<button type="button" onClick={onResetColors} className="grid size-[25px] place-items-center rounded-[7px] border border-border bg-muted" aria-label="Reset theme colors"><img src={designSystemRefreshIcon} alt="" className="size-4" /></button></div>
+        <PanelSection title={t("design_system.embedded.theme_colors")}>
+          <div className="flex items-center gap-[11px]">{THEME_COLOR_TOKEN_NAMES.map((name, index) => <ColorSwatch key={name} label={[t("design_system.embedded.primary"), t("design_system.embedded.secondary"), t("design_system.embedded.background")][index] ?? name} value={colorValues[index] ?? DEFAULTS[name]} onChange={(value) => onTokenChange(name, value)} />)}<button type="button" onClick={(event) => { event.stopPropagation(); onResetColors(); }} disabled={!canResetThemeColors} className="relative z-10 grid size-[25px] place-items-center rounded-[7px] border border-border bg-muted text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40" aria-label={t("design_system.embedded.reset_theme_colors")} title={t("design_system.embedded.reset_theme_colors")}><RotateCcw className="size-4" /></button></div>
         </PanelSection>
 
         <BackgroundSection mode={backgroundMode} values={values} colors={colorValues} onSelectMode={applyBackgroundMode} onTokenChange={onTokenChange} onChooseMedia={onChooseBackgroundImage} />
 
-        <PanelSection title="Typography">
-          <div className="space-y-3"><LabeledTokenSelect label="Heading Font" value={displayFont} ariaLabel="Heading font" options={fontOptions(displayFont, "Preset heading")} onChange={(value) => onTokenChange("--ipw-font-display", value)} /><LabeledTokenSelect label="Body Font" value={bodyFont} ariaLabel="Body font" options={fontOptions(bodyFont, "Preset body")} onChange={(value) => onTokenChange("--ipw-font-body", value)} /></div>
+        <PanelSection title={t("design_system.embedded.typography")}>
+          <div className="space-y-3"><LabeledTokenSelect label={t("design_system.embedded.heading_font")} value={displayFont} ariaLabel={t("design_system.embedded.heading_font")} options={fontOptions(displayFont, t("design_system.embedded.preset_heading"))} onChange={(value) => onTokenChange("--ipw-font-display", value)} /><LabeledTokenSelect label={t("design_system.embedded.body_font")} value={bodyFont} ariaLabel={t("design_system.embedded.body_font")} options={fontOptions(bodyFont, t("design_system.embedded.preset_body"))} onChange={(value) => onTokenChange("--ipw-font-body", value)} /></div>
         </PanelSection>
 
-        <PanelSection title="Type Scale"><div className="grid grid-cols-3 gap-1">{([{ label: "Small", value: ".9" }, { label: "Medium", value: "1" }, { label: "Large", value: "1.12" }] as const).map((item) => <SegmentButton key={item.value} active={typeScalePresetFor(values["--ipw-type-scale"]) === item.value} onClick={() => onTokenChange("--ipw-type-scale", item.value)}>{item.label}</SegmentButton>)}</div></PanelSection>
-        <PanelSection title="Radius Style"><div className="grid grid-cols-3 gap-1">{([{ label: "None", button: "0px", card: "0px" }, { label: "Subtle", button: "8px", card: "12px" }, { label: "Rounded", button: "16px", card: "24px" }] as const).map((item) => <SegmentButton key={item.label} active={radiusPresetFor(cardRadius) === item.label} onClick={() => onTokenChangeMany({ "--ipw-button-radius": item.button, "--ipw-card-radius": item.card })}>{item.label}</SegmentButton>)}</div></PanelSection>
-        <PanelSection title="Spacing"><div className="grid grid-cols-3 gap-1">{([{ label: "Compact", page: "20px", section: "48px" }, { label: "Standard", page: "32px", section: "80px" }, { label: "Spacious", page: "48px", section: "112px" }] as const).map((item) => <SegmentButton key={item.label} active={spacingPresetFor(pagePadding) === item.label} onClick={() => onTokenChangeMany({ "--ipw-page-padding": item.page, "--ipw-section-space": item.section })}>{item.label}</SegmentButton>)}</div></PanelSection>
-        <PanelSection title="Shadow"><TokenSelect value={cardShadow ?? "none"} ariaLabel="Shadow" options={shadowOptions(cardShadow)} onChange={(value) => onTokenChange("--ipw-card-shadow", value)} /></PanelSection>
-        <PanelSection title="Motion"><TokenSelect value={motion} ariaLabel="Motion" options={MOTION_OPTIONS} onChange={setMotion} /></PanelSection>
+        <PanelSection title={t("design_system.embedded.type_scale")}><div className="grid grid-cols-3 gap-1">{([{ label: t("design_system.embedded.small"), value: ".9" }, { label: t("design_system.embedded.medium"), value: "1" }, { label: t("design_system.embedded.large"), value: "1.12" }] as const).map((item) => <SegmentButton key={item.value} active={typeScalePresetFor(values["--ipw-type-scale"]) === item.value} onClick={() => onTokenChange("--ipw-type-scale", item.value)}>{item.label}</SegmentButton>)}</div></PanelSection>
+        <PanelSection title={t("design_system.embedded.radius_style")}><div className="grid grid-cols-3 gap-1">{([{ id: "none", label: t("design_system.embedded.none"), button: "0px", card: "0px" }, { id: "subtle", label: t("design_system.embedded.subtle"), button: "8px", card: "12px" }, { id: "rounded", label: t("design_system.embedded.rounded"), button: "16px", card: "24px" }] as const).map((item) => <SegmentButton key={item.id} active={radiusPresetFor(cardRadius) === item.id} onClick={() => onTokenChangeMany({ "--ipw-button-radius": item.button, "--ipw-card-radius": item.card })}>{item.label}</SegmentButton>)}</div></PanelSection>
+        <PanelSection title={t("design_system.embedded.spacing")}><div className="grid grid-cols-3 gap-1">{([{ id: "compact", label: t("design_system.embedded.compact"), page: "20px", section: "48px" }, { id: "standard", label: t("design_system.embedded.standard"), page: "32px", section: "80px" }, { id: "spacious", label: t("design_system.embedded.spacious"), page: "48px", section: "112px" }] as const).map((item) => <SegmentButton key={item.id} active={spacingPresetFor(pagePadding) === item.id} onClick={() => onTokenChangeMany({ "--ipw-page-padding": item.page, "--ipw-section-space": item.section })}>{item.label}</SegmentButton>)}</div></PanelSection>
+        <PanelSection title={t("design_system.embedded.shadow")}><TokenSelect value={cardShadow ?? "none"} ariaLabel={t("design_system.embedded.shadow")} options={shadowOptions(cardShadow)} onChange={(value) => onTokenChange("--ipw-card-shadow", value)} /></PanelSection>
+        <PanelSection title={t("design_system.embedded.motion")}><TokenSelect value={motion} ariaLabel={t("design_system.embedded.motion")} options={localizedOptions(MOTION_OPTION_DEFS)} onChange={(value) => {
+          const profile = MOTION_OPTION_DEFS.find((item) => item.value === value) ?? MOTION_OPTION_DEFS[0];
+          onTokenChangeMany({
+            "--ipw-motion-style": profile.value,
+            "--ipw-motion-duration": profile.duration,
+            "--ipw-motion-distance": profile.distance,
+            "--ipw-motion-ease": profile.ease,
+          });
+        }} /></PanelSection>
       </div>
-      <div className="flex items-center justify-end border-t border-border px-4 py-2"><Button variant="ghost" size="xs" onClick={onReset}><RotateCcw /> Reset</Button></div>
+      <div className="flex items-center justify-end border-t border-border px-4 py-2"><Button variant="ghost" size="xs" onClick={onReset}><RotateCcw /> {t("design_system.embedded.reset")}</Button></div>
     </div>
   );
 }
 
 type BackgroundMode = "none" | "solid" | "gradient" | "image";
-const FONT_OPTIONS = [
-  { label: "System", value: DEFAULTS["--ipw-font-body"] },
-  { label: "Inter", value: "Inter, sans-serif" },
-  { label: "Georgia", value: "Georgia, serif" },
-  { label: "IBM Plex Sans", value: '"IBM Plex Sans", sans-serif' },
+const FONT_OPTION_DEFS = [
+  { labelKey: "design_system.embedded.font_system", value: DEFAULTS["--ipw-font-body"] },
+  { labelKey: "design_system.embedded.font_inter", value: "Inter, sans-serif" },
+  { labelKey: "design_system.embedded.font_georgia", value: "Georgia, serif" },
+  { labelKey: "design_system.embedded.font_ibm_plex_sans", value: '"IBM Plex Sans", sans-serif' },
 ];
-const SHADOW_OPTIONS = [
-  { label: "None", value: "none" },
-  { label: "Subtle", value: "0 8px 24px rgba(28,27,26,.08)" },
-  { label: "Strong", value: "0 18px 42px rgba(28,27,26,.16)" },
+const SHADOW_OPTION_DEFS = [
+  { labelKey: "design_system.embedded.none", value: "none" },
+  { labelKey: "design_system.embedded.subtle", value: "0 8px 24px rgba(28,27,26,.08)" },
+  { labelKey: "design_system.embedded.strong", value: "0 18px 42px rgba(28,27,26,.16)" },
 ];
-const MOTION_OPTIONS = [{ label: "None", value: "none" }, { label: "Gentle", value: "gentle" }, { label: "Expressive", value: "expressive" }];
+const MOTION_OPTION_DEFS = [
+  { labelKey: "design_system.embedded.none", value: "none", duration: "0ms", distance: "0px", ease: "linear" },
+  { labelKey: "design_system.embedded.gentle", value: "gentle", duration: "280ms", distance: "12px", ease: "cubic-bezier(.22, 1, .36, 1)" },
+  { labelKey: "design_system.embedded.expressive", value: "expressive", duration: "520ms", distance: "28px", ease: "cubic-bezier(.16, 1, .3, 1)" },
+] as const;
 function withPresetOption(options: Array<{ label: string; value: string }>, value: string | undefined, label: string) { return value && !options.some((item) => item.value === value) ? [{ label, value }, ...options] : options; }
-function fontOptions(value: string, label: string) { return withPresetOption(FONT_OPTIONS, value, label); }
-function shadowOptions(value: string | undefined) { return withPresetOption(SHADOW_OPTIONS, value, "Preset shadow"); }
+function localizedOptions(defs: ReadonlyArray<{ labelKey: string; value: string }>) { return defs.map((item) => ({ label: t(item.labelKey), value: item.value })); }
+function fontOptions(value: string, label: string) { return withPresetOption(localizedOptions(FONT_OPTION_DEFS), value, label); }
+function shadowOptions(value: string | undefined) { return withPresetOption(localizedOptions(SHADOW_OPTION_DEFS), value, t("design_system.embedded.preset_shadow")); }
 
 function PanelSection({ title, children }: { title: string; children: React.ReactNode }) { return <section className="border-b border-border px-4 pb-6 pt-2"><h3 className="mb-3 text-[14px] font-semibold leading-5">{title}</h3>{children}</section>; }
 function SegmentButton({ active, children, onClick }: { active: boolean; children: React.ReactNode; onClick: () => void }) { return <button type="button" className={cn("h-[34px] rounded-lg px-1 text-[14px] font-normal transition-colors", active ? "bg-foreground text-background" : "bg-muted text-muted-foreground hover:bg-accent")} onClick={onClick} aria-pressed={active}>{children}</button>; }
 function TokenSelect({ value, ariaLabel, options, onChange }: { value: string; ariaLabel: string; options: Array<{ label: string; value: string }>; onChange: (value: string) => void }) { const option = options.find((item) => item.value === value) ?? options[0]; if (!option) return null; return <DesignPanelSelect value={option.value} options={options} onChange={onChange} ariaLabel={ariaLabel} className="h-[34px] w-full rounded-lg bg-muted" />; }
 function LabeledTokenSelect({ label, ...props }: { label: string; value: string; ariaLabel: string; options: Array<{ label: string; value: string }>; onChange: (value: string) => void }) { return <label className="block"><span className="mb-1 block text-[10px] text-muted-foreground">{label}</span><TokenSelect {...props} /></label>; }
-function ColorSwatch({ label, value, onChange }: { label: string; value: string; onChange: (value: string) => void }) { return <label className="group relative grid size-[25px] cursor-pointer place-items-center rounded-[7px] border border-black/10" title={label} style={{ backgroundColor: normalizeHex(value, "#ffffff") }}><input type="color" className="absolute inset-0 cursor-pointer opacity-0" value={normalizeHex(value, "#ffffff")} onChange={(event) => onChange(event.currentTarget.value)} aria-label={`${label} color`} /></label>; }
+function ColorSwatch({ label, value, onChange }: { label: string; value: string; onChange: (value: string) => void }) { return <label className="group relative grid size-[25px] cursor-pointer place-items-center overflow-hidden rounded-[7px] border border-black/10" title={label} style={{ backgroundColor: normalizeHex(value, "#ffffff") }}><input type="color" className="absolute inset-0 size-full cursor-pointer opacity-0" value={normalizeHex(value, "#ffffff")} onChange={(event) => onChange(event.currentTarget.value)} aria-label={`${label} color`} /></label>; }
 function BackgroundSection({ mode, values, colors, onSelectMode, onTokenChange, onChooseMedia }: { mode: BackgroundMode; values: DesignTokenValues; colors: string[]; onSelectMode: (mode: BackgroundMode) => void; onTokenChange: (name: string, value: string) => void; onChooseMedia?: () => void }) {
-  const controls: Array<{ mode: BackgroundMode; label: string; icon: string }> = [{ mode: "none", label: "No background", icon: backgroundNoneIcon }, { mode: "solid", label: "Solid color", icon: backgroundSolidDefaultIcon }, { mode: "gradient", label: "Gradient", icon: backgroundGradientIcon }, { mode: "image", label: "Image", icon: backgroundImageIcon }];
+  const controls: Array<{ mode: BackgroundMode; label: string }> = [{ mode: "none", label: t("design_system.embedded.no_background") }, { mode: "solid", label: t("design_system.embedded.solid_color") }, { mode: "gradient", label: t("design_system.embedded.gradient") }, { mode: "image", label: t("design_system.embedded.image") }];
   const solidColor = normalizeHex(colors[2] ?? "#ffffff", "#ffffff");
   const imageMode = backgroundImageFitMode(values["--ipw-bg-size"]);
 
-  return <PanelSection title="Background">
-    <div className="flex gap-1">{controls.map(({ mode: itemMode, label, icon }) => <button key={itemMode} type="button" className={cn("grid h-[34px] flex-1 place-items-center rounded-lg transition-colors", mode === itemMode ? "bg-foreground" : "bg-muted hover:bg-accent")} onClick={() => onSelectMode(itemMode)} aria-label={label} aria-pressed={mode === itemMode}>{itemMode === "solid" ? <img src={mode === "solid" ? backgroundSolidActiveIcon : icon} alt="" className="h-[34px] w-[68px] max-w-none" /> : <img src={icon} alt="" className={cn("size-4", mode === itemMode && "brightness-0 invert")} />}</button>)}</div>
+  return <PanelSection title={t("design_system.embedded.background")}>
+    <div className="flex gap-1">{controls.map(({ mode: itemMode, label }) => <button key={itemMode} type="button" className={cn("grid h-[34px] flex-1 place-items-center rounded-lg transition-colors", mode === itemMode ? "bg-foreground text-background" : "bg-muted text-muted-foreground hover:bg-accent hover:text-foreground")} onClick={() => onSelectMode(itemMode)} aria-label={label} aria-pressed={mode === itemMode}>{itemMode === "none" ? <Minus aria-hidden="true" className="size-4" /> : itemMode === "solid" ? <span aria-hidden="true" className="relative size-3 rounded-[2px] border-[1.25px] border-current"><span className="absolute inset-[2px] rounded-[1px] bg-current" /></span> : itemMode === "gradient" ? <Grip aria-hidden="true" className="size-4" /> : <ImageIcon aria-hidden="true" className="size-4" />}</button>)}</div>
     {mode === "solid" ? <DesignColorField value={solidColor} onChange={(value) => onTokenChange("--ipw-color-bg", value)} className="mt-3" /> : null}
-    {mode === "gradient" ? <button type="button" className="mt-3 flex h-[34px] w-full items-center justify-between rounded-lg bg-muted px-2 pr-4 text-left"><span className="flex items-center gap-2"><span className="size-5 rounded-[4px] bg-gradient-to-b from-[#2e6bdb] to-[#76e3e9]" /><span className="text-[13px]">Gradient</span></span><ChevronDown className="size-4 text-muted-foreground" /></button> : null}
+    {mode === "gradient" ? <DesignGradientPicker
+      value={values["--ipw-bg-gradient"] ?? "linear-gradient(135deg, #2e6bdb 0%, #76e3e9 100%)"}
+      recommendationColors={[
+        colors[0],
+        colors[1],
+        values["--ipw-color-accent"],
+        colors[2],
+        values["--ipw-color-surface"],
+        colors[2],
+      ]}
+      onChange={(value) => onTokenChange("--ipw-bg-gradient", value)}
+    /> : null}
     {mode === "image" ? <div className="mt-3 space-y-3">
-      <DesignImageFitSelect value={imageMode} onChange={(value) => { onTokenChange("--ipw-bg-size", backgroundSizeFor(value)); onTokenChange("--ipw-bg-position", "50% 50%"); }} ariaLabel="Background image fit mode" />
+      <DesignImageFitSelect value={imageMode} onChange={(value) => { onTokenChange("--ipw-bg-size", backgroundSizeFor(value)); onTokenChange("--ipw-bg-position", "50% 50%"); }} ariaLabel={t("design_system.embedded.background_image_fit_mode")} />
       <div className="group relative flex h-[100px] w-full items-center justify-center overflow-hidden rounded-lg bg-[linear-gradient(45deg,#929292_25%,#9f9f9f_25%,#9f9f9f_50%,#929292_50%,#929292_75%,#9f9f9f_75%)] bg-[length:24px_24px]" style={backgroundImageStyle(values["--ipw-bg-image"], values["--ipw-bg-size"], values["--ipw-bg-position"])}>
         <span className="absolute inset-0 bg-black/45" />
-        <button type="button" className="relative inline-flex h-[30px] items-center justify-center rounded-lg bg-black px-4 text-[10px] text-white transition-colors group-hover:bg-black/80" onClick={onChooseMedia}>Choose Media</button>
+        <button type="button" className="relative inline-flex h-[30px] items-center justify-center rounded-lg bg-black px-4 text-[10px] text-white transition-colors group-hover:bg-black/80" onClick={onChooseMedia}>{t("design_system.embedded.choose_media")}</button>
       </div>
     </div> : null}
   </PanelSection>;
@@ -653,8 +702,8 @@ function backgroundSizeFor(value: BackgroundImageFitMode) { return value === "fi
 function backgroundImageStyle(value: string | undefined, size: string | undefined, position: string | undefined): React.CSSProperties | undefined { return value && value !== "none" ? { backgroundImage: value, backgroundPosition: position ?? "50% 50%", backgroundRepeat: "no-repeat", backgroundSize: size ?? "cover" } : undefined; }
 function tokenPixelValue(value: string | undefined) { const match = value?.match(/^(-?\d+(?:\.\d+)?)px$/); return match ? Number(match[1]) : undefined; }
 function typeScalePresetFor(value: string | undefined) { const scale = Number(value ?? 1); return scale < 0.95 ? ".9" : scale > 1.06 ? "1.12" : "1"; }
-function radiusPresetFor(value: string | undefined) { const radius = tokenPixelValue(value); if (radius === undefined) return "Subtle"; return radius <= 0 ? "None" : radius >= 18 ? "Rounded" : "Subtle"; }
-function spacingPresetFor(value: string | undefined) { const spacing = tokenPixelValue(value); if (spacing === undefined) return "Standard"; return spacing <= 24 ? "Compact" : spacing >= 44 ? "Spacious" : "Standard"; }
+function radiusPresetFor(value: string | undefined) { const radius = tokenPixelValue(value); if (radius === undefined) return "subtle"; return radius <= 0 ? "none" : radius >= 18 ? "rounded" : "subtle"; }
+function spacingPresetFor(value: string | undefined) { const spacing = tokenPixelValue(value); if (spacing === undefined) return "standard"; return spacing <= 24 ? "compact" : spacing >= 44 ? "spacious" : "standard"; }
 function capitalize(value: string) { return `${value.slice(0, 1).toUpperCase()}${value.slice(1)}`; }
 
 function DrawerHeading({ title, description }: { title: string; description?: string }) {

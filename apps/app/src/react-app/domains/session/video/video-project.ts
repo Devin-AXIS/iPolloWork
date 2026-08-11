@@ -1,15 +1,13 @@
 import type { TemplateManifestV1 } from "@ipollowork/types/templates";
+import {
+  hyperframesStudioPort,
+  videoProjectDirectory,
+  videoProjectId,
+} from "@ipollowork/types/hyperframes";
+
+export { hyperframesStudioPort, videoProjectDirectory, videoProjectId };
 
 export const HYPERFRAMES_STUDIO_LABEL = "Local HyperFrames Studio";
-
-const HYPERFRAMES_PORT_BASE = 3_100;
-const HYPERFRAMES_PORT_RANGE = 800;
-
-export function hyperframesStudioPort(sessionId: string) {
-  let hash = 0;
-  for (const character of sessionId) hash = ((hash * 31) + character.charCodeAt(0)) >>> 0;
-  return HYPERFRAMES_PORT_BASE + (hash % HYPERFRAMES_PORT_RANGE);
-}
 
 export function hyperframesStudioUrl(
   port = 3_002,
@@ -35,14 +33,6 @@ export function hyperframesStudioUrl(
   return `http://localhost:${port}/#project/${encodeURIComponent(projectId)}?${params.toString()}`;
 }
 
-export function videoProjectId(sessionId: string) {
-  return sessionId.replace(/[^a-zA-Z0-9_-]/g, "_");
-}
-
-export function videoProjectDirectory(sessionId: string) {
-  return `video/${videoProjectId(sessionId)}`;
-}
-
 export function videoProjectEntryPath(sessionId: string) {
   return `${videoProjectDirectory(sessionId)}/index.html`;
 }
@@ -59,6 +49,16 @@ export function shouldInjectVideoTaskContext(
   cachedSessionType: string | null | undefined,
 ) {
   return templateSurface === "video" || (templateSurface == null && cachedSessionType === "video");
+}
+
+export function videoPromptRequestsVoiceoverContext(capabilityId?: string, promptText?: string) {
+  if (capabilityId === "video-voice-reference") return true;
+  return /(?:配音|旁白|解说|语音合成|voice[ -]?over|narrat(?:e|ion)|dub(?:bing)?|text[ -]?to[ -]?speech|\btts\b)/i.test(promptText ?? "");
+}
+
+export function videoCompositionHasVoiceover(content?: string | null) {
+  if (!content) return false;
+  return /<audio\b[^>]*(?:data-ipw-voiceover\s*=\s*["']true["']|id\s*=\s*["'](?:voiceover|vo-|narration-)|src\s*=\s*["'][^"']*(?:voiceover[-_]|\/audio\/(?:voice|narration)))/i.test(content);
 }
 
 /**
@@ -86,51 +86,68 @@ export function videoTaskSystemContext(
   sessionId: string,
   workspaceRoot?: string,
   template?: Pick<TemplateManifestV1, "id" | "title" | "entry" | "applyChecklist"> | null,
+  options: { includeVoiceover?: boolean } = {},
 ) {
   const projectDirectory = videoProjectDirectory(sessionId);
   const projectPath = videoProjectPath(sessionId, workspaceRoot);
   const studioPort = hyperframesStudioPort(sessionId);
-  return [
+  const baseContract = [
     "Video task contract:",
-    `- This conversation owns the HyperFrames project at \`${projectPath}\`.`,
-    `- The right-side Video Studio displays only \`${projectPath}/index.html\` for this conversation.`,
-    `- The right-side Video Studio opens after the project brief is confirmed at \`http://localhost:${studioPort}\` and hot-reloads saved changes.`,
+    `- Own only \`${projectPath}\`; Video Studio displays \`${projectPath}/index.html\` at \`http://localhost:${studioPort}\` and hot-reloads saves.`,
     ...(template ? [
-      `- This conversation was created from the \`${template.title}\` video template (\`${template.id}\`). It has already been copied into this session; do not start a blank project.`,
-      `- Treat \`${projectPath}/${template.entry}\` as the source of truth. Read it before responding to a request to make or edit the video.`,
-      `- Read \`${projectPath}/brief.json\` before making or revising the video. It contains the user-confirmed topic, audience, and objective for this template.`,
-      `- Preserve the template's composition id, declared variables, visual system, and editable structure unless the user explicitly asks to replace them. Apply the user's request by editing this template, not by generating an unrelated video.`,
-      `- Keep the template checklist in scope: ${template.applyChecklist.join("; ")}.`,
+      `- The copied source is template \`${template.title}\` (\`${template.id}\`), entry \`${projectPath}/${template.entry}\`; edit it rather than starting over.`,
+      `- Read \`${projectPath}/brief.json\` and the entry once, then preserve the composition id, variables, visual system, editable hierarchy, and checklist: ${template.applyChecklist.join("; ")}.`,
     ] : [
-      "- This project starts as a blank HyperFrames composition unless the user asks to import or use a video template. The HyperFrames skill is installed automatically when the project is created; use that skill and its CLI when you create or edit the video.",
+      `- Read \`${projectPath}/index.html\` once. It is the prepared blank composition unless the user explicitly requests a template.`,
     ]),
-    "- Never add example clips, demo assets, or another session's timeline. Build only the scenes, media, and animations the user asks for.",
-    `- Before editing, read \`${projectPath}/index.html\`. This is the exact writable path, not a suggestion: do not derive another path from your current directory and do not choose a custom project name.`,
-    `- When asked to create or revise the video, update \`${projectPath}/index.html\` only; keep its root \`index.html\` as the playable main composition and keep any assets inside \`${projectPath}\`.`,
-    `- Keep \`${projectPath}/design-tokens.css\` linked as the final stylesheet in \`index.html\` when it exists. Use the shared \`--ipw-*\` design tokens for themeable scene backgrounds, surfaces, text, borders, accents, fonts, spacing, radii, and shadows; do not replace them with hardcoded theme colors. Preserve scene timing, DOM structure, and animation behavior when changing a design system.`,
-    "- Never create, inspect, render, validate, preview, or report a `videos/` directory, a custom-named HyperFrames project, or another `video/` project. A rendered MP4 or narration outside the exact path above is not this conversation's Video Studio output and never completes the task.",
-    "- Do not run `npx hyperframes preview`, `npm run dev`, `open`, or a browser tool for the local Studio. The embedded Studio owns previewing; do not start a second server or open an external browser. Do not restart, replace, or health-check the embedded Studio server; save `index.html` and let it hot-reload.",
+    `- Write only \`${projectPath}/index.html\` and assets below \`${projectPath}\`. Never create or inspect another \`video/\`/\`videos/\` project, demo media, or another session's timeline.`,
+    `- Keep \`${projectPath}/design-tokens.css\` as the final stylesheet when present and use its \`--ipw-*\` tokens without breaking layout, motion, or timing.`,
+    "Adaptive execution contract:",
+    "- Interpret each request independently. Choose only the needed operations from update-element, add/remove/reorder-scene, apply-animation, add-voiceover, add-asset, restyle, or freeform-patch; this is an extensible planning vocabulary, not a fixed workflow.",
+    "- For a small local edit, patch only that element. For a structural, multi-scene, or narrated edit, first form one complete internal operation plan from the current composition, then execute it without narrating the plan or creating a plan file.",
+    "- Preserve unrelated scenes, media, timing, interactions, and user edits. Use freeform-patch only when the typed operations cannot express the request, and still obey the composition and validation contracts.",
+    "Semantic motion contract:",
+    "- For ordinary motion on an existing leaf text element, call `list_motion_presets` and then `mutate_motion`. The product determines the target type and compiles the preset into the current GSAP/HyperFrames timeline; do not hand-write equivalent GSAP.",
+    "- Address exactly one stable text selector, choose one of enter/emphasis/exit, use the returned stable preset id, and send only declared parameters. Replacing a phase is intentional; never stack two preset animations in the same phase.",
+    "- Treat voice-transcribed animation requests exactly like typed requests and use the same tools. Use custom GSAP only when the user explicitly requests an advanced effect that the preset catalog cannot express.",
+    "Performance and runtime contract:",
+    "- The app already bundles and runs HyperFrames. Never run npm/pnpm/yarn install, `npx`, catalog/version/update commands, preview/dev servers, or runtime health probes. Do not install a second HyperFrames copy.",
+    "- Plan before editing. Batch compatible HTML/CSS/JS changes into one complete edit or write, then run one final validation. Do not alternate many tiny reads and edits; the validator reads the saved composition itself.",
+    "- Animation reference metadata supplied by the user is complete enough to adapt directly. Do not discover the registry again. Retry a failed operation only after using its error to change the approach.",
+    "- The embedded Studio owns previewing; save the source and let hot reload update it. Do not call browser/screenshot/eval tools, open another browser, or restart/replace/health-check the Studio. If a browser preview or manual structural check was already started before this instruction applied, give that auxiliary operation at most 20 seconds; on timeout abandon it without retrying and proceed directly to the final validator.",
     "- Never stop all Node processes (`Stop-Process -Name node`, `taskkill /IM node.exe`, `pkill node`, or equivalents). This can terminate iPolloWork, OpenCode, and Video Studio itself. Do not stop or restart any app-owned service while editing a video.",
-    `- Before saying the edit is ready, verify the exact session project by running \`npx hyperframes check\` from \`${projectPath}\` and confirm that its \`index.html\` contains the requested scenes. Do not validate any other directory.`,
-    `- Do not create, reuse, open, or modify a different video/ directory or another conversation's project. The session-relative project key is \`${projectDirectory}\`.`,
-    "- Every full visual scene must be a `.scene.clip` with explicit seconds-based `data-start`, `data-duration`, and `data-track-index`. Do not use legacy `class=\"frame\"` sections, millisecond `data-duration=\"4000\"` declarations, a JavaScript scene-duration array, or a text-only timeline summary as the source of truth. After every AI edit, recompute scene windows in visual order so one scene ends at or before the next begins; never leave two `.scene` windows overlapping. Backgrounds, persistent canvas layers, captions, and deliberate overlays remain ordinary `.clip` elements and may span scenes.",
-    "- The root composition `data-duration` must be the real HyperFrames timeline duration in seconds: at least the last scene/audio/clip end time, never just the number of scenes or a placeholder like 8. If a written plan says 42 seconds, `index.html` must also declare a roughly 42 second root duration and matching scene/audio timeline windows.",
-    "- When the video shows the iPolloWork brand, use the project asset `assets/ipollowork-logo.svg?v=20260729`. It is the current transparent-background SVG and must remain an `<img>` asset with `object-fit: contain`. Never redraw, inline, or regenerate an older iPolloWork logo, and never substitute an older asset. Keep the template's intended top-left or bottom-right placement. Preserve a user-supplied non-iPolloWork brand logo when the brief or template explicitly provides one, but keep `assets/ipollowork-logo.svg?v=20260729` as the local error fallback so a missing custom asset never renders as a broken image.",
-    "Video voiceover contract:",
-    `- Decide whether narration helps the confirmed brief without asking a separate narration question. When it does, read \`${projectPath}/voiceover.json\` first; its \`voiceId\` and \`model\` are the only voice choice for this video task.`,
-    "- Never call generic `speech_synthesize` for Video Studio narration. It returns an unbound audio result and cannot prove scene timing. Use only `speech_synthesize_workspace_file` for narrated video scenes.",
-    `- When narration is useful and a valid selection exists, call \`ipollowork_extension_list_actions\` for extensionId \`media\`. Split the narration by visual scene, then call \`ipollowork_extension_call\` once per scene with extensionId \`media\`, action \`speech_synthesize_workspace_file\`, the exact \`sceneId\`, \`sceneText\`, \`sceneStart\`, and current \`sceneDuration\`, \`compositionPath: "${projectDirectory}/index.html"\`, the same \`sceneText\` as \`text\`, the selected \`voiceId\` as \`voice\`, the selected \`model\`, and a new immutable MP3 \`outputPath\` such as \`video/<session>/assets/voiceover-<unique-revision>.mp3\`. The action rejects narration text that differs from the visible scene text. Do not use an unrelated TTS provider or ask the user for a key.`,
-    "- Build a scene narration table before synthesis. Each row must contain one `.scene` id, that scene's exact start, and its current visible on-screen text in reading order. The synthesized narration must read that same scene's visible text verbatim in the same order; do not paraphrase, summarize, add commentary, narrate a previous or future scene, or let one narration continue into the next scene.",
-    "- Voiceover is the master clock. Do not lock the video to the original target duration when narration is present. If the spoken audio is slower than the visuals, lengthen the current scene and slow the visual handoff; never cut away while the current scene's words are still being spoken.",
-    "- Treat each action result's actual `durationSeconds`, `timing`, `timelinePatch`, and `audioElementHtml` as authoritative. Process scenes strictly in visual order. Maintain a cumulative shift starting at zero; before synthesizing each later scene, add that cumulative shift to its original start. Set the scene and voiceover to the exact scene start in `timing.startSeconds`, set the scene duration to `timing.requiredSceneDurationSeconds`, then add `timing.shiftFollowingBySeconds` to the cumulative shift for every later scene, narration, caption, transition, and GSAP timestamp. Voiceovers must never overlap. Do not accelerate speech to force long text into a short scene.",
-    "- Add `data-ipw-scene-id` with the matching `.scene` id, `data-ipw-scene-text` with the scene's visible text snapshot, and `data-ipw-narration-text` with the exact synthesized text to every voiceover audio node. `data-ipw-scene-text` and `data-ipw-narration-text` must be identical. Before finishing, verify each audio node's `data-start` equals its scene's exact start.",
-    "- The matching scene and all text being narrated must remain visibly present for the entire narration window, from `timing.startSeconds` through `timing.endSeconds`. Narrated text must not animate out, hide, or be replaced by the next scene before the voiceover ends; delay its exit animation and the next scene's entrance when necessary.",
-    "- Make all text referenced by a narration visible when that narration begins. If the actual narration is longer than the visual scene, extend that same visual scene and shift every later scene, narration start, and transition by the same amount. Add a short reading buffer after speech, then update the root `data-duration` so the complete final narration fits, even when that makes the final video longer than originally planned.",
-    "- Keep GSAP timelines synchronized with every shifted scene start and extended scene duration. Do not leave animation timestamps, outro timing, or the root `data-duration` at their old values after narration changes.",
-    "- Add one `audio` element per scene narration as a direct child of the root composition by inserting the action result's `audioElementHtml`; do not hand-author a different narration tag unless you preserve every returned synchronization attribute exactly. Every narration element must have `data-ipw-voiceover=\"true\"`, a unique id, the returned immutable source path, and deliberate `data-start`, `data-track-index`, and `data-volume` values. Never create a single `assets/voiceover.mp3`, `voiceover_1.mp3` sequence controlled by one hidden player, a `voiceover.src = ...` swapper, a JavaScript array such as `['assets/vo_01.mp3']`, `new Audio(...)`, or custom frame-change playback. The immutable filename must never overwrite an existing voiceover asset. HyperFrames owns playback: never call `audio.play()`, `pause()`, or seek methods.",
-    "- Before adding regenerated narration, remove every old narration node or script reference matching `audio[data-ipw-voiceover=\"true\"]`, `audio[id^=\"vo-\"]`, `audio[id=\"voiceover\"]`, `audio[src*=\"/audio/voice/\"]`, `audio[src*=\"voiceover-\"]`, `audio[src*=\"voiceover_\"]`, `assets/voiceover.mp3`, `assets/voiceover_*.mp3`, `assets/vo_*.mp3`, or manual `new Audio(...)` / `.play()` playback from `index.html`; never remove BGM or sound-effect audio. Only after the updated `index.html` successfully references all new files as HyperFrames timeline audio nodes, delete obsolete voiceover MP3 files that are no longer referenced. There must be exactly one narration audio node per narrated scene and no legacy narration nodes. This prevents stale or duplicate narration while preserving other audio tracks.",
-    `- Completion gate: after every video or narration edit, first run \`npx hyperframes check\` from \`${projectPath}\`, then call \`ipollowork_extension_call\` with extensionId \`media\`, action \`voiceover_timeline_validate\`, and sourcePath \`${projectDirectory}/index.html\`. Do not finish the task while \`valid\` is false. If either check fails, fix every reported issue and run both checks again; finish only after both pass on the final saved file.`,
-    "- If the selection file is absent or invalid, continue as a visual video without substituting a random voice or blocking the task.",
+    "- Media assets must be real decodable media, not an HTML/JSON response saved with a media extension. Use `/media-use` to resolve BGM/SFX/images/video into frozen local project assets; use the media extension's workspace synthesis actions for TTS. If a direct download is unavoidable, verify its response type and local file signature before referencing it in the composition.",
+    "Composition contract:",
+    "- Every full scene is `.scene.clip` with a unique id and explicit seconds-based `data-start`, `data-duration`, and `data-track-index`; never use legacy `.frame` millisecond timelines or overlapping scene windows.",
+    "- Root `data-duration` must cover the last scene/audio/clip. Keep backgrounds/overlays as ordinary clips and keep GSAP timestamps synchronized with scene timing.",
+    "- Use `assets/ipollowork-logo.svg?v=20260729` as the transparent `<img>` brand asset and local fallback; preserve a supplied third-party logo and the template's intended top-left/bottom-right placement.",
+      `- Give every visible element a stable, unique \`class\` name (e.g. \`class="scene-title"\` or \`class="card-1"\`). Elements without a class, id, or data-hf-group attribute are invisible to the Video Studio properties inspector and cannot be selected or edited visually.`,
+      `- Use CSS custom properties for themable values. When \`${projectPath}/design-tokens.css\` is present, reference its variables for colors, fonts, spacing, and radii (e.g. \`color: var(--ipw-color-primary)\`, \`font-size: calc(1rem * var(--ipw-type-scale))\`, \`border-radius: var(--ipw-card-radius)\`, \`padding: var(--ipw-page-padding)\`). Prefer tokens over hardcoded values so the Video Studio style panel controls take effect on the composition.`,
+    "Delivery requirements contract:",
+    "- Treat every selected animation/voice tag and every explicit request for captions/subtitles, narration/dubbing, BGM/music, or other media as a required deliverable, not optional inspiration. Carry an explicitly requested but still missing deliverable forward across follow-up turns until it is implemented or the user cancels it.",
+    "- Caption/subtitle requests require timed visible `.clip` elements marked `data-ipw-caption=\"true\"`. BGM requests require a real local audio file and one timeline-owned `<audio data-ipw-bgm=\"true\">` with src, data-start, data-duration, and data-track-index. Selected animations require the implemented owner to carry `data-ipw-animation-reference=\"<registry-name>\"`.",
+    `- Final gate: after all edits, call \`ipollowork_extension_call\` once with extensionId \`media\`, action \`voiceover_timeline_validate\`, sourcePath \`${projectDirectory}/index.html\`, and \`requirements\` describing all requested deliverables: booleans \`voiceover\`, \`captions\`, \`bgm\`, plus every selected registry name in \`animationReferences\`. The requirements must reflect the current request and unresolved earlier requests, even when an implementation is still missing. If invalid, fix all reported issues together and run it once more. If valid, stop using tools and answer immediately: do not follow it with browser/screenshot/eval calls, manual tag counting, parser scripts, file rereads, or extra shell validation. Never start either auxiliary operation after validation, and never wait for or retry one that is still pending. The successful validator result is the authoritative completion gate; never run \`npx hyperframes check\`.`,
     "- If the user only asks for a script, concept, or storyboard, answer in chat and leave the video project unchanged until they ask to make or edit the video.",
-  ].join("\n");
+  ];
+  const voiceoverContract = options.includeVoiceover ? [
+    "Video voiceover contract:",
+    "- iPolloWork's `media` extension and CosyVoice workspace synthesis actions are built into the installed desktop application. They are not provided by the HeyGen CLI or an npm package. Never check for, install, authenticate, or recommend HeyGen/HyperFrames CLI, and never ask the user to run an auth/login command.",
+    "- Use `ipollowork_extension_list_actions` to discover the bundled `media` actions when needed, then call `ipollowork_extension_call` with extensionId `media`. If a bundled action call fails, report and fix that application capability error; do not replace it with user setup instructions or an external CLI.",
+    `- Read \`${projectPath}/voiceover.json\`; its \`voiceId\` and \`model\` are authoritative. Never use generic \`speech_synthesize\`, another provider, or ask for a key.`,
+    "- Before synthesis, build the final valid `.scene.clip` structure once. Derive narration primarily from the page's existing headings, body copy, names, dates, metrics, labels, and other factual anchors; when the user asks to enrich it, connect those anchors into a coherent narrative instead of replacing them with generic filler.",
+    "- Give each substantial narrated scene useful depth: normally 2–4 concise sentences and multiple specific page facts when the source supports them. Keep captions readable by revealing short phrases or at most two lines at a time, while retaining the complete transcript in the scene DOM.",
+    "- Put the complete visible scene transcript in one or more elements marked `data-ipw-narration-source=\"true\"`. Other titles, numbers, badges, labels, and decorative text may remain in the scene and do not need to duplicate the narration. The synthesized `text` and `sceneText` must exactly equal the combined marked transcript.",
+    "- If the user specifies a duration, estimate narration before synthesis (about 4 CJK characters or 2.5 Latin words per second), preserve the most informative page facts, and compact wording to fit. Never synthesize a one-minute request into an unrequested two-minute timeline.",
+    "- A request for subtitles/captions alongside narration requires caption clips covering the spoken content; mark each timed caption clip `data-ipw-caption=\"true\"` and pass `requirements.captions: true` at the final gate.",
+    `- Build one ordered scene array, then make one media call with action \`speech_synthesize_workspace_batch\`, \`compositionPath: "${projectDirectory}/index.html"\`, the selected voice/model, the user's requested \`targetDurationSeconds\` when present, and one immutable \`assets/voiceover-<revision>-<scene>.mp3\` output per scene.`,
+    "- The batch action synthesizes with bounded concurrency and returns items in visual order with cumulative shifts already applied. Treat each item's timing, timelinePatch, and audioElementHtml as authoritative; do not call per-scene synthesis or apply a shift twice.",
+    "- If the batch action fails, use the error to correct its input and retry the same batch at most once. Never fall back to per-scene synthesis, generic speech_synthesize, provider URLs, shell downloads, or one request per scene; preserve successful cached work and report a provider outage instead of creating a slow or partial workflow.",
+    "- In one final index edit, insert each returned audioElementHtml directly under the root composition; update its scene start/duration, every later scene/caption/transition/GSAP timestamp, and root duration. Keep narrated text visible through timing.endSeconds. Never overlap or accelerate narration.",
+    "- Caption animation targets must resolve to real DOM nodes. Prefer selectors based on stable data attributes; if a timeline uses #name, the target must have id=\"name\". Animate a wrapper inside the caption clip, keep the clip lifecycle owned by HyperFrames, and use only finite seek-safe animation registered on the composition timeline.",
+    "- Before inserting replacements, remove legacy narration nodes/manual playback and old voiceover references, but preserve BGM/SFX. Use exactly one timeline-owned `audio[data-ipw-voiceover=\"true\"]` per narrated scene with matching scene/text metadata.",
+    "- If voice settings are absent or invalid, continue visually without choosing a random voice. The final local validation gate above is mandatory.",
+  ] : [
+    "- Narration is opt-in for performance: do not synthesize speech unless the user selected a voice, explicitly requested narration, or the existing composition already contains voiceover nodes.",
+  ];
+  return [...baseContract, ...voiceoverContract].join("\n");
 }

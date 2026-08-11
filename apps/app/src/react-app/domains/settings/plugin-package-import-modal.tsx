@@ -13,7 +13,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { t } from "@/i18n";
+import { currentLocale, t } from "@/i18n";
 import type {
   iPolloWorkPluginPackagePreview,
   iPolloWorkPluginPackageUpload,
@@ -21,7 +21,7 @@ import type {
 } from "@/app/lib/ipollowork-server";
 
 import { readPluginPackageArchive } from "./plugin-package-archive";
-import { formatPluginPlatformError } from "./plugin-platform-state";
+import { formatPluginPlatformError, localizePluginPackageManifest } from "./plugin-platform-state";
 
 type PluginPackageImportModalProps = {
   open: boolean;
@@ -33,6 +33,7 @@ type PluginPackageImportModalProps = {
 };
 
 export function PluginPackageImportModal(props: PluginPackageImportModalProps) {
+  const locale = currentLocale();
   const inputRef = useRef<HTMLInputElement>(null);
   const operationRef = useRef(0);
   const [upload, setUpload] = useState<iPolloWorkPluginPackageUpload | null>(null);
@@ -103,6 +104,8 @@ export function PluginPackageImportModal(props: PluginPackageImportModalProps) {
   };
 
   const isUpdate = preview ? props.installedPluginIds.includes(preview.manifest.id) : false;
+  const previewManifest = preview ? localizePluginPackageManifest(preview.manifest, locale) : null;
+  const signedSafety = preview?.safety.level === "signed" ? preview.safety : null;
 
   return (
     <Dialog open={props.open} onOpenChange={(open) => { if (!open) close(); }}>
@@ -143,7 +146,7 @@ export function PluginPackageImportModal(props: PluginPackageImportModalProps) {
             </Button>
           </div>
 
-          {preview ? (
+          {preview && previewManifest ? (
             <div className="overflow-hidden rounded-2xl border border-dls-border">
               <div className="flex items-start gap-3 border-b border-dls-border px-4 py-4">
                 <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-dls-hover text-dls-secondary">
@@ -151,10 +154,10 @@ export function PluginPackageImportModal(props: PluginPackageImportModalProps) {
                 </div>
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-2">
-                    <span className="font-semibold text-dls-text">{preview.manifest.name}</span>
-                    <span className="text-xs text-dls-secondary">v{preview.manifest.package?.version}</span>
+                    <span className="font-semibold text-dls-text">{previewManifest.name}</span>
+                    <span className="text-xs text-dls-secondary">v{previewManifest.package?.version}</span>
                   </div>
-                  <p className="mt-1 text-xs leading-5 text-dls-secondary">{preview.manifest.description}</p>
+                  <p className="mt-1 text-xs leading-5 text-dls-secondary">{previewManifest.description}</p>
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-px bg-dls-border sm:grid-cols-4">
@@ -171,10 +174,22 @@ export function PluginPackageImportModal(props: PluginPackageImportModalProps) {
                   </div>
                 ))}
               </div>
-              <div className="flex items-start gap-2 border-t border-green-6 bg-green-2 px-4 py-3 text-xs leading-5 text-green-11">
+              <div className={`flex items-start gap-2 border-t px-4 py-3 text-xs leading-5 ${signedSafety ? "border-amber-6 bg-amber-2 text-amber-11" : "border-green-6 bg-green-2 text-green-11"}`}>
                 <ShieldCheck size={16} className="mt-0.5 shrink-0" />
-                <span>{t("plugin_platform.import_safety")}</span>
+                <span>
+                  {signedSafety
+                    ? t("plugin_platform.import_signed_safety", { publisher: signedSafety.publisher.name })
+                    : t("plugin_platform.import_safety")}
+                </span>
               </div>
+              {signedSafety && previewManifest.permissions?.length ? (
+                <div className="border-t border-dls-border px-4 py-3">
+                  <p className="text-xs font-medium text-dls-text">{t("plugin_platform.import_permissions")}</p>
+                  <ul className="mt-2 space-y-1.5 text-xs leading-5 text-dls-secondary">
+                    {previewManifest.permissions.map((permission) => <li key={permission.id}>• {permission.reason}</li>)}
+                  </ul>
+                </div>
+              ) : null}
             </div>
           ) : null}
 

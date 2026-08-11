@@ -1,0 +1,44 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "transition-split-wipe",
+  "version": "1.0.0",
+  "type": "hyperframes:block",
+  "title": "Split Wipe",
+  "description": "A clean vertical split pushes the outgoing surface aside while the incoming scene takes full-frame ownership.",
+  "kind": "effect",
+  "librarySection": "transition-animation",
+  "dimensions": { "width": 1920, "height": 1080 },
+  "duration": 1.2,
+  "tags": ["transition", "wipe", "split", "geometric", "clean"],
+  "engine": { "name": "gsap", "version": "3.15.0", "seekable": true, "plugins": [] },
+  "source": { "provider": "ipollowork", "label": "iPolloWork Motion Library" },
+  "motionPreset": {
+    "version": 1,
+    "category": "transition",
+    "targets": ["any", "text", "image", "shape", "group"],
+    "anchor": "playhead",
+    "duration": 0.8,
+    "ease": "power3.inOut",
+    "keyframes": [
+      {
+        "percentage": 0,
+        "properties": { "opacity": 0, "xPercent": 28, "clipPath": "inset(0 0 0 100%)" }
+      },
+      {
+        "percentage": 52,
+        "properties": { "opacity": 1, "xPercent": 0, "clipPath": "inset(0 0 0 0%)" }
+      },
+      {
+        "percentage": 100,
+        "properties": { "opacity": 1, "xPercent": 0, "clipPath": "inset(0 0 0 0%)" }
+      }
+    ]
+  },
+  "files": [
+    {
+      "path": "transition-split-wipe.html",
+      "target": "compositions/transition-split-wipe.html",
+      "type": "hyperframes:composition"
+    }
+  ]
+}

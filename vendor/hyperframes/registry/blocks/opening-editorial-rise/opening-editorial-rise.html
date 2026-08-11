@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Editorial Rise</title>
+    <style>
+      * { box-sizing: border-box; }
+      html, body { width: 1920px; height: 1080px; margin: 0; overflow: hidden; }
+      body { background: #eee9df; color: #171717; font-family: Arial, sans-serif; }
+      .composition { position: relative; width: 100%; height: 100%; overflow: hidden; background: #eee9df; }
+      .edge { position: absolute; inset: 42px; border: 1px solid rgba(23,23,23,.2); }
+      .mast { position: absolute; left: 94px; right: 94px; top: 72px; display: flex; justify-content: space-between; border-bottom: 2px solid #171717; padding-bottom: 18px; font-size: 18px; font-weight: 800; letter-spacing: .22em; }
+      .copy { position: absolute; left: 92px; top: 220px; width: 1570px; }
+      .line { overflow: hidden; height: 184px; }
+      h1 { margin: 0; font-size: 190px; line-height: .9; letter-spacing: -.078em; font-weight: 800; }
+      .accent { color: #e4432f; font-family: Georgia, serif; font-style: italic; font-weight: 500; }
+      .dek { position: absolute; left: 104px; bottom: 104px; width: 690px; font: 28px/1.38 Georgia, serif; }
+      .issue { position: absolute; right: 104px; bottom: 104px; text-align: right; font-size: 17px; font-weight: 800; letter-spacing: .22em; }
+    </style>
+  </head>
+  <body>
+    <main class="composition" data-composition-id="opening-editorial-rise" data-width="1920" data-height="1080" data-start="0" data-duration="4.6">
+      <div class="edge" data-layout-ignore></div>
+      <header class="mast"><span>IPOLLO / STORIES</span><span>VOL. 01</span></header>
+      <section class="copy" data-hf-id="oer-copy" data-layout-allow-overlap>
+        <div class="line"><h1 class="title-one">Make ideas</h1></div>
+        <div class="line"><h1 class="title-two"><span class="accent">impossible</span> to miss.</h1></div>
+      </section>
+      <p class="dek">A typographic opening built for point-of-view films, essays, and high-contrast product narratives.</p>
+      <div class="issue">CREATIVE SYSTEM<br />08 / 2026</div>
+    </main>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.15.0/dist/gsap.min.js"></script>
+    <script>
+      window.__timelines = window.__timelines || {};
+      var timeline = gsap.timeline({ paused: true });
+      timeline
+        .from(".mast", { opacity: 0, scaleX: .72, transformOrigin: "left", duration: .8, ease: "power3.out" }, 0)
+        .from(".title-one", { yPercent: 120, rotation: 2, duration: 1.05, ease: "power4.out" }, .35)
+        .from(".title-two", { yPercent: 120, rotation: -2, duration: 1.08, ease: "power4.out" }, .62)
+        .from(".accent", { color: "#171717", duration: .65, ease: "power2.out" }, 1.32)
+        .from(".dek", { opacity: 0, y: 28, duration: .72, ease: "power3.out" }, 1.25)
+        .from(".issue", { opacity: 0, x: 24, duration: .65, ease: "power3.out" }, 1.55)
+        .from(".edge", { opacity: 0, duration: .7, ease: "none" }, .1);
+      window.__timelines["opening-editorial-rise"] = timeline;
+      window.addEventListener("hf-seek", function (event) { timeline.seek(Math.max(0, Math.min(event.detail.time, 4.6))); });
+      timeline.seek(0);
+    </script>
+  </body>
+</html>

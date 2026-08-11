@@ -313,7 +313,12 @@ export const desktopFetch: typeof globalThis.fetch = async (input, init) => {
   });
 };
 
-export async function desktopFetchViaMain(input: RequestInfo | URL, init?: RequestInit, timeoutMs?: number): Promise<Response> {
+export async function desktopFetchViaMain(
+  input: RequestInfo | URL,
+  init?: RequestInit,
+  timeoutMs?: number,
+  responseType: "text" | "arrayBuffer" = "text",
+): Promise<Response> {
   let url: string;
   let method: string | undefined;
   let headers: Record<string, string> | undefined;
@@ -336,7 +341,10 @@ export async function desktopFetchViaMain(input: RequestInfo | URL, init?: Reque
     body = typeof init?.body === "string" ? init.body : undefined;
   }
 
-  const result = await invokeElectronHelper("__fetch", url, { method, headers, body, timeoutMs });
+  const result = await invokeElectronHelper("__fetch", url, { method, headers, body, timeoutMs, responseType });
+  if (responseType === "arrayBuffer" && typeof result.body === "string") {
+    throw new Error("desktop_binary_fetch_requires_restart");
+  }
 
   const NULL_BODY_STATUSES = new Set([101, 204, 205, 304]);
   const responseBody = NULL_BODY_STATUSES.has(result.status) ? null : result.body;
@@ -346,6 +354,14 @@ export async function desktopFetchViaMain(input: RequestInfo | URL, init?: Reque
     statusText: result.statusText,
     headers: result.headers,
   });
+}
+
+export function desktopFetchBinaryViaMain(
+  input: RequestInfo | URL,
+  init?: RequestInit,
+  timeoutMs?: number,
+): Promise<Response> {
+  return desktopFetchViaMain(input, init, timeoutMs, "arrayBuffer");
 }
 
 // ---------------------------------------------------------------------------

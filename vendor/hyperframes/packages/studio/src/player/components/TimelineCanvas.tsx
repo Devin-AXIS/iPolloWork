@@ -1,4 +1,4 @@
-import { memo, useRef } from "react";
+import { memo, useRef, useSyncExternalStore } from "react";
 import { TimelineRuler } from "./TimelineRuler";
 import { PlayheadIndicator } from "./PlayheadIndicator";
 import { getTimelineEditCapabilities, type TimelineRangeSelection } from "./timelineEditing";
@@ -16,7 +16,7 @@ import {
   getTimelineRowTop,
 } from "./timelineLayout";
 import { usePlayerStore } from "../store/playerStore";
-import type { ResizingClipState } from "./useTimelineClipDrag";
+import type { ResizingClipState, TimelineDragPreviewStore } from "./useTimelineClipDrag";
 import { type MultiDragPreviewInput } from "./timelineMultiDragPreview";
 import { useTimelineEditContextOptional } from "../../contexts/TimelineEditContext";
 import type { Rect } from "../../utils/marqueeGeometry";
@@ -24,7 +24,6 @@ import { TimelineClip } from "./TimelineClip";
 import { TimelineLanes, type TimelineLaneBaseProps } from "./TimelineLanes";
 import { renderClipChildren } from "./timelineClipChildren";
 import { resolveTimelineKind } from "./timelineLayerPresentation";
-import { useTimelineRevealClip } from "./useTimelineRevealClip";
 import type { TimelineLaneGapStrips } from "./useTimelineGapHighlights";
 import { BeatBackgroundLines } from "./BeatStrip";
 
@@ -43,15 +42,25 @@ interface TimelineCanvasProps extends TimelineLaneBaseProps {
   playheadRef: React.RefObject<HTMLDivElement | null>;
   /** Gap strips: loud on gap-menu-row hover, quiet on the selected clip's lane. */
   laneGapStrips: TimelineLaneGapStrips[];
+  dragPreviewStore: TimelineDragPreviewStore;
 }
 
 export const TimelineCanvas = memo(function TimelineCanvas(props: TimelineCanvasProps) {
-  const { draggedClip, scrollRef, displayTrackOrder } = props;
-  const { onResizeElement, onMoveElement, onToggleTrackHidden, onRazorSplit, onRazorSplitAll } =
-    useTimelineEditContextOptional();
+  const { scrollRef, displayTrackOrder } = props;
+  const draggedClip = useSyncExternalStore(
+    props.dragPreviewStore.subscribe,
+    props.dragPreviewStore.getSnapshot,
+    props.dragPreviewStore.getSnapshot,
+  );
+  const {
+    onResizeElement,
+    onMoveElement,
+    onToggleTrackHidden,
+    onToggleTrackLocked,
+    onRazorSplit,
+    onRazorSplitAll,
+  } = useTimelineEditContextOptional();
   const beatDragging = usePlayerStore((s) => s.beatDragging);
-  // Scroll a clip into view when the sidebar (asset card) requests a reveal.
-  useTimelineRevealClip(scrollRef);
   const draggedElement = draggedClip?.element ?? null;
   const activeDraggedElement =
     draggedClip?.started === true && draggedElement
@@ -144,6 +153,7 @@ export const TimelineCanvas = memo(function TimelineCanvas(props: TimelineCanvas
         majorTickInterval={props.majorTickInterval}
         theme={props.theme}
         beatAnalysis={props.beatAnalysis}
+        visibleWindow={props.visibleWindow}
       />
 
       {/* Breathing room between the sticky ruler and the first track lane — the
@@ -156,6 +166,7 @@ export const TimelineCanvas = memo(function TimelineCanvas(props: TimelineCanvas
         draggedElement={draggedElement}
         multiDragPreview={multiDragPreview}
         onToggleTrackHidden={onToggleTrackHidden}
+        onToggleTrackLocked={onToggleTrackLocked}
         onResizeElement={onResizeElement}
         onMoveElement={onMoveElement}
         onRazorSplit={onRazorSplit}
@@ -184,6 +195,7 @@ export const TimelineCanvas = memo(function TimelineCanvas(props: TimelineCanvas
           highlightTime={
             draggedClip?.started && draggedClip.snapType === "beat" ? draggedClip.snapTime : null
           }
+          visibleTimeRange={props.visibleWindow}
         />
       </div>
 

@@ -19,6 +19,7 @@ import {
   getTimelineElementSelectorIndex,
   getTimelineElementDisplayLabel,
   buildTimelineElementIdentity,
+  readTimelineClipLabel,
   readTimelineElementZIndex,
 } from "./timelineElementHelpers";
 import { postRuntimeControlMessage } from "./runtimeProtocol";
@@ -573,6 +574,7 @@ function buildMissingCompositionEntry(params: {
   const entry: TimelineElement = {
     id: identity.id,
     label,
+    clipLabel: readTimelineClipLabel(element),
     key: identity.key,
     tag: element.tagName.toLowerCase(),
     start: window.start,

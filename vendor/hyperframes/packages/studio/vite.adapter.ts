@@ -19,6 +19,8 @@ import {
   type BackgroundRemovalRender,
   createBackgroundRemovalJob,
   createProjectSignature,
+  loadRegistryPreviewAssetFromRoot,
+  loadRegistryPreviewFromRoot,
 } from "@hyperframes/studio-server";
 import {
   resolveGsapRegistryItemEngine,
@@ -382,6 +384,18 @@ export function createViteAdapter(dataDir: string, server: ViteDevServer): Studi
         }
       }
       return items;
+    },
+
+    async loadRegistryPreview({ blockName }) {
+      return loadRegistryPreviewFromRoot(resolve(__dirname, "../../registry"), blockName);
+    },
+
+    async loadRegistryPreviewAsset({ blockName, assetPath }) {
+      return loadRegistryPreviewAssetFromRoot(
+        resolve(__dirname, "../../registry"),
+        blockName,
+        assetPath,
+      );
     },
 
     // fallow-ignore-next-line complexity
