@@ -1309,7 +1309,11 @@ function executeMotionMutation(
     );
     const parameters = { ...priorParameters, ...body.parameters };
     const loop = body.loop ?? prior?.instance.loop ?? false;
-    if (target.hasAttribute("data-var-text") && "unit" in parameters) {
+    if (
+      target.hasAttribute("data-var-text") &&
+      "unit" in parameters &&
+      !preset.structuredText
+    ) {
       parameters.unit = "whole";
     }
     let instance;

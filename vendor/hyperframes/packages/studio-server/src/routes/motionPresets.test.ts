@@ -272,6 +272,32 @@ describe("semantic motion mutation route", () => {
     expect(html).not.toContain("data-ipw-motion-structure");
   });
 
+  it("keeps structured word units on variable-bound text", async () => {
+    writeFileSync(
+      join(projectDir, "index.html"),
+      SOURCE.replace("\u4f60\u597d mixed AI", "Make motion clear.").replace(
+        '<h1 id="headline"',
+        '<h1 id="headline" data-var-text="title"',
+      ),
+    );
+
+    const applied = await mutate({
+      type: "mutate-motion",
+      operation: "upsert",
+      targetSelector: "#headline",
+      targetKind: "text",
+      phase: "emphasis",
+      presetId: "text.emphasis.highlight-sweep",
+      parameters: { unit: "word", stagger: 0.05 },
+    });
+
+    expect(applied.status).toBe(200);
+    const html = readFileSync(join(projectDir, "index.html"), "utf8");
+    expect((html.match(/data-ipw-motion-role="unit"/g) ?? [])).toHaveLength(3);
+    expect(html).toContain('data-var-text="title"');
+    expect(html).toContain('\\"unit\\":\\"word\\"');
+  });
+
   it("keeps character motion addressable while Highlight is structured", async () => {
     writeFileSync(
       join(projectDir, "index.html"),
