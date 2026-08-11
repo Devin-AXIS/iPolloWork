@@ -8,6 +8,14 @@ import {
 } from "./structuredTextMotion.js";
 
 export {
+  materializeStructuredText,
+  restoreStructuredText,
+  snapshotStructuredText,
+  unwrapStructuredText,
+  type StructuredTextSnapshot,
+} from "./structuredTextDom.js";
+
+export {
   MOTION_COLOR_SOURCE_PARAMETER,
   MOTION_COMMON_PARAMETERS,
   MOTION_DIRECTION_PARAMETER,
