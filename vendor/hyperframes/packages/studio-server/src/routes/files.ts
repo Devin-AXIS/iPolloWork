@@ -82,13 +82,16 @@ import {
   defaultMotionDuration,
   getMotionPreset,
   listMotionPresets,
+  materializeStructuredText,
   readMotionInstanceFromExtras,
+  unwrapStructuredText,
   type MotionParameters,
   type MotionInstance,
   type MotionPhase,
   type MotionTargetKind,
   type MotionTextUnit,
 } from "@hyperframes/core/motion-presets";
+import { structuredMotionSelector } from "@hyperframes/core";
 
 // ── Server cutover flag ─────────────────────────────────────────────────────
 
@@ -1065,6 +1068,19 @@ function unwrapMotionText(target: Element): void {
   target.removeAttribute("data-ipw-motion-split");
 }
 
+function readMotionSourceText(target: Element): string {
+  const encoded = target.getAttribute("data-ipw-motion-source");
+  if (encoded !== null) {
+    try {
+      const source = JSON.parse(encoded);
+      if (typeof source === "string") return source;
+    } catch {
+      // Fall through to the DOM text for legacy or malformed markers.
+    }
+  }
+  return target.textContent ?? "";
+}
+
 function ensureMotionTextParts(target: Element): number {
   const text = target.textContent ?? "";
   unwrapMotionText(target);
@@ -1297,20 +1313,41 @@ function executeMotionMutation(
         400,
       );
     }
-    const compiled = compileMotionInstance(instance);
-    if (motionUnit(instance.parameters) !== "whole") ensureMotionTextParts(target);
-    const added = addAnimationWithKeyframesToScript(
-      script,
-      compiled.targetSelector,
-      compiled.position,
-      compiled.duration,
-      compiled.keyframes,
-      compiled.ease,
-      undefined,
-      compiled.extras,
-    );
-    if (!added.id) return respond({ error: "Could not add motion to the GSAP timeline" }, 400);
-    script = added.script;
+    const sourceText = readMotionSourceText(target);
+    const compiled = compileMotionInstance(instance, sourceText);
+    if (compiled.structured) {
+      materializeStructuredText(target, compiled.structured, sourceText);
+      for (const track of compiled.structured.tracks) {
+        const added = addAnimationWithKeyframesToScript(
+          script,
+          structuredMotionSelector(body.targetSelector, track.role),
+          compiled.position + track.position,
+          track.duration,
+          track.keyframes,
+          compiled.ease,
+          undefined,
+          {
+            ...compiled.extras,
+            ...(track.stagger > 0 ? { stagger: track.stagger } : {}),
+          },
+        );
+        if (!added.id) return respond({ error: "Could not add motion to the GSAP timeline" }, 400);
+        script = added.script;
+      }
+    } else {
+      const added = addAnimationWithKeyframesToScript(
+        script,
+        compiled.targetSelector,
+        compiled.position,
+        compiled.duration,
+        compiled.keyframes,
+        compiled.ease,
+        undefined,
+        compiled.extras,
+      );
+      if (!added.id) return respond({ error: "Could not add motion to the GSAP timeline" }, 400);
+      script = added.script;
+    }
   }
 
   const remainingInstances = parseGsapScriptAcorn(script)
@@ -1319,8 +1356,26 @@ function executeMotionMutation(
       (instance): instance is MotionInstance =>
         instance !== null && motionInstanceTargetsElement(block.document, target, instance),
     );
-  if (!remainingInstances.some((instance) => motionUnit(instance!.parameters) !== "whole")) {
-    unwrapMotionText(target);
+  const sourceText = readMotionSourceText(target);
+  const remainingStructured = remainingInstances.flatMap((instance) => {
+    try {
+      const structured = compileMotionInstance(instance, sourceText).structured;
+      return structured ? [structured] : [];
+    } catch {
+      return [];
+    }
+  });
+  if (remainingStructured.length > 0) {
+    materializeStructuredText(target, remainingStructured[0]!, sourceText);
+  } else {
+    if (target.hasAttribute("data-ipw-motion-structure") || target.hasAttribute("data-ipw-motion-source")) {
+      unwrapStructuredText(target);
+    }
+    if (remainingInstances.some((instance) => motionUnit(instance.parameters) !== "whole")) {
+      ensureMotionTextParts(target);
+    } else {
+      unwrapMotionText(target);
+    }
   }
   if (remainingInstances.length > 0) {
     target.setAttribute("data-ipw-motion-selector", body.targetSelector);

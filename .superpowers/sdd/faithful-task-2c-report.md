@@ -1,0 +1,20 @@
+# Faithful Task 2C - Server structured Highlight persistence
+
+## Scope
+
+- `vendor/hyperframes/packages/studio-server/src/routes/files.ts`
+- `vendor/hyperframes/packages/studio-server/src/routes/motionPresets.test.ts`
+
+## Implementation
+
+- Compiles motion with the authoritative source text before materializing text DOM.
+- Persists every structured Highlight track separately using its role selector, position, duration, keyframes, easing, and stagger.
+- Keeps the same encoded MotionInstance data on every track so phase replacement and removal remove the full set.
+- Rebuilds any remaining structured text motion after mutation; otherwise restores the source text before applying ordinary word/character splitting.
+
+## Verification
+
+- `bun.cmd --filter @hyperframes/studio-server test -- src/routes/motionPresets.test.ts` (11 passed)
+- `bun.cmd --filter @hyperframes/studio-server typecheck`
+- `bun.cmd --filter @hyperframes/studio-server build`
+- `git diff --check`

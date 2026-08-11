@@ -152,6 +152,89 @@ describe("semantic motion mutation route", () => {
     expect(html).toContain('id="headline"');
   });
 
+  it("persists a reversible legacy Highlight sweep as structured role tracks", async () => {
+    writeFileSync(
+      join(projectDir, "index.html"),
+      SOURCE.replace("\u4f60\u597d mixed AI", "Make motion clear."),
+    );
+    const highlight = {
+      type: "mutate-motion",
+      operation: "upsert",
+      targetSelector: "#headline",
+      elementId: "headline",
+      targetKind: "text",
+      phase: "emphasis",
+      presetId: "text.emphasis.highlight-sweep",
+      parameters: { unit: "word", stagger: 0.05 },
+    };
+
+    const applied = await mutate(highlight);
+    expect(applied.status).toBe(200);
+    const appliedBody = await applied.json();
+    const appliedMotions = appliedBody.parsed.animations
+      .map((animation: { extras?: Record<string, unknown> }) =>
+        readMotionInstanceFromExtras(animation.extras),
+      )
+      .filter(Boolean);
+    expect(appliedMotions).toHaveLength(5);
+    expect(new Set(appliedMotions.map((motion: { id: string }) => motion.id))).toEqual(
+      new Set(["motion:#headline:emphasis"]),
+    );
+
+    let html = readFileSync(join(projectDir, "index.html"), "utf8");
+    expect((html.match(/data-ipw-motion-role="unit"/g) ?? [])).toHaveLength(3);
+    expect((html.match(/data-ipw-motion-role="background"/g) ?? [])).toHaveLength(3);
+    expect((html.match(/data-ipw-motion-role="text"/g) ?? [])).toHaveLength(3);
+    expect(html).toContain(">clear.</span>");
+    expect(html).toContain('data-ipw-motion-structure="v1"');
+    expect(html).toContain('#headline [data-ipw-motion-role=\\"background\\"]');
+    expect(html).toContain('#headline [data-ipw-motion-role=\\"unit\\"]');
+    expect(html).toContain('#headline [data-ipw-motion-role=\\"text\\"]');
+    expect(html).toContain("linear-gradient(135deg, #ff1745 0%, #df1238 100%)");
+    expect(html).toContain("scaleX: 0");
+    expect(html).toContain("power2.out");
+    expect(html).toContain("power2.in");
+    expect(html).toContain("stagger: 0.05");
+    expect(html).toContain("duration: 0");
+
+    const repeated = await mutate(highlight);
+    expect(repeated.status).toBe(200);
+    html = readFileSync(join(projectDir, "index.html"), "utf8");
+    expect((html.match(/data-ipw-motion-role="unit"/g) ?? [])).toHaveLength(3);
+
+    const removed = await mutate({ ...highlight, operation: "remove" });
+    expect(removed.status).toBe(200);
+    html = readFileSync(join(projectDir, "index.html"), "utf8");
+    expect(html).toContain(">Make motion clear.</h1>");
+    expect(html).not.toContain("data-ipw-motion-structure");
+    expect(html).not.toContain("data-ipw-motion-source");
+    expect(html).not.toContain("data-ipw-motion-role");
+
+    const whole = await mutate({
+      type: "mutate-motion",
+      operation: "upsert",
+      targetSelector: "#headline",
+      targetKind: "text",
+      phase: "enter",
+      presetId: "text.enter.fade",
+      parameters: { unit: "whole" },
+    });
+    expect(whole.status).toBe(200);
+    const character = await mutate({
+      type: "mutate-motion",
+      operation: "upsert",
+      targetSelector: "#headline",
+      targetKind: "text",
+      phase: "enter",
+      presetId: "text.enter.typewriter",
+      parameters: { unit: "character" },
+    });
+    expect(character.status).toBe(200);
+    html = readFileSync(join(projectDir, "index.html"), "utf8");
+    expect(html).toContain("data-ipw-motion-char");
+    expect(html).not.toContain("data-ipw-motion-structure");
+  });
+
   it("replaces a legacy selector animation when the same element gains a stable hf id", async () => {
     writeFileSync(
       join(projectDir, "index.html"),
