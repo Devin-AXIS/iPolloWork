@@ -94,7 +94,6 @@ describe("AnimationTemplatesTab catalog", () => {
     const themeAwareIds = [
       "text-prism-glow",
       "text-shiny-sweep",
-      "text-highlight-sweep",
       "text-matrix-decode",
       "text-gradient-fill",
       "text-neon-glow",
@@ -111,6 +110,13 @@ describe("AnimationTemplatesTab catalog", () => {
         colorSource: "theme",
       });
     }
+  });
+
+  it("keeps the migrated highlight sweep on its original red by default", () => {
+    expect(ANIMATION_TEMPLATES.find((template) => template.id === "text-highlight-sweep")?.parameters).toMatchObject({
+      colorSource: "custom",
+      color: "#FF1745",
+    });
   });
 
   it("keeps variable-bound text intact by applying text motion to the whole element", () => {

@@ -254,7 +254,7 @@ export const ANIMATION_TEMPLATES: readonly AnimationTemplateDefinition[] = [
     description: { en: "Editable word or character highlight", zh: "支持按词或按字的高亮扫过" },
     preview: "text-highlight",
     presetId: "text.emphasis.highlight-sweep",
-    parameters: { colorSource: "theme" },
+    parameters: { colorSource: "custom", color: "#FF1745" },
   },
   {
     id: "text-matrix-decode",
