@@ -197,7 +197,11 @@ export function createHighlightSweepStructuredRecipe(
               boxShadow: shadow,
             },
           },
-          { percentage: 100, properties: { opacity: 1, ...visibleScale, transformOrigin } },
+          {
+            percentage: 100,
+            ease: "power2.out",
+            properties: { opacity: 1, ...visibleScale, transformOrigin },
+          },
         ],
       },
       {
@@ -207,8 +211,23 @@ export function createHighlightSweepStructuredRecipe(
         stagger,
         keyframes: [
           { percentage: 0, properties: { opacity: 1, ...visibleScale, transformOrigin } },
-          { percentage: 90, properties: { opacity: 0, ...exitScale, transformOrigin } },
-          { percentage: 100, properties: { opacity: 0, ...hiddenScale, transformOrigin } },
+          {
+            percentage: 100,
+            ease: "power2.in",
+            properties: { opacity: 0, ...exitScale, transformOrigin },
+          },
+        ],
+      },
+      {
+        role: "background",
+        position: 0.33 / speed,
+        duration: 0,
+        stagger,
+        keyframes: [
+          {
+            percentage: 0,
+            properties: { opacity: 0, ...hiddenScale, transformOrigin },
+          },
         ],
       },
       {
@@ -218,8 +237,12 @@ export function createHighlightSweepStructuredRecipe(
         stagger,
         keyframes: [
           { percentage: 0, properties: { filter: "brightness(1)" } },
-          { percentage: 33, properties: { filter: `brightness(${(1 + 0.05 * intensity).toFixed(2)})` } },
-          { percentage: 100, properties: { filter: "brightness(1)" } },
+          {
+            percentage: 33,
+            ease: "power2.out",
+            properties: { filter: `brightness(${(1 + 0.05 * intensity).toFixed(2)})` },
+          },
+          { percentage: 100, ease: "power2.out", properties: { filter: "brightness(1)" } },
         ],
       },
       {

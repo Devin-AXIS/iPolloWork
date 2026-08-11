@@ -25,3 +25,11 @@
 - `bun x vitest run src/motionPresets.test.ts`
 - `bun --filter @hyperframes/core build`
 - `git diff --check`
+
+## Review Fixes
+
+- Added legacy `power2.out` easing to the reveal and both brightness transitions.
+- Added legacy `power2.in` easing to the exit transition.
+- Kept the exit as a complete `0.1s` transition from visible `scale 1` to hidden `scale 1.02`.
+- Moved the final hidden `scale 0` state to an independent zero-duration reset track at the exit endpoint.
+- Added focused assertions for easing, full exit timing, and the independent reset track.

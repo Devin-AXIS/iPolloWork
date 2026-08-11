@@ -393,8 +393,14 @@ describe("motion presets", () => {
     const exit = tracks.find(
       (track) =>
         track.role === "background" &&
-        track.keyframes.some((keyframe) => keyframe.properties.scaleX === 1.02) &&
-        track.keyframes.at(-1)?.properties.scaleX === 0,
+        track.duration === 0.1 &&
+        track.keyframes.at(-1)?.properties.scaleX === 1.02,
+    );
+    const reset = tracks.find(
+      (track) =>
+        track.role === "background" &&
+        track.duration === 0 &&
+        track.position === 0.33,
     );
     const word = tracks.find((track) => track.role === "unit");
     const text = tracks.find((track) => track.role === "text");
@@ -406,12 +412,38 @@ describe("motion presets", () => {
       borderRadius: "10px",
       boxShadow: "0 12px 30px rgba(229, 20, 58, 0.32)",
     });
-    expect(reveal?.keyframes.at(-1)?.properties).toMatchObject({ opacity: 1, scaleX: 1 });
-    expect(exit).toBeDefined();
+    expect(reveal?.keyframes.at(-1)).toMatchObject({
+      ease: "power2.out",
+      properties: { opacity: 1, scaleX: 1 },
+    });
+    expect(exit?.keyframes).toEqual([
+      { percentage: 0, properties: { opacity: 1, scaleX: 1, transformOrigin: "0% 50%" } },
+      {
+        percentage: 100,
+        ease: "power2.in",
+        properties: { opacity: 0, scaleX: 1.02, transformOrigin: "0% 50%" },
+      },
+    ]);
+    expect(reset).toMatchObject({
+      role: "background",
+      position: 0.33,
+      duration: 0,
+      keyframes: [
+        {
+          percentage: 0,
+          properties: { opacity: 0, scaleX: 0, transformOrigin: "0% 50%" },
+        },
+      ],
+    });
     expect(word?.keyframes.map((keyframe) => keyframe.properties.filter)).toEqual([
       "brightness(1)",
       "brightness(1.05)",
       "brightness(1)",
+    ]);
+    expect(word?.keyframes.map((keyframe) => keyframe.ease)).toEqual([
+      undefined,
+      "power2.out",
+      "power2.out",
     ]);
     expect(text?.keyframes.every((keyframe) => keyframe.properties.color === "#ffffff")).toBe(true);
   });
