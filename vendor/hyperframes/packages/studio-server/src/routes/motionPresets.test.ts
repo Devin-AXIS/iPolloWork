@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Hono } from "hono";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -7,6 +7,19 @@ import { parseHTML } from "linkedom";
 import { readMotionInstanceFromExtras } from "@hyperframes/core/motion-presets";
 import type { StudioApiAdapter } from "../types";
 import { registerFileRoutes } from "./files";
+
+const structuredRestoreCalls = vi.hoisted(() => ({ count: 0 }));
+
+vi.mock("@hyperframes/core/motion-presets", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@hyperframes/core/motion-presets")>();
+  return {
+    ...actual,
+    restoreStructuredText(...args: Parameters<typeof actual.restoreStructuredText>) {
+      structuredRestoreCalls.count += 1;
+      return actual.restoreStructuredText(...args);
+    },
+  };
+});
 
 const SOURCE = `<!doctype html>
 <html><body>
@@ -23,6 +36,7 @@ describe("semantic motion mutation route", () => {
   let app: Hono;
 
   beforeEach(() => {
+    structuredRestoreCalls.count = 0;
     projectDir = mkdtempSync(join(tmpdir(), "hf-motion-test-"));
     writeFileSync(join(projectDir, "index.html"), SOURCE);
     const adapter: StudioApiAdapter = {
@@ -320,6 +334,42 @@ describe("semantic motion mutation route", () => {
     expect(html).not.toContain("data-ipw-motion-role");
     expect(document.querySelectorAll("#headline [data-ipw-motion-char]").length).toBeGreaterThan(0);
     expect(document.querySelector("#headline")?.textContent).toBe("Make motion clear.");
+  });
+
+  it("restores materialized Highlight DOM when the structured writer cannot add a track", async () => {
+    const unwritableSource = SOURCE
+      .replace("\u4f60\u597d mixed AI", "Make motion clear.")
+      .replace(
+        "const tl = gsap.timeline({ paused: true });",
+        "const timelines = [gsap.timeline({ paused: true })];",
+      )
+      .replace('window.__timelines["main"] = tl;', "void timelines;");
+    writeFileSync(join(projectDir, "index.html"), unwritableSource);
+    const before = readFileSync(join(projectDir, "index.html"), "utf8");
+
+    const response = await mutate({
+      type: "mutate-motion",
+      operation: "upsert",
+      targetSelector: "#headline",
+      elementId: "headline",
+      targetKind: "text",
+      phase: "emphasis",
+      presetId: "text.emphasis.highlight-sweep",
+      parameters: { unit: "word", stagger: 0.05 },
+    });
+
+    expect(response.status).toBe(400);
+    expect(structuredRestoreCalls.count).toBe(1);
+    const after = readFileSync(join(projectDir, "index.html"), "utf8");
+    expect(after).toBe(before);
+    expect(after).not.toContain("data-ipw-motion-structure");
+    expect(after).not.toContain("data-ipw-motion-source");
+    expect(after).not.toContain("data-ipw-motion-role");
+    const target = parseHTML(after).document.querySelector("#headline");
+    expect(target?.textContent).toBe("Make motion clear.");
+    expect(target?.getAttribute("id")).toBe("headline");
+    expect(target?.getAttribute("data-start")).toBe("1");
+    expect(target?.getAttribute("data-duration")).toBe("5");
   });
 
   it("replaces a legacy selector animation when the same element gains a stable hf id", async () => {

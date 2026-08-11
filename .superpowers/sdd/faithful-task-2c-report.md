@@ -15,9 +15,14 @@
 - Restores the original target DOM snapshot if any structured track writer fails.
 - Rebuilds any remaining structured text motion after mutation; otherwise restores the source text before applying ordinary word/character splitting.
 
+## Failure-path coverage
+
+- Uses an unsupported GSAP timeline shape to make structured track insertion return an empty id after Highlight materialization.
+- Verifies the real `restoreStructuredText` path executes, the route returns 400, and the project file remains byte-for-byte unchanged with its original text and attributes.
+
 ## Verification
 
-- `bun.cmd --filter @hyperframes/studio-server test -- src/routes/motionPresets.test.ts` (12 passed)
+- `bun.cmd --filter @hyperframes/studio-server test -- src/routes/motionPresets.test.ts` (13 passed)
 - `bun.cmd --filter @hyperframes/studio-server typecheck`
 - `bun.cmd --filter @hyperframes/studio-server build`
 - `git diff --check`
