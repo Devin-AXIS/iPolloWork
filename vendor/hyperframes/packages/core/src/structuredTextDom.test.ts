@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 
-import { afterEach, describe, expect, it } from "vitest";
+import { Window } from "happy-dom";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { CompiledStructuredTextMotion } from "./structuredTextMotion.js";
 import {
   materializeStructuredText,
@@ -23,7 +24,19 @@ const highlight = (text: string): CompiledStructuredTextMotion => ({
   seed: 1,
 });
 
-afterEach(() => document.body.replaceChildren());
+let testWindow: Window;
+let document: Document;
+
+beforeEach(() => {
+  testWindow = new Window();
+  Object.defineProperty(testWindow, "SyntaxError", {
+    configurable: true,
+    value: SyntaxError,
+  });
+  document = testWindow.document as unknown as Document;
+});
+
+afterEach(() => testWindow.close());
 
 describe("structured text DOM", () => {
   it("materializes Highlight as reversible word/background/text layers", () => {
@@ -42,7 +55,7 @@ describe("structured text DOM", () => {
     const units = target.querySelectorAll('[data-ipw-motion-role="unit"]');
     expect(units).toHaveLength(3);
     expect(units[2]?.querySelector('[data-ipw-motion-role="text"]')?.textContent).toBe("clear.");
-    expect(Array.from(target.childNodes).filter((node) => node.nodeType === Node.TEXT_NODE).map((node) => node.textContent))
+    expect(Array.from(target.childNodes).filter((node) => node.nodeType === testWindow.Node.TEXT_NODE).map((node) => node.textContent))
       .toEqual([" ", " ", "\n"]);
     expect(units[0]?.getAttribute("data-ipw-motion-word")).toBe("");
     expect(units[0]?.querySelector('[data-ipw-motion-role="background"]')?.getAttribute("aria-hidden")).toBe("true");
@@ -77,7 +90,7 @@ describe("structured text DOM", () => {
     unwrapStructuredText(target);
     expect(target.textContent).toBe("Make motion clear.\n");
     expect(target.childNodes).toHaveLength(1);
-    expect(target.firstChild?.nodeType).toBe(Node.TEXT_NODE);
+    expect(target.firstChild?.nodeType).toBe(testWindow.Node.TEXT_NODE);
     expect(target.hasAttribute("data-ipw-motion-source")).toBe(false);
   });
 
@@ -103,7 +116,7 @@ describe("structured text DOM", () => {
     }
   });
 
-  it("materializes readable clone and particle layers without losing the source marker", () => {
+  it("renders clones through one shared stylesheet without duplicating textContent", () => {
     const target = document.createElement("div");
     target.textContent = "Make motion clear.";
     const compiled = highlight(target.textContent);
@@ -112,17 +125,41 @@ describe("structured text DOM", () => {
       0,
       { role: "clone-primary", perUnit: true, className: "ipw-motion-clone-primary" },
       { role: "clone-accent", perUnit: true, className: "ipw-motion-clone-accent" },
-      { role: "particle-container", perUnit: true, className: "ipw-motion-particles" },
     );
+
+    materializeStructuredText(target, compiled);
+
+    const units = target.querySelectorAll('[data-ipw-motion-role="unit"]');
+    const clone = units[0]?.querySelector('[data-ipw-motion-role="clone-primary"]') as HTMLElement;
+    expect(clone.textContent).toBe("");
+    expect(clone.dataset.ipwMotionCloneText).toBe("Make");
+    expect(clone.getAttribute("aria-hidden")).toBe("true");
+    expect(clone.style.position).toBe("absolute");
+    expect(clone.style.inset).toBe("0");
+    expect(clone.style.pointerEvents).toBe("none");
+    expect(clone.style.userSelect).toBe("none");
+    expect(target.textContent).toBe("Make motion clear.");
+    const style = document.head.querySelector("#ipw-structured-text-motion-styles");
+    expect(style?.textContent).toContain("content: attr(data-ipw-motion-clone-text)");
+
+    const originalMarker = target.getAttribute("data-ipw-motion-source");
+    materializeStructuredText(target, compiled, "wrong repeated clone text");
+    expect(document.head.querySelectorAll("#ipw-structured-text-motion-styles")).toHaveLength(1);
+    expect(target.getAttribute("data-ipw-motion-source")).toBe(originalMarker);
+    unwrapStructuredText(target);
+    expect(target.textContent).toBe("Make motion clear.");
+  });
+
+  it("keeps particles at a common origin and stores finite animation offsets", () => {
+    const target = document.createElement("div");
+    target.textContent = "Make motion clear.";
+    const compiled = highlight(target.textContent);
+    compiled.layers.splice(2, 0, { role: "particle-container", perUnit: true, className: "ipw-motion-particles" });
     compiled.particles = [{ unitIndex: 1, x: 12.5, y: -4, size: 6, delay: 0.2 }];
 
     materializeStructuredText(target, compiled);
 
     const units = target.querySelectorAll('[data-ipw-motion-role="unit"]');
-    expect(units[0]?.querySelector('[data-ipw-motion-role="clone-primary"]')?.textContent).toBe("Make");
-    expect(units[0]?.querySelector('[data-ipw-motion-role="clone-accent"]')?.textContent).toBe("Make");
-    expect(units[0]?.querySelector('[data-ipw-motion-role="clone-primary"]')?.getAttribute("aria-hidden")).toBe("true");
-    expect(units[0]?.querySelector('[data-ipw-motion-role="clone-accent"]')?.getAttribute("aria-hidden")).toBe("true");
     expect(units[0]?.querySelector('[data-ipw-motion-role="particle"]')).toBeNull();
     const particle = units[1]?.querySelector('[data-ipw-motion-role="particle"]') as HTMLElement;
     expect(particle.parentElement?.getAttribute("data-ipw-motion-role")).toBe("particle-container");
@@ -131,16 +168,11 @@ describe("structured text DOM", () => {
     expect(particle.dataset.ipwMotionParticleY).toBe("-4");
     expect(particle.dataset.ipwMotionParticleSize).toBe("6");
     expect(particle.dataset.ipwMotionParticleDelay).toBe("0.2");
-    expect(particle.style.left).toBe("12.5px");
-    expect(particle.style.top).toBe("-4px");
-    expect(particle.style.width).toBe("6px");
-    expect(particle.style.height).toBe("6px");
-    expect(particle.style.animationDelay).toBe("0.2s");
-
-    const originalMarker = target.getAttribute("data-ipw-motion-source");
-    materializeStructuredText(target, compiled, target.textContent ?? "");
-    expect(target.getAttribute("data-ipw-motion-source")).toBe(originalMarker);
-    unwrapStructuredText(target);
-    expect(target.textContent).toBe("Make motion clear.");
+    expect(particle.style.left).toBe("50%");
+    expect(particle.style.top).toBe("50%");
+    expect(particle.style.getPropertyValue("--ipw-motion-particle-x")).toBe("12.5px");
+    expect(particle.style.getPropertyValue("--ipw-motion-particle-y")).toBe("-4px");
+    expect(particle.style.getPropertyValue("--ipw-motion-particle-size")).toBe("6px");
+    expect(particle.style.getPropertyValue("--ipw-motion-particle-delay")).toBe("0.2s");
   });
 });

@@ -7,6 +7,13 @@ import type {
 const STRUCTURE_ATTRIBUTE = "data-ipw-motion-structure";
 const SOURCE_ATTRIBUTE = "data-ipw-motion-source";
 const ROLE_ATTRIBUTE = "data-ipw-motion-role";
+const STRUCTURED_TEXT_STYLE_ID = "ipw-structured-text-motion-styles";
+const STRUCTURED_TEXT_STYLES = `
+[data-ipw-motion-role="clone-primary"]::before,
+[data-ipw-motion-role="clone-accent"]::before {
+  content: attr(data-ipw-motion-clone-text);
+}
+`;
 
 export interface StructuredTextSnapshot {
   attributes: Array<{ name: string; value: string }>;
@@ -117,6 +124,14 @@ function createLayer(document: Document, layer: StructuredTextLayer): HTMLElemen
   return element;
 }
 
+function ensureStructuredTextStyles(document: Document): void {
+  if (document.getElementById(STRUCTURED_TEXT_STYLE_ID)) return;
+  const style = document.createElement("style");
+  style.id = STRUCTURED_TEXT_STYLE_ID;
+  style.textContent = STRUCTURED_TEXT_STYLES;
+  document.head?.append(style);
+}
+
 function applyUnitStyles(unit: HTMLElement): void {
   unit.style.display = "inline-block";
   unit.style.position = "relative";
@@ -133,6 +148,11 @@ function applyLayerStyles(layer: HTMLElement, role: StructuredTextRole): void {
   } else if (role === "text") {
     layer.style.position = "relative";
     layer.style.zIndex = "1";
+  } else if (role === "clone-primary" || role === "clone-accent") {
+    layer.style.position = "absolute";
+    layer.style.inset = "0";
+    layer.style.pointerEvents = "none";
+    layer.style.userSelect = "none";
   } else if (role === "particle-container") {
     layer.style.position = "absolute";
     layer.style.inset = "0";
@@ -170,7 +190,7 @@ function createUnit(
       child.textContent = value;
       hasTextLayer = true;
     } else if (layer.role === "clone-primary" || layer.role === "clone-accent") {
-      child.textContent = value;
+      child.dataset.ipwMotionCloneText = value;
       child.setAttribute("aria-hidden", "true");
     } else {
       child.setAttribute("aria-hidden", "true");
@@ -224,8 +244,12 @@ function appendParticles(
     element.dataset.ipwMotionParticleDelay = String(delay);
     element.style.position = "absolute";
     element.style.pointerEvents = "none";
-    element.style.left = `${particle.x}px`;
-    element.style.top = `${particle.y}px`;
+    element.style.left = "50%";
+    element.style.top = "50%";
+    element.style.setProperty("--ipw-motion-particle-x", `${particle.x}px`);
+    element.style.setProperty("--ipw-motion-particle-y", `${particle.y}px`);
+    element.style.setProperty("--ipw-motion-particle-size", `${size}px`);
+    element.style.setProperty("--ipw-motion-particle-delay", `${delay}s`);
     element.style.width = `${size}px`;
     element.style.height = `${size}px`;
     element.style.animationDelay = `${delay}s`;
@@ -281,6 +305,9 @@ export function materializeStructuredText(
   if (target.hasAttribute(STRUCTURE_ATTRIBUTE) || target.hasAttribute(SOURCE_ATTRIBUTE)) {
     unwrapStructuredText(target);
   }
+  if (compiled.layers.some(
+    (layer) => layer.role === "clone-primary" || layer.role === "clone-accent",
+  )) ensureStructuredTextStyles(document);
 
   const fragment = document.createDocumentFragment();
   const unitByIndex = new Map<number, HTMLElement>();
