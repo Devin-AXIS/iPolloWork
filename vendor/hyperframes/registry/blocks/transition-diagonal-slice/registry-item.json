@@ -1,0 +1,56 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "transition-diagonal-slice",
+  "version": "1.0.0",
+  "type": "hyperframes:block",
+  "title": "Diagonal Slice",
+  "description": "A sharp diagonal band cuts through the outgoing frame and reveals the next scene with graphic momentum.",
+  "kind": "effect",
+  "librarySection": "transition-animation",
+  "dimensions": { "width": 1920, "height": 1080 },
+  "duration": 1.15,
+  "tags": ["transition", "diagonal", "slice", "graphic", "energetic"],
+  "engine": { "name": "gsap", "version": "3.15.0", "seekable": true, "plugins": [] },
+  "source": { "provider": "ipollowork", "label": "iPolloWork Motion Library" },
+  "motionPreset": {
+    "version": 1,
+    "category": "transition",
+    "targets": ["any", "text", "image", "shape", "group"],
+    "anchor": "playhead",
+    "duration": 0.78,
+    "ease": "power4.inOut",
+    "keyframes": [
+      {
+        "percentage": 0,
+        "properties": {
+          "opacity": 0,
+          "xPercent": 24,
+          "clipPath": "polygon(100% 0, 100% 0, 76% 100%, 76% 100%)"
+        }
+      },
+      {
+        "percentage": 76,
+        "properties": {
+          "opacity": 1,
+          "xPercent": 0,
+          "clipPath": "polygon(0 0, 100% 0, 100% 100%, 0 100%)"
+        }
+      },
+      {
+        "percentage": 100,
+        "properties": {
+          "opacity": 1,
+          "xPercent": 0,
+          "clipPath": "polygon(0 0, 100% 0, 100% 100%, 0 100%)"
+        }
+      }
+    ]
+  },
+  "files": [
+    {
+      "path": "transition-diagonal-slice.html",
+      "target": "compositions/transition-diagonal-slice.html",
+      "type": "hyperframes:composition"
+    }
+  ]
+}

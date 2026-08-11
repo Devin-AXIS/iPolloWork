@@ -1,7 +1,10 @@
-import { useCallback } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import { liveTime, usePlayerStore } from "../player";
 import { pauseStudioPreviewPlayback } from "../utils/studioPreviewHelpers";
-import { STUDIO_PREVIEW_SELECTION_ENABLED } from "../components/editor/manualEditingAvailability";
+import {
+  STUDIO_MULTI_SELECTION_ENABLED,
+  STUDIO_PREVIEW_SELECTION_ENABLED,
+} from "../components/editor/manualEditingAvailability";
 import { type DomEditSelection } from "../components/editor/domEditing";
 import type { ApplyDomSelectionOptions, ResolveDomSelectionOptions } from "./useDomSelection";
 
@@ -43,6 +46,13 @@ export interface PreviewMouseDownOptions {
   hoverSelection?: DomEditSelection | null;
 }
 
+interface PreviewHoverRequest {
+  clientX: number;
+  clientY: number;
+  preferClipAncestor: boolean;
+  sequence: number;
+}
+
 // ── Hook ──
 
 export function usePreviewInteraction({
@@ -55,6 +65,20 @@ export function usePreviewInteraction({
   updateDomEditHoverSelection,
   onClickToSource,
 }: UsePreviewInteractionParams) {
+  const hoverFrameRef = useRef<number | null>(null);
+  const pendingHoverRef = useRef<PreviewHoverRequest | null>(null);
+  const hoverSequenceRef = useRef(0);
+
+  const cancelPendingHover = useCallback(() => {
+    hoverSequenceRef.current += 1;
+    pendingHoverRef.current = null;
+    if (hoverFrameRef.current !== null) {
+      cancelAnimationFrame(hoverFrameRef.current);
+      hoverFrameRef.current = null;
+    }
+  }, []);
+
+  useEffect(() => cancelPendingHover, [cancelPendingHover]);
 
   const pausePreviewPlayback = useCallback(() => {
     const pausedTime = pauseStudioPreviewPlayback(previewIframeRef.current);
@@ -85,7 +109,7 @@ export function usePreviewInteraction({
         if (wasPlaying) usePlayerStore.getState().setIsPlaying(true);
       };
 
-      if (e.shiftKey) {
+      if (STUDIO_MULTI_SELECTION_ENABLED && e.shiftKey) {
         // Additive selection — no cycling
         const nextSelection =
           (await resolveDomSelectionFromPreviewPoint(e.clientX, e.clientY, {
@@ -138,36 +162,74 @@ export function usePreviewInteraction({
     ],
   );
 
+  const resolveAndPublishHover = useCallback(
+    async (request: PreviewHoverRequest) => {
+      const nextSelection = await resolveDomSelectionFromPreviewPoint(
+        request.clientX,
+        request.clientY,
+        {
+          preferClipAncestor: request.preferClipAncestor,
+          skipSourceProbe: true,
+        },
+      );
+      // Point resolution crosses the iframe boundary and can finish out of order.
+      // Only the newest pointer sample is allowed to update the hover selection.
+      if (request.sequence !== hoverSequenceRef.current) return null;
+      updateDomEditHoverSelection(nextSelection);
+      return nextSelection;
+    },
+    [resolveDomSelectionFromPreviewPoint, updateDomEditHoverSelection],
+  );
+
   const handlePreviewCanvasPointerMove = useCallback(
     // fallow-ignore-next-line complexity
     async (e: React.PointerEvent<HTMLDivElement>, options?: { preferClipAncestor?: boolean }) => {
       if (isPreviewTextSelectionSuppressingCanvas()) {
+        cancelPendingHover();
         updateDomEditHoverSelection(null);
         return null;
       }
       if (!STUDIO_PREVIEW_SELECTION_ENABLED || captionEditMode || compositionLoading) {
+        cancelPendingHover();
         updateDomEditHoverSelection(null);
         return null;
       }
 
-      const nextSelection = await resolveDomSelectionFromPreviewPoint(e.clientX, e.clientY, {
+      const request: PreviewHoverRequest = {
+        clientX: e.clientX,
+        clientY: e.clientY,
         preferClipAncestor: options?.preferClipAncestor ?? false,
-        skipSourceProbe: true,
-      });
-      updateDomEditHoverSelection(nextSelection);
-      return nextSelection;
+        sequence: ++hoverSequenceRef.current,
+      };
+
+      // Context-menu hit testing reuses this callback and awaits its result, so
+      // keep non-pointermove calls synchronous from the caller's perspective.
+      if (e.type !== "pointermove") return resolveAndPublishHover(request);
+
+      pendingHoverRef.current = request;
+      if (hoverFrameRef.current === null) {
+        hoverFrameRef.current = requestAnimationFrame(() => {
+          hoverFrameRef.current = null;
+          const latest = pendingHoverRef.current;
+          pendingHoverRef.current = null;
+          if (latest) void resolveAndPublishHover(latest);
+        });
+      }
+      return null;
     },
     [
+      cancelPendingHover,
       captionEditMode,
       compositionLoading,
-      resolveDomSelectionFromPreviewPoint,
+      resolveAndPublishHover,
       updateDomEditHoverSelection,
     ],
   );
 
   const handlePreviewCanvasPointerLeave = useCallback(() => {
+    cancelPendingHover();
     updateDomEditHoverSelection(null);
-  }, [updateDomEditHoverSelection]);
+  }, [cancelPendingHover, updateDomEditHoverSelection]);
 
   const handleBlockedDomMove = useCallback(
     (selection: DomEditSelection) => {

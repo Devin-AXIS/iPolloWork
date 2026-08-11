@@ -8,6 +8,7 @@ import {
   clampPropertyValue,
 } from "./gsapAnimationConstants";
 import { P } from "./panelTokens";
+import { useStudioI18n } from "../../i18n";
 
 export const BOOLEAN_PROPS = new Set(["visibility"]);
 const STRING_PROPS = new Set(["filter", "clipPath"]);
@@ -42,12 +43,13 @@ function adjustedValue(prop: string, raw: string): string {
 }
 
 function RemoveButton({ onClick, title }: { onClick: () => void; title: string }) {
+  const { tx } = useStudioI18n();
   return (
     <button
       type="button"
       onClick={onClick}
       className="flex-shrink-0 rounded p-0.5 text-neutral-600 transition-colors hover:bg-neutral-800 hover:text-red-400"
-      title={title}
+      title={tx(title)}
     >
       <svg
         width="12"
@@ -77,20 +79,21 @@ export function PropertyRow({
   onRemove: () => void;
   removeTitle: string;
 }) {
+  const { tx } = useStudioI18n();
   if (BOOLEAN_PROPS.has(prop)) {
     const isVisible = val === "visible" || val === 1;
     return (
       <div className="flex items-center gap-1">
         <div className="min-w-0 flex-1 flex items-center gap-2 px-2 py-1 rounded-lg bg-neutral-900 border border-neutral-800">
           <span className="flex-1 text-[11px] font-medium text-neutral-500">
-            {PROP_LABELS[prop] ?? prop}
+            {tx(PROP_LABELS[prop] ?? prop)}
           </span>
           <button
             type="button"
             onClick={() => onCommit(isVisible ? "hidden" : "visible")}
             className="flex-shrink-0 rounded-full transition-all duration-150 relative"
             style={{ width: 28, height: 16, background: isVisible ? P.accent : P.borderInput }}
-            title={isVisible ? "Visible — click to hide" : "Hidden — click to show"}
+            title={tx(isVisible ? "Visible — click to hide" : "Hidden — click to show")}
           >
             <span
               className="absolute top-[2px] left-0 rounded-full transition-transform duration-150"
@@ -115,7 +118,7 @@ export function PropertyRow({
         <div className="flex items-center gap-1">
           <div className="min-w-0 flex-1 flex items-center gap-2 px-2 py-1 rounded-lg bg-neutral-900 border border-neutral-800">
             <span className="flex-shrink-0 text-[11px] font-medium text-neutral-500">
-              {PROP_LABELS[prop] ?? prop}
+              {tx(PROP_LABELS[prop] ?? prop)}
             </span>
             <input
               type="text"
@@ -138,7 +141,7 @@ export function PropertyRow({
                 onClick={() => onCommit(p.value)}
                 className="px-1.5 py-0.5 rounded text-[9px] font-medium text-neutral-500 bg-neutral-800/50 hover:bg-neutral-800 hover:text-neutral-300 transition-colors"
               >
-                {p.label}
+                {tx(p.label)}
               </button>
             ))}
           </div>
@@ -183,6 +186,7 @@ export function AddPropertyTrigger({
   onClose: () => void;
   buttonClassName: string;
 }) {
+  const { tx } = useStudioI18n();
   if (adding && available.length > 0) {
     return (
       <select
@@ -196,11 +200,11 @@ export function AddPropertyTrigger({
         onBlur={onClose}
       >
         <option value="" disabled>
-          Choose property…
+          {tx("Choose property…")}
         </option>
         {available.map((p) => (
           <option key={p} value={p}>
-            {PROP_LABELS[p] ?? p}
+            {tx(PROP_LABELS[p] ?? p)}
           </option>
         ))}
       </select>
@@ -208,8 +212,8 @@ export function AddPropertyTrigger({
   }
   if (available.length === 0) return null;
   return (
-    <button type="button" onClick={onOpen} className={buttonClassName} title={addTitle}>
-      {addLabel}
+    <button type="button" onClick={onOpen} className={buttonClassName} title={tx(addTitle)}>
+      {tx(addLabel)}
     </button>
   );
 }

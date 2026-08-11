@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Signal Dissolve</title>
+    <style>
+      * { box-sizing: border-box; }
+      html, body { width: 1920px; height: 1080px; margin: 0; overflow: hidden; }
+      body { background: #06121b; color: #effcff; font-family: Arial, sans-serif; }
+      .composition { position: relative; width: 100%; height: 100%; overflow: hidden; background: radial-gradient(circle at 50% 46%, #153246, #06121b 64%); }
+      .field { position: absolute; inset: 0; opacity: .42; background-image: radial-gradient(circle, rgba(85,230,227,.75) 1.5px, transparent 2px); background-size: 42px 42px; mask-image: radial-gradient(circle at center, #000, transparent 68%); }
+      .signal { position: absolute; left: 50%; top: 46%; width: 660px; height: 660px; transform: translate(-50%, -50%); border-radius: 50%; border: 1px solid rgba(85,230,227,.28); box-shadow: 0 0 120px rgba(48,188,199,.1); }
+      .signal::before, .signal::after { content: ""; position: absolute; inset: 88px; border: 1px dashed rgba(85,230,227,.22); border-radius: 50%; }
+      .signal::after { inset: 184px; border-style: solid; }
+      .lockup { position: absolute; inset: 0; display: grid; place-content: center; text-align: center; }
+      .kicker { color: #55e6e3; font-size: 18px; font-weight: 800; letter-spacing: .32em; }
+      h1 { margin: 28px 0 0; font-size: 120px; line-height: .92; letter-spacing: -.065em; }
+      .url { margin-top: 34px; color: #a9c2cc; font-size: 22px; letter-spacing: .1em; }
+      .corner { position: absolute; right: 76px; top: 66px; color: #7c9ba7; font-size: 16px; letter-spacing: .2em; }
+    </style>
+  </head>
+  <body>
+    <main class="composition" data-composition-id="ending-signal-dissolve" data-width="1920" data-height="1080" data-start="0" data-duration="4.6">
+      <div class="field" data-layout-ignore></div><div class="signal" data-layout-ignore></div>
+      <section class="lockup" data-hf-id="esd-lockup" data-layout-allow-overlap><div class="kicker">TRANSMISSION COMPLETE</div><h1>The idea keeps<br />moving forward.</h1><div class="url">ipollowork.com</div></section>
+      <div class="corner">SIGNAL / 100%</div>
+    </main>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.15.0/dist/gsap.min.js"></script>
+    <script>
+      window.__timelines = window.__timelines || {};
+      var timeline = gsap.timeline({ paused: true });
+      timeline
+        .from(".field", { opacity: 0, scale: 1.2, duration: 1.2, ease: "power3.out" }, 0)
+        .from(".signal", { opacity: 0, scale: .55, rotation: -26, duration: 1.35, ease: "expo.out" }, .12)
+        .from(".kicker", { opacity: 0, y: 16, duration: .62, ease: "power3.out" }, .78)
+        .from("h1", { opacity: 0, scale: .94, filter: "blur(14px)", duration: 1.05, ease: "power3.out" }, .92)
+        .from(".url", { opacity: 0, y: 16, duration: .65, ease: "power3.out" }, 1.38)
+        .from(".corner", { opacity: 0, duration: .5 }, 1.62)
+        .to(".field", { opacity: .12, scale: 1.12, duration: 1.1, ease: "power2.inOut" }, 2.7)
+        .to(".signal", { opacity: .3, scale: 1.08, filter: "blur(8px)", duration: 1.1, ease: "power2.inOut" }, 2.7);
+      window.__timelines["ending-signal-dissolve"] = timeline;
+      window.addEventListener("hf-seek", function (event) { timeline.seek(Math.max(0, Math.min(event.detail.time, 4.6))); });
+      timeline.seek(0);
+    </script>
+  </body>
+</html>

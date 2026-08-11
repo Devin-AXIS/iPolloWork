@@ -1,15 +1,23 @@
 import { readdirSync, readFileSync } from "node:fs";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
 const REGISTRY_ROOT = fileURLToPath(new URL("../../../../registry", import.meta.url));
-const VALID_SECTIONS = new Set([
-  "text-animation",
-  "interface-animation",
-  "transition-scene",
-  "background-scene",
-]);
+const ACTIVE_SECTIONS = {
+  "opening-effect": 2,
+  "ending-effect": 4,
+  "transition-effect": 3,
+} as const;
+
+interface MotionManifest {
+  name: string;
+  librarySection?: string;
+  type: string;
+  kind?: string;
+  motionPreset?: unknown;
+  files?: Array<{ path: string }>;
+}
 
 function registryManifests(directory: string): string[] {
   return readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
@@ -19,40 +27,52 @@ function registryManifests(directory: string): string[] {
   });
 }
 
-function sectionIn(manifestPath: string): string | null {
-  const source = readFileSync(manifestPath, "utf8");
-  return source.match(/"librarySection":\s*"([^"]+)"/)?.[1] ?? null;
+function parseManifest(manifestPath: string): MotionManifest {
+  return JSON.parse(readFileSync(manifestPath, "utf8")) as MotionManifest;
 }
 
-describe("catalog library sections", () => {
-  it("explicitly classifies every current GSAP preset exactly once", () => {
+describe("effect clip catalog library sections", () => {
+  it("publishes only opening, social ending, and transition clips", () => {
     const manifests = [
       ...registryManifests(join(REGISTRY_ROOT, "blocks")),
       ...registryManifests(join(REGISTRY_ROOT, "components")),
-    ];
-    const sections = manifests.map(sectionIn).filter((section) => section !== null);
-    const counts = sections.reduce<Record<string, number>>((result, section) => {
+    ].map(parseManifest);
+    const active = manifests.filter(
+      (manifest) => manifest.librarySection && manifest.librarySection in ACTIVE_SECTIONS,
+    );
+    const counts = active.reduce<Record<string, number>>((result, manifest) => {
+      const section = manifest.librarySection as keyof typeof ACTIVE_SECTIONS;
       result[section] = (result[section] ?? 0) + 1;
       return result;
     }, {});
 
-    expect(sections).toHaveLength(151);
-    expect(sections.every((section) => VALID_SECTIONS.has(section))).toBe(true);
+    expect(active).toHaveLength(9);
     expect(counts).toEqual({
-      "text-animation": 20,
-      "interface-animation": 80,
-      "transition-scene": 27,
-      "background-scene": 24,
+      "opening-effect": 2,
+      "ending-effect": 4,
+      "transition-effect": 3,
     });
   });
 
-  it("keeps the approved ambiguous presets in their closest sections", () => {
-    const block = (name: string) =>
-      sectionIn(join(REGISTRY_ROOT, "blocks", name, "registry-item.json"));
+  it("keeps every visible effect as a standalone, themeable scene clip", () => {
+    const manifests = registryManifests(join(REGISTRY_ROOT, "blocks"))
+      .map(parseManifest)
+      .filter((manifest) => manifest.librarySection && manifest.librarySection in ACTIVE_SECTIONS);
 
-    expect(block("app-showcase")).toBe("interface-animation");
-    expect(block("apple-money-count")).toBe("background-scene");
-    expect(block("blue-sweater-intro-video")).toBe("background-scene");
-    expect(block("logo-outro")).toBe("background-scene");
+    for (const manifest of manifests) {
+      expect(manifest.type, manifest.name).toBe("hyperframes:block");
+      expect(manifest.kind, manifest.name).toBe("effect");
+      expect(manifest.motionPreset, manifest.name).toBeUndefined();
+      const manifestPath = registryManifests(join(REGISTRY_ROOT, "blocks")).find(
+        (path) => parseManifest(path).name === manifest.name,
+      );
+      expect(manifestPath, manifest.name).toBeDefined();
+      const html = readFileSync(
+        join(dirname(manifestPath!), manifest.files?.[0]?.path ?? ""),
+        "utf8",
+      );
+      expect(html, manifest.name).toContain("--ipw-color-");
+      expect(html, manifest.name).toContain("gsap.timeline({paused:true})");
+    }
   });
 });

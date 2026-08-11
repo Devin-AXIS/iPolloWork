@@ -150,6 +150,7 @@ function buildChildElements(
     });
     result.push({
       ...base,
+      clipLabel: domChild?.clipLabel ?? base.clipLabel,
       key,
       start: clamped.start,
       duration: clamped.duration,
@@ -203,6 +204,7 @@ function domSiblingClips(
         selectorIndex: c.selectorIndex,
         sourceFile: c.sourceFile,
         label: c.label,
+        timelineClipLabel: c.clipLabel ?? null,
         start: host.start,
         duration: host.duration,
         track: host.track,

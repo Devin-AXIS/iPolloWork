@@ -30,6 +30,7 @@ import {
   getDefaultStaticSeekPlaybackClock,
   releaseStaticSeekCache,
   resolveStaticSeekFallback,
+  shouldUseDirectTimelineAdapter,
   wrapAdapterWithDurationLimit,
   type StaticSeekCacheEntry,
 } from "../lib/playbackAdapter";
@@ -48,7 +49,6 @@ import {
 import { stopScrubPreviewAudio } from "../lib/playbackScrub";
 import { applyCachedSourceDurations, probeMissingSourceDurations } from "../lib/mediaProbe";
 import { shouldResumeForwardPlaybackAfterSeek, shouldStopAfterSeek } from "../lib/playbackSeek";
-import { applyPreviewVariablesToUrl } from "../../hooks/previewVariablesStore";
 import { acceptStudioRuntimeMessage } from "../lib/runtimeProtocol";
 import { wrapAdapterWithTimedClipVisibility } from "../lib/timedClipVisibility";
 
@@ -79,6 +79,7 @@ export function useTimelinePlayer() {
   const pendingSeekRef = useRef<number | null>(null);
   const isRefreshingRef = useRef(false);
   const reverseRafRef = useRef<number>(0);
+  const rangePreviewRafRef = useRef<number>(0);
   const shuttleDirectionRef = useRef<"forward" | "backward" | null>(null);
   const shuttleSpeedIndexRef = useRef(0);
   const iframeShortcutCleanupRef = useRef<(() => void) | null>(null);
@@ -158,16 +159,18 @@ export function useTimelinePlayer() {
         );
 
       if (shouldUseStudioClockForLegacyFrames(iframe.contentDocument, playerAdapter, docDuration)) {
-        return withTimedVisibility(resolveStaticSeekFallback({
-          cache: staticSeekAdapterRef,
-          warned: staticSeekWarnedRef,
-          bestAdapter: playerAdapter!,
-          effectiveDuration: docDuration,
-          docDuration,
-          clock: getDefaultStaticSeekPlaybackClock(win),
-          getPlaybackRate: () => usePlayerStore.getState().playbackRate,
-          reason: "legacy-frame-carousel",
-        }));
+        return withTimedVisibility(
+          resolveStaticSeekFallback({
+            cache: staticSeekAdapterRef,
+            warned: staticSeekWarnedRef,
+            bestAdapter: playerAdapter!,
+            effectiveDuration: docDuration,
+            docDuration,
+            clock: getDefaultStaticSeekPlaybackClock(win),
+            getPlaybackRate: () => usePlayerStore.getState().playbackRate,
+            reason: "legacy-frame-carousel",
+          }),
+        );
       }
 
       if (adapterDur > 0 && docDuration <= adapterDur) {
@@ -179,7 +182,7 @@ export function useTimelinePlayer() {
       if (win.__timeline) {
         const adapter = wrapTimeline(win.__timeline);
         const dur = getAdapterDuration(adapter);
-        if (dur > 0 && docDuration <= dur) {
+        if (shouldUseDirectTimelineAdapter(playerAdapter != null, dur, docDuration)) {
           releaseStaticSeekCache(staticSeekAdapterRef, staticSeekWarnedRef);
           return withTimedVisibility(adapter);
         }
@@ -197,7 +200,7 @@ export function useTimelinePlayer() {
           const key = rootId && rootId in win.__timelines ? rootId : keys[keys.length - 1];
           const adapter = wrapTimeline(win.__timelines[key]);
           const dur = getAdapterDuration(adapter);
-          if (dur > 0 && docDuration <= dur) {
+          if (shouldUseDirectTimelineAdapter(playerAdapter != null, dur, docDuration)) {
             releaseStaticSeekCache(staticSeekAdapterRef, staticSeekWarnedRef);
             return withTimedVisibility(adapter);
           }
@@ -219,15 +222,17 @@ export function useTimelinePlayer() {
         effectiveDuration > 0 &&
         ("renderSeek" in bestAdapter || typeof bestAdapter.seek === "function")
       ) {
-        return withTimedVisibility(resolveStaticSeekFallback({
-          cache: staticSeekAdapterRef,
-          warned: staticSeekWarnedRef,
-          bestAdapter,
-          effectiveDuration,
-          docDuration,
-          clock: getDefaultStaticSeekPlaybackClock(win),
-          getPlaybackRate: () => usePlayerStore.getState().playbackRate,
-        }));
+        return withTimedVisibility(
+          resolveStaticSeekFallback({
+            cache: staticSeekAdapterRef,
+            warned: staticSeekWarnedRef,
+            bestAdapter,
+            effectiveDuration,
+            docDuration,
+            clock: getDefaultStaticSeekPlaybackClock(win),
+            getPlaybackRate: () => usePlayerStore.getState().playbackRate,
+          }),
+        );
       }
 
       return bestAdapter ? withTimedVisibility(bestAdapter) : null;
@@ -449,6 +454,34 @@ export function useTimelinePlayer() {
       seek,
     });
 
+  const previewRange = useCallback(
+    (start: number, duration: number) => {
+      cancelAnimationFrame(rangePreviewRafRef.current);
+      if (!Number.isFinite(start) || !Number.isFinite(duration) || start < 0 || duration <= 0) {
+        return;
+      }
+      pause();
+      if (!seek(start)) return;
+      play();
+      const adapter = getAdapter();
+      const end = Math.min(start + duration, adapter?.getDuration() ?? start + duration);
+      const monitor = () => {
+        const activeAdapter = getAdapter();
+        if (!activeAdapter?.isPlaying()) return;
+        const time = activeAdapter.getTime();
+        if (time < start - 0.05 || time > end + 0.1) return;
+        if (time >= end - 0.01) {
+          pause();
+          seek(end);
+          return;
+        }
+        rangePreviewRafRef.current = requestAnimationFrame(monitor);
+      };
+      rangePreviewRafRef.current = requestAnimationFrame(monitor);
+    },
+    [getAdapter, pause, play, seek],
+  );
+
   const { processTimelineMessageRef, enrichMissingCompositionsRef, onIframeLoad } =
     useTimelineSyncCallbacks({
       iframeRef,
@@ -494,21 +527,10 @@ export function useTimelinePlayer() {
     if (!iframe) return;
     saveSeekPosition();
     setPreviewPlaybackActive(iframe, false);
-    // Hide the iframe across the full reload so the user never sees the reloading
-    // document's RAW DOM (every clip stacked and visible) in the window between the
-    // new document parsing and the runtime initializing + seeking. initializeAdapter
-    // reveals it again right after its restore seek renders the correct frame.
-    // Tradeoff: this shows the parent stage background (a brief "freeze"/blank, on
-    // the order of the reload time ~100-300ms) INSTEAD of the all-clips flash. A
-    // blank is far less jarring than a burst of every asset appearing at once.
-    // Only the FULL-reload edits (drops/inserts) hit this — timing edits now take
-    // the soft-reload path and never touch refreshPlayer.
-    iframe.style.visibility = "hidden";
-    const src = iframe.src;
-    const url = new URL(src, window.location.origin);
-    url.searchParams.set("_t", String(Date.now()));
-    applyPreviewVariablesToUrl(url);
-    iframe.src = url.toString();
+    // NLEPreview stages a second Player for refreshToken and keeps this frame
+    // painted until the incoming runtime has loaded and restored the playhead.
+    // Navigating this iframe would reintroduce the blank frame the staged
+    // refresh is designed to avoid.
   }, [saveSeekPosition]);
   const getAdapterRef = useRef(getAdapter);
   getAdapterRef.current = getAdapter;
@@ -589,6 +611,7 @@ export function useTimelinePlayer() {
       stopReverseLoop();
       stopScrubPreviewAudio();
       stopPreviewMedia();
+      cancelAnimationFrame(rangePreviewRafRef.current);
       releaseStaticSeekCache(staticSeekAdapterRef, staticSeekWarnedRef);
       if (probeIntervalRef.current) clearInterval(probeIntervalRef.current);
     };
@@ -619,6 +642,7 @@ export function useTimelinePlayer() {
     play,
     pause,
     togglePlay,
+    previewRange,
     seek,
     onIframeLoad,
     refreshPlayer,

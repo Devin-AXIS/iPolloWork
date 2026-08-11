@@ -61,6 +61,23 @@ export function timelineAnimationSourcesMatch(options: {
   return elementSource === (selectionSource ?? activeSource);
 }
 
+export function timelineElementMatchesDomSelection(
+  element: Pick<TimelineElement, "id" | "domId" | "hfId" | "selector" | "selectorIndex">,
+  selection: {
+    id?: string | null;
+    hfId?: string | null;
+    selector?: string | null;
+    selectorIndex?: number | null;
+  },
+): boolean {
+  if (element.domId && selection.id === element.domId) return true;
+  if (element.hfId && selection.hfId === element.hfId) return true;
+  if (element.selector && selection.selector === element.selector) {
+    return (element.selectorIndex ?? 0) === (selection.selectorIndex ?? 0);
+  }
+  return selection.id === element.id;
+}
+
 /**
  * Builds the timeline edit callback bag (move/resize/split/razor plus the
  * keyframe-diamond callbacks) provided to `<Timeline>` via TimelineEditProvider.
@@ -125,7 +142,7 @@ export function useTimelineEditCallbacks({
 
       const selection = domEditSelection;
       const ownerId = element.domId ?? element.id;
-      if (!selection || selection.id !== ownerId) return null;
+      if (!selection || !timelineElementMatchesDomSelection(element, selection)) return null;
 
       if (
         !timelineAnimationSourcesMatch({
@@ -139,7 +156,13 @@ export function useTimelineEditCallbacks({
       }
 
       const animation = selectedGsapAnimations.find((candidate) => candidate.id === animationId);
-      if (!animation || !isTimelineAnimationDirectlyMovable(animation, ownerId)) {
+      if (
+        !animation ||
+        !isTimelineAnimationDirectlyMovable(animation, ownerId, {
+          selector: element.selector,
+          hfId: element.hfId,
+        })
+      ) {
         return null;
       }
       return { animation, selection };

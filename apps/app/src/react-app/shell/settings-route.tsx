@@ -2043,7 +2043,7 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
         developerMode={developerMode}
         headerStatus={routeiPolloWorkStatus}
         busyHint={loading ? t("session.loading_detail") : busyLabel}
-        onClose={props.onClose ?? (() => navigate(selectedWorkspaceId ? workspaceSessionRoute(selectedWorkspaceId) : "/session"))}
+        onClose={props.onClose ?? (() => navigate(selectedWorkspaceId ? workspaceSessionRoute(selectedWorkspaceId, navigationSessionId) : "/session"))}
         compact={props.embedded}
         hidePageHeader={Boolean(route.pluginPackageId)}
         hideShellHeader={Boolean(route.pluginPackageId)}

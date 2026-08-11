@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Slide Resolve</title>
+    <style>
+      * { box-sizing: border-box; }
+      html, body { width: 1920px; height: 1080px; margin: 0; overflow: hidden; }
+      body { background: #f5e9d7; color: #231d19; font-family: Arial, sans-serif; }
+      .composition { position: relative; width: 100%; height: 100%; overflow: hidden; background: #f5e9d7; }
+      .panel { position: absolute; top: 0; bottom: 0; width: 52%; }
+      .left { left: 0; background: #e74e31; }
+      .right { right: 0; background: #1d2539; }
+      .seam { position: absolute; top: 0; bottom: 0; left: 50%; width: 3px; background: #f5e9d7; }
+      .lockup { position: absolute; left: 435px; top: 244px; width: 1050px; height: 540px; display: grid; place-content: center; text-align: center; border-radius: 44px; background: #f5e9d7; box-shadow: 0 42px 120px rgba(22,18,16,.24); }
+      .mark { width: 96px; height: 96px; margin: 0 auto 34px; display: grid; place-items: center; border-radius: 24px; background: #f5e9d7; border: 2px solid #231d19; font-size: 34px; font-weight: 900; }
+      .kicker { font-size: 18px; font-weight: 800; letter-spacing: .3em; }
+      h1 { margin: 18px 0 0; font-size: 104px; line-height: .94; letter-spacing: -.06em; }
+      .footer { position: absolute; left: 86px; right: 86px; bottom: 64px; display: flex; justify-content: space-between; font-size: 16px; font-weight: 800; letter-spacing: .18em; }
+      .footer span { padding: 10px 14px; border-radius: 999px; background: #f5e9d7; color: #231d19; }
+    </style>
+  </head>
+  <body>
+    <main class="composition" data-composition-id="ending-slide-resolve" data-width="1920" data-height="1080" data-start="0" data-duration="4.4">
+      <div class="panel left" data-layout-ignore></div><div class="panel right" data-layout-ignore></div><div class="seam" data-layout-ignore></div>
+      <section class="lockup" data-hf-id="esr-lockup" data-layout-allow-overlap><div class="mark">iP</div><div class="kicker">ONE LAST THOUGHT</div><h1>Leave the frame<br />with clarity.</h1></section>
+      <div class="footer"><span>THANK YOU</span><span>IPOLLOWORK.COM</span></div>
+    </main>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.15.0/dist/gsap.min.js"></script>
+    <script>
+      window.__timelines = window.__timelines || {};
+      var timeline = gsap.timeline({ paused: true });
+      timeline
+        .from(".left", { xPercent: -100, duration: 1, ease: "power4.inOut" }, 0)
+        .from(".right", { xPercent: 100, duration: 1, ease: "power4.inOut" }, 0)
+        .from(".seam", { scaleY: 0, duration: .72, ease: "power3.out" }, .55)
+        .from(".lockup", { opacity: 0, scale: .9, filter: "blur(12px)", duration: 1, ease: "power3.out" }, .72)
+        .from(".footer", { opacity: 0, y: 14, duration: .62, ease: "power3.out" }, 1.28)
+        .to(".left", { xPercent: -86, duration: 1.05, ease: "power3.inOut" }, 2.35)
+        .to(".right", { xPercent: 86, duration: 1.05, ease: "power3.inOut" }, 2.35)
+        .to(".seam", { opacity: 0, duration: .45 }, 2.52);
+      window.__timelines["ending-slide-resolve"] = timeline;
+      window.addEventListener("hf-seek", function (event) { timeline.seek(Math.max(0, Math.min(event.detail.time, 4.4))); });
+      timeline.seek(0);
+    </script>
+  </body>
+</html>

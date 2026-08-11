@@ -18,7 +18,6 @@ import {
 } from "./hooks/timelineMoveAdapter";
 import type { TimelineZIndexReorderCommit } from "./hooks/useTimelineEditingTypes";
 import type { TimelineStackingReorderIntent } from "./player/components/timelineStacking";
-import type { BlockPreviewInfo } from "./components/sidebar/BlocksTab";
 import { useDomEditSession } from "./hooks/useDomEditSession";
 import { useSdkSelectionSync } from "./hooks/useSdkSelectionSync";
 import { useStudioSdkSessions } from "./hooks/useStudioSdkSessions";
@@ -50,6 +49,7 @@ import { DomEditProvider } from "./contexts/DomEditContext";
 import { StudioSplash } from "./components/StudioSplash";
 import { StudioI18nProvider, useStudioI18n } from "./i18n";
 import { useServerConnection } from "./hooks/useServerConnection";
+import { useExpandedTimelineElements } from "./player/hooks/useExpandedTimelineElements";
 import {
   normalizeStudioCompositionPath,
   readStudioUrlStateFromWindow,
@@ -124,7 +124,6 @@ export function StudioApp() {
   const [compositionLoading, setCompositionLoading] = useState(true);
   const [refreshKey, setRefreshKey] = useState(0);
   const [previewDocumentVersion, refreshPreviewDocumentVersion] = usePreviewDocumentVersion();
-  const [blockPreview, setBlockPreview] = useState<BlockPreviewInfo | null>(null);
   const previewIframeRef = useRef<HTMLIFrameElement | null>(null);
   const activeCompPathRef = useRef(activeCompPath);
   activeCompPathRef.current = activeCompPath;
@@ -134,6 +133,7 @@ export function StudioApp() {
   const captionHasSelection = useCaptionStore((s) => s.selectedSegmentIds.size > 0);
   const captionSync = useCaptionSync(projectId);
   const timelineElements = usePlayerStore((s) => s.elements);
+  const selectionTimelineElements = useExpandedTimelineElements();
   const setSelectedTimelineElementId = usePlayerStore((s) => s.setSelectedElementId);
   const timelineDuration = usePlayerStore((s) => s.duration);
   const isPlaying = usePlayerStore((s) => s.isPlaying);
@@ -155,16 +155,49 @@ export function StudioApp() {
   });
   const editHistory = usePersistentEditHistory({ projectId });
   const domEditSaveTimestampRef = useRef(0);
+  const markStudioWrite = useCallback(() => {
+    domEditSaveTimestampRef.current = Date.now();
+  }, []);
   const handleDomZIndexReorderCommitRef = useRef<TimelineZIndexReorderCommit | null>(null);
   const pendingTimelineEditPathRef = useRef(new Set<string>());
   const isGestureRecordingRef = useRef(false);
-  const reloadPreview = useCallback(() => setRefreshKey((k) => k + 1), []);
+  const previewRefreshRafRef = useRef<number | null>(null);
+  const reloadPreview = useCallback(() => {
+    if (previewRefreshRafRef.current !== null) return;
+    previewRefreshRafRef.current = requestAnimationFrame(() => {
+      previewRefreshRafRef.current = null;
+      setRefreshKey((key) => key + 1);
+    });
+  }, []);
+  useEffect(
+    () => () => {
+      if (previewRefreshRafRef.current !== null) {
+        cancelAnimationFrame(previewRefreshRafRef.current);
+      }
+    },
+    [],
+  );
 
   useEffect(() => {
     if (!projectId || !activeCompPathHydrated) return;
     if (window.parent === window) return;
     window.parent.postMessage({ type: "ipollowork:studio-ready", projectId }, "*");
   }, [activeCompPathHydrated, projectId]);
+  useEffect(() => {
+    if (!projectId || !activeCompPathHydrated || compositionLoading) return;
+    let active = true;
+    const preload = () => {
+      if (!active) return;
+      void loadStudioRightPanelModule()
+        .then((module) => module.preloadStudioEffectsPanel())
+        .catch(() => {});
+    };
+    const idleId = window.requestIdleCallback(preload, { timeout: 800 });
+    return () => {
+      active = false;
+      window.cancelIdleCallback(idleId);
+    };
+  }, [activeCompPathHydrated, compositionLoading, projectId]);
   const fileManager = useFileManager({
     projectId,
     showToast,
@@ -201,7 +234,7 @@ export function StudioApp() {
     previewIframeRef,
     activeCompPathRef,
     domEditSaveTimestampRef,
-    reloadPreview: () => setRefreshKey((k) => k + 1),
+    reloadPreview,
     pendingTimelineEditPathRef,
   });
   const timelineEditing = useTimelineEditing({
@@ -255,11 +288,13 @@ export function StudioApp() {
       readProjectFile: fileManager.readProjectFile,
       writeProjectFile: fileManager.writeProjectFile,
       recordEdit: editHistory.recordEdit,
+      markStudioWrite,
       refreshFileTree: fileManager.refreshFileTree,
       reloadPreview,
       showToast,
     },
     previewIframeRef,
+    setCompositionLoading,
     setRightCollapsed: panelLayout.setRightCollapsed,
     setRightPanelTab: panelLayout.setRightPanelTab,
   });
@@ -334,7 +369,7 @@ export function StudioApp() {
     captionEditMode,
     compositionLoading,
     previewIframeRef,
-    timelineElements,
+    timelineElements: selectionTimelineElements,
     setSelectedTimelineElementId,
     setRightCollapsed: panelLayout.setRightCollapsed,
     setRightPanelTab: panelLayout.setRightPanelTab,
@@ -371,8 +406,6 @@ export function StudioApp() {
   handleDomEditElementDeleteRef.current = domEditSession.handleDomEditElementDelete;
   const handlePreviewModeChange = useCallback((nextPreviewMode: boolean) => {
     setPreviewMode(nextPreviewMode);
-    if (!nextPreviewMode) return;
-    setBlockPreview(null);
   }, []);
   resetKeyframesRef.current = domEditSession.handleResetSelectedElementKeyframes;
   invalidateGsapCacheRef.current = domEditSession.invalidateGsapCache;
@@ -394,9 +427,7 @@ export function StudioApp() {
   });
   const renderClipContent = useRenderClipContent({
     projectIdRef: fileManager.projectIdRef,
-    compIdToSrc,
     activePreviewUrl,
-    effectiveTimelineDuration,
   });
   const compositionDimensions = useCompositionDimensions();
   const { lintModal, linting, handleLint, closeLintModal, findingsByFile } = useLintModal(
@@ -555,7 +586,6 @@ export function StudioApp() {
                               leftSidebarRef={leftSidebarRef}
                               onSelectComposition={handleSelectComposition}
                               onAddBlock={handleAddBlock}
-                              onPreviewBlock={setBlockPreview}
                               onLint={handleLint}
                               linting={linting}
                               lintFindingCount={lintModal?.length ?? findingsByFile.size}
@@ -586,7 +616,6 @@ export function StudioApp() {
                               recordEdit={editHistory.recordEdit}
                               onToggleElementHidden={timelineEditing.handleToggleElementHidden}
                               onAddBlock={handleAddBlock}
-                              onPreviewBlock={setBlockPreview}
                             />
                           </Suspense>
                         )
@@ -614,7 +643,6 @@ export function StudioApp() {
                       isGestureRecording={false}
                       recordingState={gestureState}
                       onToggleRecording={recordingToggle}
-                      blockPreview={blockPreview}
                       gestureOverlay={undefined}
                     />
                     <StudioOverlays

@@ -75,6 +75,20 @@ import {
   type ElementRebase,
 } from "../helpers/sourceMutation.js";
 import { parseHTML } from "linkedom";
+import {
+  MOTION_PRESETS,
+  compileMotionInstance,
+  createMotionInstance,
+  defaultMotionDuration,
+  getMotionPreset,
+  listMotionPresets,
+  readMotionInstanceFromExtras,
+  type MotionParameters,
+  type MotionInstance,
+  type MotionPhase,
+  type MotionTargetKind,
+  type MotionTextUnit,
+} from "@hyperframes/core/motion-presets";
 
 // ── Server cutover flag ─────────────────────────────────────────────────────
 
@@ -766,6 +780,20 @@ function bakeVisibilityOnDelete(document: Document, anim: GsapAnimation): void {
 
 type GsapMutationRequest =
   | {
+      type: "mutate-motion";
+      operation: "upsert" | "remove";
+      targetSelector: string;
+      targetKind: MotionTargetKind;
+      phase: MotionPhase;
+      presetId?: string;
+      start?: number;
+      duration?: number;
+      loop?: boolean;
+      parameters?: MotionParameters;
+      elementId?: string;
+      hfId?: string;
+    }
+  | {
       type: "update-property";
       animationId: string;
       property: string;
@@ -999,6 +1027,304 @@ type GsapMutationRequest =
 
 type GsapMutationResult = string | { script: string; skippedSelectors: string[] };
 
+type MotionMutationRequest = Extract<GsapMutationRequest, { type: "mutate-motion" }>;
+
+const MOTION_PRESET_IDS = new Set(MOTION_PRESETS.map((preset) => preset.id));
+
+function motionUnit(parameters: MotionParameters): MotionTextUnit {
+  const unit = parameters.unit;
+  return unit === "word" || unit === "character" ? unit : "whole";
+}
+
+function segmentText(value: string, granularity: "word" | "grapheme"): string[] {
+  const Segmenter = (
+    Intl as unknown as {
+      Segmenter?: new (
+        locale?: string,
+        options?: { granularity: "word" | "grapheme" },
+      ) => { segment: (text: string) => Iterable<{ segment: string }> };
+    }
+  ).Segmenter;
+  if (!Segmenter) return Array.from(value);
+  return Array.from(
+    new Segmenter(undefined, { granularity }).segment(value),
+    (part) => part.segment,
+  );
+}
+
+function unwrapMotionText(target: Element): void {
+  if (target.getAttribute("data-ipw-motion-split") !== "v1") return;
+  const text = target.textContent ?? "";
+  target.replaceChildren(target.ownerDocument.createTextNode(text));
+  target.removeAttribute("data-ipw-motion-split");
+}
+
+function ensureMotionTextParts(target: Element): number {
+  const text = target.textContent ?? "";
+  unwrapMotionText(target);
+  const document = target.ownerDocument;
+  const fragment = document.createDocumentFragment();
+  let characterCount = 0;
+  for (const word of segmentText(text, "word")) {
+    if (/^\s+$/u.test(word)) {
+      fragment.append(document.createTextNode(word));
+      continue;
+    }
+    const wordSpan = document.createElement("span");
+    wordSpan.setAttribute("data-ipw-motion-word", "");
+    wordSpan.setAttribute("style", "display:inline-block;white-space:pre");
+    for (const character of segmentText(word, "grapheme")) {
+      const characterSpan = document.createElement("span");
+      characterSpan.setAttribute("data-ipw-motion-char", "");
+      characterSpan.setAttribute("style", "display:inline-block");
+      characterSpan.textContent = character;
+      wordSpan.append(characterSpan);
+      characterCount += 1;
+    }
+    fragment.append(wordSpan);
+  }
+  target.replaceChildren(fragment);
+  target.setAttribute("data-ipw-motion-split", "v1");
+  return characterCount;
+}
+
+function resolveSingleMotionTarget(
+  document: Document,
+  selector: string,
+): { target: Element } | { error: string } {
+  try {
+    const matches = document.querySelectorAll(selector);
+    if (matches.length !== 1) {
+      return {
+        error: `Motion target must resolve to exactly one element; received ${matches.length}`,
+      };
+    }
+    return { target: matches[0]! };
+  } catch {
+    return { error: "Motion target selector is invalid" };
+  }
+}
+
+function isLeafTextMotionTarget(target: Element): boolean {
+  for (const child of Array.from(target.children)) {
+    if (!child.hasAttribute("data-ipw-motion-word")) return false;
+  }
+  return (target.textContent ?? "").trim().length > 0;
+}
+
+/**
+ * Semantic motion targets can acquire a more stable selector over time (for
+ * example `.card` becomes `[data-hf-id="..."]`). Treat both selectors as the
+ * same target when they resolve to the same DOM element, otherwise applying a
+ * replacement preset leaves the older tween behind and the inspector can edit
+ * the wrong animation.
+ */
+function motionInstanceTargetsElement(
+  document: Document,
+  target: Element,
+  instance: MotionInstance,
+): boolean {
+  const hfId = target.getAttribute("data-hf-id");
+  if (hfId && instance.target.hfId === hfId) return true;
+  const elementId = target.getAttribute("id");
+  if (elementId && instance.target.elementId === elementId) return true;
+  const resolved = resolveSingleMotionTarget(document, instance.target.selector);
+  return "target" in resolved && resolved.target === target;
+}
+
+function readOwnerTiming(target: Element): {
+  start: number;
+  duration: number;
+  constrained: boolean;
+} {
+  const owner = target.closest(
+    ".clip, [data-start][data-duration], [data-composition-id][data-duration]",
+  );
+  const start = Number.parseFloat(owner?.getAttribute("data-start") ?? "0");
+  const duration = Number.parseFloat(owner?.getAttribute("data-duration") ?? "1");
+  return {
+    start: Number.isFinite(start) && start >= 0 ? start : 0,
+    duration: Number.isFinite(duration) && duration > 0 ? duration : 1,
+    constrained:
+      owner !== null &&
+      Number.isFinite(duration) &&
+      duration > 0 &&
+      owner.hasAttribute("data-duration"),
+  };
+}
+
+function defaultMotionStart(
+  phase: MotionPhase,
+  owner: { start: number; duration: number },
+  duration: number,
+): number {
+  if (phase === "enter") return owner.start;
+  if (phase === "exit") return Math.max(owner.start, owner.start + owner.duration - duration);
+  return owner.start + Math.max(0, (owner.duration - duration) / 2);
+}
+
+function resolveMotionTiming(
+  phase: MotionPhase,
+  owner: { start: number; duration: number; constrained: boolean },
+  requestedDuration: number,
+  requestedStart?: number,
+): { start: number; duration: number } {
+  const duration = owner.constrained
+    ? Math.min(Math.max(0.1, requestedDuration), owner.duration)
+    : Math.max(0.1, requestedDuration);
+  const latestStart = owner.start + owner.duration - duration;
+  const fallback = defaultMotionStart(phase, owner, duration);
+  const start =
+    requestedStart !== undefined &&
+    Number.isFinite(requestedStart) &&
+    (!owner.constrained ||
+      (requestedStart >= owner.start && requestedStart <= latestStart))
+      ? requestedStart
+      : fallback;
+  return { start, duration };
+}
+
+function resolveMotionRepeat(
+  owner: { start: number; duration: number; constrained: boolean },
+  timing: { start: number; duration: number },
+  loop: boolean,
+): number {
+  if (!loop) return 0;
+  if (!owner.constrained) return 1;
+  const available = owner.start + owner.duration - timing.start;
+  return Math.max(0, Math.floor(available / timing.duration) - 1);
+}
+
+function updateMotionReferenceAttribute(
+  target: Element,
+  script: string,
+): void {
+  const existing = (target.getAttribute("data-ipw-animation-reference") ?? "")
+    .split(/[\s,]+/)
+    .map((value) => value.trim())
+    .filter((value) => value && !MOTION_PRESET_IDS.has(value));
+  const semantic = parseGsapScriptAcorn(script)
+    .animations.map((animation) => readMotionInstanceFromExtras(animation.extras))
+    .filter(
+      (instance): instance is MotionInstance =>
+        instance !== null && motionInstanceTargetsElement(target.ownerDocument, target, instance),
+    )
+    .map((instance) => instance!.presetId);
+  const values = Array.from(new Set([...existing, ...semantic]));
+  if (values.length > 0) target.setAttribute("data-ipw-animation-reference", values.join(","));
+  else target.removeAttribute("data-ipw-animation-reference");
+}
+
+function executeMotionMutation(
+  body: MotionMutationRequest,
+  block: NonNullable<ReturnType<typeof extractGsapScriptBlock>>,
+  respond: (data: unknown, status?: number) => Response,
+): GsapMutationResult | Response {
+  const resolved = resolveSingleMotionTarget(block.document, body.targetSelector);
+  if ("error" in resolved) return respond({ error: resolved.error }, 400);
+  const { target } = resolved;
+  if (body.targetKind === "text" && !isLeafTextMotionTarget(target)) {
+    return respond({ error: "Text motion requires one leaf text element" }, 400);
+  }
+
+  const parsed = parseGsapScriptAcorn(block.scriptText);
+  const existing = parsed.animations.flatMap((animation) => {
+    const instance = readMotionInstanceFromExtras(animation.extras);
+    return instance &&
+      motionInstanceTargetsElement(block.document, target, instance) &&
+      instance.phase === body.phase
+      ? [{ animation, instance }]
+      : [];
+  });
+  let script = block.scriptText;
+  for (const entry of [...existing].reverse()) {
+    script = removeAnimationFromScript(script, entry.animation.id);
+  }
+
+  if (body.operation === "upsert") {
+    const preset = body.presetId ? getMotionPreset(body.presetId) : undefined;
+    if (!preset) return respond({ error: "A valid presetId is required" }, 400);
+    if (preset.phase !== body.phase || !preset.targetKinds.includes(body.targetKind)) {
+      return respond({ error: "The preset does not support this target or phase" }, 400);
+    }
+    const prior = existing[0];
+    const priorParameters =
+      prior?.instance.presetId === preset.id
+        ? prior.instance.parameters
+        : Object.fromEntries(
+            Object.entries(prior?.instance.parameters ?? {}).filter(([key]) =>
+              preset.parameterSchema.some((parameter) => parameter.id === key),
+            ),
+          );
+    const owner = readOwnerTiming(target);
+    const timing = resolveMotionTiming(
+      preset.phase,
+      owner,
+      body.duration ?? prior?.instance.duration ?? defaultMotionDuration(preset),
+      body.start ?? prior?.animation.resolvedStart,
+    );
+    const parameters = { ...priorParameters, ...body.parameters };
+    const loop = body.loop ?? prior?.instance.loop ?? false;
+    if (target.hasAttribute("data-var-text") && "unit" in parameters) {
+      parameters.unit = "whole";
+    }
+    let instance;
+    try {
+      instance = createMotionInstance({
+        presetId: preset.id,
+        target: {
+          selector: body.targetSelector,
+          ...(body.elementId ? { elementId: body.elementId } : {}),
+          ...(body.hfId ? { hfId: body.hfId } : {}),
+        },
+        targetKind: body.targetKind,
+        start:
+          timing.start,
+        duration: timing.duration,
+        loop,
+        repeat: resolveMotionRepeat(owner, timing, loop),
+        parameters,
+      });
+    } catch (error) {
+      return respond(
+        { error: error instanceof Error ? error.message : "Invalid motion parameters" },
+        400,
+      );
+    }
+    const compiled = compileMotionInstance(instance);
+    if (motionUnit(instance.parameters) !== "whole") ensureMotionTextParts(target);
+    const added = addAnimationWithKeyframesToScript(
+      script,
+      compiled.targetSelector,
+      compiled.position,
+      compiled.duration,
+      compiled.keyframes,
+      compiled.ease,
+      undefined,
+      compiled.extras,
+    );
+    if (!added.id) return respond({ error: "Could not add motion to the GSAP timeline" }, 400);
+    script = added.script;
+  }
+
+  const remainingInstances = parseGsapScriptAcorn(script)
+    .animations.map((animation) => readMotionInstanceFromExtras(animation.extras))
+    .filter(
+      (instance): instance is MotionInstance =>
+        instance !== null && motionInstanceTargetsElement(block.document, target, instance),
+    );
+  if (!remainingInstances.some((instance) => motionUnit(instance!.parameters) !== "whole")) {
+    unwrapMotionText(target);
+  }
+  if (remainingInstances.length > 0) {
+    target.setAttribute("data-ipw-motion-selector", body.targetSelector);
+  } else {
+    target.removeAttribute("data-ipw-motion-selector");
+  }
+  updateMotionReferenceAttribute(target, script);
+  return script;
+}
+
 // Mutations that can change a position tween's first keyframe (value/existence/timing)
 // and therefore require the pre-keyframe hold-`set`s to be re-synced afterwards.
 // `syncPositionHoldsBeforeKeyframes` rebuilds all `hf-hold` sets from scratch: it acts
@@ -1006,6 +1332,7 @@ type GsapMutationResult = string | { script: string; skippedSelectors: string[] 
 // whose start is > 0. So any mutation that creates such a tween, retargets it, or moves
 // its start across the t=0 boundary must trigger a re-sync.
 const HOLD_SYNC_MUTATION_TYPES = new Set<string>([
+  "mutate-motion",
   "add-keyframe",
   "update-keyframe",
   "remove-keyframe",
@@ -1042,6 +1369,9 @@ async function executeGsapMutation(
   block: NonNullable<ReturnType<typeof extractGsapScriptBlock>>,
   respond: (data: unknown, status?: number) => Response,
 ): Promise<GsapMutationResult | Response> {
+  if (body.type === "mutate-motion") {
+    return executeMotionMutation(body, block, respond);
+  }
   // When the server cutover flag is enabled, delegate to the acorn writer;
   // otherwise use the recast writer (gsapParser.ts) as the default.
   if (!isAcornGsapWriterEnabled()) {
@@ -1083,7 +1413,12 @@ async function prepareGsapMutationScript(
   const beforeHtml = readFileSync(res.absPath, "utf-8");
   let html = beforeHtml;
   let block = extractGsapScriptBlock(html);
-  if (!block && (firstMutation.type === "add" || firstMutation.type === "add-with-keyframes")) {
+  if (
+    !block &&
+    (firstMutation.type === "add" ||
+      firstMutation.type === "add-with-keyframes" ||
+      firstMutation.type === "mutate-motion")
+  ) {
     const compId = html.match(/data-composition-id="([^"]+)"/)?.[1] ?? "main";
     const { GSAP_CDN } = await import("@hyperframes/core");
     const bootstrap = [
@@ -2521,6 +2856,28 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
   );
 
   // ── GSAP Animations (parse) ──
+
+  api.get("/projects/:id/motion-presets", async (c) => {
+    const project = await adapter.resolveProject(c.req.param("id"));
+    if (!project) return c.json({ error: "not found" }, 404);
+    const targetKind = c.req.query("targetKind");
+    const phase = c.req.query("phase");
+    const intent = c.req.query("intent");
+    const tone = c.req.query("tone");
+    if (targetKind && targetKind !== "text" && targetKind !== "element") {
+      return c.json({ error: "targetKind must be text or element" }, 400);
+    }
+    if (phase && phase !== "enter" && phase !== "emphasis" && phase !== "exit") {
+      return c.json({ error: "phase must be enter, emphasis, or exit" }, 400);
+    }
+    const presets = listMotionPresets({
+      ...(targetKind ? { targetKind: targetKind as MotionTargetKind } : {}),
+      ...(phase ? { phase: phase as MotionPhase } : {}),
+      ...(intent ? { intent } : {}),
+      ...(tone ? { tone } : {}),
+    });
+    return c.json({ presets });
+  });
 
   api.get("/projects/:id/gsap-animations/*", async (c) => {
     const res = await resolveProjectPath(c, adapter, (id) => `/projects/${id}/gsap-animations/`, {

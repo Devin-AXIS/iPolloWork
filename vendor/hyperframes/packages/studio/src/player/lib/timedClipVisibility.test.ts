@@ -42,6 +42,19 @@ describe("syncTimedClipVisibility", () => {
     expect(sceneState("ui").visibility).toBe("visible");
   });
 
+  it("keeps compiled sub-compositions visible from preserved authored timing", () => {
+    const root = document.getElementById("root")!;
+    root.innerHTML = `
+      <div id="effect" data-composition-id="effect-ending" data-start="8"
+        data-hf-authored-duration="3.4" data-track-index="0" style="position:absolute"></div>`;
+
+    syncTimedClipVisibility(document, 9.7);
+    expect(sceneState("effect").visibility).toBe("visible");
+
+    syncTimedClipVisibility(document, 11.4);
+    expect(sceneState("effect").visibility).toBe("hidden");
+  });
+
   it("shows only the newest overlapping scene even when scenes use different tracks", () => {
     const root = document.getElementById("root")!;
     root.innerHTML = `
@@ -154,7 +167,9 @@ describe("syncTimedClipVisibility", () => {
     const source = {
       play: () => {},
       pause: () => {},
-      seek: (next: number) => { time = next; },
+      seek: (next: number) => {
+        time = next;
+      },
       getTime: () => time,
       getDuration: () => 15,
       isPlaying: () => true,

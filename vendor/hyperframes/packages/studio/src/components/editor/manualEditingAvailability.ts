@@ -70,6 +70,14 @@ export const STUDIO_KEYFRAMES_ENABLED = resolveStudioBooleanEnvFlag(
   true,
 );
 
+// Keep motion-path editing available behind an explicit opt-in while its
+// on-canvas anchor/line UI is hidden from the default selection experience.
+export const STUDIO_MOTION_PATH_OVERLAY_ENABLED = resolveStudioBooleanEnvFlag(
+  env,
+  ["VITE_STUDIO_ENABLE_MOTION_PATH_OVERLAY"],
+  false,
+);
+
 export const STUDIO_RAZOR_TOOL_ENABLED = resolveStudioBooleanEnvFlag(
   env,
   ["VITE_STUDIO_ENABLE_RAZOR_TOOL", "VITE_STUDIO_RAZOR_TOOL_ENABLED"],
@@ -77,6 +85,14 @@ export const STUDIO_RAZOR_TOOL_ENABLED = resolveStudioBooleanEnvFlag(
 );
 
 export const STUDIO_PREVIEW_SELECTION_ENABLED = STUDIO_INSPECTOR_PANELS_ENABLED;
+
+// Keep the single-selection interaction model as the default until canvas and
+// timeline multi-selection are ready to ship as one coherent experience.
+export const STUDIO_MULTI_SELECTION_ENABLED = resolveStudioBooleanEnvFlag(
+  env,
+  ["VITE_STUDIO_ENABLE_MULTI_SELECTION"],
+  false,
+);
 
 // Stage 7 Step 3c: SDK cutover — routes inline-style ops through SDK dispatch
 // instead of the server patch-element API. Default false; enable via

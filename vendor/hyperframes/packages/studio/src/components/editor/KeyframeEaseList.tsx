@@ -1,6 +1,7 @@
 import type { GsapPercentageKeyframe } from "@hyperframes/core/gsap-parser";
 import { EASE_LABELS } from "./gsapAnimationConstants";
 import { EaseCurveSection } from "./EaseCurveSection";
+import { useStudioI18n } from "../../i18n";
 
 // The full GSAP easing vocabulary offered by the "Set all…" bulk control —
 // every standard family in in/out/inOut, so authors aren't limited to a curated
@@ -56,16 +57,17 @@ export function KeyframeEaseList({
   /** Apply one ease to every segment at once (clears per-segment overrides). */
   onApplyAll?: (ease: string) => void;
 }) {
+  const { tx } = useStudioI18n();
   return (
     <div className="space-y-1">
       <div className="flex items-center gap-2">
         <p className="text-[9px] font-semibold uppercase tracking-wider text-neutral-500">
-          Per-keyframe easing
+          {tx("Per-keyframe easing")}
         </p>
         {onApplyAll && (
           <select
-            aria-label="Apply one ease to all segments"
-            title="Apply one ease to every segment (clears per-segment overrides)"
+            aria-label={tx("Apply one ease to all segments")}
+            title={tx("Apply one ease to every segment (clears per-segment overrides)")}
             value=""
             onChange={(e) => {
               const next = e.target.value;
@@ -74,11 +76,11 @@ export function KeyframeEaseList({
             className="ml-auto cursor-pointer rounded bg-neutral-800 px-1.5 py-0.5 text-[9px] text-neutral-300 outline-none hover:bg-neutral-700 focus:ring-1 focus:ring-panel-accent/40"
           >
             <option value="" disabled>
-              Set all…
+              {tx("Set all…")}
             </option>
             {APPLY_ALL_EASES.map((name) => (
               <option key={name} value={name}>
-                {EASE_LABELS[name] ?? name}
+                {tx(EASE_LABELS[name] ?? name)}
               </option>
             ))}
           </select>
@@ -90,8 +92,8 @@ export function KeyframeEaseList({
         const isExpanded = expandedPct === kf.percentage;
         const label = `${keyframes[i - 1].percentage}% → ${kf.percentage}%`;
         const easeLabel = segEase.startsWith("custom(")
-          ? "Custom"
-          : (EASE_LABELS[segEase] ?? segEase);
+          ? tx("Custom")
+          : tx(EASE_LABELS[segEase] ?? segEase);
         return (
           <div key={`${i}-${kf.percentage}`} className="rounded-md bg-neutral-900/50">
             <button

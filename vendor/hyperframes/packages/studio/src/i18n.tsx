@@ -69,6 +69,10 @@ type TranslationKey =
   | "right.assetsTooltip"
   | "right.illustration"
   | "right.illustrationTooltip"
+  | "right.animation"
+  | "right.animationTooltip"
+  | "right.animationTemplates"
+  | "right.animationProperties"
   | "right.catalog"
   | "right.catalogTooltip"
   | "right.effects"
@@ -159,8 +163,12 @@ const messages: Record<StudioLocale, Record<TranslationKey, string>> = {
     "right.assetsTooltip": "Videos, images, audio, and fonts",
     "right.illustration": "Illustrations",
     "right.illustrationTooltip": "Generate video assets with HTML illustrations",
-    "right.catalog": "Animation",
-    "right.catalogTooltip": "Browse reusable animation presets",
+    "right.animation": "Animation",
+    "right.animationTooltip": "Browse templates and edit selected-element animation",
+    "right.animationTemplates": "Animation templates",
+    "right.animationProperties": "Animation properties",
+    "right.catalog": "Effects",
+    "right.catalogTooltip": "Insert opening, ending, and transition effect clips",
     "right.effects": "Scenes",
     "right.effectsTooltip": "Browse transition and background scenes",
     "right.layers": "Layers",
@@ -249,8 +257,12 @@ const messages: Record<StudioLocale, Record<TranslationKey, string>> = {
     "right.assetsTooltip": "视频、图片、音频和字体",
     "right.illustration": "插画",
     "right.illustrationTooltip": "使用 HTML 插画能力生成视频素材",
-    "right.catalog": "动画",
-    "right.catalogTooltip": "浏览可复用动画预设",
+    "right.animation": "动画",
+    "right.animationTooltip": "浏览模板并编辑所选元素动画",
+    "right.animationTemplates": "动画模板",
+    "right.animationProperties": "动画属性",
+    "right.catalog": "特效",
+    "right.catalogTooltip": "插入开头、结尾和转场特效片段",
     "right.effects": "场景",
     "right.effectsTooltip": "浏览转场场景和背景场景",
     "right.layers": "图层",
@@ -308,6 +320,122 @@ const studioLiteralZh: Record<string, string> = {
   "Alpha percent": "透明度百分比",
   Angle: "角度",
   Animation: "动画",
+  Animate: "变化到",
+  "Animate In": "从设定值进入",
+  "From → To": "起始 → 结束",
+  Set: "立即设置",
+  "Set Instantly": "立即设置",
+  "Instantly snap to these values — no transition": "立即切换到这些值，不产生过渡动画",
+  "Smoothly animate the element to these target values": "让元素平滑变化到目标值",
+  "Element starts at these values and transitions to its normal state":
+    "元素从这些值开始，并过渡到正常状态",
+  "Animate from one state to another": "让元素从一种状态变化到另一种状态",
+  "+ Add effect": "+ 添加动画",
+  "+ Effect": "+ 动画属性",
+  "+ From property": "+ 起始属性",
+  "Add another animated property to this effect": "为此动画再添加一个变化属性",
+  "Add a from-state property": "添加起始状态属性",
+  "Animation editing is disabled": "动画编辑已停用",
+  "Arc Motion": "弧线运动",
+  "Auto-Rotate": "自动旋转",
+  "Add at least 2 position keyframes to enable arc motion.":
+    "至少添加 2 个位置关键帧，才能启用弧线运动。",
+  "Disable arc motion": "关闭弧线运动",
+  "Enable arc motion": "启用弧线运动",
+  "Disable auto-rotate along path": "关闭沿路径自动旋转",
+  "Rotate element to follow path tangent": "让元素沿路径方向自动旋转",
+  Curviness: "弯曲度",
+  "Reset to auto-generated control points": "恢复自动生成的控制点",
+  "Custom curve": "自定义曲线",
+  "Speed curve": "速度曲线",
+  "time →": "时间 →",
+  "cubic-bezier control points": "三次贝塞尔曲线控制点",
+  "Playing…": "播放中…",
+  Preview: "预览",
+  "Per-keyframe easing": "逐关键帧缓动",
+  "Apply one ease to all segments": "为所有区段应用同一种缓动",
+  "Apply one ease to every segment (clears per-segment overrides)":
+    "为所有区段应用同一种缓动，并清除各区段的单独设置",
+  "Set all…": "全部设置…",
+  "Delete Keyframe": "删除关键帧",
+  "Delete All Keyframes": "删除全部关键帧",
+  "Move to Playhead": "移到播放头",
+  "Computed value — edit it in the Code tab.": "这是计算值，请在代码标签页中编辑。",
+  "Unroll to edit": "展开后编辑",
+  "Rewrite the helper/loop into explicit tweens so this keyframe edits directly":
+    "将辅助函数或循环展开为明确动画，以便直接编辑此关键帧",
+  "Choose property…": "选择属性…",
+  "Visible — click to hide": "当前显示，点击隐藏",
+  "Hidden — click to show": "当前隐藏，点击显示",
+  Bright: "提亮",
+  Gray: "灰度",
+  Inset: "内缩",
+  "Move X": "水平移动",
+  "Move Y": "垂直移动",
+  "Move Z": "前后移动",
+  Rotate: "旋转",
+  "Rotate X": "绕 X 轴旋转",
+  "Rotate Y": "绕 Y 轴旋转",
+  "Rotate Z": "绕 Z 轴旋转",
+  Perspective: "透视",
+  "Transform Origin": "变换原点",
+  Visibility: "可见性",
+  Visible: "显示",
+  "Stretch X": "水平拉伸",
+  Filter: "滤镜",
+  "Clip Path": "裁剪路径",
+  Background: "背景色",
+  "Border Color": "边框颜色",
+  "Font Size": "字号",
+  Tracking: "字间距",
+  "Skew X": "水平倾斜",
+  "Skew Y": "垂直倾斜",
+  "Counter Value": "计数终值",
+  "Move left/right (negative = left, positive = right)": "水平移动，负值向左，正值向右",
+  "Move up/down (negative = up, positive = down)": "垂直移动，负值向上，正值向下",
+  "How visible (0 = invisible, 1 = fully visible)": "可见程度，0 为完全透明，1 为完全显示",
+  "Size multiplier (1 = normal, 2 = double, 0.5 = half)":
+    "缩放倍数，1 为原始大小，2 为两倍，0.5 为一半",
+  "Horizontal stretch (1 = normal)": "水平拉伸倍数，1 为正常",
+  "Vertical stretch (1 = normal)": "垂直拉伸倍数，1 为正常",
+  "Spin angle (360 = full rotation)": "旋转角度，360 为旋转一周",
+  "Move forward/back along the Z axis": "沿 Z 轴前后移动",
+  "Rotate around the horizontal X axis": "绕水平 X 轴旋转",
+  "Rotate around the vertical Y axis": "绕垂直 Y 轴旋转",
+  "Rotate around the screen-facing Z axis": "绕面向屏幕的 Z 轴旋转",
+  "3D depth context for child elements; set it on a parent when rotating children in 3D":
+    "子元素的 3D 透视深度；对子元素进行 3D 旋转时，请在父元素上设置",
+  "3D depth for THIS element's own X/Y rotation — lower = stronger perspective (try 600–1000)":
+    "当前元素绕 X/Y 轴旋转时的 3D 透视深度；数值越小透视越强，建议 600–1000",
+  "Pivot point for transforms, for example center center or 50% 50%":
+    "变换的中心点，例如 center center 或 50% 50%",
+  "Element width": "元素宽度",
+  "Element height": "元素高度",
+  "Like opacity but hides element completely at 0": "类似不透明度，但为 0 时会完全隐藏元素",
+  "Show or hide the element": "显示或隐藏元素",
+  "End value for a number roll-up (the number it counts up/down to)":
+    "数字滚动的结束值，也就是最终计数到的数字",
+  Length: "时长",
+  "Starts at": "开始时间",
+  Speed: "速度",
+  "How long this effect lasts": "此动画持续多长时间",
+  "When this effect begins on the timeline": "此动画在时间轴上的开始时间",
+  "When this effect plays": "此动画的播放时间",
+  "Derived from this animation's position inside its owner clip":
+    "根据动画在所属片段中的位置自动判断",
+  Shared: "共享",
+  "This animation uses a shared selector. It is read-only here so editing one element cannot change another. Add a new effect to create an independent animation for this element.":
+    "此动画使用共享选择器，因此在这里为只读，避免修改一个元素时影响其他元素。请添加新动画，为当前元素创建独立动画。",
+  "Keyframed — click a segment below to edit its curve": "已使用关键帧，点击下方区段可编辑速度曲线",
+  "Copy description to clipboard — paste into agent prompts":
+    "复制动画说明，可粘贴到 Agent 提示词中",
+  Copied: "已复制",
+  From: "起始状态",
+  To: "结束状态",
+  Remove: "移除",
+  "Remove this animation": "移除此动画",
+  "drag to move": "拖动以移动",
+  Reset: "重置",
   Appearance: "外观",
   Apply: "应用",
   Applying: "正在应用",
@@ -417,7 +545,8 @@ const studioLiteralZh: Record<string, string> = {
   Standard: "标准",
   "High Quality": "高质量",
   "About video formats": "关于视频格式",
-  "Best for general use. Smallest file, universal playback.": "适合一般用途。文件最小，兼容各种播放器。",
+  "Best for general use. Smallest file, universal playback.":
+    "适合一般用途。文件最小，兼容各种播放器。",
   "Transparent video. Works in Final Cut Pro, DaVinci Resolve, and most video editors. Large files.":
     "支持透明背景，适用于 Final Cut Pro、DaVinci Resolve 和大多数视频编辑器，文件较大。",
   "Transparent video for web. Smaller than MOV but limited editor support.":
@@ -542,6 +671,8 @@ const studioLiteralZh: Record<string, string> = {
   "Reset 3D transform": "重置 3D 变换",
   "Reset color grading": "重置调色",
   "Reset video to fit": "缩放视频以适应画布",
+  "Rename clip": "重命名片段",
+  "Couldn't rename clip. Try again.": "片段重命名保存失败，请重试。",
   Retry: "重试",
   "Rendering…": "正在渲染…",
   Rendering: "正在渲染",
@@ -549,7 +680,8 @@ const studioLiteralZh: Record<string, string> = {
   "just now": "刚刚",
   "Preparing…": "正在准备…",
   "Hide finished": "隐藏已完成项目",
-  "Hide finished renders from this list (files stay on disk)": "从列表中隐藏已完成项目（文件仍保留在磁盘上）",
+  "Hide finished renders from this list (files stay on disk)":
+    "从列表中隐藏已完成项目（文件仍保留在磁盘上）",
   "Dismiss error": "关闭错误提示",
   "Reverse gradient": "反转渐变",
   "Rotate clockwise": "顺时针旋转",
@@ -559,6 +691,8 @@ const studioLiteralZh: Record<string, string> = {
   Roughness: "粗糙度",
   Roundness: "圆度",
   Saturation: "饱和度",
+  Save: "保存",
+  "Saving…": "保存中…",
   "Saturation and brightness": "饱和度与亮度",
   "Send backward": "下移一层",
   "Send to back": "置于底层",
@@ -630,9 +764,13 @@ const studioLiteralZh: Record<string, string> = {
     "此文件包含多条 GSAP 时间轴。为避免数据丢失，动画编辑已停用；请合并为一条时间轴后再编辑。",
   "This timeline uses a computed key the editor can't resolve statically.":
     "此时间轴使用了编辑器无法静态解析的计算属性名。",
+  'This timeline uses a computed key (window.__timelines[variable]) the editor can\'t resolve statically. Use a string-literal key (window.__timelines["id"]) or a variable declaration (const tl = gsap.timeline()) to enable editing.':
+    '此时间轴使用了编辑器无法静态解析的计算属性名（window.__timelines[variable]）。请改用字符串键（window.__timelines["id"]）或变量声明（const tl = gsap.timeline()）后再编辑。',
   "This layer has no valid editable duration": "此图层没有有效的可编辑时长",
-  "This row contains multiple clips; reorder clips individually": "此行包含多个片段，请分别调整顺序",
-  "Timing is inferred; the first edit saves explicit timing": "当前时间为自动推算，首次编辑后将保存明确时间",
+  "This row contains multiple clips; reorder clips individually":
+    "此行包含多个片段，请分别调整顺序",
+  "Timing is inferred; the first edit saves explicit timing":
+    "当前时间为自动推算，首次编辑后将保存明确时间",
   Editable: "可编辑",
   "Work area": "工作区间",
   "Gesture recording modifiers": "手势录制辅助键",
@@ -767,6 +905,41 @@ export function translateStudioLiteral(locale: StudioLocale, text: string): stri
   if (selectedWords) return `${selectedWords[1]} 个词`;
   const assetPreview = text.match(/^Preview: (.+)$/);
   if (assetPreview) return `预览：${assetPreview[1]}`;
+  const numberedAnimation = text.match(/^Animation (\d+)$/);
+  if (numberedAnimation) return `动画 ${numberedAnimation[1]}`;
+  const removeAnimation = text.match(/^Remove animation (\d+)$/);
+  if (removeAnimation) return `移除第 ${removeAnimation[1]} 个动画`;
+  const generatedTween = text.match(/^Generated by (.+) — not directly editable\.$/);
+  if (generatedTween) return `由 ${generatedTween[1]} 生成，无法直接编辑。`;
+  const segmentCurviness = text.match(/^Segment (\d+) curviness$/);
+  if (segmentCurviness) return `第 ${segmentCurviness[1]} 段弯曲度`;
+  const segment = text.match(/^Segment (\d+)$/);
+  if (segment) return `第 ${segment[1]} 段`;
+  const convertKeyframes = text.match(/^Convert (.+) to keyframes$/);
+  if (convertKeyframes)
+    return `将${translateStudioLiteral(locale, convertKeyframes[1])}转换为关键帧`;
+  const removeKeyframe = text.match(/^Remove (.+) keyframe$/);
+  if (removeKeyframe) return `移除${translateStudioLiteral(locale, removeKeyframe[1])}关键帧`;
+  const addKeyframe = text.match(/^Add (.+) keyframe$/);
+  if (addKeyframe) return `添加${translateStudioLiteral(locale, addKeyframe[1])}关键帧`;
+  const removeFromProperty = text.match(/^Remove from-(.+)$/);
+  if (removeFromProperty)
+    return `移除起始状态的${translateStudioLiteral(locale, removeFromProperty[1])}`;
+  const readOnlyAnimation = text.match(/^(Entrance|Loop|Exit) animation \(read-only\)$/);
+  if (readOnlyAnimation)
+    return `${translateStudioLiteral(locale, readOnlyAnimation[1])}动画（只读）`;
+  const moveAnimation = text.match(/^Move (entrance|loop|exit) animation$/);
+  if (moveAnimation)
+    return `移动${translateStudioLiteral(
+      locale,
+      moveAnimation[1][0].toUpperCase() + moveAnimation[1].slice(1),
+    )}动画`;
+  const dragAnimation = text.match(/^Drag to move (entrance|loop|exit) animation$/);
+  if (dragAnimation)
+    return `拖动以移动${translateStudioLiteral(
+      locale,
+      dragAnimation[1][0].toUpperCase() + dragAnimation[1].slice(1),
+    )}动画`;
   for (const [prefix, translated] of [
     ["Expand ", "展开 "],
     ["Select ", "选择 "],

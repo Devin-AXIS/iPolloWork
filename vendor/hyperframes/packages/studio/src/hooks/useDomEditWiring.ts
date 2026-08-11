@@ -8,6 +8,7 @@
  * the GSAP-aware geometry intercept logic.
  */
 import { useCallback, useEffect, useRef } from "react";
+import type { RegistryMotionPreset } from "@hyperframes/core/registry";
 import type { DomEditSelection } from "../components/editor/domEditingTypes";
 import { STUDIO_GSAP_PANEL_ENABLED } from "../components/editor/manualEditingAvailability";
 import { usePlayerStore } from "../player";
@@ -18,6 +19,7 @@ import { useGsapInteractionFailureTelemetry } from "./useGsapInteractionFailureT
 import { useGsapSelectionHandlers } from "./useGsapSelectionHandlers";
 import type { PatchTarget } from "../utils/sourcePatcher";
 import type { SidebarTab } from "../components/sidebar/LeftSidebar";
+import type { MotionMutationInput, MotionTargetKind } from "@hyperframes/core/motion-presets";
 import {
   collectTimelineAncestorIds,
   resolveTimelineTreeSelectionId,
@@ -67,6 +69,17 @@ export interface UseDomEditWiringParams {
     sel: DomEditSelection,
     method: "to" | "from" | "set" | "fromTo",
     time: number,
+  ) => Promise<void>;
+  mutateMotion: (
+    sel: DomEditSelection,
+    targetKind: MotionTargetKind,
+    mutation: MotionMutationInput,
+     ) => Promise<void>;
+  applyGsapMotionPreset: (
+    sel: DomEditSelection,
+    preset: RegistryMotionPreset,
+    currentTime: number,
+    label: string,
   ) => Promise<void>;
   addGsapProperty: (sel: DomEditSelection, animId: string, prop: string) => Promise<void>;
   removeGsapProperty: (sel: DomEditSelection, animId: string, prop: string) => Promise<void>;
@@ -141,6 +154,8 @@ export function useDomEditWiring({
   deleteGsapAnimation,
   deleteAllForSelector,
   addGsapAnimation,
+  mutateMotion,
+  applyGsapMotionPreset,
   addGsapProperty,
   removeGsapProperty,
   updateGsapFromProperty,
@@ -238,7 +253,11 @@ export function useDomEditWiring({
     STUDIO_GSAP_PANEL_ENABLED ? (projectId ?? null) : null,
     gsapSourceFile,
     domEditSelection
-      ? { id: domEditSelection.id ?? null, selector: domEditSelection.selector ?? null }
+      ? {
+          id: domEditSelection.id ?? null,
+          hfId: domEditSelection.hfId ?? null,
+          selector: domEditSelection.selector ?? null,
+        }
       : null,
     gsapCacheVersion,
     // Pass the preview iframe so class/selector tweens (e.g. `.dot`) resolve to
@@ -260,6 +279,8 @@ export function useDomEditWiring({
     deleteGsapAnimation,
     deleteAllForSelector,
     addGsapAnimation,
+    mutateMotion,
+    applyGsapMotionPreset,
     addGsapProperty,
     removeGsapProperty,
     updateGsapFromProperty,

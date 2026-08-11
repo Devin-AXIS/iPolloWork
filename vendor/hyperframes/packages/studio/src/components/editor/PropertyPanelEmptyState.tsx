@@ -1,6 +1,7 @@
 import { Eye, Layers } from "../../icons/SystemIcons";
 import type { DomEditSelection } from "./domEditingTypes";
 import { useStudioI18n } from "../../i18n";
+import { STUDIO_MULTI_SELECTION_ENABLED } from "./manualEditingAvailability";
 
 function FlatEmptyState() {
   const { tx } = useStudioI18n();
@@ -20,7 +21,11 @@ function FlatEmptyState() {
       </span>
       <div className="text-[13px] font-semibold text-panel-text-0">{tx("Nothing selected")}</div>
       <div className="max-w-[250px] text-[11px] leading-[1.5] text-panel-text-3">
-        {tx("Click any element on the canvas to edit it, or drag to select several.")}
+        {tx(
+          STUDIO_MULTI_SELECTION_ENABLED
+            ? "Click any element on the canvas to edit it, or drag to select several."
+            : "Select a single element to edit its properties",
+        )}
       </div>
       <div className="mt-2 flex w-full flex-col gap-1.5">
         <span className="flex items-center justify-between rounded-lg border border-panel-border bg-panel-bg px-3 py-2">
@@ -168,8 +173,9 @@ export function PropertyPanelEmptyState({
   onHideAllSelected?: () => void;
   onClearSelection?: () => void;
 }) {
+  const showMultiSelect = STUDIO_MULTI_SELECTION_ENABLED && multiSelectCount > 1;
   if (flat) {
-    return multiSelectCount > 1 ? (
+    return showMultiSelect ? (
       <FlatMultiSelectState
         multiSelectCount={multiSelectCount}
         multiSelectedElements={multiSelectedElements}
@@ -185,7 +191,7 @@ export function PropertyPanelEmptyState({
   return (
     <div className="flex h-full flex-col bg-neutral-900">
       <div className="flex flex-1 flex-col items-center justify-center px-6 text-center">
-        {multiSelectCount > 1 ? (
+        {showMultiSelect ? (
           <>
             <Layers size={18} className="mb-3 text-neutral-600" />
             <p className="text-sm font-medium text-neutral-200">

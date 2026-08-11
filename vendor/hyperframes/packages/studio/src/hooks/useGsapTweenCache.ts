@@ -1,5 +1,10 @@
 import { useEffect, useMemo, useRef, useState, useCallback } from "react";
-import { isStudioHoldSet, type GsapAnimation, type GsapKeyframesData, type ParsedGsap } from "@hyperframes/core/gsap-parser";
+import {
+  isStudioHoldSet,
+  type GsapAnimation,
+  type GsapKeyframesData,
+  type ParsedGsap,
+} from "@hyperframes/core/gsap-parser";
 import { usePlayerStore, type KeyframeCacheEntry } from "../player/store/playerStore";
 import { readRuntimeKeyframes, scanAllRuntimeKeyframes } from "./gsapRuntimeBridge";
 import {
@@ -9,10 +14,12 @@ import {
 import { toAbsoluteTime } from "./gsapShared";
 import { deduplicateKeyframes, synthesizeFlatTweenKeyframes } from "./gsapTweenSynth";
 import { buildTimelineAnimationSegments } from "../utils/timelineAnimationSegments";
+import { readMotionInstanceFromExtras } from "@hyperframes/core/motion-presets";
 import {
   appendTimelineAnimationSegments,
   attachTimelineAnimationSegments,
   buildTimelineCacheUpdates,
+  resolveMotionTimelineTargetKeys,
   type TimelineSegmentsByElement,
 } from "./gsapTimelineSegmentCache";
 
@@ -59,6 +66,7 @@ export function resolveSelectorElementIds(
 /** The selected element's identity for matching tweens to it. */
 export interface GsapElementTarget {
   id?: string | null;
+  hfId?: string | null;
   selector?: string | null;
 }
 
@@ -85,8 +93,18 @@ export function getAnimationsForElement(
   if (target.id) matchers.add(`#${target.id}`);
   if (target.selector) matchers.add(target.selector);
   if (matchers.size === 0 && !element) return [];
-  return animations.filter((a) =>
-    a.targetSelector.split(",").some((part) => {
+  return animations.filter((a) => {
+    const motion = readMotionInstanceFromExtras(a.extras);
+    if (
+      motion &&
+      ((target.hfId && motion.target.hfId === target.hfId) ||
+        (target.id && motion.target.elementId === target.id) ||
+        (target.selector && motion.target.selector === target.selector) ||
+        (target.id && motion.target.selector === `#${target.id}`))
+    ) {
+      return true;
+    }
+    return a.targetSelector.split(",").some((part) => {
       const trimmed = part.trim();
       if (!trimmed) return false;
       if (matchers.has(trimmed)) return true;
@@ -100,8 +118,8 @@ export function getAnimationsForElement(
         }
       }
       return false;
-    }),
-  );
+    });
+  });
 }
 
 export async function fetchParsedAnimations(
@@ -147,7 +165,10 @@ export function resolveClipTimingBasis(
   domClipChildren: ReadonlyArray<{ id: string; hostId: string }>,
 ): { elStart: number; elDuration: number } {
   const direct = elements.find(
-    (el) => el.domId === elementId || (el.key ?? el.id) === `${sourceFile}#${elementId}`,
+    (el) =>
+      el.domId === elementId ||
+      (el.key ?? el.id) === elementId ||
+      (el.key ?? el.id) === `${sourceFile}#${elementId}`,
   );
   if (direct) return { elStart: direct.start, elDuration: direct.duration };
   const hostId = domClipChildren.find((c) => c.id === elementId)?.hostId;
@@ -180,7 +201,7 @@ export function useGsapAnimationsForElement(
   );
 
   useEffect(() => {
-    const targetKey = target?.id ?? target?.selector ?? "";
+    const targetKey = target?.hfId ?? target?.id ?? target?.selector ?? "";
     const fetchKey = `${projectId}:${sourceFile}:${version}:${targetKey}`;
     if (fetchKey === lastFetchKeyRef.current) return;
     lastFetchKeyRef.current = fetchKey;
@@ -234,12 +255,13 @@ export function useGsapAnimationsForElement(
         retryTimerRef.current = null;
       }
     };
-  }, [projectId, sourceFile, version, target?.id, target?.selector]);
+  }, [projectId, sourceFile, version, target?.hfId, target?.id, target?.selector]);
 
+  const targetHfId = target?.hfId ?? null;
   const targetId = target?.id ?? null;
   const targetSelector = target?.selector ?? null;
   const rawAnimations = useMemo(() => {
-    if (!targetId && !targetSelector) return [];
+    if (!targetHfId && !targetId && !targetSelector) return [];
     // Resolve the live element so class / descendant tweens (e.g.
     // gsap.from(".dot", {stagger})) attribute to every matching element, not
     // just the one whose exact selector equals the tween's. `version` re-runs
@@ -257,11 +279,11 @@ export function useGsapAnimationsForElement(
     }
     return getAnimationsForElement(
       allAnimations,
-      { id: targetId, selector: targetSelector },
+      { hfId: targetHfId, id: targetId, selector: targetSelector },
       element,
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [allAnimations, targetId, targetSelector, version, iframeRef]);
+  }, [allAnimations, targetHfId, targetId, targetSelector, version, iframeRef]);
 
   // fallow-ignore-next-line complexity
   const animations = useMemo(() => {
@@ -471,7 +493,16 @@ export function usePopulateKeyframeCacheForFile(
       const mergedByElement = new Map<string, KeyframeCacheEntry>();
       const animationSegmentsByElement: TimelineSegmentsByElement = new Map();
       for (const anim of parsed.animations) {
-        const targetIds = resolveSelectorElementIds(anim.targetSelector, doc);
+        const motion = readMotionInstanceFromExtras(anim.extras);
+        const motionTargetKeys = motion
+          ? resolveMotionTimelineTargetKeys(motion.target, sf, [...elements, ...domClipChildren])
+          : [];
+        const targetIds =
+          motionTargetKeys.length > 0
+            ? motionTargetKeys
+            : motion?.target.elementId
+              ? [motion.target.elementId]
+              : resolveSelectorElementIds(anim.targetSelector, doc);
         appendTimelineAnimationSegments(animationSegmentsByElement, anim, targetIds, (id) => {
           const { elStart, elDuration } = resolveClipTimingBasis(id, sf, elements, domClipChildren);
           return { start: elStart, duration: elDuration };

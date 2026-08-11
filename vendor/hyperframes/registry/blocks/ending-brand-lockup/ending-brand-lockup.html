@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Brand Lockup</title>
+    <style>
+      * { box-sizing: border-box; }
+      html, body { width: 1920px; height: 1080px; margin: 0; overflow: hidden; }
+      body { background: #f1eadf; color: #1d1c19; font-family: Inter, sans-serif; }
+      .composition { position: relative; width: 100%; height: 100%; overflow: hidden; background: radial-gradient(circle at 50% 42%, #fffaf1 0, #f1eadf 62%, #e5d8c8 100%); }
+      .halo { position: absolute; left: 50%; top: 47%; width: 560px; height: 560px; border-radius: 50%; transform: translate(-50%, -50%); border: 1px solid rgba(31,29,25,.12); box-shadow: inset 0 0 0 70px rgba(255,255,255,.16), inset 0 0 0 150px rgba(255,255,255,.12); }
+      .lockup { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; }
+      .mark { display: grid; width: 96px; height: 96px; margin-bottom: 42px; place-items: center; border-radius: 28px; background: #1d1c19; color: #fffaf1; font-size: 42px; font-weight: 800; box-shadow: 0 24px 60px rgba(48,37,23,.16); }
+      .eyebrow { color: #a05d35; font-size: 20px; font-weight: 750; letter-spacing: .28em; text-transform: uppercase; }
+      h1 { margin: 22px 0 0; font-family: "EB Garamond", serif; font-size: 118px; font-weight: 500; line-height: .96; letter-spacing: -.045em; }
+      .cta { margin-top: 38px; padding: 16px 28px; border: 1px solid rgba(29,28,25,.22); border-radius: 999px; color: #514c44; font-size: 24px; }
+      .rule { position: absolute; left: 150px; right: 150px; bottom: 116px; height: 1px; background: rgba(29,28,25,.16); transform-origin: center; }
+      .footer { position: absolute; left: 150px; right: 150px; bottom: 72px; display: flex; justify-content: space-between; color: #625c54; font-size: 16px; letter-spacing: .16em; }
+    </style>
+  </head>
+  <body>
+    <main class="composition" data-composition-id="ending-brand-lockup" data-width="1920" data-height="1080" data-start="0" data-duration="4.5">
+      <div class="halo" data-layout-ignore></div>
+      <section class="lockup" data-hf-id="ebl-lockup">
+        <div class="mark" data-hf-id="ebl-mark">iP</div>
+        <div class="eyebrow" data-hf-id="ebl-eyebrow">Built with intention</div>
+        <h1 data-hf-id="ebl-title">Make the ending stay.</h1>
+        <div class="cta" data-hf-id="ebl-cta">ipollowork.com →</div>
+      </section>
+      <div class="rule" data-layout-ignore></div>
+      <div class="footer"><span>THANK YOU FOR WATCHING</span><span>2026</span></div>
+    </main>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.15.0/dist/gsap.min.js"></script>
+    <script>
+      window.__timelines = window.__timelines || {};
+      var timeline = gsap.timeline({ paused: true });
+      timeline
+        .from(".halo", { opacity: 0, scale: 0.72, duration: 1.5, ease: "power3.out" }, 0)
+        .from(".mark", { opacity: 0, y: 42, rotation: -8, scale: 0.82, duration: 1, ease: "back.out(1.5)" }, 0.35)
+        .from(".eyebrow", { opacity: 0, y: 18, duration: 0.68, ease: "power3.out" }, 0.78)
+        .from("h1", { opacity: 0, y: 44, filter: "blur(10px)", duration: 1, ease: "power4.out" }, 0.9)
+        .from(".cta", { opacity: 0, y: 20, duration: 0.72, ease: "power3.out" }, 1.4)
+        .from(".rule", { scaleX: 0, duration: 1, ease: "power3.inOut" }, 1.5)
+        .from(".footer", { opacity: 0, duration: 0.65, ease: "power2.out" }, 1.85);
+      window.__timelines["ending-brand-lockup"] = timeline;
+      window.addEventListener("hf-seek", function (event) { timeline.seek(Math.max(0, Math.min(event.detail.time, 4.5))); });
+      timeline.seek(0);
+    </script>
+  </body>
+</html>

@@ -818,6 +818,7 @@ const BUILTIN_VAR_KEYS = new Set(["duration", "ease", "delay"]);
 const DROPPED_VAR_KEYS = new Set(["onComplete", "onStart", "onUpdate", "onRepeat"]);
 /** Keys that go in `extras` — non-editable GSAP config that must survive round-trips. */
 const EXTRAS_KEYS = new Set([
+  "data",
   "stagger",
   "yoyo",
   "repeat",

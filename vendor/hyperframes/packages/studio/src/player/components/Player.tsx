@@ -16,17 +16,24 @@ interface PlayerProps {
   style?: React.CSSProperties;
   suppressLoadingOverlay?: boolean;
   refreshToken?: number;
+  /** Keep this player's iframe hidden until Studio has restored its seek position. */
+  deferReveal?: boolean;
+  /** Fires after the deferred iframe is both runtime-ready and seek-restored. */
+  onReadyToReveal?: () => void;
 }
 
 interface HyperframesPlayerElement extends HTMLElement {
   iframeElement: HTMLIFrameElement;
 }
 
+const MEDIA_HAVE_CURRENT_DATA = 2;
 const MEDIA_HAVE_FUTURE_DATA = 3;
 const MEDIA_NETWORK_NO_SOURCE = 3;
 
 const COMPOSITION_LOADING_OVERLAY_DELAY_MS = 400;
 const REFRESH_LOADING_OVERLAY_DELAY_MS = 220;
+const DEFERRED_VISUAL_READY_TIMEOUT_MS = 800;
+const DEFERRED_VISUAL_READY_PAINTS = 2;
 
 export function shouldShowCompositionLoadingOverlay(compositionLoading: boolean): boolean {
   return compositionLoading;
@@ -42,6 +49,26 @@ export function shouldShowRefreshLoadingOverlay({
   deferred: boolean;
 }): boolean {
   return Boolean(suppressLoadingOverlay) && !deferred && compositionLoading;
+}
+
+export function CompositionRefreshLoadingOverlay() {
+  return (
+    <div
+      className="absolute inset-0 bg-black/45 flex items-center justify-center z-30 select-none backdrop-blur-[1px]"
+      data-hyperframes-ignore=""
+      data-testid="composition-refresh-loading-overlay"
+      draggable={false}
+      style={{ transition: "opacity 180ms ease-out" }}
+      onDragStart={(event) => event.preventDefault()}
+      onMouseDown={(event) => event.preventDefault()}
+      onPointerDown={(event) => event.preventDefault()}
+    >
+      <div className="flex flex-col items-center gap-3 px-6 text-center" role="status">
+        <div className="h-4 w-4 animate-spin rounded-full border-2 border-neutral-700 border-t-neutral-500 motion-reduce:animate-none" />
+        <p className="text-xs text-neutral-400">Preparing preview…</p>
+      </div>
+    </div>
+  );
 }
 
 function enableInteractiveIframe(player: HyperframesPlayerElement): void {
@@ -98,6 +125,64 @@ export function hasUnloadedAssets(iframe: HTMLIFrameElement, lastResult: boolean
   }
 }
 
+function isVisuallyActive(element: HTMLElement): boolean {
+  if (typeof element.checkVisibility === "function") {
+    return element.checkVisibility({ checkOpacity: true, checkVisibilityCSS: true });
+  }
+  const rect = element.getBoundingClientRect();
+  const style = element.ownerDocument.defaultView?.getComputedStyle(element);
+  return (
+    rect.width > 0 &&
+    rect.height > 0 &&
+    style?.display !== "none" &&
+    style?.visibility !== "hidden" &&
+    style?.opacity !== "0"
+  );
+}
+
+function documentHasPendingVisualAssets(doc: Document, depth = 0): boolean {
+  if (doc.fonts?.status !== "loaded") return true;
+
+  for (const image of doc.querySelectorAll<HTMLImageElement>("img")) {
+    if (isVisuallyActive(image) && (!image.complete || image.naturalWidth === 0)) return true;
+  }
+
+  for (const video of doc.querySelectorAll<HTMLVideoElement>("video")) {
+    if (
+      isVisuallyActive(video) &&
+      !video.error &&
+      video.networkState !== MEDIA_NETWORK_NO_SOURCE &&
+      video.readyState < MEDIA_HAVE_CURRENT_DATA
+    ) {
+      return true;
+    }
+  }
+
+  if (depth >= 2) return false;
+  for (const childFrame of doc.querySelectorAll<HTMLIFrameElement>("iframe")) {
+    if (!isVisuallyActive(childFrame)) continue;
+    try {
+      const childDoc = childFrame.contentDocument;
+      if (!childDoc || childDoc.readyState !== "complete") return true;
+      if (documentHasPendingVisualAssets(childDoc, depth + 1)) return true;
+    } catch {
+      // Cross-origin child frames cannot expose readiness. The two-paint gate
+      // below still prevents swapping on their first unpainted browser frame.
+    }
+  }
+
+  return false;
+}
+
+export function isDeferredFrameVisuallyReady(iframe: HTMLIFrameElement): boolean {
+  try {
+    const doc = iframe.contentDocument;
+    return Boolean(doc && doc.readyState === "complete" && !documentHasPendingVisualAssets(doc));
+  } catch {
+    return true;
+  }
+}
+
 /**
  * Renders a composition preview using the <hyperframes-player> web component.
  *
@@ -117,6 +202,8 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
       style,
       suppressLoadingOverlay,
       refreshToken,
+      deferReveal,
+      onReadyToReveal,
     },
     ref,
   ) => {
@@ -156,6 +243,7 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
 
       let canceled = false;
       let cleanup: (() => void) | undefined;
+      let revealRaf = 0;
 
       // Dynamic import registers the custom element in the browser only.
       import("@hyperframes/player").then(() => {
@@ -196,19 +284,54 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
 
         // Bridge the inner iframe to the forwarded ref for useTimelinePlayer.
         const iframe = player.iframeElement;
-        if (typeof ref === "function") {
-          ref(iframe);
-        } else if (ref) {
-          (ref as React.MutableRefObject<HTMLIFrameElement | null>).current = iframe;
-        }
+        if (deferReveal) iframe.style.visibility = "hidden";
+        const assignForwardedRef = () => {
+          if (typeof ref === "function") {
+            ref(iframe);
+          } else if (ref) {
+            (ref as React.MutableRefObject<HTMLIFrameElement | null>).current = iframe;
+          }
+        };
+        if (!deferReveal) assignForwardedRef();
 
         // Prevent the web component's built-in click-to-toggle behavior.
         // The studio manages playback exclusively via useTimelinePlayer.
         const preventToggle = (e: Event) => e.stopImmediatePropagation();
         player.addEventListener("click", preventToggle, { capture: true });
 
+        let deferredReadyHandled = false;
         const handleReady = () => {
           setCompositionLoading(false);
+          if (!deferReveal) return;
+          if (deferredReadyHandled) return;
+          deferredReadyHandled = true;
+          // Keep playback/selection bound to the visible player while the new
+          // document loads. Once its runtime is ready, hand over the ref and let
+          // Studio restore the seek before revealing it.
+          assignForwardedRef();
+          onLoad();
+          let visibleAt = 0;
+          let readyPaints = 0;
+          const notifyWhenRestored = () => {
+            if (canceled) return;
+            if (iframe.style.visibility === "hidden") {
+              revealRaf = requestAnimationFrame(notifyWhenRestored);
+              return;
+            }
+            if (visibleAt === 0) visibleAt = performance.now();
+            const timedOut = performance.now() - visibleAt >= DEFERRED_VISUAL_READY_TIMEOUT_MS;
+            if (timedOut || isDeferredFrameVisuallyReady(iframe)) {
+              readyPaints += 1;
+            } else {
+              readyPaints = 0;
+            }
+            if (readyPaints >= DEFERRED_VISUAL_READY_PAINTS) {
+              onReadyToReveal?.();
+              return;
+            }
+            revealRaf = requestAnimationFrame(notifyWhenRestored);
+          };
+          notifyWhenRestored();
         };
         const handleError = () => {
           setCompositionLoading(false);
@@ -228,7 +351,7 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
             const onEnd = () => container.classList.remove("preview-revealing");
             container.addEventListener("animationend", onEnd, { once: true });
           }
-          onLoad();
+          if (!deferReveal) onLoad();
 
           // Keep polling media and motion readiness without covering the
           // preview. The player remains usable while assets finish loading.
@@ -256,6 +379,7 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
           player.removeEventListener("error", handleError);
           if (assetPollRef.current) clearInterval(assetPollRef.current);
           assetPollRef.current = null;
+          if (revealRaf) cancelAnimationFrame(revealRaf);
           container.removeChild(player);
           // Clear the forwarded ref only if it still points to THIS iframe.
           // During crossfade refreshes the retiring Player unmounts after the
@@ -317,25 +441,7 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
             />
           </div>
         )}
-        {showRefreshOverlay && (
-          <div
-            className="absolute inset-0 bg-black/45 flex items-center justify-center z-30 select-none backdrop-blur-[1px]"
-            data-hyperframes-ignore=""
-            data-testid="composition-refresh-loading-overlay"
-            draggable={false}
-            style={{
-              transition: "opacity 180ms ease-out",
-            }}
-            onDragStart={(event) => event.preventDefault()}
-            onMouseDown={(event) => event.preventDefault()}
-            onPointerDown={(event) => event.preventDefault()}
-          >
-            <div className="flex flex-col items-center gap-3 px-6 text-center" role="status">
-              <div className="h-4 w-4 animate-spin rounded-full border-2 border-neutral-700 border-t-neutral-500 motion-reduce:animate-none" />
-              <p className="text-xs text-neutral-400">Preparing preview…</p>
-            </div>
-          </div>
-        )}
+        {showRefreshOverlay && <CompositionRefreshLoadingOverlay />}
       </div>
     );
   },

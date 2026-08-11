@@ -24,6 +24,7 @@ import {
   type TimelineAnimationOwnerRange,
   type TimelineAnimationPhase,
 } from "../../utils/timelineAnimationSegments";
+import { useStudioI18n } from "../../i18n";
 
 interface AnimationCardProps extends GsapAnimationEditCallbacks {
   animation: GsapAnimation;
@@ -62,6 +63,7 @@ export const AnimationCard = memo(function AnimationCard({
   onSetAllKeyframeEases,
   onUnroll,
 }: AnimationCardProps) {
+  const { locale, tx } = useStudioI18n();
   const [expanded, setExpanded] = useState(defaultExpanded);
   const [addingProp, setAddingProp] = useState(false);
   const [addingFromProp, setAddingFromProp] = useState(false);
@@ -147,18 +149,18 @@ export const AnimationCard = memo(function AnimationCard({
 
   const [copied, setCopied] = useState(false);
 
-  const methodLabel = METHOD_LABELS[animation.method] ?? animation.method;
+  const methodLabel = tx(METHOD_LABELS[animation.method] ?? animation.method);
   const easeName =
     (animation.keyframes ? animation.keyframes.easeEach : undefined) ?? animation.ease ?? "none";
   const easeLabel = easeName.startsWith("custom(")
-    ? "Custom curve"
-    : (EASE_LABELS[easeName] ?? easeName);
+    ? tx("Custom curve")
+    : tx(EASE_LABELS[easeName] ?? easeName);
   const endTime =
     typeof animation.position === "number"
       ? animation.position + (animation.duration ?? 0)
       : animation.position;
 
-  const summary = useMemo(() => buildTweenSummary(animation), [animation]);
+  const summary = useMemo(() => buildTweenSummary(animation, locale), [animation, locale]);
   const phase =
     animation.method === "set" || !ownerRange
       ? null
@@ -176,13 +178,13 @@ export const AnimationCard = memo(function AnimationCard({
       <div className="border-b border-neutral-800 pb-2">
         <div className="flex items-center gap-2 py-1.5">
           <span className="rounded bg-neutral-800 px-1.5 py-0.5 text-[10px] font-medium text-neutral-400">
-            Position
+            {tx("Position")}
           </span>
           <span className="text-[11px] text-neutral-500">
             x: {Math.round(Number(animation.properties.x ?? 0))}, y:{" "}
             {Math.round(Number(animation.properties.y ?? 0))}
           </span>
-          <span className="ml-auto text-[9px] text-neutral-600">drag to move</span>
+          <span className="ml-auto text-[9px] text-neutral-600">{tx("drag to move")}</span>
         </div>
       </div>
     );
@@ -203,26 +205,26 @@ export const AnimationCard = memo(function AnimationCard({
       >
         <span
           className="rounded bg-panel-accent/10 px-1.5 py-0.5 text-[10px] font-semibold text-panel-accent"
-          title={METHOD_TOOLTIPS[animation.method]}
+          title={tx(METHOD_TOOLTIPS[animation.method])}
         >
           {methodLabel}
         </span>
         {phase && (
           <span
             className="rounded-full border border-white/15 bg-white/5 px-1.5 py-0.5 text-[9px] font-semibold text-panel-text-3"
-            title="Derived from this animation's position inside its owner clip"
+            title={tx("Derived from this animation's position inside its owner clip")}
           >
-            {PHASE_LABELS[phase]}
+            {tx(PHASE_LABELS[phase])}
           </span>
         )}
         {isShared && (
           <span className="rounded-full bg-amber-500/15 px-1.5 py-0.5 text-[9px] font-semibold text-amber-400">
-            Shared
+            {tx("Shared")}
           </span>
         )}
         <span
           className={`text-[11px] font-medium ${flat ? "text-panel-text-3" : "text-neutral-400"}`}
-          title="When this effect plays"
+          title={tx("When this effect plays")}
         >
           {typeof animation.position === "number"
             ? `${parseFloat(animation.position.toFixed(3))}s`
@@ -248,8 +250,9 @@ export const AnimationCard = memo(function AnimationCard({
 
       {expanded && isShared && (
         <p className="mt-1 rounded-lg bg-amber-500/10 px-2.5 py-2 text-[10px] leading-relaxed text-amber-300">
-          This animation uses a shared selector. It is read-only here so editing one element cannot
-          change another. Add a new effect to create an independent animation for this element.
+          {tx(
+            "This animation uses a shared selector. It is read-only here so editing one element cannot change another. Add a new effect to create an independent animation for this element.",
+          )}
         </p>
       )}
       {expanded && (
@@ -271,7 +274,7 @@ export const AnimationCard = memo(function AnimationCard({
                         clipPath: "polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%)",
                       }}
                     />
-                    Keyframed — click a segment below to edit its curve
+                    {tx("Keyframed — click a segment below to edit its curve")}
                   </p>
                 )}
               </div>
@@ -283,9 +286,9 @@ export const AnimationCard = memo(function AnimationCard({
                   setTimeout(() => setCopied(false), 1500);
                 }}
                 className="flex-shrink-0 rounded px-1.5 py-0.5 text-[9px] font-medium text-neutral-500 transition-colors hover:bg-neutral-800 hover:text-neutral-300"
-                title="Copy description to clipboard — paste into agent prompts"
+                title={tx("Copy description to clipboard — paste into agent prompts")}
               >
-                {copied ? "Copied" : "Copy"}
+                {tx(copied ? "Copied" : "Copy")}
               </button>
             </div>
             <div className={RESPONSIVE_GRID}>
@@ -361,7 +364,7 @@ export const AnimationCard = memo(function AnimationCard({
             {animation.method === "fromTo" && (
               <div className="space-y-1">
                 <p className="text-[9px] font-semibold uppercase tracking-wider text-orange-400/70">
-                  From
+                  {tx("From")}
                 </p>
                 <div className="space-y-1.5">
                   {Object.entries(animation.fromProperties ?? {}).map(([prop, val]) => (
@@ -392,7 +395,7 @@ export const AnimationCard = memo(function AnimationCard({
 
             {animation.method === "fromTo" && Object.keys(animation.properties).length > 0 && (
               <p className="text-[9px] font-semibold uppercase tracking-wider text-panel-accent/70">
-                To
+                {tx("To")}
               </p>
             )}
 
@@ -462,9 +465,9 @@ export const AnimationCard = memo(function AnimationCard({
                 type="button"
                 onClick={() => onDeleteAnimation(animation.id)}
                 className="ml-auto text-[11px] font-medium text-red-400 transition-colors hover:text-red-300"
-                title="Remove this animation"
+                title={tx("Remove this animation")}
               >
-                Remove
+                {tx("Remove")}
               </button>
             </div>
           </div>

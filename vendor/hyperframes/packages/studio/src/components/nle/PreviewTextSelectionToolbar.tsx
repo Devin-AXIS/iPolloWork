@@ -527,6 +527,9 @@ export function PreviewTextSelectionToolbar({
         className="hf-preview-text-toolbar__button hf-preview-text-toolbar__icon-button hf-preview-text-toolbar__delete-button"
         aria-label={tx("Delete selected element")}
         title={tx("Delete")}
+        // Keep the text input focused until click removes the toolbar. Otherwise
+        // its blur save races the delete and can write the element back.
+        onPointerDown={(event) => event.preventDefault()}
         onClick={deleteSelectedElement}
       >
         <Trash size={18} />

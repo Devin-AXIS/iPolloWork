@@ -16,6 +16,7 @@ import {
   resolveAnimationSegmentDrag,
 } from "../../components/editor/animationSegmentDrag";
 import { KEYFRAME_DRAG_THRESHOLD_PX } from "../../components/editor/keyframeDrag";
+import { useStudioI18n } from "../../i18n";
 
 const PHASE_STYLE: Record<TimelineAnimationPhase, { background: string; label: string }> = {
   entrance: { background: "rgba(34, 211, 238, 0.72)", label: "Entrance" },
@@ -55,6 +56,7 @@ export const TimelineClipAnimationSegments = memo(function TimelineClipAnimation
   onMoveAnimationSegment,
   suppressClickRef,
 }: TimelineClipAnimationSegmentsProps) {
+  const { tx } = useStudioI18n();
   const dragRef = useRef<SegmentDragState | null>(null);
   const consumeClickRef = useRef(false);
 
@@ -137,7 +139,7 @@ export const TimelineClipAnimationSegments = memo(function TimelineClipAnimation
   if (segments.length === 0) return null;
 
   return (
-    <div className="pointer-events-none absolute inset-x-0 bottom-1 z-[3] h-2">
+    <div className="pointer-events-none absolute inset-x-0 bottom-1 z-[6] h-2">
       <span
         aria-hidden="true"
         className="absolute inset-x-1 inset-y-0 rounded-full bg-black/10"
@@ -165,7 +167,7 @@ export const TimelineClipAnimationSegments = memo(function TimelineClipAnimation
               data-animation-phase={segment.phase}
               data-animation-editable="false"
               className="absolute inset-y-0 rounded-full"
-              title={`${phaseStyle.label} animation (read-only)`}
+              title={tx(`${phaseStyle.label} animation (read-only)`)}
               style={style}
             />
           );
@@ -268,12 +270,12 @@ export const TimelineClipAnimationSegments = memo(function TimelineClipAnimation
           <button
             type="button"
             key={segment.animationId}
-            aria-label={`Move ${phaseStyle.label.toLowerCase()} animation`}
+            aria-label={tx(`Move ${phaseStyle.label.toLowerCase()} animation`)}
             data-animation-id={segment.animationId}
             data-animation-phase={segment.phase}
             data-animation-editable="true"
             className="pointer-events-auto absolute inset-y-0 rounded-full border-0 p-0"
-            title={`Drag to move ${phaseStyle.label.toLowerCase()} animation`}
+            title={tx(`Drag to move ${phaseStyle.label.toLowerCase()} animation`)}
             style={{
               ...style,
               cursor: "ew-resize",

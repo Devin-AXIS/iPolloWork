@@ -36,6 +36,16 @@ describe("timeline toolbar selection", () => {
     expect(findSelectedTimelineElement([nestedElement, topLevel], "headline")).toBe(topLevel);
   });
 
+  it("falls back to the selected set when the primary selection is temporarily empty", () => {
+    expect(
+      findSelectedTimelineElement(
+        [nestedElement],
+        null,
+        new Set(["nested.html#headline"]),
+      ),
+    ).toBe(nestedElement);
+  });
+
   it("rebases nested child edits into their source composition", () => {
     expect(rebaseExpandedTimelineEdit(nestedElement, 13)).toEqual({
       element: expect.objectContaining({ id: "headline", start: 2 }),

@@ -22,6 +22,7 @@ export function FlatRow({
   suffix,
   dropdown,
   large = true,
+  onPreview,
   onCommit,
   onReset,
 }: {
@@ -35,6 +36,7 @@ export function FlatRow({
   dropdown?: boolean;
   /** Figma's 34px inspector control used by the expanded Layer sections. */
   large?: boolean;
+  onPreview?: (nextValue: string) => void;
   onCommit: (nextValue: string) => void;
   onReset?: () => void;
 }) {
@@ -69,6 +71,7 @@ export function FlatRow({
             disabled={disabled}
             liveCommit={liveCommit}
             align="right"
+            onPreview={onPreview}
             onCommit={(nextValue) => {
               track("metric", label);
               onCommit(nextValue);
@@ -298,6 +301,9 @@ export function FlatSlider({
   disabled,
   centerTick,
   large = true,
+  commitMode = "live",
+  onPreview,
+  onPreviewCancel,
   onReset,
   onCommit,
 }: {
@@ -312,6 +318,12 @@ export function FlatSlider({
   centerTick?: boolean;
   /** Figma's labeled two-column slider used by expanded Layer sections. */
   large?: boolean;
+  /** Persist on release when each commit rewrites source instead of patching local UI state. */
+  commitMode?: "live" | "release";
+  /** Apply a cheap, in-preview draft without persisting source on every pointer move. */
+  onPreview?: (nextValue: number) => void;
+  /** Restore the pre-drag preview when the platform or user cancels the gesture. */
+  onPreviewCancel?: () => void;
   onReset?: () => void;
   onCommit: (nextValue: number) => void;
 }) {
@@ -347,6 +359,10 @@ export function FlatSlider({
   // different control in between.
   const onCommitRef = useRef(onCommit);
   onCommitRef.current = onCommit;
+  const onPreviewRef = useRef(onPreview);
+  onPreviewRef.current = onPreview;
+  const onPreviewCancelRef = useRef(onPreviewCancel);
+  onPreviewCancelRef.current = onPreviewCancel;
   // Always this render's committed value — read directly (not via the
   // effect below) by onLostPointerCapture, so the resync there doesn't
   // depend on ordering between the native event and the [value] effect.
@@ -398,6 +414,10 @@ export function FlatSlider({
     const stepped = Math.round(raw / step) * step;
     return Math.max(min, Math.min(max, stepped));
   };
+  const applyDraft = (nextDraft: number) => {
+    setDraft(nextDraft);
+    onPreviewRef.current?.(nextDraft);
+  };
   const commitDraft = (nextDraft: number) => {
     if (commitTimerRef.current) {
       clearTimeout(commitTimerRef.current);
@@ -411,6 +431,10 @@ export function FlatSlider({
     }
   };
   const scheduleCommit = (nextDraft: number) => {
+    if (commitMode === "release") {
+      pendingRef.current = nextDraft;
+      return;
+    }
     const elapsed = Date.now() - lastCommitAtRef.current;
     if (elapsed >= 40) {
       commitDraft(nextDraft);
@@ -438,6 +462,8 @@ export function FlatSlider({
       target.releasePointerCapture(pointerId);
     }
     setDraft(dragStartValueRef.current);
+    if (onPreviewCancelRef.current) onPreviewCancelRef.current();
+    else onPreviewRef.current?.(dragStartValueRef.current);
     commitDraft(dragStartValueRef.current);
   };
 
@@ -478,13 +504,13 @@ export function FlatSlider({
           activePointerIdRef.current = e.pointerId;
           e.currentTarget.setPointerCapture(e.pointerId);
           const stepped = stepFromClientX(e.clientX, e.currentTarget.getBoundingClientRect());
-          setDraft(stepped);
+          applyDraft(stepped);
           scheduleCommit(stepped);
         }}
         onPointerMove={(e) => {
           if (disabled || !e.currentTarget.hasPointerCapture(e.pointerId)) return;
           const stepped = stepFromClientX(e.clientX, e.currentTarget.getBoundingClientRect());
-          setDraft(stepped);
+          applyDraft(stepped);
           scheduleCommit(stepped);
         }}
         onPointerUp={(e) => {
@@ -500,7 +526,7 @@ export function FlatSlider({
           // (e.g. a very fast click), the onPointerUp handler can still be
           // bound to the pre-drag render, making `draft` stale.
           const stepped = stepFromClientX(e.clientX, e.currentTarget.getBoundingClientRect());
-          setDraft(stepped);
+          applyDraft(stepped);
           commitDraft(stepped);
           if (stepped !== dragStartValueRef.current) track("slider", label);
         }}
@@ -531,6 +557,8 @@ export function FlatSlider({
           // on `value` actually changing again to re-run).
           draggingRef.current = false;
           setDraft(latestValueRef.current);
+          if (onPreviewCancelRef.current) onPreviewCancelRef.current();
+          else onPreviewRef.current?.(latestValueRef.current);
           lastCommittedRef.current = latestValueRef.current;
         }}
         onKeyDown={(e) => {
@@ -543,7 +571,7 @@ export function FlatSlider({
           const next = sliderKeyTarget(e.key, draft, min, max, step);
           if (next === null) return;
           e.preventDefault();
-          setDraft(next);
+          applyDraft(next);
           commitDraft(next);
           if (next !== draft) track("slider", label);
         }}

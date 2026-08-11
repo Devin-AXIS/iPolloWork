@@ -4,6 +4,9 @@ import type { PlaybackAdapter } from "./playbackTypes";
 
 type InlineState = { display: string };
 
+const AUTHORED_DURATION_ATTR = "data-hf-authored-duration";
+const AUTHORED_END_ATTR = "data-hf-authored-end";
+
 const originalInlineState = new WeakMap<Document, Map<HTMLElement, InlineState>>();
 const visibilityAdapterCache = new WeakMap<PlaybackAdapter, PlaybackAdapter>();
 
@@ -61,20 +64,28 @@ function stateForDocument(doc: Document): Map<HTMLElement, InlineState> {
   return state;
 }
 
-function rememberInlineState(state: Map<HTMLElement, InlineState>, element: HTMLElement): InlineState {
+function rememberInlineState(
+  state: Map<HTMLElement, InlineState>,
+  element: HTMLElement,
+): InlineState {
   let original = state.get(element);
   if (!original) {
     original = {
-      display: element.style.getPropertyValue("display") === "none"
-        ? ""
-        : element.style.getPropertyValue("display"),
+      display:
+        element.style.getPropertyValue("display") === "none"
+          ? ""
+          : element.style.getPropertyValue("display"),
     };
     state.set(element, original);
   }
   return original;
 }
 
-function restoreProperty(style: CSSStyleDeclaration, property: "display" | "visibility", value: string) {
+function restoreProperty(
+  style: CSSStyleDeclaration,
+  property: "display" | "visibility",
+  value: string,
+) {
   if (value) style.setProperty(property, value);
   else style.removeProperty(property);
 }
@@ -94,12 +105,16 @@ function resolveTimedWindows(doc: Document) {
   const resolveDuration = (element: Element): number => {
     const cached = durationCache.get(element);
     if (cached !== undefined) return cached;
-    const duration = parseNumeric(element.getAttribute("data-duration"));
+    const duration = parseNumeric(
+      element.getAttribute("data-duration") ?? element.getAttribute(AUTHORED_DURATION_ATTR),
+    );
     if (duration != null && duration > 0) {
       durationCache.set(element, duration);
       return duration;
     }
-    const end = parseNumeric(element.getAttribute("data-end"));
+    const end = parseNumeric(
+      element.getAttribute("data-end") ?? element.getAttribute(AUTHORED_END_ATTR),
+    );
     const resolved = end != null ? Math.max(0, end - resolveStart(element)) : 0;
     durationCache.set(element, resolved);
     return resolved;
@@ -172,7 +187,11 @@ function exclusiveGroup(element: HTMLElement): string {
 }
 
 function participatesInExclusiveTiming(element: HTMLElement): boolean {
-  return element.classList.contains("clip") || element.hasAttribute("data-track-index") || element.hasAttribute("data-track");
+  return (
+    element.classList.contains("clip") ||
+    element.hasAttribute("data-track-index") ||
+    element.hasAttribute("data-track")
+  );
 }
 
 function activeNarratedScene(
@@ -197,20 +216,25 @@ function activeNarratedScene(
       Math.abs(start - resolveStart(scene)) >= 0.001 ||
       currentTime < start ||
       currentTime >= start + duration
-    ) continue;
+    )
+      continue;
     if (!winner || start >= winner.start) winner = { scene, start };
   }
   return winner?.scene ?? null;
 }
 
-export function syncTimedClipVisibility(doc: Document | null | undefined, currentTime: number): void {
+export function syncTimedClipVisibility(
+  doc: Document | null | undefined,
+  currentTime: number,
+): void {
   if (!doc || !Number.isFinite(currentTime)) return;
   const win = doc.defaultView;
   if (!win) return;
   const state = stateForDocument(doc);
   const timed = new Set(
     Array.from(doc.querySelectorAll<HTMLElement>("[data-start]")).filter(
-      (element) => !["SCRIPT", "STYLE", "LINK", "META", "TEMPLATE", "NOSCRIPT"].includes(element.tagName),
+      (element) =>
+        !["SCRIPT", "STYLE", "LINK", "META", "TEMPLATE", "NOSCRIPT"].includes(element.tagName),
     ),
   );
 
@@ -235,7 +259,8 @@ export function syncTimedClipVisibility(doc: Document | null | undefined, curren
     );
     active.set(
       element,
-      retainedByNarration || (duration > 0 && currentTime >= start && currentTime < start + duration),
+      retainedByNarration ||
+        (duration > 0 && currentTime >= start && currentTime < start + duration),
     );
   }
 
@@ -245,7 +270,8 @@ export function syncTimedClipVisibility(doc: Document | null | undefined, curren
       active.get(element) !== true ||
       topLevelTimedClip(element, timed) !== element ||
       !participatesInExclusiveTiming(element)
-    ) continue;
+    )
+      continue;
     const key = exclusiveGroup(element);
     const start = resolveStart(element);
     const winner = winningTopLevelClip.get(key);
@@ -272,7 +298,8 @@ export function syncTimedClipVisibility(doc: Document | null | undefined, curren
       visible &&
       participatesInExclusiveTiming(topLevel) &&
       winningTopLevelClip.get(topKey)?.element !== topLevel
-    ) visible = false;
+    )
+      visible = false;
     if (visible) {
       let ancestor = element.parentElement;
       while (ancestor) {

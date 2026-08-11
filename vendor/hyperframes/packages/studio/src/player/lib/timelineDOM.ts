@@ -25,6 +25,7 @@ import {
   buildTimelineElementIdentity,
   getTimelineElementIdentity,
   isTimelineIgnoredElement,
+  readTimelineClipLabel,
   readTimelineElementZIndex,
 } from "./timelineElementHelpers";
 
@@ -98,6 +99,8 @@ export function createTimelineElementFromManifestClip(params: {
 }): TimelineElement {
   const { clip, fallbackIndex, doc } = params;
   let hostEl = params.hostEl ?? null;
+  const manifestClipLabel = clip.timelineClipLabel?.trim();
+  const clipLabel = readTimelineClipLabel(hostEl) ?? (manifestClipLabel || undefined);
   const label = getTimelineElementDisplayLabel({
     id: clip.id,
     label: clip.label,
@@ -131,6 +134,7 @@ export function createTimelineElementFromManifestClip(params: {
   const entry: TimelineElement = {
     id: identity.id,
     label,
+    clipLabel,
     key: identity.key,
     tag: resolveClipTag(clip),
     start: clip.start,
@@ -258,6 +262,7 @@ export function createImplicitTimelineLayersFromDOM(
       id: identity.id,
       key: identity.key,
       label,
+      clipLabel: readTimelineClipLabel(child),
       selector,
       selectorIndex,
       sourceFile,
@@ -323,6 +328,7 @@ export function collectDomClipChildren(
               label:
                 (isGroup ? child.getAttribute("data-hf-group") : null) ||
                 getImplicitTimelineLayerLabel(htmlChild),
+              clipLabel: readTimelineClipLabel(child),
               tagName: child.tagName.toLowerCase(),
               stackingContextId: resolveCssStackingContextId(child),
             });
@@ -420,6 +426,7 @@ export function parseTimelineFromDOM(doc: Document, rootDuration: number): Timel
     const entry: TimelineElement = {
       id: identity.id,
       label,
+      clipLabel: readTimelineClipLabel(el),
       key: identity.key,
       tag: tagLower,
       start,

@@ -2,6 +2,7 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { homedir, platform } from "node:os";
 import { z } from "zod";
+import { hyperframesStudioPort, videoProjectId } from "@ipollowork/types/hyperframes";
 import {
   IPOLLOWORK_CLOUD_CONNECTION_INSTRUCTION,
   IPOLLOWORK_CONNECT_GOOGLE_WORKSPACE_DISCONNECTED_INSTRUCTION,
@@ -66,6 +67,26 @@ const extensionsExportArgsSchema = z.object({
   skills: z.array(z.string().trim().min(1)).optional().describe("Names of installed skills to export, as shown in Settings > Skills or .opencode/skills/**."),
   mcps: z.array(z.string().trim().min(1)).optional().describe("Names of installed MCP servers to export, including iPolloWork-managed runtime MCPs."),
   workspaceId: z.string().trim().optional().describe("Optional iPolloWork workspace id/name. Defaults to the workspace containing the current directory."),
+});
+
+const listMotionPresetsArgsSchema = z.object({
+  phase: z.enum(["enter", "emphasis", "exit"]).optional().describe("Optional phase filter."),
+  intent: z.string().trim().min(1).optional().describe("Optional semantic intent, such as title reveal or warning."),
+  tone: z.string().trim().min(1).optional().describe("Optional tone, such as modern, restrained, playful, or technology."),
+});
+
+const mutateMotionArgsSchema = z.object({
+  operation: z.enum(["upsert", "remove"]).describe("Add/replace one phase, or remove it."),
+  targetSelector: z.string().trim().min(1).describe("Stable CSS selector for exactly one leaf text element in the current video."),
+  phase: z.enum(["enter", "emphasis", "exit"]),
+  presetId: z.string().trim().min(1).optional().describe("Stable preset id returned by list_motion_presets. Required for upsert."),
+  start: z.number().finite().nonnegative().optional().describe("Timeline start in seconds. Omit to use the phase-aware default."),
+  duration: z.number().finite().positive().optional().describe("Finite duration in seconds."),
+  parameters: z.record(z.string(), z.union([z.string(), z.number().finite(), z.boolean()])).optional().describe("Only parameters declared by the selected preset."),
+}).superRefine((value, context) => {
+  if (value.operation === "upsert" && !value.presetId) {
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ["presetId"], message: "presetId is required for upsert" });
+  }
 });
 
 const workspaceSchema = z.object({
@@ -139,6 +160,9 @@ const IPOLLOWORK_BROWSER_INSTRUCTION =
 ## Built-in Browser (external websites)
 For web browsing tasks, ALWAYS start with ipollowork_browser_open_url. It creates/selects a built-in iPolloWork browser tab and returns browser_url plus target_id. Use that exact browser_url and target_id for every later browser_snapshot, browser_click, browser_fill, browser_eval, and browser_screenshot call.
 Do not call browser_navigate without a target_id returned by ipollowork_browser_open_url. Do not use browser_* tools on the iPolloWork app target (avoid targets with title "iPolloWork" or URLs containing ":5173/#/").`;
+
+const IPOLLOWORK_MOTION_INSTRUCTION = `## Video motion presets
+For ordinary animation on an existing text element in the current Video Studio project, use list_motion_presets and mutate_motion. Choose a stable preset id and a small parameter set; do not hand-write GSAP for an effect these tools support. Each target has at most one enter, emphasis, and exit preset. The same contract applies when the user's request came from voice transcription. Use custom GSAP only for an explicitly advanced effect outside the preset catalog.`;
 
 // ── UI control bridge discovery ──
 
@@ -506,6 +530,32 @@ function requireiPolloWorkServer(): { url: string; token: string } {
   return { url, token };
 }
 
+type VideoSessionContext = { port: number; projectId: string };
+
+function requireVideoSession(context: OpenCodeContext): VideoSessionContext {
+  const sessionId = context.sessionID?.trim();
+  if (!sessionId) throw new Error("Video motion tools require the current iPolloWork session.");
+  return {
+    port: hyperframesStudioPort(sessionId),
+    projectId: videoProjectId(sessionId),
+  };
+}
+
+async function videoStudioRequest(
+  session: VideoSessionContext,
+  path: string,
+  options: { method?: "GET" | "POST"; body?: unknown } = {},
+): Promise<unknown> {
+  const response = await fetch(`http://127.0.0.1:${session.port}/api${path}`, {
+    method: options.method ?? "GET",
+    headers: options.body ? { "Content-Type": "application/json" } : undefined,
+    body: options.body ? JSON.stringify(options.body) : undefined,
+  });
+  const payload = await parseResponse(response);
+  if (!response.ok) throw new Error(errorMessage(payload, "Video Studio motion request failed"));
+  return payload;
+}
+
 async function parseResponse(response: Response): Promise<unknown> {
   const text = await response.text();
   if (!text) return null;
@@ -619,9 +669,49 @@ export const iPolloWorkExtensionsPreview = async () => {
     output.system.push(await resolveiPolloWorkExtensionDiscoveryInstruction());
     output.system.push(IPOLLOWORK_SESSION_MEMORY_INSTRUCTION);
     output.system.push(IPOLLOWORK_BROWSER_INSTRUCTION);
+    output.system.push(IPOLLOWORK_MOTION_INSTRUCTION);
     if (uiControlEnabled) output.system.push(IPOLLOWORK_UI_CONTROL_INSTRUCTION);
   },
   tool: {
+    list_motion_presets: {
+      description: "List the product-owned semantic motion presets for a leaf text element in the current Video Studio session. Filter by phase, intent, or tone, then use the returned preset id with mutate_motion.",
+      args: listMotionPresetsArgsSchema.shape,
+      async execute(rawArgs: unknown, context: OpenCodeContext) {
+        const args = listMotionPresetsArgsSchema.parse(rawArgs);
+        const session = requireVideoSession(context);
+        const query = new URLSearchParams({ targetKind: "text" });
+        if (args.phase) query.set("phase", args.phase);
+        if (args.intent) query.set("intent", args.intent);
+        if (args.tone) query.set("tone", args.tone);
+        const result = await videoStudioRequest(
+          session,
+          `/projects/${encodeURIComponent(session.projectId)}/motion-presets?${query.toString()}`,
+        );
+        return JSON.stringify(result, null, 2);
+      },
+    },
+    mutate_motion: {
+      description: "Add, replace, update, or remove one semantic motion phase on exactly one leaf text element in the current Video Studio session. This is the canonical path for UI, typed chat, and voice-transcribed animation requests.",
+      args: mutateMotionArgsSchema.shape,
+      async execute(rawArgs: unknown, context: OpenCodeContext) {
+        const args = mutateMotionArgsSchema.parse(rawArgs);
+        const session = requireVideoSession(context);
+        const result = await videoStudioRequest(
+          session,
+          `/projects/${encodeURIComponent(session.projectId)}/gsap-mutations/index.html`,
+          {
+            method: "POST",
+            body: {
+              type: "mutate-motion",
+              ...args,
+              targetKind: "text",
+              elementId: args.targetSelector.startsWith("#") ? args.targetSelector.slice(1) : undefined,
+            },
+          },
+        );
+        return JSON.stringify(result, null, 2);
+      },
+    },
     ipollowork_extension_list_actions: {
       description: `List extension actions currently exposed by iPolloWork. ${IPOLLOWORK_EXTENSION_DISCOVERY_INSTRUCTION}`,
       args: listActionsArgsSchema.shape,

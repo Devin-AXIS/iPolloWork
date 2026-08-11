@@ -1,5 +1,8 @@
 import { describe, expect, test } from "vitest";
-import { timelineAnimationSourcesMatch } from "./useTimelineEditCallbacks";
+import {
+  timelineAnimationSourcesMatch,
+  timelineElementMatchesDomSelection,
+} from "./useTimelineEditCallbacks";
 
 describe("timeline animation source guard", () => {
   test("uses the active composition for ordinary top-level selections", () => {
@@ -38,6 +41,41 @@ describe("timeline animation source guard", () => {
         activeCompPath: "index.html",
         isExpanded: true,
       }),
+    ).toBe(false);
+  });
+});
+
+describe("timeline element selection identity", () => {
+  test("matches selector-only expanded rows to the selected DOM element", () => {
+    expect(
+      timelineElementMatchesDomSelection(
+        {
+          id: ".status",
+          selector: ".status",
+          selectorIndex: 0,
+        },
+        {
+          hfId: "hf-status",
+          selector: ".status",
+          selectorIndex: 0,
+        },
+      ),
+    ).toBe(true);
+  });
+
+  test("keeps repeated selector rows isolated by selector index", () => {
+    expect(
+      timelineElementMatchesDomSelection(
+        {
+          id: ".item:1",
+          selector: ".item",
+          selectorIndex: 1,
+        },
+        {
+          selector: ".item",
+          selectorIndex: 0,
+        },
+      ),
     ).toBe(false);
   });
 });

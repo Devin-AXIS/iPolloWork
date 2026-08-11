@@ -20,8 +20,6 @@ import { useDomEditWiring } from "./useDomEditWiring";
 import { useGsapAwareEditing } from "./useGsapAwareEditing";
 import { useStudioSelectionPublisher } from "./useStudioSelectionPublisher";
 import { useTimelineSelectionPreviewSync } from "./useTimelineSelectionPreviewSync";
-import { useLayerRevealOverride } from "../components/editor/useLayerRevealOverride";
-import { isElementVisibleForOverlay } from "../components/editor/domEditOverlayGeometry";
 
 // ── Types ──
 
@@ -153,8 +151,6 @@ export function useDomEditSession({
 
   const selectedElementId = usePlayerStore((state) => state.selectedElementId);
   const selectedElementIds = usePlayerStore((state) => state.selectedElementIds);
-  const isPlaying = usePlayerStore((state) => state.isPlaying);
-  const currentTime = usePlayerStore((state) => state.currentTime);
 
   useTimelineSelectionPreviewSync({
     selectedElementId,
@@ -167,18 +163,6 @@ export function useDomEditSession({
     applyDomSelection,
     applyMarqueeSelection,
   });
-
-  const { scheduleReveal } = useLayerRevealOverride({
-    isPlaying,
-    currentTime,
-    selectedElement: domEditSelection?.element ?? null,
-  });
-
-  useEffect(() => {
-    const element = domEditSelection?.element;
-    if (!element || isPlaying || !isElementVisibleForOverlay(element)) return;
-    scheduleReveal(element, 0);
-  }, [currentTime, domEditSelection?.element, isPlaying, scheduleReveal]);
 
   // ── Agent modal ──
 
@@ -223,6 +207,8 @@ export function useDomEditSession({
     deleteGsapAnimation,
     deleteAllForSelector,
     addGsapAnimation,
+    mutateMotion,
+    applyGsapMotionPreset,
     addGsapProperty,
     removeGsapProperty,
     updateGsapFromProperty,
@@ -401,6 +387,8 @@ export function useDomEditSession({
     handleGsapDeleteAnimation,
     handleGsapDeleteAllForElement,
     handleGsapAddAnimation,
+    handleMotionMutation,
+    handleGsapApplyMotionPreset,
     handleGsapAddProperty,
     handleGsapRemoveProperty,
     handleGsapUpdateFromProperty,
@@ -441,6 +429,8 @@ export function useDomEditSession({
     deleteGsapAnimation,
     deleteAllForSelector,
     addGsapAnimation,
+    mutateMotion,
+    applyGsapMotionPreset,
     addGsapProperty,
     removeGsapProperty,
     updateGsapFromProperty,
@@ -603,6 +593,8 @@ export function useDomEditSession({
     handleGsapDeleteAnimation,
     handleGsapDeleteAllForElement,
     handleGsapAddAnimation,
+    handleMotionMutation,
+    handleGsapApplyMotionPreset,
     handleGsapAddProperty,
     handleGsapRemoveProperty,
     handleGsapUpdateFromProperty,

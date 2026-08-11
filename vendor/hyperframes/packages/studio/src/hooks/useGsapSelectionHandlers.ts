@@ -1,5 +1,6 @@
 import { useCallback, useRef } from "react";
 import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
+import type { RegistryMotionPreset } from "@hyperframes/core/registry";
 import type { DomEditSelection } from "../components/editor/domEditing";
 import { usePlayerStore } from "../player";
 import { computeCurrentPercentage } from "./gsapDragCommit";
@@ -10,6 +11,7 @@ import {
 } from "../utils/studioSaveDiagnostics";
 import { trackStudioEvent } from "../utils/studioTelemetry";
 import type { CommitMutationOptions } from "./gsapScriptCommitTypes";
+import type { MotionMutationInput, MotionTargetKind } from "@hyperframes/core/motion-presets";
 
 /**
  * Thin useCallback wrappers that guard on `domEditSelection` before
@@ -24,6 +26,8 @@ export function useGsapSelectionHandlers({
   deleteGsapAnimation,
   deleteAllForSelector,
   addGsapAnimation,
+  mutateMotion,
+  applyGsapMotionPreset,
   addGsapProperty,
   removeGsapProperty,
   updateGsapFromProperty,
@@ -58,6 +62,16 @@ export function useGsapSelectionHandlers({
     sel: DomEditSelection,
     method: "to" | "from" | "set" | "fromTo",
     time: number,
+  ) => Promise<void>;
+  mutateMotion: (
+    sel: DomEditSelection,
+    targetKind: MotionTargetKind,
+    mutation: MotionMutationInput,)=> Promise<void>;
+  applyGsapMotionPreset: (
+    sel: DomEditSelection,
+    preset: RegistryMotionPreset,
+    currentTime: number,
+    label: string,
   ) => Promise<void>;
   addGsapProperty: (sel: DomEditSelection, animId: string, prop: string) => Promise<void>;
   removeGsapProperty: (sel: DomEditSelection, animId: string, prop: string) => Promise<void>;
@@ -209,6 +223,41 @@ export function useGsapSelectionHandlers({
       }
     },
     [domEditSelection, addGsapAnimation, handleDomManualEditsReset, trackGsapHandlerFailure],
+  );
+
+  const handleMotionMutation = useCallback(
+    (
+      targetKind: MotionTargetKind,
+      mutation: MotionMutationInput,
+      selectionOverride?: DomEditSelection | null,
+    ) => {
+      const selection = selectionOverride ?? domEditSelection;
+      if (!selection) return Promise.resolve();
+      return mutateMotion(selection, targetKind, mutation).catch((error) => {
+        trackGsapHandlerFailure(
+          error,
+          selection,
+          "mutate-motion",
+          mutation.operation === "remove" ? "Remove motion preset" : "Apply motion preset",
+        );
+      });
+    },
+    [domEditSelection, mutateMotion, trackGsapHandlerFailure],
+  );
+  const handleGsapApplyMotionPreset = useCallback(
+    (preset: RegistryMotionPreset, label: string, selectionOverride?: DomEditSelection | null) => {
+      const selection = selectionOverride ?? domEditSelection;
+      if (!selection) return Promise.resolve();
+      return applyGsapMotionPreset(
+        selection,
+        preset,
+        usePlayerStore.getState().currentTime,
+        label,
+      ).catch((error) => {
+        trackGsapHandlerFailure(error, selection, "apply-motion-preset", `Apply ${label}`);
+      });
+    },
+    [applyGsapMotionPreset, domEditSelection, trackGsapHandlerFailure],
   );
 
   const handleGsapAddProperty = useCallback(
@@ -431,11 +480,13 @@ export function useGsapSelectionHandlers({
   }, [domEditSelection, observeGsapMutation, removeAllKeyframes, selectedGsapAnimations]);
 
   return {
+    handleMotionMutation,
     handleGsapUpdateProperty,
     handleGsapUpdateMeta,
     handleGsapDeleteAnimation,
     handleGsapDeleteAllForElement,
     handleGsapAddAnimation,
+    handleGsapApplyMotionPreset,
     handleGsapAddProperty,
     handleGsapRemoveProperty,
     handleGsapUpdateFromProperty,

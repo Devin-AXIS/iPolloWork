@@ -1,4 +1,5 @@
 import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
+import type { StableElementLocator } from "@hyperframes/core/motion-presets";
 import type {
   KeyframeCacheEntry,
   KeyframeCacheUpdate,
@@ -12,6 +13,38 @@ export type TimelineSegmentsByElement = Map<
   string,
   NonNullable<KeyframeCacheEntry["animationSegments"]>
 >;
+
+interface TimelineMotionTarget {
+  id: string;
+  key?: string;
+  domId?: string;
+  hfId?: string;
+  selector?: string;
+  sourceFile?: string;
+}
+
+/**
+ * Semantic motion can target a leaf by stable CSS selector even when that leaf
+ * has no DOM id. Resolve that locator to the exact key consumed by TimelineLanes
+ * so its phase strip is attached to the same row the user selected.
+ */
+export function resolveMotionTimelineTargetKeys(
+  target: StableElementLocator,
+  sourceFile: string,
+  elements: readonly TimelineMotionTarget[],
+): string[] {
+  const keys = new Set<string>();
+  for (const element of elements) {
+    if ((element.sourceFile ?? "index.html") !== sourceFile) continue;
+    const matches =
+      (target.elementId !== undefined &&
+        (element.domId === target.elementId || element.id === target.elementId)) ||
+      (target.hfId !== undefined && element.hfId === target.hfId) ||
+      element.selector === target.selector;
+    if (matches) keys.add(element.key ?? element.id);
+  }
+  return Array.from(keys);
+}
 
 export function appendTimelineAnimationSegments(
   segmentsByElement: TimelineSegmentsByElement,

@@ -18,7 +18,10 @@ import {
   replaceDomEditGroupSelection,
   seedDomEditGroupWithSelection,
 } from "../utils/domEditHelpers";
-import { STUDIO_INSPECTOR_PANELS_ENABLED } from "../components/editor/manualEditingAvailability";
+import {
+  STUDIO_INSPECTOR_PANELS_ENABLED,
+  STUDIO_MULTI_SELECTION_ENABLED,
+} from "../components/editor/manualEditingAvailability";
 import {
   findElementForSelection,
   findElementForTimelineElement,
@@ -145,12 +148,56 @@ export function useDomSelection({
 
   // ── Callbacks ──
 
+  const syncTimelineSelection = useCallback(
+    (selections: DomEditSelection[], anchorSelection: DomEditSelection | null) => {
+      const playerState = usePlayerStore.getState();
+      const selectedKeys: string[] = [];
+      let anchorKey: string | null = null;
+
+      for (const selection of selections) {
+        const treeSelection = {
+          elementId: selection.id ?? undefined,
+          hfId: selection.hfId,
+          sourceFile: selection.sourceFile,
+          selector: selection.selector,
+          selectorIndex: selection.selectorIndex,
+          elements: timelineElements,
+          manifest: playerState.clipManifest ?? [],
+          domClipChildren: playerState.domClipChildren,
+        };
+        const treeId = resolveTimelineTreeSelectionId(treeSelection);
+        const treeKey = treeId ? resolveTimelineTreeSelectionKey(treeSelection) : "";
+        if (treeId) {
+          playerState.expandTimelineElementIds(
+            collectTimelineAncestorIds(treeId, playerState.clipParentMap),
+          );
+        }
+        const key =
+          treeKey ||
+          findMatchingTimelineElementId(selection, timelineElements) ||
+          findTimelineIdByAncestor(
+            selection.element,
+            timelineElements,
+            selection.sourceFile || "index.html",
+          );
+        if (!key) continue;
+        if (!selectedKeys.includes(key)) selectedKeys.push(key);
+        if (anchorSelection && domEditSelectionsTargetSame(selection, anchorSelection)) {
+          anchorKey = key;
+        }
+      }
+
+      // Canvas, timeline, and inspector consume the same atomic set. Updating
+      // the anchor separately can momentarily produce an empty set and causes
+      // the preview-selection sync effect to clear a valid canvas hit.
+      playerState.setSelection(selectedKeys, anchorKey ?? selectedKeys[0] ?? null);
+    },
+    [timelineElements],
+  );
+
   const applyDomSelection = useCallback(
     // fallow-ignore-next-line complexity
-    (
-      selection: DomEditSelection | null,
-      options?: ApplyDomSelectionOptions,
-    ) => {
+    (selection: DomEditSelection | null, options?: ApplyDomSelectionOptions) => {
       if (!selection) {
         domEditSelectionRef.current = null;
         domEditGroupSelectionsRef.current = [];
@@ -168,19 +215,20 @@ export function useDomSelection({
         return;
       }
 
-      const isAdditiveSelection = Boolean(options?.additive);
+      const isAdditiveSelection = STUDIO_MULTI_SELECTION_ENABLED && Boolean(options?.additive);
+      const preserveGroup = STUDIO_MULTI_SELECTION_ENABLED && Boolean(options?.preserveGroup);
       const currentSelection = domEditSelectionRef.current;
       const previousGroup = domEditGroupSelectionsRef.current;
       const currentGroup = isAdditiveSelection
         ? seedDomEditGroupWithSelection(previousGroup, currentSelection)
         : previousGroup;
       const wasInGroup = domEditSelectionInGroup(currentGroup, selection);
-      const nextGroup = options?.preserveGroup
+      const nextGroup = preserveGroup
         ? replaceDomEditGroupSelection(currentGroup, selection)
         : isAdditiveSelection
           ? toggleDomEditGroupSelection(currentGroup, selection)
           : [selection];
-      const nextSelection = options?.preserveGroup
+      const nextSelection = preserveGroup
         ? selection
         : isAdditiveSelection && wasInGroup
           ? domEditSelectionsTargetSame(currentSelection, selection)
@@ -204,48 +252,27 @@ export function useDomSelection({
       }
 
       if (nextSelection) {
-        if (options?.revealPanel !== false) {
+        // Element selection should stay independent from inspector visibility.
+        // Only explicit inspector-oriented actions may reveal the right panel.
+        if (options?.revealPanel === true) {
           setRightCollapsed(false);
           // Keep the Variables tab in place — selecting elements is part of the bind
           // flow there; yanking to Design would lose the context.
-          if (rightPanelTabRef.current !== "variables") {
+          if (
+            rightPanelTabRef.current !== "variables" &&
+            rightPanelTabRef.current !== "animation" &&
+            rightPanelTabRef.current !== "animation-properties"
+          ) {
             setRightPanelTab("design");
           }
         }
-        const playerState = usePlayerStore.getState();
-        const treeSelection = {
-          elementId: nextSelection.id ?? undefined,
-          hfId: nextSelection.hfId,
-          sourceFile: nextSelection.sourceFile,
-          selector: nextSelection.selector,
-          selectorIndex: nextSelection.selectorIndex,
-          elements: timelineElements,
-          manifest: playerState.clipManifest ?? [],
-          domClipChildren: playerState.domClipChildren,
-        };
-        const treeId = resolveTimelineTreeSelectionId(treeSelection);
-        const treeKey = treeId ? resolveTimelineTreeSelectionKey(treeSelection) : "";
-        if (treeId) {
-          playerState.expandTimelineElementIds(
-            collectTimelineAncestorIds(treeId, playerState.clipParentMap),
-          );
-        }
-        const nextSelectedTimelineId =
-          treeKey ||
-          findMatchingTimelineElementId(nextSelection, timelineElements) ||
-          findTimelineIdByAncestor(
-            nextSelection.element,
-            timelineElements,
-            nextSelection.sourceFile || "index.html",
-          );
-        // Late marquee notify: a primary already in the live set must not collapse it.
-        setSelectedTimelineElementId(nextSelectedTimelineId, { preserveSet: true });
+        syncTimelineSelection(nextGroup, nextSelection);
         return;
       }
 
       setSelectedTimelineElementId(null);
     },
-    [setSelectedTimelineElementId, timelineElements, setRightCollapsed, setRightPanelTab],
+    [setSelectedTimelineElementId, setRightCollapsed, setRightPanelTab, syncTimelineSelection],
   );
 
   const clearDomSelection = useCallback(() => {
@@ -469,21 +496,9 @@ export function useDomSelection({
       setDomEditSelection(nextSelection);
       setDomEditGroupSelections(nextGroup);
 
-      if (nextSelection) {
-        setSelectedTimelineElementId(
-          findMatchingTimelineElementId(nextSelection, timelineElements),
-        );
-      } else {
-        setSelectedTimelineElementId(null);
-      }
+      syncTimelineSelection(nextGroup, nextSelection);
     },
-    [
-      activeCompPath,
-      buildDomSelectionFromTarget,
-      setSelectedTimelineElementId,
-      timelineElements,
-      previewIframeRef,
-    ],
+    [activeCompPath, buildDomSelectionFromTarget, previewIframeRef, syncTimelineSelection],
   );
 
   // ── Effects ──
@@ -545,6 +560,10 @@ export function useDomSelection({
         if (!additive) applyDomSelection(null, { revealPanel: false });
         return;
       }
+      if (!STUDIO_MULTI_SELECTION_ENABLED) {
+        applyDomSelection(selections[0], { revealPanel: false });
+        return;
+      }
       const current = domEditSelectionRef.current;
       const currentGroup = domEditGroupSelectionsRef.current;
       let nextGroup: DomEditSelection[];
@@ -565,16 +584,9 @@ export function useDomSelection({
       domEditGroupSelectionsRef.current = nextGroup;
       setDomEditSelection(nextSelection);
       setDomEditGroupSelections(nextGroup);
-      const nextTimelineId =
-        findMatchingTimelineElementId(nextSelection, timelineElements) ??
-        findTimelineIdByAncestor(
-          nextSelection.element,
-          timelineElements,
-          nextSelection.sourceFile || "index.html",
-        );
-      setSelectedTimelineElementId(nextTimelineId);
+      syncTimelineSelection(nextGroup, nextSelection);
     },
-    [applyDomSelection, timelineElements, setSelectedTimelineElementId],
+    [applyDomSelection, syncTimelineSelection],
   );
 
   // Disabled inspector effect

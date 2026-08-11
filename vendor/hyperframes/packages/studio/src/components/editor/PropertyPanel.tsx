@@ -22,12 +22,10 @@ import { MediaSection } from "./propertyPanelMediaSection";
 import { ColorGradingSection } from "./propertyPanelColorGradingSection";
 import { domEditSelectionToFacts } from "./domEditingLayers";
 import { TextSection, StyleSections } from "./propertyPanelSections";
-import { GsapAnimationSection } from "./GsapAnimationSection";
 import { PropertyPanel3dTransform } from "./propertyPanel3dTransform";
 import { KeyframeNavigation } from "./KeyframeNavigation";
 import {
   STUDIO_FLAT_INSPECTOR_ENABLED,
-  STUDIO_GSAP_PANEL_ENABLED,
   STUDIO_KEYFRAMES_ENABLED,
 } from "./manualEditingAvailability";
 import { PropertyPanelFlat, resolveInspectorElementKind } from "./PropertyPanelFlat";
@@ -269,7 +267,7 @@ export const PropertyPanel = memo(function PropertyPanel(props: PropertyPanelPro
     clipboardTimerRef.current = setTimeout(() => setClipboardCopied(false), 1500);
   };
 
-  if (STUDIO_FLAT_INSPECTOR_ENABLED) {
+  if (STUDIO_FLAT_INSPECTOR_ENABLED || props.inspectorMode === "animation") {
     // Forward the raw props (handlers, ids, assets, recording, fonts, etc.) and
     // the values the legacy path already computed above (so they aren't derived
     // twice). PropertyPanelFlat owns the one-open group state.
@@ -547,37 +545,6 @@ export const PropertyPanel = memo(function PropertyPanel(props: PropertyPanelPro
             </div>
           </Section>
         )}
-
-        {STUDIO_GSAP_PANEL_ENABLED &&
-          onUpdateGsapProperty &&
-          onUpdateGsapMeta &&
-          onDeleteGsapAnimation &&
-          onAddGsapProperty &&
-          onAddGsapAnimation && (
-            <GsapAnimationSection
-              animations={gsapAnimations}
-              ownerId={element.id}
-              ownerRange={
-                elDuration > 0 ? { start: elStart, duration: elDuration } : undefined
-              }
-              multipleTimelines={gsapMultipleTimelines}
-              unsupportedTimelinePattern={gsapUnsupportedTimelinePattern}
-              onUpdateProperty={onUpdateGsapProperty}
-              onUpdateMeta={onUpdateGsapMeta}
-              onDeleteAnimation={onDeleteGsapAnimation}
-              onAddProperty={onAddGsapProperty}
-              onRemoveProperty={onRemoveGsapProperty ?? (() => {})}
-              onUpdateFromProperty={onUpdateGsapFromProperty}
-              onAddFromProperty={onAddGsapFromProperty}
-              onRemoveFromProperty={onRemoveGsapFromProperty}
-              onAddAnimation={onAddGsapAnimation}
-              onSetArcPath={onSetArcPath}
-              onUpdateArcSegment={onUpdateArcSegment}
-              onUnroll={onUnroll}
-              onUpdateKeyframeEase={onUpdateKeyframeEase}
-              onSetAllKeyframeEases={onSetAllKeyframeEases}
-            />
-          )}
 
         {showEditableSections && (
           <StyleSections

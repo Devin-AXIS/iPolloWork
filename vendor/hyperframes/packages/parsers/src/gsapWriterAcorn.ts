@@ -196,6 +196,7 @@ function upsertProp(ms: MagicString, objNode: Node, key: string, value: unknown)
  * because that path re-emits ease separately.)
  */
 const NON_EDITABLE_PROP_KEYS = new Set([
+  "data",
   "duration",
   "ease",
   "delay",
@@ -628,6 +629,7 @@ function cssIdentityValue(prop: string): number {
 // Keys NOT in the editable set — preserved verbatim on the converted vars object
 // (matches the parser's classification: builtin/dropped/extras keys).
 const NON_EDITABLE_VAR_KEYS = new Set([
+  "data",
   "duration",
   "delay",
   "onComplete",
@@ -1639,6 +1641,7 @@ export function addAnimationWithKeyframesToScript(
   }>,
   ease?: string,
   easeEach?: string,
+  extras?: Record<string, unknown>,
 ): { script: string; id: string } {
   const parsed = parseGsapScriptAcornForWrite(script);
   if (!parsed) return { script, id: "" };
@@ -1649,6 +1652,9 @@ export function addAnimationWithKeyframesToScript(
   const kfObjCode = buildKeyframeObjectCode(sorted, easeEach);
   const varParts = [`keyframes: ${kfObjCode}`, `duration: ${valueToCode(duration)}`];
   if (ease) varParts.push(`ease: ${JSON.stringify(ease)}`);
+  for (const [key, value] of Object.entries(extras ?? {})) {
+    varParts.push(`${safeKey(key)}: ${valueToCode(value)}`);
+  }
   const stmtCode = `${parsed.timelineVar}.to(${JSON.stringify(targetSelector)}, { ${varParts.join(", ")} }, ${valueToCode(position)});`;
 
   const ms = new MagicString(script);

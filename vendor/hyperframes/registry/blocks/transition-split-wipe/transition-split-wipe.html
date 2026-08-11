@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Split Wipe</title>
+    <style>
+      * { box-sizing: border-box; }
+      html, body { width: 1920px; height: 1080px; margin: 0; overflow: hidden; }
+      body { background: #111827; font-family: Inter, sans-serif; }
+      .composition { position: relative; width: 100%; height: 100%; overflow: hidden; }
+      .surface { position: absolute; inset: 0; display: grid; place-items: center; overflow: hidden; }
+      .outgoing { background: #f45b3f; color: #190f0d; }
+      .incoming { background: #bff33d; color: #101509; clip-path: inset(0 100% 0 0); }
+      .number { position: absolute; left: 112px; top: 84px; font-size: 22px; font-weight: 800; letter-spacing: .2em; }
+      .copy { width: 1350px; text-align: center; }
+      .copy small { display: block; margin-bottom: 32px; font-size: 24px; font-weight: 750; letter-spacing: .28em; text-transform: uppercase; }
+      .copy strong { display: block; font-size: 160px; line-height: .84; letter-spacing: -.075em; }
+      .divider { position: absolute; top: 0; bottom: 0; left: 50%; width: 8px; background: #fff; transform: translateX(-50%) scaleY(0); box-shadow: 0 0 44px rgba(255,255,255,.46); }
+    </style>
+  </head>
+  <body>
+    <main class="composition" data-composition-id="transition-split-wipe" data-width="1920" data-height="1080" data-start="0" data-duration="1.2">
+      <section class="surface outgoing" data-hf-id="tsw-outgoing" data-layout-allow-occlusion data-layout-allow-overlap data-layout-allow-overflow>
+        <div class="number">SCENE 01</div>
+        <div class="copy"><small>Outgoing idea</small><strong>Build the tension.</strong></div>
+      </section>
+      <section class="surface incoming" data-hf-id="tsw-incoming" data-layout-allow-occlusion data-layout-allow-overlap>
+        <div class="number">SCENE 02</div>
+        <div class="copy"><small>Incoming idea</small><strong>Reveal the answer.</strong></div>
+      </section>
+      <div class="divider" data-layout-ignore></div>
+    </main>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.15.0/dist/gsap.min.js"></script>
+    <script>
+      window.__timelines = window.__timelines || {};
+      var timeline = gsap.timeline({ paused: true });
+      timeline
+        .to(".outgoing", { xPercent: -10, scale: 0.94, filter: "blur(8px)", duration: 1.05, ease: "power3.inOut" }, 0)
+        .to(".incoming", { clipPath: "inset(0 0% 0 0)", duration: 1, ease: "power3.inOut" }, 0.08)
+        .fromTo(".divider", { scaleY: 0, x: -960 }, { scaleY: 1, x: 960, duration: 1.08, ease: "power3.inOut" }, 0.02)
+        .from(".incoming .copy", { x: 120, opacity: 0, duration: 0.72, ease: "power3.out" }, 0.38);
+      window.__timelines["transition-split-wipe"] = timeline;
+      window.addEventListener("hf-seek", function (event) { timeline.seek(Math.max(0, Math.min(event.detail.time, 1.2))); });
+      timeline.seek(0);
+    </script>
+  </body>
+</html>

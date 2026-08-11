@@ -1,0 +1,22 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "effect-opening-focus-title",
+  "version": "1.0.0",
+  "type": "hyperframes:block",
+  "title": "焦点标题",
+  "description": "主题色扫描线聚拢成主标题，适合观点、栏目和品牌视频开头。",
+  "kind": "effect",
+  "librarySection": "opening-effect",
+  "dimensions": { "width": 1920, "height": 1080 },
+  "duration": 3.2,
+  "tags": ["effect-clip", "opening", "title", "themeable", "editorial"],
+  "engine": { "name": "gsap", "version": "3.15.0", "seekable": true, "plugins": [] },
+  "source": { "provider": "ipollowork", "label": "iPolloWork Effects" },
+  "files": [
+    {
+      "path": "effect-opening-focus-title.html",
+      "target": "compositions/effects/effect-opening-focus-title.html",
+      "type": "hyperframes:composition"
+    }
+  ]
+}

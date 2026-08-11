@@ -214,6 +214,7 @@ async function tryFetchAnimationsForElement(
   if (!parsed) return null;
   return getAnimationsForElement(parsed.animations, {
     id: sel.id,
+    hfId: sel.hfId,
     selector: sel.selector,
   });
 }

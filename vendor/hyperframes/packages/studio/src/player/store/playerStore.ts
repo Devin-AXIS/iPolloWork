@@ -32,6 +32,8 @@ export interface KeyframeCacheUpdate {
 export interface TimelineElement {
   id: string;
   label?: string;
+  /** Timeline clip caption, independent from the layer-tree label. */
+  clipLabel?: string;
   key?: string;
   tag: string;
   start: number;
@@ -153,6 +155,8 @@ interface PlayerState {
   currentTime: number;
   duration: number;
   timelineReady: boolean;
+  /** Delayed busy state for a delete that is still being persisted. */
+  previewDeletePending: boolean;
   /** True while a beat dot is being dragged — hides the playhead guideline. */
   beatDragging: boolean;
   elements: TimelineElement[];
@@ -246,6 +250,7 @@ interface PlayerState {
   setAudioMuted: (muted: boolean) => void;
   setLoopEnabled: (enabled: boolean) => void;
   setTimelineReady: (ready: boolean) => void;
+  setPreviewDeletePending: (pending: boolean) => void;
   setBeatDragging: (dragging: boolean) => void;
   setElements: (elements: TimelineElement[]) => void;
   setSelectedElementId: (id: string | null, options?: SelectElementOptions) => void;
@@ -264,6 +269,8 @@ interface PlayerState {
         | "zIndex"
         | "hasExplicitZIndex"
         | "playbackStart"
+        | "label"
+        | "clipLabel"
         | "hidden"
         | "timelineLocked"
       >
@@ -329,6 +336,16 @@ interface PlayerState {
    */
   domClipChildren: DomClipChild[];
   setDomClipChildren: (children: DomClipChild[]) => void;
+  removeElementReferences: (target: ElementDeleteTarget) => void;
+}
+
+interface ElementDeleteTarget {
+  elementKey?: string;
+  hfId?: string;
+  domId?: string;
+  selector?: string;
+  selectorIndex?: number;
+  sourceFile?: string;
 }
 
 /** A DOM-only timeline child (no data-start) and its nesting context. */
@@ -344,6 +361,7 @@ export interface DomClipChild {
   /** The manifest timeline host id this descendant ultimately lives under. */
   hostId: string;
   label: string;
+  clipLabel?: string;
   tagName?: string | null;
   stackingContextId: string;
 }
@@ -372,6 +390,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   currentTime: 0,
   duration: 0,
   timelineReady: false,
+  previewDeletePending: false,
   beatDragging: false,
   elements: [],
   timelineLayerStateOverrides: new Map(),
@@ -510,6 +529,67 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   setClipParentMap: (map) => set({ clipParentMap: map }),
   domClipChildren: [],
   setDomClipChildren: (children) => set({ domClipChildren: children }),
+  removeElementReferences: (target) =>
+    set((state) => {
+      const sourceFile = target.sourceFile || "index.html";
+      const matchesIdentity = (candidate: {
+        hfId?: string;
+        domId?: string;
+        selector?: string;
+        selectorIndex?: number;
+        sourceFile?: string;
+      }) => {
+        if ((candidate.sourceFile || "index.html") !== sourceFile) return false;
+        if (target.hfId) return candidate.hfId === target.hfId;
+        if (target.domId) return candidate.domId === target.domId;
+        return Boolean(
+          target.selector &&
+            candidate.selector === target.selector &&
+            (candidate.selectorIndex ?? 0) === (target.selectorIndex ?? 0),
+        );
+      };
+      const removedIds = new Set<string>();
+      if (target.elementKey) removedIds.add(target.elementKey);
+      for (const child of state.domClipChildren) {
+        if (matchesIdentity(child)) removedIds.add(child.id);
+      }
+      let foundDescendant = true;
+      while (foundDescendant) {
+        foundDescendant = false;
+        for (const child of state.domClipChildren) {
+          if (
+            !removedIds.has(child.id) &&
+            (removedIds.has(child.parentId) || removedIds.has(child.hostId))
+          ) {
+            removedIds.add(child.id);
+            foundDescendant = true;
+          }
+        }
+      }
+      return {
+        elements: state.elements.filter(
+          (element) =>
+            !removedIds.has(element.key ?? element.id) &&
+            !matchesIdentity({
+              hfId: element.hfId,
+              domId: element.domId,
+              selector: element.selector,
+              selectorIndex: element.selectorIndex,
+              sourceFile: element.sourceFile,
+            }),
+        ),
+        domClipChildren: state.domClipChildren.filter(
+          (child) =>
+            !removedIds.has(child.id) &&
+            !removedIds.has(child.parentId) &&
+            !removedIds.has(child.hostId),
+        ),
+        selectedElementId: null,
+        selectedElementIds: new Set<string>(),
+        activeKeyframePct: null,
+        motionPathArmed: false,
+      };
+    }),
 
   setIsPlaying: (playing) => {
     if (get().isPlaying === playing) return;
@@ -583,6 +663,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   setCurrentTime: (time) => set({ currentTime: Number.isFinite(time) ? time : 0 }),
   setDuration: (duration) => set({ duration: Number.isFinite(duration) ? duration : 0 }),
   setTimelineReady: (ready) => set({ timelineReady: ready }),
+  setPreviewDeletePending: (pending) => set({ previewDeletePending: pending }),
   setBeatDragging: (dragging) => set({ beatDragging: dragging }),
   setElements: (elements) => set({ elements }),
   toggleExpandedTimelineElementId: (id) =>
@@ -668,6 +749,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       currentTime: 0,
       duration: 0,
       timelineReady: false,
+      previewDeletePending: false,
       beatDragging: false,
       elements: [],
       timelineLayerStateOverrides: new Map(),

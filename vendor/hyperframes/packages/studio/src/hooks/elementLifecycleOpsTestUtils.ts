@@ -16,6 +16,7 @@ export function makeLifecycleOpsParams(
     showToast: vi.fn(),
     writeProjectFile: vi.fn(async () => {}),
     previewIframeRef: { current: null },
+    queueDomEditSave: async (save) => save(),
     domEditSaveTimestampRef: { current: 0 },
     editHistory: { recordEdit: vi.fn(async () => {}) },
     projectIdRef: { current: null },

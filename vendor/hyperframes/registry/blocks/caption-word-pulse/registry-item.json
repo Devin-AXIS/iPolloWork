@@ -1,0 +1,35 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "caption-word-pulse",
+  "version": "1.0.0",
+  "type": "hyperframes:block",
+  "title": "Word Pulse",
+  "description": "Spoken words receive a restrained scale-and-color pulse that tracks emphasis without disrupting reading flow.",
+  "kind": "effect",
+  "librarySection": "caption-animation",
+  "dimensions": { "width": 1920, "height": 1080 },
+  "duration": 4.2,
+  "tags": ["caption", "word", "pulse", "emphasis", "speech"],
+  "engine": { "name": "gsap", "version": "3.15.0", "seekable": true, "plugins": [] },
+  "source": { "provider": "ipollowork", "label": "iPolloWork Motion Library" },
+  "motionPreset": {
+    "version": 1,
+    "category": "caption",
+    "targets": ["caption", "text"],
+    "anchor": "clip-start",
+    "duration": 0.62,
+    "ease": "back.out(1.45)",
+    "keyframes": [
+      { "percentage": 0, "properties": { "opacity": 0, "y": 18, "scale": 0.82 } },
+      { "percentage": 64, "properties": { "opacity": 1, "y": 0, "scale": 1.08 } },
+      { "percentage": 100, "properties": { "opacity": 1, "y": 0, "scale": 1 } }
+    ]
+  },
+  "files": [
+    {
+      "path": "caption-word-pulse.html",
+      "target": "compositions/caption-word-pulse.html",
+      "type": "hyperframes:composition"
+    }
+  ]
+}

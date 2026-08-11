@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { z } from "zod";
+import { hyperframesStudioPort, videoProjectId } from "@ipollowork/types/hyperframes";
 
 import { iPolloWorkExtensionsPreview } from "./ipollowork-extensions-preview.js";
 
@@ -127,6 +128,37 @@ function startFakeiPolloWorkServer() {
   return { requests };
 }
 
+function startFakeVideoStudio() {
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    const sessionID = `motion_plugin_${process.pid}_${attempt}`;
+    const projectId = videoProjectId(sessionID);
+    const requests: Array<{ pathname: string; search: string; body: unknown }> = [];
+    try {
+      const server = Bun.serve({
+        hostname: "127.0.0.1",
+        port: hyperframesStudioPort(sessionID),
+        async fetch(request) {
+          const url = new URL(request.url);
+          const body = request.method === "POST" ? await request.json() : null;
+          requests.push({ pathname: url.pathname, search: url.search, body });
+          if (url.pathname === `/api/projects/${projectId}/motion-presets`) {
+            return Response.json({ presets: [{ id: "text.enter.rise" }] });
+          }
+          if (url.pathname === `/api/projects/${projectId}/gsap-mutations/index.html`) {
+            return Response.json({ ok: true, mutation: body });
+          }
+          return Response.json({ message: "Not found" }, { status: 404 });
+        },
+      });
+      stops.push(() => server.stop(true));
+      return { sessionID, projectId, requests };
+    } catch {
+      // Deterministic port was already occupied; try another session id.
+    }
+  }
+  throw new Error("Could not allocate a deterministic Video Studio test port");
+}
+
 describe("iPolloWorkExtensionsPreview session tools", () => {
   test("searches past chat transcript text and prefers the user's matching message", async () => {
     const fake = startFakeiPolloWorkServer();
@@ -187,10 +219,14 @@ describe("iPolloWorkExtensionsPreview UI control tools", () => {
     expect(tools).not.toContain("ipollowork_ui_execute_action");
     expect(tools).toContain("ipollowork_session_search");
     expect(tools).toContain("ipollowork_extension_list_actions");
+    expect(tools).toContain("list_motion_presets");
+    expect(tools).toContain("mutate_motion");
 
     const system = await transformedSystem(plugin);
     expect(system).not.toContain("ipollowork_ui_");
     expect(system).toContain("ipollowork_session_search");
+    expect(system).toContain("list_motion_presets");
+    expect(system).toContain("mutate_motion");
   });
 
   test("registers UI-control tools and steering when opted in", async () => {
@@ -204,5 +240,44 @@ describe("iPolloWorkExtensionsPreview UI control tools", () => {
 
     const system = await transformedSystem(plugin);
     expect(system).toContain("ipollowork_ui_execute_action");
+  });
+});
+
+describe("iPolloWorkExtensionsPreview semantic motion tools", () => {
+  test("locks preset listing and mutation to the current Video Studio session", async () => {
+    const fake = startFakeVideoStudio();
+    const plugin = await iPolloWorkExtensionsPreview();
+
+    const listed = JSON.parse(await plugin.tool.list_motion_presets.execute(
+      { phase: "enter", tone: "modern" },
+      { sessionID: fake.sessionID },
+    ));
+    expect(listed.presets[0].id).toBe("text.enter.rise");
+
+    const mutated = JSON.parse(await plugin.tool.mutate_motion.execute(
+      {
+        operation: "upsert",
+        targetSelector: "#headline",
+        phase: "enter",
+        presetId: "text.enter.rise",
+        parameters: { intensity: 0.8 },
+      },
+      { sessionID: fake.sessionID },
+    ));
+    expect(mutated.mutation).toMatchObject({
+      type: "mutate-motion",
+      targetKind: "text",
+      elementId: "headline",
+      presetId: "text.enter.rise",
+    });
+    expect(fake.requests).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        pathname: `/api/projects/${fake.projectId}/motion-presets`,
+        search: "?targetKind=text&phase=enter&tone=modern",
+      }),
+      expect.objectContaining({
+        pathname: `/api/projects/${fake.projectId}/gsap-mutations/index.html`,
+      }),
+    ]));
   });
 });

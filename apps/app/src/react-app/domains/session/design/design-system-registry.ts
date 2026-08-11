@@ -90,22 +90,26 @@ const manifestModules = import.meta.glob("./design-systems/design-systems/*/mani
 
 const kitPreviewModules = import.meta.glob("./design-systems/design-systems/*/system/kit.html", {
   eager: true,
-  as: "raw",
+  query: "?raw",
+  import: "default",
 }) as Record<string, string>;
 
 const systemIndexModules = import.meta.glob("./design-systems/design-systems/*/system/index.html", {
   eager: true,
-  as: "raw",
+  query: "?raw",
+  import: "default",
 }) as Record<string, string>;
 
 const previewModules = import.meta.glob("./design-systems/design-systems/*/preview/colors.html", {
   eager: true,
-  as: "raw",
+  query: "?raw",
+  import: "default",
 }) as Record<string, string>;
 
 const tokenModules = import.meta.glob("./design-systems/design-systems/*/tokens.css", {
   eager: true,
-  as: "raw",
+  query: "?raw",
+  import: "default",
 }) as Record<string, string>;
 
 const designTokenModules = import.meta.glob("./design-systems/design-systems/*/design-tokens.json", {
