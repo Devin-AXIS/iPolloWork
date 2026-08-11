@@ -80,6 +80,10 @@ const MAX_TRACKS = 32;
 const MAX_KEYFRAMES_PER_TRACK = 16;
 const MAX_PARTICLES = 96;
 const MAX_TEXT_UNITS = 512;
+const MAX_ASSETS = 8;
+const MAX_ASSET_PATH_LENGTH = 256;
+const MAX_EASE_LENGTH = 96;
+const GSAP_EASE_PATTERN = /^(?:none|linear|(?:power[0-4]|sine|expo|circ|back|elastic|bounce|steps)(?:\.(?:in|out|inOut))?)(?:\(-?(?:\d+(?:\.\d+)?|\.\d+)(?:\s*,\s*-?(?:\d+(?:\.\d+)?|\.\d+))*\))?$/;
 
 type SegmenterResult = { segment: string; isWordLike?: boolean };
 type SegmenterConstructor = new (
@@ -101,8 +105,33 @@ export function segmentStructuredText(text: string, split: MotionTextUnit): stri
       ? segments.filter((segment) => segment.isWordLike).map((segment) => segment.segment)
       : segments.map((segment) => segment.segment);
   }
+  return segmentStructuredTextFallback(text, split);
+}
+
+export function segmentStructuredTextFallback(text: string, split: MotionTextUnit): string[] {
+  if (split === "whole") return text ? [text] : [];
   if (split === "word") return text.match(/[\p{L}\p{N}\p{M}_]+/gu) ?? [];
-  return Array.from(text);
+  const units: string[] = [];
+  let joinNext = false;
+  for (const codePoint of Array.from(text)) {
+    if (codePoint === "\u200d") {
+      if (units.length > 0) units[units.length - 1] += codePoint;
+      else units.push(codePoint);
+      joinNext = true;
+      continue;
+    }
+    if (joinNext && units.length > 0) {
+      units[units.length - 1] += codePoint;
+      joinNext = false;
+      continue;
+    }
+    if ((/^\p{M}$/u.test(codePoint) || /^\p{Emoji_Modifier}$/u.test(codePoint)) && units.length > 0) {
+      units[units.length - 1] += codePoint;
+      continue;
+    }
+    units.push(codePoint);
+  }
+  return units;
 }
 
 export function structuredTextSeed(value: string | number): number {
@@ -148,9 +177,21 @@ function validateKeyframes(keyframes: MotionKeyframe[], path: string): void {
       if (!STRUCTURED_MOTION_PROPERTIES.has(property)) {
         throw new Error(`${path}[${index}] has an unsupported property: ${property}`);
       }
+      if (typeof value !== "number" && typeof value !== "string") {
+        throw new Error(`${path}[${index}].${property} must be a finite number or string value`);
+      }
       if (typeof value === "number" && !Number.isFinite(value)) {
         throw new Error(`${path}[${index}].${property} must be finite`);
       }
+    }
+    if (
+      keyframe.ease !== undefined &&
+      (typeof keyframe.ease !== "string" ||
+        keyframe.ease.length === 0 ||
+        keyframe.ease.length > MAX_EASE_LENGTH ||
+        !GSAP_EASE_PATTERN.test(keyframe.ease))
+    ) {
+      throw new Error(`${path}[${index}].ease must use a safe GSAP ease string`);
     }
   }
 }
@@ -159,6 +200,31 @@ function validateRange(range: readonly [number, number], path: string): void {
   if (range.length !== 2 || !Number.isFinite(range[0]) || !Number.isFinite(range[1])) {
     throw new Error(`${path} must contain two finite numbers`);
   }
+}
+
+function copyValidatedAssets(assets: unknown): string[] | undefined {
+  if (assets === undefined) return undefined;
+  if (!Array.isArray(assets) || assets.length > MAX_ASSETS) {
+    throw new Error(`Structured text assets must contain at most ${MAX_ASSETS} registry-relative paths`);
+  }
+  return assets.map((asset, index) => {
+    if (
+      typeof asset !== "string" ||
+      asset.length === 0 ||
+      asset.length > MAX_ASSET_PATH_LENGTH ||
+      !asset.startsWith("registry/") ||
+      asset.startsWith("/") ||
+      asset.startsWith("\\") ||
+      asset.startsWith("//") ||
+      asset.startsWith("\\\\") ||
+      /^[A-Za-z][A-Za-z0-9+.-]*:/.test(asset) ||
+      !/^[A-Za-z0-9._/-]+$/.test(asset) ||
+      asset.split("/").some((segment) => segment.length === 0 || segment === "." || segment === "..")
+    ) {
+      throw new Error(`assets[${index}] must be a safe registry-relative path`);
+    }
+    return asset;
+  });
 }
 
 export function validateStructuredTextRecipe(recipe: StructuredTextRecipe): void {
@@ -195,9 +261,7 @@ export function validateStructuredTextRecipe(recipe: StructuredTextRecipe): void
     validateRange(recipe.particles.size, "particles.size");
     validateRange(recipe.particles.delay, "particles.delay");
   }
-  if (recipe.assets?.some((asset) => !/^[-A-Za-z0-9_./]+$/.test(asset) || asset.includes(".."))) {
-    throw new Error("Structured text assets must use safe registry-relative paths");
-  }
+  copyValidatedAssets(recipe.assets);
 }
 
 function randomInRange(random: () => number, range: readonly [number, number]): number {
@@ -220,8 +284,9 @@ export function compileStructuredTextMotion(
   }
   const seed = structuredTextSeed(recipe.seed ?? `${instance.id}:${recipe.id}:${text}`);
   const random = createStructuredTextRng(seed);
+  const assets = copyValidatedAssets(recipe.assets);
   const particleSpec = recipe.particles;
-  const particles = particleSpec
+  const particles = particleSpec && units.length > 0
     ? Array.from({ length: particleSpec.count }, (_, index) => ({
         unitIndex: units.length ? index % units.length : 0,
         x: randomInRange(random, particleSpec.x),
@@ -241,7 +306,7 @@ export function compileStructuredTextMotion(
       keyframes: track.keyframes.map((keyframe) => ({ ...keyframe, properties: { ...keyframe.properties } })),
     })),
     ...(particles ? { particles } : {}),
-    ...(recipe.assets ? { assets: [...recipe.assets] } : {}),
+    ...(assets ? { assets } : {}),
     seed,
   };
 }

@@ -5,6 +5,7 @@ import {
   createStructuredTextRng,
   isStructuredTextPreset,
   segmentStructuredText,
+  segmentStructuredTextFallback,
   structuredMotionSelector,
   validateStructuredTextRecipe,
   type StructuredTextRecipe,
@@ -118,6 +119,82 @@ describe("structured text motion", () => {
     ).toThrow(/96/);
   });
 
+  it("rejects non-primitive keyframe values and unsafe ease strings", () => {
+    const invalidValues: unknown[] = [true, {}, [], () => undefined, Symbol("value"), 1n, null, undefined];
+    for (const value of invalidValues) {
+      expect(() =>
+        validateStructuredTextRecipe(
+          recipe({
+            tracks: [
+              {
+                role: "unit",
+                position: 0,
+                duration: 0.5,
+                stagger: 0,
+                keyframes: [
+                  { percentage: 0, properties: { opacity: value } as never },
+                  { percentage: 100, properties: { opacity: 1 } },
+                ],
+              },
+            ],
+          }),
+        ),
+      ).toThrow(/value/i);
+    }
+
+    expect(() =>
+      validateStructuredTextRecipe(
+        recipe({
+          tracks: [
+            {
+              role: "unit",
+              position: 0,
+              duration: 0.5,
+              stagger: 0,
+              keyframes: [
+                { percentage: 0, ease: (() => undefined) as never, properties: { opacity: 0 } },
+                { percentage: 100, properties: { opacity: 1 } },
+              ],
+            },
+          ],
+        }),
+      ),
+    ).toThrow(/ease/i);
+
+    expect(() =>
+      validateStructuredTextRecipe(
+        recipe({
+          tracks: [
+            {
+              role: "unit",
+              position: 0,
+              duration: 0.5,
+              stagger: 0,
+              keyframes: [
+                { percentage: 0, ease: "power2.out; alert(1)", properties: { opacity: 0 } },
+                { percentage: 100, properties: { opacity: 1 } },
+              ],
+            },
+          ],
+        }),
+      ),
+    ).toThrow(/ease/i);
+  });
+
+  it("accepts only bounded registry-relative assets", () => {
+    expect(() => validateStructuredTextRecipe(recipe({ assets: ["textures/noise.png"] }))).toThrow(/asset/i);
+    expect(() => validateStructuredTextRecipe(recipe({ assets: [""] }))).toThrow(/asset/i);
+    expect(() => validateStructuredTextRecipe(recipe({ assets: ["/registry/noise.png"] }))).toThrow(/asset/i);
+    expect(() => validateStructuredTextRecipe(recipe({ assets: ["\\registry\\noise.png"] }))).toThrow(/asset/i);
+    expect(() => validateStructuredTextRecipe(recipe({ assets: ["//registry/noise.png"] }))).toThrow(/asset/i);
+    expect(() => validateStructuredTextRecipe(recipe({ assets: ["registry/../noise.png"] }))).toThrow(/asset/i);
+    expect(() => validateStructuredTextRecipe(recipe({ assets: ["registry/./noise.png"] }))).toThrow(/asset/i);
+    expect(() => validateStructuredTextRecipe(recipe({ assets: ["https://example.test/noise.png"] }))).toThrow(/asset/i);
+    expect(() => validateStructuredTextRecipe(recipe({ assets: Array.from({ length: 9 }, () => "registry/noise.png") }))).toThrow(/asset/i);
+    expect(() => validateStructuredTextRecipe(recipe({ assets: ["registry/" + "a".repeat(257)] }))).toThrow(/asset/i);
+    expect(() => validateStructuredTextRecipe(recipe({ assets: ["registry/textures/noise.png"] }))).not.toThrow();
+  });
+
   it("segments text and random values deterministically", () => {
     expect(segmentStructuredText("Motion stays clear", "word")).toEqual([
       "Motion",
@@ -130,10 +207,27 @@ describe("structured text motion", () => {
       " ",
       "\u{1F44F}\u{1F3FD}",
     ]);
+    expect(segmentStructuredTextFallback("A \u{1F44F}\u{1F3FD}", "character")).toEqual([
+      "A",
+      " ",
+      "\u{1F44F}\u{1F3FD}",
+    ]);
+    expect(segmentStructuredTextFallback("e\u{301}", "character")).toEqual(["e\u{301}"]);
+    expect(
+      segmentStructuredTextFallback(
+        "\u{1F468}\u{200D}\u{1F469}\u{200D}\u{1F467}\u{200D}\u{1F466}",
+        "character",
+      ),
+    ).toEqual(["\u{1F468}\u{200D}\u{1F469}\u{200D}\u{1F467}\u{200D}\u{1F466}"]);
     expect(createStructuredTextRng("stable-seed")()).toBe(createStructuredTextRng("stable-seed")());
-    expect(compileStructuredTextMotion(createTextInstance(), "Motion stays clear", recipe())).toEqual(
-      compileStructuredTextMotion(createTextInstance(), "Motion stays clear", recipe()),
+    const particleRecipe = recipe({
+      seed: "stable-particles",
+      particles: { count: 2, x: [-10, 10], y: [-10, 10], size: [2, 6], delay: [0, 0.2] },
+    });
+    expect(compileStructuredTextMotion(createTextInstance(), "Motion stays clear", particleRecipe)).toEqual(
+      compileStructuredTextMotion(createTextInstance(), "Motion stays clear", particleRecipe),
     );
+    expect(compileStructuredTextMotion(createTextInstance(), "", particleRecipe)?.particles).toBeUndefined();
   });
 
   it("keeps ordinary presets on the existing unstructured path", () => {

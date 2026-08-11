@@ -38,3 +38,21 @@ Implemented only the generic structured-text motion foundation. No catalog entri
 - `CompiledMotion.structured` is opt-in through `MotionPreset.structuredText`; existing presets remain on their ordinary keyframe path.
 - Tests prove generic recipe compilation, invalid role/property/particle rejection, deterministic word/grapheme behavior, and that `element.enter.fade` remains unstructured.
 - No changes were made to `motionPresetCatalog.ts` or any effect recipe.
+
+## Review Fix Evidence
+
+- RED: `pnpm.cmd --dir vendor/hyperframes/packages/core exec vitest run src/structuredTextMotion.test.ts`
+  - Exit 1. The 7-test file had 3 expected failures: non-primitive property/ease values were accepted, non-registry assets were accepted, and `segmentStructuredTextFallback` was missing.
+- GREEN: `pnpm.cmd --dir vendor/hyperframes/packages/core exec vitest run src/structuredTextMotion.test.ts`
+  - Exit 0. 1 file passed; 7 tests passed.
+- GREEN: `pnpm.cmd --dir vendor/hyperframes/packages/core exec vitest run src/structuredTextMotion.test.ts src/motionPresets.test.ts`
+  - Exit 0. 2 files passed; 26 tests passed.
+- GREEN: `pnpm.cmd --dir vendor/hyperframes/packages/core build`
+  - Exit 0. Core TypeScript build and generated-runtime steps completed.
+
+## Review Fix Self-Review
+
+- Keyframe values now reject all non-string/non-finite-number runtime values, and ease accepts only bounded allow-listed GSAP syntax.
+- The exported deterministic fallback keeps combining marks, emoji modifiers, and ZWJ sequences in a single grapheme unit.
+- Assets are capped at 8 paths of 256 characters, require the `registry/` prefix, and reject empty, absolute, scheme, dot-segment, and unsafe paths before copying.
+- Empty text produces no generated particles; seeded particle output is covered by deterministic equality tests.
