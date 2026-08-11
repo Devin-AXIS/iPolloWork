@@ -460,7 +460,7 @@ const MIGRATED_CAPTION_TEXT_PRESETS: readonly MotionPreset[] = [
     phase: "emphasis",
     direction: true,
     color: true,
-    defaults: { unit: "word", stagger: 0.05, color: "#FFE66D" },
+    defaults: { unit: "word", stagger: 0.05, color: "#FFE66D", roundness: 12 },
     extraParameters: [
       { id: "roundness", label: "圆角", kind: "number", min: 0, max: 24, step: 1, unit: "px" },
     ],
@@ -476,7 +476,7 @@ const MIGRATED_CAPTION_TEXT_PRESETS: readonly MotionPreset[] = [
     label: "矩阵解码",
     phase: "enter",
     color: true,
-    defaults: { unit: "character", stagger: 0.03, color: "#32FF7E" },
+    defaults: { unit: "character", stagger: 0.03, color: "#32FF7E", density: 1, blur: 0 },
     extraParameters: [MOTION_DENSITY_PARAMETER, MOTION_BLUR_PARAMETER],
     semantics: {
       intents: ["解码", "科技显现", "字符扰动"],
@@ -491,7 +491,7 @@ const MIGRATED_CAPTION_TEXT_PRESETS: readonly MotionPreset[] = [
     phase: "emphasis",
     direction: true,
     color: true,
-    defaults: { color: "#FF4FD8" },
+    defaults: { color: "#FF4FD8", accentColor: "#20BBC0" },
     extraParameters: [{ id: "accentColor", label: "强调色", kind: "color" }],
     semantics: {
       intents: ["渐变", "填充", "流动"],
@@ -505,7 +505,7 @@ const MIGRATED_CAPTION_TEXT_PRESETS: readonly MotionPreset[] = [
     label: "霓虹辉光",
     phase: "emphasis",
     color: true,
-    defaults: { color: "#20BBC0" },
+    defaults: { color: "#20BBC0", glow: 1 },
     extraParameters: [MOTION_GLOW_PARAMETER],
     semantics: {
       intents: ["霓虹", "发光", "强调"],
@@ -519,7 +519,7 @@ const MIGRATED_CAPTION_TEXT_PRESETS: readonly MotionPreset[] = [
     label: "霓虹强调",
     phase: "emphasis",
     color: true,
-    defaults: { color: "#FF4FD8" },
+    defaults: { color: "#FF4FD8", glow: 1 },
     extraParameters: [MOTION_GLOW_PARAMETER],
     semantics: {
       intents: ["霓虹", "强调色", "轻微漂移"],
@@ -533,7 +533,7 @@ const MIGRATED_CAPTION_TEXT_PRESETS: readonly MotionPreset[] = [
     label: "RGB 故障",
     phase: "emphasis",
     color: true,
-    defaults: { color: "#FF3355", preserveReadable: "true" },
+    defaults: { color: "#FF3355", preserveReadable: "true", blur: 4, density: 1 },
     extraParameters: [MOTION_BLUR_PARAMETER, MOTION_DENSITY_PARAMETER, MOTION_READABILITY_PARAMETER],
     semantics: {
       intents: ["故障", "RGB", "扰动"],
@@ -559,7 +559,7 @@ const MIGRATED_CAPTION_TEXT_PRESETS: readonly MotionPreset[] = [
     id: "text.emphasis.blend-difference",
     label: "差值反色",
     phase: "emphasis",
-    defaults: { preserveReadable: "true" },
+    defaults: { preserveReadable: "true", blur: 0 },
     extraParameters: [MOTION_BLUR_PARAMETER, MOTION_READABILITY_PARAMETER],
     semantics: {
       intents: ["反色", "混合", "强调"],
@@ -572,7 +572,7 @@ const MIGRATED_CAPTION_TEXT_PRESETS: readonly MotionPreset[] = [
     id: "text.emphasis.weight-shift",
     label: "字重切换",
     phase: "emphasis",
-    defaults: { unit: "word", stagger: 0.04 },
+    defaults: { unit: "word", stagger: 0.04, minWeight: 300, maxWeight: 700 },
     extraParameters: [
       { id: "minWeight", label: "起始字重", kind: "number", min: 100, max: 900, step: 50 },
       { id: "maxWeight", label: "强调字重", kind: "number", min: 100, max: 900, step: 50 },
@@ -590,7 +590,7 @@ const MIGRATED_CAPTION_TEXT_PRESETS: readonly MotionPreset[] = [
     phase: "emphasis",
     direction: true,
     color: true,
-    defaults: { color: "#FFFFFF" },
+    defaults: { color: "#FFFFFF", density: 1 },
     extraParameters: [MOTION_DENSITY_PARAMETER],
     semantics: {
       intents: ["纹理", "遮罩", "填充"],
@@ -604,7 +604,7 @@ const MIGRATED_CAPTION_TEXT_PRESETS: readonly MotionPreset[] = [
     label: "动感冲击",
     phase: "emphasis",
     direction: true,
-    defaults: { unit: "word", preserveReadable: "true" },
+    defaults: { unit: "word", preserveReadable: "true", distance: 80 },
     extraParameters: [MOTION_DISTANCE_PARAMETER, MOTION_READABILITY_PARAMETER],
     semantics: {
       intents: ["冲击", "动感", "强调"],
@@ -630,7 +630,7 @@ const MIGRATED_CAPTION_TEXT_PRESETS: readonly MotionPreset[] = [
     label: "粒子爆发",
     phase: "emphasis",
     color: true,
-    defaults: { unit: "word", stagger: 0.06, color: "#FFB000" },
+    defaults: { unit: "word", stagger: 0.06, color: "#FFB000", density: 1 },
     extraParameters: [MOTION_DENSITY_PARAMETER],
     semantics: {
       intents: ["粒子", "爆发", "关键词强化"],

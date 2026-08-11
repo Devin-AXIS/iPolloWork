@@ -56,6 +56,42 @@ describe("motion presets", () => {
       expect(preset?.parameterSchema.map((parameter) => parameter.id), id).toContain("ease");
     }
 
+    const specializedDefaults = {
+      "text.emphasis.highlight-sweep": { roundness: 12 },
+      "text.enter.matrix-decode": { density: 1, blur: 0 },
+      "text.emphasis.gradient-fill": { accentColor: "#20BBC0" },
+      "text.emphasis.neon-glow": { glow: 1 },
+      "text.emphasis.neon-accent": { glow: 1 },
+      "text.emphasis.rgb-glitch": { blur: 4, density: 1, preserveReadable: "true" },
+      "text.emphasis.blend-difference": { blur: 0, preserveReadable: "true" },
+      "text.emphasis.weight-shift": { minWeight: 300, maxWeight: 700 },
+      "text.emphasis.texture-fill": { density: 1 },
+      "text.emphasis.kinetic-slam": { distance: 80, preserveReadable: "true" },
+      "text.emphasis.particle-burst": { density: 1 },
+    };
+
+    for (const [id, defaults] of Object.entries(specializedDefaults)) {
+      expect(MOTION_PRESETS.find((preset) => preset.id === id)?.defaults, id).toMatchObject(defaults);
+    }
+
+    const commonParameterIds = new Set([
+      "ease",
+      "intensity",
+      "direction",
+      "unit",
+      "stagger",
+      "colorSource",
+      "color",
+    ]);
+    for (const id of migratedIds) {
+      const preset = MOTION_PRESETS.find((candidate) => candidate.id === id)!;
+      for (const parameter of preset.parameterSchema) {
+        if (!commonParameterIds.has(parameter.id)) {
+          expect(preset.defaults, `${id}.${parameter.id}`).toHaveProperty(parameter.id);
+        }
+      }
+    }
+
     expect(listMotionPresets({ targetKind: "text", phase: "enter" }).map((preset) => preset.id))
       .toEqual(expect.arrayContaining(["text.enter.matrix-decode", "text.enter.clip-wipe"]));
     expect(listMotionPresets({ targetKind: "text", phase: "emphasis" }).map((preset) => preset.id))
