@@ -90,7 +90,11 @@ export interface PropertyPanelProps {
   onAddGsapFromProperty?: (animId: string, prop: string) => void;
   onRemoveGsapFromProperty?: (animId: string, prop: string) => void;
   onAddGsapAnimation?: (method: "to" | "from" | "set" | "fromTo") => void;
-  onMutateMotion?: (targetKind: MotionTargetKind, mutation: MotionMutationInput) => void;
+  onMutateMotion?: (
+    targetKind: MotionTargetKind,
+    mutation: MotionMutationInput,
+    selectionOverride?: DomEditSelection | null,
+  ) => void | Promise<void>;
   onSetArcPath?: (
     animId: string,
     config: {

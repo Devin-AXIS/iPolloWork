@@ -6,10 +6,18 @@ import {
 } from "./AnimationTemplatesTab";
 
 describe("AnimationTemplatesTab catalog", () => {
-  it("owns four editable animation categories without scene effects", () => {
-    expect(ANIMATION_TEMPLATES).toHaveLength(32);
+  it("shows one universal catalog and appends text animation for text selections", () => {
+    expect(ANIMATION_TEMPLATES).toHaveLength(26);
     expect(new Set(ANIMATION_TEMPLATES.map((template) => template.category))).toEqual(
-      new Set(["general", "text", "background", "box"]),
+      new Set(["general", "text"]),
+    );
+    expect(
+      ANIMATION_TEMPLATES.filter((template) => template.id.startsWith("box-")).every(
+        (template) => template.category === "general",
+      ),
+    ).toBe(true);
+    expect(ANIMATION_TEMPLATES.some((template) => template.id.startsWith("background-"))).toBe(
+      false,
     );
     expect(ANIMATION_TEMPLATES.map((template) => template.id)).not.toEqual(
       expect.arrayContaining([
@@ -21,29 +29,18 @@ describe("AnimationTemplatesTab catalog", () => {
     );
   });
 
-  it("resolves universal templates per target and keeps backgrounds element-only", () => {
+  it("resolves universal templates per target", () => {
     const fade = ANIMATION_TEMPLATES.find((template) => template.id === "general-fade-in");
-    const molten = ANIMATION_TEMPLATES.find((template) => template.id === "background-molten-flow");
-    if (!fade || !molten) throw new Error("Expected animation templates are missing");
+    if (!fade) throw new Error("Expected animation template is missing");
 
     expect(resolveAnimationTemplatePreset(fade, "text")?.id).toBe("text.enter.fade");
     expect(resolveAnimationTemplatePreset(fade, "element")?.id).toBe("element.enter.fade");
-    expect(resolveAnimationTemplatePreset(molten, "text")?.targetKinds).not.toContain("text");
-    expect(resolveAnimationTemplatePreset(molten, "element")?.id).toBe(
-      "background.emphasis.molten-flow",
-    );
   });
 
   it("defaults every color-driven template to the active design theme", () => {
     const themeAwareIds = [
       "text-prism-glow",
       "text-shiny-sweep",
-      "background-molten-flow",
-      "background-aurora",
-      "background-prism",
-      "background-light-rays",
-      "background-grid-scan",
-      "background-iridescent",
       "box-spotlight-card",
       "box-glare-sweep",
     ];

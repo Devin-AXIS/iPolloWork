@@ -25,13 +25,7 @@ import {
 import { usePlayerStore } from "../../player";
 import { formatTime } from "../../player/lib/time";
 import { useStudioShellContext } from "../../contexts/StudioContext";
-import { usePanelLayoutContext } from "../../contexts/PanelLayoutContext";
-import {
-  useDomEditActionsContext,
-  useDomEditSelectionContext,
-} from "../../contexts/DomEditContext";
 import { TIMELINE_BLOCK_MIME } from "../../utils/timelineAssetDrop";
-import { resolveMotionPresetSelection } from "../../utils/motionPreset";
 import { useStudioI18n } from "../../i18n";
 import {
   readStudioUiPreferences,
@@ -40,17 +34,17 @@ import {
 } from "../../utils/studioUiPreferences";
 import { PreviewController } from "./PreviewController";
 import searchIconSrc from "../../icons/figmaAssetsSearch.svg?url";
+import type { EffectInsertIntent } from "../../utils/blockInstaller";
 
 interface BlocksTabProps {
   page?: CatalogPage;
-  onAddBlock?: (blockName: string) => void;
+  onAddBlock?: (blockName: string, intent?: EffectInsertIntent) => void;
 }
 
 const SECTION_TITLES: Record<AnimationLibrarySection, { en: string; zh: string }> = {
-  "opening-animation": { en: "Opening animations", zh: "\u5f00\u573a\u52a8\u753b" },
-  "ending-animation": { en: "Ending animations", zh: "\u7ed3\u5c3e\u52a8\u753b" },
-  "transition-animation": { en: "Transition animations", zh: "\u8f6c\u573a\u52a8\u753b" },
-  "caption-animation": { en: "Caption animations", zh: "\u5b57\u5e55\u52a8\u753b" },
+  "opening-effect": { en: "Opening effects", zh: "开头特效" },
+  "ending-effect": { en: "Ending effects", zh: "结尾特效" },
+  "transition-effect": { en: "Transition effects", zh: "转场特效" },
 };
 
 const REDUCED_MOTION_QUERY = "(prefers-reduced-motion: reduce)";
@@ -89,19 +83,8 @@ function getReducedMotionServerSnapshot(): boolean {
   return false;
 }
 
-export const BlocksTab = memo(function BlocksTab({
-  page = "animation",
-  onAddBlock,
-}: BlocksTabProps) {
+export const BlocksTab = memo(function BlocksTab({ page = "effects", onAddBlock }: BlocksTabProps) {
   const { locale } = useStudioI18n();
-  const { setRightPanelTab } = usePanelLayoutContext();
-  const { domEditSelection } = useDomEditSelectionContext();
-  const {
-    applyDomSelection,
-    buildDomSelectionFromTarget,
-    handleDomAttributesCommit,
-    handleGsapApplyMotionPreset,
-  } = useDomEditActionsContext();
   const { loading, error, search, setSearch, sections } = useBlockCatalog(page);
   const [previewController] = useState(() => new PreviewController());
   const [activeSection, setActiveSection] = useState<CatalogSectionFilter>(ALL_SECTIONS_FILTER);
@@ -145,38 +128,6 @@ export const BlocksTab = memo(function BlocksTab({
         : sections.filter((section) => section.id === activeSection),
     [activeSection, sections],
   );
-  const handleApplyMotionPreset = useCallback(
-    async (block: CatalogItem) => {
-      if (!block.motionPreset) return;
-      const resolved = resolveMotionPresetSelection(domEditSelection, block.motionPreset);
-      if (!resolved.compatible || !resolved.targetElement) return;
-      const targetSelection =
-        resolved.targetElement === domEditSelection?.element
-          ? domEditSelection
-          : await buildDomSelectionFromTarget(resolved.targetElement);
-      if (!targetSelection) return;
-      applyDomSelection(targetSelection, { revealPanel: true, preserveGroup: true });
-      await handleGsapApplyMotionPreset(block.motionPreset, block.title, targetSelection);
-      await handleDomAttributesCommit(
-        targetSelection,
-        {
-          "data-ipw-animation-reference": block.name,
-        },
-        "Apply motion preset reference",
-        { skipRefresh: true },
-      );
-      setRightPanelTab("animation-properties");
-    },
-    [
-      applyDomSelection,
-      buildDomSelectionFromTarget,
-      domEditSelection,
-      handleDomAttributesCommit,
-      handleGsapApplyMotionPreset,
-      setRightPanelTab,
-    ],
-  );
-
   return (
     <div className="flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
       <div className="flex-shrink-0 space-y-[10px] border-b border-panel-border px-4 pb-[14px] pt-3">
@@ -190,24 +141,8 @@ export const BlocksTab = memo(function BlocksTab({
             type="search"
             value={search}
             onChange={(event) => setSearch(event.target.value)}
-            placeholder={
-              page === "animation"
-                ? locale === "zh"
-                  ? "搜索动画…"
-                  : "Search animation…"
-                : locale === "zh"
-                  ? "搜索场景…"
-                  : "Search scene…"
-            }
-            aria-label={
-              page === "animation"
-                ? locale === "zh"
-                  ? "搜索动画"
-                  : "Search animations"
-                : locale === "zh"
-                  ? "搜索场景"
-                  : "Search scenes"
-            }
+            placeholder={locale === "zh" ? "搜索特效片段…" : "Search effect clips…"}
+            aria-label={locale === "zh" ? "搜索特效片段" : "Search effect clips"}
             data-testid="block-catalog-search"
             className="h-[34px] w-full rounded-lg border-0 bg-panel-input pl-9 pr-3 text-[13px] text-panel-text-1 outline-none transition-shadow placeholder:text-[#a2a6af] focus:ring-1 focus:ring-[#20bbc0]/50"
           />
@@ -225,11 +160,11 @@ export const BlocksTab = memo(function BlocksTab({
               const match = sections.find((section) => section.id === nextSection);
               if (match) setActiveSection(match.id);
             }}
-            aria-label={locale === "zh" ? "动画分类" : "Animation category"}
+            aria-label={locale === "zh" ? "特效分类" : "Effect category"}
             className="h-[34px] w-full rounded-lg border-0 bg-panel-input px-[11px] text-[13px] font-medium text-panel-text-1 outline-none focus:ring-1 focus:ring-[#20bbc0]/50"
           >
             <option value={ALL_SECTIONS_FILTER}>
-              {locale === "zh" ? "全部动画" : "All animations"} · {totalCount}
+              {locale === "zh" ? "全部特效" : "All effects"} · {totalCount}
             </option>
             {sections.map((section) => (
               <option key={section.id} value={section.id}>
@@ -239,18 +174,12 @@ export const BlocksTab = memo(function BlocksTab({
           </select>
         </label>
         <div
-          className={`rounded-lg px-3 py-2 text-[10px] leading-4 ${
-            domEditSelection ? "bg-[#20bbc0]/10 text-[#168e92]" : "bg-panel-input text-panel-text-3"
-          }`}
-          data-testid="motion-preset-selection-status"
+          className="rounded-lg bg-panel-input px-3 py-2 text-[10px] leading-4 text-panel-text-3"
+          data-testid="effect-clip-placement-help"
         >
-          {domEditSelection
-            ? locale === "zh"
-              ? `\u5df2\u9009\u4e2d\uff1a${domEditSelection.label}\uff0c\u53ef\u5c06\u517c\u5bb9\u52a8\u753b\u5e94\u7528\u5230\u8be5\u5143\u7d20`
-              : `Selected: ${domEditSelection.label}. Compatible motion can be applied.`
-            : locale === "zh"
-              ? "\u5148\u5728\u89c6\u9891\u9884\u89c8\u533a\u9009\u4e2d\u5b57\u5e55\u3001\u6587\u5b57\u3001\u56fe\u7247\u6216\u56fe\u5f62"
-              : "Select a caption, text, image, shape, or group in the preview."}
+          {locale === "zh"
+            ? "特效会作为独立片段插入时间线：开头自动顺延内容，结尾追加到末尾，转场落在相邻片段交界处。"
+            : "Effects are inserted as timeline clips: openings shift content, endings append, and transitions use adjacent clip boundaries."}
         </div>
       </div>
 
@@ -274,8 +203,6 @@ export const BlocksTab = memo(function BlocksTab({
           onDensityWheel={handleDensityWheel}
           previewController={previewController}
           onAddBlock={onAddBlock}
-          selectedElement={domEditSelection}
-          onApplyMotionPreset={handleApplyMotionPreset}
           showSectionHeaders
           testId={`block-catalog-${page}`}
         />
@@ -293,8 +220,6 @@ function CatalogSectionGrid({
   onDensityWheel,
   previewController,
   onAddBlock,
-  selectedElement,
-  onApplyMotionPreset,
   showSectionHeaders,
   testId,
 }: {
@@ -305,9 +230,7 @@ function CatalogSectionGrid({
   columnCount: CatalogColumnCount;
   onDensityWheel: (deltaY: number) => void;
   previewController: PreviewController;
-  onAddBlock?: (blockName: string) => void;
-  selectedElement: ReturnType<typeof useDomEditSelectionContext>["domEditSelection"];
-  onApplyMotionPreset: (block: CatalogItem) => Promise<void>;
+  onAddBlock?: (blockName: string, intent?: EffectInsertIntent) => void;
   showSectionHeaders: boolean;
   testId: string;
 }) {
@@ -360,7 +283,7 @@ function CatalogSectionGrid({
           return changed ? next : current;
         });
       },
-      { root: scrollRoot, rootMargin: "240px 0px", threshold: 0 },
+      { root: scrollRoot, rootMargin: "80px 0px", threshold: 0 },
     );
     observerRef.current = observer;
     for (const element of cardElementsRef.current.values()) observer.observe(element);
@@ -395,13 +318,11 @@ function CatalogSectionGrid({
       data-testid={testId}
       data-catalog-columns={columnCount}
       tabIndex={0}
-      aria-label={
-        locale === "zh" ? "\u52a8\u753b\u9884\u8bbe\u5217\u8868" : "Animation preset list"
-      }
+      aria-label={locale === "zh" ? "特效片段列表" : "Effect clip list"}
     >
       {itemCount === 0 ? (
         <div className="flex h-full min-h-16 items-center justify-center px-3 text-center text-[10px] text-neutral-600">
-          {locale === "zh" ? "\u6ca1\u6709\u5339\u914d\u7684\u9884\u8bbe" : "No matching presets"}
+          {locale === "zh" ? "没有匹配的特效片段" : "No matching effect clips"}
         </div>
       ) : (
         <div>
@@ -471,8 +392,6 @@ function CatalogSectionGrid({
                       previewController={previewController}
                       locale={locale}
                       onAddBlock={onAddBlock}
-                      selectedElement={selectedElement}
-                      onApplyMotionPreset={onApplyMotionPreset}
                     />
                   ))}
                 </div>
@@ -595,8 +514,6 @@ const BlockCard = memo(function BlockCard({
   registerCard,
   previewController,
   onAddBlock,
-  selectedElement,
-  onApplyMotionPreset,
   locale,
 }: {
   block: CatalogItem;
@@ -604,15 +521,12 @@ const BlockCard = memo(function BlockCard({
   reducedMotion: boolean;
   registerCard: (name: string, element: HTMLElement | null) => void;
   previewController: PreviewController;
-  onAddBlock?: (blockName: string) => void;
-  selectedElement: ReturnType<typeof useDomEditSelectionContext>["domEditSelection"];
-  onApplyMotionPreset: (block: CatalogItem) => Promise<void>;
+  onAddBlock?: (blockName: string, intent?: EffectInsertIntent) => void;
   locale: "en" | "zh";
 }) {
   const [posterFailed, setPosterFailed] = useState(false);
   const [videoThumbnailFailed, setVideoThumbnailFailed] = useState(false);
   const [adding, setAdding] = useState(false);
-  const [applying, setApplying] = useState(false);
   const [previewing, setPreviewing] = useState(false);
   const [previewReady, setPreviewReady] = useState(false);
   const hoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -634,11 +548,6 @@ const BlockCard = memo(function BlockCard({
     (!videoUrl || videoThumbnailFailed) &&
     (!posterUrl || posterFailed);
   const needsWebGL = block.tags?.includes("html-in-canvas") || block.tags?.includes("webgl");
-  const motionSelection = useMemo(
-    () =>
-      block.motionPreset ? resolveMotionPresetSelection(selectedElement, block.motionPreset) : null,
-    [block.motionPreset, selectedElement],
-  );
 
   const setCardRef = useCallback(
     (element: HTMLDivElement | null) => registerCard(block.name, element),
@@ -667,12 +576,7 @@ const BlockCard = memo(function BlockCard({
         }
       };
     });
-  }, [
-    block.name,
-    previewController,
-    reducedMotion,
-    visible,
-  ]);
+  }, [block.name, previewController, reducedMotion, visible]);
 
   const handleEnter = useCallback(() => {
     clearHoverTimer();
@@ -711,26 +615,18 @@ const BlockCard = memo(function BlockCard({
   const handleAdd = useCallback(() => {
     if (adding || !onAddBlock) return;
     setAdding(true);
-    onAddBlock(block.name);
+    const intent: EffectInsertIntent =
+      block.librarySection === "opening-effect"
+        ? "opening"
+        : block.librarySection === "ending-effect"
+          ? "ending"
+          : "transition";
+    onAddBlock(block.name, intent);
     if (addedTimerRef.current) clearTimeout(addedTimerRef.current);
     addedTimerRef.current = setTimeout(() => {
       if (mountedRef.current) setAdding(false);
     }, 1000);
-  }, [adding, block.name, onAddBlock]);
-
-  const handleApply = useCallback(
-    async (event: MouseEvent<HTMLButtonElement>) => {
-      event.stopPropagation();
-      if (applying || !block.motionPreset || !motionSelection?.compatible) return;
-      setApplying(true);
-      try {
-        await onApplyMotionPreset(block);
-      } finally {
-        if (mountedRef.current) setApplying(false);
-      }
-    },
-    [applying, block, motionSelection?.compatible, onApplyMotionPreset],
-  );
+  }, [adding, block.librarySection, block.name, onAddBlock]);
 
   const handleCardKeyDown = useCallback(
     (event: KeyboardEvent<HTMLDivElement>) => {
@@ -915,45 +811,7 @@ const BlockCard = memo(function BlockCard({
         {block.engine?.plugins?.[0] ? (
           <div className="mt-0.5 truncate text-[8px] text-[#209b83]">{block.engine.plugins[0]}</div>
         ) : null}
-        {block.motionPreset ? (
-          <div className="mt-0.5 truncate text-[8px] text-panel-text-3">
-            {locale === "zh" ? "\u53ef\u5e94\u7528\u5230" : "Targets"}:{" "}
-            {block.motionPreset.targets.join(" / ")}
-          </div>
-        ) : null}
-        <div
-          className={`mt-1.5 grid gap-1.5 ${block.motionPreset ? "grid-cols-3" : "grid-cols-2"}`}
-        >
-          {block.motionPreset ? (
-            <button
-              type="button"
-              onClick={handleApply}
-              disabled={!motionSelection?.compatible || applying}
-              title={
-                motionSelection?.compatible
-                  ? locale === "zh"
-                    ? "\u5e94\u7528\u5230\u5f53\u524d\u9009\u4e2d\u5143\u7d20\uff0c\u5e76\u5728\u5c5e\u6027\u9762\u677f\u4e2d\u7ee7\u7eed\u7f16\u8f91"
-                    : "Apply to the selected element and continue editing in Properties"
-                  : locale === "zh"
-                    ? motionSelection?.kinds.includes("caption")
-                      ? "\u5b57\u5e55\u9700\u8981\u53ef\u7f16\u8f91\u7684\u5185\u5bb9\u5305\u88c5\u5143\u7d20"
-                      : "\u5148\u9009\u4e2d\u517c\u5bb9\u7684\u5b57\u5e55\u3001\u6587\u5b57\u3001\u56fe\u7247\u3001\u56fe\u5f62\u6216\u7ec4"
-                    : (motionSelection?.reason ?? "Select a compatible element first")
-              }
-              className="flex h-7 min-w-0 items-center justify-center rounded-md bg-[#20bbc0]/12 px-1 text-[9px] font-semibold text-[#168e92] transition-colors hover:bg-[#20bbc0]/20 disabled:cursor-not-allowed disabled:bg-panel-input disabled:text-panel-text-3"
-              data-testid="apply-motion-preset"
-            >
-              <span className="truncate">
-                {applying
-                  ? locale === "zh"
-                    ? "\u5e94\u7528\u4e2d"
-                    : "Applying"
-                  : locale === "zh"
-                    ? "\u5e94\u7528"
-                    : "Apply"}
-              </span>
-            </button>
-          ) : null}
+        <div className="mt-1.5 grid grid-cols-2 gap-1.5">
           <button
             type="button"
             onClick={(event) => {
@@ -962,19 +820,27 @@ const BlockCard = memo(function BlockCard({
             }}
             title={
               locale === "zh"
-                ? "\u5728\u5f53\u524d\u64ad\u653e\u5934\u4f4d\u7f6e\u6dfb\u52a0"
-                : "Add at the current playhead"
+                ? block.librarySection === "opening-effect"
+                  ? "插入到视频开头并顺延现有内容"
+                  : block.librarySection === "ending-effect"
+                    ? "追加到视频末尾"
+                    : "插入到选中片段与下一片段之间"
+                : block.librarySection === "opening-effect"
+                  ? "Insert at the start and shift existing content"
+                  : block.librarySection === "ending-effect"
+                    ? "Append to the end of the video"
+                    : "Insert between the selected clip and the next clip"
             }
             className="flex h-7 min-w-0 items-center justify-center rounded-md border border-panel-border bg-panel-bg px-1 text-[9px] font-semibold text-panel-text-1 transition-colors hover:bg-panel-input"
           >
             <span className="truncate">
               {adding
                 ? locale === "zh"
-                  ? "\u5df2\u6dfb\u52a0"
+                  ? "已插入"
                   : "Added"
                 : locale === "zh"
-                  ? "\u6dfb\u52a0"
-                  : "Add"}
+                  ? "插入片段"
+                  : "Insert clip"}
             </span>
           </button>
           <button

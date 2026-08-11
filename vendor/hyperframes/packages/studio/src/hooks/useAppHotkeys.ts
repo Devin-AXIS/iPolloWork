@@ -298,6 +298,12 @@ function dispatchPlainKey(event: KeyboardEvent, key: string, cb: HotkeyCallbacks
     const { selectedElementId, selectedElementIds, elements } = usePlayerStore.getState();
     const selectionKeys = new Set(selectedElementIds);
     if (selectedElementId) selectionKeys.add(selectedElementId);
+    const domSel = cb.domEditSelectionRef.current;
+    if (domSel && selectionKeys.size <= 1) {
+      event.preventDefault();
+      void cb.handleDomEditElementDelete(domSel);
+      return;
+    }
     if (selectionKeys.size > 0) {
       const el = elements.find((e) => selectionKeys.has(e.key ?? e.id));
       if (el) {
@@ -306,7 +312,6 @@ function dispatchPlainKey(event: KeyboardEvent, key: string, cb: HotkeyCallbacks
         return;
       }
     }
-    const domSel = cb.domEditSelectionRef.current;
     if (domSel) {
       event.preventDefault();
       void cb.handleDomEditElementDelete(domSel);

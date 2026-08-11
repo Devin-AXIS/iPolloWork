@@ -13,7 +13,7 @@ function item(name: string, plugins: string[]): CatalogItem {
     version: "1.0.0",
     type: "hyperframes:block",
     kind: "effect",
-    librarySection: "opening-animation",
+    librarySection: "opening-effect",
     category: "effects",
     title: name,
     description: name,
@@ -57,8 +57,10 @@ describe("isGsapCatalogItem", () => {
 
 describe("isCatalogLibrarySection", () => {
   it("accepts only explicit library section values", () => {
-    expect(isCatalogLibrarySection("opening-animation")).toBe(true);
-    expect(isCatalogLibrarySection("caption-animation")).toBe(true);
+    expect(isCatalogLibrarySection("opening-effect")).toBe(true);
+    expect(isCatalogLibrarySection("transition-effect")).toBe(true);
+    expect(isCatalogLibrarySection("opening-animation")).toBe(false);
+    expect(isCatalogLibrarySection("caption-animation")).toBe(false);
     expect(isCatalogLibrarySection(undefined)).toBe(false);
     expect(isCatalogLibrarySection("background-scene")).toBe(false);
     expect(isCatalogLibrarySection("effects")).toBe(false);

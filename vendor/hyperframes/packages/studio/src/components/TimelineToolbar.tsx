@@ -101,8 +101,13 @@ export function TimelineToolbar({
   );
   const currentTime = usePlayerStore((s) => s.currentTime);
   const selectedElementId = usePlayerStore((s) => s.selectedElementId);
+  const selectedElementIds = usePlayerStore((s) => s.selectedElementIds);
   const elements = useExpandedTimelineElements();
-  const selectedElement = findSelectedTimelineElement(elements, selectedElementId);
+  const selectedElement = findSelectedTimelineElement(
+    elements,
+    selectedElementId,
+    selectedElementIds,
+  );
   const { zoomMode, manualZoomPercent, setZoomMode, setManualZoomPercent } = useTimelineZoom();
   const timelineZoomPercent = getTimelineZoomPercent(zoomMode, manualZoomPercent);
   const { state: keyframeState, onToggle: onToggleKeyframe } = useKeyframeToggle(domEditSession);
@@ -239,16 +244,14 @@ export function TimelineToolbar({
             aria-label={tx("Delete selected element")}
             aria-busy={pendingAction === "delete"}
             onClick={() => {
+              if (domEditSession?.domEditSelection && onDeleteDomElement) {
+                const selection = domEditSession.domEditSelection;
+                void runSelectionAction("delete", () => onDeleteDomElement(selection));
+                return;
+              }
               if (selectedElement && onDeleteElement) {
                 void runSelectionAction("delete", () =>
                   onDeleteElement(rebaseExpandedTimelineEdit(selectedElement, currentTime).element),
-                );
-                return;
-              }
-              if (domEditSession?.domEditSelection && onDeleteDomElement) {
-                const selection = domEditSession.domEditSelection;
-                void runSelectionAction("delete", () =>
-                  onDeleteDomElement(selection),
                 );
               }
             }}

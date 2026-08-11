@@ -1,7 +1,10 @@
 import { useCallback, useEffect, useRef } from "react";
 import { liveTime, usePlayerStore } from "../player";
 import { pauseStudioPreviewPlayback } from "../utils/studioPreviewHelpers";
-import { STUDIO_PREVIEW_SELECTION_ENABLED } from "../components/editor/manualEditingAvailability";
+import {
+  STUDIO_MULTI_SELECTION_ENABLED,
+  STUDIO_PREVIEW_SELECTION_ENABLED,
+} from "../components/editor/manualEditingAvailability";
 import { type DomEditSelection } from "../components/editor/domEditing";
 import type { ApplyDomSelectionOptions, ResolveDomSelectionOptions } from "./useDomSelection";
 
@@ -106,7 +109,7 @@ export function usePreviewInteraction({
         if (wasPlaying) usePlayerStore.getState().setIsPlaying(true);
       };
 
-      if (e.shiftKey) {
+      if (STUDIO_MULTI_SELECTION_ENABLED && e.shiftKey) {
         // Additive selection — no cycling
         const nextSelection =
           (await resolveDomSelectionFromPreviewPoint(e.clientX, e.clientY, {

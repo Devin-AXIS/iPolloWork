@@ -66,6 +66,7 @@ export function resolveSelectorElementIds(
 /** The selected element's identity for matching tweens to it. */
 export interface GsapElementTarget {
   id?: string | null;
+  hfId?: string | null;
   selector?: string | null;
 }
 
@@ -96,7 +97,8 @@ export function getAnimationsForElement(
     const motion = readMotionInstanceFromExtras(a.extras);
     if (
       motion &&
-      ((target.id && motion.target.elementId === target.id) ||
+      ((target.hfId && motion.target.hfId === target.hfId) ||
+        (target.id && motion.target.elementId === target.id) ||
         (target.selector && motion.target.selector === target.selector) ||
         (target.id && motion.target.selector === `#${target.id}`))
     ) {
@@ -199,7 +201,7 @@ export function useGsapAnimationsForElement(
   );
 
   useEffect(() => {
-    const targetKey = target?.id ?? target?.selector ?? "";
+    const targetKey = target?.hfId ?? target?.id ?? target?.selector ?? "";
     const fetchKey = `${projectId}:${sourceFile}:${version}:${targetKey}`;
     if (fetchKey === lastFetchKeyRef.current) return;
     lastFetchKeyRef.current = fetchKey;
@@ -253,12 +255,13 @@ export function useGsapAnimationsForElement(
         retryTimerRef.current = null;
       }
     };
-  }, [projectId, sourceFile, version, target?.id, target?.selector]);
+  }, [projectId, sourceFile, version, target?.hfId, target?.id, target?.selector]);
 
+  const targetHfId = target?.hfId ?? null;
   const targetId = target?.id ?? null;
   const targetSelector = target?.selector ?? null;
   const rawAnimations = useMemo(() => {
-    if (!targetId && !targetSelector) return [];
+    if (!targetHfId && !targetId && !targetSelector) return [];
     // Resolve the live element so class / descendant tweens (e.g.
     // gsap.from(".dot", {stagger})) attribute to every matching element, not
     // just the one whose exact selector equals the tween's. `version` re-runs
@@ -276,11 +279,11 @@ export function useGsapAnimationsForElement(
     }
     return getAnimationsForElement(
       allAnimations,
-      { id: targetId, selector: targetSelector },
+      { hfId: targetHfId, id: targetId, selector: targetSelector },
       element,
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [allAnimations, targetId, targetSelector, version, iframeRef]);
+  }, [allAnimations, targetHfId, targetId, targetSelector, version, iframeRef]);
 
   // fallow-ignore-next-line complexity
   const animations = useMemo(() => {

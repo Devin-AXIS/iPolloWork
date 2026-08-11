@@ -79,10 +79,12 @@ import {
   MOTION_PRESETS,
   compileMotionInstance,
   createMotionInstance,
+  defaultMotionDuration,
   getMotionPreset,
   listMotionPresets,
   readMotionInstanceFromExtras,
   type MotionParameters,
+  type MotionInstance,
   type MotionPhase,
   type MotionTargetKind,
   type MotionTextUnit,
@@ -786,6 +788,7 @@ type GsapMutationRequest =
       presetId?: string;
       start?: number;
       duration?: number;
+      loop?: boolean;
       parameters?: MotionParameters;
       elementId?: string;
       hfId?: string;
@@ -1109,12 +1112,44 @@ function isLeafTextMotionTarget(target: Element): boolean {
   return (target.textContent ?? "").trim().length > 0;
 }
 
-function readOwnerTiming(target: Element): { start: number; duration: number } {
-  const start = Number.parseFloat(target.getAttribute("data-start") ?? "0");
-  const duration = Number.parseFloat(target.getAttribute("data-duration") ?? "1");
+/**
+ * Semantic motion targets can acquire a more stable selector over time (for
+ * example `.card` becomes `[data-hf-id="..."]`). Treat both selectors as the
+ * same target when they resolve to the same DOM element, otherwise applying a
+ * replacement preset leaves the older tween behind and the inspector can edit
+ * the wrong animation.
+ */
+function motionInstanceTargetsElement(
+  document: Document,
+  target: Element,
+  instance: MotionInstance,
+): boolean {
+  const hfId = target.getAttribute("data-hf-id");
+  if (hfId && instance.target.hfId === hfId) return true;
+  const elementId = target.getAttribute("id");
+  if (elementId && instance.target.elementId === elementId) return true;
+  const resolved = resolveSingleMotionTarget(document, instance.target.selector);
+  return "target" in resolved && resolved.target === target;
+}
+
+function readOwnerTiming(target: Element): {
+  start: number;
+  duration: number;
+  constrained: boolean;
+} {
+  const owner = target.closest(
+    ".clip, [data-start][data-duration], [data-composition-id][data-duration]",
+  );
+  const start = Number.parseFloat(owner?.getAttribute("data-start") ?? "0");
+  const duration = Number.parseFloat(owner?.getAttribute("data-duration") ?? "1");
   return {
     start: Number.isFinite(start) && start >= 0 ? start : 0,
     duration: Number.isFinite(duration) && duration > 0 ? duration : 1,
+    constrained:
+      owner !== null &&
+      Number.isFinite(duration) &&
+      duration > 0 &&
+      owner.hasAttribute("data-duration"),
   };
 }
 
@@ -1128,9 +1163,40 @@ function defaultMotionStart(
   return owner.start + Math.max(0, (owner.duration - duration) / 2);
 }
 
+function resolveMotionTiming(
+  phase: MotionPhase,
+  owner: { start: number; duration: number; constrained: boolean },
+  requestedDuration: number,
+  requestedStart?: number,
+): { start: number; duration: number } {
+  const duration = owner.constrained
+    ? Math.min(Math.max(0.1, requestedDuration), owner.duration)
+    : Math.max(0.1, requestedDuration);
+  const latestStart = owner.start + owner.duration - duration;
+  const fallback = defaultMotionStart(phase, owner, duration);
+  const start =
+    requestedStart !== undefined &&
+    Number.isFinite(requestedStart) &&
+    (!owner.constrained ||
+      (requestedStart >= owner.start && requestedStart <= latestStart))
+      ? requestedStart
+      : fallback;
+  return { start, duration };
+}
+
+function resolveMotionRepeat(
+  owner: { start: number; duration: number; constrained: boolean },
+  timing: { start: number; duration: number },
+  loop: boolean,
+): number {
+  if (!loop) return 0;
+  if (!owner.constrained) return 1;
+  const available = owner.start + owner.duration - timing.start;
+  return Math.max(0, Math.floor(available / timing.duration) - 1);
+}
+
 function updateMotionReferenceAttribute(
   target: Element,
-  targetSelector: string,
   script: string,
 ): void {
   const existing = (target.getAttribute("data-ipw-animation-reference") ?? "")
@@ -1139,7 +1205,10 @@ function updateMotionReferenceAttribute(
     .filter((value) => value && !MOTION_PRESET_IDS.has(value));
   const semantic = parseGsapScriptAcorn(script)
     .animations.map((animation) => readMotionInstanceFromExtras(animation.extras))
-    .filter((instance) => instance?.target.selector === targetSelector)
+    .filter(
+      (instance): instance is MotionInstance =>
+        instance !== null && motionInstanceTargetsElement(target.ownerDocument, target, instance),
+    )
     .map((instance) => instance!.presetId);
   const values = Array.from(new Set([...existing, ...semantic]));
   if (values.length > 0) target.setAttribute("data-ipw-animation-reference", values.join(","));
@@ -1161,7 +1230,9 @@ function executeMotionMutation(
   const parsed = parseGsapScriptAcorn(block.scriptText);
   const existing = parsed.animations.flatMap((animation) => {
     const instance = readMotionInstanceFromExtras(animation.extras);
-    return instance?.target.selector === body.targetSelector && instance.phase === body.phase
+    return instance &&
+      motionInstanceTargetsElement(block.document, target, instance) &&
+      instance.phase === body.phase
       ? [{ animation, instance }]
       : [];
   });
@@ -1185,10 +1256,15 @@ function executeMotionMutation(
               preset.parameterSchema.some((parameter) => parameter.id === key),
             ),
           );
-    const duration = body.duration ?? prior?.instance.duration;
-    const resolvedDuration = duration ?? (preset.phase === "emphasis" ? 0.8 : 0.65);
     const owner = readOwnerTiming(target);
+    const timing = resolveMotionTiming(
+      preset.phase,
+      owner,
+      body.duration ?? prior?.instance.duration ?? defaultMotionDuration(preset),
+      body.start ?? prior?.animation.resolvedStart,
+    );
     const parameters = { ...priorParameters, ...body.parameters };
+    const loop = body.loop ?? prior?.instance.loop ?? false;
     if (target.hasAttribute("data-var-text") && "unit" in parameters) {
       parameters.unit = "whole";
     }
@@ -1203,10 +1279,10 @@ function executeMotionMutation(
         },
         targetKind: body.targetKind,
         start:
-          body.start ??
-          prior?.animation.resolvedStart ??
-          defaultMotionStart(preset.phase, owner, resolvedDuration),
-        duration: resolvedDuration,
+          timing.start,
+        duration: timing.duration,
+        loop,
+        repeat: resolveMotionRepeat(owner, timing, loop),
         parameters,
       });
     } catch (error) {
@@ -1233,7 +1309,10 @@ function executeMotionMutation(
 
   const remainingInstances = parseGsapScriptAcorn(script)
     .animations.map((animation) => readMotionInstanceFromExtras(animation.extras))
-    .filter((instance) => instance?.target.selector === body.targetSelector);
+    .filter(
+      (instance): instance is MotionInstance =>
+        instance !== null && motionInstanceTargetsElement(block.document, target, instance),
+    );
   if (!remainingInstances.some((instance) => motionUnit(instance!.parameters) !== "whole")) {
     unwrapMotionText(target);
   }
@@ -1242,7 +1321,7 @@ function executeMotionMutation(
   } else {
     target.removeAttribute("data-ipw-motion-selector");
   }
-  updateMotionReferenceAttribute(target, body.targetSelector, script);
+  updateMotionReferenceAttribute(target, script);
   return script;
 }
 

@@ -68,6 +68,12 @@ export function readTimelineElementZIndex(el: Element): number {
   return 0;
 }
 
+/** Read the editor-only clip caption without coupling it to the layer-tree label. */
+export function readTimelineClipLabel(el: Element | null | undefined): string | undefined {
+  const label = el?.getAttribute("data-timeline-clip-label")?.trim();
+  return label || undefined;
+}
+
 function readDurationAttribute(el: Element | null | undefined): number {
   if (!el) return 0;
   const duration =

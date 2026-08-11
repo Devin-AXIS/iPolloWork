@@ -3,21 +3,30 @@ import type { TimelineElement } from "../player/store/playerStore";
 export function findSelectedTimelineElement(
   elements: readonly TimelineElement[],
   selectedElementId: string | null,
+  selectedElementIds: ReadonlySet<string> = new Set(),
 ): TimelineElement | null {
-  if (!selectedElementId) return null;
-  const exact = elements.find(
-    (element) => element.key === selectedElementId || element.id === selectedElementId,
-  );
-  if (exact) return exact;
+  const selectionIds = selectedElementId
+    ? [selectedElementId, ...selectedElementIds].filter(
+        (id, index, ids) => ids.indexOf(id) === index,
+      )
+    : [...selectedElementIds];
 
-  // Preview/DOM selection stores the source id (or hf id), while expanded
-  // timeline rows use a source-qualified key. Resolve those aliases only after
-  // exact keys so a top-level id always wins over a nested duplicate.
-  return (
-    elements.find(
-      (element) => element.domId === selectedElementId || element.hfId === selectedElementId,
-    ) ?? null
-  );
+  for (const selectionId of selectionIds) {
+    const exact = elements.find(
+      (element) => element.key === selectionId || element.id === selectionId,
+    );
+    if (exact) return exact;
+
+    // Preview/DOM selection stores the source id (or hf id), while expanded
+    // timeline rows use a source-qualified key. Resolve those aliases only after
+    // exact keys so a top-level id always wins over a nested duplicate.
+    const alias = elements.find(
+      (element) => element.domId === selectionId || element.hfId === selectionId,
+    );
+    if (alias) return alias;
+  }
+
+  return null;
 }
 
 export function rebaseExpandedTimelineEdit(

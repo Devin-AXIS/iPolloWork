@@ -71,6 +71,45 @@ describe("motion presets", () => {
     expect(readMotionInstanceFromExtras({ data: compiled.extras.data })).toEqual(instance);
   });
 
+  it("defaults every motion preset to one non-looping play", () => {
+    for (const preset of MOTION_PRESETS) {
+      const targetKind = preset.targetKinds[0];
+      if (!targetKind) {
+        throw new Error(`Motion preset ${preset.id} has no target kind`);
+      }
+
+      const instance = createMotionInstance({
+        presetId: preset.id,
+        target: { selector: `#target-${preset.id.replaceAll(".", "-")}` },
+        targetKind,
+        start: 0,
+      });
+      const compiled = compileMotionInstance(instance);
+
+      expect(instance).toMatchObject({ loop: false, repeat: 0 });
+      expect(compiled.extras).not.toHaveProperty("repeat");
+    }
+  });
+
+  it("persists loop intent as a finite GSAP repeat count", () => {
+    const instance = createMotionInstance({
+      presetId: "element.emphasis.pulse",
+      target: { selector: "#card", elementId: "card" },
+      targetKind: "element",
+      start: 0,
+      duration: 0.8,
+      loop: true,
+      repeat: 4,
+    });
+    const compiled = compileMotionInstance(instance);
+
+    expect(compiled.extras.repeat).toBe(4);
+    expect(readMotionInstanceFromExtras({ data: compiled.extras.data })).toMatchObject({
+      loop: true,
+      repeat: 4,
+    });
+  });
+
   it("targets deterministic word and grapheme wrappers without changing the engine", () => {
     const character = compileMotionInstance(
       createMotionInstance({

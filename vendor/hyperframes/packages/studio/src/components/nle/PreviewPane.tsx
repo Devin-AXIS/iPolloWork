@@ -6,7 +6,11 @@ import {
   useSyncExternalStore,
   type ReactNode,
 } from "react";
-import { PlayerControls } from "../../player";
+import {
+  CompositionRefreshLoadingOverlay,
+  PlayerControls,
+  usePlayerStore,
+} from "../../player";
 import { NLEPreview } from "./NLEPreview";
 import { CompositionBreadcrumb } from "./CompositionBreadcrumb";
 import { usePreviewBlockDrop } from "./usePreviewBlockDrop";
@@ -14,6 +18,7 @@ import { useNLEContext } from "./NLEContext";
 import { AssetPreviewOverlay } from "./AssetPreviewOverlay";
 import { useDomEditSelectionContext } from "../../contexts/DomEditContext";
 import { PreviewTextSelectionToolbar } from "./PreviewTextSelectionToolbar";
+import { useStudioPlaybackContext } from "../../contexts/StudioContext";
 
 function subscribeFullscreen(cb: () => void) {
   document.addEventListener("fullscreenchange", cb);
@@ -59,6 +64,8 @@ export function PreviewPane({
     previewCompositionSize,
     setPreviewCompositionSize,
   } = useNLEContext();
+  const { compositionLoading: studioCompositionLoading } = useStudioPlaybackContext();
+  const previewDeletePending = usePlayerStore((state) => state.previewDeletePending);
   const { domEditSelection } = useDomEditSelectionContext();
 
   const stageRefForDrop = useRef<HTMLDivElement | null>(null);
@@ -187,6 +194,9 @@ export function PreviewPane({
             <div className="absolute inset-2 z-40 rounded-lg border-2 border-dashed border-studio-accent/50 bg-studio-accent/[0.04] pointer-events-none" />
           )}
           <AssetPreviewOverlay />
+          {(previewDeletePending || (studioCompositionLoading && hasLoadedOnceRef.current)) && (
+            <CompositionRefreshLoadingOverlay />
+          )}
         </div>
         {!isFullscreen && editingEnabled && previewOverlay}
         <PreviewTextSelectionToolbar

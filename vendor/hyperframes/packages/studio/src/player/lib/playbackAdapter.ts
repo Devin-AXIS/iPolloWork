@@ -43,16 +43,33 @@ export function shouldUseStudioClockForLegacyFrames(
 ): boolean {
   if (!doc || !adapter || !isFinitePositive(duration)) return false;
   try {
-    return doc.querySelectorAll(".frame").length >= 2 &&
-      ("renderSeek" in adapter || typeof adapter.seek === "function");
+    return (
+      doc.querySelectorAll(".frame").length >= 2 &&
+      ("renderSeek" in adapter || typeof adapter.seek === "function")
+    );
   } catch {
     return false;
   }
 }
 
+export function shouldUseDirectTimelineAdapter(
+  hasRuntimePlayer: boolean,
+  timelineDuration: number,
+  documentDuration: number,
+): boolean {
+  // The runtime player owns the transport clock, timed visibility, media, and
+  // nested composition seeking. If it exists but is still publishing its full
+  // duration, falling through to a raw GSAP timeline makes Studio's playhead
+  // diverge from that clock and the runtime hides the newly selected clip again.
+  return !hasRuntimePlayer && timelineDuration > 0 && documentDuration <= timelineDuration;
+}
+
 const durationLimitAdapterCache = new WeakMap<PlaybackAdapter, Map<number, PlaybackAdapter>>();
 
-export function wrapAdapterWithDurationLimit(adapter: PlaybackAdapter, duration: number): PlaybackAdapter {
+export function wrapAdapterWithDurationLimit(
+  adapter: PlaybackAdapter,
+  duration: number,
+): PlaybackAdapter {
   const safeDuration = Math.max(0, Number.isFinite(duration) ? duration : 0);
   if (safeDuration <= 0) return adapter;
   let byDuration = durationLimitAdapterCache.get(adapter);

@@ -2248,7 +2248,12 @@ export function initSandboxRuntimeModular(): void {
       state.mediaForceSyncNextTick = true;
       const tl = state.capturedTimeline;
       pauseTimelineIfPossible(tl);
-      seekTimelineAndAdapters(state.currentTime);
+      // Paused Studio seeks must render registered sub-compositions too. Those
+      // timelines are authored paused and may also have been paused separately
+      // from the master, so a plain master totalTime() leaves effect content at
+      // its transparent first frame. This is the same deterministic child
+      // activation used by export renderSeek, without changing the seek time.
+      seekTimelineAndAdapters(state.currentTime, { activateChildren: true });
       runAdapters("pause");
       if (options?.keepPlaying && wasPlaying) {
         transport.play();
@@ -2790,13 +2795,6 @@ export function initSandboxRuntimeModular(): void {
       } catch (err) {
         swallow("runtime.init.transport.seek", err);
       }
-      // Sibling timelines (registered in __timelines but not nested under
-      // the root) are paused alongside the master. We do NOT seek them to
-      // absolute position `t` here — child timelines nested under the root
-      // are already propagated via tl.totalTime(), and seeking them again
-      // at absolute `t` would clobber their offset-relative position.
-      // Play/pause propagation for siblings happens in the player.play()
-      // and player.pause() overrides via the adapter layer.
     } else {
       seekStandaloneRegisteredTimelines(t, opts);
     }

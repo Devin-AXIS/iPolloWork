@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import { CaptionOverlay } from "../../captions/components/CaptionOverlay";
 import { DomEditOverlay } from "../editor/DomEditOverlay";
 import { MotionPathOverlay } from "../editor/MotionPathOverlay";
@@ -8,6 +8,7 @@ import {
   STUDIO_INSPECTOR_PANELS_ENABLED,
   STUDIO_KEYFRAMES_ENABLED,
   STUDIO_MOTION_PATH_OVERLAY_ENABLED,
+  STUDIO_MULTI_SELECTION_ENABLED,
   STUDIO_PREVIEW_MANUAL_EDITING_ENABLED,
   STUDIO_PREVIEW_SELECTION_ENABLED,
 } from "../editor/manualEditingAvailability";
@@ -24,6 +25,7 @@ import { zReorderCoalesceKey } from "../../hooks/useElementLifecycleOps";
 import { useCanvasZOrderTimelineMirror } from "./useCanvasZOrderTimelineMirror";
 import { runZLaneGesture } from "./zLaneGesture";
 import type { GestureRecordingState } from "../editor/GestureRecordControl";
+import type { ZOrderAction, ZOrderPatch } from "../editor/canvasContextMenuZOrder";
 import type { ReactNode } from "react";
 
 export interface PreviewOverlaysProps {
@@ -129,6 +131,51 @@ export function resolveZIndexEntries(
   return { entries, dropped };
 }
 
+type CommitDomZIndexReorder = ReturnType<
+  typeof useDomEditActionsContext
+>["handleDomZIndexReorderCommit"];
+
+/** Persist one z-order gesture and mirror it into the timeline lane order. */
+export function useCommitDomZOrder(
+  handleDomZIndexReorderCommit: CommitDomZIndexReorder,
+): (
+  selection: DomEditSelection,
+  patches: ZOrderPatch[],
+  action: ZOrderAction,
+  crossed: HTMLElement | null,
+) => void {
+  const mirrorZOrderToTimeline = useCanvasZOrderTimelineMirror();
+
+  return useCallback(
+    (selection, patches, action, crossed) => {
+      const { entries, dropped } = resolveZIndexEntries(selection, patches);
+      if (dropped.length > 0) {
+        for (const patch of dropped) patch.element.style.zIndex = String(patch.zIndex);
+        console.warn(
+          "[studio] z-index reorder: dropping sibling(s) with no stable id/selector " +
+            "(will revert on reload):",
+          dropped.map((patch) => describeZIndexElement(patch.element)).join(", "),
+        );
+      }
+      if (entries.length === 0) return;
+
+      const coalesceKey = zReorderCoalesceKey(entries, action);
+      runZLaneGesture({
+        commitZ: () => handleDomZIndexReorderCommit(entries, coalesceKey, action),
+        mirror: () =>
+          mirrorZOrderToTimeline({
+            selectionKey: entries.find((entry) => entry.element === selection.element)?.key,
+            action,
+            crossed,
+            sourceFile: selection.sourceFile,
+            coalesceKey,
+          }),
+      }).catch(() => undefined);
+    },
+    [handleDomZIndexReorderCommit, mirrorZOrderToTimeline],
+  );
+}
+
 // fallow-ignore-next-line complexity
 export function PreviewOverlays({
   shouldShowSelectedDomBounds,
@@ -159,7 +206,7 @@ export function PreviewOverlays({
     handleDomEditElementDelete,
     handleDomZIndexReorderCommit,
   } = useDomEditActionsContext();
-  const mirrorZOrderToTimeline = useCanvasZOrderTimelineMirror();
+  const commitDomZOrder = useCommitDomZOrder(handleDomZIndexReorderCommit);
 
   // fallow-ignore-next-line complexity
   const [snapPrefs, setSnapPrefs] = useState(() => {
@@ -189,7 +236,11 @@ export function PreviewOverlays({
             : null
         }
         selection={shouldShowSelectedDomBounds ? domEditSelection : null}
-        groupSelections={shouldShowSelectedDomBounds ? domEditGroupSelections : []}
+        groupSelections={
+          STUDIO_MULTI_SELECTION_ENABLED && shouldShowSelectedDomBounds
+            ? domEditGroupSelections
+            : []
+        }
         allowCanvasMovement={STUDIO_PREVIEW_MANUAL_EDITING_ENABLED && !isGestureRecording}
         onCanvasMouseDown={handlePreviewCanvasMouseDown}
         onCanvasPointerMove={handlePreviewCanvasPointerMove}
@@ -203,47 +254,12 @@ export function PreviewOverlays({
         onRotationCommit={handleDomRotationCommit}
         onStyleCommit={handleDomStyleCommit}
         onDeleteSelection={handleDomEditElementDelete}
-        onApplyZIndex={(sel, patches, action, crossed) => {
-          const { entries, dropped } = resolveZIndexEntries(sel, patches);
-          if (dropped.length > 0) {
-            // These siblings can't be written to source. Apply their live z
-            // anyway so the resolved stacking order renders coherently — it
-            // just reverts to the prior order on the next reload.
-            for (const patch of dropped) patch.element.style.zIndex = String(patch.zIndex);
-            console.warn(
-              "[studio] z-index reorder: dropping sibling(s) with no stable id/selector " +
-                "(will revert on reload):",
-              dropped.map((patch) => describeZIndexElement(patch.element)).join(", "),
-            );
-          }
-          if (entries.length === 0) return;
-          // Shared undo coalesce key: passed to BOTH the z persist and the
-          // timeline lane mirror below so editHistory folds the two records
-          // into one undo entry (same value handleDomZIndexReorderCommit would
-          // default to — passed explicitly so the mirror shares it by
-          // construction, not by formula duplication).
-          const coalesceKey = zReorderCoalesceKey(entries, action);
-          // One serialized z→lane transaction: the mirror runs only AFTER the
-          // z commit resolved AND reported durable targets, and a second rapid
-          // gesture cannot interleave between the two phases — see
-          // runZLaneGesture. A failed z commit already toasted + rolled back.
-          runZLaneGesture({
-            commitZ: () => handleDomZIndexReorderCommit(entries, coalesceKey, action),
-            mirror: () =>
-              mirrorZOrderToTimeline({
-                selectionKey: entries.find((e) => e.element === sel.element)?.key,
-                action,
-                crossed,
-                sourceFile: sel.sourceFile,
-                coalesceKey,
-              }),
-          }).catch(() => undefined);
-        }}
+        onApplyZIndex={commitDomZOrder}
         gridVisible={snapPrefs.gridVisible}
         gridSpacing={snapPrefs.gridSpacing}
         recordingState={recordingState}
         onToggleRecording={onToggleRecording}
-        onMarqueeSelect={applyMarqueeSelection}
+        onMarqueeSelect={STUDIO_MULTI_SELECTION_ENABLED ? applyMarqueeSelection : undefined}
       />
       <SnapToolbar onSnapChange={setSnapPrefs} />
       {STUDIO_MOTION_PATH_OVERLAY_ENABLED && STUDIO_KEYFRAMES_ENABLED && (

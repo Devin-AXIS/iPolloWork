@@ -13,13 +13,9 @@ export type CatalogItem = RegistryItem & {
   librarySection: AnimationLibrarySection;
 };
 
-export type AnimationLibrarySection =
-  | "opening-animation"
-  | "ending-animation"
-  | "transition-animation"
-  | "caption-animation";
+export type AnimationLibrarySection = "opening-effect" | "ending-effect" | "transition-effect";
 
-export type CatalogPage = "animation" | "scene";
+export type CatalogPage = "effects";
 
 export interface CatalogSection {
   id: AnimationLibrarySection;
@@ -27,15 +23,13 @@ export interface CatalogSection {
 }
 
 export const CATALOG_PAGE_SECTIONS: Record<CatalogPage, readonly AnimationLibrarySection[]> = {
-  animation: ["opening-animation", "ending-animation", "transition-animation", "caption-animation"],
-  scene: ["opening-animation", "ending-animation", "transition-animation"],
+  effects: ["opening-effect", "ending-effect", "transition-effect"],
 };
 
 const SECTION_SEARCH_TERMS: Record<AnimationLibrarySection, string> = {
-  "opening-animation": "opening intro title logo 开场 片头 标题",
-  "ending-animation": "ending outro cta logo 结尾 片尾 收束",
-  "transition-animation": "transition scene wipe push 转场 场景 切换",
-  "caption-animation": "caption subtitle text 字幕 文字 逐词",
+  "opening-effect": "opening intro title logo 开头 片头 开场",
+  "ending-effect": "ending outro cta follow social 结尾 片尾 关注 三连",
+  "transition-effect": "transition scene wipe push 转场 场景 切换",
 };
 
 export function resolveGsapCatalogCoverage(items: CatalogItem[]) {
@@ -61,55 +55,71 @@ export function isGsapCatalogItem(item: CatalogItem): boolean {
 }
 
 export function isCatalogLibrarySection(value: unknown): value is AnimationLibrarySection {
-  return (
-    value === "opening-animation" ||
-    value === "ending-animation" ||
-    value === "transition-animation" ||
-    value === "caption-animation"
-  );
+  return value === "opening-effect" || value === "ending-effect" || value === "transition-effect";
+}
+
+let catalogCache: CatalogItem[] | null = null;
+let catalogRequest: Promise<CatalogItem[]> | null = null;
+
+function normalizeCatalogItems(data: RegistryItem[]): CatalogItem[] {
+  return data
+    .filter(
+      (
+        block,
+      ): block is RegistryItem & {
+        librarySection: AnimationLibrarySection;
+      } => isCatalogLibrarySection(block.librarySection),
+    )
+    .map((block) => ({
+      ...block,
+      category: resolveBlockCategory(block.tags),
+      kind: resolveRegistryItemKind(block),
+      librarySection: block.librarySection,
+    }))
+    .sort((a, b) => a.title.localeCompare(b.title));
+}
+
+export function preloadBlockCatalog(): Promise<CatalogItem[]> {
+  if (catalogCache) return Promise.resolve(catalogCache);
+  if (catalogRequest) return catalogRequest;
+
+  catalogRequest = fetch("/api/registry/blocks")
+    .then(async (response) => {
+      if (!response.ok) throw new Error("Failed to load catalog");
+      const data: RegistryItem[] = await response.json();
+      catalogCache = normalizeCatalogItems(data);
+      return catalogCache;
+    })
+    .catch((error: unknown) => {
+      catalogRequest = null;
+      throw error;
+    });
+  return catalogRequest;
 }
 
 export function useBlockCatalog(page: CatalogPage) {
-  const [blocks, setBlocks] = useState<CatalogItem[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [blocks, setBlocks] = useState<CatalogItem[]>(() => catalogCache ?? []);
+  const [loading, setLoading] = useState(() => catalogCache === null);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
 
   useEffect(() => {
-    const controller = new AbortController();
+    let active = true;
     (async () => {
       try {
-        const res = await fetch("/api/registry/blocks", { signal: controller.signal });
-        if (!res.ok) throw new Error("Failed to load catalog");
-        const data: RegistryItem[] = await res.json();
-        const items = data
-          .filter(
-            (
-              block,
-            ): block is RegistryItem & {
-              librarySection: AnimationLibrarySection;
-            } => isCatalogLibrarySection(block.librarySection),
-          )
-          .map((block) => {
-            const category = resolveBlockCategory(block.tags);
-            return {
-              ...block,
-              category,
-              kind: resolveRegistryItemKind(block),
-              librarySection: block.librarySection,
-            };
-          })
-          .sort((a, b) => a.title.localeCompare(b.title));
-        if (controller.signal.aborted) return;
+        const items = await preloadBlockCatalog();
+        if (!active) return;
         setBlocks(items);
       } catch (err) {
-        if (controller.signal.aborted) return;
+        if (!active) return;
         setError(err instanceof Error ? err.message : "Failed to load catalog");
       } finally {
-        if (!controller.signal.aborted) setLoading(false);
+        if (active) setLoading(false);
       }
     })();
-    return () => controller.abort();
+    return () => {
+      active = false;
+    };
   }, []);
 
   const pageSections = CATALOG_PAGE_SECTIONS[page];

@@ -2,6 +2,7 @@ import { memo, useState, useCallback, useRef } from "react";
 import { useCaptionStore } from "../store";
 import { useMountEffect } from "../../hooks/useMountEffect";
 import { shouldHandleCaptionNudgeKey } from "../keyboard";
+import { STUDIO_MULTI_SELECTION_ENABLED } from "../../components/editor/manualEditingAvailability";
 import {
   readWordBoxes,
   getWordEl,
@@ -317,7 +318,7 @@ export const CaptionOverlay = memo(function CaptionOverlay({ iframeRef }: Captio
             }}
             onClick={(e) => {
               e.stopPropagation();
-              selectSegment(box.segmentId, e.shiftKey);
+              selectSegment(box.segmentId, STUDIO_MULTI_SELECTION_ENABLED && e.shiftKey);
             }}
             onPointerDown={(e) => {
               if (isSelected) startMove(box.groupIndex, box.wordIndex, box.segmentId, e);

@@ -16,6 +16,7 @@ import {
   type MarqueeClipInput,
 } from "./timelineMarquee";
 import type { Rect } from "../../utils/marqueeGeometry";
+import { STUDIO_MULTI_SELECTION_ENABLED } from "../../components/editor/manualEditingAvailability";
 
 interface UseTimelineRangeSelectionInput {
   scrollRef: React.RefObject<HTMLDivElement | null>;
@@ -241,7 +242,7 @@ export function useTimelineRangeSelection({
   const handlePointerDown = useCallback(
     (e: React.PointerEvent) => {
       if (e.button !== 0) return;
-      if (e.shiftKey) {
+      if (STUDIO_MULTI_SELECTION_ENABLED && e.shiftKey) {
         beginRangeSelection(e);
         return;
       }
@@ -262,6 +263,11 @@ export function useTimelineRangeSelection({
         seekFromX(e.clientX);
         return;
       }
+      if (!STUDIO_MULTI_SELECTION_ENABLED) {
+        usePlayerStore.getState().setSelectedElementId(null);
+        onSelectElement?.(null);
+        return;
+      }
       // Empty body press → pending marquee. A plain click (no drag past the
       // threshold) deselects on pointerup; a drag draws the marquee. Never scrubs.
       const base = snapshotSelection();
@@ -274,7 +280,15 @@ export function useTimelineRangeSelection({
         active: false,
       };
     },
-    [beginRangeSelection, seekFromX, scrollRef, isDragging, setShowPopover, toContentPoint],
+    [
+      beginRangeSelection,
+      seekFromX,
+      scrollRef,
+      isDragging,
+      setShowPopover,
+      toContentPoint,
+      onSelectElement,
+    ],
   );
 
   // Scrub-drag update: live playhead feedback (liveTime) + RAF-throttled seek.
@@ -428,7 +442,7 @@ export function useTimelineRangeSelection({
     rangeSelection,
     setRangeSelection,
     shiftClickClipRef,
-    marqueeRect,
+    marqueeRect: STUDIO_MULTI_SELECTION_ENABLED ? marqueeRect : null,
     isScrubbing,
     handlePointerDown,
     handlePointerMove,

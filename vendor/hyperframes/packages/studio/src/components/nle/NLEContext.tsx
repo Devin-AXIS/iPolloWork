@@ -287,16 +287,16 @@ export function NLEProvider({
 
   const hasLoadedOnceRef = useRef(false);
   const [compositionLoading, setCompositionLoadingRaw] = useState(true);
-  const setCompositionLoading = useCallback((loading: boolean) => {
-    if (!loading) hasLoadedOnceRef.current = true;
-    if (loading && hasLoadedOnceRef.current) return;
-    setCompositionLoadingRaw(loading);
-  }, []);
+  const setCompositionLoading = useCallback(
+    (loading: boolean) => {
+      if (!loading) hasLoadedOnceRef.current = true;
+      if (loading && hasLoadedOnceRef.current) return;
+      setCompositionLoadingRaw(loading);
+      onCompositionLoadingChange?.(loading);
+    },
+    [onCompositionLoadingChange],
+  );
   const timelineDisabled = shouldDisableTimelineWhileCompositionLoading(compositionLoading);
-
-  useEffect(() => {
-    onCompositionLoadingChange?.(compositionLoading);
-  }, [compositionLoading, onCompositionLoadingChange]);
 
   const onIframeRefStable = useRef(onIframeRef);
   onIframeRefStable.current = onIframeRef;

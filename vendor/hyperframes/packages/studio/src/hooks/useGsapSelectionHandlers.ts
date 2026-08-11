@@ -226,16 +226,24 @@ export function useGsapSelectionHandlers({
   );
 
   const handleMotionMutation = useCallback(
-    (targetKind: MotionTargetKind, mutation: MotionMutationInput) => {
-      if (!domEditSelection) return;
-      observeGsapMutation(
-        mutateMotion(domEditSelection, targetKind, mutation),
-        domEditSelection,
-        "mutate-motion",
-        mutation.operation === "remove" ? "Remove motion preset" : "Apply motion preset",
-      );
+    (
+      targetKind: MotionTargetKind,
+      mutation: MotionMutationInput,
+      selectionOverride?: DomEditSelection | null,
+    ) => {
+      const selection = selectionOverride ?? domEditSelection;
+      if (!selection) return Promise.resolve();
+      return mutateMotion(selection, targetKind, mutation).catch((error) => {
+        trackGsapHandlerFailure(
+          error,
+          selection,
+          "mutate-motion",
+          mutation.operation === "remove" ? "Remove motion preset" : "Apply motion preset",
+        );
+      });
     },
-    [domEditSelection, mutateMotion, observeGsapMutation],)
+    [domEditSelection, mutateMotion, trackGsapHandlerFailure],
+  );
   const handleGsapApplyMotionPreset = useCallback(
     (preset: RegistryMotionPreset, label: string, selectionOverride?: DomEditSelection | null) => {
       const selection = selectionOverride ?? domEditSelection;

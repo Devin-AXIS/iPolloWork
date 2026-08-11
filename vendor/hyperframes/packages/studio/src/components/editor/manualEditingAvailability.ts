@@ -86,6 +86,14 @@ export const STUDIO_RAZOR_TOOL_ENABLED = resolveStudioBooleanEnvFlag(
 
 export const STUDIO_PREVIEW_SELECTION_ENABLED = STUDIO_INSPECTOR_PANELS_ENABLED;
 
+// Keep the single-selection interaction model as the default until canvas and
+// timeline multi-selection are ready to ship as one coherent experience.
+export const STUDIO_MULTI_SELECTION_ENABLED = resolveStudioBooleanEnvFlag(
+  env,
+  ["VITE_STUDIO_ENABLE_MULTI_SELECTION"],
+  false,
+);
+
 // Stage 7 Step 3c: SDK cutover — routes inline-style ops through SDK dispatch
 // instead of the server patch-element API. Default false; enable via
 // VITE_STUDIO_SDK_CUTOVER_ENABLED=true. Requires SDK session to be open.

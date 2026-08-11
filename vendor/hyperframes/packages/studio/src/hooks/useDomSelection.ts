@@ -18,7 +18,10 @@ import {
   replaceDomEditGroupSelection,
   seedDomEditGroupWithSelection,
 } from "../utils/domEditHelpers";
-import { STUDIO_INSPECTOR_PANELS_ENABLED } from "../components/editor/manualEditingAvailability";
+import {
+  STUDIO_INSPECTOR_PANELS_ENABLED,
+  STUDIO_MULTI_SELECTION_ENABLED,
+} from "../components/editor/manualEditingAvailability";
 import {
   findElementForSelection,
   findElementForTimelineElement,
@@ -194,10 +197,7 @@ export function useDomSelection({
 
   const applyDomSelection = useCallback(
     // fallow-ignore-next-line complexity
-    (
-      selection: DomEditSelection | null,
-      options?: ApplyDomSelectionOptions,
-    ) => {
+    (selection: DomEditSelection | null, options?: ApplyDomSelectionOptions) => {
       if (!selection) {
         domEditSelectionRef.current = null;
         domEditGroupSelectionsRef.current = [];
@@ -215,19 +215,20 @@ export function useDomSelection({
         return;
       }
 
-      const isAdditiveSelection = Boolean(options?.additive);
+      const isAdditiveSelection = STUDIO_MULTI_SELECTION_ENABLED && Boolean(options?.additive);
+      const preserveGroup = STUDIO_MULTI_SELECTION_ENABLED && Boolean(options?.preserveGroup);
       const currentSelection = domEditSelectionRef.current;
       const previousGroup = domEditGroupSelectionsRef.current;
       const currentGroup = isAdditiveSelection
         ? seedDomEditGroupWithSelection(previousGroup, currentSelection)
         : previousGroup;
       const wasInGroup = domEditSelectionInGroup(currentGroup, selection);
-      const nextGroup = options?.preserveGroup
+      const nextGroup = preserveGroup
         ? replaceDomEditGroupSelection(currentGroup, selection)
         : isAdditiveSelection
           ? toggleDomEditGroupSelection(currentGroup, selection)
           : [selection];
-      const nextSelection = options?.preserveGroup
+      const nextSelection = preserveGroup
         ? selection
         : isAdditiveSelection && wasInGroup
           ? domEditSelectionsTargetSame(currentSelection, selection)
@@ -271,12 +272,7 @@ export function useDomSelection({
 
       setSelectedTimelineElementId(null);
     },
-    [
-      setSelectedTimelineElementId,
-      setRightCollapsed,
-      setRightPanelTab,
-      syncTimelineSelection,
-    ],
+    [setSelectedTimelineElementId, setRightCollapsed, setRightPanelTab, syncTimelineSelection],
   );
 
   const clearDomSelection = useCallback(() => {
@@ -502,12 +498,7 @@ export function useDomSelection({
 
       syncTimelineSelection(nextGroup, nextSelection);
     },
-    [
-      activeCompPath,
-      buildDomSelectionFromTarget,
-      previewIframeRef,
-      syncTimelineSelection,
-    ],
+    [activeCompPath, buildDomSelectionFromTarget, previewIframeRef, syncTimelineSelection],
   );
 
   // ── Effects ──
@@ -567,6 +558,10 @@ export function useDomSelection({
       }
       if (selections.length === 0) {
         if (!additive) applyDomSelection(null, { revealPanel: false });
+        return;
+      }
+      if (!STUDIO_MULTI_SELECTION_ENABLED) {
+        applyDomSelection(selections[0], { revealPanel: false });
         return;
       }
       const current = domEditSelectionRef.current;

@@ -1,5 +1,6 @@
-import { memo, useCallback, useState, useRef } from "react";
+import { memo, useCallback, useEffect, useState, useRef } from "react";
 import { useMountEffect } from "../../hooks/useMountEffect";
+import { computeThumbnailStrip } from "./thumbnailUtils";
 
 interface CompositionThumbnailProps {
   previewUrl: string;
@@ -11,6 +12,8 @@ interface CompositionThumbnailProps {
   duration?: number;
   width?: number;
   height?: number;
+  loading?: "eager" | "lazy";
+  minLoadWidth?: number;
 }
 
 const CLIP_HEIGHT = 66;
@@ -55,6 +58,8 @@ export const CompositionThumbnail = memo(function CompositionThumbnail({
   selectorIndex,
   seekTime = 2,
   duration = 5,
+  loading = "eager",
+  minLoadWidth = 0,
 }: CompositionThumbnailProps) {
   const [containerWidth, setContainerWidth] = useState(0);
   const [loaded, setLoaded] = useState(false);
@@ -88,30 +93,34 @@ export const CompositionThumbnail = memo(function CompositionThumbnail({
     selectorIndex,
     origin: window.location.origin,
   });
-  const frameW = Math.max(48, Math.round(CLIP_HEIGHT * aspect));
-  const frameCount = containerWidth > 0 ? Math.max(1, Math.ceil(containerWidth / frameW)) : 1;
+  const shouldLoad = containerWidth >= minLoadWidth;
+  const { frameW, frameCount } = computeThumbnailStrip(containerWidth, aspect, CLIP_HEIGHT);
+
+  useEffect(() => setLoaded(false), [url]);
 
   return (
     <div ref={setContainerRef} className="absolute inset-0 overflow-hidden">
-      <img
-        src={url}
-        alt=""
-        draggable={false}
-        loading="eager"
-        onLoad={(e) => {
-          const img = e.currentTarget;
-          if (img.naturalWidth > 0 && img.naturalHeight > 0) {
-            setAspect(img.naturalWidth / img.naturalHeight);
-          }
-          setLoaded(true);
-        }}
-        className="hidden"
-      />
+      {shouldLoad && (
+        <img
+          src={url}
+          alt=""
+          draggable={false}
+          loading={loading}
+          onLoad={(e) => {
+            const img = e.currentTarget;
+            if (img.naturalWidth > 0 && img.naturalHeight > 0) {
+              setAspect(img.naturalWidth / img.naturalHeight);
+            }
+            setLoaded(true);
+          }}
+          className="pointer-events-none absolute h-px w-px opacity-0"
+        />
+      )}
 
       {loaded && (
         <div
           className="absolute inset-0 flex"
-          style={{ animation: "hf-thumb-fade 200ms ease-out", mixBlendMode: "lighten" }}
+          style={{ animation: "hf-thumb-fade 200ms ease-out" }}
         >
           {Array.from({ length: frameCount }).map((_, i) => (
             <div
@@ -123,8 +132,8 @@ export const CompositionThumbnail = memo(function CompositionThumbnail({
                 src={url}
                 alt=""
                 draggable={false}
+                loading={loading}
                 className="absolute inset-0 h-full w-full object-cover"
-                style={{ opacity: 0.7 }}
               />
             </div>
           ))}

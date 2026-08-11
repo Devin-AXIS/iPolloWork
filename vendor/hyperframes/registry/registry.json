@@ -734,6 +734,42 @@
     {
       "name": "caption-editorial-snap",
       "type": "hyperframes:block"
+    },
+    {
+      "name": "effect-opening-focus-title",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "effect-opening-orbit-lockup",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "effect-ending-douyin-follow",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "effect-ending-bilibili-triple",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "effect-ending-instagram-follow",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "effect-ending-x-follow",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "effect-transition-ribbon-wipe",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "effect-transition-iris-pulse",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "effect-transition-mosaic-flip",
+      "type": "hyperframes:block"
     }
   ]
 }

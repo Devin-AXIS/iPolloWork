@@ -51,6 +51,26 @@ export function shouldShowRefreshLoadingOverlay({
   return Boolean(suppressLoadingOverlay) && !deferred && compositionLoading;
 }
 
+export function CompositionRefreshLoadingOverlay() {
+  return (
+    <div
+      className="absolute inset-0 bg-black/45 flex items-center justify-center z-30 select-none backdrop-blur-[1px]"
+      data-hyperframes-ignore=""
+      data-testid="composition-refresh-loading-overlay"
+      draggable={false}
+      style={{ transition: "opacity 180ms ease-out" }}
+      onDragStart={(event) => event.preventDefault()}
+      onMouseDown={(event) => event.preventDefault()}
+      onPointerDown={(event) => event.preventDefault()}
+    >
+      <div className="flex flex-col items-center gap-3 px-6 text-center" role="status">
+        <div className="h-4 w-4 animate-spin rounded-full border-2 border-neutral-700 border-t-neutral-500 motion-reduce:animate-none" />
+        <p className="text-xs text-neutral-400">Preparing preview…</p>
+      </div>
+    </div>
+  );
+}
+
 function enableInteractiveIframe(player: HyperframesPlayerElement): void {
   const root = player.shadowRoot;
   if (!root) return;
@@ -421,25 +441,7 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
             />
           </div>
         )}
-        {showRefreshOverlay && (
-          <div
-            className="absolute inset-0 bg-black/45 flex items-center justify-center z-30 select-none backdrop-blur-[1px]"
-            data-hyperframes-ignore=""
-            data-testid="composition-refresh-loading-overlay"
-            draggable={false}
-            style={{
-              transition: "opacity 180ms ease-out",
-            }}
-            onDragStart={(event) => event.preventDefault()}
-            onMouseDown={(event) => event.preventDefault()}
-            onPointerDown={(event) => event.preventDefault()}
-          >
-            <div className="flex flex-col items-center gap-3 px-6 text-center" role="status">
-              <div className="h-4 w-4 animate-spin rounded-full border-2 border-neutral-700 border-t-neutral-500 motion-reduce:animate-none" />
-              <p className="text-xs text-neutral-400">Preparing preview…</p>
-            </div>
-          </div>
-        )}
+        {showRefreshOverlay && <CompositionRefreshLoadingOverlay />}
       </div>
     );
   },

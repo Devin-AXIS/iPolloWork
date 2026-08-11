@@ -1,5 +1,6 @@
 import { memo, useCallback, useRef } from "react";
 import { useCaptionStore } from "../store";
+import { STUDIO_MULTI_SELECTION_ENABLED } from "../../components/editor/manualEditingAvailability";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -94,7 +95,7 @@ export const CaptionTimeline = memo(function CaptionTimeline({
   const handleBlockClick = useCallback(
     (e: React.MouseEvent, segId: string) => {
       e.stopPropagation();
-      selectSegment(segId, e.shiftKey);
+      selectSegment(segId, STUDIO_MULTI_SELECTION_ENABLED && e.shiftKey);
     },
     [selectSegment],
   );

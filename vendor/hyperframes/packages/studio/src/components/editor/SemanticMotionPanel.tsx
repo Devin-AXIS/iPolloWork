@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
 import {
+  compileMotionInstance,
+  createMotionInstance,
   defaultMotionDuration,
   getMotionPreset,
   readMotionInstanceFromExtras,
@@ -11,7 +13,9 @@ import {
   type MotionPreset,
   type MotionTargetKind,
 } from "@hyperframes/core/motion-presets";
+import type { AnimationTemplateDraft } from "../sidebar/AnimationTemplatesTab";
 import { Trash } from "../../icons/SystemIcons";
+import { resolveSemanticMotionTiming } from "../../utils/motionPreset";
 import type { DomEditSelection } from "./domEditing";
 import { isTextEditableSelection } from "./domEditing";
 import { ColorField } from "./propertyPanelColor";
@@ -50,6 +54,226 @@ export function resolveMotionInstances(animations: GsapAnimation[]): ResolvedMot
     const instance = readMotionInstanceFromExtras(animation.extras);
     return instance ? [{ animation, instance }] : [];
   });
+}
+
+interface MotionPreviewTimeline {
+  to?: (
+    target: HTMLElement,
+    vars: Record<string, unknown>,
+    position: number,
+  ) => MotionPreviewTimeline;
+  play?: (position?: number) => MotionPreviewTimeline;
+  kill?: () => void;
+}
+
+type MotionPreviewWindow = Window & {
+  gsap?: {
+    timeline?: (options: Record<string, unknown>) => MotionPreviewTimeline;
+  };
+};
+
+function previewMotionDraft(
+  draft: AnimationTemplateDraft,
+  duration: number,
+  loop: boolean,
+): (() => void) | undefined {
+  const target = draft.selection.element;
+  const win = target.ownerDocument.defaultView as MotionPreviewWindow | null;
+  const timeline = win?.gsap?.timeline?.({ paused: true, repeat: loop ? 1 : 0 });
+  if (!timeline?.to) return undefined;
+  const compiled = compileMotionInstance(
+    createMotionInstance({
+      presetId: draft.presetId,
+      target: { selector: "[data-ipw-motion-preview]" },
+      targetKind: draft.targetKind,
+      start: 0,
+      duration,
+      parameters: draft.parameters,
+    }),
+  );
+  const keyframes = Object.fromEntries(
+    compiled.keyframes.map((frame) => [
+      `${frame.percentage}%`,
+      { ...frame.properties, ...(frame.ease ? { ease: frame.ease } : {}) },
+    ]),
+  );
+  const originalStyle = target.getAttribute("style");
+  timeline.to(
+    target,
+    {
+      keyframes,
+      duration,
+      ease: compiled.ease,
+      ...(typeof compiled.extras.stagger === "number" ? { stagger: compiled.extras.stagger } : {}),
+    },
+    0,
+  );
+  timeline.play?.(0);
+  return () => {
+    timeline.kill?.();
+    if (originalStyle === null) target.removeAttribute("style");
+    else target.setAttribute("style", originalStyle);
+  };
+}
+
+function speedForDuration(preset: MotionPreset, duration: number): number {
+  return Math.max(0.25, Math.min(2, defaultMotionDuration(preset) / duration));
+}
+
+export function AnimationPropertiesPanel({
+  draft,
+  element,
+  animations,
+  onMutate,
+  onApplied,
+}: {
+  draft: AnimationTemplateDraft | null;
+  element: DomEditSelection | null;
+  animations: GsapAnimation[];
+  onMutate: (
+    targetKind: MotionTargetKind,
+    mutation: MotionMutationInput,
+    selectionOverride?: DomEditSelection | null,
+  ) => void | Promise<void>;
+  onApplied: () => void;
+}) {
+  const existing = useMemo(() => resolveMotionInstances(animations).at(-1), [animations]);
+  const selection = draft?.selection ?? element;
+  const presetId = draft?.presetId ?? existing?.instance.presetId;
+  const preset = presetId ? getMotionPreset(presetId) : undefined;
+  const targetKind = draft?.targetKind ?? existing?.instance.targetKind;
+  const parameters = draft?.parameters ?? existing?.instance.parameters;
+  const initialDuration = preset
+    ? !draft && existing?.instance.presetId === preset.id
+      ? existing.instance.duration
+      : defaultMotionDuration(preset)
+    : 0.65;
+  const initialLoop =
+    !draft &&
+    existing !== undefined &&
+    existing.instance.presetId === presetId &&
+    existing.instance.loop;
+  const [speed, setSpeed] = useState(() =>
+    preset ? speedForDuration(preset, initialDuration) : 1,
+  );
+  const [loop, setLoop] = useState(Boolean(initialLoop));
+  const speedRef = useRef(speed);
+  const loopRef = useRef(loop);
+  const signature = `${selection?.sourceFile ?? ""}:${selection?.id ?? selection?.hfId ?? selection?.selector ?? ""}:${presetId ?? ""}`;
+  const previewSignature =
+    selection && preset && targetKind && parameters
+      ? JSON.stringify({
+          templateId: draft?.templateId ?? `applied:${preset.id}`,
+          sourceFile: selection.sourceFile,
+          compositionPath: selection.compositionPath,
+          locator: selection.hfId ?? selection.id ?? selection.selector,
+          presetId: preset.id,
+          targetKind,
+          parameters,
+        })
+      : "";
+
+  useEffect(() => {
+    const nextSpeed = preset ? speedForDuration(preset, initialDuration) : 1;
+    const nextLoop = Boolean(initialLoop);
+    speedRef.current = nextSpeed;
+    loopRef.current = nextLoop;
+    setSpeed(nextSpeed);
+    setLoop(nextLoop);
+  }, [initialDuration, initialLoop, preset, signature]);
+
+  const duration = preset ? Number((defaultMotionDuration(preset) / speed).toFixed(2)) : 0.65;
+  // Selection geometry is refreshed while its overlay is visible. The
+  // structural signature keeps that harmless refresh from restarting the
+  // same autoplay preview on every render.
+  const previewDraft = useMemo<AnimationTemplateDraft | null>(() => {
+    if (draft) return draft;
+    if (!selection || !preset || !targetKind || !parameters) return null;
+    return {
+      templateId: `applied:${preset.id}`,
+      presetId: preset.id,
+      targetKind,
+      selection,
+      parameters,
+    };
+  }, [previewSignature, selection?.element]);
+  useEffect(() => {
+    if (!previewDraft || !preset) return;
+    return previewMotionDraft(previewDraft, duration, loop);
+  }, [duration, loop, preset, previewDraft]);
+
+  if (!selection || !preset || !targetKind || !parameters) {
+    return (
+      <div className="grid h-full place-items-center px-6 text-center text-[11px] leading-5 text-panel-text-3">
+        请先选择一个动画，或在视频播放区选择已有动画的元素。
+      </div>
+    );
+  }
+
+  const confirm = async () => {
+    const confirmedDuration = Number((defaultMotionDuration(preset) / speedRef.current).toFixed(2));
+    await onMutate(
+      targetKind,
+      {
+        operation: "upsert",
+        phase: preset.phase,
+        presetId: preset.id,
+        duration: confirmedDuration,
+        loop: loopRef.current,
+        parameters,
+      },
+      selection,
+    );
+    onApplied();
+  };
+
+  return (
+    <div className="space-y-4 px-4 py-3" data-testid="animation-properties-panel">
+      <div className="rounded-[8px] bg-[#20bbc0]/10 px-3 py-2 text-[10px] leading-4 text-[#168e92]">
+        {selection.label} · {preset.label}
+      </div>
+      <FlatSlider
+        label="动画速度"
+        value={speed}
+        min={0.25}
+        max={2}
+        step={0.05}
+        tier="explicitCustom"
+        displayValue={`${speed.toFixed(2)}×`}
+        commitMode="release"
+        onCommit={(value) => {
+          speedRef.current = value;
+          setSpeed(value);
+        }}
+      />
+      <div className="flex h-[38px] items-center justify-between rounded-[7px] bg-panel-input px-3">
+        <span className="text-[11px] text-panel-text-2">循环播放</span>
+        <button
+          type="button"
+          role="switch"
+          aria-checked={loop}
+          aria-label="循环播放"
+          onClick={() => {
+            const next = !loopRef.current;
+            loopRef.current = next;
+            setLoop(next);
+          }}
+          className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full p-0.5 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#20bbc0]/40 ${loop ? "bg-[#20bbc0]" : "bg-panel-border"}`}
+        >
+          <span
+            className={`pointer-events-none block h-4 w-4 rounded-full bg-white shadow-sm transition-transform ${loop ? "translate-x-4" : "translate-x-0"}`}
+          />
+        </button>
+      </div>
+      <button
+        type="button"
+        onClick={() => void confirm()}
+        className="h-9 w-full rounded-[7px] bg-[#20bbc0] text-[12px] font-semibold text-white transition-colors hover:bg-[#18a9ae]"
+      >
+        确定应用
+      </button>
+    </div>
+  );
 }
 
 function displayStart(animation: GsapAnimation, instance: MotionInstance): number {
@@ -117,21 +341,25 @@ function ParameterControl({
 
 function AppliedMotionEditor({
   resolved,
+  element,
   targetKind,
   variableBoundText,
   onMutate,
   onPreview,
 }: {
   resolved: ResolvedMotionInstance;
+  element: DomEditSelection;
   targetKind: MotionTargetKind;
   variableBoundText: boolean;
-  onMutate: (targetKind: MotionTargetKind, mutation: MotionMutationInput) => void;
+  onMutate: (targetKind: MotionTargetKind, mutation: MotionMutationInput) => void | Promise<void>;
   onPreview: (start: number, duration: number) => void;
 }) {
   const { animation, instance } = resolved;
   const preset = getMotionPreset(instance.presetId);
   if (!preset) return null;
   const start = displayStart(animation, instance);
+  const persistedStart =
+    typeof animation.position === "number" ? animation.position : instance.start;
   const apply = (updates: Partial<MotionMutationInput>) => {
     onMutate(targetKind, {
       operation: "upsert",
@@ -142,6 +370,20 @@ function AppliedMotionEditor({
       parameters: instance.parameters,
       ...updates,
     });
+  };
+  const preview = async () => {
+    const timing = resolveSemanticMotionTiming(element, instance.phase, instance.duration, start);
+    if (timing.position !== persistedStart || timing.duration !== instance.duration) {
+      await onMutate(targetKind, {
+        operation: "upsert",
+        phase: instance.phase,
+        presetId: instance.presetId,
+        start: timing.position,
+        duration: timing.duration,
+        parameters: instance.parameters,
+      });
+    }
+    onPreview(timing.position, timing.duration);
   };
   const updateParameter = (parameter: MotionParameter, value: string | number) => {
     apply({
@@ -226,7 +468,7 @@ function AppliedMotionEditor({
 
       <button
         type="button"
-        onClick={() => onPreview(start, instance.duration)}
+        onClick={() => void preview()}
         className="h-[32px] w-full rounded-[6px] border border-[var(--hf-studio-divider)] text-[11px] font-medium text-panel-text-2 transition-colors hover:bg-panel-input hover:text-panel-text-0"
       >
         预览动画
@@ -243,7 +485,7 @@ export function SemanticMotionPanel({
 }: {
   element: DomEditSelection;
   animations: GsapAnimation[];
-  onMutate: (targetKind: MotionTargetKind, mutation: MotionMutationInput) => void;
+  onMutate: (targetKind: MotionTargetKind, mutation: MotionMutationInput) => void | Promise<void>;
   onPreview: (start: number, duration: number) => void;
 }) {
   const targetKind = resolveMotionTargetKind(element);
@@ -261,7 +503,11 @@ export function SemanticMotionPanel({
     const latest = instances.at(-1);
     if (latest) setPhase(latest.instance.phase);
   }, [instanceSignature, instances]);
-  const current = instances.find((item) => item.instance.phase === phase);
+  // The writer appends replacements after removing the canonical target. Older
+  // projects can still contain a legacy selector for the same element, so the
+  // newest semantic instance is authoritative until the next mutation cleans
+  // the duplicate up server-side.
+  const current = instances.filter((item) => item.instance.phase === phase).at(-1);
 
   return (
     <div className="space-y-3" data-testid="semantic-motion-panel">
@@ -285,6 +531,7 @@ export function SemanticMotionPanel({
       {current ? (
         <AppliedMotionEditor
           resolved={current}
+          element={element}
           targetKind={targetKind}
           variableBoundText={element.element.hasAttribute("data-var-text")}
           onMutate={onMutate}

@@ -37,7 +37,7 @@ export type ElementAnimationsOutcome =
  */
 export function selectElementAnimationsOrRetry(
   parsed: ParsedGsap | null,
-  target: { id: string | null; selector: string | null },
+  target: { id: string | null; hfId?: string | null; selector: string | null },
 ): ElementAnimationsOutcome {
   if (!parsed) return { kind: "fetch-error" };
   if (parsed.animations.length === 0) return { kind: "cold" };
@@ -48,7 +48,11 @@ export function useGsapAnimationFetchFallback(projectId: string | null, gsapSour
   return useCallback(
     (selection: DomEditSelection) => async (): Promise<GsapAnimation[]> => {
       if (!projectId) return [];
-      const target = { id: selection.id ?? null, selector: selection.selector ?? null };
+      const target = {
+        id: selection.id ?? null,
+        hfId: selection.hfId ?? null,
+        selector: selection.selector ?? null,
+      };
       // A drag can fire before the async parse is warm; a cold parse must retry
       // rather than fall through to the no-animation path (which duplicates the
       // tween). A hard fetch error is a different failure — retry only briefly.
