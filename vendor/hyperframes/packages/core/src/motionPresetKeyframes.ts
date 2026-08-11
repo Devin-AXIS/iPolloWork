@@ -33,6 +33,15 @@ function motionColor(
   return String(params[parameterId] ?? fallback);
 }
 
+function readableEnabled(params: MotionParameters): boolean {
+  return params.preserveReadable !== "false";
+}
+
+function secondColor(params: MotionParameters, fallback: string): string {
+  if (params.colorSource === "theme") return "var(--ipw-color-primary, #20BBC0)";
+  return String(params.accentColor ?? fallback);
+}
+
 export function buildPresetKeyframes(presetId: string, params: MotionParameters): MotionKeyframe[] {
   const intensity = Number(params.intensity ?? 1);
   const direction = String(params.direction ?? "up");
@@ -298,6 +307,186 @@ export function buildPresetKeyframes(presetId: string, params: MotionParameters)
         frame(65, { x: -2 * intensity, skewX: 0, textShadow: `${2 * intensity}px 0 ${color}` }),
         frame(100, { x: 0, skewX: 0, textShadow: "0 0 0 transparent" }),
       ];
+    case "text.emphasis.highlight-sweep": {
+      const roundness = Number(params.roundness ?? 8);
+      return [
+        frame(0, {
+          backgroundColor: "transparent",
+          boxShadow: `inset 0 0 0 0 transparent`,
+          borderRadius: `${roundness}px`,
+          filter: "brightness(1)",
+        }),
+        frame(48, {
+          backgroundColor: color,
+          boxShadow: `inset 0 -0.82em 0 ${color}`,
+          borderRadius: `${roundness}px`,
+          filter: `brightness(${1 + 0.18 * intensity})`,
+        }),
+        frame(100, {
+          backgroundColor: "transparent",
+          boxShadow: `inset 0 -0.18em 0 ${color}`,
+          borderRadius: `${roundness}px`,
+          filter: "brightness(1)",
+        }),
+      ];
+    }
+    case "text.enter.matrix-decode": {
+      const density = Number(params.density ?? 1);
+      const blur = Number(params.blur ?? 5);
+      return [
+        frame(0, {
+          opacity: 0,
+          color,
+          x: -6 * intensity * density,
+          filter: `blur(${blur}px) contrast(${1 + 0.2 * density})`,
+          letterSpacing: `${0.08 * density}em`,
+        }),
+        frame(58, {
+          opacity: 0.82,
+          color,
+          x: 2 * intensity,
+          filter: `blur(${Math.max(1, blur * 0.18)}px) contrast(${1 + 0.12 * density})`,
+          letterSpacing: `${0.025 * density}em`,
+        }),
+        frame(100, {
+          opacity: 1,
+          color: "currentColor",
+          x: 0,
+          filter: "blur(0px) contrast(1)",
+          letterSpacing: "0em",
+        }),
+      ];
+    }
+    case "text.emphasis.gradient-fill": {
+      const accent = secondColor(params, "#FF4FD8");
+      return [
+        frame(0, {
+          color: "currentColor",
+          backgroundImage: `linear-gradient(90deg, currentColor, ${color}, ${accent})`,
+          filter: "brightness(1)",
+        }),
+        frame(50, {
+          color,
+          backgroundImage: `linear-gradient(90deg, ${color}, ${accent}, ${color})`,
+          filter: `brightness(${1 + 0.28 * intensity}) saturate(${1 + 0.35 * intensity})`,
+        }),
+        frame(100, {
+          color: "currentColor",
+          backgroundImage: `linear-gradient(90deg, ${accent}, ${color}, currentColor)`,
+          filter: "brightness(1) saturate(1)",
+        }),
+      ];
+    }
+    case "text.emphasis.neon-glow":
+    case "text.emphasis.neon-accent": {
+      const glow = Number(params.glow ?? 1);
+      const drift = presetId === "text.emphasis.neon-accent" ? 3 * intensity : 0;
+      return [
+        frame(0, { x: 0, color: "currentColor", textShadow: "0 0 0 transparent" }),
+        frame(48, {
+          x: drift,
+          color,
+          textShadow: `0 0 ${Math.round(18 * glow)}px ${color}`,
+          filter: `brightness(${1 + 0.25 * glow})`,
+        }),
+        frame(100, {
+          x: 0,
+          color: "currentColor",
+          textShadow: `0 0 ${Math.round(6 * glow)}px ${color}`,
+          filter: "brightness(1)",
+        }),
+      ];
+    }
+    case "text.emphasis.rgb-glitch": {
+      const density = Number(params.density ?? 1);
+      const blur = Number(params.blur ?? 0);
+      const readable = readableEnabled(params);
+      return [
+        frame(0, { opacity: 1, x: 0, skewX: 0, filter: "blur(0px)", textShadow: "0 0 0 transparent" }),
+        frame(22, {
+          opacity: readable ? 1 : 0.78,
+          x: -7 * intensity * density,
+          skewX: -5 * intensity,
+          filter: `blur(${blur * 0.22}px)`,
+          textShadow: `${4 * density}px 0 ${color}, ${-4 * density}px 0 #22d3ee`,
+        }),
+        frame(46, {
+          opacity: 1,
+          x: 6 * intensity * density,
+          skewX: 4 * intensity,
+          filter: `blur(${blur * 0.12}px)`,
+          textShadow: `${-3 * density}px 0 ${color}, ${3 * density}px 0 #22d3ee`,
+        }),
+        frame(100, { opacity: 1, x: 0, skewX: 0, filter: "blur(0px)", textShadow: "0 0 0 transparent" }),
+      ];
+    }
+    case "text.enter.clip-wipe":
+      return [
+        frame(0, { opacity: 0, clipPath: wipeInset(direction, true), filter: "blur(2px)" }),
+        frame(100, { opacity: 1, clipPath: wipeInset(direction, false), filter: "blur(0px)" }),
+      ];
+    case "text.emphasis.blend-difference": {
+      const blur = Number(params.blur ?? 0);
+      return [
+        frame(0, { opacity: 1, mixBlendMode: "normal", filter: "invert(0) blur(0px)" }),
+        frame(45, {
+          opacity: readableEnabled(params) ? 1 : 0.86,
+          mixBlendMode: "difference",
+          filter: `invert(${0.65 * intensity}) blur(${blur * 0.1}px)`,
+        }),
+        frame(100, { opacity: 1, mixBlendMode: "normal", filter: "invert(0) blur(0px)" }),
+      ];
+    }
+    case "text.emphasis.weight-shift": {
+      const minWeight = Number(params.minWeight ?? 400);
+      const maxWeight = Number(params.maxWeight ?? 800);
+      return [
+        frame(0, { fontWeight: minWeight, scale: 1 }),
+        frame(48, { fontWeight: maxWeight, scale: 1 + 0.025 * intensity }),
+        frame(100, { fontWeight: minWeight, scale: 1 }),
+      ];
+    }
+    case "text.emphasis.texture-fill": {
+      const density = Number(params.density ?? 1);
+      return [
+        frame(0, { color: "currentColor", filter: "contrast(1) brightness(1)", letterSpacing: "0em" }),
+        frame(52, {
+          color,
+          filter: `contrast(${1 + 0.45 * density}) brightness(${1 + 0.18 * intensity})`,
+          letterSpacing: `${0.02 * density}em`,
+        }),
+        frame(100, { color: "currentColor", filter: "contrast(1) brightness(1)", letterSpacing: "0em" }),
+      ];
+    }
+    case "text.emphasis.kinetic-slam": {
+      const distance = Number(params.distance ?? 56);
+      const slamOffset = directionOffset(direction, distance * intensity);
+      return [
+        frame(0, { opacity: 1, x: -slamOffset.x, y: -slamOffset.y, scale: 0.94, filter: "blur(3px)" }),
+        frame(42, { opacity: 1, x: 0, y: 0, scale: 1.12 + 0.04 * intensity, filter: "blur(0px)" }),
+        frame(72, { opacity: 1, x: slamOffset.x * 0.12, y: slamOffset.y * 0.12, scale: 0.985, filter: "blur(0px)" }),
+        frame(100, { opacity: 1, x: 0, y: 0, scale: 1, filter: "blur(0px)" }),
+      ];
+    }
+    case "text.emphasis.emoji-pop":
+      return [
+        frame(0, { scale: 1, rotation: 0 }),
+        frame(36, { scale: 1 + 0.18 * intensity, rotation: -6 * intensity }),
+        frame(68, { scale: 0.98, rotation: 3 * intensity }),
+        frame(100, { scale: 1, rotation: 0 }),
+      ];
+    case "text.emphasis.particle-burst": {
+      const density = Number(params.density ?? 1);
+      return [
+        frame(0, { scale: 1, textShadow: "0 0 0 transparent", filter: "brightness(1)" }),
+        frame(44, {
+          scale: 1 + 0.08 * intensity,
+          textShadow: `0 -${Math.round(10 * density)}px ${color}, ${Math.round(8 * density)}px ${Math.round(6 * density)}px ${color}, -${Math.round(8 * density)}px ${Math.round(6 * density)}px ${color}`,
+          filter: `brightness(${1 + 0.22 * intensity})`,
+        }),
+        frame(100, { scale: 1, textShadow: "0 0 0 transparent", filter: "brightness(1)" }),
+      ];
+    }
     case "text.emphasis.prism-glow":
       return [
         frame(0, { color, filter: "brightness(1) saturate(1)", letterSpacing: "0em" }),

@@ -352,6 +352,11 @@ export function defaultMotionDuration(preset: MotionPreset): number {
   if (preset.id === "text.emphasis.prism-glow") return 1.4;
   if (preset.id === "text.emphasis.shiny-sweep") return 1.4;
   if (preset.id === "text.emphasis.true-focus") return 1.2;
+  if (preset.id === "text.enter.matrix-decode") return 1.15;
+  if (preset.id === "text.enter.clip-wipe") return 0.72;
+  if (preset.id === "text.emphasis.kinetic-slam") return 0.86;
+  if (preset.id === "text.emphasis.particle-burst") return 0.9;
+  if (preset.id.startsWith("text.emphasis.neon-")) return 1.2;
   if (preset.id === "element.emphasis.spotlight-card") return 1.1;
   if (preset.id === "element.emphasis.glare-sweep") return 1.1;
   if (preset.phase === "emphasis") return 0.8;

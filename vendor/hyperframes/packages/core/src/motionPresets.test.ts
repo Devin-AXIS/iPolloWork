@@ -285,6 +285,61 @@ describe("motion presets", () => {
     expect(custom.keyframes[1]?.properties.filter).toContain("#FF5500");
   });
 
+  it("compiles migrated text effects with editable parameters", () => {
+    const highlight = compileMotionInstance(
+      createMotionInstance({
+        presetId: "text.emphasis.highlight-sweep",
+        target: { selector: "#headline" },
+        targetKind: "text",
+        start: 0,
+        parameters: {
+          unit: "word",
+          stagger: 0.05,
+          colorSource: "custom",
+          color: "#FFE66D",
+          direction: "right",
+          intensity: 1.2,
+        },
+      }),
+    );
+    const glitch = compileMotionInstance(
+      createMotionInstance({
+        presetId: "text.emphasis.rgb-glitch",
+        target: { selector: "#headline" },
+        targetKind: "text",
+        start: 0,
+        parameters: { preserveReadable: "true", density: 1.4, blur: 8, intensity: 1.1 },
+      }),
+    );
+    const decode = compileMotionInstance(
+      createMotionInstance({
+        presetId: "text.enter.matrix-decode",
+        target: { selector: "#headline" },
+        targetKind: "text",
+        start: 0,
+        parameters: { unit: "character", stagger: 0.03, colorSource: "theme" },
+      }),
+    );
+
+    expect(highlight.targetSelector).toBe("#headline > [data-ipw-motion-word]");
+    expect(highlight.extras.stagger).toBe(0.05);
+    expect(
+      highlight.keyframes.some((keyframe) =>
+        String(keyframe.properties.boxShadow ?? "").includes("#FFE66D"),
+      ),
+    ).toBe(true);
+
+    expect(
+      glitch.keyframes.some((keyframe) =>
+        String(keyframe.properties.textShadow ?? "").includes("#22d3ee"),
+      ),
+    ).toBe(true);
+    expect(glitch.keyframes.at(-1)?.properties.opacity ?? 1).toBe(1);
+
+    expect(decode.targetSelector).toBe("#headline [data-ipw-motion-char]");
+    expect(decode.keyframes[0]?.properties.color).toBe("var(--ipw-color-accent, #7c3aed)");
+  });
+
   it("compiles every catalog preset to bounded editable keyframes", () => {
     for (const preset of MOTION_PRESETS) {
       const targetKind = preset.targetKinds[0];
