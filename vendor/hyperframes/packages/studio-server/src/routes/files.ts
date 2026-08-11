@@ -84,6 +84,8 @@ import {
   listMotionPresets,
   materializeStructuredText,
   readMotionInstanceFromExtras,
+  restoreStructuredText,
+  snapshotStructuredText,
   unwrapStructuredText,
   type MotionParameters,
   type MotionInstance,
@@ -1110,6 +1112,26 @@ function ensureMotionTextParts(target: Element): number {
   return characterCount;
 }
 
+function ensureStructuredCharacterParts(target: Element): number {
+  let characterCount = 0;
+  for (const textLayer of Array.from(
+    target.querySelectorAll('[data-ipw-motion-role="text"]'),
+  )) {
+    const document = textLayer.ownerDocument;
+    const fragment = document.createDocumentFragment();
+    for (const character of segmentText(textLayer.textContent ?? "", "grapheme")) {
+      const characterSpan = document.createElement("span");
+      characterSpan.setAttribute("data-ipw-motion-char", "");
+      characterSpan.setAttribute("style", "display:inline-block");
+      characterSpan.textContent = character;
+      fragment.append(characterSpan);
+      characterCount += 1;
+    }
+    textLayer.replaceChildren(fragment);
+  }
+  return characterCount;
+}
+
 function resolveSingleMotionTarget(
   document: Document,
   selector: string,
@@ -1316,22 +1338,28 @@ function executeMotionMutation(
     const sourceText = readMotionSourceText(target);
     const compiled = compileMotionInstance(instance, sourceText);
     if (compiled.structured) {
+      const targetSnapshot = snapshotStructuredText(target);
+      unwrapMotionText(target);
       materializeStructuredText(target, compiled.structured, sourceText);
-      for (const track of compiled.structured.tracks) {
+      for (const [trackIndex, track] of compiled.structured.tracks.entries()) {
         const added = addAnimationWithKeyframesToScript(
           script,
           structuredMotionSelector(body.targetSelector, track.role),
           compiled.position + track.position,
           track.duration,
           track.keyframes,
-          compiled.ease,
+          undefined,
           undefined,
           {
             ...compiled.extras,
+            id: `${instance.id}:${trackIndex}:${track.role}`,
             ...(track.stagger > 0 ? { stagger: track.stagger } : {}),
           },
         );
-        if (!added.id) return respond({ error: "Could not add motion to the GSAP timeline" }, 400);
+        if (!added.id) {
+          restoreStructuredText(target, targetSnapshot);
+          return respond({ error: "Could not add motion to the GSAP timeline" }, 400);
+        }
         script = added.script;
       }
     } else {
@@ -1367,6 +1395,9 @@ function executeMotionMutation(
   });
   if (remainingStructured.length > 0) {
     materializeStructuredText(target, remainingStructured[0]!, sourceText);
+    if (remainingInstances.some((instance) => motionUnit(instance.parameters) === "character")) {
+      ensureStructuredCharacterParts(target);
+    }
   } else {
     if (target.hasAttribute("data-ipw-motion-structure") || target.hasAttribute("data-ipw-motion-source")) {
       unwrapStructuredText(target);
