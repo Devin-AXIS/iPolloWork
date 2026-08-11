@@ -7,7 +7,7 @@ import {
 
 describe("AnimationTemplatesTab catalog", () => {
   it("shows one universal catalog and appends text animation for text selections", () => {
-    expect(ANIMATION_TEMPLATES).toHaveLength(26);
+    expect(ANIMATION_TEMPLATES).toHaveLength(39);
     expect(new Set(ANIMATION_TEMPLATES.map((template) => template.category))).toEqual(
       new Set(["general", "text"]),
     );
@@ -25,8 +25,34 @@ describe("AnimationTemplatesTab catalog", () => {
         "ending-brand-lockup",
         "transition-split-wipe",
         "caption-mask-reveal",
+        "caption-highlight",
+        "caption-matrix-decode",
       ]),
     );
+  });
+
+  it("exposes migrated caption effects as text animation templates", () => {
+    const migratedTemplates = [
+      ["text-highlight-sweep", "text.emphasis.highlight-sweep"],
+      ["text-matrix-decode", "text.enter.matrix-decode"],
+      ["text-gradient-fill", "text.emphasis.gradient-fill"],
+      ["text-neon-glow", "text.emphasis.neon-glow"],
+      ["text-neon-accent", "text.emphasis.neon-accent"],
+      ["text-rgb-glitch", "text.emphasis.rgb-glitch"],
+      ["text-clip-wipe", "text.enter.clip-wipe"],
+      ["text-blend-difference", "text.emphasis.blend-difference"],
+      ["text-weight-shift", "text.emphasis.weight-shift"],
+      ["text-texture-fill", "text.emphasis.texture-fill"],
+      ["text-kinetic-slam", "text.emphasis.kinetic-slam"],
+      ["text-emoji-pop", "text.emphasis.emoji-pop"],
+      ["text-particle-burst", "text.emphasis.particle-burst"],
+    ] as const;
+
+    for (const [templateId, presetId] of migratedTemplates) {
+      const template = ANIMATION_TEMPLATES.find((candidate) => candidate.id === templateId);
+      expect(template, templateId).toMatchObject({ category: "text", presetId });
+      expect(resolveAnimationTemplatePreset(template!, "text")?.id).toBe(presetId);
+    }
   });
 
   it("resolves universal templates per target", () => {
