@@ -406,9 +406,11 @@ describe("SemanticMotionPanel", () => {
     expect(revealTargets).toHaveLength(3);
     expect(revealPosition).toBe(0);
     expect(revealVars).toMatchObject({ duration: 0.15, stagger: 0.05 });
+    expect(revealVars).not.toHaveProperty("ease");
     expect(revealVars.keyframes["0%"].backgroundImage).toContain("linear-gradient");
     expect(revealVars.keyframes["100%"].ease).toBe("power2.out");
     const exitVars = timeline.to.mock.calls[1][1];
+    expect(exitVars).not.toHaveProperty("ease");
     expect(exitVars.keyframes["100%"].ease).toBe("power2.in");
     const [resetTargets, resetVars, resetPosition] = timeline.set.mock.calls[0];
     expect(resetTargets).toHaveLength(3);
@@ -426,6 +428,55 @@ describe("SemanticMotionPanel", () => {
     expect(title.textContent).toBe("Make motion clear.");
     expect(title.getAttribute("style")).toBe("letter-spacing: 1px");
     expect(title.getAttribute("data-source")).toBe("authored");
+    expect(title.hasAttribute("data-ipw-motion-structure")).toBe(false);
+    title.remove();
+  });
+
+  it("leaves the DOM untouched when structured preview compilation rejects oversized text", () => {
+    const title = document.createElement("h1");
+    title.id = "title";
+    title.setAttribute("style", "color: navy");
+    const originalText = document.createTextNode("a".repeat(513));
+    title.append(originalText);
+    document.body.append(title);
+    const selected = selection(title);
+    const instance = createMotionInstance({
+      presetId: "text.emphasis.highlight-sweep",
+      target: { selector: "#title", elementId: "title" },
+      targetKind: "text",
+      start: 0,
+      parameters: { unit: "character" },
+    });
+    const createTimeline = vi.fn();
+    Object.defineProperty(window, "gsap", {
+      configurable: true,
+      value: { timeline: createTimeline },
+    });
+
+    expect(() =>
+      flushSync(() =>
+        root.render(
+          <AnimationPropertiesPanel
+            draft={{
+              templateId: "caption-highlight-character-sweep",
+              presetId: instance.presetId,
+              targetKind: instance.targetKind,
+              selection: selected,
+              parameters: instance.parameters,
+            }}
+            element={selected}
+            animations={[]}
+            onMutate={vi.fn()}
+            onApplied={vi.fn()}
+          />,
+        ),
+      ),
+    ).not.toThrow();
+
+    expect(createTimeline).not.toHaveBeenCalled();
+    expect(title.firstChild).toBe(originalText);
+    expect(title.textContent).toBe("a".repeat(513));
+    expect(title.getAttribute("style")).toBe("color: navy");
     expect(title.hasAttribute("data-ipw-motion-structure")).toBe(false);
     title.remove();
   });

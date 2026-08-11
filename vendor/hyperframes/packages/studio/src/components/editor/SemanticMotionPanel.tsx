@@ -105,20 +105,25 @@ function previewMotionDraft(
   loop: boolean,
 ): (() => void) | undefined {
   const target = draft.selection.element;
+  let compiled: ReturnType<typeof compileMotionInstance>;
+  try {
+    compiled = compileMotionInstance(
+      createMotionInstance({
+        presetId: draft.presetId,
+        target: { selector: "[data-ipw-motion-preview]" },
+        targetKind: draft.targetKind,
+        start: 0,
+        duration,
+        parameters: draft.parameters,
+      }),
+      target.textContent ?? "",
+    );
+  } catch {
+    return undefined;
+  }
   const win = target.ownerDocument.defaultView as MotionPreviewWindow | null;
   const timeline = win?.gsap?.timeline?.({ paused: true, repeat: loop ? 1 : 0 });
   if (!timeline?.to) return undefined;
-  const compiled = compileMotionInstance(
-    createMotionInstance({
-      presetId: draft.presetId,
-      target: { selector: "[data-ipw-motion-preview]" },
-      targetKind: draft.targetKind,
-      start: 0,
-      duration,
-      parameters: draft.parameters,
-    }),
-    target.textContent ?? "",
-  );
   if (compiled.structured) {
     if (!timeline.set) return undefined;
     const snapshot = snapshotStructuredText(target);
@@ -145,7 +150,6 @@ function previewMotionDraft(
           {
             keyframes: keyframesForPreview(track.keyframes),
             duration: track.duration,
-            ease: compiled.ease,
             ...(track.stagger > 0 ? { stagger: track.stagger } : {}),
           },
           track.position,
