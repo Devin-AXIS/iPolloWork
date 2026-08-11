@@ -307,41 +307,9 @@ export function buildPresetKeyframes(presetId: string, params: MotionParameters)
         frame(65, { x: -2 * intensity, skewX: 0, textShadow: `${2 * intensity}px 0 ${color}` }),
         frame(100, { x: 0, skewX: 0, textShadow: "0 0 0 transparent" }),
       ];
-    case "text.emphasis.highlight-sweep": {
-      const roundness = Number(params.roundness ?? 8);
-      const highlightShadow = (amount: number) => {
-        switch (direction) {
-          case "left":
-            return `inset ${amount}em 0 0 ${color}`;
-          case "up":
-            return `inset 0 ${amount}em 0 ${color}`;
-          case "down":
-            return `inset 0 -${amount}em 0 ${color}`;
-          default:
-            return `inset -${amount}em 0 0 ${color}`;
-        }
-      };
-      return [
-        frame(0, {
-          backgroundColor: "transparent",
-          boxShadow: `inset 0 0 0 0 transparent`,
-          borderRadius: `${roundness}px`,
-          filter: "brightness(1)",
-        }),
-        frame(48, {
-          backgroundColor: color,
-          boxShadow: highlightShadow(0.82),
-          borderRadius: `${roundness}px`,
-          filter: `brightness(${1 + 0.18 * intensity})`,
-        }),
-        frame(100, {
-          backgroundColor: "transparent",
-          boxShadow: highlightShadow(0.18),
-          borderRadius: `${roundness}px`,
-          filter: "brightness(1)",
-        }),
-      ];
-    }
+    case "text.emphasis.highlight-sweep":
+      // The structured recipe supplies the layered word backgrounds and text.
+      return [frame(0, { opacity: 1 }), frame(100, { opacity: 1 })];
     case "text.enter.matrix-decode": {
       const density = Number(params.density ?? 1);
       const blur = Number(params.blur ?? 5);
@@ -349,16 +317,26 @@ export function buildPresetKeyframes(presetId: string, params: MotionParameters)
         frame(0, {
           opacity: 0,
           color,
-          x: -6 * intensity * density,
-          filter: `blur(${blur}px) contrast(${1 + 0.2 * density})`,
-          letterSpacing: `${0.08 * density}em`,
+          x: -10 * intensity * density,
+          filter: `blur(${Math.max(2, blur)}px) contrast(${1 + 0.5 * density})`,
+          letterSpacing: `${0.12 * density}em`,
+          textShadow: `0 0 ${Math.round(12 * density)}px ${color}`,
+        }),
+        frame(28, {
+          opacity: 0.44,
+          color: "#baffd5",
+          x: 5 * intensity,
+          filter: `blur(${Math.max(1, blur * 0.55)}px) contrast(${1 + 0.65 * density})`,
+          letterSpacing: `${0.16 * density}em`,
+          textShadow: `0 0 ${Math.round(18 * density)}px ${color}`,
         }),
         frame(58, {
-          opacity: 0.82,
+          opacity: 0.9,
           color,
           x: 2 * intensity,
-          filter: `blur(${Math.max(1, blur * 0.18)}px) contrast(${1 + 0.12 * density})`,
-          letterSpacing: `${0.025 * density}em`,
+          filter: `blur(${Math.max(0.5, blur * 0.14)}px) contrast(${1 + 0.25 * density})`,
+          letterSpacing: `${0.04 * density}em`,
+          textShadow: `0 0 ${Math.round(10 * density)}px ${color}`,
         }),
         frame(100, {
           opacity: 1,
@@ -366,6 +344,7 @@ export function buildPresetKeyframes(presetId: string, params: MotionParameters)
           x: 0,
           filter: "blur(0px) contrast(1)",
           letterSpacing: "0em",
+          textShadow: "0 0 0 transparent",
         }),
       ];
     }
@@ -384,9 +363,11 @@ export function buildPresetKeyframes(presetId: string, params: MotionParameters)
           WebkitTextFillColor: "transparent",
           backgroundSize: "220% 220%",
           backgroundPosition: startPosition,
-          filter: "brightness(1)",
+          filter: "brightness(0.9) saturate(1)",
+          scale: 0.86,
+          y: 18 * intensity,
         }),
-        frame(50, {
+        frame(48, {
           color: "transparent",
           backgroundImage: gradient,
           backgroundClip: "text",
@@ -395,6 +376,8 @@ export function buildPresetKeyframes(presetId: string, params: MotionParameters)
           backgroundSize: "220% 220%",
           backgroundPosition: endPosition,
           filter: `brightness(${1 + 0.28 * intensity}) saturate(${1 + 0.35 * intensity})`,
+          scale: 1.12,
+          y: -4 * intensity,
         }),
         frame(100, {
           color: "transparent",
@@ -405,20 +388,29 @@ export function buildPresetKeyframes(presetId: string, params: MotionParameters)
           backgroundSize: "220% 220%",
           backgroundPosition: startPosition,
           filter: "brightness(1) saturate(1)",
+          scale: 1,
+          y: 0,
         }),
       ];
     }
     case "text.emphasis.neon-glow":
     case "text.emphasis.neon-accent": {
       const glow = Number(params.glow ?? 1);
-      const drift = presetId === "text.emphasis.neon-accent" ? 3 * intensity : 0;
+      const drift = presetId === "text.emphasis.neon-accent" ? 6 * intensity : 0;
+      const accent = presetId === "text.emphasis.neon-accent" ? secondColor(params, "#00fff0") : "#ff4fd8";
       return [
         frame(0, { x: 0, color: "currentColor", textShadow: "0 0 0 transparent" }),
-        frame(48, {
+        frame(36, {
           x: drift,
           color,
-          textShadow: `0 0 ${Math.round(18 * glow)}px ${color}`,
-          filter: `brightness(${1 + 0.25 * glow})`,
+          textShadow: `0 0 ${Math.round(10 * glow)}px ${color}, 0 0 ${Math.round(28 * glow)}px ${color}, ${Math.round(3 * intensity)}px 0 ${accent}`,
+          filter: `brightness(${1 + 0.38 * glow}) saturate(${1 + 0.35 * glow})`,
+        }),
+        frame(64, {
+          x: -drift * 0.5,
+          color: accent,
+          textShadow: `0 0 ${Math.round(12 * glow)}px ${accent}, 0 0 ${Math.round(34 * glow)}px ${color}, ${-Math.round(3 * intensity)}px 0 ${color}`,
+          filter: `brightness(${1 + 0.28 * glow}) saturate(${1 + 0.45 * glow})`,
         }),
         frame(100, {
           x: 0,
@@ -434,26 +426,40 @@ export function buildPresetKeyframes(presetId: string, params: MotionParameters)
       const readable = readableEnabled(params);
       return [
         frame(0, { opacity: 1, x: 0, skewX: 0, filter: "blur(0px)", textShadow: "0 0 0 transparent" }),
-        frame(22, {
+        frame(12, {
+          opacity: readable ? 1 : 0.72,
+          x: 10 * intensity * density,
+          skewX: 7 * intensity,
+          filter: `blur(${Math.max(0.5, blur * 0.34)}px) contrast(1.25)`,
+          textShadow: `${-7 * density}px 0 #ff1745, ${7 * density}px 0 #00fff0, 0 3px rgba(255,255,255,0.45)`,
+        }),
+        frame(25, {
           opacity: readable ? 1 : 0.78,
-          x: -7 * intensity * density,
-          skewX: -5 * intensity,
-          filter: `blur(${blur * 0.22}px)`,
-          textShadow: `${4 * density}px 0 ${color}, ${-4 * density}px 0 #22d3ee`,
+          x: -12 * intensity * density,
+          skewX: -8 * intensity,
+          filter: `blur(${blur * 0.2}px) contrast(1.4)`,
+          textShadow: `${8 * density}px 0 ${color}, ${-8 * density}px 0 #22d3ee`,
         }),
         frame(46, {
           opacity: 1,
-          x: 6 * intensity * density,
-          skewX: 4 * intensity,
-          filter: `blur(${blur * 0.12}px)`,
-          textShadow: `${-3 * density}px 0 ${color}, ${3 * density}px 0 #22d3ee`,
+          x: 7 * intensity * density,
+          skewX: 5 * intensity,
+          filter: `blur(${blur * 0.1}px) contrast(1.18)`,
+          textShadow: `${-5 * density}px 0 ${color}, ${5 * density}px 0 #22d3ee`,
+        }),
+        frame(64, {
+          opacity: 1,
+          x: -3 * intensity * density,
+          skewX: -2 * intensity,
+          filter: "blur(0px) contrast(1)",
+          textShadow: `${2 * density}px 0 #ff1745, ${-2 * density}px 0 #00fff0`,
         }),
         frame(100, { opacity: 1, x: 0, skewX: 0, filter: "blur(0px)", textShadow: "0 0 0 transparent" }),
       ];
     }
     case "text.enter.clip-wipe": {
-      const wipeOffset = directionOffset(direction, 6 * intensity);
-      const wipeBlur = Math.max(0.5, 1.5 + 1.5 * intensity);
+      const wipeOffset = directionOffset(direction, 18 * intensity);
+      const wipeBlur = Math.max(0.5, 1 + 1.2 * intensity);
       return [
         frame(0, {
           opacity: 0,
@@ -461,6 +467,13 @@ export function buildPresetKeyframes(presetId: string, params: MotionParameters)
           y: -wipeOffset.y,
           clipPath: wipeInset(direction, true),
           filter: `blur(${wipeBlur}px)`,
+        }),
+        frame(38, {
+          opacity: 1,
+          x: 0,
+          y: 0,
+          clipPath: wipeInset(direction, false),
+          filter: "blur(0px)",
         }),
         frame(100, { opacity: 1, x: 0, y: 0, clipPath: wipeInset(direction, false), filter: "blur(0px)" }),
       ];
@@ -533,14 +546,15 @@ export function buildPresetKeyframes(presetId: string, params: MotionParameters)
       const distance = Number(params.distance ?? 56);
       const slamOffset = directionOffset(direction, distance * intensity);
       const readable = readableEnabled(params);
-      const launchOpacity = readable ? 0.92 : 0.45;
-      const launchBlur = readable ? 3 : Math.max(7, 5 * intensity);
-      const impactScale = readable ? 1.08 + 0.03 * intensity : 1.16 + 0.07 * intensity;
-      const settleDistance = readable ? 0.08 : 0.22;
+      const launchOpacity = readable ? 0.86 : 0.38;
+      const launchBlur = readable ? 5 : Math.max(9, 7 * intensity);
+      const impactScale = readable ? 1.2 + 0.05 * intensity : 1.28 + 0.1 * intensity;
+      const settleDistance = readable ? 0.14 : 0.26;
       return [
-        frame(0, { opacity: launchOpacity, x: -slamOffset.x, y: -slamOffset.y, scale: 0.94, filter: `blur(${launchBlur}px)` }),
-        frame(42, { opacity: readable ? 1 : 0.88, x: 0, y: 0, scale: impactScale, filter: readable ? "blur(0px)" : "blur(1px)" }),
-        frame(72, { opacity: readable ? 1 : 0.94, x: slamOffset.x * settleDistance, y: slamOffset.y * settleDistance, scale: readable ? 0.99 : 0.97, filter: "blur(0px)" }),
+        frame(0, { opacity: launchOpacity, x: -slamOffset.x, y: -slamOffset.y, scale: 0.78, filter: `blur(${launchBlur}px)` }),
+        frame(34, { opacity: readable ? 1 : 0.88, x: 0, y: 0, scale: impactScale, filter: readable ? "blur(0px)" : "blur(1px)" }),
+        frame(48, { opacity: 1, x: -slamOffset.x * 0.07, y: -slamOffset.y * 0.07, scale: 0.94, filter: "blur(0px)" }),
+        frame(72, { opacity: readable ? 1 : 0.94, x: slamOffset.x * settleDistance, y: slamOffset.y * settleDistance, scale: readable ? 1.03 : 0.97, filter: "blur(0px)" }),
         frame(100, { opacity: 1, x: 0, y: 0, scale: 1, filter: "blur(0px)" }),
       ];
     }

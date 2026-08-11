@@ -4,6 +4,7 @@ import type {
   MotionParameters,
   MotionPreset,
 } from "./motionPresets.js";
+import type { StructuredTextRecipe } from "./structuredTextMotion.js";
 
 const EASE_OPTIONS: MotionParameterOption[] = [
   { value: "power2.out", label: "柔和" },
@@ -87,6 +88,16 @@ const MOTION_DISTANCE_PARAMETER: MotionParameter = {
   unit: "px",
 };
 
+const MOTION_SPEED_PARAMETER: MotionParameter = {
+  id: "speed",
+  label: "Animation speed",
+  kind: "number",
+  min: 0.5,
+  max: 2,
+  step: 0.1,
+  unit: "x",
+};
+
 const MOTION_READABILITY_PARAMETER: MotionParameter = {
   id: "preserveReadable",
   label: "保持可读",
@@ -116,6 +127,125 @@ type PresetSeed = Omit<MotionPreset, "version" | "targetKinds" | "parameterSchem
   defaults?: MotionParameters;
 };
 
+function finiteParameter(parameters: MotionParameters, id: string, fallback: number): number {
+  const value = Number(parameters[id] ?? fallback);
+  return Number.isFinite(value) ? value : fallback;
+}
+
+function highlightTransformOrigin(direction: string): string {
+  if (direction === "left") return "100% 50%";
+  if (direction === "up") return "50% 100%";
+  if (direction === "down") return "50% 0%";
+  return "0% 50%";
+}
+
+function highlightColor(parameters: MotionParameters): string {
+  const color = parameters.colorSource === "theme"
+    ? "var(--ipw-color-accent, #ff1745)"
+    : String(parameters.color ?? "#ff1745");
+  return color.toLowerCase();
+}
+
+export function createHighlightSweepStructuredRecipe(
+  parameters: MotionParameters = {},
+): StructuredTextRecipe {
+  const direction = String(parameters.direction ?? "right");
+  const split = String(parameters.unit ?? "word") as StructuredTextRecipe["split"];
+  const stagger = finiteParameter(parameters, "stagger", 0.05);
+  const speed = finiteParameter(parameters, "speed", 1);
+  const intensity = finiteParameter(parameters, "intensity", 1);
+  const roundness = finiteParameter(parameters, "roundness", 10);
+  const color = highlightColor(parameters);
+  const defaultRed = color === "#ff1745";
+  const endColor = defaultRed ? "#df1238" : `color-mix(in srgb, ${color} 87%, #000000)`;
+  const shadowAlpha = Math.min(0.8, 0.32 * intensity).toFixed(2);
+  const shadow = defaultRed
+    ? `0 12px 30px rgba(229, 20, 58, ${shadowAlpha})`
+    : `0 12px 30px color-mix(in srgb, ${color} ${Math.round(Number(shadowAlpha) * 100)}%, transparent)`;
+  const transformOrigin = highlightTransformOrigin(direction);
+  const horizontal = direction === "left" || direction === "right";
+  const scaleProperty = horizontal ? "scaleX" : "scaleY";
+  const hiddenScale = { [scaleProperty]: 0 };
+  const visibleScale = { [scaleProperty]: 1 };
+  const exitScale = { [scaleProperty]: 1.02 };
+
+  return {
+    version: 1,
+    id: "caption-highlight.word-sweep",
+    presetId: "text.emphasis.highlight-sweep",
+    split,
+    layers: [
+      { role: "unit", perUnit: true, className: "ipw-highlight-word" },
+      { role: "background", perUnit: true, className: "ipw-highlight-word-bg" },
+      { role: "text", perUnit: true, className: "ipw-highlight-word-text" },
+    ],
+    tracks: [
+      {
+        role: "background",
+        position: 0,
+        duration: 0.15 / speed,
+        stagger,
+        keyframes: [
+          {
+            percentage: 0,
+            properties: {
+              opacity: 0,
+              ...hiddenScale,
+              transformOrigin,
+              backgroundImage: `linear-gradient(135deg, ${color} 0%, ${endColor} 100%)`,
+              borderRadius: `${roundness}px`,
+              boxShadow: shadow,
+            },
+          },
+          { percentage: 100, properties: { opacity: 1, ...visibleScale, transformOrigin } },
+        ],
+      },
+      {
+        role: "background",
+        position: 0.23 / speed,
+        duration: 0.1 / speed,
+        stagger,
+        keyframes: [
+          { percentage: 0, properties: { opacity: 1, ...visibleScale, transformOrigin } },
+          { percentage: 90, properties: { opacity: 0, ...exitScale, transformOrigin } },
+          { percentage: 100, properties: { opacity: 0, ...hiddenScale, transformOrigin } },
+        ],
+      },
+      {
+        role: "unit",
+        position: 0,
+        duration: 0.24 / speed,
+        stagger,
+        keyframes: [
+          { percentage: 0, properties: { filter: "brightness(1)" } },
+          { percentage: 33, properties: { filter: `brightness(${(1 + 0.05 * intensity).toFixed(2)})` } },
+          { percentage: 100, properties: { filter: "brightness(1)" } },
+        ],
+      },
+      {
+        role: "text",
+        position: 0,
+        duration: 0.24 / speed,
+        stagger,
+        keyframes: [
+          { percentage: 0, properties: { color: "#ffffff", textShadow: "0 6px 18px rgba(0, 0, 0, 0.45)" } },
+          { percentage: 100, properties: { color: "#ffffff", textShadow: "0 6px 18px rgba(0, 0, 0, 0.45)" } },
+        ],
+      },
+    ],
+  };
+}
+
+export function resolveStructuredTextRecipe(
+  preset: MotionPreset,
+  parameters: MotionParameters,
+): StructuredTextRecipe | undefined {
+  if (preset.id === "text.emphasis.highlight-sweep") {
+    return createHighlightSweepStructuredRecipe(parameters);
+  }
+  return preset.structuredText;
+}
+
 function textPreset(seed: PresetSeed): MotionPreset {
   return {
     id: seed.id,
@@ -144,6 +274,7 @@ function textPreset(seed: PresetSeed): MotionPreset {
       ...(seed.color ? { colorSource: "custom", color: "#7c3aed" } : {}),
       ...seed.defaults,
     },
+    ...(seed.structuredText ? { structuredText: seed.structuredText } : {}),
     semantics: seed.semantics,
   };
 }
@@ -177,6 +308,7 @@ function migratedTextPreset(
       ...(seed.color ? { colorSource: "theme", color: "#20BBC0" } : {}),
       ...seed.defaults,
     },
+    ...(seed.structuredText ? { structuredText: seed.structuredText } : {}),
   };
 }
 
@@ -460,10 +592,19 @@ const MIGRATED_CAPTION_TEXT_PRESETS: readonly MotionPreset[] = [
     phase: "emphasis",
     direction: true,
     color: true,
-    defaults: { unit: "word", stagger: 0.05, color: "#FFE66D", roundness: 12 },
+    defaults: {
+      unit: "word",
+      stagger: 0.05,
+      colorSource: "custom",
+      color: "#FF1745",
+      roundness: 10,
+      speed: 1,
+    },
     extraParameters: [
       { id: "roundness", label: "圆角", kind: "number", min: 0, max: 24, step: 1, unit: "px" },
+      MOTION_SPEED_PARAMETER,
     ],
+    structuredText: createHighlightSweepStructuredRecipe(),
     semantics: {
       intents: ["高亮", "扫过", "关键词强化"],
       tones: ["清晰", "编辑感"],
@@ -533,7 +674,7 @@ const MIGRATED_CAPTION_TEXT_PRESETS: readonly MotionPreset[] = [
     label: "RGB 故障",
     phase: "emphasis",
     color: true,
-    defaults: { color: "#FF3355", preserveReadable: "true", blur: 4, density: 1 },
+    defaults: { color: "#FF1745", preserveReadable: "true", blur: 5, density: 1.35 },
     extraParameters: [MOTION_BLUR_PARAMETER, MOTION_DENSITY_PARAMETER, MOTION_READABILITY_PARAMETER],
     semantics: {
       intents: ["故障", "RGB", "扰动"],
@@ -604,7 +745,7 @@ const MIGRATED_CAPTION_TEXT_PRESETS: readonly MotionPreset[] = [
     label: "动感冲击",
     phase: "emphasis",
     direction: true,
-    defaults: { unit: "word", preserveReadable: "true", distance: 80 },
+    defaults: { unit: "word", preserveReadable: "true", distance: 120 },
     extraParameters: [MOTION_DISTANCE_PARAMETER, MOTION_READABILITY_PARAMETER],
     semantics: {
       intents: ["冲击", "动感", "强调"],

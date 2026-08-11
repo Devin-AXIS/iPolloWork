@@ -1,4 +1,4 @@
-import { MOTION_PRESETS } from "./motionPresetCatalog.js";
+import { MOTION_PRESETS, resolveStructuredTextRecipe } from "./motionPresetCatalog.js";
 import { buildPresetKeyframes } from "./motionPresetKeyframes.js";
 import {
   compileStructuredTextMotion,
@@ -347,7 +347,11 @@ export function compileMotionInstance(instance: MotionInstance, text = ""): Comp
     },
   };
   if (isStructuredTextPreset(preset)) {
-    compiled.structured = compileStructuredTextMotion(instance, text, preset.structuredText);
+    compiled.structured = compileStructuredTextMotion(
+      { ...instance, parameters: validated.parameters },
+      text,
+      resolveStructuredTextRecipe(preset, validated.parameters),
+    );
   }
   return compiled;
 }

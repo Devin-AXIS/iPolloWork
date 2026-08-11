@@ -57,16 +57,21 @@ describe("motion presets", () => {
     }
 
     const specializedDefaults = {
-      "text.emphasis.highlight-sweep": { roundness: 12 },
+      "text.emphasis.highlight-sweep": { color: "#FF1745", roundness: 10 },
       "text.enter.matrix-decode": { density: 1, blur: 0 },
       "text.emphasis.gradient-fill": { accentColor: "#20BBC0" },
       "text.emphasis.neon-glow": { glow: 1 },
       "text.emphasis.neon-accent": { glow: 1 },
-      "text.emphasis.rgb-glitch": { blur: 4, density: 1, preserveReadable: "true" },
+      "text.emphasis.rgb-glitch": {
+        color: "#FF1745",
+        blur: 5,
+        density: 1.35,
+        preserveReadable: "true",
+      },
       "text.emphasis.blend-difference": { blur: 0, preserveReadable: "true" },
       "text.emphasis.weight-shift": { minWeight: 300, maxWeight: 700 },
       "text.emphasis.texture-fill": { density: 1 },
-      "text.emphasis.kinetic-slam": { distance: 80, preserveReadable: "true" },
+      "text.emphasis.kinetic-slam": { distance: 120, preserveReadable: "true" },
       "text.emphasis.particle-burst": { density: 1 },
     };
 
@@ -324,8 +329,10 @@ describe("motion presets", () => {
     expect(highlight.targetSelector).toBe("#headline > [data-ipw-motion-word]");
     expect(highlight.extras.stagger).toBe(0.05);
     expect(
-      highlight.keyframes.some((keyframe) =>
-        String(keyframe.properties.boxShadow ?? "").includes("#FFE66D"),
+      highlight.structured?.tracks.some((track) =>
+        track.keyframes.some((keyframe) =>
+          String(keyframe.properties.backgroundImage ?? "").includes("#ffe66d"),
+        ),
       ),
     ).toBe(true);
 
@@ -340,7 +347,7 @@ describe("motion presets", () => {
     expect(decode.keyframes[0]?.properties.color).toBe("var(--ipw-color-accent, #7c3aed)");
   });
 
-  it("changes highlight sweep keyframes when direction changes", () => {
+  it("changes the structured highlight sweep when direction changes", () => {
     const compile = (direction: "left" | "right") =>
       compileMotionInstance(
         createMotionInstance({
@@ -352,7 +359,102 @@ describe("motion presets", () => {
         }),
       );
 
-    expect(compile("left").keyframes).not.toEqual(compile("right").keyframes);
+    expect(compile("left").structured?.tracks).not.toEqual(compile("right").structured?.tracks);
+  });
+
+  it("compiles Highlight as faithful independent word background and text layers", () => {
+    const compiled = compileMotionInstance(
+      createMotionInstance({
+        presetId: "text.emphasis.highlight-sweep",
+        target: { selector: "#headline", elementId: "headline" },
+        targetKind: "text",
+        start: 0,
+      }),
+      "Make motion clear.",
+    );
+
+    expect(compiled.structured).toMatchObject({
+      recipeId: "caption-highlight.word-sweep",
+      split: "word",
+      units: [{ sourceText: "Make" }, { sourceText: "motion" }, { sourceText: "clear" }],
+      layers: expect.arrayContaining([
+        expect.objectContaining({ role: "unit", perUnit: true }),
+        expect.objectContaining({ role: "background", perUnit: true }),
+        expect.objectContaining({ role: "text", perUnit: true }),
+      ]),
+    });
+
+    const tracks = compiled.structured!.tracks;
+    const reveal = tracks.find(
+      (track) =>
+        track.role === "background" &&
+        track.keyframes.some((keyframe) => keyframe.properties.backgroundImage === "linear-gradient(135deg, #ff1745 0%, #df1238 100%)"),
+    );
+    const exit = tracks.find(
+      (track) =>
+        track.role === "background" &&
+        track.keyframes.some((keyframe) => keyframe.properties.scaleX === 1.02) &&
+        track.keyframes.at(-1)?.properties.scaleX === 0,
+    );
+    const word = tracks.find((track) => track.role === "unit");
+    const text = tracks.find((track) => track.role === "text");
+
+    expect(reveal?.keyframes[0]?.properties).toMatchObject({
+      opacity: 0,
+      scaleX: 0,
+      transformOrigin: "0% 50%",
+      borderRadius: "10px",
+      boxShadow: "0 12px 30px rgba(229, 20, 58, 0.32)",
+    });
+    expect(reveal?.keyframes.at(-1)?.properties).toMatchObject({ opacity: 1, scaleX: 1 });
+    expect(exit).toBeDefined();
+    expect(word?.keyframes.map((keyframe) => keyframe.properties.filter)).toEqual([
+      "brightness(1)",
+      "brightness(1.05)",
+      "brightness(1)",
+    ]);
+    expect(text?.keyframes.every((keyframe) => keyframe.properties.color === "#ffffff")).toBe(true);
+  });
+
+  it("wires Highlight controls into its structured recipe", () => {
+    const compile = (parameters: Record<string, string | number>) =>
+      compileMotionInstance(
+        createMotionInstance({
+          presetId: "text.emphasis.highlight-sweep",
+          target: { selector: "#headline" },
+          targetKind: "text",
+          start: 0,
+          parameters,
+        }),
+        "Make motion clear.",
+      ).structured!;
+
+    const baseline = compile({});
+    const faster = compile({ speed: 1.6 });
+    const configured = compile({
+      unit: "character",
+      stagger: 0.12,
+      direction: "left",
+      colorSource: "custom",
+      color: "#2563eb",
+      intensity: 1.6,
+      speed: 1.6,
+    });
+
+    expect(configured.split).toBe("character");
+    expect(configured.units).toHaveLength("Make motion clear.".length);
+    expect(configured.tracks.every((track) => track.stagger === 0.12)).toBe(true);
+    expect(configured.tracks).not.toEqual(baseline.tracks);
+    expect(faster.tracks[0]?.duration).toBeLessThan(baseline.tracks[0]?.duration ?? Infinity);
+    expect(configured.tracks.some((track) =>
+      track.keyframes.some((keyframe) => keyframe.properties.transformOrigin === "100% 50%"),
+    )).toBe(true);
+    expect(configured.tracks.some((track) =>
+      track.keyframes.some((keyframe) => String(keyframe.properties.backgroundImage).includes("#2563eb")),
+    )).toBe(true);
+    expect(configured.tracks.some((track) =>
+      track.keyframes.some((keyframe) => keyframe.properties.filter === "brightness(1.08)"),
+    )).toBe(true);
   });
 
   it("uses directional clipped gradients for gradient fill", () => {
