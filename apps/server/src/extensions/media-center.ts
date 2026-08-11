@@ -12,9 +12,10 @@ import { resolveWorkspaceFile, withTemporaryWorkspaceObject, workspaceForContext
 export const MEDIA_EXTENSION_ID = "media";
 
 const DEFAULT_ALIYUN_MEDIA_BASE_URL = "https://dashscope.aliyuncs.com";
-const BAILIAN_REQUEST_TIMEOUT_MS = 90_000;
+const MEDIA_PROVIDER_REQUEST_TIMEOUT_MS = 90_000;
 const MAX_TRANSLATION_AUDIO_CHARS = 16 * 1024 * 1024;
 const MAX_SYNTHESIZED_AUDIO_BYTES = 50 * 1024 * 1024;
+const MAX_VOICE_CLONE_AUDIO_BYTES = 10 * 1024 * 1024;
 const MAX_VOICEOVER_BATCH_SCENES = 24;
 const VOICEOVER_BATCH_CONCURRENCY = 3;
 const MAX_VOICEOVER_AUDIO_CACHE_BYTES = 128 * 1024 * 1024;
@@ -29,6 +30,19 @@ const LEGACY_COSYVOICE_V3_PRESET_MIGRATIONS: Record<string, string> = {
   longlaotie: "longanlang_v3",
   longfei: "longanlang_v3",
 };
+const MINIMAX_VOICE_CLONE_ORIGINS = {
+  global_en: "https://api.minimax.io",
+  cn_zh: "https://api.minimaxi.com",
+};
+const DEFAULT_MINIMAX_VOICE_CLONE_REGION = "global_en";
+const MINIMAX_VOICE_CLONE_MODELS: readonly string[] = [
+  "speech-2.8-hd",
+  "speech-2.6-hd",
+  "speech-02-hd",
+  "speech-01-hd",
+];
+const MINIMAX_FILE_UPLOAD_PATH = "/v1/files/upload";
+const MINIMAX_VOICE_CLONE_PATH = "/v1/voice_clone";
 
 type JsonRecord = Record<string, unknown>;
 
@@ -655,16 +669,24 @@ export const MEDIA_EXTENSION_ACTIONS = [
     extensionId: MEDIA_EXTENSION_ID,
     action: "voice_clone",
     title: "Clone a voice",
-    description: "Create a reusable Model Studio voice from an accessible audio URL. Keep the returned voice id for later speech synthesis.",
+    description: "Create a reusable voice from an accessible audio source. Keep the returned voice id for later speech synthesis.",
     inputSchema: {
       type: "object",
       properties: {
+        provider: { type: "string", enum: ["minimax"], description: "Set to minimax to use MiniMax voice cloning." },
+        region: { type: "string", enum: ["global_en", "cn_zh"], description: "Optional MiniMax regional endpoint. Defaults to global_en." },
         audioUrl: { type: "string", description: "Public HTTPS URL of the clean reference audio." },
         prefix: { type: "string", description: "Short unique prefix used to identify the cloned voice." },
         targetModel: { type: "string", description: "Optional synthesis model to pair with the voice. Defaults to cosyvoice-v3-flash." },
         languageHints: { type: "array", items: { type: "string" }, description: "Optional language hints, for example [\"zh\"] or [\"en\"]." },
+        fileId: { oneOf: [{ type: "string" }, { type: "number" }], description: "MiniMax file id returned by the voice-clone audio upload." },
+        voiceId: { type: "string", description: "Unique MiniMax voice id to create." },
+        model: { type: "string", enum: MINIMAX_VOICE_CLONE_MODELS, description: "MiniMax speech model for the cloned voice." },
       },
-      required: ["audioUrl", "prefix"],
+      anyOf: [
+        { required: ["audioUrl", "prefix"] },
+        { required: ["provider", "fileId", "voiceId", "model"] },
+      ],
       additionalProperties: false,
     },
   },
@@ -690,9 +712,13 @@ export const MEDIA_EXTENSION_ACTIONS = [
     inputSchema: {
       type: "object",
       properties: {
+        provider: { type: "string", enum: ["minimax"], description: "Set to minimax to upload and clone with MiniMax." },
+        region: { type: "string", enum: ["global_en", "cn_zh"], description: "Optional MiniMax regional endpoint. Defaults to global_en." },
         sourcePath: { type: "string", description: "Relative WAV, MP3, or M4A path inside the active workspace." },
         targetModel: { type: "string", description: "Optional CosyVoice model. Defaults to cosyvoice-v3-flash." },
         languageHints: { type: "array", items: { type: "string" }, description: "Optional language hints for the clean voice sample." },
+        voiceId: { type: "string", description: "Unique MiniMax voice id to create." },
+        model: { type: "string", enum: MINIMAX_VOICE_CLONE_MODELS, description: "MiniMax speech model for the cloned voice." },
       },
       required: ["sourcePath"],
       additionalProperties: false,
@@ -888,7 +914,30 @@ function taskIdFromPayload(payload: unknown): string | null {
 
 function voiceIdFromPayload(payload: unknown): string {
   const output = readRecord(payload, "output");
-  return readStringField(output, "voice_id") || readStringField(output, "voice");
+  return readStringField(payload, "voice_id") || readStringField(output, "voice_id") || readStringField(output, "voice");
+}
+
+function readIdentifierField(value: unknown, key: string): string | number | null {
+  if (!isRecord(value)) return null;
+  const field = value[key];
+  if (typeof field === "string" && field.trim()) return field.trim();
+  return typeof field === "number" && Number.isFinite(field) ? field : null;
+}
+
+function requireIdentifierField(value: unknown, key: string): string | number {
+  const result = readIdentifierField(value, key);
+  if (result === null) throw new ApiError(400, "invalid_payload", `${key} is required`);
+  return result;
+}
+
+function miniMaxFileIdFromPayload(payload: unknown): string | number | null {
+  const file = readRecord(payload, "file");
+  const data = readRecord(payload, "data");
+  return readIdentifierField(payload, "file_id")
+    ?? readIdentifierField(file, "file_id")
+    ?? readIdentifierField(file, "id")
+    ?? readIdentifierField(data, "file_id")
+    ?? readIdentifierField(data, "id");
 }
 
 function synthesizedAudioUrl(payload: unknown): string {
@@ -918,7 +967,7 @@ function synthesizedAudioUrl(payload: unknown): string {
 
 async function downloadSynthesizedAudio(url: string): Promise<Buffer> {
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), BAILIAN_REQUEST_TIMEOUT_MS);
+  const timeout = setTimeout(() => controller.abort(), MEDIA_PROVIDER_REQUEST_TIMEOUT_MS);
   let response: Response;
   try {
     response = await mediaProviderFetch(url, { signal: controller.signal, redirect: "error" });
@@ -1224,6 +1273,140 @@ function endpoint(baseUrl: string, path: string): string {
   return `${baseUrl}${path}`;
 }
 
+function miniMaxErrorMessage(payload: unknown): string {
+  const baseResponse = readRecord(payload, "base_resp");
+  return readStringField(baseResponse, "status_msg") || providerMessage(payload) || "";
+}
+
+async function resolveMiniMaxApiKey(env: EnvService): Promise<string> {
+  const records = await env.list();
+  const values = new Map(records.map((item) => [item.key, item.value.trim()] as const));
+  const apiKey = values.get("MINIMAX_API_KEY") || process.env.MINIMAX_API_KEY?.trim() || "";
+  if (!apiKey) {
+    throw new ApiError(400, "minimax_api_key_missing", "MiniMax API key missing. Configure MINIMAX_API_KEY before cloning a voice.");
+  }
+  return apiKey;
+}
+
+function miniMaxVoiceCloneOrigin(region: string): string {
+  switch (region) {
+    case "global_en":
+      return MINIMAX_VOICE_CLONE_ORIGINS.global_en;
+    case "cn_zh":
+      return MINIMAX_VOICE_CLONE_ORIGINS.cn_zh;
+    default:
+      throw new ApiError(400, "invalid_minimax_region", `MiniMax region must be one of: ${Object.keys(MINIMAX_VOICE_CLONE_ORIGINS).join(", ")}`);
+  }
+}
+
+function requireMiniMaxVoiceCloneModel(args: JsonRecord): string {
+  const model = requireString(args, "model");
+  if (!MINIMAX_VOICE_CLONE_MODELS.includes(model)) {
+    throw new ApiError(400, "invalid_minimax_voice_clone_model", `MiniMax voice cloning model must be one of: ${MINIMAX_VOICE_CLONE_MODELS.join(", ")}`);
+  }
+  return model;
+}
+
+async function requestMiniMax(input: {
+  apiKey: string;
+  url: string;
+  operation: string;
+  body: BodyInit;
+  headers?: Record<string, string>;
+}): Promise<unknown> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), MEDIA_PROVIDER_REQUEST_TIMEOUT_MS);
+  let response: Response;
+  try {
+    response = await mediaProviderFetch(input.url, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${input.apiKey}`,
+        ...input.headers,
+      },
+      body: input.body,
+      signal: controller.signal,
+    });
+  } catch (error) {
+    if (error instanceof Error && error.name === "AbortError") {
+      throw new ApiError(504, "minimax_timeout", `MiniMax ${input.operation} did not respond before the request timed out.`);
+    }
+    throw new ApiError(502, "minimax_unreachable", `Could not reach MiniMax for ${input.operation}. Check the network and try again.`);
+  } finally {
+    clearTimeout(timeout);
+  }
+
+  const payload: unknown = await response.json().catch(() => null);
+  const statusCode = readOptionalNumber(readRecord(payload, "base_resp"), "status_code");
+  if (!response.ok || (statusCode !== undefined && statusCode !== 0)) {
+    const fallback = response.ok
+      ? `MiniMax ${input.operation} failed (status_code ${statusCode}).`
+      : `MiniMax ${input.operation} failed (HTTP ${response.status}).`;
+    throw new ApiError(response.ok ? 502 : response.status, "minimax_request_failed", miniMaxErrorMessage(payload) || fallback);
+  }
+  return payload;
+}
+
+async function uploadWorkspaceFileToMiniMax(input: {
+  config: ServerConfig;
+  context: JsonRecord;
+  sourcePath: string;
+  apiKey: string;
+  origin: string;
+}): Promise<string | number> {
+  const workspace = workspaceForContext(input.config, input.context);
+  const source = resolveWorkspaceFile(workspace.path, input.sourcePath);
+  let bytes: Buffer;
+  try {
+    bytes = await readFile(source.absolutePath);
+  } catch {
+    throw new ApiError(404, "workspace_file_not_found", "Workspace file was not found");
+  }
+  if (bytes.byteLength > MAX_VOICE_CLONE_AUDIO_BYTES) {
+    throw new ApiError(413, "workspace_file_too_large", `Source file exceeds the ${Math.floor(MAX_VOICE_CLONE_AUDIO_BYTES / (1024 * 1024))} MB limit.`);
+  }
+
+  const form = new FormData();
+  form.append("purpose", "voice_clone");
+  form.append("file", new Blob([Uint8Array.from(bytes)], { type: "application/octet-stream" }), basename(source.relativePath));
+  const payload = await requestMiniMax({
+    apiKey: input.apiKey,
+    url: endpoint(input.origin, MINIMAX_FILE_UPLOAD_PATH),
+    operation: "voice-clone audio upload",
+    body: form,
+  });
+  const fileId = miniMaxFileIdFromPayload(payload);
+  if (fileId === null) {
+    throw new ApiError(502, "minimax_file_upload_failed", "MiniMax did not return a file id for the uploaded voice sample.");
+  }
+  return fileId;
+}
+
+async function cloneMiniMaxVoice(input: {
+  apiKey: string;
+  origin: string;
+  fileId: string | number;
+  voiceId: string;
+  model: string;
+}) {
+  const payload = await requestMiniMax({
+    apiKey: input.apiKey,
+    url: endpoint(input.origin, MINIMAX_VOICE_CLONE_PATH),
+    operation: "voice cloning",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      file_id: input.fileId,
+      voice_id: input.voiceId,
+      model: input.model,
+    }),
+  });
+  const voiceId = voiceIdFromPayload(payload);
+  if (!voiceId) {
+    throw new ApiError(502, "minimax_voice_clone_failed", "MiniMax did not return a reusable voice id.");
+  }
+  return { voiceId, model: input.model };
+}
+
 function safeBailianUploadHost(value: string): string {
   let url: URL;
   try {
@@ -1247,7 +1430,7 @@ async function requestProviderJson(input: {
   headers?: Record<string, string>;
 }): Promise<unknown> {
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), BAILIAN_REQUEST_TIMEOUT_MS);
+  const timeout = setTimeout(() => controller.abort(), MEDIA_PROVIDER_REQUEST_TIMEOUT_MS);
   let response: Response;
   try {
     response = await mediaProviderFetch(input.url, {
@@ -1331,7 +1514,7 @@ async function uploadWorkspaceFileToBailianTemporaryStorage(input: {
   form.append("file", new Blob([Uint8Array.from(bytes)], { type: "application/octet-stream" }), fileName);
 
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), BAILIAN_REQUEST_TIMEOUT_MS);
+  const timeout = setTimeout(() => controller.abort(), MEDIA_PROVIDER_REQUEST_TIMEOUT_MS);
   try {
     const response = await mediaProviderFetch(uploadHost, { method: "POST", body: form, signal: controller.signal });
     if (!response.ok) {
@@ -1382,7 +1565,7 @@ async function requestTranslation(input: {
     ...(input.includeAudio ? { audio: { voice: input.voice, format: "wav" } } : {}),
   };
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), BAILIAN_REQUEST_TIMEOUT_MS);
+  const timeout = setTimeout(() => controller.abort(), MEDIA_PROVIDER_REQUEST_TIMEOUT_MS);
   let response: Response;
   try {
     response = await mediaProviderFetch(endpoint(input.baseUrl, "/compatible-mode/v1/chat/completions"), {
@@ -1520,6 +1703,39 @@ export async function callMediaExtensionAction(
         provider: "local",
         operation: action,
         output: { sourcePath: source.relativePath, ...output },
+      },
+      context,
+    };
+  }
+
+  if (readStringField(args, "provider") === "minimax") {
+    if (action !== "voice_clone" && action !== "voice_clone_workspace_file") {
+      throw new ApiError(400, "unsupported_minimax_media_action", "MiniMax is not configured for this Media Center action.");
+    }
+    const apiKey = await resolveMiniMaxApiKey(env);
+    const region = readStringField(args, "region") || DEFAULT_MINIMAX_VOICE_CLONE_REGION;
+    const origin = miniMaxVoiceCloneOrigin(region);
+    const model = requireMiniMaxVoiceCloneModel(args);
+    const voiceId = requireString(args, "voiceId");
+    let fileId: string | number;
+    if (action === "voice_clone") {
+      fileId = requireIdentifierField(args, "fileId");
+    } else {
+      const sourcePath = requireString(args, "sourcePath");
+      if (!/\.(?:m4a|mp3|wav)$/i.test(extname(sourcePath))) {
+        throw new ApiError(400, "invalid_voice_sample", "Voice samples must be WAV, MP3, or M4A files.");
+      }
+      fileId = await uploadWorkspaceFileToMiniMax({ config, context, sourcePath, apiKey, origin });
+    }
+    const result = await cloneMiniMaxVoice({ apiKey, origin, fileId, voiceId, model });
+    return {
+      ok: true,
+      extensionId: MEDIA_EXTENSION_ID,
+      action,
+      result: {
+        provider: "minimax",
+        operation: action,
+        output: result,
       },
       context,
     };
@@ -1736,7 +1952,7 @@ export async function callMediaExtensionAction(
           context,
           sourcePath,
           purpose: "voice-clone",
-          maxBytes: 10 * 1024 * 1024,
+          maxBytes: MAX_VOICE_CLONE_AUDIO_BYTES,
           use: (audioUrl) => createVoice(audioUrl),
         });
       } catch (error) {
@@ -1749,7 +1965,7 @@ export async function callMediaExtensionAction(
           baseUrl,
           context,
           sourcePath,
-          maxBytes: 10 * 1024 * 1024,
+          maxBytes: MAX_VOICE_CLONE_AUDIO_BYTES,
         });
         providerResponse = await createVoice(audioUrl, { "X-DashScope-OssResourceResolve": "enable" });
       }

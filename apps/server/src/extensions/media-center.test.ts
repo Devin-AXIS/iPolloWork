@@ -18,6 +18,7 @@ import {
 const nativeFetch = globalThis.fetch;
 const mediaProviderFetchKey = Symbol.for("ipollowork.mediaProviderFetch");
 const nativeMediaProviderFetch: unknown = Reflect.get(globalThis, mediaProviderFetchKey);
+const nativeMiniMaxApiKey = process.env.MINIMAX_API_KEY;
 const directories: string[] = [];
 
 const config = {
@@ -34,6 +35,8 @@ afterEach(async () => {
   globalThis.fetch = nativeFetch;
   if (nativeMediaProviderFetch === undefined) Reflect.deleteProperty(globalThis, mediaProviderFetchKey);
   else Reflect.set(globalThis, mediaProviderFetchKey, nativeMediaProviderFetch);
+  if (nativeMiniMaxApiKey === undefined) delete process.env.MINIMAX_API_KEY;
+  else process.env.MINIMAX_API_KEY = nativeMiniMaxApiKey;
   while (directories.length) {
     const directory = directories.pop();
     if (directory) await rm(directory, { recursive: true, force: true });
@@ -63,6 +66,127 @@ async function workspaceConfig() {
 }
 
 describe("Media Center extension", () => {
+  test("requires the MiniMax key before cloning a voice", async () => {
+    delete process.env.MINIMAX_API_KEY;
+    await expect(callMediaExtensionAction(config, env({}), "voice_clone", {
+      provider: "minimax",
+      fileId: 123,
+      voiceId: "ipw-minimax-voice",
+      model: "speech-2.8-hd",
+    }, {})).rejects.toMatchObject({ code: "minimax_api_key_missing" });
+  });
+
+  test("clones a MiniMax voice from an uploaded file id", async () => {
+    globalThis.fetch = ((input, init) => {
+      expect(String(input)).toBe("https://api.minimax.io/v1/voice_clone");
+      expect(init?.headers).toMatchObject({ Authorization: "Bearer test-key" });
+      expect(JSON.parse(String(init?.body))).toEqual({
+        file_id: 123,
+        voice_id: "ipw-minimax-voice",
+        model: "speech-2.8-hd",
+      });
+      return Promise.resolve(new Response(JSON.stringify({
+        voice_id: "ipw-minimax-voice",
+        base_resp: { status_code: 0 },
+      }), { status: 200, headers: { "content-type": "application/json" } }));
+    }) as typeof fetch;
+
+    const result = await callMediaExtensionAction(config, env({ MINIMAX_API_KEY: "test-key" }), "voice_clone", {
+      provider: "minimax",
+      fileId: 123,
+      voiceId: "ipw-minimax-voice",
+      model: "speech-2.8-hd",
+    }, {});
+
+    expect(result).toMatchObject({
+      ok: true,
+      result: {
+        provider: "minimax",
+        operation: "voice_clone",
+        output: { voiceId: "ipw-minimax-voice", model: "speech-2.8-hd" },
+      },
+    });
+    expect(JSON.stringify(result)).not.toContain("test-key");
+  });
+
+  test("uploads a workspace sample before cloning with the MiniMax China endpoint", async () => {
+    const { root, config: workspace } = await workspaceConfig();
+    const requests: string[] = [];
+    globalThis.fetch = ((input, init) => {
+      const url = String(input);
+      requests.push(url);
+      expect(init?.headers).toMatchObject({ Authorization: "Bearer test-key" });
+      if (url.endsWith("/v1/files/upload")) {
+        if (!(init?.body instanceof FormData)) throw new Error("Expected MiniMax multipart upload");
+        expect(init.body.get("purpose")).toBe("voice_clone");
+        expect(init.body.get("file") instanceof Blob).toBe(true);
+        return Promise.resolve(new Response(JSON.stringify({
+          file: { file_id: 456 },
+          base_resp: { status_code: 0 },
+        }), { status: 200, headers: { "content-type": "application/json" } }));
+      }
+      expect(url).toBe("https://api.minimaxi.com/v1/voice_clone");
+      expect(JSON.parse(String(init?.body))).toEqual({
+        file_id: 456,
+        voice_id: "ipw-cn-voice",
+        model: "speech-2.6-hd",
+      });
+      return Promise.resolve(new Response(JSON.stringify({
+        voice_id: "ipw-cn-voice",
+        base_resp: { status_code: 0 },
+      }), { status: 200, headers: { "content-type": "application/json" } }));
+    }) as typeof fetch;
+
+    const result = await callMediaExtensionAction(workspace, env({ MINIMAX_API_KEY: "test-key" }), "voice_clone_workspace_file", {
+      provider: "minimax",
+      region: "cn_zh",
+      sourcePath: "sample.wav",
+      voiceId: "ipw-cn-voice",
+      model: "speech-2.6-hd",
+    }, { directory: root });
+
+    expect(requests).toEqual([
+      "https://api.minimaxi.com/v1/files/upload",
+      "https://api.minimaxi.com/v1/voice_clone",
+    ]);
+    expect(result).toMatchObject({
+      ok: true,
+      result: {
+        provider: "minimax",
+        operation: "voice_clone_workspace_file",
+        output: { voiceId: "ipw-cn-voice", model: "speech-2.6-hd" },
+      },
+    });
+  });
+
+  test("reports MiniMax voice cloning status errors", async () => {
+    globalThis.fetch = ((_input, _init) => Promise.resolve(new Response(JSON.stringify({
+      base_resp: { status_code: 1001, status_msg: "Voice id already exists" },
+    }), { status: 200, headers: { "content-type": "application/json" } }))) as typeof fetch;
+
+    await expect(callMediaExtensionAction(config, env({ MINIMAX_API_KEY: "test-key" }), "voice_clone", {
+      provider: "minimax",
+      fileId: "file-123",
+      voiceId: "ipw-minimax-voice",
+      model: "speech-02-hd",
+    }, {})).rejects.toMatchObject({
+      status: 502,
+      code: "minimax_request_failed",
+      message: "Voice id already exists",
+    });
+  });
+
+  test("rejects unsupported MiniMax voice cloning models before provider access", async () => {
+    globalThis.fetch = ((_input, _init) => Promise.reject(new Error("MiniMax must not be called"))) as typeof fetch;
+
+    await expect(callMediaExtensionAction(config, env({ MINIMAX_API_KEY: "test-key" }), "voice_clone", {
+      provider: "minimax",
+      fileId: 123,
+      voiceId: "ipw-minimax-voice",
+      model: "unsupported",
+    }, {})).rejects.toMatchObject({ code: "invalid_minimax_voice_clone_model" });
+  });
+
   test("estimates multilingual narration duration before provider synthesis", () => {
     expect(estimateVoiceoverDurationSeconds("这是八个汉字的旁白。")).toBeGreaterThan(2);
     expect(estimateVoiceoverDurationSeconds("Five clear words for this scene.")).toBeGreaterThan(2);
