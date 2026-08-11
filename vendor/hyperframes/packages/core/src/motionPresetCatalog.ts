@@ -5,6 +5,24 @@ import type {
   MotionPreset,
 } from "./motionPresets.js";
 import type { StructuredTextRecipe } from "./structuredTextMotion.js";
+import {
+  resolveClipWipeStructuredRecipe,
+  resolveGradientFillStructuredRecipe,
+  resolveMatrixDecodeStructuredRecipe,
+  resolveWeightShiftStructuredRecipe,
+} from "./migratedCaptionRecipesA.js";
+import {
+  resolveBlendDifferenceStructuredRecipe,
+  resolveGlitchRgbStructuredRecipe,
+  resolveNeonAccentStructuredRecipe,
+  resolveNeonGlowStructuredRecipe,
+} from "./migratedCaptionRecipesB.js";
+import {
+  resolveEmojiPopStructuredRecipe,
+  resolveKineticSlamStructuredRecipe,
+  resolveParticleBurstStructuredRecipe,
+  resolveTextureFillStructuredRecipe,
+} from "./migratedCaptionRecipesC.js";
 
 const EASE_OPTIONS: MotionParameterOption[] = [
   { value: "power2.out", label: "柔和" },
@@ -263,9 +281,19 @@ export function resolveStructuredTextRecipe(
   preset: MotionPreset,
   parameters: MotionParameters,
 ): StructuredTextRecipe | undefined {
-  if (preset.id === "text.emphasis.highlight-sweep") {
-    return createHighlightSweepStructuredRecipe(parameters);
-  }
+  if (preset.id === "text.emphasis.highlight-sweep") return createHighlightSweepStructuredRecipe(parameters);
+  if (preset.id === "text.enter.matrix-decode") return resolveMatrixDecodeStructuredRecipe(parameters);
+  if (preset.id === "text.emphasis.gradient-fill") return resolveGradientFillStructuredRecipe(parameters);
+  if (preset.id === "text.emphasis.neon-glow") return resolveNeonGlowStructuredRecipe(parameters);
+  if (preset.id === "text.emphasis.neon-accent") return resolveNeonAccentStructuredRecipe(parameters);
+  if (preset.id === "text.emphasis.rgb-glitch") return resolveGlitchRgbStructuredRecipe(parameters);
+  if (preset.id === "text.enter.clip-wipe") return resolveClipWipeStructuredRecipe(parameters);
+  if (preset.id === "text.emphasis.blend-difference") return resolveBlendDifferenceStructuredRecipe(parameters);
+  if (preset.id === "text.emphasis.weight-shift") return resolveWeightShiftStructuredRecipe(parameters);
+  if (preset.id === "text.emphasis.texture-fill") return resolveTextureFillStructuredRecipe(parameters);
+  if (preset.id === "text.emphasis.kinetic-slam") return resolveKineticSlamStructuredRecipe(parameters);
+  if (preset.id === "text.emphasis.emoji-pop") return resolveEmojiPopStructuredRecipe(parameters);
+  if (preset.id === "text.emphasis.particle-burst") return resolveParticleBurstStructuredRecipe(parameters);
   return preset.structuredText;
 }
 
@@ -321,6 +349,10 @@ function migratedTextPreset(
           ]
         : []),
       ...(seed.extraParameters ?? []),
+      ...(seed.defaults?.speed !== undefined &&
+      !(seed.extraParameters ?? []).some((parameter) => parameter.id === "speed")
+        ? [MOTION_SPEED_PARAMETER]
+        : []),
     ],
     defaults: {
       ease: seed.phase === "emphasis" ? "sine.inOut" : "power3.out",
@@ -640,8 +672,9 @@ const MIGRATED_CAPTION_TEXT_PRESETS: readonly MotionPreset[] = [
     label: "矩阵解码",
     phase: "enter",
     color: true,
-    defaults: { unit: "character", stagger: 0.03, color: "#32FF7E", density: 1, blur: 0 },
-    extraParameters: [MOTION_DENSITY_PARAMETER, MOTION_BLUR_PARAMETER],
+    defaults: { unit: "word", stagger: 0.1, color: "#00FF41", density: 1, blur: 0, speed: 1 },
+    extraParameters: [MOTION_DENSITY_PARAMETER, MOTION_BLUR_PARAMETER, MOTION_SPEED_PARAMETER],
+    structuredText: resolveMatrixDecodeStructuredRecipe(),
     semantics: {
       intents: ["解码", "科技显现", "字符扰动"],
       tones: ["科技", "利落"],
@@ -655,8 +688,10 @@ const MIGRATED_CAPTION_TEXT_PRESETS: readonly MotionPreset[] = [
     phase: "emphasis",
     direction: true,
     color: true,
-    defaults: { color: "#FF4FD8", accentColor: "#20BBC0" },
+    intensity: true,
+    defaults: { unit: "word", stagger: 0.1, color: "#FE9F1B", accentColor: "#FD56CB", speed: 1 },
     extraParameters: [{ id: "accentColor", label: "强调色", kind: "color" }],
+    structuredText: resolveGradientFillStructuredRecipe(),
     semantics: {
       intents: ["渐变", "填充", "流动"],
       tones: ["明亮", "品牌感"],
@@ -669,8 +704,9 @@ const MIGRATED_CAPTION_TEXT_PRESETS: readonly MotionPreset[] = [
     label: "霓虹辉光",
     phase: "emphasis",
     color: true,
-    defaults: { color: "#20BBC0", glow: 1 },
+    defaults: { unit: "word", stagger: 0.3, color: "#00FFF0", glow: 1, speed: 1 },
     extraParameters: [MOTION_GLOW_PARAMETER],
+    structuredText: resolveNeonGlowStructuredRecipe(),
     semantics: {
       intents: ["霓虹", "发光", "强调"],
       tones: ["科技", "夜景"],
@@ -683,8 +719,9 @@ const MIGRATED_CAPTION_TEXT_PRESETS: readonly MotionPreset[] = [
     label: "霓虹强调",
     phase: "emphasis",
     color: true,
-    defaults: { color: "#FF4FD8", glow: 1 },
+    defaults: { unit: "word", stagger: 0.04, color: "#53FF01", glow: 1, speed: 1 },
     extraParameters: [MOTION_GLOW_PARAMETER],
+    structuredText: resolveNeonAccentStructuredRecipe(),
     semantics: {
       intents: ["霓虹", "强调色", "轻微漂移"],
       tones: ["活跃", "科技"],
@@ -697,8 +734,9 @@ const MIGRATED_CAPTION_TEXT_PRESETS: readonly MotionPreset[] = [
     label: "RGB 故障",
     phase: "emphasis",
     color: true,
-    defaults: { color: "#FF1745", preserveReadable: "true", blur: 5, density: 1.35 },
+    defaults: { unit: "word", stagger: 0.04, color: "#FF003C", preserveReadable: "true", blur: 0, density: 1, speed: 1 },
     extraParameters: [MOTION_BLUR_PARAMETER, MOTION_DENSITY_PARAMETER, MOTION_READABILITY_PARAMETER],
+    structuredText: resolveGlitchRgbStructuredRecipe(),
     semantics: {
       intents: ["故障", "RGB", "扰动"],
       tones: ["强烈", "科技"],
@@ -711,7 +749,9 @@ const MIGRATED_CAPTION_TEXT_PRESETS: readonly MotionPreset[] = [
     label: "裁切揭幕",
     phase: "enter",
     direction: true,
-    defaults: { unit: "word", stagger: 0.05 },
+    color: true,
+    defaults: { unit: "word", stagger: 0.04, color: "#FFD700", speed: 1 },
+    structuredText: resolveClipWipeStructuredRecipe(),
     semantics: {
       intents: ["裁切", "揭幕", "方向进入"],
       tones: ["利落", "编辑感"],
@@ -723,8 +763,10 @@ const MIGRATED_CAPTION_TEXT_PRESETS: readonly MotionPreset[] = [
     id: "text.emphasis.blend-difference",
     label: "差值反色",
     phase: "emphasis",
-    defaults: { preserveReadable: "true", blur: 0 },
+    color: true,
+    defaults: { unit: "whole", color: "#FFFFFF", preserveReadable: "true", blur: 0 },
     extraParameters: [MOTION_BLUR_PARAMETER, MOTION_READABILITY_PARAMETER],
+    structuredText: resolveBlendDifferenceStructuredRecipe(),
     semantics: {
       intents: ["反色", "混合", "强调"],
       tones: ["实验", "编辑感"],
@@ -736,7 +778,8 @@ const MIGRATED_CAPTION_TEXT_PRESETS: readonly MotionPreset[] = [
     id: "text.emphasis.weight-shift",
     label: "字重切换",
     phase: "emphasis",
-    defaults: { unit: "word", stagger: 0.04, minWeight: 300, maxWeight: 700 },
+    defaults: { unit: "word", stagger: 0, minWeight: 300, maxWeight: 700, speed: 1 },
+    structuredText: resolveWeightShiftStructuredRecipe(),
     extraParameters: [
       { id: "minWeight", label: "起始字重", kind: "number", min: 100, max: 900, step: 50 },
       { id: "maxWeight", label: "强调字重", kind: "number", min: 100, max: 900, step: 50 },
@@ -754,8 +797,9 @@ const MIGRATED_CAPTION_TEXT_PRESETS: readonly MotionPreset[] = [
     phase: "emphasis",
     direction: true,
     color: true,
-    defaults: { color: "#FFFFFF", density: 1 },
+    defaults: { unit: "word", stagger: 0.04, color: "#FFD0A0", density: 1, speed: 1 },
     extraParameters: [MOTION_DENSITY_PARAMETER],
+    structuredText: resolveTextureFillStructuredRecipe(),
     semantics: {
       intents: ["纹理", "遮罩", "填充"],
       tones: ["设计感", "海报"],
@@ -768,8 +812,9 @@ const MIGRATED_CAPTION_TEXT_PRESETS: readonly MotionPreset[] = [
     label: "动感冲击",
     phase: "emphasis",
     direction: true,
-    defaults: { unit: "word", preserveReadable: "true", distance: 120 },
+    defaults: { unit: "word", stagger: 0.04, preserveReadable: "true", distance: 120, speed: 1 },
     extraParameters: [MOTION_DISTANCE_PARAMETER, MOTION_READABILITY_PARAMETER],
+    structuredText: resolveKineticSlamStructuredRecipe(),
     semantics: {
       intents: ["冲击", "动感", "强调"],
       tones: ["强烈", "节奏"],
@@ -781,7 +826,8 @@ const MIGRATED_CAPTION_TEXT_PRESETS: readonly MotionPreset[] = [
     id: "text.emphasis.emoji-pop",
     label: "Emoji 弹出",
     phase: "emphasis",
-    defaults: { unit: "character", stagger: 0.03 },
+    defaults: { unit: "word", stagger: 0.04, speed: 1 },
+    structuredText: resolveEmojiPopStructuredRecipe(),
     semantics: {
       intents: ["emoji", "弹出", "轻松"],
       tones: ["playful", "社交"],
@@ -794,8 +840,9 @@ const MIGRATED_CAPTION_TEXT_PRESETS: readonly MotionPreset[] = [
     label: "粒子爆发",
     phase: "emphasis",
     color: true,
-    defaults: { unit: "word", stagger: 0.06, color: "#FFB000", density: 1 },
+    defaults: { unit: "word", stagger: 0.018, color: "#FFD700", density: 1, speed: 1 },
     extraParameters: [MOTION_DENSITY_PARAMETER],
+    structuredText: resolveParticleBurstStructuredRecipe(),
     semantics: {
       intents: ["粒子", "爆发", "关键词强化"],
       tones: ["活跃", "庆祝"],

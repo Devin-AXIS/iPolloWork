@@ -54,18 +54,30 @@ describe("motion presets", () => {
       expect(preset?.targetKinds, id).toEqual(["text"]);
       expect(preset?.parameterSchema.map((parameter) => parameter.id), id).toContain("intensity");
       expect(preset?.parameterSchema.map((parameter) => parameter.id), id).toContain("ease");
+      expect(preset?.structuredText, id).toBeDefined();
+      const compiled = compileMotionInstance(
+        createMotionInstance({
+          presetId: id,
+          target: { selector: "#title" },
+          targetKind: "text",
+          start: 0,
+        }),
+        "Make motion clear.",
+      );
+      expect(compiled.structured, id).toBeDefined();
+      expect(compiled.structured?.units.length, id).toBeGreaterThan(0);
     }
 
     const specializedDefaults = {
       "text.emphasis.highlight-sweep": { color: "#FF1745", roundness: 10 },
       "text.enter.matrix-decode": { density: 1, blur: 0 },
-      "text.emphasis.gradient-fill": { accentColor: "#20BBC0" },
+      "text.emphasis.gradient-fill": { accentColor: "#FD56CB" },
       "text.emphasis.neon-glow": { glow: 1 },
       "text.emphasis.neon-accent": { glow: 1 },
       "text.emphasis.rgb-glitch": {
-        color: "#FF1745",
-        blur: 5,
-        density: 1.35,
+        color: "#FF003C",
+        blur: 0,
+        density: 1,
         preserveReadable: "true",
       },
       "text.emphasis.blend-difference": { blur: 0, preserveReadable: "true" },
