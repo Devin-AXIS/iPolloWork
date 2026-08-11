@@ -1,6 +1,10 @@
 import { memo, useRef, useState, useCallback, useEffect } from "react";
 import { useMountEffect } from "../../hooks/useMountEffect";
-import { computeThumbnailStrip, THUMBNAIL_CLIP_HEIGHT } from "./thumbnailUtils";
+import {
+  computeThumbnailStrip,
+  scheduleTimelineThumbnailTask,
+  THUMBNAIL_CLIP_HEIGHT,
+} from "./thumbnailUtils";
 
 interface VideoThumbnailProps {
   videoSrc: string;
@@ -10,7 +14,7 @@ interface VideoThumbnailProps {
 }
 
 const CLIP_HEIGHT = THUMBNAIL_CLIP_HEIGHT;
-const MAX_UNIQUE_FRAMES: number = 6;
+const MAX_UNIQUE_FRAMES: number = 4;
 
 /**
  * Renders a film-strip of video frames extracted client-side via a hidden
@@ -25,6 +29,7 @@ export const VideoThumbnail = memo(function VideoThumbnail({
 }: VideoThumbnailProps) {
   const [containerWidth, setContainerWidth] = useState(0);
   const [visible, setVisible] = useState(false);
+  const [ready, setReady] = useState(false);
   const [frames, setFrames] = useState<string[]>([]);
   const [failed, setFailed] = useState(false);
   const [aspect, setAspect] = useState(16 / 9);
@@ -33,6 +38,8 @@ export const VideoThumbnail = memo(function VideoThumbnail({
   const resizeRafRef = useRef(0);
   const pendingWidthRef = useRef(0);
   const extractingRef = useRef(false);
+  const idleCallbackRef = useRef<number | null>(null);
+  const releaseTaskRef = useRef<(() => void) | null>(null);
 
   const setContainerRef = useCallback((el: HTMLDivElement | null) => {
     ioRef.current?.disconnect();
@@ -75,14 +82,47 @@ export const VideoThumbnail = memo(function VideoThumbnail({
     ioRef.current?.disconnect();
     roRef.current?.disconnect();
     if (resizeRafRef.current !== 0) cancelAnimationFrame(resizeRafRef.current);
+    if (idleCallbackRef.current != null) window.cancelIdleCallback(idleCallbackRef.current);
+    releaseTaskRef.current?.();
   });
+
+  const finishTask = useCallback(() => {
+    releaseTaskRef.current?.();
+    releaseTaskRef.current = null;
+  }, []);
+
+  useEffect(() => {
+    setReady(false);
+    if (!visible) return;
+
+    let cancelled = false;
+    idleCallbackRef.current = window.requestIdleCallback(
+      () => {
+        idleCallbackRef.current = null;
+        if (cancelled) return;
+        releaseTaskRef.current = scheduleTimelineThumbnailTask(() => {
+          if (!cancelled) setReady(true);
+        });
+      },
+      { timeout: 1200 },
+    );
+
+    return () => {
+      cancelled = true;
+      if (idleCallbackRef.current != null) {
+        window.cancelIdleCallback(idleCallbackRef.current);
+        idleCallbackRef.current = null;
+      }
+      finishTask();
+    };
+  }, [finishTask, videoSrc, visible]);
 
   // Extract frames progressively — each frame appears as soon as it's ready.
   // Note: useEffect with deps is acceptable — syncs with external video element API,
   // requires cleanup (cancel extraction, revoke URLs) when inputs change.
   // eslint-disable-next-line no-restricted-syntax
   useEffect(() => {
-    if (!visible || extractingRef.current) return;
+    if (!ready || extractingRef.current) return;
     extractingRef.current = true;
 
     const video = document.createElement("video");
@@ -94,6 +134,7 @@ export const VideoThumbnail = memo(function VideoThumbnail({
     const ctx = canvas.getContext("2d");
     if (!ctx) {
       extractingRef.current = false;
+      finishTask();
       return;
     }
 
@@ -115,6 +156,7 @@ export const VideoThumbnail = memo(function VideoThumbnail({
           setFrames(extractedFrames);
           video.src = "";
           video.load();
+          finishTask();
         }
         return;
       }
@@ -134,10 +176,8 @@ export const VideoThumbnail = memo(function VideoThumbnail({
 
     video.addEventListener("seeked", () => {
       if (cancelled) return;
-      let dataUrl: string;
       try {
         ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-        dataUrl = canvas.toDataURL("image/jpeg", 0.6);
       } catch {
         // An external http(s) video served without CORS headers taints the
         // canvas, so toDataURL throws a SecurityError. Stop the extractor
@@ -148,11 +188,26 @@ export const VideoThumbnail = memo(function VideoThumbnail({
         setFailed(true);
         video.src = "";
         video.load();
+        finishTask();
         return;
       }
-      extractedFrames.push(dataUrl);
-      idx++;
-      extractNext();
+      canvas.toBlob(
+        (blob) => {
+          if (cancelled) return;
+          if (!blob) {
+            setFailed(true);
+            video.src = "";
+            video.load();
+            finishTask();
+            return;
+          }
+          extractedFrames.push(URL.createObjectURL(blob));
+          idx++;
+          extractNext();
+        },
+        "image/jpeg",
+        0.6,
+      );
     });
 
     video.addEventListener("error", () => {
@@ -163,6 +218,7 @@ export const VideoThumbnail = memo(function VideoThumbnail({
       // fall back to the plain clip background (#2214).
       if (extractedFrames.length > 0) setFrames(extractedFrames);
       setFailed(true);
+      finishTask();
     });
 
     video.src = videoSrc;
@@ -173,16 +229,18 @@ export const VideoThumbnail = memo(function VideoThumbnail({
       extractingRef.current = false;
       setFrames([]);
       setFailed(false);
+      extractedFrames.forEach((frame) => URL.revokeObjectURL(frame));
       video.src = "";
       video.load();
+      finishTask();
     };
-  }, [visible, videoSrc, duration]);
+  }, [duration, finishTask, ready, videoSrc]);
 
   const { frameW, frameCount } = computeThumbnailStrip(containerWidth, aspect, CLIP_HEIGHT);
 
   return (
     <div ref={setContainerRef} className="absolute inset-0 overflow-hidden">
-      {visible && frames.length > 0 && (
+      {ready && frames.length > 0 && (
         <div className="absolute inset-0 flex">
           {Array.from({ length: frameCount }).map((_, i) => {
             const src = frames[i % frames.length];
@@ -204,7 +262,7 @@ export const VideoThumbnail = memo(function VideoThumbnail({
         </div>
       )}
 
-      {visible && frames.length === 0 && !failed && (
+      {ready && frames.length === 0 && !failed && (
         <div
           className="absolute inset-0 animate-pulse"
           style={{

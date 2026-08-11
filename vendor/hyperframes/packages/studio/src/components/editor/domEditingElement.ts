@@ -247,7 +247,10 @@ export function findElementForSelection(
 
   if (selection.hfId) {
     const byHfId = findAll(`[data-hf-id="${escapeCssString(selection.hfId)}"]`)[0];
-    if (byHfId) return byHfId;
+    // A minted hf id is the element identity, not merely one locator option.
+    // Falling through after deletion can rebind a stale selection to another
+    // same-tag element through its generic selector.
+    return byHfId ?? null;
   }
 
   if (selection.id) {

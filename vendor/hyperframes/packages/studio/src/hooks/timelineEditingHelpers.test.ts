@@ -4,9 +4,14 @@ import { applyPatchByTarget } from "../utils/sourcePatcher";
 import {
   buildTimelineMoveTimingPatch,
   buildTimelineResizeTimingPatch,
+  findTimelineElementInIframe,
   resolveTimelinePatch,
 } from "./timelineEditingHelpers";
 import { patchTimelineLayerStateInSource } from "./timelineTrackVisibility";
+import {
+  buildOptimisticTimelineSplit,
+  rollbackOptimisticTimelineSplit,
+} from "../utils/timelineElementSplit";
 
 const SCENE_REPLAY = {
   id: "scene-replay",
@@ -25,6 +30,91 @@ function moveSceneReplay(start: string) {
 }
 
 describe("timeline edit patch resolution", () => {
+  test("finds an inserted composition host by its manifest id when domId is absent", () => {
+    const testWindow = new Window();
+    const iframe = testWindow.document.createElement("iframe");
+    const iframeDocument = testWindow.document;
+    Object.defineProperty(iframe, "contentDocument", {
+      configurable: true,
+      get: () => iframeDocument,
+    });
+    const host = iframeDocument.createElement("div");
+    host.id = "opening-editorial-rise";
+    host.setAttribute("data-composition-id", "opening-editorial-rise");
+    host.setAttribute("data-composition-src", "compositions/opening-editorial-rise.html");
+    iframeDocument.body.append(host);
+    expect(iframe.contentDocument).toBe(iframeDocument);
+
+    expect(
+      findTimelineElementInIframe(
+        iframe,
+        {
+          id: "opening-editorial-rise",
+          tag: "div",
+          start: 1,
+          duration: 4,
+          track: 0,
+          compositionSrc: "compositions/opening-editorial-rise.html",
+        },
+        "index.html",
+      ),
+    ).toBe(host);
+  });
+
+  test("splits the selected clip in memory before persistence and can roll it back", () => {
+    const original = {
+      id: "hero-video",
+      key: "index.html::hero-video",
+      domId: "hero-video",
+      hfId: "hf-hero-video",
+      selector: "#hero-video",
+      tag: "video",
+      start: 1,
+      duration: 8,
+      track: 2,
+      playbackStart: 3,
+      playbackRate: 1.5,
+    };
+    const unrelated = {
+      id: "title",
+      tag: "div",
+      start: 0,
+      duration: 2,
+      track: 1,
+    };
+
+    const split = buildOptimisticTimelineSplit(
+      [unrelated, original],
+      original,
+      4,
+      "index.html::hero-video::pending-split-1",
+    );
+
+    expect(split?.elements).toHaveLength(3);
+    expect(split?.elements[1]).toMatchObject({
+      key: original.key,
+      start: 1,
+      duration: 3,
+    });
+    expect(split?.elements[2]).toMatchObject({
+      key: "index.html::hero-video::pending-split-1",
+      start: 4,
+      duration: 5,
+      playbackStart: 7.5,
+      domId: undefined,
+      hfId: undefined,
+      selector: undefined,
+    });
+
+    const withConcurrentLabelEdit = split!.elements.map((element) =>
+      element.id === "title" ? { ...element, label: "Updated title" } : element,
+    );
+    expect(rollbackOptimisticTimelineSplit(withConcurrentLabelEdit, split!)).toEqual([
+      { ...unrelated, label: "Updated title" },
+      original,
+    ]);
+  });
+
   test("persists visibility and lock state for authored timeline layers", () => {
     const original = '<main><div id="authored-layer"></div></main>';
     const element = {

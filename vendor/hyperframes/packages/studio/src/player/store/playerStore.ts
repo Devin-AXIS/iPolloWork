@@ -155,7 +155,7 @@ interface PlayerState {
   currentTime: number;
   duration: number;
   timelineReady: boolean;
-  /** Delayed busy state for a delete that is still being persisted. */
+  /** Delayed busy state spanning delete persistence and authoritative preview refresh. */
   previewDeletePending: boolean;
   /** True while a beat dot is being dragged — hides the playhead guideline. */
   beatDragging: boolean;

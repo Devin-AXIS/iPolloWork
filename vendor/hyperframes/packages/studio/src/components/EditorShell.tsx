@@ -112,41 +112,7 @@ export function EditorShell({
   const { projectId, activeCompPath, setActiveCompPath, handlePreviewIframeRef } =
     useStudioShellContext();
   const { refreshKey, captionEditMode, refreshPreviewDocumentVersion } = useStudioPlaybackContext();
-  const {
-    buildDomSelectionForTimelineElement,
-    handleDomAttributesCommit,
-    handleTimelineElementSelect,
-  } = useDomEditActionsContext();
-
-  const handleTimelineElementRename = useCallback(
-    async (element: TimelineElement, label: string) => {
-      const selection = await buildDomSelectionForTimelineElement(element);
-      if (!selection) return;
-      const renameSelection = element.compositionSrc
-        ? (() => {
-            const target = resolveTimelineLayerSourceTarget(element, activeCompPath);
-            return {
-              ...selection,
-              ...target,
-              compositionPath: target.sourceFile,
-            };
-          })()
-        : selection;
-      await handleDomAttributesCommit(
-        renameSelection,
-        { "timeline-label": label },
-        "Rename timeline layer",
-      );
-      usePlayerStore.getState().updateElement(element.key ?? element.id, { label });
-      refreshPreviewDocumentVersion();
-    },
-    [
-      buildDomSelectionForTimelineElement,
-      activeCompPath,
-      handleDomAttributesCommit,
-      refreshPreviewDocumentVersion,
-    ],
-  );
+  const { handleTimelineElementSelect } = useDomEditActionsContext();
 
   const timelineEditCallbacks = useTimelineEditCallbacks({
     handleTimelineElementMove,
@@ -187,7 +153,6 @@ export function EditorShell({
             previewOnly={previewOnly}
             captionEditMode={captionEditMode}
             onSelectTimelineElement={handleTimelineElementSelect}
-            onRenameTimelineElement={handleTimelineElementRename}
             onPreviewBlockDrop={previewOnly ? undefined : handlePreviewBlockDrop}
             timelineToolbar={timelineToolbar}
             renderClipContent={renderClipContent}
@@ -221,7 +186,6 @@ interface EditorShellBodyProps {
   captionEditMode: boolean;
   previewOverlay: ReactNode;
   onSelectTimelineElement: (element: TimelineElement | null) => void;
-  onRenameTimelineElement: (element: TimelineElement, label: string) => Promise<void> | void;
   onPreviewBlockDrop?: (
     blockName: string,
     position: { left: number; top: number },
@@ -241,7 +205,6 @@ function EditorShellBody({
   captionEditMode,
   previewOverlay,
   onSelectTimelineElement,
-  onRenameTimelineElement,
   onPreviewBlockDrop,
   timelineToolbar,
   renderClipContent,
@@ -257,7 +220,6 @@ function EditorShellBody({
     applyDomSelection,
     buildDomSelectionForTimelineElement,
     handleDomAttributesCommit,
-    handleDomEditElementDelete,
     handleDomZIndexReorderCommit,
   } = useDomEditActionsContext();
   const { compositionStack, updateCompositionStack, containerRef } = useNLEContext();
@@ -402,7 +364,6 @@ function EditorShellBody({
               onBlockDrop={onBlockDrop}
               onDeleteElement={onDeleteElement}
               onSelectTimelineElement={onSelectTimelineElement}
-              onRenameTimelineElement={onRenameTimelineElement}
               onContextMenuTimelineElement={openTimelineClipContextMenu}
               timelineFooter={
                 captionEditMode ? (
@@ -430,10 +391,6 @@ function EditorShellBody({
               renameValue={resolveTimelineClipLabel(timelineClipContextMenu.element)}
               onRename={renameTimelineClip}
               onDelete={() => {
-                if (timelineClipContextMenu.selection) {
-                  void handleDomEditElementDelete(timelineClipContextMenu.selection);
-                  return;
-                }
                 const element = rebaseExpandedTimelineEdit(
                   timelineClipContextMenu.element,
                   timelineClipContextMenu.element.start,

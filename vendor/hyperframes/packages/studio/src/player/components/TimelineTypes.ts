@@ -14,7 +14,6 @@ export interface TimelineProps extends TimelineDropCallbacks, TimelineEditOverri
   renderClipOverlay?: (element: TimelineElement) => ReactNode;
   onDeleteElement?: (element: TimelineElement) => Promise<void> | void;
   onSelectElement?: (element: TimelineElement | null) => void;
-  onRenameElement?: (element: TimelineElement, label: string) => Promise<void> | void;
   onContextMenuElement?: (
     element: TimelineElement,
     anchor: { x: number; y: number },

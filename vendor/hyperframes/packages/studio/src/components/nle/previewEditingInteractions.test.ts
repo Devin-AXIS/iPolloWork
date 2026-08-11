@@ -5,13 +5,13 @@ import { buildTimelineAssetInsertHtml, getTimelineAssetKind } from "../../utils/
 import { resolveTimelineSelectionSeekTime } from "../../utils/studioHelpers";
 
 describe("preview editing interactions", () => {
-  it("selects canvas elements on one click and opens their inspector", () => {
+  it("selects canvas elements on one click without opening their inspector", () => {
     const source = readFileSync(
       new URL("../../hooks/usePreviewInteraction.ts", import.meta.url),
       "utf8",
     );
 
-    expect(source).toContain("applyDomSelection(resolvedSelection)");
+    expect(source).toContain('previewInteraction: "primary"');
     expect(source).toContain("applyDomSelection(nextSelection, { additive: true })");
     expect(source).not.toContain("DOUBLE_CLICK_MS");
     expect(source).not.toContain("isDoubleClick");
@@ -19,6 +19,40 @@ describe("preview editing interactions", () => {
     expect(source).not.toContain("resolveAllDomSelectionsFromPreviewPoint");
     expect(source).toContain("Every click resolves the deepest authored child");
     expect(source).not.toContain("exitPreviewFullscreenForInspector");
+  });
+
+  it("separates left-click toolbar and right-click canvas menu without opening properties", () => {
+    const previewPaneSource = readFileSync(new URL("./PreviewPane.tsx", import.meta.url), "utf8");
+    const overlaySource = readFileSync(
+      new URL("../editor/DomEditOverlay.tsx", import.meta.url),
+      "utf8",
+    );
+    const contextMenuSource = readFileSync(
+      new URL("../editor/useCanvasContextMenuState.ts", import.meta.url),
+      "utf8",
+    );
+    const selectionSource = readFileSync(
+      new URL("../../hooks/useDomSelection.ts", import.meta.url),
+      "utf8",
+    );
+
+    expect(previewPaneSource).toContain('previewSelectionInteraction !== "primary"');
+    expect(previewPaneSource).not.toContain("showSelectionToolbar");
+    expect(overlaySource).toContain("target?.closest('[data-dom-edit-selection-box=\"true\"]')");
+    expect(overlaySource).toContain(
+      "void onCanvasMouseDown(event, { hoverSelection: hoverSelectionRef.current })",
+    );
+    expect(overlaySource).toContain('previewInteraction: "primary"');
+    expect(contextMenuSource).toContain("onSelectionChangeRef.current(activeSelection, {");
+    expect(contextMenuSource).toContain('previewInteraction: "context-menu"');
+    expect(contextMenuSource).toContain(
+      "selection && !domEditSelectionsTargetSame(selection, contextMenu.sel)",
+    );
+    expect(contextMenuSource).toContain("resolved ?? (clickedSelectionChrome ? selection : null)");
+    expect(contextMenuSource).not.toContain("revealPanel: true");
+    expect(selectionSource).toContain(
+      "setPreviewSelectionInteraction(options?.previewInteraction ?? null)",
+    );
   });
 
   it("keeps preview and timeline element selection single by default", () => {
@@ -100,15 +134,14 @@ describe("preview editing interactions", () => {
     expect(source).not.toContain("{ preserveSet: true }");
   });
 
-  it("keeps the canvas selection outline visible in both animation views", () => {
+  it("keeps the canvas selection outline visible on every paused editing surface", () => {
     const source = readFileSync(
       new URL("../../hooks/useStudioContextValue.ts", import.meta.url),
       "utf8",
     );
 
-    expect(source).toContain('rightPanelTab === "animation"');
-    expect(source).toContain('rightPanelTab === "animation-properties"');
-    expect(source).toContain("selectionOverlayPanelActive &&");
+    expect(source).toContain("shouldShowSelectedDomBounds: !isPlaying && !isGestureRecording");
+    expect(source).not.toContain("selectionOverlayPanelActive &&");
   });
 
   it("clears the active element when the user clicks blank preview canvas", () => {
@@ -168,7 +201,7 @@ describe("preview editing interactions", () => {
     expect(source).not.toContain("usePlayerStore.getState().clearSelectedElementIds();");
   });
 
-  it("uses a visible proof frame for paused standalone effects", () => {
+  it("uses a visible proof frame when a timeline selection lands on a clip boundary", () => {
     expect(
       resolveTimelineSelectionSeekTime(0, {
         id: "effect-ending-bilibili-triple",
@@ -185,7 +218,18 @@ describe("preview editing interactions", () => {
         timelineKind: "effect",
       }),
     ).toBeCloseTo(3.55);
-    expect(resolveTimelineSelectionSeekTime(0, { start: 0, duration: 3.4 })).toBe(0);
+    expect(resolveTimelineSelectionSeekTime(0, { start: 0, duration: 3.4 })).toBe(1.7);
+    expect(resolveTimelineSelectionSeekTime(1.2, { start: 0, duration: 3.4 })).toBe(1.2);
+  });
+
+  it("fully rebuilds the preview after applying a semantic animation", () => {
+    const source = readFileSync(
+      new URL("../../hooks/useGsapAnimationOps.ts", import.meta.url),
+      "utf8",
+    );
+
+    expect(source).toContain('softReload: normalizedMutation.operation !== "upsert"');
+    expect(source).not.toContain("buildMotionInstantPatch(");
   });
 
   it("keeps expanded hierarchy nodes in the timeline-to-inspector sync set", () => {
@@ -288,7 +332,7 @@ describe("preview editing interactions", () => {
     );
     expect(selectionSource).toContain("applyDomSelection(selection)");
     expect(selectionSource).toContain("skipSourceProbe: true");
-    expect(overlayRectsSource).toContain("isElementVisibleForOverlay(el)");
+    expect(overlayRectsSource).toContain("isElementLaidOutForSelectionOverlay(el)");
     expect(selectionSource).toContain("preserveTimelineSelection: true");
     expect(selectionSource).toContain("Generated compositions can contain detached nodes");
     expect(selectionSource).toContain("selection must remain usable");

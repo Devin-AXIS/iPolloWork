@@ -1071,24 +1071,6 @@ html[data-ipollowork-theme="light"] .hf-preview-text-toolbar {
   white-space: nowrap;
 }
 
-.hf-timeline-layer-header__rename-input {
-  min-width: 0;
-  flex: 1;
-  height: 22px;
-  border: 1px solid var(--hf-studio-accent, #22c7b8);
-  border-radius: 4px;
-  background: var(--hf-studio-input-bg, rgba(255, 255, 255, 0.08));
-  color: inherit;
-  padding: 0 5px;
-  font: inherit;
-  line-height: 20px;
-  outline: none;
-}
-
-.hf-timeline-layer-header__rename-input:focus {
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--hf-studio-accent, #22c7b8) 24%, transparent);
-}
-
 .hf-timeline-layer-header__caret {
   opacity: 0.55;
 }

@@ -171,16 +171,38 @@ export function findTimelineElementInIframe(
   try {
     const doc = iframe?.contentDocument;
     if (!doc) return null;
-    return findElementForSelection(
+    const target = findElementForSelection(
       doc,
       {
         hfId: element.hfId,
-        id: element.domId,
+        // Runtime manifest entries for newly inserted compositions can carry
+        // only their authored id (no domId). Source persistence already falls
+        // back to that id; use the same identity for the live preview patch so
+        // hiding an inserted effect takes effect without a document reload.
+        id: element.domId ?? element.id,
         selector: element.selector,
         selectorIndex: element.selectorIndex,
         sourceFile: element.sourceFile || activeCompositionPath || "index.html",
       },
       activeCompositionPath,
+    );
+    if (target || !element.compositionSrc) return target;
+
+    // A composition host owns its tag in the parent file, while
+    // getSourceFileForElement() intentionally treats the host's own
+    // data-composition-src as the child file. That makes the normal
+    // source-scoped lookup reject the right host. Match the stable host
+    // identity directly; composition loading preserves data-composition-id
+    // even when it strips data-composition-src.
+    const hostId = element.domId ?? element.id;
+    return (
+      Array.from(doc.querySelectorAll("[data-composition-id]")).find(
+        (candidate) =>
+          (element.hfId && candidate.getAttribute("data-hf-id") === element.hfId) ||
+          candidate.id === hostId ||
+          candidate.getAttribute("data-composition-id") === hostId ||
+          candidate.getAttribute("data-hf-original-composition-id") === hostId,
+      ) ?? null
     );
   } catch {
     return null;

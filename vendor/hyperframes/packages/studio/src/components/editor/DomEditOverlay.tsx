@@ -1,6 +1,10 @@
 import { memo, useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import { type DomEditSelection } from "./domEditing";
-import type { PreviewMouseDownOptions } from "../../hooks/usePreviewInteraction";
+import type {
+  PreviewMouseDownOptions,
+  PreviewSelectionPressEvent,
+} from "../../hooks/usePreviewInteraction";
+import type { ApplyDomSelectionOptions } from "../../hooks/useDomSelection";
 import { useMarqueeGestures } from "./marqueeCommit";
 import { MarqueeOverlay } from "./MarqueeOverlay";
 import { resolveDomEditGroupOverlayRect } from "./domEditOverlayGeometry";
@@ -64,19 +68,13 @@ interface DomEditOverlayProps {
   groupSelections?: DomEditSelection[];
   hoverSelection: DomEditSelection | null;
   allowCanvasMovement?: boolean;
-  onCanvasMouseDown: (
-    event: React.MouseEvent<HTMLDivElement>,
-    options?: PreviewMouseDownOptions,
-  ) => void;
+  onCanvasMouseDown: (event: PreviewSelectionPressEvent, options?: PreviewMouseDownOptions) => void;
   onCanvasPointerMove: (
     event: React.PointerEvent<HTMLDivElement>,
     options?: { preferClipAncestor?: boolean },
   ) => Promise<DomEditSelection | null>;
   onCanvasPointerLeave: () => void;
-  onSelectionChange: (
-    selection: DomEditSelection,
-    options?: { revealPanel?: boolean; additive?: boolean },
-  ) => void;
+  onSelectionChange: (selection: DomEditSelection, options?: ApplyDomSelectionOptions) => void;
   onBlockedMove: (selection: DomEditSelection) => void;
   onManualDragStart?: () => void;
   onPathOffsetCommit: (
@@ -471,8 +469,6 @@ export const DomEditOverlay = memo(function DomEditOverlay({
   // needed), then open the menu; closes when the selection moves off-target.
   const { contextMenu, closeContextMenu, handleContextMenu } = useCanvasContextMenuState({
     selection,
-    selectionRef,
-    hoverSelectionRef,
     onCanvasPointerMoveRef,
     onSelectionChangeRef,
   });
@@ -490,6 +486,33 @@ export const DomEditOverlay = memo(function DomEditOverlay({
         // so the gesture's member snapshot starts from the nudged position.
         flushNudge();
         focusDomEditOverlayElement(event.currentTarget as FocusableDomEditOverlay);
+        if (event.button !== 0) return;
+        const target = event.target as HTMLElement | null;
+        if (!target?.closest('[data-dom-edit-selection-box="true"]')) return;
+        const iframe = iframeRef.current;
+        const hit = iframe
+          ? getPreviewTargetFromPointer(
+              iframe,
+              event.clientX,
+              event.clientY,
+              activeCompositionPathRef.current,
+            )
+          : null;
+        const currentSelection = selectionRef.current;
+        if (!hit || !currentSelection) return;
+        if (hit === currentSelection.element) {
+          onSelectionChange(currentSelection, {
+            revealPanel: false,
+            previewInteraction: "primary",
+          });
+          return;
+        }
+        // A large selected wrapper can cover every authored child with its drag
+        // surface. Retarget before that surface starts a drag so one click can
+        // still select the visible child underneath.
+        event.preventDefault();
+        event.stopPropagation();
+        void onCanvasMouseDown(event, { hoverSelection: hoverSelectionRef.current });
       }}
       onPointerDown={handleOverlayPointerDown}
       onMouseDown={handleOverlayMouseDown}

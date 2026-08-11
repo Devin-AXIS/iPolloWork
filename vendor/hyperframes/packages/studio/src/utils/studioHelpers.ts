@@ -306,14 +306,6 @@ export type ToggleHiddenHandler = (
 type TimelineSelectionRange = Pick<TimelineElement, "start" | "duration"> &
   Partial<Pick<TimelineElement, "id" | "timelineKind" | "compositionSrc" | "sourceFile">>;
 
-function isStandaloneEffectClip(element: TimelineSelectionRange): boolean {
-  if (element.timelineKind === "effect") return true;
-  if (element.id?.startsWith("effect-")) return true;
-  return [element.compositionSrc, element.sourceFile].some(
-    (path) => path != null && /(^|[\\/])effects[\\/]/i.test(path),
-  );
-}
-
 export function resolveTimelineSelectionSeekTime(
   currentTime: number,
   element: TimelineSelectionRange | null | undefined,
@@ -325,11 +317,13 @@ export function resolveTimelineSelectionSeekTime(
   const end = Math.max(start, start + Math.max(0, element.duration));
   const time = Number.isFinite(currentTime) ? currentTime : start;
   if (end === start) return start;
-  // Standalone effects commonly animate from a deliberately transparent first
-  // frame. In the paused editor, use the midpoint as a representative proof
-  // frame only when selection would otherwise land on an invisible boundary.
+  // Animated layers commonly begin/end on a deliberately transparent frame.
+  // Timeline rows represent the whole authored layer, so selecting one at an
+  // end-exclusive boundary should inspect a representative frame inside it.
+  // Otherwise the DOM/inspector selection succeeds while the canvas correctly
+  // suppresses the invisible selection box, which looks like lost selection.
   // Playback/export still seek the authored timeline from local time zero.
-  if (isStandaloneEffectClip(element) && (time <= start + 0.001 || time >= end - 0.001)) {
+  if (time <= start + 0.001 || time >= end - 0.001) {
     return start + (end - start) / 2;
   }
   // Runtime clip windows are end-exclusive. Seeking exactly to `end` leaves

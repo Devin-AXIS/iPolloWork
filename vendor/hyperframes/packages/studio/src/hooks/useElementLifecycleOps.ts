@@ -1,9 +1,6 @@
 import { useCallback, useRef, type MutableRefObject } from "react";
 import { usePlayerStore } from "../player";
-import {
-  readProjectFileContent,
-  type DomEditCommitBaseParams,
-} from "../utils/studioFileHistory";
+import { readProjectFileContent, type DomEditCommitBaseParams } from "../utils/studioFileHistory";
 import { createStudioSaveHttpError } from "../utils/studioSaveDiagnostics";
 import {
   buildDomEditPatchTarget,
@@ -163,10 +160,17 @@ export function useElementLifecycleOps({
       };
       syncDeletedElementFromTimeline(selection);
       let loadingShown = false;
+      let previewRefreshRequested = false;
       const loadingTimer = window.setTimeout(() => {
         loadingShown = true;
         usePlayerStore.getState().setPreviewDeletePending(true);
       }, 120);
+      const requestPreviewRefresh = () => {
+        previewRefreshRequested = true;
+        window.clearTimeout(loadingTimer);
+        usePlayerStore.getState().setPreviewDeletePending(true);
+        reloadPreview();
+      };
 
       const operation = (async () => {
         try {
@@ -178,7 +182,10 @@ export function useElementLifecycleOps({
               const handled = await onTrySdkDelete(selection.hfId, originalContent, targetPath);
               if (cutoverCommittedOrThrow(handled)) {
                 clearDomSelection();
-                if (!liveRemoval) reloadPreview();
+                // The optimistic DOM removal keeps the click instant, but the
+                // iframe/timeline can still rebuild once from their pre-delete
+                // snapshot. Always converge on the persisted source exactly once.
+                requestPreviewRefresh();
                 onElementDeleted?.(selection);
                 showToast(`Deleted ${label}. Use Undo to restore it.`, "info");
                 return;
@@ -206,10 +213,9 @@ export function useElementLifecycleOps({
             };
             const patchedContent =
               typeof removeData.content === "string" ? removeData.content : originalContent;
-            // ponytail: this fallback strips only the element node; unlike the
-            // SDK path, it cannot cascade-remove GSAP tweens for an unaddressable
-            // runtime element until the server patcher gains equivalent support.
-            // The endpoint already wrote the source; only record its exact bytes.
+            // The endpoint removes the node and any GSAP tweens that target stable
+            // selectors in its subtree. It already wrote the source; only record
+            // its exact bytes here.
             try {
               await editHistory.recordEdit({
                 label: "Delete element",
@@ -232,7 +238,7 @@ export function useElementLifecycleOps({
             // Server wrote the file; resync the stale in-memory SDK doc so a later
             // SDK edit doesn't resurrect the deleted element.
             forceReloadSdkSession?.();
-            if (!liveRemoval) reloadPreview();
+            requestPreviewRefresh();
             onElementDeleted?.(selection);
             showToast(`Deleted ${label}. Use Undo to restore it.`, "info");
           });
@@ -243,7 +249,9 @@ export function useElementLifecycleOps({
           showToast(message);
         } finally {
           window.clearTimeout(loadingTimer);
-          if (loadingShown) usePlayerStore.getState().setPreviewDeletePending(false);
+          if (!previewRefreshRequested && loadingShown) {
+            usePlayerStore.getState().setPreviewDeletePending(false);
+          }
         }
       })();
       deleteInFlightRef.current = operation;

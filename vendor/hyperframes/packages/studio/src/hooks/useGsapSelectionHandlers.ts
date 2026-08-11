@@ -66,7 +66,8 @@ export function useGsapSelectionHandlers({
   mutateMotion: (
     sel: DomEditSelection,
     targetKind: MotionTargetKind,
-    mutation: MotionMutationInput,)=> Promise<void>;
+    mutation: MotionMutationInput,
+  ) => Promise<boolean>;
   applyGsapMotionPreset: (
     sel: DomEditSelection,
     preset: RegistryMotionPreset,
@@ -232,7 +233,7 @@ export function useGsapSelectionHandlers({
       selectionOverride?: DomEditSelection | null,
     ) => {
       const selection = selectionOverride ?? domEditSelection;
-      if (!selection) return Promise.resolve();
+      if (!selection) return Promise.resolve(false);
       return mutateMotion(selection, targetKind, mutation).catch((error) => {
         trackGsapHandlerFailure(
           error,
@@ -240,6 +241,7 @@ export function useGsapSelectionHandlers({
           "mutate-motion",
           mutation.operation === "remove" ? "Remove motion preset" : "Apply motion preset",
         );
+        return false;
       });
     },
     [domEditSelection, mutateMotion, trackGsapHandlerFailure],

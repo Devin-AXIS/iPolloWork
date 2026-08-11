@@ -31,7 +31,6 @@ interface BlockCtxDeps {
 interface UseBlockHandlersParams {
   projectId: string | null;
   blockCtxDeps: BlockCtxDeps;
-  previewIframeRef: React.RefObject<HTMLIFrameElement | null>;
   setCompositionLoading: (loading: boolean) => void;
   setRightCollapsed: (collapsed: boolean) => void;
   setRightPanelTab: (tab: RightPanelTab) => void;
@@ -47,7 +46,7 @@ export interface UseBlockHandlersResult {
   setActiveBlockParams: React.Dispatch<
     React.SetStateAction<UseBlockHandlersResult["activeBlockParams"]>
   >;
-  handleAddBlock: (blockName: string, intent?: EffectInsertIntent) => void;
+  handleAddBlock: (blockName: string, intent?: EffectInsertIntent) => Promise<boolean>;
   handleTimelineBlockDrop: (blockName: string, placement: { start: number; track: number }) => void;
   handlePreviewBlockDrop: (blockName: string, position: { left: number; top: number }) => void;
 }
@@ -55,7 +54,6 @@ export interface UseBlockHandlersResult {
 export function useBlockHandlers({
   projectId,
   blockCtxDeps,
-  previewIframeRef,
   setCompositionLoading,
   setRightCollapsed,
   setRightPanelTab,
@@ -116,47 +114,44 @@ export function useBlockHandlers({
   );
 
   const handleAddBlock = useCallback(
-    (blockName: string, intent: EffectInsertIntent = "playhead") => {
-      if (!projectId) return;
-      // fallow-ignore-next-line complexity
-      void (async () => {
-        const result = await runBlockInstall(blockName, () =>
-          addBlockToProject({
-            projectId,
-            blockName,
-            ...blockCtx,
-            previewIframe: previewIframeRef.current,
-            currentTime: usePlayerStore.getState().currentTime,
-            selectedElementId: usePlayerStore.getState().selectedElementId,
-            effectIntent: intent,
-          }),
-        );
-        if (result === null) return;
-        const insertedDuration =
-          "duration" in result.block && typeof result.block.duration === "number"
-            ? result.block.duration
-            : 0;
-        const previewTime = resolveTimelineSelectionSeekTime(result.insertedStart, {
-          id: result.insertedElementId,
-          start: result.insertedStart,
-          duration: insertedDuration,
-          compositionSrc: result.compositionPath,
+    async (blockName: string, intent: EffectInsertIntent = "playhead") => {
+      if (!projectId) return false;
+      const result = await runBlockInstall(blockName, () =>
+        addBlockToProject({
+          projectId,
+          blockName,
+          ...blockCtx,
+          currentTime: usePlayerStore.getState().currentTime,
+          selectedElementId: usePlayerStore.getState().selectedElementId,
+          effectIntent: intent,
+        }),
+      );
+      if (result === null) return false;
+      const insertedDuration =
+        "duration" in result.block && typeof result.block.duration === "number"
+          ? result.block.duration
+          : 0;
+      const previewTime = resolveTimelineSelectionSeekTime(result.insertedStart, {
+        id: result.insertedElementId,
+        start: result.insertedStart,
+        duration: insertedDuration,
+        compositionSrc: result.compositionPath,
+      });
+      usePlayerStore.getState().requestSeek(previewTime ?? result.insertedStart);
+      const params = result.block.type === "hyperframes:block" ? result.block.params : undefined;
+      if (params?.length) {
+        setActiveBlockParams({
+          blockName: result.block.name,
+          blockTitle: result.block.title,
+          params,
+          compositionPath: result.compositionPath,
         });
-        usePlayerStore.getState().requestSeek(previewTime ?? result.insertedStart);
-        const params = result?.block.type === "hyperframes:block" ? result.block.params : undefined;
-        if (params?.length) {
-          setActiveBlockParams({
-            blockName: result!.block.name,
-            blockTitle: result!.block.title,
-            params,
-            compositionPath: result!.compositionPath,
-          });
-          setRightCollapsed(false);
-          setRightPanelTab("block-params");
-        }
-      })();
+        setRightCollapsed(false);
+        setRightPanelTab("block-params");
+      }
+      return true;
     },
-    [projectId, blockCtx, previewIframeRef, runBlockInstall, setRightCollapsed, setRightPanelTab],
+    [projectId, blockCtx, runBlockInstall, setRightCollapsed, setRightPanelTab],
   );
 
   const handleTimelineBlockDrop = useCallback(
@@ -168,12 +163,11 @@ export function useBlockHandlers({
           blockName,
           placement,
           ...blockCtx,
-          previewIframe: previewIframeRef.current,
           currentTime: usePlayerStore.getState().currentTime,
         }),
       );
     },
-    [projectId, blockCtx, previewIframeRef, runBlockInstall],
+    [projectId, blockCtx, runBlockInstall],
   );
 
   const handlePreviewBlockDrop = useCallback(
@@ -185,12 +179,11 @@ export function useBlockHandlers({
           blockName,
           visualPosition: position,
           ...blockCtx,
-          previewIframe: previewIframeRef.current,
           currentTime: usePlayerStore.getState().currentTime,
         }),
       );
     },
-    [projectId, blockCtx, previewIframeRef, runBlockInstall],
+    [projectId, blockCtx, runBlockInstall],
   );
 
   return {

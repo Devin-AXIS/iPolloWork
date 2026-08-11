@@ -338,7 +338,7 @@ describe("Studio right panel layout", () => {
     expect(fill).toContain('aria-label={tx("Pick color from screen")}');
     expect(fill).toContain('className="grid grid-cols-6 gap-2"');
     expect(animation).toContain("<SemanticMotionPanel");
-    expect(animation).toContain("onPreview={previewRange}");
+    expect(animation).not.toContain("previewRange");
     expect(animation).not.toContain("旧版");
     expect(semanticMotion).toContain('{ id: "enter", label: "出现" }');
     expect(semanticMotion).toContain('{ id: "emphasis", label: "动作" }');
@@ -416,7 +416,10 @@ describe("Studio right panel layout", () => {
       "<AnimationTemplatesTab onSelectTemplate={selectAnimationTemplate} />",
     );
     expect(source).toContain("<AnimationPropertiesPanel");
-    expect(source).toContain("onApplied={() => setPendingMotionDraft(null)}");
+    expect(source).toContain("onApplied={() => {");
+    expect(source).toContain("setPendingMotionDraft(null);");
+    expect(source).not.toContain("previewRange");
+    expect(source).toContain('showToast(tx("Animation applied"), "info");');
     expect(source).toContain('setRightPanelTab("animation-properties")');
     expect(source).toContain("const showAnimationProperties =");
     expect(source).toContain("pendingMotionDraft !== null || hasSelectedSemanticMotion");
@@ -701,14 +704,21 @@ describe("Studio right panel layout", () => {
       "utf8",
     );
     const previewPane = readFileSync(new URL("./nle/PreviewPane.tsx", import.meta.url), "utf8");
+    const trashIcon = readFileSync(
+      new URL("../icons/figmaToolbarTrash.svg", import.meta.url),
+      "utf8",
+    );
 
     const toolbarDelete = toolbar.slice(toolbar.indexOf('pendingAction === "delete"'));
-    expect(toolbarDelete.indexOf("domEditSession?.domEditSelection")).toBeLessThan(
+    expect(toolbarDelete.indexOf("matchingDomSelection && onDeleteDomElement")).toBeLessThan(
       toolbarDelete.indexOf("selectedElement && onDeleteElement"),
     );
-    expect(editorShell).toContain(
+    expect(toolbar).toContain("findMatchingTimelineElementId(domEditSelection, elements)");
+    expect(editorShell).not.toContain(
       "handleDomEditElementDelete(timelineClipContextMenu.selection)",
     );
+    expect(editorShell).toContain("void onDeleteElement(element)");
+    expect(trashIcon).toContain('stroke="#DC2626"');
 
     const hotkeyDelete = hotkeys.slice(hotkeys.indexOf('event.key === "Delete"'));
     expect(hotkeyDelete.indexOf("handleDomEditElementDelete(domSel)")).toBeLessThan(
@@ -731,6 +741,10 @@ describe("Studio right panel layout", () => {
     expect(deleteHandler).not.toContain("saveProjectFilesWithHistory");
     expect(deleteHandler).toContain("syncDeletedElementFromTimeline(selection)");
     expect(deleteHandler).toContain("setPreviewDeletePending(true)");
+    expect(deleteHandler).toContain("reloadPreview()");
+    expect(deleteHandler).toContain("previewRefreshRequested = true");
+    expect(deleteHandler).toContain("if (!previewRefreshRequested && loadingShown)");
+    expect(deleteHandler).not.toContain("if (!liveRemoval) reloadPreview()");
     expect(previewPane).toContain("previewDeletePending ||");
 
     const timelineDelete = timelineEditing.slice(
@@ -744,7 +758,10 @@ describe("Studio right panel layout", () => {
     expect(timelineDelete.indexOf("state.removeElementReferences({")).toBeLessThan(
       timelineDelete.indexOf("await readFileContent"),
     );
-    expect(timelineDelete).toContain("if (!liveRemoval) reloadPreview()");
+    expect(timelineDelete).toContain("reloadPreview()");
+    expect(timelineDelete).toContain("previewRefreshRequested = true");
+    expect(timelineDelete).toContain("if (!previewRefreshRequested && loadingShown)");
+    expect(timelineDelete).not.toContain("if (!liveRemoval) reloadPreview()");
     expect(playerStore).toContain("if (target.hfId) return candidate.hfId === target.hfId");
   });
 
@@ -764,10 +781,12 @@ describe("Studio right panel layout", () => {
       new URL("../player/hooks/useTimelinePlayer.ts", import.meta.url),
       "utf8",
     );
+    expect(player).toContain('srcUrl.searchParams.set("_hfRefresh", String(refreshToken))');
 
     expect(player).toContain("const REFRESH_LOADING_OVERLAY_DELAY_MS = 220");
     expect(player).toContain("function shouldShowRefreshLoadingOverlay");
     expect(player).toContain("setCompositionLoading(true)");
+    expect(player).toContain("if (!deferredReadyHandled) setCompositionLoading(true)");
     expect(player).toContain('data-testid="composition-refresh-loading-overlay"');
     expect(player).toContain("export function CompositionRefreshLoadingOverlay()");
     expect(player).toContain(
@@ -783,12 +802,17 @@ describe("Studio right panel layout", () => {
     expect(preview).toContain("retiringSlot");
     expect(preview).toContain('transition: retiring ? "opacity 140ms ease-out" : undefined');
     expect(preview).toContain("deferReveal={incoming}");
+    expect(preview).toContain("onRefreshSettled?.()");
+    expect(preview).toContain("onError={");
     expect(player).toContain("onReadyToReveal");
+    expect(player).toContain("onError?.()");
     expect(player).toContain("isDeferredFrameVisuallyReady");
     expect(player).toContain('doc.fonts?.status !== "loaded"');
     expect(player).toContain("DEFERRED_VISUAL_READY_PAINTS = 2");
     expect(player).toContain('iframe.style.visibility = "hidden"');
     expect(previewPane).toContain("refreshToken={refreshKey}");
+    expect(previewPane).toContain("onRefreshSettled={handlePreviewRefreshSettled}");
+    expect(previewPane).toContain("playerState.setPreviewDeletePending(false)");
     expect(previewPane).toContain("studioCompositionLoading && hasLoadedOnceRef.current");
     expect(previewPane).toContain("<CompositionRefreshLoadingOverlay />");
     expect(nleContext).toContain("refreshKey?: number");

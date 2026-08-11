@@ -98,7 +98,6 @@ export interface TimelinePaneProps {
   ) => Promise<void> | void;
   onBlockedEditAttempt?: (element: TimelineElement, intent: BlockedTimelineEditIntent) => void;
   onSelectTimelineElement?: (element: TimelineElement | null) => void;
-  onRenameTimelineElement?: (element: TimelineElement, label: string) => Promise<void> | void;
   onContextMenuTimelineElement?: (
     element: TimelineElement,
     anchor: { x: number; y: number },
@@ -116,7 +115,6 @@ export function TimelinePane({
   onBlockDrop,
   onBlockedEditAttempt,
   onSelectTimelineElement,
-  onRenameTimelineElement,
   onContextMenuTimelineElement,
 }: TimelinePaneProps) {
   const {
@@ -287,7 +285,6 @@ export function TimelinePane({
             onBlockedEditAttempt={onBlockedEditAttempt}
             onSplitElement={handleSplitElement}
             onSelectElement={onSelectTimelineElement}
-            onRenameElement={onRenameTimelineElement}
             onContextMenuElement={onContextMenuTimelineElement}
           />
         </div>

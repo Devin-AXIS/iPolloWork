@@ -13,7 +13,7 @@ import type { EffectInsertIntent } from "../utils/blockInstaller";
 export interface StudioLeftSidebarProps {
   leftSidebarRef: RefObject<LeftSidebarHandle | null>;
   onSelectComposition: (comp: string) => void;
-  onAddBlock: (blockName: string, intent?: EffectInsertIntent) => void;
+  onAddBlock: (blockName: string, intent?: EffectInsertIntent) => Promise<boolean>;
   onLint: () => void;
   linting: boolean;
   lintFindingCount?: number;

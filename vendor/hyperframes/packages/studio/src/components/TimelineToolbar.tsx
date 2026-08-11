@@ -25,6 +25,7 @@ import {
   findSelectedTimelineElement,
   rebaseExpandedTimelineEdit,
 } from "../utils/timelineToolbarSelection";
+import { findMatchingTimelineElementId } from "../utils/studioHelpers";
 import { useStudioShellContext } from "../contexts/StudioContext";
 import { useStudioI18n } from "../i18n";
 import { requestPreviewZoomReset } from "./nle/previewZoom";
@@ -108,6 +109,15 @@ export function TimelineToolbar({
     selectedElementId,
     selectedElementIds,
   );
+  const domEditSelection = domEditSession?.domEditSelection ?? null;
+  const selectedElementKey = selectedElement ? (selectedElement.key ?? selectedElement.id) : null;
+  const domSelectionTimelineId = domEditSelection
+    ? findMatchingTimelineElementId(domEditSelection, elements)
+    : null;
+  const matchingDomSelection =
+    domEditSelection && (!selectedElementKey || domSelectionTimelineId === selectedElementKey)
+      ? domEditSelection
+      : null;
   const { zoomMode, manualZoomPercent, setZoomMode, setManualZoomPercent } = useTimelineZoom();
   const timelineZoomPercent = getTimelineZoomPercent(zoomMode, manualZoomPercent);
   const { state: keyframeState, onToggle: onToggleKeyframe } = useKeyframeToggle(domEditSession);
@@ -144,7 +154,7 @@ export function TimelineToolbar({
     currentTime > (selectedElement?.start ?? 0) &&
     currentTime < (selectedElement?.start ?? 0) + (selectedElement?.duration ?? 0);
   const canDelete = Boolean(
-    (selectedElement && onDeleteElement) || (domEditSession?.domEditSelection && onDeleteDomElement),
+    (matchingDomSelection && onDeleteDomElement) || (selectedElement && onDeleteElement),
   );
   const runSelectionAction = async (
     action: "split" | "keyframe" | "delete",
@@ -244,9 +254,8 @@ export function TimelineToolbar({
             aria-label={tx("Delete selected element")}
             aria-busy={pendingAction === "delete"}
             onClick={() => {
-              if (domEditSession?.domEditSelection && onDeleteDomElement) {
-                const selection = domEditSession.domEditSelection;
-                void runSelectionAction("delete", () => onDeleteDomElement(selection));
+              if (matchingDomSelection && onDeleteDomElement) {
+                void runSelectionAction("delete", () => onDeleteDomElement(matchingDomSelection));
                 return;
               }
               if (selectedElement && onDeleteElement) {

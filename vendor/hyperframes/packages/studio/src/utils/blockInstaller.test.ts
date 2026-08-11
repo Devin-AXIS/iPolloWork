@@ -42,6 +42,7 @@ describe("addBlockToProject", () => {
       start: 1.4,
       duration: 1,
       track: 5,
+      zIndex: 12,
       sourceFile: "index.html",
     },
   ];
@@ -144,9 +145,49 @@ describe("addBlockToProject", () => {
     expect(files["compositions/components/morph-text.html"]).toContain("background: transparent;");
     expect(files["compositions/components/morph-text.html"]).not.toContain("background: #fff;");
     expect(files["compositions/components/morph-text.html"]).toContain("background: #e7e5e7;");
-    expect(writes["index.html"]?.at(-1)).toContain(
+    const writtenIndex = writes["index.html"]?.at(-1);
+    expect(writtenIndex).toContain(
+      'style="position: absolute; left: 0px; top: 0px; width: 1920px; height: 1080px; z-index: 1"',
+    );
+    expect(writtenIndex).toContain(
       'data-composition-src="compositions/components/morph-text.html"',
     );
+  });
+
+  it("uses the timeline z-index snapshot without reading preview layout", async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        written: ["compositions/effects/focus-title.html"],
+        block: {
+          name: "focus-title",
+          title: "Focus Title",
+          type: "hyperframes:block",
+          duration: 3.2,
+        },
+      }),
+    } as Response);
+
+    let writtenIndex = "";
+    await addBlockToProject({
+      projectId: "project-1",
+      blockName: "focus-title",
+      activeCompPath: "index.html",
+      effectIntent: "ending",
+      timelineElements: clips,
+      readProjectFile: async () =>
+        '<main data-composition-id="root" data-width="1920" data-height="1080" data-duration="9"></main>',
+      writeProjectFile: async (_path, content) => {
+        writtenIndex = content;
+      },
+      recordEdit: vi.fn(),
+      markStudioWrite: vi.fn(),
+      refreshFileTree: vi.fn(),
+      reloadPreview: vi.fn(),
+      showToast: vi.fn(),
+    });
+
+    expect(writtenIndex).toContain("z-index: 13");
   });
 
   it("starts the preview reload before refreshing the file tree", async () => {

@@ -34,6 +34,24 @@ export function isElementVisibleForOverlay(el: HTMLElement): boolean {
   return isElementVisibleThroughAncestors(el);
 }
 
+/**
+ * An explicit selection may sit on an authored opacity:0 animation frame. Its
+ * layout box is still the correct editing target, so opacity alone must not make
+ * the canvas look deselected. Runtime/off-frame display and visibility hiding
+ * remain authoritative and keep their overlays suppressed.
+ */
+export function isElementLaidOutForSelectionOverlay(el: HTMLElement): boolean {
+  const win = el.ownerDocument.defaultView;
+  if (!win) return true;
+  let current: HTMLElement | null = el;
+  while (current) {
+    const computed = win.getComputedStyle(current);
+    if (computed.display === "none" || computed.visibility === "hidden") return false;
+    current = current.parentElement;
+  }
+  return true;
+}
+
 // Sample points (as fractions of the element box) for the occlusion hit-test:
 // the four inner corners plus the center. This is a coarse approximation of the
 // element's painted area — we assume a sampled point that lands inside the box also

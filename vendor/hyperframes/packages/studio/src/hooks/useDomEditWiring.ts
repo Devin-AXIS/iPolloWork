@@ -74,7 +74,7 @@ export interface UseDomEditWiringParams {
     sel: DomEditSelection,
     targetKind: MotionTargetKind,
     mutation: MotionMutationInput,
-     ) => Promise<void>;
+  ) => Promise<boolean>;
   applyGsapMotionPreset: (
     sel: DomEditSelection,
     preset: RegistryMotionPreset,
