@@ -90,7 +90,7 @@ export function previewStructuredMotion({
   }
   if (!compiled.structured) return undefined;
 
-  const timeline = gsap.timeline?.({ paused: true, repeat: loop ? 1 : 0 });
+  const timeline = gsap.timeline?.({ paused: true, repeat: loop ? -1 : 0 });
   if (!timeline?.to || !timeline.set) return undefined;
 
   const snapshot = snapshotStructuredText(target);

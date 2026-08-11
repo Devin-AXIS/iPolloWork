@@ -45,7 +45,7 @@ describe("previewStructuredMotion", () => {
     });
 
     expect(preview?.timeline).toBe(timeline);
-    expect(createGsapTimeline).toHaveBeenCalledWith({ paused: true, repeat: 1 });
+    expect(createGsapTimeline).toHaveBeenCalledWith({ paused: true, repeat: -1 });
     expect(target.querySelectorAll('[data-ipw-motion-role="unit"]')).toHaveLength(3);
     expect(target.querySelectorAll('[data-ipw-motion-role="background"]')).toHaveLength(3);
     expect(target.querySelectorAll('[data-ipw-motion-role="text"]')).toHaveLength(3);
