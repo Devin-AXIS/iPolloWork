@@ -12,6 +12,7 @@ export type LocalProviderInstallInput = {
   modelId: string;
   modelName: string;
   models?: Record<string, LocalProviderModelConfig>;
+  userEnv?: Array<{ key: string; value: string }>;
   setDefault: boolean;
 };
 

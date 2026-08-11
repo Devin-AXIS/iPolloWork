@@ -4,6 +4,7 @@ import { isRecommendedModel } from "../src/app/defaults/models";
 import { BUILT_IN_IPOLLOWORK_EXTENSION_MANIFESTS } from "../src/app/extensions";
 import {
   buildMiniMaxProviderConfig,
+  buildMiniMaxRuntimeEnv,
   MINIMAX_ENDPOINTS,
   MINIMAX_PROVIDER,
 } from "../src/react-app/domains/settings/minimax-provider";
@@ -110,6 +111,17 @@ describe("MiniMax provider preset", () => {
     });
   });
 
+  test("keeps image credentials server-side on the selected regional origin", () => {
+    expect(buildMiniMaxRuntimeEnv("global-openai", "test-key")).toEqual([
+      { key: "MINIMAX_API_KEY", value: "test-key" },
+      { key: "MINIMAX_BASE_URL", value: "https://api.minimax.io" },
+    ]);
+    expect(buildMiniMaxRuntimeEnv("cn-anthropic", "test-key")).toEqual([
+      { key: "MINIMAX_API_KEY", value: "test-key" },
+      { key: "MINIMAX_BASE_URL", value: "https://api.minimaxi.com" },
+    ]);
+  });
+
   test("registers the executable extension and recommends both models", () => {
     const extension = BUILT_IN_IPOLLOWORK_EXTENSION_MANIFESTS.find(
       (manifest) => manifest.id === "minimax",
@@ -121,6 +133,13 @@ describe("MiniMax provider preset", () => {
       providerId: "minimax",
       required: true,
     });
+    expect(extension?.resources).toContainEqual({
+      type: "tool",
+      id: "minimax-image-generate",
+      label: "Image generation",
+      required: true,
+    });
+    expect(extension?.setup?.requiredEnv).toEqual(["MINIMAX_API_KEY"]);
     expect(extension?.contributions).toContainEqual({
       type: "settings-panel",
       ref: "ipollowork.minimax.settings",

@@ -100,6 +100,14 @@ export function getMiniMaxEndpoint(endpointId: MiniMaxEndpointId): MiniMaxEndpoi
   return endpoint;
 }
 
+export function buildMiniMaxRuntimeEnv(endpointId: MiniMaxEndpointId, apiKey: string) {
+  const endpoint = getMiniMaxEndpoint(endpointId);
+  return [
+    { key: "MINIMAX_API_KEY", value: apiKey },
+    { key: "MINIMAX_BASE_URL", value: new URL(endpoint.baseURL).origin },
+  ];
+}
+
 export function buildMiniMaxProviderConfig(endpointId: MiniMaxEndpointId): ProviderConfig {
   const endpoint = getMiniMaxEndpoint(endpointId);
   const models = Object.fromEntries(

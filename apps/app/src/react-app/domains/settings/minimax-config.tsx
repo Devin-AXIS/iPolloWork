@@ -27,6 +27,7 @@ import { registerExtensionConfig, type ExtensionConfigContext } from "./extensio
 import type { LocalProviderInstallInput } from "./openai-image-extension";
 import {
   buildMiniMaxProviderConfig,
+  buildMiniMaxRuntimeEnv,
   getMiniMaxEndpoint,
   MINIMAX_ENDPOINTS,
   MINIMAX_PROVIDER,
@@ -88,6 +89,7 @@ export function MiniMaxConfig(props: MiniMaxConfigProps) {
       modelId: selectedModel.id,
       modelName: selectedModel.id,
       models: provider.models,
+      userEnv: buildMiniMaxRuntimeEnv(endpointId, trimmedApiKey),
       setDefault,
     });
   };
