@@ -89,64 +89,24 @@ export function segmentStructuredText(text: string, split: MotionTextUnit): stri
   return segmentStructuredTextFallback(text, split);
 }
 
-type HangulClass = "L" | "V" | "T" | "LV" | "LVT";
-
-function hangulClass(codePoint: number): HangulClass | undefined {
-  if ((codePoint >= 0x1100 && codePoint <= 0x115f) || (codePoint >= 0xa960 && codePoint <= 0xa97c)) return "L";
-  if ((codePoint >= 0x1160 && codePoint <= 0x11a7) || (codePoint >= 0xd7b0 && codePoint <= 0xd7c6)) return "V";
-  if ((codePoint >= 0x11a8 && codePoint <= 0x11ff) || (codePoint >= 0xd7cb && codePoint <= 0xd7fb)) return "T";
-  if (codePoint >= 0xac00 && codePoint <= 0xd7a3) return (codePoint - 0xac00) % 28 === 0 ? "LV" : "LVT";
-  return undefined;
-}
-
-function joinsHangul(previous: number, current: number): boolean {
-  const previousClass = hangulClass(previous);
-  const currentClass = hangulClass(current);
-  return (
-    (previousClass === "L" && ["L", "V", "LV", "LVT"].includes(currentClass ?? "")) ||
-    ((previousClass === "LV" || previousClass === "V") && (currentClass === "V" || currentClass === "T")) ||
-    ((previousClass === "LVT" || previousClass === "T") && currentClass === "T")
-  );
-}
-
-function isRegionalIndicator(codePoint: number): boolean {
-  return codePoint >= 0x1f1e6 && codePoint <= 0x1f1ff;
-}
+type SegmenterResult = { segment: string; isWordLike?: boolean };
+type SegmenterConstructor = new (
+  locales?: string | string[],
+  options?: { granularity: "word" | "grapheme" },
+) => { segment(input: string): Iterable<SegmenterResult> };
 
 export function segmentStructuredTextFallback(text: string, split: MotionTextUnit): string[] {
   if (split === "whole") return text ? [text] : [];
-  if (split === "word") {
-    return text.match(/[\p{L}\p{N}\p{M}_]+(?:['’\u2010-\u2015-][\p{L}\p{N}\p{M}_]+)*/gu) ?? [];
+  const Segmenter = (Intl as typeof Intl & { Segmenter?: SegmenterConstructor }).Segmenter;
+  if (!Segmenter) {
+    throw new Error("Structured text motion requires Intl.Segmenter support");
   }
-  const units: string[] = [];
-  let joinNext = false;
-  let regionalIndicatorRun = 0;
-  let previousCodePoint: number | undefined;
-  for (const codePoint of Array.from(text)) {
-    const numericCodePoint = codePoint.codePointAt(0)!;
-    if (codePoint === "\u200d") {
-      if (units.length > 0) units[units.length - 1] += codePoint;
-      else units.push(codePoint);
-      joinNext = true;
-      regionalIndicatorRun = 0;
-      previousCodePoint = numericCodePoint;
-      continue;
-    }
-    const regionalIndicator = isRegionalIndicator(numericCodePoint);
-    const joinsRegionalPair = regionalIndicator && regionalIndicatorRun % 2 === 1;
-    const joinsPreviousHangul = previousCodePoint !== undefined && joinsHangul(previousCodePoint, numericCodePoint);
-    if ((joinNext || joinsRegionalPair || joinsPreviousHangul) && units.length > 0) {
-      units[units.length - 1] += codePoint;
-      joinNext = false;
-    } else if ((/^\p{M}$/u.test(codePoint) || /^\p{Emoji_Modifier}$/u.test(codePoint)) && units.length > 0) {
-      units[units.length - 1] += codePoint;
-    } else {
-      units.push(codePoint);
-    }
-    regionalIndicatorRun = regionalIndicator ? regionalIndicatorRun + 1 : 0;
-    previousCodePoint = numericCodePoint;
-  }
-  return units;
+  const segments = Array.from(
+    new Segmenter("und", { granularity: split === "word" ? "word" : "grapheme" }).segment(text),
+  );
+  return split === "word"
+    ? segments.filter((segment) => segment.isWordLike).map((segment) => segment.segment)
+    : segments.map((segment) => segment.segment);
 }
 
 export function structuredTextSeed(value: string | number): number {

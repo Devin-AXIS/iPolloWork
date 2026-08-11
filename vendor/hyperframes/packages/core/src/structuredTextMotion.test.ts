@@ -216,6 +216,8 @@ describe("structured text motion", () => {
     expect(segmentStructuredText("Don't stop", "word")).toEqual(
       segmentStructuredTextFallback("Don't stop", "word"),
     );
+    expect(segmentStructuredText("中文动画", "word")).toEqual(["中文", "动画"]);
+    expect(segmentStructuredText("hello—world", "word")).toEqual(["hello", "world"]);
     expect(segmentStructuredText("\u{1F1E8}\u{1F1F3}\u{1F1FA}\u{1F1F8}", "character")).toEqual([
       "\u{1F1E8}\u{1F1F3}",
       "\u{1F1FA}\u{1F1F8}",
@@ -223,6 +225,10 @@ describe("structured text motion", () => {
     expect(segmentStructuredText("\u{1100}\u{1161}\u{11A8}", "character")).toEqual([
       "\u{1100}\u{1161}\u{11A8}",
     ]);
+    expect(segmentStructuredText("क्\u{0937}", "character")).toEqual(["क्\u{0937}"]);
+    expect(segmentStructuredText("\r\n", "character")).toEqual(["\r\n"]);
+    expect(segmentStructuredText("🏴󠁧󠁢󠁥󠁮󠁧󠁿", "character")).toEqual(["🏴󠁧󠁢󠁥󠁮󠁧󠁿"]);
+    expect(segmentStructuredText("a\u200db", "character")).toEqual(["a\u200d", "b"]);
     expect(
       segmentStructuredTextFallback(
         "\u{1F468}\u{200D}\u{1F469}\u{200D}\u{1F467}\u{200D}\u{1F466}",
