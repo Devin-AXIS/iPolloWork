@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
   ANIMATION_TEMPLATES,
+  createAnimationTemplateSections,
   resolveAnimationTemplateParameters,
   resolveAnimationTemplatePreset,
+  sortTextAnimationTemplates,
 } from "./AnimationTemplatesTab";
 
 const MIGRATED_TEMPLATES = [
@@ -55,30 +57,29 @@ describe("AnimationTemplatesTab catalog", () => {
     }
   });
 
-  it("keeps migrated template Chinese copy readable", () => {
-    const expectedCopy = {
-      "text-highlight-sweep": ["高亮扫过", "支持按词或按字的高亮扫过"],
-      "text-matrix-decode": ["矩阵解码", "可调密度的字符解码显现"],
-      "text-gradient-fill": ["渐变填充", "跟随主题色的渐变文字强调"],
-      "text-neon-glow": ["霓虹辉光", "可调颜色与辉光强度"],
-      "text-neon-accent": ["霓虹强调", "带轻微漂移的强调辉光"],
-      "text-rgb-glitch": ["RGB 故障", "保持可读的色差故障"],
-      "text-clip-wipe": ["裁切揭幕", "可调方向的文字裁切揭示"],
-      "text-blend-difference": ["差值反色", "反色混合风格文字强调"],
-      "text-weight-shift": ["字重切换", "可调字重的文字强调"],
-      "text-texture-fill": ["纹理填充", "跟随主题的纹理填充感"],
-      "text-kinetic-slam": ["动感冲击", "保持可读的动感文字冲击"],
-      "text-emoji-pop": ["Emoji 弹出", "轻快的字符弹出强调"],
-      "text-particle-burst": ["粒子爆发", "粒子感关键词强调"],
-    } as const;
+  it("keeps migrated caption effects first in the text animation list", () => {
+    const textTemplateIds = sortTextAnimationTemplates(
+      ANIMATION_TEMPLATES.filter((template) => template.category === "text"),
+    ).map((template) => template.id);
 
-    for (const [templateId, [title, description]] of Object.entries(expectedCopy)) {
-      const template = ANIMATION_TEMPLATES.find((candidate) => candidate.id === templateId);
-      expect(template, templateId).toMatchObject({
-        title: { zh: title },
-        description: { zh: description },
-      });
-    }
+    expect(textTemplateIds.slice(0, MIGRATED_TEMPLATES.length)).toEqual(
+      MIGRATED_TEMPLATES.map(([templateId]) => templateId),
+    );
+  });
+
+  it("groups migrated caption effects where users look for text animations", () => {
+    const sections = createAnimationTemplateSections(ANIMATION_TEMPLATES, "text");
+    const migratedSection = sections.find((section) => section.key === "migrated-text");
+
+    expect(sections.map((section) => section.key).slice(0, 3)).toEqual([
+      "migrated-text",
+      "text",
+      "general",
+    ]);
+    expect(migratedSection?.title.zh).toBe("\u5b57\u5e55\u8fc1\u79fb\u52a8\u753b");
+    expect(migratedSection?.templates.map((template) => template.id)).toEqual(
+      MIGRATED_TEMPLATES.map(([templateId]) => templateId),
+    );
   });
 
   it("resolves universal templates per target", () => {
@@ -120,5 +121,13 @@ describe("AnimationTemplatesTab catalog", () => {
 
     expect(resolveAnimationTemplateParameters(fold, preset, true).unit).toBe("whole");
     expect(resolveAnimationTemplateParameters(fold, preset, false).unit).toBe("character");
+
+    const highlight = ANIMATION_TEMPLATES.find(
+      (template) => template.id === "text-highlight-sweep",
+    );
+    if (!highlight) throw new Error("Expected Highlight template is missing");
+    const highlightPreset = resolveAnimationTemplatePreset(highlight, "text");
+    if (!highlightPreset) throw new Error("Expected Highlight preset is missing");
+    expect(resolveAnimationTemplateParameters(highlight, highlightPreset, true).unit).toBe("word");
   });
 });

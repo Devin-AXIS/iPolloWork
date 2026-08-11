@@ -1,5 +1,6 @@
 import { memo, useCallback, useMemo, useState } from "react";
 import {
+  defaultMotionDuration,
   getMotionPreset,
   type MotionParameters,
   type MotionPreset,
@@ -13,6 +14,7 @@ import {
 } from "../editor/SemanticMotionPanel";
 import type { DomEditSelection } from "../editor/domEditing";
 import searchIconSrc from "../../icons/figmaAssetsSearch.svg?url";
+import { StructuredMotionThumbnail } from "./StructuredMotionThumbnail";
 
 export type AnimationTemplateCategory = "general" | "text";
 
@@ -35,6 +37,35 @@ export interface AnimationTemplateDraft {
   selection: DomEditSelection;
   parameters: MotionParameters;
 }
+
+export interface AnimationTemplateSection {
+  key: string;
+  title: { en: string; zh: string };
+  hint: { en: string; zh: string };
+  templates: AnimationTemplateDefinition[];
+}
+
+const MIGRATED_TEXT_TEMPLATE_ORDER = [
+  "text-highlight-sweep",
+  "text-matrix-decode",
+  "text-gradient-fill",
+  "text-neon-glow",
+  "text-neon-accent",
+  "text-rgb-glitch",
+  "text-clip-wipe",
+  "text-blend-difference",
+  "text-weight-shift",
+  "text-texture-fill",
+  "text-kinetic-slam",
+  "text-emoji-pop",
+  "text-particle-burst",
+] as const;
+
+const MIGRATED_TEXT_TEMPLATE_RANK = new Map<string, number>(
+  MIGRATED_TEXT_TEMPLATE_ORDER.map((id, index) => [id, index]),
+);
+
+const MIGRATED_TEXT_TEMPLATE_IDS = new Set<string>(MIGRATED_TEXT_TEMPLATE_ORDER);
 
 const CATEGORY_LABELS: Record<
   AnimationTemplateCategory,
@@ -406,28 +437,105 @@ export function resolveAnimationTemplateParameters(
   variableBoundText: boolean,
 ): MotionParameters {
   const parameters = { ...preset.defaults, ...template.parameters };
-  if (variableBoundText && "unit" in parameters) parameters.unit = "whole";
+  if (variableBoundText && "unit" in parameters && !preset.structuredText) {
+    parameters.unit = "whole";
+  }
   return parameters;
 }
 
 function TemplatePreview({ template }: { template: AnimationTemplateDefinition }) {
   const boxPreview = template.id.startsWith("box-");
+  const structuredPreset =
+    template.category === "text" ? resolveAnimationTemplatePreset(template, "text") : null;
+  const structuredParameters = structuredPreset?.structuredText
+    ? resolveAnimationTemplateParameters(template, structuredPreset, false)
+    : null;
   return (
     <div
       className="hf-animation-template-preview relative h-[92px] overflow-hidden rounded-[8px]"
-      data-preview={template.preview}
+      data-preview={structuredPreset?.structuredText ? undefined : template.preview}
       aria-hidden="true"
     >
       <div className="hf-animation-template-grid" />
       <div className="hf-animation-template-glow hf-animation-template-glow-a" />
       <div className="hf-animation-template-glow hf-animation-template-glow-b" />
       <div className="hf-animation-template-subject">
-        {template.category === "text" ? "Make motion clear." : null}
+        {structuredPreset?.structuredText && structuredParameters ? (
+          <StructuredMotionThumbnail
+            presetId={structuredPreset.id}
+            targetKind="text"
+            parameters={structuredParameters}
+            duration={defaultMotionDuration(structuredPreset)}
+          />
+        ) : template.category === "text" ? "Make motion clear." : null}
         {template.category === "general" && !boxPreview ? "Motion" : null}
         {boxPreview ? <span className="hf-animation-template-box" /> : null}
       </div>
     </div>
   );
+}
+
+export function sortTextAnimationTemplates(
+  templates: readonly AnimationTemplateDefinition[],
+): AnimationTemplateDefinition[] {
+  return [...templates].sort((a, b) => {
+    const aRank = MIGRATED_TEXT_TEMPLATE_RANK.get(a.id) ?? Number.MAX_SAFE_INTEGER;
+    const bRank = MIGRATED_TEXT_TEMPLATE_RANK.get(b.id) ?? Number.MAX_SAFE_INTEGER;
+    return aRank - bRank;
+  });
+}
+
+export function createAnimationTemplateSections(
+  templates: readonly AnimationTemplateDefinition[],
+  targetKind: MotionTargetKind | null,
+): AnimationTemplateSection[] {
+  const generalTemplates = templates.filter((item) => item.category === "general");
+  const textTemplates = sortTextAnimationTemplates(
+    templates.filter((item) => item.category === "text"),
+  );
+  const migratedTextTemplates = textTemplates.filter((item) =>
+    MIGRATED_TEXT_TEMPLATE_IDS.has(item.id),
+  );
+  const nativeTextTemplates = textTemplates.filter(
+    (item) => !MIGRATED_TEXT_TEMPLATE_IDS.has(item.id),
+  );
+
+  const generalSection =
+    generalTemplates.length > 0
+      ? ({
+          key: "general",
+          title: CATEGORY_LABELS.general,
+          hint: CATEGORY_LABELS.general.hint,
+          templates: generalTemplates,
+        } satisfies AnimationTemplateSection)
+      : null;
+
+  if (targetKind !== "text") {
+    return generalSection ? [generalSection] : [];
+  }
+
+  return [
+    targetKind === "text" && migratedTextTemplates.length > 0
+      ? {
+          key: "migrated-text",
+          title: { en: "Caption Effects Moved Here", zh: "\u5b57\u5e55\u8fc1\u79fb\u52a8\u753b" },
+          hint: {
+            en: "Former caption effects now apply to selected text",
+            zh: "\u539f\u6765\u5728\u5b57\u5e55\u7279\u6548\u91cc\u7684\u6548\u679c\uff0c\u73b0\u5728\u9009\u4e2d\u6587\u5b57\u540e\u5728\u8fd9\u91cc\u7528",
+          },
+          templates: migratedTextTemplates,
+        }
+      : null,
+    targetKind === "text" && nativeTextTemplates.length > 0
+      ? {
+          key: "text",
+          title: CATEGORY_LABELS.text,
+          hint: CATEGORY_LABELS.text.hint,
+          templates: nativeTextTemplates,
+        }
+      : null,
+    generalSection,
+  ].filter((section): section is AnimationTemplateSection => section !== null);
 }
 
 export const AnimationTemplatesTab = memo(function AnimationTemplatesTab({
@@ -452,12 +560,7 @@ export const AnimationTemplatesTab = memo(function AnimationTemplatesTab({
         template.description.zh.includes(query)
       );
     });
-    return [
-      { category: "general" as const, templates: matches.filter((item) => item.category === "general") },
-      ...(targetKind === "text"
-        ? [{ category: "text" as const, templates: matches.filter((item) => item.category === "text") }]
-        : []),
-    ].filter((section) => section.templates.length > 0);
+    return createAnimationTemplateSections(matches, targetKind);
   }, [search, targetKind]);
   const appliedLabels = useMemo(() => {
     if (!targetKind) return [];
@@ -540,13 +643,13 @@ export const AnimationTemplatesTab = memo(function AnimationTemplatesTab({
         ) : (
           <div className="space-y-6">
             {templateSections.map((section) => (
-              <section key={section.category}>
+              <section key={section.key}>
                 <div className="mb-3">
                   <div className="text-[12px] font-semibold text-panel-text-1">
-                    {CATEGORY_LABELS[section.category][locale]}
+                    {section.title[locale]}
                   </div>
                   <div className="mt-0.5 text-[10px] leading-4 text-panel-text-3">
-                    {CATEGORY_LABELS[section.category].hint[locale]}
+                    {section.hint[locale]}
                   </div>
                 </div>
                 <div className="grid grid-cols-2 gap-x-[10px] gap-y-4">
