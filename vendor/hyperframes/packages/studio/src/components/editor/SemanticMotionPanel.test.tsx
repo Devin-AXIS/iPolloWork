@@ -351,6 +351,85 @@ describe("SemanticMotionPanel", () => {
     expect(confirm.disabled).toBe(false);
   });
 
+  it("previews Highlight as reversible per-word structured tracks", () => {
+    const title = document.createElement("h1");
+    title.id = "title";
+    title.setAttribute("style", "letter-spacing: 1px");
+    title.setAttribute("data-source", "authored");
+    const originalText = document.createTextNode("Make motion clear.");
+    title.append(originalText);
+    document.body.append(title);
+    const selected = selection(title);
+    const instance = createMotionInstance({
+      presetId: "text.emphasis.highlight-sweep",
+      target: { selector: "#title", elementId: "title" },
+      targetKind: "text",
+      start: 0,
+    });
+    const timeline = {
+      to: vi.fn(),
+      set: vi.fn(),
+      play: vi.fn(),
+      kill: vi.fn(),
+    };
+    timeline.to.mockReturnValue(timeline);
+    timeline.set.mockReturnValue(timeline);
+    Object.defineProperty(window, "gsap", {
+      configurable: true,
+      value: { timeline: vi.fn(() => timeline) },
+    });
+
+    const renderDraft = (parameters = instance.parameters) => (
+      <AnimationPropertiesPanel
+        draft={{
+          templateId: "caption-highlight-word-sweep",
+          presetId: instance.presetId,
+          targetKind: instance.targetKind,
+          selection: selected,
+          parameters,
+        }}
+        element={selected}
+        animations={[]}
+        onMutate={vi.fn()}
+        onApplied={vi.fn()}
+      />
+    );
+
+    flushSync(() => root.render(renderDraft()));
+
+    expect(title.querySelectorAll('[data-ipw-motion-role="unit"]')).toHaveLength(3);
+    expect(title.querySelectorAll('[data-ipw-motion-role="background"]')).toHaveLength(3);
+    expect(title.querySelectorAll('[data-ipw-motion-role="text"]')).toHaveLength(3);
+    expect(timeline.to).toHaveBeenCalledTimes(4);
+    expect(timeline.set).toHaveBeenCalledTimes(1);
+    const [revealTargets, revealVars, revealPosition] = timeline.to.mock.calls[0];
+    expect(revealTargets).toHaveLength(3);
+    expect(revealPosition).toBe(0);
+    expect(revealVars).toMatchObject({ duration: 0.15, stagger: 0.05 });
+    expect(revealVars.keyframes["0%"].backgroundImage).toContain("linear-gradient");
+    expect(revealVars.keyframes["100%"].ease).toBe("power2.out");
+    const exitVars = timeline.to.mock.calls[1][1];
+    expect(exitVars.keyframes["100%"].ease).toBe("power2.in");
+    const [resetTargets, resetVars, resetPosition] = timeline.set.mock.calls[0];
+    expect(resetTargets).toHaveLength(3);
+    expect(resetPosition).toBe(0.33);
+    expect(resetVars.keyframes).toBeUndefined();
+    expect(resetVars.scaleX).toBe(0);
+
+    flushSync(() => root.render(renderDraft({ ...instance.parameters, intensity: 1.1 })));
+    expect(title.querySelectorAll('[data-ipw-motion-role="unit"]')).toHaveLength(3);
+    expect(title.querySelectorAll('[data-ipw-motion-role="unit"] [data-ipw-motion-role="unit"]')).toHaveLength(0);
+
+    flushSync(() => root.render(<div />));
+    expect(timeline.kill).toHaveBeenCalledTimes(2);
+    expect(title.firstChild).toBe(originalText);
+    expect(title.textContent).toBe("Make motion clear.");
+    expect(title.getAttribute("style")).toBe("letter-spacing: 1px");
+    expect(title.getAttribute("data-source")).toBe("authored");
+    expect(title.hasAttribute("data-ipw-motion-structure")).toBe(false);
+    title.remove();
+  });
+
   it("does not replay a saved preview when only selection geometry refreshes", () => {
     const title = document.createElement("h1");
     title.id = "title";

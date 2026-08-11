@@ -5,7 +5,10 @@ import {
   createMotionInstance,
   defaultMotionDuration,
   getMotionPreset,
+  materializeStructuredText,
   readMotionInstanceFromExtras,
+  restoreStructuredText,
+  snapshotStructuredText,
   type MotionInstance,
   type MotionMutationInput,
   type MotionParameter,
@@ -56,9 +59,16 @@ export function resolveMotionInstances(animations: GsapAnimation[]): ResolvedMot
   });
 }
 
+type MotionPreviewTarget = HTMLElement | HTMLElement[];
+
 interface MotionPreviewTimeline {
   to?: (
-    target: HTMLElement,
+    target: MotionPreviewTarget,
+    vars: Record<string, unknown>,
+    position: number,
+  ) => MotionPreviewTimeline;
+  set?: (
+    target: MotionPreviewTarget,
     vars: Record<string, unknown>,
     position: number,
   ) => MotionPreviewTimeline;
@@ -73,6 +83,21 @@ type MotionPreviewWindow = Window & {
     timeline?: (options: Record<string, unknown>) => MotionPreviewTimeline;
   };
 };
+
+function keyframesForPreview(
+  keyframes: Array<{ percentage: number; properties: Record<string, number | string>; ease?: string }>,
+): Record<string, Record<string, number | string>> {
+  return Object.fromEntries(
+    keyframes.map((frame) => [
+      `${frame.percentage}%`,
+      { ...frame.properties, ...(frame.ease ? { ease: frame.ease } : {}) },
+    ]),
+  );
+}
+
+function clearStructuredPreviewStyles(targets: Iterable<HTMLElement>): void {
+  for (const target of targets) target.removeAttribute("style");
+}
 
 function previewMotionDraft(
   draft: AnimationTemplateDraft,
@@ -92,13 +117,54 @@ function previewMotionDraft(
       duration,
       parameters: draft.parameters,
     }),
+    target.textContent ?? "",
   );
-  const keyframes = Object.fromEntries(
-    compiled.keyframes.map((frame) => [
-      `${frame.percentage}%`,
-      { ...frame.properties, ...(frame.ease ? { ease: frame.ease } : {}) },
-    ]),
-  );
+  if (compiled.structured) {
+    if (!timeline.set) return undefined;
+    const snapshot = snapshotStructuredText(target);
+    const structuredTargets = new Set<HTMLElement>();
+    try {
+      materializeStructuredText(target, compiled.structured, target.textContent ?? "");
+      for (const track of compiled.structured.tracks) {
+        const targets = Array.from(
+          target.querySelectorAll<HTMLElement>(`[data-ipw-motion-role="${track.role}"]`),
+        );
+        if (targets.length === 0) continue;
+        targets.forEach((roleTarget) => structuredTargets.add(roleTarget));
+        if (track.duration === 0) {
+          const properties = track.keyframes.at(-1)?.properties ?? {};
+          timeline.set(
+            targets,
+            { ...properties, ...(track.stagger > 0 ? { stagger: track.stagger } : {}) },
+            track.position,
+          );
+          continue;
+        }
+        timeline.to(
+          targets,
+          {
+            keyframes: keyframesForPreview(track.keyframes),
+            duration: track.duration,
+            ease: compiled.ease,
+            ...(track.stagger > 0 ? { stagger: track.stagger } : {}),
+          },
+          track.position,
+        );
+      }
+      timeline.play?.(0);
+    } catch {
+      timeline.kill?.();
+      clearStructuredPreviewStyles(structuredTargets);
+      restoreStructuredText(target, snapshot);
+      return undefined;
+    }
+    return () => {
+      timeline.kill?.();
+      clearStructuredPreviewStyles(structuredTargets);
+      restoreStructuredText(target, snapshot);
+    };
+  }
+  const keyframes = keyframesForPreview(compiled.keyframes);
   const originalStyle = target.getAttribute("style");
   let restored = false;
   let previewFrame = 0;
