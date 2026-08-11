@@ -1,5 +1,6 @@
 import { findUnsafeDomPatchValues } from "@hyperframes/core/studio-api/finite-mutation";
 import type { DomEditSelection } from "../components/editor/domEditingTypes";
+import { escapeCssString } from "../components/editor/domEditingDom";
 
 export { PROPERTY_DEFAULTS } from "./gsapShared";
 
@@ -8,6 +9,9 @@ export function ensureElementAddressable(selection: DomEditSelection): {
   autoId?: string;
 } {
   if (selection.id) return { selector: `#${selection.id}` };
+  if (selection.hfId) {
+    return { selector: `[data-hf-id="${escapeCssString(selection.hfId)}"]` };
+  }
   if (selection.selector) return { selector: selection.selector };
 
   const el = selection.element;

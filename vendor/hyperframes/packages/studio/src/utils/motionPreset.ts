@@ -1,4 +1,5 @@
 import type { RegistryMotionPreset, RegistryMotionPresetTarget } from "@hyperframes/core/registry";
+import type { MotionPhase } from "@hyperframes/core/motion-presets";
 import type { DomEditSelection } from "../components/editor/domEditingTypes";
 
 const TEXT_TAGS = new Set(["P", "SPAN", "H1", "H2", "H3", "H4", "H5", "H6", "LABEL", "LI"]);
@@ -32,6 +33,35 @@ function finiteNonNegative(value: string | undefined): number | null {
   if (value == null) return null;
   const parsed = Number.parseFloat(value);
   return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
+}
+
+function finitePositive(value: string | undefined): number | null {
+  const parsed = finiteNonNegative(value);
+  return parsed !== null && parsed > 0 ? parsed : null;
+}
+
+function timingOwnerFor(element: HTMLElement | null | undefined): HTMLElement | null {
+  return (
+    element?.closest<HTMLElement>(
+      ".clip, [data-start][data-duration], [data-composition-id][data-duration]",
+    ) ?? null
+  );
+}
+
+function resolveTimingSpan(
+  selection: MotionPresetTimingSource,
+  fallbackDuration: number,
+): { start: number; duration: number; constrained: boolean } {
+  const owner = timingOwnerFor(selection.element);
+  const ownerStart = finiteNonNegative(owner?.dataset.start);
+  const ownerDuration = finitePositive(owner?.dataset.duration);
+  const selectionStart = finiteNonNegative(selection.dataAttributes.start);
+  const selectionDuration = finitePositive(selection.dataAttributes.duration);
+  return {
+    start: ownerStart ?? selectionStart ?? 0,
+    duration: ownerDuration ?? selectionDuration ?? fallbackDuration,
+    constrained: ownerDuration !== null || selectionDuration !== null,
+  };
 }
 
 function captionOwnerFor(element: HTMLElement): HTMLElement | null {
@@ -120,17 +150,9 @@ export function resolveMotionPresetTiming(
   preset: RegistryMotionPreset,
   currentTime: number,
 ): MotionPresetTiming {
-  const clip = selection.element?.matches(".clip")
-    ? selection.element
-    : selection.element?.closest<HTMLElement>(".clip");
-  const clipStart =
-    finiteNonNegative(clip?.dataset.start) ??
-    finiteNonNegative(selection.dataAttributes.start) ??
-    0;
-  const declaredClipDuration =
-    finiteNonNegative(clip?.dataset.duration) ??
-    finiteNonNegative(selection.dataAttributes.duration) ??
-    preset.duration;
+  const span = resolveTimingSpan(selection, preset.duration);
+  const clipStart = span.start;
+  const declaredClipDuration = span.duration;
   const clipDuration = Math.max(0.1, declaredClipDuration);
   const duration = Math.min(preset.duration, clipDuration);
   const latestStart = clipStart + clipDuration - duration;
@@ -143,4 +165,32 @@ export function resolveMotionPresetTiming(
   }
   const playheadPosition = Math.max(clipStart, Math.min(currentTime, latestStart));
   return { position: roundTo3(playheadPosition), duration: roundTo3(duration) };
+}
+
+export function resolveSemanticMotionTiming(
+  selection: MotionPresetTimingSource,
+  phase: MotionPhase,
+  requestedDuration: number,
+  requestedPosition?: number,
+): MotionPresetTiming {
+  const span = resolveTimingSpan(selection, requestedDuration);
+  const clipDuration = Math.max(0.1, span.duration);
+  const duration = span.constrained
+    ? Math.min(Math.max(0.1, requestedDuration), clipDuration)
+    : Math.max(0.1, requestedDuration);
+  const latestStart = span.start + clipDuration - duration;
+  const defaultPosition =
+    phase === "enter"
+      ? span.start
+      : phase === "exit"
+        ? latestStart
+        : span.start + Math.max(0, (clipDuration - duration) / 2);
+  const position =
+    requestedPosition !== undefined &&
+    Number.isFinite(requestedPosition) &&
+    (!span.constrained ||
+      (requestedPosition >= span.start && requestedPosition <= latestStart))
+      ? requestedPosition
+      : defaultPosition;
+  return { position: roundTo3(position), duration: roundTo3(duration) };
 }

@@ -46,7 +46,10 @@
         "opening-animation",
         "ending-animation",
         "transition-animation",
-        "caption-animation"
+        "caption-animation",
+        "opening-effect",
+        "ending-effect",
+        "transition-effect"
       ],
       "description": "Explicit placement within the Studio animation and scene libraries."
     },

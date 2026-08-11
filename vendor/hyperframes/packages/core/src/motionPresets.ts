@@ -62,6 +62,8 @@ export interface MotionInstance {
   phase: MotionPhase;
   start: number;
   duration: number;
+  loop: boolean;
+  repeat: number;
   parameters: MotionParameters;
 }
 
@@ -71,6 +73,7 @@ export interface MotionMutationInput {
   presetId?: string;
   start?: number;
   duration?: number;
+  loop?: boolean;
   parameters?: MotionParameters;
 }
 
@@ -286,7 +289,14 @@ export function readMotionInstanceFromExtras(
     if (!Number.isFinite(value.duration) || value.duration <= 0) return null;
     const validated = validateMotionParameters(preset, value.parameters);
     if (!validated.valid) return null;
-    return { ...value, parameters: validated.parameters };
+    const loop = value.loop === true;
+    const repeat =
+      loop && Number.isFinite(value.repeat) && value.repeat >= 0
+        ? Math.floor(value.repeat)
+        : loop
+          ? 1
+          : 0;
+    return { ...value, loop, repeat, parameters: validated.parameters };
   } catch {
     return null;
   }
@@ -324,6 +334,7 @@ export function compileMotionInstance(instance: MotionInstance): CompiledMotion 
       // wrapper), giving Studio a stable, direct replacement handle.
       id: instance.id,
       data: encodeMotionData({ ...instance, parameters: validated.parameters }),
+      ...(instance.loop && instance.repeat > 0 ? { repeat: instance.repeat } : {}),
       ...(stagger > 0 ? { stagger } : {}),
     },
   };
@@ -354,12 +365,21 @@ export function createMotionInstance(input: {
   targetKind: MotionTargetKind;
   start: number;
   duration?: number;
+  loop?: boolean;
+  repeat?: number;
   parameters?: MotionParameters;
 }): MotionInstance {
   const preset = getMotionPreset(input.presetId);
   if (!preset) throw new Error(`Unknown motion preset: ${input.presetId}`);
   const validated = validateMotionParameters(preset, input.parameters);
   if (!validated.valid) throw new Error(validated.issues.map((issue) => issue.message).join("; "));
+  const loop = input.loop === true;
+  const repeat =
+    loop && Number.isFinite(input.repeat) && Number(input.repeat) >= 0
+      ? Math.floor(Number(input.repeat))
+      : loop
+        ? 1
+        : 0;
   return {
     id: `motion:${input.target.selector}:${preset.phase}`,
     presetId: preset.id,
@@ -368,6 +388,8 @@ export function createMotionInstance(input: {
     phase: preset.phase,
     start: input.start,
     duration: input.duration ?? defaultMotionDuration(preset),
+    loop,
+    repeat,
     parameters: validated.parameters,
   };
 }

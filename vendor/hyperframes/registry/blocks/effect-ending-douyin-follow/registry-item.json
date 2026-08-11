@@ -1,0 +1,22 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "effect-ending-douyin-follow",
+  "version": "1.0.0",
+  "type": "hyperframes:block",
+  "title": "抖音关注提示",
+  "description": "带头像脉冲、关注按钮和昵称入场的抖音风格结尾片段。",
+  "kind": "effect",
+  "librarySection": "ending-effect",
+  "dimensions": { "width": 1920, "height": 1080 },
+  "duration": 3.2,
+  "tags": ["effect-clip", "ending", "douyin", "follow", "social", "themeable"],
+  "engine": { "name": "gsap", "version": "3.15.0", "seekable": true, "plugins": [] },
+  "source": { "provider": "ipollowork", "label": "iPolloWork Effects" },
+  "files": [
+    {
+      "path": "effect-ending-douyin-follow.html",
+      "target": "compositions/effects/effect-ending-douyin-follow.html",
+      "type": "hyperframes:composition"
+    }
+  ]
+}

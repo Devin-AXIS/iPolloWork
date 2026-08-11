@@ -1,25 +1,22 @@
 import { readdirSync, readFileSync } from "node:fs";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
 const REGISTRY_ROOT = fileURLToPath(new URL("../../../../registry", import.meta.url));
 const ACTIVE_SECTIONS = {
-  "opening-animation": "opening",
-  "ending-animation": "ending",
-  "transition-animation": "transition",
-  "caption-animation": "caption",
+  "opening-effect": 2,
+  "ending-effect": 4,
+  "transition-effect": 3,
 } as const;
 
 interface MotionManifest {
   name: string;
   librarySection?: string;
-  motionPreset?: {
-    version: number;
-    category: string;
-    targets: string[];
-    keyframes: Array<{ percentage: number }>;
-  };
+  type: string;
+  kind?: string;
+  motionPreset?: unknown;
+  files?: Array<{ path: string }>;
 }
 
 function registryManifests(directory: string): string[] {
@@ -34,8 +31,8 @@ function parseManifest(manifestPath: string): MotionManifest {
   return JSON.parse(readFileSync(manifestPath, "utf8")) as MotionManifest;
 }
 
-describe("animation catalog library sections", () => {
-  it("publishes exactly four editable presets in each approved category", () => {
+describe("effect clip catalog library sections", () => {
+  it("publishes only opening, social ending, and transition clips", () => {
     const manifests = [
       ...registryManifests(join(REGISTRY_ROOT, "blocks")),
       ...registryManifests(join(REGISTRY_ROOT, "components")),
@@ -49,29 +46,33 @@ describe("animation catalog library sections", () => {
       return result;
     }, {});
 
-    expect(active).toHaveLength(16);
+    expect(active).toHaveLength(9);
     expect(counts).toEqual({
-      "opening-animation": 4,
-      "ending-animation": 4,
-      "transition-animation": 4,
-      "caption-animation": 4,
+      "opening-effect": 2,
+      "ending-effect": 4,
+      "transition-effect": 3,
     });
   });
 
-  it("keeps every visible animation source-editable and category-aligned", () => {
+  it("keeps every visible effect as a standalone, themeable scene clip", () => {
     const manifests = registryManifests(join(REGISTRY_ROOT, "blocks"))
       .map(parseManifest)
       .filter((manifest) => manifest.librarySection && manifest.librarySection in ACTIVE_SECTIONS);
 
     for (const manifest of manifests) {
-      const section = manifest.librarySection as keyof typeof ACTIVE_SECTIONS;
-      const preset = manifest.motionPreset;
-      expect(preset, manifest.name).toBeDefined();
-      expect(preset?.version, manifest.name).toBe(1);
-      expect(preset?.category, manifest.name).toBe(ACTIVE_SECTIONS[section]);
-      expect(preset?.targets.length, manifest.name).toBeGreaterThan(0);
-      expect(preset?.keyframes[0]?.percentage, manifest.name).toBe(0);
-      expect(preset?.keyframes.at(-1)?.percentage, manifest.name).toBe(100);
+      expect(manifest.type, manifest.name).toBe("hyperframes:block");
+      expect(manifest.kind, manifest.name).toBe("effect");
+      expect(manifest.motionPreset, manifest.name).toBeUndefined();
+      const manifestPath = registryManifests(join(REGISTRY_ROOT, "blocks")).find(
+        (path) => parseManifest(path).name === manifest.name,
+      );
+      expect(manifestPath, manifest.name).toBeDefined();
+      const html = readFileSync(
+        join(dirname(manifestPath!), manifest.files?.[0]?.path ?? ""),
+        "utf8",
+      );
+      expect(html, manifest.name).toContain("--ipw-color-");
+      expect(html, manifest.name).toContain("gsap.timeline({paused:true})");
     }
   });
 });

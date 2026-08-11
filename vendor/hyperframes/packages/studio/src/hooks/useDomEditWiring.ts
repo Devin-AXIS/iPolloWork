@@ -253,7 +253,11 @@ export function useDomEditWiring({
     STUDIO_GSAP_PANEL_ENABLED ? (projectId ?? null) : null,
     gsapSourceFile,
     domEditSelection
-      ? { id: domEditSelection.id ?? null, selector: domEditSelection.selector ?? null }
+      ? {
+          id: domEditSelection.id ?? null,
+          hfId: domEditSelection.hfId ?? null,
+          selector: domEditSelection.selector ?? null,
+        }
       : null,
     gsapCacheVersion,
     // Pass the preview iframe so class/selector tweens (e.g. `.dot`) resolve to

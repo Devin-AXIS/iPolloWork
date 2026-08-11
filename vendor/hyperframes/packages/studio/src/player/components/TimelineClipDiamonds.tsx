@@ -213,8 +213,11 @@ export const TimelineClipDiamonds = memo(function TimelineClipDiamonds({
           if (!d || d.kfKey !== kfKey) {
             if (e.button !== 0) return;
             suppressNextClick();
-            if (e.shiftKey) onShiftClickKeyframe?.(elementId, kf.percentage);
-            else onClickKeyframe?.(kf.percentage);
+            if (e.shiftKey && onShiftClickKeyframe) {
+              onShiftClickKeyframe(elementId, kf.percentage);
+            } else {
+              onClickKeyframe?.(kf.percentage);
+            }
             return;
           }
           e.stopPropagation();
@@ -236,8 +239,11 @@ export const TimelineClipDiamonds = memo(function TimelineClipDiamonds({
             // back onto ~the same position — no real retime, so treat it as the
             // click it was. Otherwise a normal click with a few px of mouse/
             // trackpad drift silently does nothing: no selection, no move.
-            if (e.shiftKey) onShiftClickKeyframe?.(elementId, kf.percentage);
-            else onClickKeyframe?.(kf.percentage);
+            if (e.shiftKey && onShiftClickKeyframe) {
+              onShiftClickKeyframe(elementId, kf.percentage);
+            } else {
+              onClickKeyframe?.(kf.percentage);
+            }
           } else if (res.kind === "move" && res.toClipPct != null) {
             onMoveKeyframe?.(elementId, d.fromClipPct, res.toClipPct);
             // A retime still targeted this exact diamond — park/select it at its

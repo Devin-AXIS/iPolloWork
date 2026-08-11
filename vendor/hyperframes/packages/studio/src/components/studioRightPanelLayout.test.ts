@@ -8,6 +8,18 @@ import {
 } from "./editor/PropertyPanelFlat";
 
 describe("Studio right panel layout", () => {
+  it("keeps the canvas selection frame independent from the right panel", () => {
+    const contextState = readFileSync(
+      new URL("../hooks/useStudioContextValue.ts", import.meta.url),
+      "utf8",
+    );
+
+    expect(contextState).toContain(
+      "shouldShowSelectedDomBounds: !isPlaying && !isGestureRecording",
+    );
+    expect(contextState).not.toContain("selectionOverlayPanelActive");
+  });
+
   it("offers six selectable HTML illustration capabilities", () => {
     const illustration = readFileSync(
       new URL("./sidebar/IllustrationTab.tsx", import.meta.url),
@@ -391,20 +403,26 @@ describe("Studio right panel layout", () => {
     expect(source).toContain('label={t("right.design")}');
     expect(source).toContain('label={t("right.animation")}');
     expect(source).toContain('label={t("right.catalog")}');
-    expect(source).toContain('onClick={() => selectStudioPanel("animation")}');
+    expect(source).toContain("setPendingMotionDraft(null);");
+    expect(source).toContain('selectStudioPanel("animation");');
     expect(source).toContain(
       'inspectorMode={rightPanelTab === "animation-properties" ? "animation" : "properties"}',
     );
     expect(source).toContain('showInspectorChrome={rightPanelTab !== "animation-properties"}');
-    expect(source).toContain('role="tablist"');
-    expect(source).toContain('t("right.animationTemplates")');
-    expect(source).toContain('t("right.animationProperties")');
+    expect(source).not.toContain('role="tablist"');
+    expect(source).not.toContain('t("right.animationTemplates")');
+    expect(source).not.toContain('t("right.animationProperties")');
     expect(source).toContain(
-      'rightPanelTab === "animation" ? <AnimationTemplatesTab /> : propertyPanel',
+      "<AnimationTemplatesTab onSelectTemplate={selectAnimationTemplate} />",
     );
+    expect(source).toContain("<AnimationPropertiesPanel");
+    expect(source).toContain("onApplied={() => setPendingMotionDraft(null)}");
     expect(source).toContain('setRightPanelTab("animation-properties")');
+    expect(source).toContain("const showAnimationProperties =");
+    expect(source).toContain("pendingMotionDraft !== null || hasSelectedSemanticMotion");
+    expect(source).toContain("currentAnimationSelectionKey !== pendingAnimationSelectionKey");
     expect(source).toContain('rightPanelTab === "catalog" || rightPanelTab === "effects"');
-    expect(source).toContain('<BlocksTab page="animation" onAddBlock={onAddBlock} />');
+    expect(source).toContain('<BlocksTab page="effects" onAddBlock={onAddBlock} />');
     expect(source).not.toContain("<LayersPanel />");
     expect(source).not.toContain("useInspectorSplitResize");
     expect(source).not.toContain('aria-label={t("right.resizePanes")}');
@@ -523,6 +541,24 @@ describe("Studio right panel layout", () => {
     expect(panel).toContain("propertyPanelContent");
   });
 
+  it("preloads and reuses the effects catalog before its tab is opened", () => {
+    const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
+    const panel = readFileSync(new URL("./StudioRightPanel.tsx", import.meta.url), "utf8");
+    const catalogHook = readFileSync(
+      new URL("../hooks/useBlockCatalog.ts", import.meta.url),
+      "utf8",
+    );
+
+    expect(app).toContain("module.preloadStudioEffectsPanel()");
+    expect(app).toContain("window.requestIdleCallback(preload, { timeout: 800 })");
+    expect(panel).toContain("export const preloadStudioEffectsPanel");
+    expect(panel).toContain("const BlocksTab = lazy(loadBlocksTab)");
+    expect(catalogHook).toContain("let catalogCache: CatalogItem[] | null = null");
+    expect(catalogHook).toContain("let catalogRequest: Promise<CatalogItem[]> | null = null");
+    expect(catalogHook).toContain("export function preloadBlockCatalog()");
+    expect(catalogHook).toContain("if (catalogRequest) return catalogRequest");
+  });
+
   it("uses the timeline gutter as the single layer hierarchy surface", () => {
     const layout = readFileSync(
       new URL("../player/components/timelineLayout.ts", import.meta.url),
@@ -623,8 +659,93 @@ describe("Studio right panel layout", () => {
       new URL("../player/components/TimelineOverlays.tsx", import.meta.url),
       "utf8",
     );
+    const editorShell = readFileSync(new URL("./EditorShell.tsx", import.meta.url), "utf8");
+    const timelineLanes = readFileSync(
+      new URL("../player/components/TimelineLanes.tsx", import.meta.url),
+      "utf8",
+    );
+    const canvasContextMenu = readFileSync(
+      new URL("./editor/CanvasContextMenu.tsx", import.meta.url),
+      "utf8",
+    );
     expect(timeline).not.toContain("clipContextMenu");
     expect(overlays).not.toContain("ClipContextMenu");
+    expect(timelineLanes).toContain("onContextMenuElement?.(el");
+    expect(editorShell).toContain('{ "timeline-clip-label": label }');
+    expect(editorShell).toContain("skipRefresh: true");
+    expect(editorShell).toContain("refreshAfter: false");
+    expect(editorShell).toContain("updateElement(elementKey, { clipLabel: label })");
+    expect(editorShell).toContain("clipRenameVersionRef");
+    expect(editorShell).toContain("void handleDomAttributesCommit(");
+    expect(editorShell).toContain("useCommitDomZOrder");
+    expect(editorShell).toContain("onDeleteElement(element)");
+    expect(canvasContextMenu).toContain('data-testid="timeline-clip-rename-input"');
+    expect(canvasContextMenu).toContain("aria-busy={renamePending}");
+    expect(canvasContextMenu).toContain('tx("Saving…")');
+  });
+
+  it("routes visible-element deletes through one immediate guarded transaction", () => {
+    const toolbar = readFileSync(new URL("./TimelineToolbar.tsx", import.meta.url), "utf8");
+    const editorShell = readFileSync(new URL("./EditorShell.tsx", import.meta.url), "utf8");
+    const hotkeys = readFileSync(new URL("../hooks/useAppHotkeys.ts", import.meta.url), "utf8");
+    const lifecycle = readFileSync(
+      new URL("../hooks/useElementLifecycleOps.ts", import.meta.url),
+      "utf8",
+    );
+    const timelineEditing = readFileSync(
+      new URL("../hooks/useTimelineEditing.ts", import.meta.url),
+      "utf8",
+    );
+    const playerStore = readFileSync(
+      new URL("../player/store/playerStore.ts", import.meta.url),
+      "utf8",
+    );
+    const previewPane = readFileSync(new URL("./nle/PreviewPane.tsx", import.meta.url), "utf8");
+
+    const toolbarDelete = toolbar.slice(toolbar.indexOf('pendingAction === "delete"'));
+    expect(toolbarDelete.indexOf("domEditSession?.domEditSelection")).toBeLessThan(
+      toolbarDelete.indexOf("selectedElement && onDeleteElement"),
+    );
+    expect(editorShell).toContain(
+      "handleDomEditElementDelete(timelineClipContextMenu.selection)",
+    );
+
+    const hotkeyDelete = hotkeys.slice(hotkeys.indexOf('event.key === "Delete"'));
+    expect(hotkeyDelete.indexOf("handleDomEditElementDelete(domSel)")).toBeLessThan(
+      hotkeyDelete.indexOf("handleTimelineElementDelete(el)"),
+    );
+
+    const deleteHandler = lifecycle.slice(
+      lifecycle.indexOf("const handleDomEditElementDelete"),
+      lifecycle.indexOf("// Z-index reorder"),
+    );
+    expect(deleteHandler).toContain("deleteInFlightRef.current");
+    expect(deleteHandler).toContain("await queueDomEditSave");
+    expect(deleteHandler.indexOf("const liveRemoval = removeLivePreviewElement")).toBeLessThan(
+      deleteHandler.indexOf("await readProjectFileContent"),
+    );
+    expect(deleteHandler.indexOf("syncDeletedElementFromTimeline(selection)")).toBeLessThan(
+      deleteHandler.indexOf("await readProjectFileContent"),
+    );
+    expect(lifecycle).toContain("selection.element?.ownerDocument === doc");
+    expect(deleteHandler).not.toContain("saveProjectFilesWithHistory");
+    expect(deleteHandler).toContain("syncDeletedElementFromTimeline(selection)");
+    expect(deleteHandler).toContain("setPreviewDeletePending(true)");
+    expect(previewPane).toContain("previewDeletePending ||");
+
+    const timelineDelete = timelineEditing.slice(
+      timelineEditing.indexOf("const handleTimelineElementDelete"),
+      timelineEditing.indexOf("const { handleTimelineAssetDrop"),
+    );
+    expect(timelineDelete).toContain("timelineDeleteInFlightRef.current");
+    expect(timelineDelete.indexOf("removeLiveTimelineElement(")).toBeLessThan(
+      timelineDelete.indexOf("await readFileContent"),
+    );
+    expect(timelineDelete.indexOf("state.removeElementReferences({")).toBeLessThan(
+      timelineDelete.indexOf("await readFileContent"),
+    );
+    expect(timelineDelete).toContain("if (!liveRemoval) reloadPreview()");
+    expect(playerStore).toContain("if (target.hfId) return candidate.hfId === target.hfId");
   });
 
   it("keeps preview refresh loading local to the canvas", () => {
@@ -635,6 +756,10 @@ describe("Studio right panel layout", () => {
     const preview = readFileSync(new URL("./nle/NLEPreview.tsx", import.meta.url), "utf8");
     const previewPane = readFileSync(new URL("./nle/PreviewPane.tsx", import.meta.url), "utf8");
     const nleContext = readFileSync(new URL("./nle/NLEContext.tsx", import.meta.url), "utf8");
+    const blockHandlers = readFileSync(
+      new URL("../hooks/useBlockHandlers.ts", import.meta.url),
+      "utf8",
+    );
     const timelinePlayer = readFileSync(
       new URL("../player/hooks/useTimelinePlayer.ts", import.meta.url),
       "utf8",
@@ -644,6 +769,7 @@ describe("Studio right panel layout", () => {
     expect(player).toContain("function shouldShowRefreshLoadingOverlay");
     expect(player).toContain("setCompositionLoading(true)");
     expect(player).toContain('data-testid="composition-refresh-loading-overlay"');
+    expect(player).toContain("export function CompositionRefreshLoadingOverlay()");
     expect(player).toContain(
       "h-4 w-4 animate-spin rounded-full border-2 border-neutral-700 border-t-neutral-500",
     );
@@ -663,8 +789,13 @@ describe("Studio right panel layout", () => {
     expect(player).toContain("DEFERRED_VISUAL_READY_PAINTS = 2");
     expect(player).toContain('iframe.style.visibility = "hidden"');
     expect(previewPane).toContain("refreshToken={refreshKey}");
+    expect(previewPane).toContain("studioCompositionLoading && hasLoadedOnceRef.current");
+    expect(previewPane).toContain("<CompositionRefreshLoadingOverlay />");
     expect(nleContext).toContain("refreshKey?: number");
     expect(nleContext).toContain("useLayoutEffect(() =>");
+    expect(nleContext).toContain("onCompositionLoadingChange?.(loading)");
+    expect(blockHandlers).toContain("setCompositionLoading(true)");
+    expect(blockHandlers).toContain("if (result === null) setCompositionLoading(false)");
     expect(timelinePlayer).not.toContain("iframe.src = url.toString()");
   });
 
@@ -703,9 +834,9 @@ describe("Studio right panel layout", () => {
 
     expect(catalog).toContain("flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden");
     expect(catalog).toContain('data-testid="block-catalog-search"');
-    expect(catalog).toContain("Search animation…");
-    expect(catalog).toContain('aria-label={locale === "zh" ? "动画分类" : "Animation category"}');
-    expect(catalog).toContain('locale === "zh" ? "全部动画" : "All animations"');
+    expect(catalog).toContain("Search effect clips…");
+    expect(catalog).toContain('aria-label={locale === "zh" ? "特效分类" : "Effect category"}');
+    expect(catalog).toContain('locale === "zh" ? "全部特效" : "All effects"');
     expect(catalog).toContain('const ALL_SECTIONS_FILTER = "all" as const');
     expect(catalog).toContain("showSectionHeaders");
     expect(catalog).toContain("hf-block-catalog-scroll min-h-0 min-w-0 flex-1 overscroll-contain");
@@ -717,10 +848,11 @@ describe("Studio right panel layout", () => {
       'scrollRoot.addEventListener("wheel", handleWheel, { passive: false })',
     );
     expect(catalog).toContain("new IntersectionObserver");
-    expect(catalog).toContain('{ root: scrollRoot, rootMargin: "240px 0px", threshold: 0 }');
+    expect(catalog).toContain('{ root: scrollRoot, rootMargin: "80px 0px", threshold: 0 }');
     expect(catalog).toContain("setTimeout(startPreview, 60)");
     expect(catalog).toContain("setPreviewing(true)");
-    expect(catalog).toContain('setRightPanelTab("animation-properties")');
+    expect(catalog).toContain('data-testid="effect-clip-placement-help"');
+    expect(catalog).not.toContain('data-testid="apply-motion-preset"');
     expect(catalog).toContain("src={compositionPlaybackUrl}");
     expect(catalog).toContain('preload="auto"');
     expect(catalog).toContain("onCanPlay={() => setPreviewReady(true)}");

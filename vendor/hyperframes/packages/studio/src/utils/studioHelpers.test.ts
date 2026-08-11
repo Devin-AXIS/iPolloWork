@@ -2,7 +2,39 @@
 
 import { describe, expect, test } from "vitest";
 import type { TimelineElement } from "../player";
-import { findTimelineIdByAncestor } from "./studioHelpers";
+import { findMatchingTimelineElementId, findTimelineIdByAncestor } from "./studioHelpers";
+
+test("matches a deleted timeline row by stable hf-id before a duplicated DOM id", () => {
+  const elements: TimelineElement[] = [
+    {
+      id: "first",
+      domId: "title",
+      hfId: "hf-first",
+      label: "First",
+      tag: "h1",
+      start: 0,
+      duration: 3,
+      track: 0,
+    },
+    {
+      id: "second",
+      domId: "title",
+      hfId: "hf-second",
+      label: "Second",
+      tag: "h1",
+      start: 0,
+      duration: 3,
+      track: 1,
+    },
+  ];
+
+  expect(
+    findMatchingTimelineElementId(
+      { hfId: "hf-second", id: "title", sourceFile: "index.html" },
+      elements,
+    ),
+  ).toBe("second");
+});
 
 describe("findTimelineIdByAncestor", () => {
   test("maps a static child to a selector-owned composition row", () => {

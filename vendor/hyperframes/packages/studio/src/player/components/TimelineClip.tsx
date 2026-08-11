@@ -8,7 +8,7 @@ import {
 } from "./timelineTheme";
 import type { TimelineEditCapabilities } from "./timelineEditing";
 import { isAudioTimelineElement } from "../../utils/timelineInspector";
-import { resolveTimelineKind } from "./timelineLayerPresentation";
+import { resolveTimelineClipLabel, resolveTimelineKind } from "./timelineLayerPresentation";
 
 interface TimelineClipProps {
   el: TimelineElement;
@@ -58,7 +58,7 @@ export const TimelineClip = memo(function TimelineClip({
   const widthPx = Math.max(el.duration * pps, 4);
   const isMicroClip = widthPx < 40;
   const handleOpacity = getClipHandleOpacity({ isHovered, isSelected, isDragging });
-  const displayLabel = el.label || el.id || el.tag;
+  const displayLabel = resolveTimelineClipLabel(el);
   const showHandles = handleOpacity > 0.01 && (widthPx >= 32 || isSelected);
   const showLabel = !hasCustomContent && !isMicroClip;
   const showDefaultText = !hasCustomContent && !isMicroClip;

@@ -5,16 +5,16 @@ import {
   type MotionPreset,
   type MotionTargetKind,
 } from "@hyperframes/core/motion-presets";
-import { usePanelLayoutContext } from "../../contexts/PanelLayoutContext";
-import {
-  useDomEditActionsContext,
-  useDomEditSelectionContext,
-} from "../../contexts/DomEditContext";
+import { useDomEditSelectionContext } from "../../contexts/DomEditContext";
 import { useStudioI18n } from "../../i18n";
-import { resolveMotionTargetKind } from "../editor/SemanticMotionPanel";
+import {
+  resolveMotionInstances,
+  resolveMotionTargetKind,
+} from "../editor/SemanticMotionPanel";
+import type { DomEditSelection } from "../editor/domEditing";
 import searchIconSrc from "../../icons/figmaAssetsSearch.svg?url";
 
-export type AnimationTemplateCategory = "general" | "text" | "background" | "box";
+export type AnimationTemplateCategory = "general" | "text";
 
 export interface AnimationTemplateDefinition {
   id: string;
@@ -26,6 +26,14 @@ export interface AnimationTemplateDefinition {
   textPresetId?: string;
   elementPresetId?: string;
   parameters?: MotionParameters;
+}
+
+export interface AnimationTemplateDraft {
+  templateId: string;
+  presetId: string;
+  targetKind: MotionTargetKind;
+  selection: DomEditSelection;
+  parameters: MotionParameters;
 }
 
 const CATEGORY_LABELS: Record<
@@ -41,19 +49,6 @@ const CATEGORY_LABELS: Record<
     en: "Text",
     zh: "文字动画",
     hint: { en: "Word, character, mask, and glow motion", zh: "支持按词、按字、遮罩与流光" },
-  },
-  background: {
-    en: "Background",
-    zh: "背景动画",
-    hint: {
-      en: "For background layers and full-frame surfaces",
-      zh: "适用于背景层、色块和全屏容器",
-    },
-  },
-  box: {
-    en: "Box",
-    zh: "盒子动画",
-    hint: { en: "For cards, images, buttons, and shapes", zh: "适用于卡片、图片、按钮和图形" },
   },
 };
 
@@ -222,65 +217,8 @@ export const ANIMATION_TEMPLATES: readonly AnimationTemplateDefinition[] = [
     presetId: "text.emphasis.true-focus",
   },
   {
-    id: "background-molten-flow",
-    category: "background",
-    title: { en: "Molten Flow", zh: "熔光流动" },
-    description: {
-      en: "Three colors, brightness, glow, and flow",
-      zh: "三色、亮度、辉光与流动幅度可调",
-    },
-    preview: "molten",
-    presetId: "background.emphasis.molten-flow",
-    parameters: { colorSource: "theme" },
-  },
-  {
-    id: "background-aurora",
-    category: "background",
-    title: { en: "Aurora Breath", zh: "极光呼吸" },
-    description: { en: "A restrained cyan-green atmosphere", zh: "克制的青绿色呼吸氛围" },
-    preview: "aurora",
-    presetId: "background.emphasis.aurora-breathe",
-    parameters: { colorSource: "theme" },
-  },
-  {
-    id: "background-prism",
-    category: "background",
-    title: { en: "Prism Shift", zh: "棱镜变色" },
-    description: { en: "Warm color migration for surfaces", zh: "适合背景色块的暖色迁移" },
-    preview: "prism",
-    presetId: "background.emphasis.prism-shift",
-    parameters: { colorSource: "theme" },
-  },
-  {
-    id: "background-light-rays",
-    category: "background",
-    title: { en: "Theme Rays", zh: "主题光束" },
-    description: { en: "Light pulses driven by theme colors", zh: "由主题色驱动的光束明暗脉冲" },
-    preview: "light-rays",
-    presetId: "background.emphasis.light-rays",
-    parameters: { colorSource: "theme" },
-  },
-  {
-    id: "background-grid-scan",
-    category: "background",
-    title: { en: "Grid Scan", zh: "网格扫描" },
-    description: { en: "A restrained technical scan rhythm", zh: "克制的技术感扫描节奏" },
-    preview: "grid-scan",
-    presetId: "background.emphasis.grid-scan",
-    parameters: { colorSource: "theme" },
-  },
-  {
-    id: "background-iridescent",
-    category: "background",
-    title: { en: "Iridescent Flow", zh: "虹彩流动" },
-    description: { en: "Theme palette with hue migration", zh: "主题色板与虹彩色相迁移" },
-    preview: "iridescent",
-    presetId: "background.emphasis.iridescent-flow",
-    parameters: { colorSource: "theme" },
-  },
-  {
     id: "box-scale",
-    category: "box",
+    category: "general",
     title: { en: "Box Scale", zh: "盒子缩放" },
     description: { en: "A stable entrance for cards and images", zh: "适合卡片和图片的稳定进入" },
     preview: "box-scale",
@@ -288,7 +226,7 @@ export const ANIMATION_TEMPLATES: readonly AnimationTemplateDefinition[] = [
   },
   {
     id: "box-lift",
-    category: "box",
+    category: "general",
     title: { en: "Box Lift", zh: "盒子浮起" },
     description: { en: "Subtle lift and focus", zh: "轻微上浮并聚焦内容" },
     preview: "box-lift",
@@ -296,7 +234,7 @@ export const ANIMATION_TEMPLATES: readonly AnimationTemplateDefinition[] = [
   },
   {
     id: "box-pulse",
-    category: "box",
+    category: "general",
     title: { en: "Box Pulse", zh: "盒子呼吸" },
     description: { en: "A restrained scale pulse", zh: "克制的缩放呼吸强调" },
     preview: "box-pulse",
@@ -304,7 +242,7 @@ export const ANIMATION_TEMPLATES: readonly AnimationTemplateDefinition[] = [
   },
   {
     id: "box-focus-tilt",
-    category: "box",
+    category: "general",
     title: { en: "Depth Tilt", zh: "景深倾斜" },
     description: { en: "Editable direction and 3D intensity", zh: "可调整方向与立体倾斜强度" },
     preview: "box-tilt",
@@ -312,7 +250,7 @@ export const ANIMATION_TEMPLATES: readonly AnimationTemplateDefinition[] = [
   },
   {
     id: "box-bounce-card",
-    category: "box",
+    category: "general",
     title: { en: "Bounce Card", zh: "弹性卡片" },
     description: {
       en: "Directional entrance with a clean settle",
@@ -323,7 +261,7 @@ export const ANIMATION_TEMPLATES: readonly AnimationTemplateDefinition[] = [
   },
   {
     id: "box-spotlight-card",
-    category: "box",
+    category: "general",
     title: { en: "Spotlight Card", zh: "聚光卡片" },
     description: { en: "Theme-aware focus and glow", zh: "跟随主题色的聚焦与辉光" },
     preview: "box-spotlight",
@@ -332,7 +270,7 @@ export const ANIMATION_TEMPLATES: readonly AnimationTemplateDefinition[] = [
   },
   {
     id: "box-glare-sweep",
-    category: "box",
+    category: "general",
     title: { en: "Glare Sweep", zh: "高光掠过" },
     description: { en: "A theme-aware material highlight", zh: "跟随主题色的材质高光掠过" },
     preview: "box-glare",
@@ -360,14 +298,8 @@ export function resolveAnimationTemplateParameters(
   return parameters;
 }
 
-const CATEGORY_ORDER: readonly AnimationTemplateCategory[] = [
-  "general",
-  "text",
-  "background",
-  "box",
-];
-
 function TemplatePreview({ template }: { template: AnimationTemplateDefinition }) {
+  const boxPreview = template.id.startsWith("box-");
   return (
     <div
       className="hf-animation-template-preview relative h-[92px] overflow-hidden rounded-[8px]"
@@ -379,53 +311,71 @@ function TemplatePreview({ template }: { template: AnimationTemplateDefinition }
       <div className="hf-animation-template-glow hf-animation-template-glow-b" />
       <div className="hf-animation-template-subject">
         {template.category === "text" ? "Make motion clear." : null}
-        {template.category === "general" ? "Motion" : null}
-        {template.category === "box" ? <span className="hf-animation-template-box" /> : null}
+        {template.category === "general" && !boxPreview ? "Motion" : null}
+        {boxPreview ? <span className="hf-animation-template-box" /> : null}
       </div>
     </div>
   );
 }
 
-export const AnimationTemplatesTab = memo(function AnimationTemplatesTab() {
+export const AnimationTemplatesTab = memo(function AnimationTemplatesTab({
+  onSelectTemplate,
+}: {
+  onSelectTemplate: (draft: AnimationTemplateDraft) => void;
+}) {
   const { locale } = useStudioI18n();
-  const { setRightPanelTab } = usePanelLayoutContext();
-  const { domEditSelection } = useDomEditSelectionContext();
-  const { handleMotionMutation } = useDomEditActionsContext();
-  const [category, setCategory] = useState<AnimationTemplateCategory>("general");
+  const { domEditSelection, selectedGsapAnimations } = useDomEditSelectionContext();
   const [search, setSearch] = useState("");
   const targetKind = domEditSelection ? resolveMotionTargetKind(domEditSelection) : null;
-  const filteredTemplates = useMemo(() => {
+  const templateSections = useMemo(() => {
     const query = search.trim().toLowerCase();
-    return ANIMATION_TEMPLATES.filter((template) => {
-      if (template.category !== category) return false;
-      if (!query) return true;
-      return (
+    const matches = ANIMATION_TEMPLATES.filter((template) => {
+      if (!targetKind) return false;
+      const preset = resolveAnimationTemplatePreset(template, targetKind);
+      if (!preset?.targetKinds.includes(targetKind)) return false;
+      return !query || (
         template.title.en.toLowerCase().includes(query) ||
         template.title.zh.includes(query) ||
         template.description.en.toLowerCase().includes(query) ||
         template.description.zh.includes(query)
       );
     });
-  }, [category, search]);
+    return [
+      { category: "general" as const, templates: matches.filter((item) => item.category === "general") },
+      ...(targetKind === "text"
+        ? [{ category: "text" as const, templates: matches.filter((item) => item.category === "text") }]
+        : []),
+    ].filter((section) => section.templates.length > 0);
+  }, [search, targetKind]);
+  const appliedLabels = useMemo(() => {
+    if (!targetKind) return [];
+    const presetIds = new Set(
+      resolveMotionInstances(selectedGsapAnimations).map(({ instance }) => instance.presetId),
+    );
+    return ANIMATION_TEMPLATES.filter((template) => {
+      const preset = resolveAnimationTemplatePreset(template, targetKind);
+      return preset ? presetIds.has(preset.id) : false;
+    }).map((template) => template.title[locale]);
+  }, [locale, selectedGsapAnimations, targetKind]);
 
   const applyTemplate = useCallback(
     (template: AnimationTemplateDefinition) => {
-      if (!targetKind) return;
+      if (!targetKind || !domEditSelection) return;
       const preset = resolveAnimationTemplatePreset(template, targetKind);
       if (!preset || !preset.targetKinds.includes(targetKind)) return;
-      handleMotionMutation(targetKind, {
-        operation: "upsert",
-        phase: preset.phase,
+      onSelectTemplate({
+        templateId: template.id,
         presetId: preset.id,
+        targetKind,
+        selection: domEditSelection,
         parameters: resolveAnimationTemplateParameters(
           template,
           preset,
-          domEditSelection?.element.hasAttribute("data-var-text") === true,
+          domEditSelection.element.hasAttribute("data-var-text"),
         ),
       });
-      setRightPanelTab("animation-properties");
     },
-    [domEditSelection, handleMotionMutation, setRightPanelTab, targetKind],
+    [domEditSelection, onSelectTemplate, targetKind],
   );
 
   return (
@@ -444,31 +394,10 @@ export const AnimationTemplatesTab = memo(function AnimationTemplatesTab() {
             type="search"
             value={search}
             onChange={(event) => setSearch(event.target.value)}
-            placeholder={locale === "zh" ? "搜索动画模板…" : "Search animation templates…"}
-            aria-label={locale === "zh" ? "搜索动画模板" : "Search animation templates"}
+            placeholder={locale === "zh" ? "搜索动画…" : "Search animations…"}
+            aria-label={locale === "zh" ? "搜索动画" : "Search animations"}
             className="h-[34px] w-full rounded-lg border-0 bg-panel-input pl-9 pr-3 text-[13px] text-panel-text-1 outline-none placeholder:text-[#a2a6af] focus:ring-1 focus:ring-[#20bbc0]/50"
           />
-        </div>
-        <div className="grid grid-cols-4 gap-1 rounded-[8px] bg-panel-input p-1" role="tablist">
-          {CATEGORY_ORDER.map((item) => (
-            <button
-              key={item}
-              type="button"
-              role="tab"
-              aria-selected={category === item}
-              onClick={() => setCategory(item)}
-              className={`h-8 rounded-[6px] px-1 text-[10px] font-medium transition-colors ${
-                category === item
-                  ? "bg-panel-bg text-panel-text-0 shadow-sm"
-                  : "text-panel-text-3 hover:text-panel-text-1"
-              }`}
-            >
-              {CATEGORY_LABELS[item][locale]}
-            </button>
-          ))}
-        </div>
-        <div className="text-[10px] leading-4 text-panel-text-3">
-          {CATEGORY_LABELS[category].hint[locale]}
         </div>
         <div
           className={`rounded-[8px] px-3 py-2 text-[10px] leading-4 ${
@@ -477,8 +406,8 @@ export const AnimationTemplatesTab = memo(function AnimationTemplatesTab() {
         >
           {domEditSelection
             ? locale === "zh"
-              ? `已选中：${domEditSelection.label}`
-              : `Selected: ${domEditSelection.label}`
+              ? `已选中：${domEditSelection.label}${appliedLabels.length > 0 ? ` · 已有动画：${appliedLabels.join("、")}` : ""}`
+              : `Selected: ${domEditSelection.label}${appliedLabels.length > 0 ? ` · Applied: ${appliedLabels.join(", ")}` : ""}`
             : locale === "zh"
               ? "先在播放区或剪辑区选中一个元素"
               : "Select an element in the preview or timeline first"}
@@ -486,47 +415,54 @@ export const AnimationTemplatesTab = memo(function AnimationTemplatesTab() {
       </div>
 
       <div className="hf-animation-template-scroll min-h-0 flex-1 overflow-y-auto px-4 py-4">
-        {filteredTemplates.length === 0 ? (
+        {templateSections.length === 0 ? (
           <div className="grid h-24 place-items-center text-[11px] text-panel-text-3">
-            {locale === "zh" ? "没有匹配的动画模板" : "No matching animation templates"}
+            {domEditSelection
+              ? locale === "zh"
+                ? "没有匹配的动画"
+                : "No matching animations"
+              : locale === "zh"
+                ? "请先在视频播放区选中元素"
+                : "Select an element in the video preview first"}
           </div>
         ) : (
-          <div className="grid grid-cols-2 gap-x-[10px] gap-y-4">
-            {filteredTemplates.map((template) => {
-              const preset = targetKind
-                ? resolveAnimationTemplatePreset(template, targetKind)
-                : null;
-              const compatible = Boolean(targetKind && preset?.targetKinds.includes(targetKind));
-              return (
-                <article
-                  key={template.id}
-                  className="hf-animation-template-card group min-w-0"
-                  data-testid="animation-template-card"
-                >
-                  <TemplatePreview template={template} />
-                  <div className="mt-2 truncate text-[12px] font-semibold text-panel-text-1">
-                    {template.title[locale]}
+          <div className="space-y-6">
+            {templateSections.map((section) => (
+              <section key={section.category}>
+                <div className="mb-3">
+                  <div className="text-[12px] font-semibold text-panel-text-1">
+                    {CATEGORY_LABELS[section.category][locale]}
                   </div>
-                  <div className="mt-0.5 min-h-8 text-[10px] leading-4 text-panel-text-3">
-                    {template.description[locale]}
+                  <div className="mt-0.5 text-[10px] leading-4 text-panel-text-3">
+                    {CATEGORY_LABELS[section.category].hint[locale]}
                   </div>
-                  <button
-                    type="button"
-                    disabled={!compatible}
-                    onClick={() => applyTemplate(template)}
-                    className="mt-2 h-7 w-full rounded-[6px] bg-panel-input text-[10px] font-medium text-panel-text-1 transition-colors hover:bg-[#20bbc0]/15 hover:text-[#168e92] disabled:cursor-not-allowed disabled:opacity-35"
-                  >
-                    {compatible
-                      ? locale === "zh"
-                        ? "应用"
-                        : "Apply"
-                      : locale === "zh"
-                        ? "不适用于当前元素"
-                        : "Not compatible"}
-                  </button>
-                </article>
-              );
-            })}
+                </div>
+                <div className="grid grid-cols-2 gap-x-[10px] gap-y-4">
+                  {section.templates.map((template) => (
+                    <article
+                      key={template.id}
+                      className="hf-animation-template-card group min-w-0"
+                      data-testid="animation-template-card"
+                    >
+                      <TemplatePreview template={template} />
+                      <div className="mt-2 truncate text-[12px] font-semibold text-panel-text-1">
+                        {template.title[locale]}
+                      </div>
+                      <div className="mt-0.5 min-h-8 text-[10px] leading-4 text-panel-text-3">
+                        {template.description[locale]}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => applyTemplate(template)}
+                        className="mt-2 h-7 w-full rounded-[6px] bg-panel-input text-[10px] font-medium text-panel-text-1 transition-colors hover:bg-[#20bbc0]/15 hover:text-[#168e92]"
+                      >
+                        {locale === "zh" ? "应用" : "Apply"}
+                      </button>
+                    </article>
+                  ))}
+                </div>
+              </section>
+            ))}
           </div>
         )}
       </div>

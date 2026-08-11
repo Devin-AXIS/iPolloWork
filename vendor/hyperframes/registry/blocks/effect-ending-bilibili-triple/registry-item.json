@@ -1,0 +1,22 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "effect-ending-bilibili-triple",
+  "version": "1.0.0",
+  "type": "hyperframes:block",
+  "title": "B站一键三连",
+  "description": "点赞、投币、收藏依次弹出的 B 站三连结尾片段。",
+  "kind": "effect",
+  "librarySection": "ending-effect",
+  "dimensions": { "width": 1920, "height": 1080 },
+  "duration": 3.4,
+  "tags": ["effect-clip", "ending", "bilibili", "triple", "social", "themeable"],
+  "engine": { "name": "gsap", "version": "3.15.0", "seekable": true, "plugins": [] },
+  "source": { "provider": "ipollowork", "label": "iPolloWork Effects" },
+  "files": [
+    {
+      "path": "effect-ending-bilibili-triple.html",
+      "target": "compositions/effects/effect-ending-bilibili-triple.html",
+      "type": "hyperframes:composition"
+    }
+  ]
+}

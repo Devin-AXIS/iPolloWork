@@ -72,15 +72,51 @@ export function resolveTimelineLayerLabel(elements: readonly TimelineElement[], 
   return first?.label?.trim() || first?.domId?.trim() || first?.id?.trim() || `Layer ${track + 1}`;
 }
 
+/** A clip caption is intentionally independent from the layer-tree label. */
+export function resolveTimelineClipLabel(element: TimelineElement): string {
+  return (
+    element.clipLabel?.trim() ||
+    element.label?.trim() ||
+    element.domId?.trim() ||
+    element.id.trim() ||
+    element.tag
+  );
+}
+
+export interface TimelineLayerSourceTarget {
+  id?: string;
+  hfId?: string;
+  selector?: string;
+  selectorIndex?: number;
+  sourceFile: string;
+}
+
+/**
+ * Resolve the authored host that owns a timeline row label. A composition row
+ * is rendered from its child document, but its editable host remains in the
+ * parent document. Label persistence must therefore use the manifest locator
+ * and owner file instead of the inner composition root selected at runtime.
+ */
+export function resolveTimelineLayerSourceTarget(
+  element: TimelineElement,
+  fallbackSourceFile: string | null,
+): TimelineLayerSourceTarget {
+  return {
+    id: (element.domId ?? element.id) || undefined,
+    hfId: element.hfId,
+    selector: element.selector,
+    selectorIndex: element.selectorIndex,
+    sourceFile: (element.sourceFile ?? fallbackSourceFile ?? "index.html").replace(/\\/g, "/"),
+  };
+}
+
 export function resolveTimelineLayerDepth(elements: readonly TimelineElement[]) {
   const first = elements[0];
   if (first?.expandedParentStart === undefined) return 0;
   return Math.max(1, first.compositionAncestors?.length ?? 1);
 }
 
-export function resolveTimelineBindingId(
-  elements: readonly TimelineElement[],
-): string | null {
+export function resolveTimelineBindingId(elements: readonly TimelineElement[]): string | null {
   for (const element of elements) {
     const bindingId = element.timelineGroupId?.trim();
     if (bindingId) return bindingId;

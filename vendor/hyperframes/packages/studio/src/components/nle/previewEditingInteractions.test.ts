@@ -21,11 +21,77 @@ describe("preview editing interactions", () => {
     expect(source).not.toContain("exitPreviewFullscreenForInspector");
   });
 
-  it("keeps canvas, timeline, and inspector selection in one atomic set", () => {
-    const source = readFileSync(
+  it("keeps preview and timeline element selection single by default", () => {
+    const availabilitySource = readFileSync(
+      new URL("../editor/manualEditingAvailability.ts", import.meta.url),
+      "utf8",
+    );
+    const previewSource = readFileSync(
+      new URL("../../hooks/usePreviewInteraction.ts", import.meta.url),
+      "utf8",
+    );
+    const selectionSource = readFileSync(
       new URL("../../hooks/useDomSelection.ts", import.meta.url),
       "utf8",
     );
+    const overlaySource = readFileSync(
+      new URL("../editor/DomEditOverlay.tsx", import.meta.url),
+      "utf8",
+    );
+    const emptyStateSource = readFileSync(
+      new URL("../editor/PropertyPanelEmptyState.tsx", import.meta.url),
+      "utf8",
+    );
+    const previewOverlaysSource = readFileSync(
+      new URL("./PreviewOverlays.tsx", import.meta.url),
+      "utf8",
+    );
+    const timelineSource = readFileSync(
+      new URL("../../player/components/TimelineLanes.tsx", import.meta.url),
+      "utf8",
+    );
+    const rangeSource = readFileSync(
+      new URL("../../player/components/useTimelineRangeSelection.ts", import.meta.url),
+      "utf8",
+    );
+    const captionTimelineSource = readFileSync(
+      new URL("../../captions/components/CaptionTimeline.tsx", import.meta.url),
+      "utf8",
+    );
+    const captionOverlaySource = readFileSync(
+      new URL("../../captions/components/CaptionOverlay.tsx", import.meta.url),
+      "utf8",
+    );
+
+    expect(availabilitySource).toContain('"VITE_STUDIO_ENABLE_MULTI_SELECTION"');
+    expect(availabilitySource).toMatch(/STUDIO_MULTI_SELECTION_ENABLED[\s\S]*?false/);
+    expect(previewSource).toContain("STUDIO_MULTI_SELECTION_ENABLED && e.shiftKey");
+    expect(selectionSource).toContain(
+      "STUDIO_MULTI_SELECTION_ENABLED && Boolean(options?.additive)",
+    );
+    expect(selectionSource).toContain("if (!STUDIO_MULTI_SELECTION_ENABLED)");
+    expect(overlaySource).toContain("STUDIO_MULTI_SELECTION_ENABLED && event.shiftKey");
+    expect(emptyStateSource).toContain(
+      "const showMultiSelect = STUDIO_MULTI_SELECTION_ENABLED && multiSelectCount > 1",
+    );
+    expect(previewOverlaysSource).toContain(
+      "STUDIO_MULTI_SELECTION_ENABLED ? applyMarqueeSelection : undefined",
+    );
+    expect(timelineSource).toContain("STUDIO_MULTI_SELECTION_ENABLED && (e.ctrlKey || e.metaKey)");
+    expect(rangeSource).toContain("if (!STUDIO_MULTI_SELECTION_ENABLED)");
+    expect(rangeSource).toContain(
+      "marqueeRect: STUDIO_MULTI_SELECTION_ENABLED ? marqueeRect : null",
+    );
+    expect(captionTimelineSource).toContain(
+      "selectSegment(segId, STUDIO_MULTI_SELECTION_ENABLED && e.shiftKey)",
+    );
+    expect(captionOverlaySource).toContain(
+      "selectSegment(box.segmentId, STUDIO_MULTI_SELECTION_ENABLED && e.shiftKey)",
+    );
+  });
+
+  it("keeps canvas, timeline, and inspector selection in one atomic set", () => {
+    const source = readFileSync(new URL("../../hooks/useDomSelection.ts", import.meta.url), "utf8");
 
     expect(source).toContain("playerState.setSelection(selectedKeys, anchorKey");
     expect(source).toContain("syncTimelineSelection(nextGroup, nextSelection)");
@@ -85,7 +151,8 @@ describe("preview editing interactions", () => {
 
     expect(source).toContain("setSelectedElementId(elementKey)");
     expect(source).toContain("onSelectElement?.(el)");
-    expect(source).toContain("onSeek?.(Math.max(0, previewElement.start))");
+    expect(source).toContain("resolveTimelineSelectionSeekTime(");
+    expect(source).toContain("previewElement.start,");
     expect(source).not.toContain("selectedElementId === elementKey && !hadMultiSelection");
     expect(source).not.toContain("onSelectElement?.(nextElement)");
   });
@@ -97,8 +164,28 @@ describe("preview editing interactions", () => {
     );
 
     expect(source).toContain(".setSelection(elementKey ? [elementKey] : [], elementKey)");
-    expect(source).toContain("if (element) onSeek?.(Math.max(0, element.start))");
+    expect(source).toContain("resolveTimelineSelectionSeekTime(element?.start ?? 0, element)");
     expect(source).not.toContain("usePlayerStore.getState().clearSelectedElementIds();");
+  });
+
+  it("uses a visible proof frame for paused standalone effects", () => {
+    expect(
+      resolveTimelineSelectionSeekTime(0, {
+        id: "effect-ending-bilibili-triple",
+        start: 0,
+        duration: 3.4,
+        compositionSrc: "compositions/effects/effect-ending-bilibili-triple.html",
+      }),
+    ).toBe(1.7);
+    expect(
+      resolveTimelineSelectionSeekTime(8, {
+        id: "effect-transition-iris-pulse",
+        start: 3,
+        duration: 1.1,
+        timelineKind: "effect",
+      }),
+    ).toBeCloseTo(3.55);
+    expect(resolveTimelineSelectionSeekTime(0, { start: 0, duration: 3.4 })).toBe(0);
   });
 
   it("keeps expanded hierarchy nodes in the timeline-to-inspector sync set", () => {
@@ -196,7 +283,9 @@ describe("preview editing interactions", () => {
     );
     expect(selectionSource).not.toContain("isElementComputedVisible(targetElement)");
     expect(selectionSource).not.toContain("playerState.requestSeek(inspectionTime)");
-    expect(selectionSource).toContain("Property selection is independent from current-frame visibility");
+    expect(selectionSource).toContain(
+      "Property selection is independent from current-frame visibility",
+    );
     expect(selectionSource).toContain("applyDomSelection(selection)");
     expect(selectionSource).toContain("skipSourceProbe: true");
     expect(overlayRectsSource).toContain("isElementVisibleForOverlay(el)");
@@ -213,9 +302,7 @@ describe("preview editing interactions", () => {
       new URL("../../hooks/useDomSelection.ts", import.meta.url),
       "utf8",
     );
-    expect(selectionSource).toContain(
-      'targetElement.closest<HTMLElement>("[data-hf-group]")',
-    );
+    expect(selectionSource).toContain('targetElement.closest<HTMLElement>("[data-hf-group]")');
     expect(selectionSource).toContain("activeGroupElement: owningGroup");
     expect(selectionSource).toContain(
       'const owningGroup = target.closest<HTMLElement>("[data-hf-group]")',
@@ -229,7 +316,9 @@ describe("preview editing interactions", () => {
     );
 
     expect(source).toContain("const resolvedClipHosts = new Map<ClipManifestClip, Element>()");
-    expect(source).toContain("findTimelineDomNodeForClip(iframeDoc, clip, index, usedHostElements)");
+    expect(source).toContain(
+      "findTimelineDomNodeForClip(iframeDoc, clip, index, usedHostElements)",
+    );
     expect(source).toContain("const hostEl = resolvedClipHosts.get(clip) ?? null");
     expect(source).not.toContain("const hostEl = iframeDoc.getElementById(clip.id)");
   });
@@ -289,7 +378,9 @@ describe("preview editing interactions", () => {
     expect(assetsSource).toContain("new IntersectionObserver");
     expect(assetsSource).toContain("ASSET_VIRTUAL_OVERSCAN_PX");
     expect(assetsSource).toContain("visible ? (");
-    expect(assetsSource).toContain("type MediaCategory, CATEGORY_LABELS, getCategory, FILTER_ORDER");
+    expect(assetsSource).toContain(
+      "type MediaCategory, CATEGORY_LABELS, getCategory, FILTER_ORDER",
+    );
     expect(assetsSource).toContain("tx(CATEGORY_LABELS[cat])");
     expect(assetsSource).not.toContain("const categoryLabels:");
     expect(assetsSource).toContain("CaretDown");
@@ -328,9 +419,7 @@ describe("preview editing interactions", () => {
     expect(source).not.toContain('addEventListener("selectionchange"');
     expect(source).not.toContain("beginDragSelection");
     expect(source).not.toContain("TextSelectionDrag");
-    expect(styleSource).toMatch(
-      /\.hf-preview-text-toolbar__input\s*\{[\s\S]*?color:\s*#18181b;/,
-    );
+    expect(styleSource).toMatch(/\.hf-preview-text-toolbar__input\s*\{[\s\S]*?color:\s*#18181b;/);
   });
 
   it("hides inline rich-text actions from the selected-element toolbar", () => {
@@ -354,6 +443,7 @@ describe("preview editing interactions", () => {
     const styleSource = readFileSync(new URL("../../styles/studio.css", import.meta.url), "utf8");
 
     expect(toolbarSource).toContain("onClick={deleteSelectedElement}");
+    expect(toolbarSource).toContain("onPointerDown={(event) => event.preventDefault()}");
     expect(toolbarSource).toContain("hf-preview-text-toolbar__delete-button");
     expect(toolbarSource).not.toContain("deleteConfirmationOpen");
     expect(toolbarSource).not.toContain('role="alertdialog"');

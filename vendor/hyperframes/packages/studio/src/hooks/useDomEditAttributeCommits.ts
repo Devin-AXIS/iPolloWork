@@ -253,13 +253,18 @@ export function useDomEditAttributeCommits({
       selection: DomEditSelection,
       attrs: Record<string, string>,
       label = "Edit timing",
-      behavior?: { skipRefresh?: boolean; refreshAfter?: boolean },
+      behavior?: {
+        skipRefresh?: boolean;
+        refreshAfter?: boolean;
+        onSettled?: (ok: boolean) => void;
+      },
     ) => {
       await commitDataAttributes(selection, attrs, {
         label,
         coalescePrefix: "attrs",
         skipRefresh: behavior?.skipRefresh ?? false,
         refreshAfter: behavior?.refreshAfter ?? true,
+        onSettled: behavior?.onSettled,
       });
     },
     [commitDataAttributes],

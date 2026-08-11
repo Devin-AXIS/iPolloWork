@@ -44,6 +44,28 @@ describe("timeline manifest translation", () => {
     expect(element.timelineGroupId).toBe("intro-lockup");
   });
 
+  test("keeps the clip caption independent from the layer-tree label", () => {
+    document.body.innerHTML = `
+      <section
+        id="headline"
+        data-timeline-label="Tree label"
+        data-timeline-clip-label="Clip label"
+      ></section>
+    `;
+    const hostEl = document.getElementById("headline");
+    expect(hostEl).not.toBeNull();
+
+    const element = createTimelineElementFromManifestClip({
+      clip: { ...MANIFEST_CLIP, label: "Tree label", timelineClipLabel: "Manifest clip label" },
+      fallbackIndex: 0,
+      doc: document,
+      hostEl,
+    });
+
+    expect(element.label).toBe("Tree label");
+    expect(element.clipLabel).toBe("Clip label");
+  });
+
   test("binds runtime hf ids before consuming an authored scene fallback", () => {
     document.body.innerHTML = `
       <main data-composition-id="main" data-composition-file="index.html">

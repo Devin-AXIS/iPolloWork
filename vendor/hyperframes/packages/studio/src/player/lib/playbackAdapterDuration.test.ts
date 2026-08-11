@@ -1,14 +1,22 @@
 import { describe, expect, it, vi } from "vitest";
 
 import {
+  shouldUseDirectTimelineAdapter,
   shouldUseStudioClockForLegacyFrames,
   wrapAdapterWithDurationLimit,
 } from "./playbackAdapter";
 
+describe("shouldUseDirectTimelineAdapter", () => {
+  it("keeps Studio on the runtime player while its duration is still settling", () => {
+    expect(shouldUseDirectTimelineAdapter(true, 30.8, 30.8)).toBe(false);
+    expect(shouldUseDirectTimelineAdapter(false, 30.8, 30.8)).toBe(true);
+  });
+});
+
 describe("shouldUseStudioClockForLegacyFrames", () => {
   it("uses the Studio clock for legacy multi-frame templates", () => {
     const doc = {
-      querySelectorAll: (selector: string) => selector === ".frame" ? [{}, {}] : [],
+      querySelectorAll: (selector: string) => (selector === ".frame" ? [{}, {}] : []),
     } as unknown as Document;
     const adapter = {
       play: vi.fn(),
@@ -44,9 +52,15 @@ describe("wrapAdapterWithDurationLimit", () => {
     let time = 32;
     let playing = true;
     const source = {
-      play: vi.fn(() => { playing = true; }),
-      pause: vi.fn(() => { playing = false; }),
-      seek: vi.fn((next: number) => { time = next; }),
+      play: vi.fn(() => {
+        playing = true;
+      }),
+      pause: vi.fn(() => {
+        playing = false;
+      }),
+      seek: vi.fn((next: number) => {
+        time = next;
+      }),
       getTime: () => time,
       getDuration: () => 32,
       isPlaying: () => playing,
@@ -65,7 +79,9 @@ describe("wrapAdapterWithDurationLimit", () => {
     const source = {
       play: vi.fn(),
       pause: vi.fn(),
-      seek: vi.fn((next: number) => { time = next; }),
+      seek: vi.fn((next: number) => {
+        time = next;
+      }),
       getTime: () => time,
       getDuration: () => 32,
       isPlaying: () => false,
@@ -83,7 +99,9 @@ describe("wrapAdapterWithDurationLimit", () => {
     const source = {
       play: vi.fn(),
       pause: vi.fn(),
-      seek: vi.fn((next: number) => { time = next; }),
+      seek: vi.fn((next: number) => {
+        time = next;
+      }),
       getTime: () => time,
       getDuration: () => 32,
       isPlaying: () => false,

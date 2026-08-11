@@ -130,7 +130,11 @@ export function FlatMotionSection({
   unsupportedTimelinePattern?: boolean;
   onSetAttribute: (attr: string, value: string) => void | Promise<void>;
   onSetAttributes?: (selection: DomEditSelection, attrs: Record<string, string>) => Promise<void>;
-  onMutateMotion: (targetKind: MotionTargetKind, mutation: MotionMutationInput) => void;
+  onMutateMotion: (
+    targetKind: MotionTargetKind,
+    mutation: MotionMutationInput,
+    selectionOverride?: DomEditSelection | null,
+  ) => void | Promise<void>;
 }) {
   const { tx } = useStudioI18n();
   const { previewRange } = useNLEContext();
@@ -162,7 +166,9 @@ export function FlatMotionSection({
             <SemanticMotionPanel
               element={element}
               animations={animations}
-              onMutate={onMutateMotion}
+              onMutate={(targetKind, mutation) =>
+                onMutateMotion(targetKind, mutation, element)
+              }
               onPreview={previewRange}
             />
           )}

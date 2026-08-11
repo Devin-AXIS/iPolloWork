@@ -15,6 +15,7 @@ import { FileTree } from "../editor/FileTree";
 import { STUDIO_BLOCKS_PANEL_ENABLED } from "../editor/manualEditingAvailability";
 import { Tooltip } from "../ui";
 import { useStudioI18n } from "../../i18n";
+import type { EffectInsertIntent } from "../../utils/blockInstaller";
 
 export type SidebarTab = "compositions" | "assets" | "code" | "blocks";
 
@@ -58,7 +59,7 @@ interface LeftSidebarProps {
   lintFindingCount?: number;
   lintFindingsByFile?: Map<string, { count: number; messages: string[] }>;
   onToggleCollapse?: () => void;
-  onAddBlock?: (blockName: string) => void;
+  onAddBlock?: (blockName: string, intent?: EffectInsertIntent) => void;
   takeoverContent?: ReactNode;
   onAddAssetToTimeline?: (path: string) => void;
 }

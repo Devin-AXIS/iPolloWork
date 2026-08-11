@@ -168,7 +168,7 @@ const messages: Record<StudioLocale, Record<TranslationKey, string>> = {
     "right.animationTemplates": "Animation templates",
     "right.animationProperties": "Animation properties",
     "right.catalog": "Effects",
-    "right.catalogTooltip": "Browse reusable animation effects",
+    "right.catalogTooltip": "Insert opening, ending, and transition effect clips",
     "right.effects": "Scenes",
     "right.effectsTooltip": "Browse transition and background scenes",
     "right.layers": "Layers",
@@ -262,7 +262,7 @@ const messages: Record<StudioLocale, Record<TranslationKey, string>> = {
     "right.animationTemplates": "动画模板",
     "right.animationProperties": "动画属性",
     "right.catalog": "特效",
-    "right.catalogTooltip": "浏览可复用动画特效",
+    "right.catalogTooltip": "插入开头、结尾和转场特效片段",
     "right.effects": "场景",
     "right.effectsTooltip": "浏览转场场景和背景场景",
     "right.layers": "图层",
@@ -391,8 +391,7 @@ const studioLiteralZh: Record<string, string> = {
   "Skew X": "水平倾斜",
   "Skew Y": "垂直倾斜",
   "Counter Value": "计数终值",
-  "Move left/right (negative = left, positive = right)":
-    "水平移动，负值向左，正值向右",
+  "Move left/right (negative = left, positive = right)": "水平移动，负值向左，正值向右",
   "Move up/down (negative = up, positive = down)": "垂直移动，负值向上，正值向下",
   "How visible (0 = invisible, 1 = fully visible)": "可见程度，0 为完全透明，1 为完全显示",
   "Size multiplier (1 = normal, 2 = double, 0.5 = half)":
@@ -427,8 +426,7 @@ const studioLiteralZh: Record<string, string> = {
   Shared: "共享",
   "This animation uses a shared selector. It is read-only here so editing one element cannot change another. Add a new effect to create an independent animation for this element.":
     "此动画使用共享选择器，因此在这里为只读，避免修改一个元素时影响其他元素。请添加新动画，为当前元素创建独立动画。",
-  "Keyframed — click a segment below to edit its curve":
-    "已使用关键帧，点击下方区段可编辑速度曲线",
+  "Keyframed — click a segment below to edit its curve": "已使用关键帧，点击下方区段可编辑速度曲线",
   "Copy description to clipboard — paste into agent prompts":
     "复制动画说明，可粘贴到 Agent 提示词中",
   Copied: "已复制",
@@ -547,7 +545,8 @@ const studioLiteralZh: Record<string, string> = {
   Standard: "标准",
   "High Quality": "高质量",
   "About video formats": "关于视频格式",
-  "Best for general use. Smallest file, universal playback.": "适合一般用途。文件最小，兼容各种播放器。",
+  "Best for general use. Smallest file, universal playback.":
+    "适合一般用途。文件最小，兼容各种播放器。",
   "Transparent video. Works in Final Cut Pro, DaVinci Resolve, and most video editors. Large files.":
     "支持透明背景，适用于 Final Cut Pro、DaVinci Resolve 和大多数视频编辑器，文件较大。",
   "Transparent video for web. Smaller than MOV but limited editor support.":
@@ -672,6 +671,8 @@ const studioLiteralZh: Record<string, string> = {
   "Reset 3D transform": "重置 3D 变换",
   "Reset color grading": "重置调色",
   "Reset video to fit": "缩放视频以适应画布",
+  "Rename clip": "重命名片段",
+  "Couldn't rename clip. Try again.": "片段重命名保存失败，请重试。",
   Retry: "重试",
   "Rendering…": "正在渲染…",
   Rendering: "正在渲染",
@@ -679,7 +680,8 @@ const studioLiteralZh: Record<string, string> = {
   "just now": "刚刚",
   "Preparing…": "正在准备…",
   "Hide finished": "隐藏已完成项目",
-  "Hide finished renders from this list (files stay on disk)": "从列表中隐藏已完成项目（文件仍保留在磁盘上）",
+  "Hide finished renders from this list (files stay on disk)":
+    "从列表中隐藏已完成项目（文件仍保留在磁盘上）",
   "Dismiss error": "关闭错误提示",
   "Reverse gradient": "反转渐变",
   "Rotate clockwise": "顺时针旋转",
@@ -689,6 +691,8 @@ const studioLiteralZh: Record<string, string> = {
   Roughness: "粗糙度",
   Roundness: "圆度",
   Saturation: "饱和度",
+  Save: "保存",
+  "Saving…": "保存中…",
   "Saturation and brightness": "饱和度与亮度",
   "Send backward": "下移一层",
   "Send to back": "置于底层",
@@ -760,11 +764,13 @@ const studioLiteralZh: Record<string, string> = {
     "此文件包含多条 GSAP 时间轴。为避免数据丢失，动画编辑已停用；请合并为一条时间轴后再编辑。",
   "This timeline uses a computed key the editor can't resolve statically.":
     "此时间轴使用了编辑器无法静态解析的计算属性名。",
-  "This timeline uses a computed key (window.__timelines[variable]) the editor can't resolve statically. Use a string-literal key (window.__timelines[\"id\"]) or a variable declaration (const tl = gsap.timeline()) to enable editing.":
-    "此时间轴使用了编辑器无法静态解析的计算属性名（window.__timelines[variable]）。请改用字符串键（window.__timelines[\"id\"]）或变量声明（const tl = gsap.timeline()）后再编辑。",
+  'This timeline uses a computed key (window.__timelines[variable]) the editor can\'t resolve statically. Use a string-literal key (window.__timelines["id"]) or a variable declaration (const tl = gsap.timeline()) to enable editing.':
+    '此时间轴使用了编辑器无法静态解析的计算属性名（window.__timelines[variable]）。请改用字符串键（window.__timelines["id"]）或变量声明（const tl = gsap.timeline()）后再编辑。',
   "This layer has no valid editable duration": "此图层没有有效的可编辑时长",
-  "This row contains multiple clips; reorder clips individually": "此行包含多个片段，请分别调整顺序",
-  "Timing is inferred; the first edit saves explicit timing": "当前时间为自动推算，首次编辑后将保存明确时间",
+  "This row contains multiple clips; reorder clips individually":
+    "此行包含多个片段，请分别调整顺序",
+  "Timing is inferred; the first edit saves explicit timing":
+    "当前时间为自动推算，首次编辑后将保存明确时间",
   Editable: "可编辑",
   "Work area": "工作区间",
   "Gesture recording modifiers": "手势录制辅助键",
@@ -913,8 +919,7 @@ export function translateStudioLiteral(locale: StudioLocale, text: string): stri
   if (convertKeyframes)
     return `将${translateStudioLiteral(locale, convertKeyframes[1])}转换为关键帧`;
   const removeKeyframe = text.match(/^Remove (.+) keyframe$/);
-  if (removeKeyframe)
-    return `移除${translateStudioLiteral(locale, removeKeyframe[1])}关键帧`;
+  if (removeKeyframe) return `移除${translateStudioLiteral(locale, removeKeyframe[1])}关键帧`;
   const addKeyframe = text.match(/^Add (.+) keyframe$/);
   if (addKeyframe) return `添加${translateStudioLiteral(locale, addKeyframe[1])}关键帧`;
   const removeFromProperty = text.match(/^Remove from-(.+)$/);

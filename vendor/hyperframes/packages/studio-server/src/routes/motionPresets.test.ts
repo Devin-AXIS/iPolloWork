@@ -104,6 +104,53 @@ describe("semantic motion mutation route", () => {
     expect(html).not.toContain("text.enter.typewriter");
   });
 
+  it("replaces a legacy selector animation when the same element gains a stable hf id", async () => {
+    writeFileSync(
+      join(projectDir, "index.html"),
+      SOURCE.replace(
+        '<h1 id="headline" data-start="1" data-duration="5">',
+        '<h1 id="headline" class="headline" data-hf-id="hf-headline" data-start="1" data-duration="5">',
+      ),
+    );
+
+    const legacy = await mutate({
+      type: "mutate-motion",
+      operation: "upsert",
+      targetSelector: ".headline",
+      elementId: "headline",
+      targetKind: "text",
+      phase: "emphasis",
+      presetId: "text.emphasis.pulse",
+    });
+    expect(legacy.status).toBe(200);
+
+    const replacement = await mutate({
+      type: "mutate-motion",
+      operation: "upsert",
+      targetSelector: '[data-hf-id="hf-headline"]',
+      elementId: "headline",
+      hfId: "hf-headline",
+      targetKind: "text",
+      phase: "emphasis",
+      presetId: "text.emphasis.highlight",
+      parameters: { color: "#ff0000" },
+    });
+    expect(replacement.status).toBe(200);
+    const body = await replacement.json();
+    const motions = body.parsed.animations
+      .map((animation: { extras?: Record<string, unknown> }) =>
+        readMotionInstanceFromExtras(animation.extras),
+      )
+      .filter(Boolean);
+    expect(motions).toHaveLength(1);
+    expect(motions[0].presetId).toBe("text.emphasis.highlight");
+    expect(motions[0].target.hfId).toBe("hf-headline");
+
+    const html = readFileSync(join(projectDir, "index.html"), "utf8");
+    expect(html).not.toContain('motion:.headline:emphasis');
+    expect(html).toContain('data-ipw-animation-reference="text.emphasis.highlight"');
+  });
+
   it("keeps variable-bound text unsplit while preserving the requested motion", async () => {
     const variableSource = SOURCE.replace(
       '<h1 id="headline" data-start="1" data-duration="5">',
@@ -257,5 +304,94 @@ describe("semantic motion mutation route", () => {
     expect(html).toContain('<div data-ipw-animation-reference="element.enter.slide"');
     expect(html).toContain("<span>Nested</span>");
     expect(html).not.toContain("data-ipw-motion-char");
+  });
+
+  it("times nested element presets inside their nearest visible clip", async () => {
+    const nested = SOURCE.replace(
+      '<h1 id="headline" data-start="1" data-duration="5">你好 mixed AI</h1>',
+      '<section class="clip" data-start="9.6" data-duration="3"><article id="card"><span>Nested</span></article></section>',
+    );
+    writeFileSync(join(projectDir, "index.html"), nested);
+
+    const response = await mutate({
+      type: "mutate-motion",
+      operation: "upsert",
+      targetSelector: "#card",
+      elementId: "card",
+      targetKind: "element",
+      phase: "emphasis",
+      presetId: "element.emphasis.lift",
+    });
+
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    const instance = body.parsed.animations
+      .map((animation: { extras?: Record<string, unknown> }) =>
+        readMotionInstanceFromExtras(animation.extras),
+      )
+      .find(Boolean);
+    expect(instance.start).toBe(10.7);
+    expect(instance.duration).toBe(0.8);
+  });
+
+  it("persists looped motion with a finite repeat count that fits its clip", async () => {
+    const nested = SOURCE.replace(
+      '<h1 id="headline" data-start="1" data-duration="5">你好 mixed AI</h1>',
+      '<section class="clip" data-start="2" data-duration="3"><article id="card">Card</article></section>',
+    );
+    writeFileSync(join(projectDir, "index.html"), nested);
+
+    const response = await mutate({
+      type: "mutate-motion",
+      operation: "upsert",
+      targetSelector: "#card",
+      elementId: "card",
+      targetKind: "element",
+      phase: "enter",
+      presetId: "element.enter.fade",
+      duration: 0.5,
+      loop: true,
+    });
+
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    const instance = body.parsed.animations
+      .map((animation: { extras?: Record<string, unknown> }) =>
+        readMotionInstanceFromExtras(animation.extras),
+      )
+      .find(Boolean);
+    expect(instance).toMatchObject({ loop: true, repeat: 5, duration: 0.5 });
+    expect(readFileSync(join(projectDir, "index.html"), "utf8")).toContain("repeat: 5");
+  });
+
+  it("repairs an older semantic position when its owner timing changed", async () => {
+    const nested = SOURCE.replace(
+      '<h1 id="headline" data-start="1" data-duration="5">你好 mixed AI</h1>',
+      '<section class="clip" data-start="15.6" data-duration="3"><article id="card"><span>Nested</span></article></section>',
+    );
+    writeFileSync(join(projectDir, "index.html"), nested);
+
+    const response = await mutate({
+      type: "mutate-motion",
+      operation: "upsert",
+      targetSelector: "#card",
+      elementId: "card",
+      targetKind: "element",
+      phase: "emphasis",
+      presetId: "element.emphasis.lift",
+      start: 0.1,
+      duration: 0.8,
+      parameters: { intensity: 1.4 },
+    });
+
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    const instance = body.parsed.animations
+      .map((animation: { extras?: Record<string, unknown> }) =>
+        readMotionInstanceFromExtras(animation.extras),
+      )
+      .find(Boolean);
+    expect(instance.start).toBe(16.7);
+    expect(instance.parameters.intensity).toBe(1.4);
   });
 });

@@ -155,6 +155,9 @@ export function StudioApp() {
   });
   const editHistory = usePersistentEditHistory({ projectId });
   const domEditSaveTimestampRef = useRef(0);
+  const markStudioWrite = useCallback(() => {
+    domEditSaveTimestampRef.current = Date.now();
+  }, []);
   const handleDomZIndexReorderCommitRef = useRef<TimelineZIndexReorderCommit | null>(null);
   const pendingTimelineEditPathRef = useRef(new Set<string>());
   const isGestureRecordingRef = useRef(false);
@@ -180,6 +183,21 @@ export function StudioApp() {
     if (window.parent === window) return;
     window.parent.postMessage({ type: "ipollowork:studio-ready", projectId }, "*");
   }, [activeCompPathHydrated, projectId]);
+  useEffect(() => {
+    if (!projectId || !activeCompPathHydrated || compositionLoading) return;
+    let active = true;
+    const preload = () => {
+      if (!active) return;
+      void loadStudioRightPanelModule()
+        .then((module) => module.preloadStudioEffectsPanel())
+        .catch(() => {});
+    };
+    const idleId = window.requestIdleCallback(preload, { timeout: 800 });
+    return () => {
+      active = false;
+      window.cancelIdleCallback(idleId);
+    };
+  }, [activeCompPathHydrated, compositionLoading, projectId]);
   const fileManager = useFileManager({
     projectId,
     showToast,
@@ -270,11 +288,13 @@ export function StudioApp() {
       readProjectFile: fileManager.readProjectFile,
       writeProjectFile: fileManager.writeProjectFile,
       recordEdit: editHistory.recordEdit,
+      markStudioWrite,
       refreshFileTree: fileManager.refreshFileTree,
       reloadPreview,
       showToast,
     },
     previewIframeRef,
+    setCompositionLoading,
     setRightCollapsed: panelLayout.setRightCollapsed,
     setRightPanelTab: panelLayout.setRightPanelTab,
   });
@@ -407,9 +427,7 @@ export function StudioApp() {
   });
   const renderClipContent = useRenderClipContent({
     projectIdRef: fileManager.projectIdRef,
-    compIdToSrc,
     activePreviewUrl,
-    effectiveTimelineDuration,
   });
   const compositionDimensions = useCompositionDimensions();
   const { lintModal, linting, handleLint, closeLintModal, findingsByFile } = useLintModal(

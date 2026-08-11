@@ -2,7 +2,11 @@ import { Window } from "happy-dom";
 import { describe, expect, it } from "vitest";
 import type { RegistryMotionPreset } from "@hyperframes/core/registry";
 import type { DomEditSelection } from "../components/editor/domEditingTypes";
-import { resolveMotionPresetSelection, resolveMotionPresetTiming } from "./motionPreset";
+import {
+  resolveMotionPresetSelection,
+  resolveMotionPresetTiming,
+  resolveSemanticMotionTiming,
+} from "./motionPreset";
 
 const openingPreset: RegistryMotionPreset = {
   version: 1,
@@ -77,6 +81,47 @@ describe("resolveMotionPresetTiming", () => {
         9,
       ),
     ).toEqual({ position: 3, duration: 0.8 });
+  });
+
+  it("uses the nearest timed composition owner for nested elements", () => {
+    const window = new Window();
+    window.document.body.innerHTML = `
+      <section class="clip" data-start="9.6" data-duration="3">
+        <article id="card"><span>Nested content</span></article>
+      </section>`;
+    const card = window.document.getElementById("card") as unknown as HTMLElement;
+
+    expect(
+      resolveSemanticMotionTiming(
+        { element: card, dataAttributes: {} },
+        "emphasis",
+        0.8,
+      ),
+    ).toEqual({ position: 10.7, duration: 0.8 });
+  });
+
+  it("repairs a stale semantic motion position outside its current owner", () => {
+    const window = new Window();
+    window.document.body.innerHTML = `
+      <section class="clip" data-start="15.6" data-duration="3">
+        <div id="result-card"></div>
+      </section>`;
+    const card = window.document.getElementById("result-card") as unknown as HTMLElement;
+
+    expect(
+      resolveSemanticMotionTiming(
+        { element: card, dataAttributes: {} },
+        "emphasis",
+        0.8,
+        0.1,
+      ),
+    ).toEqual({ position: 16.7, duration: 0.8 });
+  });
+
+  it("clamps semantic motion duration to a short owner", () => {
+    expect(
+      resolveSemanticMotionTiming(timingSelection("3", "0.5"), "enter", 1.2),
+    ).toEqual({ position: 3, duration: 0.5 });
   });
 });
 

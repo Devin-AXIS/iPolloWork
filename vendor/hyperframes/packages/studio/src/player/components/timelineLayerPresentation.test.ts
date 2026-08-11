@@ -3,10 +3,12 @@ import type { TimelineElement } from "../store/playerStore";
 import {
   buildTimelineColorIndexes,
   resolveTimelineBindingId,
+  resolveTimelineClipLabel,
   resolveTimelineKind,
   resolveTimelineColorGroupKey,
   resolveTimelineLayerDepth,
   resolveTimelineLayerLabel,
+  resolveTimelineLayerSourceTarget,
   shouldDisplayTimelineElement,
 } from "./timelineLayerPresentation";
 import { getTimelinePaletteStyle, getTimelineTrackStyle } from "./timelineTheme";
@@ -53,6 +55,44 @@ describe("timeline layer presentation", () => {
         element({ expandedParentStart: 2, compositionAncestors: ["root", "card"] }),
       ]),
     ).toBe(2);
+  });
+
+  test("uses an independent clip caption without changing the tree label", () => {
+    const clip = element({ label: "Tree node", clipLabel: "Edited clip caption" });
+    expect(resolveTimelineLayerLabel([clip], 0)).toBe("Tree node");
+    expect(resolveTimelineClipLabel(clip)).toBe("Edited clip caption");
+  });
+
+  test("keeps composition-row renames on the authored host file", () => {
+    expect(
+      resolveTimelineLayerSourceTarget(
+        element({
+          id: "opening-editorial-rise",
+          domId: "opening-editorial-rise",
+          hfId: "hf-host",
+          selector: "#opening-editorial-rise",
+          compositionSrc: "compositions/opening-editorial-rise.html",
+        }),
+        null,
+      ),
+    ).toEqual({
+      id: "opening-editorial-rise",
+      hfId: "hf-host",
+      selector: "#opening-editorial-rise",
+      selectorIndex: undefined,
+      sourceFile: "index.html",
+    });
+
+    expect(
+      resolveTimelineLayerSourceTarget(
+        element({
+          id: "nested-scene",
+          sourceFile: "compositions\\parent.html",
+          compositionSrc: "compositions/nested-scene.html",
+        }),
+        "index.html",
+      ).sourceFile,
+    ).toBe("compositions/parent.html");
   });
 
   test("keeps bound colors together and independent colors distinct", () => {

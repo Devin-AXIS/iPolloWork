@@ -56,7 +56,10 @@ export type RegistryItemLibrarySection =
   | "opening-animation"
   | "ending-animation"
   | "transition-animation"
-  | "caption-animation";
+  | "caption-animation"
+  | "opening-effect"
+  | "ending-effect"
+  | "transition-effect";
 
 export type RegistryMotionPresetCategory = "opening" | "ending" | "transition" | "caption";
 

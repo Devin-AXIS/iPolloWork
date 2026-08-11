@@ -23,10 +23,12 @@ import type {
 import {
   compileMotionInstance,
   createMotionInstance,
+  defaultMotionDuration,
+  getMotionPreset,
   type MotionMutationInput,
   type MotionTargetKind,
 } from "@hyperframes/core/motion-presets";
-import { resolveMotionPresetTiming } from "../utils/motionPreset";
+import { resolveMotionPresetTiming, resolveSemanticMotionTiming } from "../utils/motionPreset";
 
 interface SdkAnimationDeps {
   sdkSession?: Composition | null;
@@ -51,8 +53,7 @@ function buildMotionInstantPatch(
     mutation.operation !== "upsert" ||
     !mutation.presetId ||
     mutation.start === undefined ||
-    mutation.duration === undefined ||
-    !mutation.parameters
+    mutation.duration === undefined
   ) {
     return undefined;
   }
@@ -63,6 +64,7 @@ function buildMotionInstantPatch(
       targetKind,
       start: mutation.start,
       duration: mutation.duration,
+      loop: mutation.loop,
       parameters: mutation.parameters,
     });
     const compiled = compileMotionInstance(instance);
@@ -108,18 +110,45 @@ export function useGsapAnimationOps({
         ...(selection.id || autoId ? { elementId: selection.id ?? autoId } : {}),
         ...(selection.hfId ? { hfId: selection.hfId } : {}),
       };
-      const instantPatch = buildMotionInstantPatch(selector, targetKind, mutation, locator);
+      const preset =
+        mutation.operation === "upsert" && mutation.presetId
+          ? getMotionPreset(mutation.presetId)
+          : undefined;
+      const normalizedMutation = preset
+        ? (() => {
+            const timing = resolveSemanticMotionTiming(
+              selection,
+              preset.phase,
+              mutation.duration ?? defaultMotionDuration(preset),
+              mutation.start,
+            );
+            return {
+              ...mutation,
+              start: timing.position,
+              duration: timing.duration,
+            };
+          })()
+        : mutation;
+      const instantPatch = buildMotionInstantPatch(
+        selector,
+        targetKind,
+        normalizedMutation,
+        locator,
+      );
       await commitMutation(
         selection,
         {
           type: "mutate-motion",
-          ...mutation,
+          ...normalizedMutation,
           targetSelector: selector,
           targetKind,
           ...locator,
         },
         {
-          label: mutation.operation === "remove" ? "Remove motion preset" : "Apply motion preset",
+          label:
+            normalizedMutation.operation === "remove"
+              ? "Remove motion preset"
+              : "Apply motion preset",
           softReload: true,
           ...(instantPatch ? { instantPatch } : {}),
         },

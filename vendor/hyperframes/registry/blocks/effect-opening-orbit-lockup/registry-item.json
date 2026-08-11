@@ -1,0 +1,22 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "effect-opening-orbit-lockup",
+  "version": "1.0.0",
+  "type": "hyperframes:block",
+  "title": "品牌轨道",
+  "description": "轨道与品牌核心从主题背景中组装完成，适合科技和产品类开头。",
+  "kind": "effect",
+  "librarySection": "opening-effect",
+  "dimensions": { "width": 1920, "height": 1080 },
+  "duration": 3.4,
+  "tags": ["effect-clip", "opening", "brand", "orbit", "themeable"],
+  "engine": { "name": "gsap", "version": "3.15.0", "seekable": true, "plugins": [] },
+  "source": { "provider": "ipollowork", "label": "iPolloWork Effects" },
+  "files": [
+    {
+      "path": "effect-opening-orbit-lockup.html",
+      "target": "compositions/effects/effect-opening-orbit-lockup.html",
+      "type": "hyperframes:composition"
+    }
+  ]
+}

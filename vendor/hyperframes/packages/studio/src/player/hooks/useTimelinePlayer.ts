@@ -30,6 +30,7 @@ import {
   getDefaultStaticSeekPlaybackClock,
   releaseStaticSeekCache,
   resolveStaticSeekFallback,
+  shouldUseDirectTimelineAdapter,
   wrapAdapterWithDurationLimit,
   type StaticSeekCacheEntry,
 } from "../lib/playbackAdapter";
@@ -181,7 +182,7 @@ export function useTimelinePlayer() {
       if (win.__timeline) {
         const adapter = wrapTimeline(win.__timeline);
         const dur = getAdapterDuration(adapter);
-        if (dur > 0 && docDuration <= dur) {
+        if (shouldUseDirectTimelineAdapter(playerAdapter != null, dur, docDuration)) {
           releaseStaticSeekCache(staticSeekAdapterRef, staticSeekWarnedRef);
           return withTimedVisibility(adapter);
         }
@@ -199,7 +200,7 @@ export function useTimelinePlayer() {
           const key = rootId && rootId in win.__timelines ? rootId : keys[keys.length - 1];
           const adapter = wrapTimeline(win.__timelines[key]);
           const dur = getAdapterDuration(adapter);
-          if (dur > 0 && docDuration <= dur) {
+          if (shouldUseDirectTimelineAdapter(playerAdapter != null, dur, docDuration)) {
             releaseStaticSeekCache(staticSeekAdapterRef, staticSeekWarnedRef);
             return withTimedVisibility(adapter);
           }

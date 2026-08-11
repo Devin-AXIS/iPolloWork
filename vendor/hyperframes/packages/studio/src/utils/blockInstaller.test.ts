@@ -1,7 +1,12 @@
 // @vitest-environment happy-dom
 
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { addBlockToProject } from "./blockInstaller";
+import {
+  addBlockToProject,
+  resolveEffectPlacement,
+  shiftTimelineContentInSource,
+} from "./blockInstaller";
+import type { TimelineElement } from "../player";
 
 const originalFetch = globalThis.fetch;
 
@@ -11,6 +16,78 @@ afterEach(() => {
 });
 
 describe("addBlockToProject", () => {
+  const clips: TimelineElement[] = [
+    {
+      id: "scene-a",
+      domId: "scene-a",
+      tag: "div",
+      start: 0,
+      duration: 4,
+      track: 0,
+      sourceFile: "index.html",
+    },
+    {
+      id: "scene-b",
+      domId: "scene-b",
+      tag: "div",
+      start: 4,
+      duration: 5,
+      track: 0,
+      sourceFile: "index.html",
+    },
+    {
+      id: "overlay",
+      domId: "overlay",
+      tag: "div",
+      start: 1.4,
+      duration: 1,
+      track: 5,
+      sourceFile: "index.html",
+    },
+  ];
+
+  it("resolves opening, ending, and transition effect placement semantics", () => {
+    expect(
+      resolveEffectPlacement({
+        intent: "opening",
+        duration: 3,
+        currentTime: 2,
+        rootDuration: 9,
+        targetPath: "index.html",
+        timelineElements: clips,
+      }),
+    ).toEqual({ start: 0, track: 0, shiftExistingBy: 3 });
+    expect(
+      resolveEffectPlacement({
+        intent: "ending",
+        duration: 3,
+        currentTime: 2,
+        rootDuration: 9,
+        targetPath: "index.html",
+        timelineElements: clips,
+      }),
+    ).toEqual({ start: 9, track: 0, shiftExistingBy: 0 });
+    expect(
+      resolveEffectPlacement({
+        intent: "transition",
+        duration: 1,
+        currentTime: 0,
+        rootDuration: 9,
+        targetPath: "index.html",
+        timelineElements: clips,
+        selectedElementId: "scene-a",
+      }),
+    ).toEqual({ start: 3.5, track: 6, shiftExistingBy: 0 });
+  });
+
+  it("shifts authored clips when an opening effect is inserted", () => {
+    const source =
+      '<main data-composition-id="root" data-duration="9"><div id="scene-a" data-start="0" data-duration="4"></div><div id="scene-b" data-start="4" data-duration="5"></div></main>';
+    const shifted = shiftTimelineContentInSource(source, clips, "index.html", 3);
+    expect(shifted).toContain('id="scene-a" data-start="3"');
+    expect(shifted).toContain('id="scene-b" data-start="7"');
+  });
+
   it("makes installed component document backgrounds transparent without removing inner effect backgrounds", async () => {
     const files: Record<string, string> = {
       "index.html": [
@@ -58,22 +135,57 @@ describe("addBlockToProject", () => {
         writes[path] = [...(writes[path] ?? []), content];
       },
       recordEdit: vi.fn(),
+      markStudioWrite: vi.fn(),
       refreshFileTree: vi.fn(),
       reloadPreview: vi.fn(),
       showToast: vi.fn(),
     });
 
-    expect(files["compositions/components/morph-text.html"]).toContain(
-      "background: transparent;",
-    );
-    expect(files["compositions/components/morph-text.html"]).not.toContain(
-      "background: #fff;",
-    );
-    expect(files["compositions/components/morph-text.html"]).toContain(
-      "background: #e7e5e7;",
-    );
+    expect(files["compositions/components/morph-text.html"]).toContain("background: transparent;");
+    expect(files["compositions/components/morph-text.html"]).not.toContain("background: #fff;");
+    expect(files["compositions/components/morph-text.html"]).toContain("background: #e7e5e7;");
     expect(writes["index.html"]?.at(-1)).toContain(
       'data-composition-src="compositions/components/morph-text.html"',
     );
+  });
+
+  it("starts the preview reload before refreshing the file tree", async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        written: ["compositions/effects/focus-title.html"],
+        block: {
+          name: "focus-title",
+          title: "Focus Title",
+          type: "hyperframes:block",
+          duration: 3.2,
+        },
+      }),
+    } as Response);
+
+    const calls: string[] = [];
+    await addBlockToProject({
+      projectId: "project-1",
+      blockName: "focus-title",
+      activeCompPath: "index.html",
+      effectIntent: "opening",
+      timelineElements: [],
+      readProjectFile: async () =>
+        '<main data-composition-id="root" data-width="1920" data-height="1080" data-duration="6"></main>',
+      writeProjectFile: vi.fn(),
+      recordEdit: vi.fn(),
+      markStudioWrite: () => {
+        calls.push("mark-write");
+      },
+      refreshFileTree: async () => {
+        calls.push("file-tree");
+      },
+      reloadPreview: () => {
+        calls.push("preview");
+      },
+      showToast: vi.fn(),
+    });
+
+    expect(calls).toEqual(["mark-write", "mark-write", "preview", "file-tree"]);
   });
 });

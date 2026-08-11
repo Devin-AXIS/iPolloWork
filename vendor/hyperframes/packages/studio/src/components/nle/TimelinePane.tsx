@@ -98,6 +98,11 @@ export interface TimelinePaneProps {
   ) => Promise<void> | void;
   onBlockedEditAttempt?: (element: TimelineElement, intent: BlockedTimelineEditIntent) => void;
   onSelectTimelineElement?: (element: TimelineElement | null) => void;
+  onRenameTimelineElement?: (element: TimelineElement, label: string) => Promise<void> | void;
+  onContextMenuTimelineElement?: (
+    element: TimelineElement,
+    anchor: { x: number; y: number },
+  ) => void;
 }
 
 // fallow-ignore-next-line complexity
@@ -111,6 +116,8 @@ export function TimelinePane({
   onBlockDrop,
   onBlockedEditAttempt,
   onSelectTimelineElement,
+  onRenameTimelineElement,
+  onContextMenuTimelineElement,
 }: TimelinePaneProps) {
   const {
     seek,
@@ -280,6 +287,8 @@ export function TimelinePane({
             onBlockedEditAttempt={onBlockedEditAttempt}
             onSplitElement={handleSplitElement}
             onSelectElement={onSelectTimelineElement}
+            onRenameElement={onRenameTimelineElement}
+            onContextMenuElement={onContextMenuTimelineElement}
           />
         </div>
         {timelineFooter && <div className="flex-shrink-0">{timelineFooter}</div>}

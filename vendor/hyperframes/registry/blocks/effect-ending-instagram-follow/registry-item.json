@@ -1,0 +1,22 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "effect-ending-instagram-follow",
+  "version": "1.0.0",
+  "type": "hyperframes:block",
+  "title": "Instagram 关注",
+  "description": "照片卡片堆叠、账号名与关注按钮协同入场的 Instagram 结尾片段。",
+  "kind": "effect",
+  "librarySection": "ending-effect",
+  "dimensions": { "width": 1920, "height": 1080 },
+  "duration": 3.3,
+  "tags": ["effect-clip", "ending", "instagram", "follow", "social", "themeable"],
+  "engine": { "name": "gsap", "version": "3.15.0", "seekable": true, "plugins": [] },
+  "source": { "provider": "ipollowork", "label": "iPolloWork Effects" },
+  "files": [
+    {
+      "path": "effect-ending-instagram-follow.html",
+      "target": "compositions/effects/effect-ending-instagram-follow.html",
+      "type": "hyperframes:composition"
+    }
+  ]
+}
