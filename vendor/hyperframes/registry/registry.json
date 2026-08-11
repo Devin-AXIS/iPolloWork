@@ -100,63 +100,7 @@
       "type": "hyperframes:component"
     },
     {
-      "name": "caption-neon-accent",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "caption-weight-shift",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "caption-emoji-pop",
-      "type": "hyperframes:component"
-    },
-    {
       "name": "caption-editorial-emphasis",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "caption-parallax-layers",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "caption-glitch-rgb",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "caption-matrix-decode",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "caption-particle-burst",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "caption-texture",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "caption-clip-wipe",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "caption-kinetic-slam",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "caption-gradient-fill",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "caption-neon-glow",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "caption-highlight",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "caption-blend-difference",
       "type": "hyperframes:component"
     },
     {

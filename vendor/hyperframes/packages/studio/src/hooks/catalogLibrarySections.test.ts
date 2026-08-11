@@ -10,6 +10,22 @@ const ACTIVE_SECTIONS = {
   "transition-effect": 3,
 } as const;
 
+const MIGRATED_CAPTION_COMPONENTS = [
+  "caption-highlight",
+  "caption-matrix-decode",
+  "caption-gradient-fill",
+  "caption-neon-glow",
+  "caption-neon-accent",
+  "caption-glitch-rgb",
+  "caption-clip-wipe",
+  "caption-blend-difference",
+  "caption-weight-shift",
+  "caption-texture",
+  "caption-kinetic-slam",
+  "caption-emoji-pop",
+  "caption-particle-burst",
+] as const;
+
 interface MotionManifest {
   name: string;
   librarySection?: string;
@@ -52,6 +68,21 @@ describe("effect clip catalog library sections", () => {
       "ending-effect": 4,
       "transition-effect": 3,
     });
+  });
+
+  it("does not publish migrated caption components in the catalog", () => {
+    const captionComponents = registryManifests(join(REGISTRY_ROOT, "components"))
+      .map(parseManifest)
+      .filter(
+        (manifest) =>
+          manifest.type === "hyperframes:component" &&
+          manifest.librarySection &&
+          manifest.name.startsWith("caption-"),
+      )
+      .map((manifest) => manifest.name)
+      .sort();
+
+    expect(captionComponents).not.toEqual(expect.arrayContaining(MIGRATED_CAPTION_COMPONENTS));
   });
 
   it("keeps every visible effect as a standalone, themeable scene clip", () => {
