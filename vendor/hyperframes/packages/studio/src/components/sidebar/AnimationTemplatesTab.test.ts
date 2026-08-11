@@ -5,6 +5,22 @@ import {
   resolveAnimationTemplatePreset,
 } from "./AnimationTemplatesTab";
 
+const MIGRATED_TEMPLATES = [
+  ["text-highlight-sweep", "text.emphasis.highlight-sweep"],
+  ["text-matrix-decode", "text.enter.matrix-decode"],
+  ["text-gradient-fill", "text.emphasis.gradient-fill"],
+  ["text-neon-glow", "text.emphasis.neon-glow"],
+  ["text-neon-accent", "text.emphasis.neon-accent"],
+  ["text-rgb-glitch", "text.emphasis.rgb-glitch"],
+  ["text-clip-wipe", "text.enter.clip-wipe"],
+  ["text-blend-difference", "text.emphasis.blend-difference"],
+  ["text-weight-shift", "text.emphasis.weight-shift"],
+  ["text-texture-fill", "text.emphasis.texture-fill"],
+  ["text-kinetic-slam", "text.emphasis.kinetic-slam"],
+  ["text-emoji-pop", "text.emphasis.emoji-pop"],
+  ["text-particle-burst", "text.emphasis.particle-burst"],
+] as const;
+
 describe("AnimationTemplatesTab catalog", () => {
   it("shows one universal catalog and appends text animation for text selections", () => {
     expect(ANIMATION_TEMPLATES).toHaveLength(39);
@@ -32,23 +48,7 @@ describe("AnimationTemplatesTab catalog", () => {
   });
 
   it("exposes migrated caption effects as text animation templates", () => {
-    const migratedTemplates = [
-      ["text-highlight-sweep", "text.emphasis.highlight-sweep"],
-      ["text-matrix-decode", "text.enter.matrix-decode"],
-      ["text-gradient-fill", "text.emphasis.gradient-fill"],
-      ["text-neon-glow", "text.emphasis.neon-glow"],
-      ["text-neon-accent", "text.emphasis.neon-accent"],
-      ["text-rgb-glitch", "text.emphasis.rgb-glitch"],
-      ["text-clip-wipe", "text.enter.clip-wipe"],
-      ["text-blend-difference", "text.emphasis.blend-difference"],
-      ["text-weight-shift", "text.emphasis.weight-shift"],
-      ["text-texture-fill", "text.emphasis.texture-fill"],
-      ["text-kinetic-slam", "text.emphasis.kinetic-slam"],
-      ["text-emoji-pop", "text.emphasis.emoji-pop"],
-      ["text-particle-burst", "text.emphasis.particle-burst"],
-    ] as const;
-
-    for (const [templateId, presetId] of migratedTemplates) {
+    for (const [templateId, presetId] of MIGRATED_TEMPLATES) {
       const template = ANIMATION_TEMPLATES.find((candidate) => candidate.id === templateId);
       expect(template, templateId).toMatchObject({ category: "text", presetId });
       expect(resolveAnimationTemplatePreset(template!, "text")?.id).toBe(presetId);
@@ -74,7 +74,10 @@ describe("AnimationTemplatesTab catalog", () => {
 
     for (const [templateId, [title, description]] of Object.entries(expectedCopy)) {
       const template = ANIMATION_TEMPLATES.find((candidate) => candidate.id === templateId);
-      expect(template, templateId).toMatchObject({ title: { zh: title }, description: { zh: description } });
+      expect(template, templateId).toMatchObject({
+        title: { zh: title },
+        description: { zh: description },
+      });
     }
   });
 
@@ -90,6 +93,14 @@ describe("AnimationTemplatesTab catalog", () => {
     const themeAwareIds = [
       "text-prism-glow",
       "text-shiny-sweep",
+      "text-highlight-sweep",
+      "text-matrix-decode",
+      "text-gradient-fill",
+      "text-neon-glow",
+      "text-neon-accent",
+      "text-rgb-glitch",
+      "text-texture-fill",
+      "text-particle-burst",
       "box-spotlight-card",
       "box-glare-sweep",
     ];

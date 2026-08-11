@@ -309,6 +309,18 @@ export function buildPresetKeyframes(presetId: string, params: MotionParameters)
       ];
     case "text.emphasis.highlight-sweep": {
       const roundness = Number(params.roundness ?? 8);
+      const highlightShadow = (amount: number) => {
+        switch (direction) {
+          case "left":
+            return `inset ${amount}em 0 0 ${color}`;
+          case "up":
+            return `inset 0 ${amount}em 0 ${color}`;
+          case "down":
+            return `inset 0 -${amount}em 0 ${color}`;
+          default:
+            return `inset -${amount}em 0 0 ${color}`;
+        }
+      };
       return [
         frame(0, {
           backgroundColor: "transparent",
@@ -318,13 +330,13 @@ export function buildPresetKeyframes(presetId: string, params: MotionParameters)
         }),
         frame(48, {
           backgroundColor: color,
-          boxShadow: `inset 0 -0.82em 0 ${color}`,
+          boxShadow: highlightShadow(0.82),
           borderRadius: `${roundness}px`,
           filter: `brightness(${1 + 0.18 * intensity})`,
         }),
         frame(100, {
           backgroundColor: "transparent",
-          boxShadow: `inset 0 -0.18em 0 ${color}`,
+          boxShadow: highlightShadow(0.18),
           borderRadius: `${roundness}px`,
           filter: "brightness(1)",
         }),
@@ -359,20 +371,39 @@ export function buildPresetKeyframes(presetId: string, params: MotionParameters)
     }
     case "text.emphasis.gradient-fill": {
       const accent = secondColor(params, "#FF4FD8");
+      const angle = direction === "left" ? 270 : direction === "up" ? 0 : direction === "down" ? 180 : 90;
+      const startPosition = direction === "left" ? "100% 50%" : direction === "up" ? "50% 100%" : "0% 50%";
+      const endPosition = direction === "left" ? "0% 50%" : direction === "up" ? "50% 0%" : direction === "down" ? "50% 100%" : "100% 50%";
+      const gradient = `linear-gradient(${angle}deg, ${color} 0%, ${accent} 50%, ${color} 100%)`;
       return [
         frame(0, {
-          color: "currentColor",
-          backgroundImage: `linear-gradient(90deg, currentColor, ${color}, ${accent})`,
+          color: "transparent",
+          backgroundImage: gradient,
+          backgroundClip: "text",
+          WebkitBackgroundClip: "text",
+          WebkitTextFillColor: "transparent",
+          backgroundSize: "220% 220%",
+          backgroundPosition: startPosition,
           filter: "brightness(1)",
         }),
         frame(50, {
-          color,
-          backgroundImage: `linear-gradient(90deg, ${color}, ${accent}, ${color})`,
+          color: "transparent",
+          backgroundImage: gradient,
+          backgroundClip: "text",
+          WebkitBackgroundClip: "text",
+          WebkitTextFillColor: "transparent",
+          backgroundSize: "220% 220%",
+          backgroundPosition: endPosition,
           filter: `brightness(${1 + 0.28 * intensity}) saturate(${1 + 0.35 * intensity})`,
         }),
         frame(100, {
-          color: "currentColor",
-          backgroundImage: `linear-gradient(90deg, ${accent}, ${color}, currentColor)`,
+          color: "transparent",
+          backgroundImage: gradient,
+          backgroundClip: "text",
+          WebkitBackgroundClip: "text",
+          WebkitTextFillColor: "transparent",
+          backgroundSize: "220% 220%",
+          backgroundPosition: startPosition,
           filter: "brightness(1) saturate(1)",
         }),
       ];
@@ -420,11 +451,20 @@ export function buildPresetKeyframes(presetId: string, params: MotionParameters)
         frame(100, { opacity: 1, x: 0, skewX: 0, filter: "blur(0px)", textShadow: "0 0 0 transparent" }),
       ];
     }
-    case "text.enter.clip-wipe":
+    case "text.enter.clip-wipe": {
+      const wipeOffset = directionOffset(direction, 6 * intensity);
+      const wipeBlur = Math.max(0.5, 1.5 + 1.5 * intensity);
       return [
-        frame(0, { opacity: 0, clipPath: wipeInset(direction, true), filter: "blur(2px)" }),
-        frame(100, { opacity: 1, clipPath: wipeInset(direction, false), filter: "blur(0px)" }),
+        frame(0, {
+          opacity: 0,
+          x: -wipeOffset.x,
+          y: -wipeOffset.y,
+          clipPath: wipeInset(direction, true),
+          filter: `blur(${wipeBlur}px)`,
+        }),
+        frame(100, { opacity: 1, x: 0, y: 0, clipPath: wipeInset(direction, false), filter: "blur(0px)" }),
       ];
+    }
     case "text.emphasis.blend-difference": {
       const blur = Number(params.blur ?? 0);
       return [
@@ -448,23 +488,59 @@ export function buildPresetKeyframes(presetId: string, params: MotionParameters)
     }
     case "text.emphasis.texture-fill": {
       const density = Number(params.density ?? 1);
+      const angle = direction === "left" ? 270 : direction === "up" ? 0 : direction === "down" ? 180 : 90;
+      const textureSize = Math.max(6, Math.round(28 / Math.max(0.2, density)));
+      const texturePosition = direction === "left" ? "100% 50%" : direction === "up" ? "50% 100%" : direction === "down" ? "50% 0%" : "0% 50%";
+      const textureEndPosition = direction === "left" ? "0% 50%" : direction === "up" ? "50% 0%" : direction === "down" ? "50% 100%" : "100% 50%";
+      const texture = `repeating-linear-gradient(${angle}deg, rgba(255, 255, 255, 0.48) 0 1px, transparent 1px ${textureSize}px), radial-gradient(circle at 25% 25%, rgba(255, 255, 255, 0.38) 0 1px, transparent 1px), linear-gradient(${angle}deg, ${color}, ${secondColor(params, "#20BBC0")})`;
       return [
-        frame(0, { color: "currentColor", filter: "contrast(1) brightness(1)", letterSpacing: "0em" }),
+        frame(0, {
+          color: "transparent",
+          backgroundImage: texture,
+          backgroundClip: "text",
+          WebkitBackgroundClip: "text",
+          WebkitTextFillColor: "transparent",
+          backgroundSize: `${textureSize}px ${textureSize}px, ${textureSize * 2}px ${textureSize * 2}px, 180% 180%`,
+          backgroundPosition: texturePosition,
+          filter: "contrast(1) brightness(1)",
+          letterSpacing: "0em",
+        }),
         frame(52, {
-          color,
+          color: "transparent",
+          backgroundImage: texture,
+          backgroundClip: "text",
+          WebkitBackgroundClip: "text",
+          WebkitTextFillColor: "transparent",
+          backgroundSize: `${textureSize}px ${textureSize}px, ${textureSize * 2}px ${textureSize * 2}px, 180% 180%`,
+          backgroundPosition: textureEndPosition,
           filter: `contrast(${1 + 0.45 * density}) brightness(${1 + 0.18 * intensity})`,
           letterSpacing: `${0.02 * density}em`,
         }),
-        frame(100, { color: "currentColor", filter: "contrast(1) brightness(1)", letterSpacing: "0em" }),
+        frame(100, {
+          color: "transparent",
+          backgroundImage: texture,
+          backgroundClip: "text",
+          WebkitBackgroundClip: "text",
+          WebkitTextFillColor: "transparent",
+          backgroundSize: `${textureSize}px ${textureSize}px, ${textureSize * 2}px ${textureSize * 2}px, 180% 180%`,
+          backgroundPosition: texturePosition,
+          filter: "contrast(1) brightness(1)",
+          letterSpacing: "0em",
+        }),
       ];
     }
     case "text.emphasis.kinetic-slam": {
       const distance = Number(params.distance ?? 56);
       const slamOffset = directionOffset(direction, distance * intensity);
+      const readable = readableEnabled(params);
+      const launchOpacity = readable ? 0.92 : 0.45;
+      const launchBlur = readable ? 3 : Math.max(7, 5 * intensity);
+      const impactScale = readable ? 1.08 + 0.03 * intensity : 1.16 + 0.07 * intensity;
+      const settleDistance = readable ? 0.08 : 0.22;
       return [
-        frame(0, { opacity: 1, x: -slamOffset.x, y: -slamOffset.y, scale: 0.94, filter: "blur(3px)" }),
-        frame(42, { opacity: 1, x: 0, y: 0, scale: 1.12 + 0.04 * intensity, filter: "blur(0px)" }),
-        frame(72, { opacity: 1, x: slamOffset.x * 0.12, y: slamOffset.y * 0.12, scale: 0.985, filter: "blur(0px)" }),
+        frame(0, { opacity: launchOpacity, x: -slamOffset.x, y: -slamOffset.y, scale: 0.94, filter: `blur(${launchBlur}px)` }),
+        frame(42, { opacity: readable ? 1 : 0.88, x: 0, y: 0, scale: impactScale, filter: readable ? "blur(0px)" : "blur(1px)" }),
+        frame(72, { opacity: readable ? 1 : 0.94, x: slamOffset.x * settleDistance, y: slamOffset.y * settleDistance, scale: readable ? 0.99 : 0.97, filter: "blur(0px)" }),
         frame(100, { opacity: 1, x: 0, y: 0, scale: 1, filter: "blur(0px)" }),
       ];
     }

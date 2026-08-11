@@ -35,6 +35,10 @@ interface MotionManifest {
   files?: Array<{ path: string }>;
 }
 
+interface RegistryIndex {
+  items: Array<{ name: string; type: string }>;
+}
+
 function registryManifests(directory: string): string[] {
   return readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
     const path = join(directory, entry.name);
@@ -83,6 +87,25 @@ describe("effect clip catalog library sections", () => {
       .sort();
 
     expect(captionComponents).not.toEqual(expect.arrayContaining(MIGRATED_CAPTION_COMPONENTS));
+  });
+
+  it("lists retained captions and excludes migrated captions in registry.json", () => {
+    const registry = JSON.parse(
+      readFileSync(join(REGISTRY_ROOT, "registry.json"), "utf8"),
+    ) as RegistryIndex;
+    const names = registry.items.map((item) => item.name);
+
+    expect(names).toEqual(
+      expect.arrayContaining([
+        "caption-pill-karaoke",
+        "caption-word-pulse",
+        "caption-phrase-lift",
+        "caption-mask-reveal",
+        "caption-editorial-snap",
+        "caption-editorial-emphasis",
+      ]),
+    );
+    expect(names).not.toEqual(expect.arrayContaining(MIGRATED_CAPTION_COMPONENTS));
   });
 
   it("keeps every visible effect as a standalone, themeable scene clip", () => {

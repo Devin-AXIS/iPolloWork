@@ -340,6 +340,97 @@ describe("motion presets", () => {
     expect(decode.keyframes[0]?.properties.color).toBe("var(--ipw-color-accent, #7c3aed)");
   });
 
+  it("changes highlight sweep keyframes when direction changes", () => {
+    const compile = (direction: "left" | "right") =>
+      compileMotionInstance(
+        createMotionInstance({
+          presetId: "text.emphasis.highlight-sweep",
+          target: { selector: "#headline" },
+          targetKind: "text",
+          start: 0,
+          parameters: { direction },
+        }),
+      );
+
+    expect(compile("left").keyframes).not.toEqual(compile("right").keyframes);
+  });
+
+  it("uses directional clipped gradients for gradient fill", () => {
+    const compile = (direction: "right" | "up") =>
+      compileMotionInstance(
+        createMotionInstance({
+          presetId: "text.emphasis.gradient-fill",
+          target: { selector: "#headline" },
+          targetKind: "text",
+          start: 0,
+          parameters: { direction },
+        }),
+      );
+    const right = compile("right");
+
+    expect(right.keyframes).not.toEqual(compile("up").keyframes);
+    expect(right.keyframes[1]?.properties).toMatchObject({
+      backgroundClip: "text",
+      WebkitBackgroundClip: "text",
+      WebkitTextFillColor: "transparent",
+      color: "transparent",
+    });
+  });
+
+  it("uses density and direction for deterministic texture fill keyframes", () => {
+    const compile = (parameters: { density: number; direction: "left" | "down" }) =>
+      compileMotionInstance(
+        createMotionInstance({
+          presetId: "text.emphasis.texture-fill",
+          target: { selector: "#headline" },
+          targetKind: "text",
+          start: 0,
+          parameters,
+        }),
+      );
+    const sparse = compile({ density: 0.5, direction: "left" });
+    const dense = compile({ density: 1.5, direction: "down" });
+
+    expect(sparse.keyframes).not.toEqual(dense.keyframes);
+    expect(dense.keyframes[1]?.properties).toMatchObject({
+      backgroundClip: "text",
+      WebkitBackgroundClip: "text",
+      WebkitTextFillColor: "transparent",
+      color: "transparent",
+    });
+    expect(dense.keyframes[1]?.properties.backgroundImage).toContain("repeating-");
+  });
+
+  it("changes clip wipe keyframes when intensity changes", () => {
+    const compile = (intensity: number) =>
+      compileMotionInstance(
+        createMotionInstance({
+          presetId: "text.enter.clip-wipe",
+          target: { selector: "#headline" },
+          targetKind: "text",
+          start: 0,
+          parameters: { intensity },
+        }),
+      );
+
+    expect(compile(0.5).keyframes).not.toEqual(compile(1.8).keyframes);
+  });
+
+  it("changes kinetic slam keyframes when readability preservation changes", () => {
+    const compile = (preserveReadable: "true" | "false") =>
+      compileMotionInstance(
+        createMotionInstance({
+          presetId: "text.emphasis.kinetic-slam",
+          target: { selector: "#headline" },
+          targetKind: "text",
+          start: 0,
+          parameters: { preserveReadable },
+        }),
+      );
+
+    expect(compile("true").keyframes).not.toEqual(compile("false").keyframes);
+  });
+
   it("compiles every catalog preset to bounded editable keyframes", () => {
     for (const preset of MOTION_PRESETS) {
       const targetKind = preset.targetKinds[0];
