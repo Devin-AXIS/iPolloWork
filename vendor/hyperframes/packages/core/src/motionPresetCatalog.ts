@@ -49,6 +49,54 @@ const MOTION_INTENSITY_PARAMETER: MotionParameter = {
   step: 0.1,
 };
 
+const MOTION_GLOW_PARAMETER: MotionParameter = {
+  id: "glow",
+  label: "辉光",
+  kind: "number",
+  min: 0,
+  max: 2,
+  step: 0.1,
+};
+
+const MOTION_BLUR_PARAMETER: MotionParameter = {
+  id: "blur",
+  label: "模糊",
+  kind: "number",
+  min: 0,
+  max: 32,
+  step: 1,
+  unit: "px",
+};
+
+const MOTION_DENSITY_PARAMETER: MotionParameter = {
+  id: "density",
+  label: "密度",
+  kind: "number",
+  min: 0,
+  max: 2,
+  step: 0.1,
+};
+
+const MOTION_DISTANCE_PARAMETER: MotionParameter = {
+  id: "distance",
+  label: "移动距离",
+  kind: "number",
+  min: 0,
+  max: 180,
+  step: 2,
+  unit: "px",
+};
+
+const MOTION_READABILITY_PARAMETER: MotionParameter = {
+  id: "preserveReadable",
+  label: "保持可读",
+  kind: "select",
+  options: [
+    { value: "true", label: "开启" },
+    { value: "false", label: "关闭" },
+  ],
+};
+
 export const MOTION_DIRECTION_PARAMETER: MotionParameter = {
   id: "direction",
   label: "方向",
@@ -97,6 +145,38 @@ function textPreset(seed: PresetSeed): MotionPreset {
       ...seed.defaults,
     },
     semantics: seed.semantics,
+  };
+}
+
+function migratedTextPreset(
+  seed: PresetSeed & {
+    extraParameters?: MotionParameter[];
+  },
+): MotionPreset {
+  return {
+    ...textPreset(seed),
+    parameterSchema: [
+      ...MOTION_COMMON_PARAMETERS,
+      MOTION_INTENSITY_PARAMETER,
+      ...(seed.direction ? [MOTION_DIRECTION_PARAMETER] : []),
+      ...MOTION_TEXT_PARAMETERS,
+      ...(seed.color
+        ? [
+            MOTION_COLOR_SOURCE_PARAMETER,
+            { id: "color", label: "效果颜色", kind: "color" as const },
+          ]
+        : []),
+      ...(seed.extraParameters ?? []),
+    ],
+    defaults: {
+      ease: seed.phase === "emphasis" ? "sine.inOut" : "power3.out",
+      intensity: 1,
+      unit: "whole",
+      stagger: 0.04,
+      ...(seed.direction ? { direction: "right" } : {}),
+      ...(seed.color ? { colorSource: "theme", color: "#20BBC0" } : {}),
+      ...seed.defaults,
+    },
   };
 }
 
@@ -372,6 +452,194 @@ const TEXT_MOTION_PRESETS: readonly MotionPreset[] = [
     },
   }),
 ] as const;
+
+const MIGRATED_CAPTION_TEXT_PRESETS: readonly MotionPreset[] = [
+  migratedTextPreset({
+    id: "text.emphasis.highlight-sweep",
+    label: "高亮扫过",
+    phase: "emphasis",
+    direction: true,
+    color: true,
+    defaults: { unit: "word", stagger: 0.05, color: "#FFE66D" },
+    extraParameters: [
+      { id: "roundness", label: "圆角", kind: "number", min: 0, max: 24, step: 1, unit: "px" },
+    ],
+    semantics: {
+      intents: ["高亮", "扫过", "关键词强化"],
+      tones: ["清晰", "编辑感"],
+      preferredFor: ["关键词", "标题", "字幕文字"],
+      avoidFor: ["很小的正文"],
+    },
+  }),
+  migratedTextPreset({
+    id: "text.enter.matrix-decode",
+    label: "矩阵解码",
+    phase: "enter",
+    color: true,
+    defaults: { unit: "character", stagger: 0.03, color: "#32FF7E" },
+    extraParameters: [MOTION_DENSITY_PARAMETER, MOTION_BLUR_PARAMETER],
+    semantics: {
+      intents: ["解码", "科技显现", "字符扰动"],
+      tones: ["科技", "利落"],
+      preferredFor: ["科技标题", "编号", "短句"],
+      avoidFor: ["长段正文"],
+    },
+  }),
+  migratedTextPreset({
+    id: "text.emphasis.gradient-fill",
+    label: "渐变填充",
+    phase: "emphasis",
+    direction: true,
+    color: true,
+    defaults: { color: "#FF4FD8" },
+    extraParameters: [{ id: "accentColor", label: "强调色", kind: "color" }],
+    semantics: {
+      intents: ["渐变", "填充", "流动"],
+      tones: ["明亮", "品牌感"],
+      preferredFor: ["标题", "关键词"],
+      avoidFor: ["正文"],
+    },
+  }),
+  migratedTextPreset({
+    id: "text.emphasis.neon-glow",
+    label: "霓虹辉光",
+    phase: "emphasis",
+    color: true,
+    defaults: { color: "#20BBC0" },
+    extraParameters: [MOTION_GLOW_PARAMETER],
+    semantics: {
+      intents: ["霓虹", "发光", "强调"],
+      tones: ["科技", "夜景"],
+      preferredFor: ["标题", "品牌词"],
+      avoidFor: ["长正文"],
+    },
+  }),
+  migratedTextPreset({
+    id: "text.emphasis.neon-accent",
+    label: "霓虹强调",
+    phase: "emphasis",
+    color: true,
+    defaults: { color: "#FF4FD8" },
+    extraParameters: [MOTION_GLOW_PARAMETER],
+    semantics: {
+      intents: ["霓虹", "强调色", "轻微漂移"],
+      tones: ["活跃", "科技"],
+      preferredFor: ["短标题", "关键词"],
+      avoidFor: ["正式正文"],
+    },
+  }),
+  migratedTextPreset({
+    id: "text.emphasis.rgb-glitch",
+    label: "RGB 故障",
+    phase: "emphasis",
+    color: true,
+    defaults: { color: "#FF3355", preserveReadable: "true" },
+    extraParameters: [MOTION_BLUR_PARAMETER, MOTION_DENSITY_PARAMETER, MOTION_READABILITY_PARAMETER],
+    semantics: {
+      intents: ["故障", "RGB", "扰动"],
+      tones: ["强烈", "科技"],
+      preferredFor: ["科技标题", "转折词"],
+      avoidFor: ["稳重品牌", "长正文"],
+    },
+  }),
+  migratedTextPreset({
+    id: "text.enter.clip-wipe",
+    label: "裁切揭幕",
+    phase: "enter",
+    direction: true,
+    defaults: { unit: "word", stagger: 0.05 },
+    semantics: {
+      intents: ["裁切", "揭幕", "方向进入"],
+      tones: ["利落", "编辑感"],
+      preferredFor: ["标题", "短句", "字幕文字"],
+      avoidFor: ["超长正文"],
+    },
+  }),
+  migratedTextPreset({
+    id: "text.emphasis.blend-difference",
+    label: "差值反色",
+    phase: "emphasis",
+    defaults: { preserveReadable: "true" },
+    extraParameters: [MOTION_BLUR_PARAMETER, MOTION_READABILITY_PARAMETER],
+    semantics: {
+      intents: ["反色", "混合", "强调"],
+      tones: ["实验", "编辑感"],
+      preferredFor: ["标题", "海报文字"],
+      avoidFor: ["小字号正文"],
+    },
+  }),
+  migratedTextPreset({
+    id: "text.emphasis.weight-shift",
+    label: "字重切换",
+    phase: "emphasis",
+    defaults: { unit: "word", stagger: 0.04 },
+    extraParameters: [
+      { id: "minWeight", label: "起始字重", kind: "number", min: 100, max: 900, step: 50 },
+      { id: "maxWeight", label: "强调字重", kind: "number", min: 100, max: 900, step: 50 },
+    ],
+    semantics: {
+      intents: ["字重", "强调", "排版"],
+      tones: ["克制", "高级"],
+      preferredFor: ["标题", "关键词"],
+      avoidFor: ["不支持可变字重的字体"],
+    },
+  }),
+  migratedTextPreset({
+    id: "text.emphasis.texture-fill",
+    label: "纹理填充",
+    phase: "emphasis",
+    direction: true,
+    color: true,
+    defaults: { color: "#FFFFFF" },
+    extraParameters: [MOTION_DENSITY_PARAMETER],
+    semantics: {
+      intents: ["纹理", "遮罩", "填充"],
+      tones: ["设计感", "海报"],
+      preferredFor: ["大标题", "品牌词"],
+      avoidFor: ["小字号正文"],
+    },
+  }),
+  migratedTextPreset({
+    id: "text.emphasis.kinetic-slam",
+    label: "动感冲击",
+    phase: "emphasis",
+    direction: true,
+    defaults: { unit: "word", preserveReadable: "true" },
+    extraParameters: [MOTION_DISTANCE_PARAMETER, MOTION_READABILITY_PARAMETER],
+    semantics: {
+      intents: ["冲击", "动感", "强调"],
+      tones: ["强烈", "节奏"],
+      preferredFor: ["短标题", "关键词"],
+      avoidFor: ["长正文"],
+    },
+  }),
+  migratedTextPreset({
+    id: "text.emphasis.emoji-pop",
+    label: "Emoji 弹出",
+    phase: "emphasis",
+    defaults: { unit: "character", stagger: 0.03 },
+    semantics: {
+      intents: ["emoji", "弹出", "轻松"],
+      tones: ["playful", "社交"],
+      preferredFor: ["社媒文字", "轻松标题"],
+      avoidFor: ["正式报告"],
+    },
+  }),
+  migratedTextPreset({
+    id: "text.emphasis.particle-burst",
+    label: "粒子爆发",
+    phase: "emphasis",
+    color: true,
+    defaults: { unit: "word", stagger: 0.06, color: "#FFB000" },
+    extraParameters: [MOTION_DENSITY_PARAMETER],
+    semantics: {
+      intents: ["粒子", "爆发", "关键词强化"],
+      tones: ["活跃", "庆祝"],
+      preferredFor: ["关键词", "数字", "短标题"],
+      avoidFor: ["长正文"],
+    },
+  }),
+];
 
 const ELEMENT_MOTION_PRESETS: readonly MotionPreset[] = [
   elementPreset({
@@ -1016,6 +1284,7 @@ const REACT_BITS_BOX_PRESETS: readonly MotionPreset[] = [
 
 export const MOTION_PRESETS: readonly MotionPreset[] = [
   ...TEXT_MOTION_PRESETS,
+  ...MIGRATED_CAPTION_TEXT_PRESETS,
   ...ELEMENT_MOTION_PRESETS,
   ...REACT_BITS_TEXT_PRESETS,
   ...REACT_BITS_GENERAL_PRESETS,

@@ -10,10 +10,10 @@ import {
 
 describe("motion presets", () => {
   it("ships stable text and element presets across all three phases", () => {
-    expect(MOTION_PRESETS).toHaveLength(50);
-    expect(new Set(MOTION_PRESETS.map((preset) => preset.id)).size).toBe(50);
-    expect(listMotionPresets({ targetKind: "text", phase: "enter" })).toHaveLength(14);
-    expect(listMotionPresets({ targetKind: "text", phase: "emphasis" })).toHaveLength(12);
+    expect(MOTION_PRESETS).toHaveLength(63);
+    expect(new Set(MOTION_PRESETS.map((preset) => preset.id)).size).toBe(63);
+    expect(listMotionPresets({ targetKind: "text", phase: "enter" })).toHaveLength(16);
+    expect(listMotionPresets({ targetKind: "text", phase: "emphasis" })).toHaveLength(23);
     expect(listMotionPresets({ targetKind: "text", phase: "exit" })).toHaveLength(6);
     expect(listMotionPresets({ targetKind: "element", phase: "enter" })).toHaveLength(7);
     expect(listMotionPresets({ targetKind: "element", phase: "emphasis" })).toHaveLength(14);
@@ -26,6 +26,40 @@ describe("motion presets", () => {
     expect(
       listMotionPresets({ targetKind: "text", phase: "enter", intent: "title reveal" }),
     ).not.toHaveLength(0);
+  });
+
+  it("ships migrated caption effects as editable text presets", () => {
+    const migratedIds = [
+      "text.emphasis.highlight-sweep",
+      "text.enter.matrix-decode",
+      "text.emphasis.gradient-fill",
+      "text.emphasis.neon-glow",
+      "text.emphasis.neon-accent",
+      "text.emphasis.rgb-glitch",
+      "text.enter.clip-wipe",
+      "text.emphasis.blend-difference",
+      "text.emphasis.weight-shift",
+      "text.emphasis.texture-fill",
+      "text.emphasis.kinetic-slam",
+      "text.emphasis.emoji-pop",
+      "text.emphasis.particle-burst",
+    ];
+
+    expect(MOTION_PRESETS).toHaveLength(63);
+    expect(new Set(MOTION_PRESETS.map((preset) => preset.id)).size).toBe(63);
+
+    for (const id of migratedIds) {
+      const preset = MOTION_PRESETS.find((candidate) => candidate.id === id);
+      expect(preset, id).toBeDefined();
+      expect(preset?.targetKinds, id).toEqual(["text"]);
+      expect(preset?.parameterSchema.map((parameter) => parameter.id), id).toContain("intensity");
+      expect(preset?.parameterSchema.map((parameter) => parameter.id), id).toContain("ease");
+    }
+
+    expect(listMotionPresets({ targetKind: "text", phase: "enter" }).map((preset) => preset.id))
+      .toEqual(expect.arrayContaining(["text.enter.matrix-decode", "text.enter.clip-wipe"]));
+    expect(listMotionPresets({ targetKind: "text", phase: "emphasis" }).map((preset) => preset.id))
+      .toEqual(expect.arrayContaining(migratedIds.filter((id) => id.includes(".emphasis."))));
   });
 
   it("reuses safe keyframes for general elements without text-only parameters", () => {
