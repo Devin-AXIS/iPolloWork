@@ -959,6 +959,7 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
     const models = input.models ?? {
       [modelId]: { name: input.modelName.trim() || modelId },
     };
+    const userEnv = input.userEnv ?? [];
     if (!client || !workspaceId) {
       setLocalProviderError("iPolloWork server is not connected for this workspace.");
       return;
@@ -996,6 +997,13 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
           providerID: input.providerId,
           auth: { type: "api", key: input.apiKey.trim() },
         });
+      }
+      if (userEnv.length) {
+        await client.upsertUserEnv(userEnv);
+        setUserEnvKeys((current) => Array.from(new Set([
+          ...current,
+          ...userEnv.map((entry) => entry.key),
+        ])));
       }
       if (input.setDefault) {
         local.setPrefs((previous) => ({

@@ -7,7 +7,7 @@ const ID_RE = /^[a-z0-9]+(?:[._/-][a-z0-9]+)*$/;
 const SIMPLE_ID_RE = /^[a-z0-9]+(?:[._-][a-z0-9]+)*$/;
 const FIELD_ID_RE = /^[A-Za-z][A-Za-z0-9._-]*$/;
 const RELATION_RE = /^(?:action|authorization|resource|service|workflow):[a-z0-9]+(?:[._/-][a-z0-9]+)*$/;
-const RESERVED_EXTENSION_IDS = new Set(["google-workspace", "media-center", "openai-image-generation", "storage"]);
+const RESERVED_EXTENSION_IDS = new Set(["google-workspace", "media-center", "minimax", "openai-image-generation", "storage"]);
 
 const sourceFormatSchema = z.enum([
   "ipollowork-builtin",

@@ -458,15 +458,19 @@ export const BUILT_IN_IPOLLOWORK_EXTENSION_MANIFESTS: iPolloWorkExtensionManifes
     schemaVersion: 1,
     id: "minimax",
     name: "MiniMax",
-    description: "Configure MiniMax models through regional OpenAI-compatible or Anthropic endpoints.",
+    description: "Configure MiniMax models and generate workspace image artifacts through regional endpoints.",
     source: { format: "ipollowork-builtin", origin: "builtin", trusted: true },
     composer: { prompt: "Use MiniMax to " },
     setup: {
-      instructions: "Save a MiniMax API key, choose a regional endpoint, and add both current MiniMax models to OpenCode.",
+      instructions: "Save a MiniMax API key, choose a regional endpoint, add the current models to OpenCode, and enable workspace image generation.",
       primaryCta: "Configure MiniMax",
+      requiredEnv: ["MINIMAX_API_KEY"],
     },
     resources: [
       { type: "provider", id: "minimax", label: "MiniMax", providerId: "minimax", required: true },
+      { type: "secret", id: "minimax-api-key", envKey: "MINIMAX_API_KEY", required: true },
+      { type: "local-service", id: "minimax-image-generation-service", label: "MiniMax image generation", required: true },
+      { type: "tool", id: "minimax-image-generate", label: "Image generation", required: true },
     ],
     contributions: [
       { type: "settings-panel", ref: "ipollowork.minimax.settings", location: "settings-detail" },
@@ -474,8 +478,9 @@ export const BUILT_IN_IPOLLOWORK_EXTENSION_MANIFESTS: iPolloWorkExtensionManifes
     ],
     enablement: [
       { type: "provider-connected", ref: "minimax", label: "MiniMax provider" },
+      { type: "env-set", ref: "MINIMAX_API_KEY", label: "MiniMax API key" },
     ],
-    lifecycle: { reload: ["config"], detection: ["provider:minimax"] },
+    lifecycle: { reload: ["config"], detection: ["provider:minimax", "env:MINIMAX_API_KEY"] },
   },
   {
     schemaVersion: 1,
