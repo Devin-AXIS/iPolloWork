@@ -53,6 +53,7 @@ import { createConnectionsStore, useConnectionsStoreSnapshot } from "@/react-app
 import { useOrgMcpConnections } from "@/react-app/domains/connections/use-org-mcp-connections";
 import { createiPolloWorkServerStore, useiPolloWorkServerStoreSnapshot } from "@/react-app/domains/connections/ipollowork-server-store";
 import { createProviderAuthStore, useProviderAuthStoreSnapshot } from "@/react-app/domains/connections/provider-auth/store";
+import { formatProviderAuthName } from "@/react-app/domains/connections/provider-auth/provider-auth-curation";
 import ProviderAuthModal from "@/react-app/domains/connections/provider-auth/provider-auth-modal";
 import ConnectionsModals from "@/react-app/domains/connections/modals";
 import { AiSettingsView } from "@/react-app/domains/settings/pages/ai-view";
@@ -1425,7 +1426,8 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
     providerConnectedIdSet.has(provider.id)
       ? [{
           id: provider.id,
-          name: provider.name ?? provider.id,
+          name: formatProviderAuthName(provider.id, provider.name),
+          displayId: provider.id.trim().toLowerCase() === "opencode" ? "ipollowork" : provider.id,
           source: provider.source,
         }]
       : [],

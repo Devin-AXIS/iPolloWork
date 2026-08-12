@@ -4,6 +4,7 @@ import {
   ANIMATION_TEMPLATES,
   createAnimationTemplateSections,
   resolveAnimationTemplateParameters,
+  resolveAnimationTemplateApplication,
   resolveAnimationTemplatePreset,
   sortTextAnimationTemplates,
 } from "./AnimationTemplatesTab";
@@ -108,6 +109,25 @@ describe("AnimationTemplatesTab catalog", () => {
 
     expect(resolveAnimationTemplatePreset(fade, "text")?.id).toBe("text.enter.fade");
     expect(resolveAnimationTemplatePreset(fade, "element")?.id).toBe("element.enter.fade");
+  });
+
+  it("applies element-only box templates to a text element as element motion", () => {
+    const scale = ANIMATION_TEMPLATES.find((template) => template.id === "box-scale");
+    const tilt = ANIMATION_TEMPLATES.find((template) => template.id === "box-focus-tilt");
+    if (!scale || !tilt) throw new Error("Expected box templates are missing");
+
+    expect(resolveAnimationTemplatePreset(scale, "text")).toMatchObject({
+      id: "element.enter.scale",
+      targetKinds: ["element"],
+    });
+    expect(resolveAnimationTemplateApplication(scale, "text")).toMatchObject({
+      targetKind: "element",
+      preset: { id: "element.enter.scale" },
+    });
+    expect(resolveAnimationTemplateApplication(tilt, "text")).toMatchObject({
+      targetKind: "element",
+      preset: { id: "motion.emphasis.focus-tilt" },
+    });
   });
 
   it("defaults every color-driven template to the active design theme", () => {

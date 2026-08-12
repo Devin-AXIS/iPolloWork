@@ -7,6 +7,8 @@ export const DESKTOP_AUTH_SESSION_PARTITION = "persist:ipollowork-auth";
 const DESKTOP_AUTH_CLOSE_URL = "ipollowork-auth-window://close";
 const DESKTOP_AUTH_CLOSE_CONTROL_ID = "ipollowork-desktop-auth-close";
 
+const IPOLLOWORK_AUTH_LOGO_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" role="img" aria-label="iPolloWork logo"><title>iPolloWork logo</title><rect width="512" height="512" rx="256" fill="#ffffff"/><rect x="226" y="70" width="60" height="76" rx="22" fill="#000000"/><rect x="115" y="185" width="286" height="62" rx="24" fill="#000000" transform="rotate(31 258 216)"/><rect x="111" y="270" width="290" height="62" rx="24" fill="#000000" transform="rotate(-31 256 301)"/><rect x="226" y="250" width="60" height="172" rx="22" fill="#000000"/></svg>`;
+
 function desktopAuthCloseControlScript() {
   return `(() => {
     const id = ${JSON.stringify(DESKTOP_AUTH_CLOSE_CONTROL_ID)};
@@ -52,6 +54,52 @@ function desktopAuthCloseControlScript() {
       window.location.href = ${JSON.stringify(DESKTOP_AUTH_CLOSE_URL)};
     });
     document.documentElement.append(button);
+  })()`;
+}
+
+export function isProviderAuthCallbackUrl(value) {
+  try {
+    const url = new URL(value);
+    if (url.protocol !== "http:" && url.protocol !== "https:") return false;
+    const host = url.hostname.toLowerCase();
+    if (host !== "localhost" && host !== "127.0.0.1") return false;
+    return url.pathname.replace(/\/+$/, "") === "/auth/callback";
+  } catch {
+    return false;
+  }
+}
+
+export function desktopAuthCallbackBrandScript({ appName = "iPolloWork" } = {}) {
+  const safeAppName = String(appName || "iPolloWork").trim() || "iPolloWork";
+  return `(() => {
+    const appName = ${JSON.stringify(safeAppName)};
+    const logoSvg = ${JSON.stringify(IPOLLOWORK_AUTH_LOGO_SVG)};
+    document.title = appName + " Authorization";
+
+    const logoCandidate = Array.from(document.querySelectorAll("svg,img,h1,h2,div,span"))
+      .find((element) => /open\\s*code/i.test(element.textContent || "") || /opencode/i.test(element.getAttribute("alt") || ""));
+
+    const walk = document.createTreeWalker(document.body || document.documentElement, NodeFilter.SHOW_TEXT);
+    const replacements = [
+      ["Open" + "Code is now connected to ChatGPT.", appName + " is now connected to ChatGPT."],
+      ["Open" + "Code", appName],
+      ["open" + "CODE", appName],
+    ];
+    const nodes = [];
+    while (walk.nextNode()) nodes.push(walk.currentNode);
+    for (const node of nodes) {
+      let next = node.nodeValue || "";
+      for (const [from, to] of replacements) next = next.split(from).join(to);
+      node.nodeValue = next;
+    }
+
+    if (logoCandidate) {
+      const wrapper = document.createElement("div");
+      wrapper.innerHTML = logoSvg;
+      const logo = wrapper.firstElementChild;
+      logo.style.cssText = "width: 136px; height: auto; display: block; margin: 0 auto 22px;";
+      logoCandidate.replaceWith(logo);
+    }
   })()`;
 }
 
@@ -136,6 +184,9 @@ function installDesktopAuthCloseControl(window) {
   window.webContents.on("dom-ready", () => {
     if (window.isDestroyed()) return;
     void window.webContents.executeJavaScript(desktopAuthCloseControlScript(), true).catch(() => undefined);
+    if (isProviderAuthCallbackUrl(window.webContents.getURL())) {
+      void window.webContents.executeJavaScript(desktopAuthCallbackBrandScript({ appName: "iPolloWork" }), true).catch(() => undefined);
+    }
   });
 }
 
