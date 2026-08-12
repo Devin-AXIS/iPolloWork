@@ -10,6 +10,7 @@ import { useNavigate, useParams } from "react-router-dom";
 
 import { publishInspectorSlice, recordInspectorEvent } from "@/app/lib/app-inspector";
 import {
+  desktopResumeEvent,
   resolveWorkspaceListSelectedId,
   workspaceBootstrap,
   type iPolloWorkServerInfo,
@@ -132,6 +133,7 @@ export function useWorkspaceRouteState(input: UseWorkspaceRouteStateInput) {
     [],
   );
   const refreshInFlightRef = useRef(false);
+  const refreshEpochRef = useRef(0);
   const workContextRef = useRef(workContextId);
   const workspacesRef = useRef<RouteWorkspace[]>([]);
   const remoteWorkspaceCheckRunRef = useRef<Record<string, string>>({});
@@ -145,6 +147,7 @@ export function useWorkspaceRouteState(input: UseWorkspaceRouteStateInput) {
   const backgroundSessionLoadInFlight = useRef<Map<string, number>>(new Map());
   useEffect(() => {
     workContextRef.current = workContextId;
+    refreshEpochRef.current += 1;
     refreshInFlightRef.current = false;
     setLoading(true);
     setRouteError(null);
@@ -199,11 +202,15 @@ export function useWorkspaceRouteState(input: UseWorkspaceRouteStateInput) {
   const loadWorkspaceSessionsInBackground = useCallback(
     async (workspaces: RouteWorkspace[]) => {
       const requestedContextId = workContextRef.current;
+      const sessionLoadEpoch = refreshEpochRef.current;
+      const isCurrentSessionLoad = () =>
+        refreshEpochRef.current === sessionLoadEpoch &&
+        workContextRef.current === requestedContextId;
       const MAX_ATTEMPTS = 6;
       const backoffMs = (attempt: number) => Math.min(500 * Math.pow(2, attempt), 4_000);
 
       const fetchOnce = async (workspace: RouteWorkspace, attempt: number): Promise<void> => {
-        if (workContextRef.current !== requestedContextId) return;
+        if (!isCurrentSessionLoad()) return;
         const isRemoteiPolloWorkWorkspace = workspace.workspaceType === "remote" && workspace.remoteType !== "opencode";
         const endpoint = endpointForWorkspace(workspace);
         if (!endpoint) {
@@ -247,7 +254,7 @@ export function useWorkspaceRouteState(input: UseWorkspaceRouteStateInput) {
                 normalizeDirectoryPath(session?.directory ?? "") === workspaceRoot,
               )
             : fetchedItems;
-          if (workContextRef.current !== requestedContextId) return;
+          if (!isCurrentSessionLoad()) return;
           setSessionsByWorkspaceId((current) => {
             const nextItems = mergeFetchedSessionsWithPending(workspace.id, items, current[workspace.id] ?? []);
             const next = { ...current, [workspace.id]: nextItems };
@@ -282,13 +289,14 @@ export function useWorkspaceRouteState(input: UseWorkspaceRouteStateInput) {
           // empty while the managed engine finishes starting.
           if (items.length === 0 && attempt === 0) {
             window.setTimeout(() => {
+              if (!isCurrentSessionLoad()) return;
               if (backgroundSessionLoadInFlight.current.get(workspace.id)) return;
               backgroundSessionLoadInFlight.current.delete(workspace.id);
               void fetchOnce(workspace, 1);
             }, 3_000);
           }
         } catch (error) {
-          if (workContextRef.current !== requestedContextId) return;
+          if (!isCurrentSessionLoad()) return;
           const message = error instanceof Error ? error.message : t("app.unknown_error");
           // The first cold call to OpenCode's /session endpoint often hits
           // the 12s server timeout while the daemon finishes warming up
@@ -308,6 +316,7 @@ export function useWorkspaceRouteState(input: UseWorkspaceRouteStateInput) {
           // remote workers a precise endpoint/token/workspace diagnostic.
           if (workspace.workspaceType === "remote") {
             const connectionState = await diagnoseRemoteWorkspaceTaskLoadFailure(workspace, message);
+            if (!isCurrentSessionLoad()) return;
             setErrorsByWorkspaceId((current) => ({
               ...current,
               [workspace.id]: connectionState.message ?? "Remote worker connection failed.",
@@ -341,6 +350,9 @@ export function useWorkspaceRouteState(input: UseWorkspaceRouteStateInput) {
     // multiplied quickly on the event loop and caused the UI to freeze.
     if (refreshInFlightRef.current) return;
     refreshInFlightRef.current = true;
+    const refreshEpoch = ++refreshEpochRef.current;
+    const isCurrentRefresh = () =>
+      refreshEpochRef.current === refreshEpoch && workContextRef.current === workContextId;
     const reportStartupTiming = !STARTUP_ROUTE_TIMING_REPORTED;
     const logStartupTiming = (...args: unknown[]) => {
       if (reportStartupTiming) console.info(...args);
@@ -377,8 +389,11 @@ export function useWorkspaceRouteState(input: UseWorkspaceRouteStateInput) {
         }
       }
 
+      if (!isCurrentRefresh()) return;
+
       const connectionStartedAt = Date.now();
       const { normalizedBaseUrl, resolvedToken, resolvedHostToken, hostInfo } = await resolveiPolloWorkConnection();
+      if (!isCurrentRefresh()) return;
       logStartupTiming(`[startup] local server connection resolved in ${Date.now() - connectionStartedAt}ms`);
       onHostInfo(hostInfo);
       if (!normalizedBaseUrl || !resolvedToken) {
@@ -427,7 +442,7 @@ export function useWorkspaceRouteState(input: UseWorkspaceRouteStateInput) {
         ],
       );
 
-      if (workContextRef.current !== requestedContextId) return;
+      if (!isCurrentRefresh()) return;
 
       // Preserve any sessions we already have cached so switching routes
       // doesn't erase the sidebar while we refetch. Never carry a local
@@ -509,7 +524,9 @@ export function useWorkspaceRouteState(input: UseWorkspaceRouteStateInput) {
         } catch {
           return [];
         }
-      })).then((results) => setTemplateSessionTypes(results.flat()));
+      })).then((results) => {
+        if (isCurrentRefresh()) setTemplateSessionTypes(results.flat());
+      });
       // Mark the chosen workspace as active on the server so that the
       // OpenCode engine bound to it re-reads opencode.jsonc and applies
       // permissions. Fire-and-forget; the route is idempotent and any
@@ -547,7 +564,7 @@ export function useWorkspaceRouteState(input: UseWorkspaceRouteStateInput) {
         });
       }
     } catch (error) {
-      if (workContextRef.current !== requestedContextId) return;
+      if (!isCurrentRefresh()) return;
       const message = describeRouteError(error);
       console.error("[session-route] refreshRouteState failed", error);
       recordInspectorEvent("route.refresh.error", {
@@ -563,18 +580,20 @@ export function useWorkspaceRouteState(input: UseWorkspaceRouteStateInput) {
         );
       }
     } finally {
-      if (workContextRef.current === requestedContextId) {
+      if (isCurrentRefresh()) {
         setLoading(false);
         await waitForCommittedRouteState();
-        if (workContextRef.current === requestedContextId) {
+        if (isCurrentRefresh()) {
           finishWorkContextSwitch(requestedContextId);
         }
       }
-      refreshInFlightRef.current = false;
+      if (refreshEpochRef.current === refreshEpoch) {
+        refreshInFlightRef.current = false;
+      }
       // Tell the boot overlay the first route data load has completed so
       // the overlay dismisses after BOTH the desktop boot and the workspace
       // list/sessions are ready.
-      if (routeReadyAfterRefresh) {
+      if (routeReadyAfterRefresh && isCurrentRefresh()) {
         markBootRouteReady();
       }
       logStartupTiming(`[startup] session route refresh completed in ${Date.now() - refreshStartedAt}ms`);
@@ -653,16 +672,30 @@ export function useWorkspaceRouteState(input: UseWorkspaceRouteStateInput) {
       // Self-heal: if the previous refresh got stuck mid-flight (e.g. macOS
       // backgrounded the webview and never let a fetch resolve), clear the
       // guard so a re-entry after resume actually goes through.
+      refreshEpochRef.current += 1;
       refreshInFlightRef.current = false;
       void refreshRouteState();
     };
     window.addEventListener("ipollowork-server-settings-changed", handleSettingsChange);
+
+    const handleDesktopResume = () => {
+      // Invalidate every request started before suspend. A late completion
+      // must not overwrite the freshly recovered workspace/session state.
+      refreshEpochRef.current += 1;
+      refreshInFlightRef.current = false;
+      backgroundSessionLoadInFlight.current.clear();
+      setRetryingWorkspaceIds([]);
+      void refreshRouteState();
+    };
+    window.addEventListener(desktopResumeEvent, handleDesktopResume);
+    window.addEventListener("online", handleDesktopResume);
 
     // Also retry on visibility flip independently — even when nobody else
     // dispatches the settings event.
     const handleVisibility = () => {
       if (typeof document === "undefined") return;
       if (document.visibilityState !== "visible") return;
+      refreshEpochRef.current += 1;
       refreshInFlightRef.current = false;
       void refreshRouteState();
     };
@@ -677,6 +710,8 @@ export function useWorkspaceRouteState(input: UseWorkspaceRouteStateInput) {
         startupRetryTimerRef.current = null;
       }
       window.removeEventListener("ipollowork-server-settings-changed", handleSettingsChange);
+      window.removeEventListener(desktopResumeEvent, handleDesktopResume);
+      window.removeEventListener("online", handleDesktopResume);
       if (typeof document !== "undefined") {
         document.removeEventListener("visibilitychange", handleVisibility);
       }
