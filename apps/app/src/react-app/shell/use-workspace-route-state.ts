@@ -30,7 +30,6 @@ import {
   type ResolvedWorkspaceEndpoint,
 } from "@/app/lib/workspace-endpoint";
 import type { WorkspaceConnectionState } from "@/app/types";
-import { normalizeDirectoryPath } from "@/app/utils";
 import { t } from "@/i18n";
 import {
   diagnoseRemoteWorkspaceTaskLoadFailure,
@@ -248,12 +247,7 @@ export function useWorkspaceRouteState(input: UseWorkspaceRouteStateInput) {
         try {
           const response = await endpoint.client.listSessions(endpoint.workspaceId, { limit: 200 });
           const fetchedItems = response.items ?? [];
-          const workspaceRoot = normalizeDirectoryPath(workspace.path ?? "");
-          const items = workspaceRoot && !isRemoteiPolloWorkWorkspace
-            ? fetchedItems.filter((session) =>
-                normalizeDirectoryPath(session?.directory ?? "") === workspaceRoot,
-              )
-            : fetchedItems;
+          const items = fetchedItems;
           if (!isCurrentSessionLoad()) return;
           setSessionsByWorkspaceId((current) => {
             const nextItems = mergeFetchedSessionsWithPending(workspace.id, items, current[workspace.id] ?? []);
@@ -451,12 +445,7 @@ export function useWorkspaceRouteState(input: UseWorkspaceRouteStateInput) {
       const alreadyLoadedWorkspaceIds = new Set(Object.keys(sessionsByWorkspaceIdRef.current));
       const cachedEntries = nextWorkspaces.map((workspace) => {
         const cachedSessions = sessionsByWorkspaceIdRef.current[workspace.id] ?? [];
-        const workspaceRoot = normalizeDirectoryPath(workspace.path ?? "");
-        const sessions = workspaceRoot && workspace.workspaceType !== "remote"
-          ? cachedSessions.filter((session) =>
-              normalizeDirectoryPath(session?.directory ?? "") === workspaceRoot,
-            )
-          : cachedSessions;
+        const sessions = cachedSessions;
         return { workspaceId: workspace.id, sessions };
       });
       // Prefer, in order: the URL-selected workspace (if it owns the session),

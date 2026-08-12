@@ -87,4 +87,10 @@ describe("startup session loading", () => {
     expect(desktopConfigSource).toContain("window.addEventListener(desktopResumeEvent, handleDesktopResume)");
     expect(desktopConfigSource).toContain("void desktopConfigHandler()");
   });
+
+  test("trusts workspace-scoped session results instead of filtering by path aliases", () => {
+    expect(routeStateSource).toContain("const items = fetchedItems;");
+    expect(routeStateSource).toContain("const sessions = cachedSessions;");
+    expect(routeStateSource).not.toContain("normalizeDirectoryPath(session?.directory ?? \"\") === workspaceRoot");
+  });
 });
