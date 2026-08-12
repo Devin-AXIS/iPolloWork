@@ -1818,13 +1818,20 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
     }
 
     try {
-      if (resolved.toLowerCase() === TOKENSTAR_PROVIDER.providerId) {
-        await patchRuntimeProviders({ [TOKENSTAR_PROVIDER.providerId]: null });
+      const resolvedLower = resolved.toLowerCase();
+      const runtimeOwnedProviderId =
+        resolvedLower === QWEN3_CODER_PROVIDER.providerId
+          ? QWEN3_CODER_PROVIDER.providerId
+          : resolvedLower === TOKENSTAR_PROVIDER.providerId
+            ? TOKENSTAR_PROVIDER.providerId
+            : null;
+      if (runtimeOwnedProviderId) {
+        await patchRuntimeProviders({ [runtimeOwnedProviderId]: null });
         try {
           await updateProjectConfigFile((raw) =>
             formatConfigWithoutCloudProvider(
               raw,
-              TOKENSTAR_PROVIDER.providerId,
+              runtimeOwnedProviderId,
               options.disabledProviders(),
             ),
           );
