@@ -30,6 +30,11 @@ export interface AnimationTemplateDefinition {
   parameters?: MotionParameters;
 }
 
+export interface AnimationTemplateApplication {
+  preset: MotionPreset;
+  targetKind: MotionTargetKind;
+}
+
 export interface AnimationTemplateDraft {
   templateId: string;
   presetId: string;
@@ -80,6 +85,14 @@ const CATEGORY_LABELS: Record<
     en: "Text",
     zh: "文字动画",
     hint: { en: "Word, character, mask, and glow motion", zh: "支持按词、按字、遮罩与流光" },
+  },
+};
+
+const BOX_AUTOMATION_SECTION_LABEL = {
+  title: { en: "Box & Automation", zh: "盒子与自动化" },
+  hint: {
+    en: "Card, box, material, and automated emphasis effects",
+    zh: "卡片、盒子、材质与自动化强调效果",
   },
 };
 
@@ -431,6 +444,21 @@ export function resolveAnimationTemplatePreset(
   return presetId ? (getMotionPreset(presetId) ?? null) : null;
 }
 
+function isBoxAutomationTemplate(template: AnimationTemplateDefinition): boolean {
+  return template.id.startsWith("box-");
+}
+
+export function resolveAnimationTemplateApplication(
+  template: AnimationTemplateDefinition,
+  targetKind: MotionTargetKind,
+): AnimationTemplateApplication | null {
+  const applicationTargetKind =
+    targetKind === "text" && isBoxAutomationTemplate(template) ? "element" : targetKind;
+  const preset = resolveAnimationTemplatePreset(template, applicationTargetKind);
+  if (!preset?.targetKinds.includes(applicationTargetKind)) return null;
+  return { preset, targetKind: applicationTargetKind };
+}
+
 export function resolveAnimationTemplateParameters(
   template: AnimationTemplateDefinition,
   preset: MotionPreset,
@@ -489,7 +517,10 @@ export function createAnimationTemplateSections(
   templates: readonly AnimationTemplateDefinition[],
   targetKind: MotionTargetKind | null,
 ): AnimationTemplateSection[] {
-  const generalTemplates = templates.filter((item) => item.category === "general");
+  const generalTemplates = templates.filter(
+    (item) => item.category === "general" && !isBoxAutomationTemplate(item),
+  );
+  const boxAutomationTemplates = templates.filter(isBoxAutomationTemplate);
   const textTemplates = sortTextAnimationTemplates(
     templates.filter((item) => item.category === "text"),
   );
@@ -509,9 +540,20 @@ export function createAnimationTemplateSections(
           templates: generalTemplates,
         } satisfies AnimationTemplateSection)
       : null;
+  const boxAutomationSection =
+    boxAutomationTemplates.length > 0
+      ? ({
+          key: "box-automation",
+          title: BOX_AUTOMATION_SECTION_LABEL.title,
+          hint: BOX_AUTOMATION_SECTION_LABEL.hint,
+          templates: boxAutomationTemplates,
+        } satisfies AnimationTemplateSection)
+      : null;
 
   if (targetKind !== "text") {
-    return generalSection ? [generalSection] : [];
+    return [generalSection, boxAutomationSection].filter(
+      (section): section is AnimationTemplateSection => section !== null,
+    );
   }
 
   return [
@@ -535,6 +577,7 @@ export function createAnimationTemplateSections(
         }
       : null,
     generalSection,
+    boxAutomationSection,
   ].filter((section): section is AnimationTemplateSection => section !== null);
 }
 
@@ -551,8 +594,8 @@ export const AnimationTemplatesTab = memo(function AnimationTemplatesTab({
     const query = search.trim().toLowerCase();
     const matches = ANIMATION_TEMPLATES.filter((template) => {
       if (!targetKind) return false;
-      const preset = resolveAnimationTemplatePreset(template, targetKind);
-      if (!preset?.targetKinds.includes(targetKind)) return false;
+      const application = resolveAnimationTemplateApplication(template, targetKind);
+      if (!application) return false;
       return !query || (
         template.title.en.toLowerCase().includes(query) ||
         template.title.zh.includes(query) ||
@@ -568,24 +611,24 @@ export const AnimationTemplatesTab = memo(function AnimationTemplatesTab({
       resolveMotionInstances(selectedGsapAnimations).map(({ instance }) => instance.presetId),
     );
     return ANIMATION_TEMPLATES.filter((template) => {
-      const preset = resolveAnimationTemplatePreset(template, targetKind);
-      return preset ? presetIds.has(preset.id) : false;
+      const application = resolveAnimationTemplateApplication(template, targetKind);
+      return application ? presetIds.has(application.preset.id) : false;
     }).map((template) => template.title[locale]);
   }, [locale, selectedGsapAnimations, targetKind]);
 
   const applyTemplate = useCallback(
     (template: AnimationTemplateDefinition) => {
       if (!targetKind || !domEditSelection) return;
-      const preset = resolveAnimationTemplatePreset(template, targetKind);
-      if (!preset || !preset.targetKinds.includes(targetKind)) return;
+      const application = resolveAnimationTemplateApplication(template, targetKind);
+      if (!application) return;
       onSelectTemplate({
         templateId: template.id,
-        presetId: preset.id,
-        targetKind,
+        presetId: application.preset.id,
+        targetKind: application.targetKind,
         selection: domEditSelection,
         parameters: resolveAnimationTemplateParameters(
           template,
-          preset,
+          application.preset,
           domEditSelection.element.hasAttribute("data-var-text"),
         ),
       });
