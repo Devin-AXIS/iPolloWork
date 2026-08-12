@@ -627,6 +627,14 @@ export function AppSidebar(props: AppSidebarProps) {
     ? activeEnterprise.logoUrl ?? DEFAULT_BRAND_LOGO_URL
     : brandLogoUrl ?? shellConfig.brandLogoDataUrl ?? DEFAULT_BRAND_LOGO_URL;
   const effectiveBrandAppName = activeEnterprise?.name ?? brandAppName;
+  const sidebarWorkspaceSessionGroups = React.useMemo(() => {
+    const selectedGroup = props.workspaceSessionGroups.find(
+      (entry) => entry.workspace.id === props.selectedWorkspaceId,
+    );
+    return selectedGroup
+      ? [selectedGroup]
+      : props.workspaceSessionGroups.slice(0, 1);
+  }, [props.selectedWorkspaceId, props.workspaceSessionGroups]);
 
   return (
     <SidebarContext.Provider value={contextValue}>
@@ -719,7 +727,7 @@ export function AppSidebar(props: AppSidebarProps) {
             data-sidebar="content"
             className="no-scrollbar flex min-h-0 flex-1 flex-col gap-px overflow-auto [--radius:var(--radius-xl)] group-data-[collapsible=icon]:overflow-hidden"
           >
-            {props.workspaceSessionGroups.slice(0, 1).map((group) => (
+            {sidebarWorkspaceSessionGroups.map((group) => (
               <WorkspaceSidebarGroup
                 key={group.workspace.id}
                 group={group}
