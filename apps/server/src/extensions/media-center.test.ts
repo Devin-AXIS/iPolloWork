@@ -9,6 +9,8 @@ import type { ServerConfig } from "../types.js";
 import {
   MEDIA_EXTENSION_ACTIONS,
   MEDIA_EXTENSION_ID,
+  MINIMAX_VIDEO_ENDPOINT_REGISTRY,
+  MINIMAX_VIDEO_MODEL_REGISTRY,
   callMediaExtensionAction,
   estimateVoiceoverDurationSeconds,
   planSceneVoiceoverTiming,
@@ -63,6 +65,120 @@ async function workspaceConfig() {
 }
 
 describe("Media Center extension", () => {
+  test("registers the MiniMax video model and regional v2 endpoints", () => {
+    expect(MINIMAX_VIDEO_MODEL_REGISTRY).toEqual({
+      defaultModel: "MiniMax-H3",
+      models: ["MiniMax-H3"],
+    });
+    expect(MINIMAX_VIDEO_ENDPOINT_REGISTRY).toEqual([
+      { region: "global_en", url: "https://api.minimax.io/v2/video_generation" },
+      { region: "cn_zh", url: "https://api.minimaxi.com/v2/video_generation" },
+    ]);
+  });
+
+  test("creates a MiniMax text-to-video task with v2 content", async () => {
+    globalThis.fetch = ((input, init) => {
+      expect(String(input)).toBe("https://api.minimax.io/v2/video_generation");
+      expect(init?.headers).toMatchObject({ Authorization: "Bearer test-key" });
+      expect(JSON.parse(String(init?.body))).toEqual({
+        model: "MiniMax-H3",
+        content: [{ type: "text", text: "A paper boat crossing a moonlit lake" }],
+        resolution: "2K",
+        duration: 6,
+        ratio: "16:9",
+        callback_url: "https://example.test/video-ready",
+      });
+      return Promise.resolve(new Response(JSON.stringify({ task_id: "video-task-123" }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }));
+    }) as typeof fetch;
+
+    const result = await callMediaExtensionAction(config, env({ MINIMAX_API_KEY: "test-key" }), "video_generate", {
+      provider: "minimax",
+      prompt: "A paper boat crossing a moonlit lake",
+      duration: 6,
+      ratio: "16:9",
+      callbackUrl: "https://example.test/video-ready",
+    }, {});
+
+    expect(result).toMatchObject({
+      ok: true,
+      extensionId: MEDIA_EXTENSION_ID,
+      action: "video_generate",
+      result: {
+        provider: "minimax",
+        operation: "video_generate",
+        taskId: "video-task-123",
+        output: { taskId: "video-task-123" },
+      },
+    });
+    expect(JSON.stringify(result)).not.toContain("test-key");
+  });
+
+  test("queries and parses a MiniMax video task on the China endpoint", async () => {
+    globalThis.fetch = ((input, init) => {
+      expect(String(input)).toBe("https://api.minimaxi.com/v2/query/video_generation/video-task-456");
+      expect(init?.method).toBe("GET");
+      expect(init?.headers).toMatchObject({ Authorization: "Bearer test-key" });
+      return Promise.resolve(new Response(JSON.stringify({
+        task: {
+          id: "video-task-456",
+          model: "MiniMax-H3",
+          status: "Success",
+          content: { url: "https://cdn.example.test/video.mp4" },
+          resolution: "2K",
+          duration: 8,
+        },
+      }), { status: 200, headers: { "content-type": "application/json" } }));
+    }) as typeof fetch;
+
+    const result = await callMediaExtensionAction(config, env({ MINIMAX_API_KEY: "test-key" }), "task_get", {
+      provider: "minimax",
+      region: "cn_zh",
+      taskId: "video-task-456",
+    }, {});
+
+    expect(result).toMatchObject({
+      ok: true,
+      result: {
+        provider: "minimax",
+        operation: "task_get",
+        taskId: "video-task-456",
+        output: {
+          taskId: "video-task-456",
+          providerResponse: {
+            task: {
+              status: "Success",
+              content: { url: "https://cdn.example.test/video.mp4" },
+            },
+          },
+        },
+      },
+    });
+  });
+
+  test("rejects unsupported MiniMax video parameters before provider access", async () => {
+    let requested = false;
+    globalThis.fetch = (() => {
+      requested = true;
+      return Promise.reject(new Error("MiniMax must not be called"));
+    }) as unknown as typeof fetch;
+
+    await expect(callMediaExtensionAction(config, env({ MINIMAX_API_KEY: "test-key" }), "video_generate", {
+      provider: "minimax",
+      prompt: "A paper boat",
+      model: "unsupported",
+      duration: 6,
+    }, {})).rejects.toMatchObject({ code: "invalid_minimax_video_model" });
+    await expect(callMediaExtensionAction(config, env({ MINIMAX_API_KEY: "test-key" }), "video_generate", {
+      provider: "minimax",
+      prompt: "A paper boat",
+      duration: 3,
+    }, {})).rejects.toMatchObject({ code: "invalid_minimax_video_duration" });
+    expect(requested).toBe(false);
+  });
+
   test("estimates multilingual narration duration before provider synthesis", () => {
     expect(estimateVoiceoverDurationSeconds("这是八个汉字的旁白。")).toBeGreaterThan(2);
     expect(estimateVoiceoverDurationSeconds("Five clear words for this scene.")).toBeGreaterThan(2);
