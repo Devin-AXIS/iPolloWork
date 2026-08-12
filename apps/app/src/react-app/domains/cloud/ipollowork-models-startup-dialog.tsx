@@ -68,7 +68,7 @@ export function IPolloWorkModelsStartupDialog(props: IPolloWorkModelsStartupDial
           </div>
 
           <p className="text-xs text-dls-secondary">
-            Pricing is handled through iPolloWork Cloud. Continue without it to use OpenCode Zen or your own provider keys.
+            Pricing is handled through iPolloWork Cloud. Continue without it to use iPolloWork built-in models or your own provider keys.
           </p>
         </div>
 

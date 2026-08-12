@@ -22,7 +22,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { desktopFetchViaMain, openDesktopUrl } from "@/app/lib/desktop";
+import { desktopFetchViaMain, openDesktopAuthUrl, openDesktopUrl } from "@/app/lib/desktop";
 import { isDesktopRuntime } from "@/app/utils";
 import { compareProviders } from "@/app/utils/providers";
 import { Button } from "@/components/ui/button";
@@ -32,6 +32,7 @@ import {
   parseTokenStarModels,
   TOKENSTAR_PROVIDER,
 } from "./tokenstar-provider";
+import { formatProviderAuthName } from "./provider-auth-curation";
 import type {
   ProviderAuthMethod,
   ProviderAuthProvider,
@@ -49,17 +50,6 @@ type ProviderAuthEntry = {
 type ProviderOAuthSession = ProviderOAuthStartResult & {
   providerId: string;
   methodLabel: string;
-};
-
-const PROVIDER_LABELS: Record<string, string> = {
-  ipollowork: "iPolloWork",
-  opencode: "OpenCode Zen",
-  openai: "OpenAI",
-  anthropic: "Anthropic",
-  google: "Google",
-  openrouter: "OpenRouter",
-  qwen: "Qwen",
-  tokenstar: "TokenStar",
 };
 
 const IPOLLOWORK_MODELS_PROVIDER_ID = "ipollowork";
@@ -117,30 +107,6 @@ export default function ProviderAuthModal(props: ProviderAuthModalProps) {
   const oauthCodeCopiedResetRef = useRef<number | null>(null);
   const autoOpenedPreferredProviderIdRef = useRef<string | null>(null);
 
-  const formatProviderName = (id: string, fallback?: string) => {
-    const named = fallback?.trim();
-    if (named) return named;
-
-    const normalized = id.trim();
-    const mapped = PROVIDER_LABELS[normalized.toLowerCase()];
-    if (mapped) return mapped;
-
-    const cleaned = normalized.replace(/[_-]+/g, " ").replace(/\s+/g, " ").trim();
-    if (!cleaned) return id;
-
-    return cleaned
-      .split(" ")
-      .flatMap((word) => {
-        if (!word) return [];
-        if (/\d/.test(word) || word.length <= 3) {
-          return [word.toUpperCase()];
-        }
-        const lower = word.toLowerCase();
-        return [lower.charAt(0).toUpperCase() + lower.slice(1)];
-      })
-      .join(" ");
-  };
-
   const isOpenAiHeadlessMethod = (method: ProviderAuthMethod) => {
     const label = method.label.toLowerCase();
     return method.type === "oauth" && (label.includes("headless") || label.includes("device"));
@@ -158,7 +124,7 @@ export default function ProviderAuthModal(props: ProviderAuthModalProps) {
     return normalizedId === "anthropic" || normalizedName === "anthropic";
   };
 
-  const isOpencodeZenProvider = (id: string) => id.trim().toLowerCase() === "opencode";
+  const isiPolloWorkBuiltInProvider = (id: string) => id.trim().toLowerCase() === "opencode";
   const isTokenStarProvider = (id: string) => id.trim().toLowerCase() === TOKENSTAR_PROVIDER.providerId;
 
   const OPENCODE_ZEN_KEY_URL = "https://opencode.ai/auth";
@@ -199,7 +165,7 @@ export default function ProviderAuthModal(props: ProviderAuthModalProps) {
         if (entryMethods.length === 0) return [];
         return [{
           id,
-          name: formatProviderName(id, provider?.name),
+          name: formatProviderAuthName(id, provider?.name),
           methods: entryMethods,
           connected: connected.has(id),
           env: Array.isArray(provider?.env) ? provider.env : [],
@@ -412,7 +378,7 @@ export default function ProviderAuthModal(props: ProviderAuthModalProps) {
   const openOauthUrl = async (url: string) => {
     if (!url) return;
     if (isDesktopRuntime()) {
-      await openDesktopUrl(url);
+      await openDesktopAuthUrl(url);
       setOauthBrowserOpened(true);
       return;
     }
@@ -766,8 +732,8 @@ export default function ProviderAuthModal(props: ProviderAuthModalProps) {
     if (method.type === "cloud") {
       return method.description ?? "Use the provider and credential managed by your organization.";
     }
-    if (isOpencodeZenProvider(entry.id)) {
-      return "Sign in to OpenCode Zen with an API key to unlock paid models alongside the free tier.";
+    if (isiPolloWorkBuiltInProvider(entry.id)) {
+      return "Connect iPolloWork built-in models with an API key to unlock paid models alongside the free tier.";
     }
     if (isTokenStarProvider(entry.id)) {
       return "Connect TokenStar, check available models, and choose which models to show in iPolloWork.";
@@ -932,8 +898,8 @@ export default function ProviderAuthModal(props: ProviderAuthModalProps) {
                     <div>
                       <div className="text-sm font-medium text-gray-12">{selectedEntry.name}</div>
                       <div className="text-xs text-gray-10 mt-1">
-                        {isOpencodeZenProvider(selectedEntry.id)
-                          ? "Sign in to OpenCode Zen with an API key from opencode.ai/auth."
+                        {isiPolloWorkBuiltInProvider(selectedEntry.id)
+                          ? "Paste your iPolloWork built-in models API key."
                           : isTokenStarProvider(selectedEntry.id)
                             ? "Paste your TokenStar API key. iPolloWork verifies it and finds your available models automatically."
                           : "Paste your API key to connect."}
@@ -943,10 +909,10 @@ export default function ProviderAuthModal(props: ProviderAuthModalProps) {
                       Back
                     </Button>
                   </div>
-                  {isOpencodeZenProvider(selectedEntry.id) ? (
+                  {isiPolloWorkBuiltInProvider(selectedEntry.id) ? (
                     <div className="rounded-lg border border-indigo-5/30 bg-indigo-3/15 px-3 py-2.5 text-xs text-indigo-12 space-y-1.5">
                       <div>
-                        OpenCode Zen gives you access to the best coding models. Free models keep working without a key.
+                        iPolloWork built-in models give you access to strong coding models. Free models keep working without a key.
                       </div>
                       <button
                         type="button"
@@ -977,7 +943,7 @@ export default function ProviderAuthModal(props: ProviderAuthModalProps) {
                     <TextInput
                       label="API key"
                       type="password"
-                      placeholder={isTokenStarProvider(selectedEntry.id) ? "vk_..." : isOpencodeZenProvider(selectedEntry.id) ? "ock_..." : "sk-..."}
+                      placeholder={isTokenStarProvider(selectedEntry.id) ? "vk_..." : isiPolloWorkBuiltInProvider(selectedEntry.id) ? "ock_..." : "sk-..."}
                       value={apiKeyInput}
                       onChange={(event) => {
                         setApiKeyInput(event.currentTarget.value);
