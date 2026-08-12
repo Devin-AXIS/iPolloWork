@@ -283,7 +283,7 @@ function CatalogSectionGrid({
           return changed ? next : current;
         });
       },
-      { root: scrollRoot, rootMargin: "80px 0px", threshold: 0 },
+      { root: scrollRoot, rootMargin: "240px 0px", threshold: 0 },
     );
     observerRef.current = observer;
     for (const element of cardElementsRef.current.values()) observer.observe(element);
@@ -538,14 +538,21 @@ const BlockCard = memo(function BlockCard({
   const registryPreviewUrl = `/api/registry/blocks/${encodeURIComponent(block.name)}/preview`;
   const compositionPosterUrl = `${registryPreviewUrl}?time=${Math.min((duration ?? 4) / 2, 2).toFixed(2)}`;
   const compositionPlaybackUrl = `${registryPreviewUrl}?autoplay=1`;
-  const canShowPoster = visible && Boolean(posterUrl) && !posterFailed;
+  const prefersCompositionPreview =
+    block.type === "hyperframes:component" && block.librarySection === "caption-animation";
+  const canShowPoster =
+    visible && !prefersCompositionPreview && Boolean(posterUrl) && !posterFailed;
   const canShowVideoThumbnail =
-    visible && Boolean(videoUrl) && (!posterUrl || posterFailed) && !videoThumbnailFailed;
+    visible &&
+    !prefersCompositionPreview &&
+    Boolean(videoUrl) &&
+    (!posterUrl || posterFailed) &&
+    !videoThumbnailFailed;
   const canShowCompositionThumbnail =
     visible &&
     Boolean(compositionPosterUrl) &&
-    (!videoUrl || videoThumbnailFailed) &&
-    (!posterUrl || posterFailed);
+    (prefersCompositionPreview ||
+      ((!videoUrl || videoThumbnailFailed) && (!posterUrl || posterFailed)));
   const needsWebGL = block.tags?.includes("html-in-canvas") || block.tags?.includes("webgl");
 
   const setCardRef = useCallback(
@@ -741,7 +748,7 @@ const BlockCard = memo(function BlockCard({
         )}
 
         {previewing ? (
-          videoUrl && !videoThumbnailFailed ? (
+          !prefersCompositionPreview && videoUrl && !videoThumbnailFailed ? (
             <video
               src={videoUrl}
               aria-label={`${block.title} preview`}

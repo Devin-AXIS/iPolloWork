@@ -33,4 +33,13 @@ describe("BlocksTab lazy preview media", () => {
     expect(source).toContain("onAddBlock={onAddBlock}");
     expect(source).toContain("setVideoThumbnailFailed(true)");
   });
+
+  it("prefers focused composition previews for caption animation components", () => {
+    expect(source).toContain('block.type === "hyperframes:component"');
+    expect(source).toContain('block.librarySection === "caption-animation"');
+    expect(source).toContain("const prefersCompositionPreview");
+    expect(source).toContain("!prefersCompositionPreview && Boolean(posterUrl)");
+    expect(source).toMatch(/!prefersCompositionPreview\s+&&\s+Boolean\(videoUrl\)/);
+    expect(source).toContain("prefersCompositionPreview ||");
+  });
 });

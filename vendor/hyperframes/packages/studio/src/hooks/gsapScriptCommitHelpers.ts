@@ -12,7 +12,16 @@ export function ensureElementAddressable(selection: DomEditSelection): {
   if (selection.hfId) {
     return { selector: `[data-hf-id="${escapeCssString(selection.hfId)}"]` };
   }
-  if (selection.selector) return { selector: selection.selector };
+  if (selection.selector) {
+    try {
+      const matches = selection.element.ownerDocument.querySelectorAll(selection.selector);
+      if (matches.length === 1 && matches[0] === selection.element) {
+        return { selector: selection.selector };
+      }
+    } catch {
+      // Invalid selectors are handled by assigning a stable id below.
+    }
+  }
 
   const el = selection.element;
   const doc = el.ownerDocument;

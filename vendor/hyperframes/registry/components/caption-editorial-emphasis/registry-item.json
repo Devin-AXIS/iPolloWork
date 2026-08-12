@@ -2,10 +2,16 @@
   "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
   "name": "caption-editorial-emphasis",
   "type": "hyperframes:component",
-  "librarySection": "text-animation",
+  "librarySection": "caption-animation",
   "title": "Editorial Emphasis",
   "description": "Dual-font system with dramatic size contrast for emphasis words",
-  "tags": ["captions", "caption-style", "editorial", "typography", "emphasis"],
+  "tags": [
+    "captions",
+    "caption-style",
+    "editorial",
+    "typography",
+    "emphasis"
+  ],
   "files": [
     {
       "path": "caption-editorial-emphasis.html",
@@ -16,5 +22,53 @@
   "preview": {
     "video": "https://static.heygen.ai/hyperframes-oss/registry/components/caption-editorial-emphasis/preview.mp4?v=1779051416",
     "poster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/caption-editorial-emphasis.png"
+  },
+  "kind": "effect",
+  "engine": {
+    "name": "gsap",
+    "version": "3.15.0",
+    "seekable": true,
+    "plugins": []
+  },
+  "source": {
+    "provider": "ipollowork",
+    "label": "Restored legacy caption motion"
+  },
+  "motionPreset": {
+    "version": 1,
+    "category": "caption",
+    "targets": [
+      "caption",
+      "text"
+    ],
+    "anchor": "clip-start",
+    "duration": 0.82,
+    "ease": "power3.out",
+    "keyframes": [
+      {
+        "percentage": 0,
+        "properties": {
+          "opacity": 0,
+          "y": 18,
+          "scale": 0.96
+        }
+      },
+      {
+        "percentage": 62,
+        "properties": {
+          "opacity": 1,
+          "y": 0,
+          "scale": 1.04
+        }
+      },
+      {
+        "percentage": 100,
+        "properties": {
+          "opacity": 1,
+          "y": 0,
+          "scale": 1
+        }
+      }
+    ]
   }
 }

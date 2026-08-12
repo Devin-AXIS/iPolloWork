@@ -82,13 +82,18 @@ import {
   defaultMotionDuration,
   getMotionPreset,
   listMotionPresets,
+  materializeStructuredText,
   readMotionInstanceFromExtras,
+  restoreStructuredText,
+  snapshotStructuredText,
+  unwrapStructuredText,
   type MotionParameters,
   type MotionInstance,
   type MotionPhase,
   type MotionTargetKind,
   type MotionTextUnit,
 } from "@hyperframes/core/motion-presets";
+import { structuredMotionSelector } from "@hyperframes/core";
 
 // ── Server cutover flag ─────────────────────────────────────────────────────
 
@@ -1065,6 +1070,19 @@ function unwrapMotionText(target: Element): void {
   target.removeAttribute("data-ipw-motion-split");
 }
 
+function readMotionSourceText(target: Element): string {
+  const encoded = target.getAttribute("data-ipw-motion-source");
+  if (encoded !== null) {
+    try {
+      const source = JSON.parse(encoded);
+      if (typeof source === "string") return source;
+    } catch {
+      // Fall through to the DOM text for legacy or malformed markers.
+    }
+  }
+  return target.textContent ?? "";
+}
+
 function ensureMotionTextParts(target: Element): number {
   const text = target.textContent ?? "";
   unwrapMotionText(target);
@@ -1091,6 +1109,26 @@ function ensureMotionTextParts(target: Element): number {
   }
   target.replaceChildren(fragment);
   target.setAttribute("data-ipw-motion-split", "v1");
+  return characterCount;
+}
+
+function ensureStructuredCharacterParts(target: Element): number {
+  let characterCount = 0;
+  for (const textLayer of Array.from(
+    target.querySelectorAll('[data-ipw-motion-role="text"]'),
+  )) {
+    const document = textLayer.ownerDocument;
+    const fragment = document.createDocumentFragment();
+    for (const character of segmentText(textLayer.textContent ?? "", "grapheme")) {
+      const characterSpan = document.createElement("span");
+      characterSpan.setAttribute("data-ipw-motion-char", "");
+      characterSpan.setAttribute("style", "display:inline-block");
+      characterSpan.textContent = character;
+      fragment.append(characterSpan);
+      characterCount += 1;
+    }
+    textLayer.replaceChildren(fragment);
+  }
   return characterCount;
 }
 
@@ -1271,7 +1309,11 @@ function executeMotionMutation(
     );
     const parameters = { ...priorParameters, ...body.parameters };
     const loop = body.loop ?? prior?.instance.loop ?? false;
-    if (target.hasAttribute("data-var-text") && "unit" in parameters) {
+    if (
+      target.hasAttribute("data-var-text") &&
+      "unit" in parameters &&
+      !preset.structuredText
+    ) {
       parameters.unit = "whole";
     }
     let instance;
@@ -1297,20 +1339,47 @@ function executeMotionMutation(
         400,
       );
     }
-    const compiled = compileMotionInstance(instance);
-    if (motionUnit(instance.parameters) !== "whole") ensureMotionTextParts(target);
-    const added = addAnimationWithKeyframesToScript(
-      script,
-      compiled.targetSelector,
-      compiled.position,
-      compiled.duration,
-      compiled.keyframes,
-      compiled.ease,
-      undefined,
-      compiled.extras,
-    );
-    if (!added.id) return respond({ error: "Could not add motion to the GSAP timeline" }, 400);
-    script = added.script;
+    const sourceText = readMotionSourceText(target);
+    const compiled = compileMotionInstance(instance, sourceText);
+    if (compiled.structured) {
+      const targetSnapshot = snapshotStructuredText(target);
+      unwrapMotionText(target);
+      materializeStructuredText(target, compiled.structured, sourceText);
+      for (const [trackIndex, track] of compiled.structured.tracks.entries()) {
+        const added = addAnimationWithKeyframesToScript(
+          script,
+          structuredMotionSelector(body.targetSelector, track.role),
+          compiled.position + track.position,
+          track.duration,
+          track.keyframes,
+          undefined,
+          undefined,
+          {
+            ...compiled.extras,
+            id: `${instance.id}:${trackIndex}:${track.role}`,
+            ...(track.stagger > 0 ? { stagger: track.stagger } : {}),
+          },
+        );
+        if (!added.id) {
+          restoreStructuredText(target, targetSnapshot);
+          return respond({ error: "Could not add motion to the GSAP timeline" }, 400);
+        }
+        script = added.script;
+      }
+    } else {
+      const added = addAnimationWithKeyframesToScript(
+        script,
+        compiled.targetSelector,
+        compiled.position,
+        compiled.duration,
+        compiled.keyframes,
+        compiled.ease,
+        undefined,
+        compiled.extras,
+      );
+      if (!added.id) return respond({ error: "Could not add motion to the GSAP timeline" }, 400);
+      script = added.script;
+    }
   }
 
   const remainingInstances = parseGsapScriptAcorn(script)
@@ -1319,8 +1388,29 @@ function executeMotionMutation(
       (instance): instance is MotionInstance =>
         instance !== null && motionInstanceTargetsElement(block.document, target, instance),
     );
-  if (!remainingInstances.some((instance) => motionUnit(instance!.parameters) !== "whole")) {
-    unwrapMotionText(target);
+  const sourceText = readMotionSourceText(target);
+  const remainingStructured = remainingInstances.flatMap((instance) => {
+    try {
+      const structured = compileMotionInstance(instance, sourceText).structured;
+      return structured ? [structured] : [];
+    } catch {
+      return [];
+    }
+  });
+  if (remainingStructured.length > 0) {
+    materializeStructuredText(target, remainingStructured[0]!, sourceText);
+    if (remainingInstances.some((instance) => motionUnit(instance.parameters) === "character")) {
+      ensureStructuredCharacterParts(target);
+    }
+  } else {
+    if (target.hasAttribute("data-ipw-motion-structure") || target.hasAttribute("data-ipw-motion-source")) {
+      unwrapStructuredText(target);
+    }
+    if (remainingInstances.some((instance) => motionUnit(instance.parameters) !== "whole")) {
+      ensureMotionTextParts(target);
+    } else {
+      unwrapMotionText(target);
+    }
   }
   if (remainingInstances.length > 0) {
     target.setAttribute("data-ipw-motion-selector", body.targetSelector);

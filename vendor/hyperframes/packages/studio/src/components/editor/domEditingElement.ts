@@ -147,6 +147,9 @@ export function getSelectionCandidate(
   startEl: HTMLElement,
   options: DomEditContextOptions,
 ): HTMLElement {
+  const structuredTextRoot = startEl.closest<HTMLElement>('[data-ipw-motion-structure="v1"]');
+  if (structuredTextRoot) return structuredTextRoot;
+
   if (options.preferClipAncestor) {
     const clipAncestor = getPreferredClipAncestor(startEl);
     if (clipAncestor) {

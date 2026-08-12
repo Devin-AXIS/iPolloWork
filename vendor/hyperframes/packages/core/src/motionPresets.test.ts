@@ -3,6 +3,7 @@ import {
   MOTION_PRESETS,
   compileMotionInstance,
   createMotionInstance,
+  defaultMotionDuration,
   listMotionPresets,
   readMotionInstanceFromExtras,
   validateMotionParameters,
@@ -10,10 +11,10 @@ import {
 
 describe("motion presets", () => {
   it("ships stable text and element presets across all three phases", () => {
-    expect(MOTION_PRESETS).toHaveLength(50);
-    expect(new Set(MOTION_PRESETS.map((preset) => preset.id)).size).toBe(50);
-    expect(listMotionPresets({ targetKind: "text", phase: "enter" })).toHaveLength(14);
-    expect(listMotionPresets({ targetKind: "text", phase: "emphasis" })).toHaveLength(12);
+    expect(MOTION_PRESETS).toHaveLength(63);
+    expect(new Set(MOTION_PRESETS.map((preset) => preset.id)).size).toBe(63);
+    expect(listMotionPresets({ targetKind: "text", phase: "enter" })).toHaveLength(16);
+    expect(listMotionPresets({ targetKind: "text", phase: "emphasis" })).toHaveLength(23);
     expect(listMotionPresets({ targetKind: "text", phase: "exit" })).toHaveLength(6);
     expect(listMotionPresets({ targetKind: "element", phase: "enter" })).toHaveLength(7);
     expect(listMotionPresets({ targetKind: "element", phase: "emphasis" })).toHaveLength(14);
@@ -26,6 +27,125 @@ describe("motion presets", () => {
     expect(
       listMotionPresets({ targetKind: "text", phase: "enter", intent: "title reveal" }),
     ).not.toHaveLength(0);
+  });
+
+  it("ships migrated caption effects as editable text presets", () => {
+    const migratedIds = [
+      "text.emphasis.highlight-sweep",
+      "text.enter.matrix-decode",
+      "text.emphasis.gradient-fill",
+      "text.emphasis.neon-glow",
+      "text.emphasis.neon-accent",
+      "text.emphasis.rgb-glitch",
+      "text.enter.clip-wipe",
+      "text.emphasis.blend-difference",
+      "text.emphasis.weight-shift",
+      "text.emphasis.texture-fill",
+      "text.emphasis.kinetic-slam",
+      "text.emphasis.emoji-pop",
+      "text.emphasis.particle-burst",
+    ];
+
+    expect(MOTION_PRESETS).toHaveLength(63);
+    expect(new Set(MOTION_PRESETS.map((preset) => preset.id)).size).toBe(63);
+
+    for (const id of migratedIds) {
+      const preset = MOTION_PRESETS.find((candidate) => candidate.id === id);
+      expect(preset, id).toBeDefined();
+      expect(preset?.targetKinds, id).toEqual(["text"]);
+      expect(preset?.parameterSchema.map((parameter) => parameter.id), id).toContain("intensity");
+      expect(preset?.parameterSchema.map((parameter) => parameter.id), id).toContain("ease");
+      expect(preset?.structuredText, id).toBeDefined();
+      const compiled = compileMotionInstance(
+        createMotionInstance({
+          presetId: id,
+          target: { selector: "#title" },
+          targetKind: "text",
+          start: 0,
+        }),
+        "Make motion clear.",
+      );
+      expect(compiled.structured, id).toBeDefined();
+      expect(compiled.structured?.units.length, id).toBeGreaterThan(0);
+    }
+
+    const specializedDefaults = {
+      "text.emphasis.highlight-sweep": { color: "#FF1745", roundness: 10 },
+      "text.enter.matrix-decode": { density: 1, blur: 0 },
+      "text.emphasis.gradient-fill": { accentColor: "#FD56CB" },
+      "text.emphasis.neon-glow": { glow: 1 },
+      "text.emphasis.neon-accent": { glow: 1 },
+      "text.emphasis.rgb-glitch": {
+        color: "#FF003C",
+        blur: 0,
+        density: 1,
+        preserveReadable: "true",
+      },
+      "text.emphasis.blend-difference": { blur: 0, preserveReadable: "true" },
+      "text.emphasis.weight-shift": { minWeight: 300, maxWeight: 700 },
+      "text.emphasis.texture-fill": { density: 1 },
+      "text.emphasis.kinetic-slam": { distance: 120, preserveReadable: "true" },
+      "text.emphasis.particle-burst": { density: 1 },
+    };
+
+    for (const [id, defaults] of Object.entries(specializedDefaults)) {
+      expect(MOTION_PRESETS.find((preset) => preset.id === id)?.defaults, id).toMatchObject(defaults);
+    }
+
+    const commonParameterIds = new Set([
+      "ease",
+      "intensity",
+      "direction",
+      "unit",
+      "stagger",
+      "colorSource",
+      "color",
+    ]);
+    for (const id of migratedIds) {
+      const preset = MOTION_PRESETS.find((candidate) => candidate.id === id)!;
+      for (const parameter of preset.parameterSchema) {
+        if (!commonParameterIds.has(parameter.id)) {
+          expect(preset.defaults, `${id}.${parameter.id}`).toHaveProperty(parameter.id);
+        }
+      }
+    }
+
+    expect(listMotionPresets({ targetKind: "text", phase: "enter" }).map((preset) => preset.id))
+      .toEqual(expect.arrayContaining(["text.enter.matrix-decode", "text.enter.clip-wipe"]));
+    expect(listMotionPresets({ targetKind: "text", phase: "emphasis" }).map((preset) => preset.id))
+      .toEqual(expect.arrayContaining(migratedIds.filter((id) => id.includes(".emphasis."))));
+  });
+
+  it("defaults migrated caption effects to readable showcase timing", () => {
+    const readableDurations: Record<string, number> = {
+      "text.emphasis.highlight-sweep": 1.45,
+      "text.enter.matrix-decode": 1.8,
+      "text.emphasis.gradient-fill": 1.5,
+      "text.emphasis.neon-glow": 2,
+      "text.emphasis.neon-accent": 1.7,
+      "text.emphasis.rgb-glitch": 1.8,
+      "text.enter.clip-wipe": 1.6,
+      "text.emphasis.weight-shift": 1.4,
+      "text.emphasis.texture-fill": 1.5,
+      "text.emphasis.kinetic-slam": 1.35,
+      "text.emphasis.emoji-pop": 1.35,
+      "text.emphasis.particle-burst": 2,
+    };
+
+    for (const [id, duration] of Object.entries(readableDurations)) {
+      const preset = MOTION_PRESETS.find((candidate) => candidate.id === id);
+      if (!preset) throw new Error(`Missing preset ${id}`);
+      expect(defaultMotionDuration(preset), id).toBe(duration);
+      expect(
+        createMotionInstance({
+          presetId: id,
+          target: { selector: "#headline" },
+          targetKind: "text",
+          start: 0,
+        }).duration,
+        id,
+      ).toBe(duration);
+    }
   });
 
   it("reuses safe keyframes for general elements without text-only parameters", () => {
@@ -213,6 +333,280 @@ describe("motion presets", () => {
       "var(--ipw-color-bg, #0B1020)",
     ]);
     expect(custom.keyframes[1]?.properties.filter).toContain("#FF5500");
+  });
+
+  it("compiles migrated text effects with editable parameters", () => {
+    const highlight = compileMotionInstance(
+      createMotionInstance({
+        presetId: "text.emphasis.highlight-sweep",
+        target: { selector: "#headline" },
+        targetKind: "text",
+        start: 0,
+        parameters: {
+          unit: "word",
+          stagger: 0.05,
+          colorSource: "custom",
+          color: "#FFE66D",
+          direction: "right",
+          intensity: 1.2,
+        },
+      }),
+    );
+    const glitch = compileMotionInstance(
+      createMotionInstance({
+        presetId: "text.emphasis.rgb-glitch",
+        target: { selector: "#headline" },
+        targetKind: "text",
+        start: 0,
+        parameters: { preserveReadable: "true", density: 1.4, blur: 8, intensity: 1.1 },
+      }),
+    );
+    const decode = compileMotionInstance(
+      createMotionInstance({
+        presetId: "text.enter.matrix-decode",
+        target: { selector: "#headline" },
+        targetKind: "text",
+        start: 0,
+        parameters: { unit: "character", stagger: 0.03, colorSource: "theme" },
+      }),
+    );
+
+    expect(highlight.targetSelector).toBe("#headline > [data-ipw-motion-word]");
+    expect(highlight.extras.stagger).toBe(0.05);
+    expect(
+      highlight.structured?.tracks.some((track) =>
+        track.keyframes.some((keyframe) =>
+          String(keyframe.properties.backgroundImage ?? "").includes("#ffe66d"),
+        ),
+      ),
+    ).toBe(true);
+
+    expect(
+      glitch.keyframes.some((keyframe) =>
+        String(keyframe.properties.textShadow ?? "").includes("#22d3ee"),
+      ),
+    ).toBe(true);
+    expect(glitch.keyframes.at(-1)?.properties.opacity ?? 1).toBe(1);
+
+    expect(decode.targetSelector).toBe("#headline [data-ipw-motion-char]");
+    expect(decode.keyframes[0]?.properties.color).toBe("var(--ipw-color-accent, #7c3aed)");
+  });
+
+  it("changes the structured highlight sweep when direction changes", () => {
+    const compile = (direction: "left" | "right") =>
+      compileMotionInstance(
+        createMotionInstance({
+          presetId: "text.emphasis.highlight-sweep",
+          target: { selector: "#headline" },
+          targetKind: "text",
+          start: 0,
+          parameters: { direction },
+        }),
+      );
+
+    expect(compile("left").structured?.tracks).not.toEqual(compile("right").structured?.tracks);
+  });
+
+  it("compiles Highlight as faithful independent word background and text layers", () => {
+    const compiled = compileMotionInstance(
+      createMotionInstance({
+        presetId: "text.emphasis.highlight-sweep",
+        target: { selector: "#headline", elementId: "headline" },
+        targetKind: "text",
+        start: 0,
+      }),
+      "Make motion clear.",
+    );
+
+    expect(compiled.structured).toMatchObject({
+      recipeId: "caption-highlight.word-sweep",
+      split: "word",
+      units: [{ sourceText: "Make" }, { sourceText: "motion" }, { sourceText: "clear" }],
+      layers: expect.arrayContaining([
+        expect.objectContaining({ role: "unit", perUnit: true }),
+        expect.objectContaining({ role: "background", perUnit: true }),
+        expect.objectContaining({ role: "text", perUnit: true }),
+      ]),
+    });
+
+    const tracks = compiled.structured!.tracks;
+    const reveal = tracks.find(
+      (track) =>
+        track.role === "background" &&
+        track.keyframes.some((keyframe) => keyframe.properties.backgroundImage === "linear-gradient(135deg, #ff1745 0%, #df1238 100%)"),
+    );
+    const exit = tracks.find(
+      (track) =>
+        track.role === "background" &&
+        track.keyframes.at(-1)?.properties.scaleX === 1.02,
+    );
+    const reset = tracks.find(
+      (track) =>
+        track.role === "background" &&
+        track.duration === 0 &&
+        track.keyframes.at(-1)?.properties.scaleX === 0,
+    );
+    const word = tracks.find((track) => track.role === "unit");
+    const text = tracks.find((track) => track.role === "text");
+
+    expect(reveal?.keyframes[0]?.properties).toMatchObject({
+      opacity: 0,
+      scaleX: 0,
+      transformOrigin: "0% 50%",
+      borderRadius: "10px",
+      boxShadow: "0 12px 30px rgba(229, 20, 58, 0.32)",
+    });
+    expect(reveal?.keyframes.at(-1)).toMatchObject({
+      ease: "power2.out",
+      properties: { opacity: 1, scaleX: 1 },
+    });
+    expect(exit?.keyframes).toEqual([
+      { percentage: 0, properties: { opacity: 1, scaleX: 1, transformOrigin: "0% 50%" } },
+      {
+        percentage: 100,
+        ease: "power2.in",
+        properties: { opacity: 0, scaleX: 1.02, transformOrigin: "0% 50%" },
+      },
+    ]);
+    expect(reset).toMatchObject({
+      role: "background",
+      duration: 0,
+      keyframes: [
+        {
+          percentage: 0,
+          properties: { opacity: 0, scaleX: 0, transformOrigin: "0% 50%" },
+        },
+      ],
+    });
+    expect(word?.keyframes.map((keyframe) => keyframe.properties.filter)).toEqual([
+      "brightness(1)",
+      "brightness(1.05)",
+      "brightness(1)",
+    ]);
+    expect(word?.keyframes.map((keyframe) => keyframe.ease)).toEqual([
+      undefined,
+      "power2.out",
+      "power2.out",
+    ]);
+    expect(text?.keyframes.every((keyframe) => keyframe.properties.color === "#ffffff")).toBe(true);
+  });
+
+  it("wires Highlight controls into its structured recipe", () => {
+    const compile = (parameters: Record<string, string | number>) =>
+      compileMotionInstance(
+        createMotionInstance({
+          presetId: "text.emphasis.highlight-sweep",
+          target: { selector: "#headline" },
+          targetKind: "text",
+          start: 0,
+          parameters,
+        }),
+        "Make motion clear.",
+      ).structured!;
+
+    const baseline = compile({});
+    const faster = compile({ speed: 1.6 });
+    const configured = compile({
+      unit: "character",
+      stagger: 0.12,
+      direction: "left",
+      colorSource: "custom",
+      color: "#2563eb",
+      intensity: 1.6,
+      speed: 1.6,
+    });
+
+    expect(configured.split).toBe("character");
+    expect(configured.units).toHaveLength("Make motion clear.".length);
+    expect(configured.tracks.every((track) => track.stagger > 0)).toBe(true);
+    expect(configured.tracks[0]?.stagger).not.toBe(baseline.tracks[0]?.stagger);
+    expect(configured.tracks).not.toEqual(baseline.tracks);
+    expect(faster.tracks[0]?.duration).toBeLessThan(baseline.tracks[0]?.duration ?? Infinity);
+    expect(configured.tracks.some((track) =>
+      track.keyframes.some((keyframe) => keyframe.properties.transformOrigin === "100% 50%"),
+    )).toBe(true);
+    expect(configured.tracks.some((track) =>
+      track.keyframes.some((keyframe) => String(keyframe.properties.backgroundImage).includes("#2563eb")),
+    )).toBe(true);
+    expect(configured.tracks.some((track) =>
+      track.keyframes.some((keyframe) => keyframe.properties.filter === "brightness(1.08)"),
+    )).toBe(true);
+  });
+
+  it("uses directional clipped gradients for gradient fill", () => {
+    const compile = (direction: "right" | "up") =>
+      compileMotionInstance(
+        createMotionInstance({
+          presetId: "text.emphasis.gradient-fill",
+          target: { selector: "#headline" },
+          targetKind: "text",
+          start: 0,
+          parameters: { direction },
+        }),
+      );
+    const right = compile("right");
+
+    expect(right.keyframes).not.toEqual(compile("up").keyframes);
+    expect(right.keyframes[1]?.properties).toMatchObject({
+      backgroundClip: "text",
+      WebkitBackgroundClip: "text",
+      WebkitTextFillColor: "transparent",
+      color: "transparent",
+    });
+  });
+
+  it("uses density and direction for deterministic texture fill keyframes", () => {
+    const compile = (parameters: { density: number; direction: "left" | "down" }) =>
+      compileMotionInstance(
+        createMotionInstance({
+          presetId: "text.emphasis.texture-fill",
+          target: { selector: "#headline" },
+          targetKind: "text",
+          start: 0,
+          parameters,
+        }),
+      );
+    const sparse = compile({ density: 0.5, direction: "left" });
+    const dense = compile({ density: 1.5, direction: "down" });
+
+    expect(sparse.keyframes).not.toEqual(dense.keyframes);
+    expect(dense.keyframes[1]?.properties).toMatchObject({
+      backgroundClip: "text",
+      WebkitBackgroundClip: "text",
+      WebkitTextFillColor: "transparent",
+      color: "transparent",
+    });
+    expect(dense.keyframes[1]?.properties.backgroundImage).toContain("repeating-");
+  });
+
+  it("changes clip wipe keyframes when intensity changes", () => {
+    const compile = (intensity: number) =>
+      compileMotionInstance(
+        createMotionInstance({
+          presetId: "text.enter.clip-wipe",
+          target: { selector: "#headline" },
+          targetKind: "text",
+          start: 0,
+          parameters: { intensity },
+        }),
+      );
+
+    expect(compile(0.5).keyframes).not.toEqual(compile(1.8).keyframes);
+  });
+
+  it("changes kinetic slam keyframes when readability preservation changes", () => {
+    const compile = (preserveReadable: "true" | "false") =>
+      compileMotionInstance(
+        createMotionInstance({
+          presetId: "text.emphasis.kinetic-slam",
+          target: { selector: "#headline" },
+          targetKind: "text",
+          start: 0,
+          parameters: { preserveReadable },
+        }),
+      );
+
+    expect(compile("true").keyframes).not.toEqual(compile("false").keyframes);
   });
 
   it("compiles every catalog preset to bounded editable keyframes", () => {
