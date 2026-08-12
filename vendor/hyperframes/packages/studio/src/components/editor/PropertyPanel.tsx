@@ -68,6 +68,7 @@ export const PropertyPanel = memo(function PropertyPanel(props: PropertyPanelPro
     onUngroup,
     onSetStyle,
     onSetAttribute,
+    onSetAttributes,
     onSetAttributeLive,
     onApplyColorGradingScope,
     onSetHtmlAttribute,
@@ -360,7 +361,10 @@ export const PropertyPanel = memo(function PropertyPanel(props: PropertyPanelPro
           <TimingSection
             element={element}
             animations={gsapAnimations}
+            currentTime={currentTime}
             onSetAttribute={onSetAttribute}
+            onSetAttributes={onSetAttributes}
+            onSeekToTime={onSeekToTime}
           />
         )}
         {sections.colorGrading && (

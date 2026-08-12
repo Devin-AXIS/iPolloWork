@@ -154,6 +154,34 @@ function resolveTimedWindows(doc: Document) {
   return { resolveDuration, resolveStart };
 }
 
+export interface ElementVisibleTiming {
+  start: number;
+  duration: number;
+}
+
+/** Resolve the interval where an element and every timed ancestor are visible. */
+export function resolveElementVisibleTiming(element: Element): ElementVisibleTiming | null {
+  const { resolveDuration, resolveStart } = resolveTimedWindows(element.ownerDocument);
+  let visibleStart = 0;
+  let visibleEnd = Infinity;
+  let foundTimedWindow = false;
+  let current: Element | null = element;
+
+  while (current) {
+    const duration = resolveDuration(current);
+    if (duration > 0) {
+      const start = resolveStart(current);
+      visibleStart = Math.max(visibleStart, start);
+      visibleEnd = Math.min(visibleEnd, start + duration);
+      foundTimedWindow = true;
+    }
+    current = current.parentElement;
+  }
+
+  if (!foundTimedWindow || !Number.isFinite(visibleEnd) || visibleEnd <= visibleStart) return null;
+  return { start: visibleStart, duration: visibleEnd - visibleStart };
+}
+
 function isInFlow(element: HTMLElement, win: Window): boolean {
   const position = win.getComputedStyle(element).position;
   return position === "static" || position === "relative" || position === "sticky";

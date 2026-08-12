@@ -9,6 +9,16 @@ import {
 } from "./timelineEditingHelpers";
 import { patchTimelineLayerStateInSource } from "./timelineTrackVisibility";
 import {
+  getEditableSourceFileForElement,
+  setCompositionSourceMap,
+} from "../components/editor/domEditingDom";
+import {
+  findElementForSelection,
+  findElementForTimelineElement,
+  getEditableUnitSelectionTarget,
+} from "../components/editor/domEditingElement";
+import { resolveDomEditSelection } from "../components/editor/domEditingLayers";
+import {
   buildOptimisticTimelineSplit,
   rollbackOptimisticTimelineSplit,
 } from "../utils/timelineElementSplit";
@@ -30,6 +40,130 @@ function moveSceneReplay(start: string) {
 }
 
 describe("timeline edit patch resolution", () => {
+  test("keeps an inserted effect host parent-owned while its children stay editable", async () => {
+    const testWindow = new Window();
+    const root = testWindow.document.createElement("main");
+    root.setAttribute("data-composition-id", "main");
+    const host = testWindow.document.createElement("div");
+    host.id = "effect-ending-bilibili-triple";
+    host.setAttribute("data-composition-id", "effect-ending-bilibili-triple");
+    host.setAttribute(
+      "data-composition-src",
+      "compositions/effects/effect-ending-bilibili-triple.html",
+    );
+    host.setAttribute("data-hf-edit-as-unit", "");
+    const effectVisual = testWindow.document.createElement("div");
+    effectVisual.id = "effect-visual";
+    host.append(effectVisual);
+    root.append(host);
+    testWindow.document.body.append(root);
+
+    expect(getEditableSourceFileForElement(host, "index.html").sourceFile).toBe("index.html");
+    const hostSelection = await resolveDomEditSelection(host, {
+      activeCompositionPath: "index.html",
+      isMasterView: true,
+      skipSourceProbe: true,
+    });
+    expect(hostSelection?.element).toBe(host);
+    expect(hostSelection).toMatchObject({
+      sourceFile: "index.html",
+      compositionPath: "index.html",
+      compositionSrc: "compositions/effects/effect-ending-bilibili-triple.html",
+      isCompositionHost: true,
+      capabilities: {
+        canEditStyles: true,
+        canApplyManualOffset: true,
+        canApplyManualSize: true,
+        canApplyManualRotation: true,
+      },
+    });
+    expect(getEditableUnitSelectionTarget(effectVisual)).toBeNull();
+    await expect(
+      resolveDomEditSelection(effectVisual, {
+        activeCompositionPath: "index.html",
+        isMasterView: true,
+        skipSourceProbe: true,
+      }),
+    ).resolves.toMatchObject({
+      element: effectVisual,
+      sourceFile: "compositions/effects/effect-ending-bilibili-triple.html",
+      compositionSrc: undefined,
+      isCompositionHost: false,
+    });
+
+    const intentionalUnit = testWindow.document.createElement("div");
+    intentionalUnit.setAttribute("data-hf-edit-as-unit", "");
+    const unitChild = testWindow.document.createElement("span");
+    intentionalUnit.append(unitChild);
+    root.append(intentionalUnit);
+    expect(getEditableUnitSelectionTarget(unitChild)).toBe(intentionalUnit);
+    expect(
+      findElementForSelection(
+        testWindow.document,
+        {
+          id: host.id,
+          selector: `#${host.id}`,
+          sourceFile: "index.html",
+        },
+        "index.html",
+      ),
+    ).toBe(host);
+    expect(
+      findElementForTimelineElement(
+        testWindow.document,
+        {
+          id: host.id,
+          domId: host.id,
+          compositionSrc: "compositions/effects/effect-ending-bilibili-triple.html",
+          sourceFile: "index.html",
+        },
+        { activeCompositionPath: "index.html", isMasterView: true },
+      ),
+    ).toBe(host);
+
+    const nestedRoot = testWindow.document.createElement("div");
+    const nestedEffect = testWindow.document.createElement("div");
+    nestedEffect.setAttribute("data-composition-src", "compositions/effects/nested.html");
+    host.append(nestedRoot);
+    nestedRoot.append(nestedEffect);
+    expect(getEditableSourceFileForElement(nestedEffect, "index.html").sourceFile).toBe(
+      "compositions/effects/effect-ending-bilibili-triple.html",
+    );
+
+    host.removeAttribute("data-composition-src");
+    setCompositionSourceMap(
+      new Map([
+        [
+          "effect-ending-bilibili-triple",
+          "compositions/effects/effect-ending-bilibili-triple.html",
+        ],
+      ]),
+    );
+    try {
+      expect(getEditableSourceFileForElement(host, "index.html").sourceFile).toBe("index.html");
+      await expect(
+        resolveDomEditSelection(effectVisual, {
+          activeCompositionPath: "index.html",
+          isMasterView: true,
+          skipSourceProbe: true,
+        }),
+      ).resolves.toMatchObject({
+        element: effectVisual,
+        sourceFile: "compositions/effects/effect-ending-bilibili-triple.html",
+        compositionSrc: undefined,
+        isCompositionHost: false,
+        capabilities: {
+          canEditStyles: true,
+          canApplyManualOffset: true,
+          canApplyManualSize: true,
+          canApplyManualRotation: true,
+        },
+      });
+    } finally {
+      setCompositionSourceMap(new Map());
+    }
+  });
+
   test("finds an inserted composition host by its manifest id when domId is absent", () => {
     const testWindow = new Window();
     const iframe = testWindow.document.createElement("iframe");

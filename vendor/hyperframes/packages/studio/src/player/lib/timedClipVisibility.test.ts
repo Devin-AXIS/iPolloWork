@@ -2,6 +2,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 
 import {
+  resolveElementVisibleTiming,
   syncLegacyFrameCarousel,
   syncTimedClipVisibility,
   wrapAdapterWithTimedClipVisibility,
@@ -33,6 +34,16 @@ describe("syncTimedClipVisibility", () => {
     expect(sceneState("ui").visibility).toBe("hidden");
     expect(sceneState("proof").visibility).toBe("visible");
     expect(sceneState("cta").visibility).toBe("hidden");
+  });
+
+  it("resolves an untimed child's real visibility from its timed ancestors", () => {
+    const scene = document.getElementById("ui")!;
+    scene.innerHTML = '<p id="lede">Lede</p>';
+
+    expect(resolveElementVisibleTiming(document.getElementById("lede")!)).toEqual({
+      start: 3.2,
+      duration: 3.8,
+    });
   });
 
   it("switches adjacent scenes exactly at the authored boundary", () => {

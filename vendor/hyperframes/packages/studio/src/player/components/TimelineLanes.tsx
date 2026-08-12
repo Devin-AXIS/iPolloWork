@@ -292,7 +292,8 @@ export const TimelineLanes = memo(function TimelineLanes({
                   usePlayerStore
                     .getState()
                     .setSelection(elementKey ? [elementKey] : [], elementKey);
-                  const nextTime = resolveTimelineSelectionSeekTime(element?.start ?? 0, element);
+                  const selectionTime = usePlayerStore.getState().currentTime;
+                  const nextTime = resolveTimelineSelectionSeekTime(selectionTime, element);
                   if (nextTime != null) onSeek?.(nextTime);
                   onSelectElement?.(element);
                 }}
@@ -612,8 +613,9 @@ export const TimelineLanes = memo(function TimelineLanes({
                               // of treating the follow-up click as a request to deselect it.
                               // Empty-lane clicks remain the explicit way to clear selection.
                               usePlayerStore.getState().setSelection([elementKey], elementKey);
+                              const selectionTime = usePlayerStore.getState().currentTime;
                               const nextTime = resolveTimelineSelectionSeekTime(
-                                previewElement.start,
+                                selectionTime,
                                 previewElement,
                               );
                               if (nextTime != null) onSeek?.(nextTime);

@@ -5,7 +5,7 @@ import { slugifyDesignInput } from "../../utils/designInputTracking";
 import type { DomEditSelection } from "./domEditing";
 import { isTextEditableSelection } from "./domEditing";
 import type { PropertyPanelProps } from "./propertyPanelHelpers";
-import { formatPxMetricValue } from "./propertyPanelHelpers";
+import { formatPxMetricValue, inferMaskShape } from "./propertyPanelHelpers";
 import { PropertyPanelFlatHeader } from "./PropertyPanelFlatHeader";
 import { PropertyPanelFlatFooter } from "./PropertyPanelFlatFooter";
 import { FlatGroupHeader } from "./propertyPanelFlatPrimitives";
@@ -434,8 +434,10 @@ export function PropertyPanelFlat({
         <FlatTimingRow
           element={element}
           animations={gsapAnimations}
+          currentTime={currentTime}
           onSetAttribute={onSetAttribute}
           onSetAttributes={onSetAttributes}
+          onSeekToTime={onSeekToTime}
         />
       ),
     });
@@ -507,11 +509,11 @@ export function PropertyPanelFlat({
       },
       {
         id: "mask",
-        title: "Mask",
+        title: "Post-processing",
         summary:
-          styles["clip-path"] && styles["clip-path"] !== "none"
-            ? "Crop applied"
-            : "Crop · overflow",
+          inferMaskShape(styles["clip-path"] || "none") === "circle"
+            ? "Mask circle"
+            : "Mask rectangle",
         content: (
           <FlatMaskSection
             styles={styles}
@@ -578,10 +580,12 @@ export function PropertyPanelFlat({
           animations={gsapAnimations}
           showTiming={false}
           showEffects={showMotionEffects}
+          currentTime={currentTime}
           multipleTimelines={gsapMultipleTimelines}
           unsupportedTimelinePattern={gsapUnsupportedTimelinePattern}
           onSetAttribute={onSetAttribute}
           onSetAttributes={onSetAttributes}
+          onSeekToTime={onSeekToTime}
           {...gsapEffectHandlers}
         />
       ),

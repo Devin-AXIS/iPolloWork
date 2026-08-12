@@ -111,12 +111,16 @@ interface DisplayBounds {
   track: number;
 }
 
+interface ExpandedClip extends ClipManifestClip {
+  timingSource?: TimelineElement["timingSource"];
+}
+
 // `display` bounds come from the top-level scene clip (where the expanded row is
 // drawn). `editBasis` comes from the child's immediate sub-comp host: its absolute
 // start anchors local-time edits and its compositionSrc is the file edits write to.
 // They differ only for sub-comp-inside-sub-comp nesting.
 function buildChildElements(
-  siblings: ClipManifestClip[],
+  siblings: ExpandedClip[],
   display: DisplayBounds,
   editBasis: { start: number; sourceFile: string | undefined },
   domClipChildren: readonly DomClipChild[] = [],
@@ -179,7 +183,7 @@ function buildChildElements(
       selectorIndex,
       sourceFile: child.sourceFile ?? editBasis.sourceFile,
       previewHostId: domChild?.hostId,
-      timingSource: "authored",
+      timingSource: child.timingSource ?? "authored",
     });
   }
   return result;
@@ -193,11 +197,11 @@ function domSiblingClips(
   domClipChildren: DomClipChild[],
   siblingParentId: string,
   host: TimelineElement,
-): ClipManifestClip[] {
+): ExpandedClip[] {
   return domClipChildren
     .filter((c) => c.parentId === siblingParentId)
     .map(
-      (c): ClipManifestClip => ({
+      (c): ExpandedClip => ({
         id: c.id,
         hfId: c.hfId,
         selector: c.selector,
@@ -215,6 +219,10 @@ function domSiblingClips(
         compositionSrc: host.compositionSrc ?? null,
         assetUrl: null,
         stackingContextId: c.stackingContextId,
+        // This row only borrows the host's bounds for display. It has no
+        // authored data-start/data-duration attributes and therefore cannot be
+        // split, trimmed, or otherwise treated as an independent clip.
+        timingSource: "implicit",
       }),
     );
 }
@@ -226,7 +234,7 @@ function childClipsForParent(
   parentId: string,
   parentElement: TimelineElement,
   displayDelta: number,
-): ClipManifestClip[] {
+): ExpandedClip[] {
   const manifestChildren = manifest.filter(
     (clip) => clip.id != null && parentMap.get(clip.id) === parentId,
   );

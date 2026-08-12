@@ -38,6 +38,10 @@ interface UseElementLifecycleOpsParams extends DomEditCommitBaseParams {
   onElementDeleted?: (selection: DomEditSelection) => void;
 }
 
+export interface ElementDeleteOptions {
+  clearSelection?: boolean;
+}
+
 // One coalesce key per z-reorder gesture. A monotonic counter — NOT Date.now()
 // / Math.random(), which the determinism rules forbid — matches the
 // laneChangeGestureSeq precedent in timelineClipDragCommit.ts: the key only has
@@ -131,7 +135,7 @@ export function useElementLifecycleOps({
   // fallow-ignore-next-line complexity
   const handleDomEditElementDelete = useCallback(
     // fallow-ignore-next-line complexity
-    (selection: DomEditSelection): Promise<void> => {
+    (selection: DomEditSelection, options: ElementDeleteOptions = {}): Promise<void> => {
       const pid = projectIdRef.current;
       if (!pid) return Promise.resolve();
       if (deleteInFlightRef.current) return deleteInFlightRef.current;
@@ -181,7 +185,7 @@ export function useElementLifecycleOps({
             if (onTrySdkDelete && selection.hfId) {
               const handled = await onTrySdkDelete(selection.hfId, originalContent, targetPath);
               if (cutoverCommittedOrThrow(handled)) {
-                clearDomSelection();
+                if (options.clearSelection !== false) clearDomSelection();
                 // The optimistic DOM removal keeps the click instant, but the
                 // iframe/timeline can still rebuild once from their pre-delete
                 // snapshot. Always converge on the persisted source exactly once.
@@ -234,7 +238,7 @@ export function useElementLifecycleOps({
               throw error;
             }
 
-            clearDomSelection();
+            if (options.clearSelection !== false) clearDomSelection();
             // Server wrote the file; resync the stale in-memory SDK doc so a later
             // SDK edit doesn't resurrect the deleted element.
             forceReloadSdkSession?.();

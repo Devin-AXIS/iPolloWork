@@ -24,6 +24,7 @@ export const CURATED_STYLE_PROPERTIES = [
   "text-align",
   "text-transform",
   "color",
+  "--ipw-bg-image",
   "background-color",
   "background-image",
   "opacity",
@@ -42,6 +43,7 @@ export const CURATED_STYLE_PROPERTIES = [
   "filter",
   "backdrop-filter",
   "z-index",
+  "scale",
   "transform",
   "object-fit",
   "object-position",
@@ -112,6 +114,9 @@ export interface DomEditContextOptions {
   activeCompositionPath: string | null;
   isMasterView: boolean;
   preferClipAncestor?: boolean;
+  /** Preserve an explicit timeline/layer-tree target instead of applying the
+   * canvas selection-candidate heuristics. */
+  exactTarget?: boolean;
   /** The group wrapper the user has drilled into (null = top level). Selection
    * resolution treats groups as a unit unless drilled into one. */
   activeGroupElement?: HTMLElement | null;

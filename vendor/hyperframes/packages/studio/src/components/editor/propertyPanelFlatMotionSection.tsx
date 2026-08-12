@@ -5,18 +5,25 @@ import type { DomEditSelection } from "./domEditing";
 import { formatTimingValue } from "./propertyPanelHelpers";
 import { parseTimingValue } from "./propertyPanelTimingSection";
 import { CommitField } from "./propertyPanelPrimitives";
-import { deriveElementTiming } from "./propertyPanelFlatTimingDerivation";
+import {
+  clampPreviewTimeToElementRange,
+  deriveElementTiming,
+  resolveElementTimingEdit,
+} from "./propertyPanelFlatTimingDerivation";
 import type { MotionMutationInput, MotionTargetKind } from "@hyperframes/core/motion-presets";
 import { SemanticMotionPanel } from "./SemanticMotionPanel";
 
 export function FlatTimingRow({
   element,
   animations = [],
+  currentTime,
   onSetAttribute,
   onSetAttributes,
+  onSeekToTime,
 }: {
   element: DomEditSelection;
   animations?: GsapAnimation[];
+  currentTime: number;
   onSetAttribute: (attr: string, value: string) => void | Promise<void>;
   /** Commits start+duration together in ONE atomic persist call, bound to
    *  THIS render's `element` explicitly — not whatever is "currently"
@@ -24,17 +31,17 @@ export function FlatTimingRow({
    *  `onSetAttribute` calls (with the same non-atomicity/misdirection risk
    *  documented below) when the caller doesn't wire it up. */
   onSetAttributes?: (selection: DomEditSelection, attrs: Record<string, string>) => Promise<void>;
+  onSeekToTime?: (time: number) => void;
 }) {
   const track = useTrackDesignInput();
   const { tx } = useStudioI18n();
   const { start, duration, inferred: derived } = deriveElementTiming(element, animations);
   const end = start + duration;
 
-  // While the range is inferred from animations, editing ONE field must pin the
-  // WHOLE displayed range: writing only data-duration flips inference off and
-  // drops start to data-start-or-0 (the clip silently shifts), and writing only
-  // data-start is ignored while duration is still inferred (the edit looks
-  // dead). Pin both attributes in ONE atomic commit bound to THIS element —
+  // Start/end are absolute playback-timeline boundaries. Persist both values so
+  // changing start keeps end fixed, changing end keeps start fixed, and an
+  // inferred animation range becomes an explicit clip range in one operation.
+  // Bind the atomic commit to THIS element —
   // two sequential `onSetAttribute` calls would each resolve `domEditSelection`
   // fresh from current hook state, so a selection change between the two
   // awaits could misdirect the second write at the newly-selected element, and
@@ -49,34 +56,16 @@ export function FlatTimingRow({
     await onSetAttribute("duration", attrs.duration);
   };
 
-  const commitStart = (nextValue: string) => {
+  const commitRange = (field: "start" | "end", nextValue: string) => {
     const parsed = parseTimingValue(nextValue);
     if (parsed == null) return;
-    if (derived) {
-      void pinRange(parsed, duration);
-      return;
+    const range = resolveElementTimingEdit(start, end, field, parsed);
+    if (!range) return;
+    const nextPreviewTime = clampPreviewTimeToElementRange(currentTime, range);
+    if (nextPreviewTime !== currentTime) {
+      onSeekToTime?.(nextPreviewTime);
     }
-    void onSetAttribute("start", parsed.toFixed(2));
-  };
-
-  const commitDuration = (nextValue: string) => {
-    const parsed = parseTimingValue(nextValue);
-    if (parsed == null || parsed <= 0) return;
-    if (derived) {
-      void pinRange(start, parsed);
-      return;
-    }
-    void onSetAttribute("duration", parsed.toFixed(2));
-  };
-
-  const commitEnd = (nextValue: string) => {
-    const parsed = parseTimingValue(nextValue);
-    if (parsed == null || parsed <= start) return;
-    if (derived) {
-      void pinRange(start, parsed - start);
-      return;
-    }
-    void onSetAttribute("duration", (parsed - start).toFixed(2));
+    void pinRange(range.start, range.duration);
   };
 
   const cell = (label: string, value: string, onCommit: (next: string) => void) => (
@@ -98,9 +87,8 @@ export function FlatTimingRow({
 
   return (
     <div className="hf-flat-responsive-grid grid grid-cols-2 gap-2">
-      {cell("Start", formatTimingValue(start), commitStart)}
-      {cell("End", formatTimingValue(end), commitEnd)}
-      {cell("Duration", formatTimingValue(duration), commitDuration)}
+      {cell("Start", formatTimingValue(start), (value) => commitRange("start", value))}
+      {cell("End", formatTimingValue(end), (value) => commitRange("end", value))}
       {derived && (
         <p className="col-span-2 mt-1 text-[10px] leading-snug text-panel-text-3">
           {tx("Inferred from this element's animation — edit to pin an explicit clip range.")}
@@ -115,20 +103,24 @@ export function FlatMotionSection({
   animations,
   showTiming,
   showEffects,
+  currentTime,
   multipleTimelines,
   unsupportedTimelinePattern,
   onSetAttribute,
   onSetAttributes,
+  onSeekToTime,
   onMutateMotion,
 }: {
   element: DomEditSelection;
   animations: GsapAnimation[];
   showTiming: boolean;
   showEffects: boolean;
+  currentTime: number;
   multipleTimelines?: boolean;
   unsupportedTimelinePattern?: boolean;
   onSetAttribute: (attr: string, value: string) => void | Promise<void>;
   onSetAttributes?: (selection: DomEditSelection, attrs: Record<string, string>) => Promise<void>;
+  onSeekToTime?: (time: number) => void;
   onMutateMotion: (
     targetKind: MotionTargetKind,
     mutation: MotionMutationInput,
@@ -142,8 +134,10 @@ export function FlatMotionSection({
         <FlatTimingRow
           element={element}
           animations={animations}
+          currentTime={currentTime}
           onSetAttribute={onSetAttribute}
           onSetAttributes={onSetAttributes}
+          onSeekToTime={onSeekToTime}
         />
       )}
       {showEffects && (

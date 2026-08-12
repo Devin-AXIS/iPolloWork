@@ -18,9 +18,10 @@ import {
   findClosestByAttribute,
   getCuratedComputedStyles,
   getDataAttributes,
+  getCompositionSourceForHost,
+  getEditableSourceFileForElement,
   getInlineStyles,
   getSelectorIndex,
-  getSourceFileForElement,
   isHtmlElement,
   isTextBearingTag,
 } from "./domEditingDom";
@@ -328,7 +329,11 @@ export async function resolveDomEditSelection(
     capture = resolveGroupCapture(startEl, null);
   }
   let current: HTMLElement | null =
-    capture.kind === "unit" ? capture.element : getSelectionCandidate(startEl, options);
+    capture.kind === "unit"
+      ? capture.element
+      : options.exactTarget
+        ? startEl
+        : getSelectionCandidate(startEl, options);
   while (current && current !== doc.body && current !== doc.documentElement) {
     const selector = buildStableSelector(current);
     const hfId = readHfId(current);
@@ -337,22 +342,24 @@ export async function resolveDomEditSelection(
       continue;
     }
 
-    const { sourceFile, compositionPath } = getSourceFileForElement(
+    const { sourceFile, compositionPath } = getEditableSourceFileForElement(
       current,
       options.activeCompositionPath,
     );
     const selectorIndex = selector
       ? getSelectorIndex(doc, current, selector, sourceFile, options.activeCompositionPath)
       : undefined;
-    const compositionSrc =
-      current.getAttribute("data-composition-src") ??
-      current.getAttribute("data-composition-file") ??
-      undefined;
+    const compositionSrc = getCompositionSourceForHost(current);
     const inlineStyles = getInlineStyles(current);
     const computedStyles = getCuratedComputedStyles(current);
+    // Runtime-inlined composition hosts are themselves data-composition-id
+    // roots for the child content, but they remain editable boxes in the parent
+    // canvas. Only a node with no recovered child source can be the active
+    // composition root whose bounds must stay fixed.
+    const activeCompositionRoot = doc.querySelector<HTMLElement>("[data-composition-id]");
     const isCompositionRoot =
-      (current.hasAttribute("data-composition-id") && !compositionSrc) ||
-      isCompositionRootLayer(current, doc, computedStyles);
+      !compositionSrc &&
+      (current === activeCompositionRoot || isCompositionRootLayer(current, doc, computedStyles));
     const textFields = collectDomEditTextFields(current);
     const isInsideLocked = Boolean(findClosestByAttribute(current, ["data-timeline-locked"]));
     let existsInSource: boolean | undefined;
@@ -510,7 +517,10 @@ export function buildDomEditStylePatchOperation(
   return {
     type: "inline-style",
     property,
-    value,
+    // An empty CSS declaration (for example `line-height: ;`) is invalid and
+    // does not restore the inherited/computed value. Treat the inspector's
+    // empty reset value as a real declaration removal for every style channel.
+    value: value === "" ? null : value,
     ...childLocator,
   };
 }

@@ -170,12 +170,14 @@ function resolveCapabilities(facts: EditableElementFacts): DomEditCapabilities {
     top != null &&
     !hasTransformDrivenGeometry;
   const canResize = canMove && (width != null || height != null);
-  const canApplyManualGeometry = !facts.isCompositionHost;
-  const reasonIfDisabled = canApplyManualGeometry
-    ? undefined
-    : "Select an internal layer to transform it.";
+  // A composition host is a real authored box in its parent document. The
+  // editor resolves that parent-owned patch target before persisting, so hosts
+  // support the same move/resize/rotate and host-style controls as ordinary
+  // visual elements. Internal child styling still requires drilling in.
+  const canApplyManualGeometry = true;
+  const reasonIfDisabled = undefined;
 
-  const canEditStyles = !(facts.isCompositionHost && facts.isMasterView);
+  const canEditStyles = true;
   // Crop is broader than style editing: a sub-composition host CAN be cropped
   // from the parent view (a viewport clip persisted on the host in the parent
   // source), even though its internal styles are edited by drilling in.

@@ -37,6 +37,7 @@ import { CanvasContextMenu } from "./CanvasContextMenu";
 import type { ZOrderAction, ZOrderPatch } from "./canvasContextMenuZOrder";
 import { getPreviewTargetFromPointer } from "../../utils/studioPreviewHelpers";
 import { STUDIO_MULTI_SELECTION_ENABLED } from "./manualEditingAvailability";
+import { getEditableUnitSelectionTarget } from "./domEditingElement";
 
 declare global {
   interface Window {
@@ -391,6 +392,38 @@ export const DomEditOverlay = memo(function DomEditOverlay({
     const target = event.target as HTMLElement | null;
     if (target?.closest('[data-dom-edit-selection-box="true"]')) return;
 
+    // A resolved hover target can begin moving on the SAME pointer press that
+    // selects it. This is especially important for inserted-effect children:
+    // requiring a completed click before their selection chrome exists makes
+    // the first drag look like it was ignored. Confirm the cached hover against
+    // a fresh synchronous hit so a stale hover never moves the wrong element.
+    const iframe = iframeRef.current;
+    const freshTarget = iframe
+      ? getPreviewTargetFromPointer(
+          iframe,
+          event.clientX,
+          event.clientY,
+          activeCompositionPathRef.current,
+        )
+      : null;
+    const effectiveFreshTarget = freshTarget
+      ? (getEditableUnitSelectionTarget(freshTarget) ?? freshTarget)
+      : null;
+    const candidate = hoverSelectionRef.current;
+    if (
+      candidate &&
+      hoverRect &&
+      effectiveFreshTarget === candidate.element &&
+      candidate.capabilities.canApplyManualOffset
+    ) {
+      onSelectionChangeRef.current(candidate, {
+        revealPanel: false,
+        previewInteraction: "primary",
+      });
+      gestures.startGesture("drag", event, { selection: candidate, rect: hoverRect });
+      return;
+    }
+
     // Start marquee if clicking on empty canvas (no element under pointer).
     // The hover selection is an ASYNC cache: on a fast click (or when the
     // pointer was already resting over an element) it can still be empty while
@@ -403,7 +436,6 @@ export const DomEditOverlay = memo(function DomEditOverlay({
       onMarqueeSelectRef.current &&
       compRect.width > 0
     ) {
-      const iframe = iframeRef.current;
       const freshTarget = iframe
         ? getPreviewTargetFromPointer(
             iframe,
@@ -486,33 +518,10 @@ export const DomEditOverlay = memo(function DomEditOverlay({
         // so the gesture's member snapshot starts from the nudged position.
         flushNudge();
         focusDomEditOverlayElement(event.currentTarget as FocusableDomEditOverlay);
-        if (event.button !== 0) return;
-        const target = event.target as HTMLElement | null;
-        if (!target?.closest('[data-dom-edit-selection-box="true"]')) return;
-        const iframe = iframeRef.current;
-        const hit = iframe
-          ? getPreviewTargetFromPointer(
-              iframe,
-              event.clientX,
-              event.clientY,
-              activeCompositionPathRef.current,
-            )
-          : null;
-        const currentSelection = selectionRef.current;
-        if (!hit || !currentSelection) return;
-        if (hit === currentSelection.element) {
-          onSelectionChange(currentSelection, {
-            revealPanel: false,
-            previewInteraction: "primary",
-          });
-          return;
-        }
-        // A large selected wrapper can cover every authored child with its drag
-        // surface. Retarget before that surface starts a drag so one click can
-        // still select the visible child underneath.
-        event.preventDefault();
-        event.stopPropagation();
-        void onCanvasMouseDown(event, { hoverSelection: hoverSelectionRef.current });
+        // Selection chrome owns pointer-down so an already-selected child can
+        // drag immediately. A stationary press is retargeted on pointer-up by
+        // the gesture tap path, preserving one-click drill-down without
+        // cancelling a real drag before it crosses the movement threshold.
       }}
       onPointerDown={handleOverlayPointerDown}
       onMouseDown={handleOverlayMouseDown}
