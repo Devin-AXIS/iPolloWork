@@ -41,7 +41,10 @@ export interface ResolvedMotionInstance {
 
 export function resolveMotionTargetKind(element: DomEditSelection): MotionTargetKind {
   const hasAuthoredChildren = Array.from(element.element.children).some(
-    (child) => !child.hasAttribute("data-ipw-motion-word"),
+    (child) =>
+      !child.hasAttribute("data-ipw-motion-word") &&
+      !child.hasAttribute("data-ipw-motion-char") &&
+      child.getAttribute("data-ipw-motion-role") !== "unit",
   );
   return isTextEditableSelection(element) &&
     !hasAuthoredChildren &&

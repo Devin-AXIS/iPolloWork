@@ -55,20 +55,24 @@ describe("previewStructuredMotion", () => {
     const [revealTargets, revealVars, revealPosition] = timeline.to.mock.calls[0];
     expect(revealTargets).toHaveLength(3);
     expect(revealPosition).toBe(0);
-    expect(revealVars).toMatchObject({ duration: 0.15, stagger: 0.05 });
+    expect(revealVars.duration).toBeCloseTo(0.226744186047, 12);
+    expect(revealVars.stagger).toBeCloseTo(0.075581395349, 12);
     expect(revealVars).not.toHaveProperty("ease");
     expect(revealVars.keyframes["0%"].backgroundImage).toContain("#ff1745");
     expect(revealVars.keyframes["100%"].ease).toBe("power2.out");
 
     const exitVars = timeline.to.mock.calls[1][1];
-    expect(exitVars).toMatchObject({ duration: 0.1, stagger: 0.05 });
+    expect(exitVars.duration).toBeCloseTo(0.151162790698, 12);
+    expect(exitVars.stagger).toBeCloseTo(0.075581395349, 12);
     expect(exitVars.keyframes["100%"].ease).toBe("power2.in");
     expect(exitVars).not.toHaveProperty("ease");
 
     const [resetTargets, resetVars, resetPosition] = timeline.set.mock.calls[0];
     expect(resetTargets).toHaveLength(3);
-    expect(resetPosition).toBe(0.33);
-    expect(resetVars).toMatchObject({ opacity: 0, scaleX: 0, stagger: 0.05 });
+    expect(resetPosition).toBeCloseTo(0.498837209302, 12);
+    expect(resetVars.opacity).toBe(0);
+    expect(resetVars.scaleX).toBe(0);
+    expect(resetVars.stagger).toBeCloseTo(0.075581395349, 12);
     expect(resetVars).not.toHaveProperty("keyframes");
     expect(timeline.play).toHaveBeenCalledWith(0);
 

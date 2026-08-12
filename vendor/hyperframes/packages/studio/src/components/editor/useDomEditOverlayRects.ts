@@ -33,6 +33,11 @@ function childRectsEqual(a: OverlayRect[], b: OverlayRect[]): boolean {
   return true;
 }
 
+export function shouldMeasureDomEditChildRect(root: HTMLElement, child: HTMLElement): boolean {
+  if (root.getAttribute("data-ipw-motion-structure") !== "v1") return true;
+  return !child.closest("[data-ipw-motion-role], [data-ipw-motion-word], [data-ipw-motion-char]");
+}
+
 interface UseDomEditOverlayRectsOptions {
   iframeRef: RefObject<HTMLIFrameElement | null>;
   overlayRef: RefObject<HTMLDivElement | null>;
@@ -245,6 +250,7 @@ export function useDomEditOverlayRects({
             const nextChildRects: OverlayRect[] = [];
             for (let i = 0; i < descendants.length; i++) {
               const child = descendants[i] as HTMLElement;
+              if (!shouldMeasureDomEditChildRect(el, child)) continue;
               if (!child.getBoundingClientRect) continue;
               const r = toVisibleOverlayRect(overlayEl, iframe, child);
               if (r && r.width > 2 && r.height > 2) nextChildRects.push(r);

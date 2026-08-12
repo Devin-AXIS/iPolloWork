@@ -78,10 +78,61 @@ describe("structured text motion", () => {
         expect.objectContaining({ role: "text", perUnit: true }),
       ]),
       tracks: expect.arrayContaining([
-        expect.objectContaining({ role: "background", stagger: 0.05 }),
-        expect.objectContaining({ role: "text", stagger: 0.05 }),
+        expect.objectContaining({ role: "background" }),
+        expect.objectContaining({ role: "text" }),
       ]),
     });
+  });
+
+  it("scales structured track timing to the authored motion duration", () => {
+    const instance = createMotionInstance({
+      presetId: "text.emphasis.highlight-sweep",
+      target: { selector: "#headline", elementId: "headline" },
+      targetKind: "text",
+      start: 0,
+      duration: 1.6,
+      parameters: { unit: "word", stagger: 0.05 },
+    });
+
+    const compiled = compileStructuredTextMotion(
+      instance,
+      "Make motion clear",
+      recipe({
+        tracks: [
+          {
+            role: "background",
+            position: 0,
+            duration: 0.5,
+            stagger: 0.05,
+            keyframes: [
+              { percentage: 0, properties: { opacity: 0 } },
+              { percentage: 100, properties: { opacity: 1 } },
+            ],
+          },
+          {
+            role: "text",
+            position: 0.5,
+            duration: 0.1,
+            stagger: 0.05,
+            keyframes: [
+              { percentage: 0, properties: { opacity: 1 } },
+              { percentage: 100, properties: { opacity: 0 } },
+            ],
+          },
+        ],
+      }),
+    );
+
+    const [reveal, exit] = compiled?.tracks ?? [];
+    expect(reveal?.position).toBe(0);
+    expect(reveal?.duration).toBeCloseTo(1.142857142857);
+    expect(reveal?.stagger).toBeCloseTo(0.114285714286);
+    expect(exit?.position).toBeCloseTo(1.142857142857);
+    expect(exit?.duration).toBeCloseTo(0.228571428571);
+    expect(exit?.stagger).toBeCloseTo(0.114285714286);
+    expect((exit?.position ?? 0) + (exit?.duration ?? 0) + (exit?.stagger ?? 0) * 2).toBeCloseTo(
+      1.6,
+    );
   });
 
   it("rejects unknown roles, properties, and unsafe particle counts", () => {

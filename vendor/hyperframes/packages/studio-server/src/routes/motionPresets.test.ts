@@ -224,7 +224,7 @@ describe("semantic motion mutation route", () => {
     expect(html).toContain("scaleX: 0");
     expect(html).toContain("power2.out");
     expect(html).toContain("power2.in");
-    expect(html).toContain("stagger: 0.05");
+    expect(html).toContain("stagger: 0.168604651163");
     expect(html).toContain("duration: 0");
     const structuredTweenLines = html
       .split("\n")

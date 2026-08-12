@@ -124,6 +124,21 @@ export const MOTION_DATA_PREFIX = "ipw-motion:v1:";
 
 const PRESETS_BY_ID = new Map(MOTION_PRESETS.map((preset) => [preset.id, preset]));
 
+const MIGRATED_CAPTION_DURATIONS: Record<string, number> = {
+  "text.emphasis.highlight-sweep": 1.45,
+  "text.enter.matrix-decode": 1.8,
+  "text.emphasis.gradient-fill": 1.5,
+  "text.emphasis.neon-glow": 2,
+  "text.emphasis.neon-accent": 1.7,
+  "text.emphasis.rgb-glitch": 1.8,
+  "text.enter.clip-wipe": 1.6,
+  "text.emphasis.weight-shift": 1.4,
+  "text.emphasis.texture-fill": 1.5,
+  "text.emphasis.kinetic-slam": 1.35,
+  "text.emphasis.emoji-pop": 1.35,
+  "text.emphasis.particle-burst": 2,
+};
+
 const MOTION_SEARCH_ALIASES: Record<string, string[]> = {
   modern: ["现代"],
   restrained: ["克制"],
@@ -365,6 +380,8 @@ export function compileMotionInstance(instance: MotionInstance, text = ""): Comp
 }
 
 export function defaultMotionDuration(preset: MotionPreset): number {
+  const migratedCaptionDuration = MIGRATED_CAPTION_DURATIONS[preset.id];
+  if (migratedCaptionDuration !== undefined) return migratedCaptionDuration;
   if (preset.id.startsWith("background.")) return 3.2;
   if (preset.id === "text.enter.fold-reveal") return 0.9;
   if (preset.id === "motion.enter.gradual-focus") return 0.85;
@@ -376,11 +393,6 @@ export function defaultMotionDuration(preset: MotionPreset): number {
   if (preset.id === "text.emphasis.prism-glow") return 1.4;
   if (preset.id === "text.emphasis.shiny-sweep") return 1.4;
   if (preset.id === "text.emphasis.true-focus") return 1.2;
-  if (preset.id === "text.enter.matrix-decode") return 1.15;
-  if (preset.id === "text.enter.clip-wipe") return 0.72;
-  if (preset.id === "text.emphasis.kinetic-slam") return 0.86;
-  if (preset.id === "text.emphasis.particle-burst") return 0.9;
-  if (preset.id.startsWith("text.emphasis.neon-")) return 1.2;
   if (preset.id === "element.emphasis.spotlight-card") return 1.1;
   if (preset.id === "element.emphasis.glare-sweep") return 1.1;
   if (preset.phase === "emphasis") return 0.8;

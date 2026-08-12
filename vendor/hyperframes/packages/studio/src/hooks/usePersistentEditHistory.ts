@@ -156,7 +156,7 @@ async function writeFilesWithRollback({
  */
 async function applyHistoryStep(
   currentState: EditHistoryState,
-  entry: EditHistoryEntry | undefined,
+  direction: "undo" | "redo",
   transition: (
     state: EditHistoryState,
     currentHashes: Record<string, string>,
@@ -165,33 +165,58 @@ async function applyHistoryStep(
   now: () => number,
   callbacks: ApplyCallbacks,
 ): Promise<{ state: EditHistoryState; result: ApplyResult }> {
-  if (!entry) {
-    return { state: currentState, result: { ok: false, reason: "empty" } };
-  }
-  const paths = Object.keys(entry.files);
+  const topEntry = (state: EditHistoryState) =>
+    direction === "undo" ? state.undo[state.undo.length - 1] : state.redo[state.redo.length - 1];
+  const dropTopEntry = (state: EditHistoryState): EditHistoryState =>
+    direction === "undo"
+      ? { ...state, undo: state.undo.slice(0, -1), updatedAt: now() }
+      : { ...state, redo: state.redo.slice(0, -1), updatedAt: now() };
+  const firstEntry = topEntry(currentState);
+  if (!firstEntry) return { state: currentState, result: { ok: false, reason: "empty" } };
+  const paths = Object.keys(firstEntry.files);
   const apply = async (): Promise<{ state: EditHistoryState; result: ApplyResult }> => {
-    const { currentFiles, currentHashes } = await readCurrentFileHashes(paths, callbacks.readFile);
-    const result = transition(currentState, currentHashes, now());
-    if (!result.ok) {
+    let state = currentState;
+    let sawContentMismatch = false;
+    for (;;) {
+      const entry = topEntry(state);
+      if (!entry) {
+        return {
+          state,
+          result: { ok: false, reason: sawContentMismatch ? "content-mismatch" : "empty" },
+        };
+      }
+      const entryPaths = Object.keys(entry.files);
+      const { currentFiles, currentHashes } = await readCurrentFileHashes(
+        entryPaths,
+        callbacks.readFile,
+      );
+      const result = transition(state, currentHashes, now());
+      if (!result.ok) {
+        if (result.reason === "content-mismatch") {
+          sawContentMismatch = true;
+          state = dropTopEntry(state);
+          continue;
+        }
+        return {
+          state,
+          result: { ok: false, reason: result.reason },
+        };
+      }
+      await writeFilesWithRollback({
+        files: result.filesToWrite,
+        rollbackFiles: currentFiles,
+        writeFile: callbacks.writeFile,
+      });
       return {
-        state: currentState,
-        result: { ok: false, reason: result.reason },
+        state: result.state,
+        result: {
+          ok: true,
+          label: result.entry.label,
+          paths: Object.keys(result.entry.files),
+          files: restoredFilesMap(result.filesToWrite, currentFiles),
+        },
       };
     }
-    await writeFilesWithRollback({
-      files: result.filesToWrite,
-      rollbackFiles: currentFiles,
-      writeFile: callbacks.writeFile,
-    });
-    return {
-      state: result.state,
-      result: {
-        ok: true,
-        label: result.entry.label,
-        paths: Object.keys(result.entry.files),
-        files: restoredFilesMap(result.filesToWrite, currentFiles),
-      },
-    };
   };
   return callbacks.serialize ? callbacks.serialize(paths, apply) : apply();
 }
@@ -250,7 +275,7 @@ export function createPersistentEditHistoryStore({
       return mutate<ApplyResult>((currentState) =>
         applyHistoryStep(
           currentState,
-          currentState.undo[currentState.undo.length - 1],
+          "undo",
           undoEditHistory,
           now,
           callbacks,
@@ -261,7 +286,7 @@ export function createPersistentEditHistoryStore({
       return mutate<ApplyResult>((currentState) =>
         applyHistoryStep(
           currentState,
-          currentState.redo[currentState.redo.length - 1],
+          "redo",
           redoEditHistory,
           now,
           callbacks,

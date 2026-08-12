@@ -3,6 +3,7 @@ import {
   MOTION_PRESETS,
   compileMotionInstance,
   createMotionInstance,
+  defaultMotionDuration,
   listMotionPresets,
   readMotionInstanceFromExtras,
   validateMotionParameters,
@@ -113,6 +114,38 @@ describe("motion presets", () => {
       .toEqual(expect.arrayContaining(["text.enter.matrix-decode", "text.enter.clip-wipe"]));
     expect(listMotionPresets({ targetKind: "text", phase: "emphasis" }).map((preset) => preset.id))
       .toEqual(expect.arrayContaining(migratedIds.filter((id) => id.includes(".emphasis."))));
+  });
+
+  it("defaults migrated caption effects to readable showcase timing", () => {
+    const readableDurations: Record<string, number> = {
+      "text.emphasis.highlight-sweep": 1.45,
+      "text.enter.matrix-decode": 1.8,
+      "text.emphasis.gradient-fill": 1.5,
+      "text.emphasis.neon-glow": 2,
+      "text.emphasis.neon-accent": 1.7,
+      "text.emphasis.rgb-glitch": 1.8,
+      "text.enter.clip-wipe": 1.6,
+      "text.emphasis.weight-shift": 1.4,
+      "text.emphasis.texture-fill": 1.5,
+      "text.emphasis.kinetic-slam": 1.35,
+      "text.emphasis.emoji-pop": 1.35,
+      "text.emphasis.particle-burst": 2,
+    };
+
+    for (const [id, duration] of Object.entries(readableDurations)) {
+      const preset = MOTION_PRESETS.find((candidate) => candidate.id === id);
+      if (!preset) throw new Error(`Missing preset ${id}`);
+      expect(defaultMotionDuration(preset), id).toBe(duration);
+      expect(
+        createMotionInstance({
+          presetId: id,
+          target: { selector: "#headline" },
+          targetKind: "text",
+          start: 0,
+        }).duration,
+        id,
+      ).toBe(duration);
+    }
   });
 
   it("reuses safe keyframes for general elements without text-only parameters", () => {
@@ -405,14 +438,13 @@ describe("motion presets", () => {
     const exit = tracks.find(
       (track) =>
         track.role === "background" &&
-        track.duration === 0.1 &&
         track.keyframes.at(-1)?.properties.scaleX === 1.02,
     );
     const reset = tracks.find(
       (track) =>
         track.role === "background" &&
         track.duration === 0 &&
-        track.position === 0.33,
+        track.keyframes.at(-1)?.properties.scaleX === 0,
     );
     const word = tracks.find((track) => track.role === "unit");
     const text = tracks.find((track) => track.role === "text");
@@ -438,7 +470,6 @@ describe("motion presets", () => {
     ]);
     expect(reset).toMatchObject({
       role: "background",
-      position: 0.33,
       duration: 0,
       keyframes: [
         {
@@ -487,7 +518,8 @@ describe("motion presets", () => {
 
     expect(configured.split).toBe("character");
     expect(configured.units).toHaveLength("Make motion clear.".length);
-    expect(configured.tracks.every((track) => track.stagger === 0.12)).toBe(true);
+    expect(configured.tracks.every((track) => track.stagger > 0)).toBe(true);
+    expect(configured.tracks[0]?.stagger).not.toBe(baseline.tracks[0]?.stagger);
     expect(configured.tracks).not.toEqual(baseline.tracks);
     expect(faster.tracks[0]?.duration).toBeLessThan(baseline.tracks[0]?.duration ?? Infinity);
     expect(configured.tracks.some((track) =>

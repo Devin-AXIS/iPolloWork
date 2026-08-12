@@ -243,6 +243,24 @@ function randomInRange(random: () => number, range: readonly [number, number]): 
   return range[0] + (range[1] - range[0]) * random();
 }
 
+function roundTime(value: number): number {
+  return Math.round(value * 1e12) / 1e12;
+}
+
+function naturalTrackEnd(track: CompiledStructuredTrack, unitCount: number): number {
+  return track.position + track.duration + track.stagger * Math.max(0, unitCount - 1);
+}
+
+function structuredTimingScale(
+  tracks: readonly CompiledStructuredTrack[],
+  unitCount: number,
+  duration: number,
+): number {
+  const naturalDuration = Math.max(...tracks.map((track) => naturalTrackEnd(track, unitCount)), 0);
+  if (naturalDuration <= 0) return 1;
+  return duration / naturalDuration;
+}
+
 export function compileStructuredTextMotion(
   instance: MotionInstance,
   text: string,
@@ -261,6 +279,7 @@ export function compileStructuredTextMotion(
   const random = createStructuredTextRng(seed);
   const assets = copyValidatedAssets(recipe.assets);
   const particleSpec = recipe.particles;
+  const timingScale = structuredTimingScale(recipe.tracks, units.length, instance.duration);
   const particles = particleSpec && units.length > 0
     ? Array.from({ length: particleSpec.count }, (_, index) => ({
         unitIndex: units.length ? index % units.length : 0,
@@ -278,6 +297,9 @@ export function compileStructuredTextMotion(
     layers: recipe.layers.map((layer) => ({ ...layer })),
     tracks: recipe.tracks.map((track) => ({
       ...track,
+      position: roundTime(track.position * timingScale),
+      duration: roundTime(track.duration * timingScale),
+      stagger: roundTime(track.stagger * timingScale),
       keyframes: track.keyframes.map((keyframe) => ({ ...keyframe, properties: { ...keyframe.properties } })),
     })),
     ...(particles ? { particles } : {}),
