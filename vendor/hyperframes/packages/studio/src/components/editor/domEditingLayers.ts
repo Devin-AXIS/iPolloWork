@@ -37,6 +37,18 @@ export function isEditableTextLeaf(el: HTMLElement): boolean {
   return isTextBearingTag(el.tagName.toLowerCase()) && el.children.length === 0;
 }
 
+function readStructuredTextSource(el: HTMLElement): string | null {
+  if (el.getAttribute("data-ipw-motion-structure") !== "v1") return null;
+  const encoded = el.getAttribute("data-ipw-motion-source");
+  if (!encoded) return null;
+  try {
+    const source = JSON.parse(encoded);
+    return typeof source === "string" ? source : null;
+  } catch {
+    return null;
+  }
+}
+
 function sameTagChildIndex(el: HTMLElement): number {
   let index = 0;
   let sibling = el.previousElementSibling;
@@ -63,13 +75,14 @@ function buildTextField(
   total: number,
   source: "self" | "child",
   sourceChildIndex?: number,
+  valueOverride?: string,
 ): DomEditTextField {
   const tagName = el.tagName.toLowerCase();
   const key = el.getAttribute("data-hf-text-key") ?? `${source}:${index}:${tagName}`;
   return {
     key,
     label: getTextFieldLabel(tagName, index, total, source),
-    value: el.textContent ?? "",
+    value: valueOverride ?? el.textContent ?? "",
     tagName,
     attributes: Array.from(el.attributes)
       .filter((attribute) => attribute.name !== "style")
@@ -86,6 +99,11 @@ function buildTextField(
 
 // fallow-ignore-next-line complexity
 export function collectDomEditTextFields(el: HTMLElement): DomEditTextField[] {
+  const structuredSource = readStructuredTextSource(el);
+  if (structuredSource !== null) {
+    return [buildTextField(el, 0, 1, "self", undefined, structuredSource)];
+  }
+
   const childElements = Array.from(el.children).filter(isHtmlElement).filter(isEditableTextLeaf);
 
   if (childElements.length > 0) {

@@ -41,6 +41,23 @@ function createSelection(
 }
 
 describe("ensureElementAddressable", () => {
+  test("assigns an auto id when a selector matches multiple elements", () => {
+    document.body.innerHTML = "<h1>First</h1><h1>Second</h1><h1>Third</h1>";
+    const element = document.querySelectorAll("h1").item(1) as HTMLElement | null;
+    expect(element).not.toBeNull();
+    if (!element) return;
+
+    const result = ensureElementAddressable(
+      createSelection(element, {
+        selector: "h1",
+        selectorIndex: 1,
+      }),
+    );
+
+    expect(result).toEqual({ selector: "#h1", autoId: "h1" });
+    expect(element.id).toBe("h1");
+  });
+
   test("uses a stable hf id instead of a selector shared by sibling elements", () => {
     document.body.innerHTML = `
       <span class="task-label" data-hf-id="hf-first">First</span>

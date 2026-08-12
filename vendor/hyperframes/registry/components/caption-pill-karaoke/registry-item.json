@@ -2,10 +2,15 @@
   "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
   "name": "caption-pill-karaoke",
   "type": "hyperframes:component",
-  "librarySection": "text-animation",
+  "librarySection": "caption-animation",
   "title": "Pill Karaoke",
   "description": "Pill-shaped container with per-word karaoke color highlight",
-  "tags": ["captions", "caption-style", "karaoke", "pill"],
+  "tags": [
+    "captions",
+    "caption-style",
+    "karaoke",
+    "pill"
+  ],
   "files": [
     {
       "path": "caption-pill-karaoke.html",
@@ -16,5 +21,45 @@
   "preview": {
     "video": "https://static.heygen.ai/hyperframes-oss/registry/components/caption-pill-karaoke/preview.mp4?v=1779051416",
     "poster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/caption-pill-karaoke.png"
+  },
+  "kind": "effect",
+  "engine": {
+    "name": "gsap",
+    "version": "3.15.0",
+    "seekable": true,
+    "plugins": []
+  },
+  "source": {
+    "provider": "ipollowork",
+    "label": "Restored legacy caption motion"
+  },
+  "motionPreset": {
+    "version": 1,
+    "category": "caption",
+    "targets": [
+      "caption",
+      "text"
+    ],
+    "anchor": "clip-start",
+    "duration": 0.7,
+    "ease": "power3.out",
+    "keyframes": [
+      {
+        "percentage": 0,
+        "properties": {
+          "opacity": 0,
+          "y": 16,
+          "scale": 0.94
+        }
+      },
+      {
+        "percentage": 100,
+        "properties": {
+          "opacity": 1,
+          "y": 0,
+          "scale": 1
+        }
+      }
+    ]
   }
 }

@@ -20,6 +20,7 @@ import type { DomEditSelection } from "./domEditing";
 import { isTextEditableSelection } from "./domEditing";
 import { ColorField } from "./propertyPanelColor";
 import { FlatSelectRow, FlatSlider } from "./propertyPanelFlatPrimitives";
+import { previewStructuredMotion } from "./structuredMotionPreview";
 
 const PHASES: Array<{ id: MotionPhase; label: string }> = [
   { id: "enter", label: "出现" },
@@ -40,7 +41,10 @@ export interface ResolvedMotionInstance {
 
 export function resolveMotionTargetKind(element: DomEditSelection): MotionTargetKind {
   const hasAuthoredChildren = Array.from(element.element.children).some(
-    (child) => !child.hasAttribute("data-ipw-motion-word"),
+    (child) =>
+      !child.hasAttribute("data-ipw-motion-word") &&
+      !child.hasAttribute("data-ipw-motion-char") &&
+      child.getAttribute("data-ipw-motion-role") !== "unit",
   );
   return isTextEditableSelection(element) &&
     !hasAuthoredChildren &&
@@ -56,9 +60,16 @@ export function resolveMotionInstances(animations: GsapAnimation[]): ResolvedMot
   });
 }
 
+type MotionPreviewTarget = HTMLElement | HTMLElement[];
+
 interface MotionPreviewTimeline {
   to?: (
-    target: HTMLElement,
+    target: MotionPreviewTarget,
+    vars: Record<string, unknown>,
+    position: number,
+  ) => MotionPreviewTimeline;
+  set?: (
+    target: MotionPreviewTarget,
     vars: Record<string, unknown>,
     position: number,
   ) => MotionPreviewTimeline;
@@ -74,6 +85,17 @@ type MotionPreviewWindow = Window & {
   };
 };
 
+function keyframesForPreview(
+  keyframes: Array<{ percentage: number; properties: Record<string, number | string>; ease?: string }>,
+): Record<string, Record<string, number | string>> {
+  return Object.fromEntries(
+    keyframes.map((frame) => [
+      `${frame.percentage}%`,
+      { ...frame.properties, ...(frame.ease ? { ease: frame.ease } : {}) },
+    ]),
+  );
+}
+
 function previewMotionDraft(
   draft: AnimationTemplateDraft,
   duration: number,
@@ -81,24 +103,38 @@ function previewMotionDraft(
 ): (() => void) | undefined {
   const target = draft.selection.element;
   const win = target.ownerDocument.defaultView as MotionPreviewWindow | null;
+  const structuredPreview = win?.gsap
+    ? previewStructuredMotion({
+        target,
+        presetId: draft.presetId,
+        targetKind: draft.targetKind,
+        parameters: draft.parameters,
+        duration,
+        loop,
+        gsap: win.gsap,
+      })
+    : undefined;
+  if (structuredPreview) return structuredPreview.cleanup;
+
+  let compiled: ReturnType<typeof compileMotionInstance>;
+  try {
+    compiled = compileMotionInstance(
+      createMotionInstance({
+        presetId: draft.presetId,
+        target: { selector: "[data-ipw-motion-preview]" },
+        targetKind: draft.targetKind,
+        start: 0,
+        duration,
+        parameters: draft.parameters,
+      }),
+      target.textContent ?? "",
+    );
+  } catch {
+    return undefined;
+  }
   const timeline = win?.gsap?.timeline?.({ paused: true, repeat: loop ? 1 : 0 });
   if (!timeline?.to) return undefined;
-  const compiled = compileMotionInstance(
-    createMotionInstance({
-      presetId: draft.presetId,
-      target: { selector: "[data-ipw-motion-preview]" },
-      targetKind: draft.targetKind,
-      start: 0,
-      duration,
-      parameters: draft.parameters,
-    }),
-  );
-  const keyframes = Object.fromEntries(
-    compiled.keyframes.map((frame) => [
-      `${frame.percentage}%`,
-      { ...frame.properties, ...(frame.ease ? { ease: frame.ease } : {}) },
-    ]),
-  );
+  const keyframes = keyframesForPreview(compiled.keyframes);
   const originalStyle = target.getAttribute("style");
   let restored = false;
   let previewFrame = 0;

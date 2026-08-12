@@ -1,11 +1,25 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Hono } from "hono";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { parseHTML } from "linkedom";
 import { readMotionInstanceFromExtras } from "@hyperframes/core/motion-presets";
 import type { StudioApiAdapter } from "../types";
 import { registerFileRoutes } from "./files";
+
+const structuredRestoreCalls = vi.hoisted(() => ({ count: 0 }));
+
+vi.mock("@hyperframes/core/motion-presets", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@hyperframes/core/motion-presets")>();
+  return {
+    ...actual,
+    restoreStructuredText(...args: Parameters<typeof actual.restoreStructuredText>) {
+      structuredRestoreCalls.count += 1;
+      return actual.restoreStructuredText(...args);
+    },
+  };
+});
 
 const SOURCE = `<!doctype html>
 <html><body>
@@ -22,6 +36,7 @@ describe("semantic motion mutation route", () => {
   let app: Hono;
 
   beforeEach(() => {
+    structuredRestoreCalls.count = 0;
     projectDir = mkdtempSync(join(tmpdir(), "hf-motion-test-"));
     writeFileSync(join(projectDir, "index.html"), SOURCE);
     const adapter: StudioApiAdapter = {
@@ -150,6 +165,237 @@ describe("semantic motion mutation route", () => {
     const html = readFileSync(join(projectDir, "index.html"), "utf8");
     expect(html).toContain('data-hf-id="hf-live"');
     expect(html).toContain('id="headline"');
+  });
+
+  it("persists a reversible legacy Highlight sweep as structured role tracks", async () => {
+    writeFileSync(
+      join(projectDir, "index.html"),
+      SOURCE.replace("\u4f60\u597d mixed AI", "Make motion clear."),
+    );
+    const highlight = {
+      type: "mutate-motion",
+      operation: "upsert",
+      targetSelector: "#headline",
+      elementId: "headline",
+      targetKind: "text",
+      phase: "emphasis",
+      presetId: "text.emphasis.highlight-sweep",
+      parameters: { unit: "word", stagger: 0.05 },
+    };
+
+    const applied = await mutate(highlight);
+    expect(applied.status).toBe(200);
+    const appliedBody = await applied.json();
+    const appliedAnimations = appliedBody.parsed.animations.filter(
+      (animation: { extras?: Record<string, unknown> }) =>
+        readMotionInstanceFromExtras(animation.extras) !== null,
+    );
+    const appliedMotions = appliedAnimations
+      .map((animation: { extras?: Record<string, unknown> }) =>
+        readMotionInstanceFromExtras(animation.extras),
+      )
+      .filter(Boolean);
+    expect(appliedMotions).toHaveLength(5);
+    expect(new Set(appliedMotions.map((motion: { id: string }) => motion.id))).toEqual(
+      new Set(["motion:#headline:emphasis"]),
+    );
+    let html = readFileSync(join(projectDir, "index.html"), "utf8");
+    const runtimeIds = Array.from(
+      html.matchAll(/id: "(motion:#headline:emphasis:\d+:(?:background|unit|text))"/g),
+      (match) => match[1],
+    );
+    expect(runtimeIds).toEqual([
+      "motion:#headline:emphasis:0:background",
+      "motion:#headline:emphasis:1:background",
+      "motion:#headline:emphasis:2:background",
+      "motion:#headline:emphasis:3:unit",
+      "motion:#headline:emphasis:4:text",
+    ]);
+    expect(new Set(runtimeIds).size).toBe(5);
+    expect((html.match(/data-ipw-motion-role="unit"/g) ?? [])).toHaveLength(3);
+    expect((html.match(/data-ipw-motion-role="background"/g) ?? [])).toHaveLength(3);
+    expect((html.match(/data-ipw-motion-role="text"/g) ?? [])).toHaveLength(3);
+    expect(html).toContain(">clear.</span>");
+    expect(html).toContain('data-ipw-motion-structure="v1"');
+    expect(html).toContain('#headline [data-ipw-motion-role=\\"background\\"]');
+    expect(html).toContain('#headline [data-ipw-motion-role=\\"unit\\"]');
+    expect(html).toContain('#headline [data-ipw-motion-role=\\"text\\"]');
+    expect(html).toContain("linear-gradient(135deg, #ff1745 0%, #df1238 100%)");
+    expect(html).toContain("scaleX: 0");
+    expect(html).toContain("power2.out");
+    expect(html).toContain("power2.in");
+    expect(html).toContain("stagger: 0.168604651163");
+    expect(html).toContain("duration: 0");
+    const structuredTweenLines = html
+      .split("\n")
+      .filter((line) => line.includes('tl.to("#headline [data-ipw-motion-role'));
+    expect(structuredTweenLines).toHaveLength(5);
+    for (const line of structuredTweenLines) {
+      expect(line).not.toMatch(/}, duration: [^,]+, ease:/);
+    }
+
+    const repeated = await mutate(highlight);
+    expect(repeated.status).toBe(200);
+    html = readFileSync(join(projectDir, "index.html"), "utf8");
+    expect((html.match(/data-ipw-motion-role="unit"/g) ?? [])).toHaveLength(3);
+
+    const removed = await mutate({ ...highlight, operation: "remove" });
+    expect(removed.status).toBe(200);
+    html = readFileSync(join(projectDir, "index.html"), "utf8");
+    expect(html).toContain(">Make motion clear.</h1>");
+    expect(html).not.toContain("data-ipw-motion-structure");
+    expect(html).not.toContain("data-ipw-motion-source");
+    expect(html).not.toContain("data-ipw-motion-role");
+
+    const whole = await mutate({
+      type: "mutate-motion",
+      operation: "upsert",
+      targetSelector: "#headline",
+      targetKind: "text",
+      phase: "enter",
+      presetId: "text.enter.fade",
+      parameters: { unit: "whole" },
+    });
+    expect(whole.status).toBe(200);
+    const character = await mutate({
+      type: "mutate-motion",
+      operation: "upsert",
+      targetSelector: "#headline",
+      targetKind: "text",
+      phase: "enter",
+      presetId: "text.enter.typewriter",
+      parameters: { unit: "character" },
+    });
+    expect(character.status).toBe(200);
+    html = readFileSync(join(projectDir, "index.html"), "utf8");
+    expect(html).toContain("data-ipw-motion-char");
+    expect(html).not.toContain("data-ipw-motion-structure");
+  });
+
+  it("keeps structured word units on variable-bound text", async () => {
+    writeFileSync(
+      join(projectDir, "index.html"),
+      SOURCE.replace("\u4f60\u597d mixed AI", "Make motion clear.").replace(
+        '<h1 id="headline"',
+        '<h1 id="headline" data-var-text="title"',
+      ),
+    );
+
+    const applied = await mutate({
+      type: "mutate-motion",
+      operation: "upsert",
+      targetSelector: "#headline",
+      targetKind: "text",
+      phase: "emphasis",
+      presetId: "text.emphasis.highlight-sweep",
+      parameters: { unit: "word", stagger: 0.05 },
+    });
+
+    expect(applied.status).toBe(200);
+    const html = readFileSync(join(projectDir, "index.html"), "utf8");
+    expect((html.match(/data-ipw-motion-role="unit"/g) ?? [])).toHaveLength(3);
+    expect(html).toContain('data-var-text="title"');
+    expect(html).toContain('\\"unit\\":\\"word\\"');
+  });
+
+  it("keeps character motion addressable while Highlight is structured", async () => {
+    writeFileSync(
+      join(projectDir, "index.html"),
+      SOURCE.replace("\u4f60\u597d mixed AI", "Make motion clear."),
+    );
+    const typewriter = await mutate({
+      type: "mutate-motion",
+      operation: "upsert",
+      targetSelector: "#headline",
+      elementId: "headline",
+      targetKind: "text",
+      phase: "enter",
+      presetId: "text.enter.typewriter",
+      parameters: { unit: "character", stagger: 0.04 },
+    });
+    expect(typewriter.status).toBe(200);
+
+    const highlight = await mutate({
+      type: "mutate-motion",
+      operation: "upsert",
+      targetSelector: "#headline",
+      elementId: "headline",
+      targetKind: "text",
+      phase: "emphasis",
+      presetId: "text.emphasis.highlight-sweep",
+      parameters: { unit: "word", stagger: 0.05 },
+    });
+    expect(highlight.status).toBe(200);
+
+    let html = readFileSync(join(projectDir, "index.html"), "utf8");
+    let document = parseHTML(html).document;
+    expect(document.querySelectorAll('[data-ipw-motion-role="text"]')).toHaveLength(3);
+    expect(document.querySelectorAll('[data-ipw-motion-role="text"] [data-ipw-motion-char]').length)
+      .toBeGreaterThan(0);
+    expect(document.querySelectorAll('#headline [data-ipw-motion-char]').length).toBeGreaterThan(0);
+    expect(document.querySelectorAll('#headline [data-ipw-motion-role="background"]')).toHaveLength(3);
+    expect(html).toContain('#headline [data-ipw-motion-char]');
+    expect(html).toContain('#headline [data-ipw-motion-role=\\"background\\"]');
+
+    const removed = await mutate({
+      type: "mutate-motion",
+      operation: "remove",
+      targetSelector: "#headline",
+      targetKind: "text",
+      phase: "emphasis",
+    });
+    expect(removed.status).toBe(200);
+    const removedBody = await removed.json();
+    const remainingMotions = removedBody.parsed.animations
+      .map((animation: { extras?: Record<string, unknown> }) =>
+        readMotionInstanceFromExtras(animation.extras),
+      )
+      .filter(Boolean);
+    expect(remainingMotions).toHaveLength(1);
+    expect(remainingMotions[0].presetId).toBe("text.enter.typewriter");
+
+    html = readFileSync(join(projectDir, "index.html"), "utf8");
+    document = parseHTML(html).document;
+    expect(html).not.toContain("data-ipw-motion-structure");
+    expect(html).not.toContain("data-ipw-motion-role");
+    expect(document.querySelectorAll("#headline [data-ipw-motion-char]").length).toBeGreaterThan(0);
+    expect(document.querySelector("#headline")?.textContent).toBe("Make motion clear.");
+  });
+
+  it("restores materialized Highlight DOM when the structured writer cannot add a track", async () => {
+    const unwritableSource = SOURCE
+      .replace("\u4f60\u597d mixed AI", "Make motion clear.")
+      .replace(
+        "const tl = gsap.timeline({ paused: true });",
+        "const timelines = [gsap.timeline({ paused: true })];",
+      )
+      .replace('window.__timelines["main"] = tl;', "void timelines;");
+    writeFileSync(join(projectDir, "index.html"), unwritableSource);
+    const before = readFileSync(join(projectDir, "index.html"), "utf8");
+
+    const response = await mutate({
+      type: "mutate-motion",
+      operation: "upsert",
+      targetSelector: "#headline",
+      elementId: "headline",
+      targetKind: "text",
+      phase: "emphasis",
+      presetId: "text.emphasis.highlight-sweep",
+      parameters: { unit: "word", stagger: 0.05 },
+    });
+
+    expect(response.status).toBe(400);
+    expect(structuredRestoreCalls.count).toBe(1);
+    const after = readFileSync(join(projectDir, "index.html"), "utf8");
+    expect(after).toBe(before);
+    expect(after).not.toContain("data-ipw-motion-structure");
+    expect(after).not.toContain("data-ipw-motion-source");
+    expect(after).not.toContain("data-ipw-motion-role");
+    const target = parseHTML(after).document.querySelector("#headline");
+    expect(target?.textContent).toBe("Make motion clear.");
+    expect(target?.getAttribute("id")).toBe("headline");
+    expect(target?.getAttribute("data-start")).toBe("1");
+    expect(target?.getAttribute("data-duration")).toBe("5");
   });
 
   it("replaces a legacy selector animation when the same element gains a stable hf id", async () => {

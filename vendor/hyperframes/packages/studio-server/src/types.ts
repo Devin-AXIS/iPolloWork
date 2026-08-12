@@ -207,6 +207,7 @@ export interface StudioApiAdapter {
     html: string;
     duration: number;
     dimensions: { width: number; height: number };
+    focus?: { x: number; y: number; zoom: number };
   } | null>;
 
   /** Optional: load an asset declared by a bundled registry block. */

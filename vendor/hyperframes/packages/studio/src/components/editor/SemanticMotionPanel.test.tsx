@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
 import { compileMotionInstance, createMotionInstance } from "@hyperframes/core/motion-presets";
 import { findElementForSelection, type DomEditSelection } from "./domEditing";
+import { collectDomEditTextFields, resolveDomEditSelection } from "./domEditingLayers";
 import {
   AnimationPropertiesPanel,
   resolveMotionInstances,
@@ -29,21 +30,7 @@ function selection(element: HTMLElement): DomEditSelection {
     dataAttributes: {},
     inlineStyles: {},
     computedStyles: {},
-    textFields:
-      element.children.length === 0 && Boolean(element.textContent?.trim())
-        ? [
-            {
-              key: "text",
-              label: "Text",
-              value: element.textContent ?? "",
-              tagName: element.tagName.toLowerCase(),
-              attributes: [],
-              inlineStyles: {},
-              computedStyles: {},
-              source: "self",
-            },
-          ]
-        : [],
+    textFields: collectDomEditTextFields(element),
     capabilities: {
       canSelect: true,
       canEditStyles: true,
@@ -154,6 +141,97 @@ describe("SemanticMotionPanel", () => {
 
     expect(resolveMotionTargetKind(selection(leaf))).toBe("text");
     expect(resolveMotionTargetKind(selection(containerElement))).toBe("element");
+  });
+
+  it("keeps structured text motion wrappers selectable as text", () => {
+    const title = document.createElement("h1");
+    title.id = "title";
+    title.setAttribute("data-ipw-motion-structure", "v1");
+    title.setAttribute("data-ipw-motion-source", JSON.stringify("Duty, not consequence."));
+    title.innerHTML = `
+      <span data-ipw-motion-role="unit" data-ipw-motion-word="">
+        <span data-ipw-motion-role="background" aria-hidden="true"></span>
+        <span data-ipw-motion-role="text">Duty,</span>
+      </span>
+      <span data-ipw-motion-role="unit" data-ipw-motion-word="">
+        <span data-ipw-motion-role="background" aria-hidden="true"></span>
+        <span data-ipw-motion-role="text">not</span>
+      </span>
+      <span data-ipw-motion-role="unit" data-ipw-motion-word="">
+        <span data-ipw-motion-role="background" aria-hidden="true"></span>
+        <span data-ipw-motion-role="text">consequence.</span>
+      </span>
+    `;
+
+    expect(resolveMotionTargetKind(selection(title))).toBe("text");
+  });
+
+  it("collects structured text motion as the original editable text field", () => {
+    const title = document.createElement("h1");
+    title.setAttribute("data-ipw-motion-structure", "v1");
+    title.setAttribute("data-ipw-motion-source", JSON.stringify("Duty, not consequence."));
+    title.innerHTML = `
+      <span data-ipw-motion-role="unit" data-ipw-motion-word="">
+        <span data-ipw-motion-role="background" aria-hidden="true"></span>
+        <span data-ipw-motion-role="text">Duty,</span>
+      </span>
+      <span data-ipw-motion-role="unit" data-ipw-motion-word="">
+        <span data-ipw-motion-role="background" aria-hidden="true"></span>
+        <span data-ipw-motion-role="text">not</span>
+      </span>
+      <span data-ipw-motion-role="unit" data-ipw-motion-word="">
+        <span data-ipw-motion-role="background" aria-hidden="true"></span>
+        <span data-ipw-motion-role="text">consequence.</span>
+      </span>
+    `;
+
+    expect(collectDomEditTextFields(title)).toMatchObject([
+      {
+        source: "self",
+        value: "Duty, not consequence.",
+      },
+    ]);
+  });
+
+  it("resolves clicks on structured motion words to the authored text element", async () => {
+    const title = document.createElement("h1");
+    title.id = "title";
+    title.setAttribute("data-ipw-motion-structure", "v1");
+    title.setAttribute("data-ipw-motion-source", JSON.stringify("Duty, not consequence."));
+    title.innerHTML = `
+      <span data-ipw-motion-role="unit" data-ipw-motion-word="">
+        <span data-ipw-motion-role="background" aria-hidden="true"></span>
+        <span data-ipw-motion-role="text">Duty,</span>
+      </span>
+      <span data-ipw-motion-role="unit" data-ipw-motion-word="">
+        <span data-ipw-motion-role="background" aria-hidden="true"></span>
+        <span data-ipw-motion-role="text">not</span>
+      </span>
+      <span data-ipw-motion-role="unit" data-ipw-motion-word="">
+        <span data-ipw-motion-role="background" aria-hidden="true"></span>
+        <span data-ipw-motion-role="text">consequence.</span>
+      </span>
+    `;
+    document.body.append(title);
+    const clickedWord = Array.from(
+      title.querySelectorAll<HTMLElement>('[data-ipw-motion-role="text"]'),
+    ).at(-1);
+    if (!clickedWord) throw new Error("Structured word text is missing");
+
+    const resolved = await resolveDomEditSelection(clickedWord, {
+      activeCompositionPath: "index.html",
+      isMasterView: true,
+      skipSourceProbe: true,
+    });
+
+    expect(resolved?.element).toBe(title);
+    expect(resolved?.textFields).toMatchObject([
+      {
+        source: "self",
+        value: "Duty, not consequence.",
+      },
+    ]);
+    title.remove();
   });
 
   it("previews a draft and only persists speed and loop after confirmation", async () => {
@@ -349,6 +427,139 @@ describe("SemanticMotionPanel", () => {
     });
     expect(onApplied).not.toHaveBeenCalled();
     expect(confirm.disabled).toBe(false);
+  });
+
+  it("previews Highlight as reversible per-word structured tracks", () => {
+    const title = document.createElement("h1");
+    title.id = "title";
+    title.setAttribute("style", "letter-spacing: 1px");
+    title.setAttribute("data-source", "authored");
+    const originalText = document.createTextNode("Make motion clear.");
+    title.append(originalText);
+    document.body.append(title);
+    const selected = selection(title);
+    const instance = createMotionInstance({
+      presetId: "text.emphasis.highlight-sweep",
+      target: { selector: "#title", elementId: "title" },
+      targetKind: "text",
+      start: 0,
+    });
+    const timeline = {
+      to: vi.fn(),
+      set: vi.fn(),
+      play: vi.fn(),
+      kill: vi.fn(),
+    };
+    timeline.to.mockReturnValue(timeline);
+    timeline.set.mockReturnValue(timeline);
+    Object.defineProperty(window, "gsap", {
+      configurable: true,
+      value: { timeline: vi.fn(() => timeline) },
+    });
+
+    const renderDraft = (parameters = instance.parameters) => (
+      <AnimationPropertiesPanel
+        draft={{
+          templateId: "caption-highlight-word-sweep",
+          presetId: instance.presetId,
+          targetKind: instance.targetKind,
+          selection: selected,
+          parameters,
+        }}
+        element={selected}
+        animations={[]}
+        onMutate={vi.fn()}
+        onApplied={vi.fn()}
+      />
+    );
+
+    flushSync(() => root.render(renderDraft()));
+
+    expect(title.querySelectorAll('[data-ipw-motion-role="unit"]')).toHaveLength(3);
+    expect(title.querySelectorAll('[data-ipw-motion-role="background"]')).toHaveLength(3);
+    expect(title.querySelectorAll('[data-ipw-motion-role="text"]')).toHaveLength(3);
+    expect(timeline.to).toHaveBeenCalledTimes(4);
+    expect(timeline.set).toHaveBeenCalledTimes(1);
+    const [revealTargets, revealVars, revealPosition] = timeline.to.mock.calls[0];
+    expect(revealTargets).toHaveLength(3);
+    expect(revealPosition).toBe(0);
+    expect(revealVars.duration).toBeCloseTo(0.505813953488, 12);
+    expect(revealVars.stagger).toBeCloseTo(0.168604651163, 12);
+    expect(revealVars).not.toHaveProperty("ease");
+    expect(revealVars.keyframes["0%"].backgroundImage).toContain("linear-gradient");
+    expect(revealVars.keyframes["100%"].ease).toBe("power2.out");
+    const exitVars = timeline.to.mock.calls[1][1];
+    expect(exitVars.duration).toBeCloseTo(0.337209302326, 12);
+    expect(exitVars.stagger).toBeCloseTo(0.168604651163, 12);
+    expect(exitVars).not.toHaveProperty("ease");
+    expect(exitVars.keyframes["100%"].ease).toBe("power2.in");
+    const [resetTargets, resetVars, resetPosition] = timeline.set.mock.calls[0];
+    expect(resetTargets).toHaveLength(3);
+    expect(resetPosition).toBeCloseTo(1.112790697674, 12);
+    expect(resetVars.keyframes).toBeUndefined();
+    expect(resetVars.scaleX).toBe(0);
+
+    flushSync(() => root.render(renderDraft({ ...instance.parameters, intensity: 1.1 })));
+    expect(title.querySelectorAll('[data-ipw-motion-role="unit"]')).toHaveLength(3);
+    expect(title.querySelectorAll('[data-ipw-motion-role="unit"] [data-ipw-motion-role="unit"]')).toHaveLength(0);
+
+    flushSync(() => root.render(<div />));
+    expect(timeline.kill).toHaveBeenCalledTimes(2);
+    expect(title.firstChild).toBe(originalText);
+    expect(title.textContent).toBe("Make motion clear.");
+    expect(title.getAttribute("style")).toBe("letter-spacing: 1px");
+    expect(title.getAttribute("data-source")).toBe("authored");
+    expect(title.hasAttribute("data-ipw-motion-structure")).toBe(false);
+    title.remove();
+  });
+
+  it("leaves the DOM untouched when structured preview compilation rejects oversized text", () => {
+    const title = document.createElement("h1");
+    title.id = "title";
+    title.setAttribute("style", "color: navy");
+    const originalText = document.createTextNode("a".repeat(513));
+    title.append(originalText);
+    document.body.append(title);
+    const selected = selection(title);
+    const instance = createMotionInstance({
+      presetId: "text.emphasis.highlight-sweep",
+      target: { selector: "#title", elementId: "title" },
+      targetKind: "text",
+      start: 0,
+      parameters: { unit: "character" },
+    });
+    const createTimeline = vi.fn();
+    Object.defineProperty(window, "gsap", {
+      configurable: true,
+      value: { timeline: createTimeline },
+    });
+
+    expect(() =>
+      flushSync(() =>
+        root.render(
+          <AnimationPropertiesPanel
+            draft={{
+              templateId: "caption-highlight-character-sweep",
+              presetId: instance.presetId,
+              targetKind: instance.targetKind,
+              selection: selected,
+              parameters: instance.parameters,
+            }}
+            element={selected}
+            animations={[]}
+            onMutate={vi.fn()}
+            onApplied={vi.fn()}
+          />,
+        ),
+      ),
+    ).not.toThrow();
+
+    expect(createTimeline).not.toHaveBeenCalled();
+    expect(title.firstChild).toBe(originalText);
+    expect(title.textContent).toBe("a".repeat(513));
+    expect(title.getAttribute("style")).toBe("color: navy");
+    expect(title.hasAttribute("data-ipw-motion-structure")).toBe(false);
+    title.remove();
   });
 
   it("does not replay a saved preview when only selection geometry refreshes", () => {

@@ -3,6 +3,12 @@ import { isAbsolute, join, relative, resolve } from "node:path";
 import type { RegistryItem } from "@hyperframes/core/registry";
 import { getMimeType } from "./mime.js";
 
+export interface RegistryPreviewFocus {
+  x: number;
+  y: number;
+  zoom: number;
+}
+
 function resolveRegistryItem(
   registryRoot: string,
   itemName: string,
@@ -44,6 +50,13 @@ function previewMetric(
   return Number.isFinite(value) && value > 0 ? value : fallback;
 }
 
+function previewFocusFor(item: RegistryItem): RegistryPreviewFocus | undefined {
+  if (item.type === "hyperframes:component" && item.librarySection === "caption-animation") {
+    return { x: 0.5, y: 0.78, zoom: 2.35 };
+  }
+  return undefined;
+}
+
 export function loadRegistryPreviewFromRoot(
   registryRoot: string,
   blockName: string,
@@ -51,6 +64,7 @@ export function loadRegistryPreviewFromRoot(
   html: string;
   duration: number;
   dimensions: { width: number; height: number };
+  focus?: RegistryPreviewFocus;
 } | null {
   const resolved = resolveRegistryItem(registryRoot, blockName);
   if (!resolved) return null;
@@ -66,6 +80,7 @@ export function loadRegistryPreviewFromRoot(
   const sourcePath = resolveItemFile(resolved.itemRoot, compositionPath);
   if (!sourcePath) return null;
   const html = readFileSync(sourcePath, "utf-8");
+  const focus = previewFocusFor(resolved.item);
 
   return resolved.item.type === "hyperframes:block"
     ? { html, duration: resolved.item.duration, dimensions: resolved.item.dimensions }
@@ -76,6 +91,7 @@ export function loadRegistryPreviewFromRoot(
           width: previewMetric(html, "width", 1920),
           height: previewMetric(html, "height", 1080),
         },
+        ...(focus ? { focus } : {}),
       };
 }
 

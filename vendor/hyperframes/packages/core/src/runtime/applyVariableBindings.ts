@@ -129,6 +129,24 @@ function setOwnTextPreservingChildren(el: Element, text: string): void {
   }
 }
 
+function setVariableBoundText(el: Element, text: string): void {
+  if (el.getAttribute("data-ipw-motion-structure") !== "v1") {
+    setOwnTextPreservingChildren(el, text);
+    return;
+  }
+
+  const encodedSource = el.getAttribute("data-ipw-motion-source");
+  if (encodedSource !== null) {
+    try {
+      if (JSON.parse(encodedSource) === text) return;
+    } catch {
+      // Fall through to the content-first fallback below.
+    }
+  }
+
+  el.replaceChildren(el.ownerDocument.createTextNode(text));
+}
+
 /**
  * Composition root, matching the SDK's findRoot chain exactly — the SDK
  * persists `--{id}` defaults on this element, so the runtime must write
@@ -192,6 +210,6 @@ export function applyVariableBindings(doc: Document): void {
     const id = el.getAttribute("data-var-text")?.trim();
     if (!id) continue;
     const value = valuesForElement(el, cache)[id];
-    if (isScalar(value)) setOwnTextPreservingChildren(el, String(value));
+    if (isScalar(value)) setVariableBoundText(el, String(value));
   }
 }

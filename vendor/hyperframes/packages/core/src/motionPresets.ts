@@ -1,5 +1,19 @@
-import { MOTION_PRESETS } from "./motionPresetCatalog.js";
+import { MOTION_PRESETS, resolveStructuredTextRecipe } from "./motionPresetCatalog.js";
 import { buildPresetKeyframes } from "./motionPresetKeyframes.js";
+import {
+  compileStructuredTextMotion,
+  isStructuredTextPreset,
+  type CompiledStructuredTextMotion,
+  type StructuredTextRecipe,
+} from "./structuredTextMotion.js";
+
+export {
+  materializeStructuredText,
+  restoreStructuredText,
+  snapshotStructuredText,
+  unwrapStructuredText,
+  type StructuredTextSnapshot,
+} from "./structuredTextDom.js";
 
 export {
   MOTION_COLOR_SOURCE_PARAMETER,
@@ -46,6 +60,7 @@ export interface MotionPreset {
     preferredFor: string[];
     avoidFor: string[];
   };
+  structuredText?: StructuredTextRecipe;
 }
 
 export interface StableElementLocator {
@@ -90,6 +105,7 @@ export interface CompiledMotion {
   keyframes: MotionKeyframe[];
   ease: string;
   extras: Record<string, MotionParameterValue>;
+  structured?: CompiledStructuredTextMotion;
 }
 
 export interface MotionValidationIssue {
@@ -107,6 +123,21 @@ export interface MotionValidationResult {
 export const MOTION_DATA_PREFIX = "ipw-motion:v1:";
 
 const PRESETS_BY_ID = new Map(MOTION_PRESETS.map((preset) => [preset.id, preset]));
+
+const MIGRATED_CAPTION_DURATIONS: Record<string, number> = {
+  "text.emphasis.highlight-sweep": 1.45,
+  "text.enter.matrix-decode": 1.8,
+  "text.emphasis.gradient-fill": 1.5,
+  "text.emphasis.neon-glow": 2,
+  "text.emphasis.neon-accent": 1.7,
+  "text.emphasis.rgb-glitch": 1.8,
+  "text.enter.clip-wipe": 1.6,
+  "text.emphasis.weight-shift": 1.4,
+  "text.emphasis.texture-fill": 1.5,
+  "text.emphasis.kinetic-slam": 1.35,
+  "text.emphasis.emoji-pop": 1.35,
+  "text.emphasis.particle-burst": 2,
+};
 
 const MOTION_SEARCH_ALIASES: Record<string, string[]> = {
   modern: ["现代"],
@@ -302,7 +333,7 @@ export function readMotionInstanceFromExtras(
   }
 }
 
-export function compileMotionInstance(instance: MotionInstance): CompiledMotion {
+export function compileMotionInstance(instance: MotionInstance, text = ""): CompiledMotion {
   const preset = getMotionPreset(instance.presetId);
   if (!preset) throw new Error(`Unknown motion preset: ${instance.presetId}`);
   if (preset.phase !== instance.phase)
@@ -323,7 +354,7 @@ export function compileMotionInstance(instance: MotionInstance): CompiledMotion 
         ? `${instance.target.selector} > [data-ipw-motion-word]`
         : instance.target.selector;
   const stagger = unit === "whole" ? 0 : Number(validated.parameters.stagger ?? 0);
-  return {
+  const compiled: CompiledMotion = {
     targetSelector,
     position: instance.start,
     duration: instance.duration,
@@ -338,9 +369,19 @@ export function compileMotionInstance(instance: MotionInstance): CompiledMotion 
       ...(stagger > 0 ? { stagger } : {}),
     },
   };
+  if (isStructuredTextPreset(preset)) {
+    compiled.structured = compileStructuredTextMotion(
+      { ...instance, parameters: validated.parameters },
+      text,
+      resolveStructuredTextRecipe(preset, validated.parameters),
+    );
+  }
+  return compiled;
 }
 
 export function defaultMotionDuration(preset: MotionPreset): number {
+  const migratedCaptionDuration = MIGRATED_CAPTION_DURATIONS[preset.id];
+  if (migratedCaptionDuration !== undefined) return migratedCaptionDuration;
   if (preset.id.startsWith("background.")) return 3.2;
   if (preset.id === "text.enter.fold-reveal") return 0.9;
   if (preset.id === "motion.enter.gradual-focus") return 0.85;
