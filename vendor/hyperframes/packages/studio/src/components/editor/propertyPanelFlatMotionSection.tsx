@@ -1,7 +1,6 @@
 import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
 import { useTrackDesignInput } from "../../contexts/DesignPanelInputContext";
 import { useStudioI18n } from "../../i18n";
-import { useNLEContext } from "../nle/NLEContext";
 import type { DomEditSelection } from "./domEditing";
 import { formatTimingValue } from "./propertyPanelHelpers";
 import { parseTimingValue } from "./propertyPanelTimingSection";
@@ -134,10 +133,9 @@ export function FlatMotionSection({
     targetKind: MotionTargetKind,
     mutation: MotionMutationInput,
     selectionOverride?: DomEditSelection | null,
-  ) => void | Promise<void>;
+  ) => Promise<boolean>;
 }) {
   const { tx } = useStudioI18n();
-  const { previewRange } = useNLEContext();
   return (
     <div className="space-y-3">
       {showTiming && (
@@ -166,10 +164,7 @@ export function FlatMotionSection({
             <SemanticMotionPanel
               element={element}
               animations={animations}
-              onMutate={(targetKind, mutation) =>
-                onMutateMotion(targetKind, mutation, element)
-              }
-              onPreview={previewRange}
+              onMutate={(targetKind, mutation) => onMutateMotion(targetKind, mutation, element)}
             />
           )}
         </>

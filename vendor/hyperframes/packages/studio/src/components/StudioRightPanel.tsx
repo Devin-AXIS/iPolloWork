@@ -120,7 +120,7 @@ export interface StudioRightPanelProps {
     files: Record<string, { before: string; after: string }>;
   }) => Promise<void>;
   onToggleElementHidden?: ToggleHiddenHandler;
-  onAddBlock?: (blockName: string, intent?: EffectInsertIntent) => void;
+  onAddBlock?: (blockName: string, intent?: EffectInsertIntent) => Promise<boolean>;
 }
 
 function animationSelectionKey(
@@ -231,6 +231,7 @@ export function StudioRightPanel({
 
   const backgroundRemovalAbortRef = useRef<AbortController | null>(null);
   const [pendingMotionDraft, setPendingMotionDraft] = useState<AnimationTemplateDraft | null>(null);
+  const [animationPreviewRequest, setAnimationPreviewRequest] = useState(0);
 
   useEffect(
     () => () => {
@@ -458,7 +459,12 @@ export function StudioRightPanel({
           element={singleDomEditSelection}
           animations={selectedGsapAnimations}
           onMutate={handleMotionMutation}
-          onApplied={() => setPendingMotionDraft(null)}
+          previewRequest={animationPreviewRequest}
+          onApplied={() => {
+            setPendingMotionDraft(null);
+            setAnimationPreviewRequest((request) => request + 1);
+            showToast(tx("Animation applied"), "info");
+          }}
         />
       ) : (
         <AnimationTemplatesTab onSelectTemplate={selectAnimationTemplate} />

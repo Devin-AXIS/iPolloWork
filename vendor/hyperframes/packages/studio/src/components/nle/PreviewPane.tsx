@@ -6,11 +6,7 @@ import {
   useSyncExternalStore,
   type ReactNode,
 } from "react";
-import {
-  CompositionRefreshLoadingOverlay,
-  PlayerControls,
-  usePlayerStore,
-} from "../../player";
+import { CompositionRefreshLoadingOverlay, PlayerControls, usePlayerStore } from "../../player";
 import { NLEPreview } from "./NLEPreview";
 import { CompositionBreadcrumb } from "./CompositionBreadcrumb";
 import { usePreviewBlockDrop } from "./usePreviewBlockDrop";
@@ -66,7 +62,11 @@ export function PreviewPane({
   } = useNLEContext();
   const { compositionLoading: studioCompositionLoading } = useStudioPlaybackContext();
   const previewDeletePending = usePlayerStore((state) => state.previewDeletePending);
-  const { domEditSelection } = useDomEditSelectionContext();
+  const handlePreviewRefreshSettled = useCallback(() => {
+    const playerState = usePlayerStore.getState();
+    if (playerState.previewDeletePending) playerState.setPreviewDeletePending(false);
+  }, []);
+  const { domEditSelection, previewSelectionInteraction } = useDomEditSelectionContext();
 
   const stageRefForDrop = useRef<HTMLDivElement | null>(null);
   const handleStageRef = useCallback((ref: React.RefObject<HTMLDivElement | null>) => {
@@ -184,6 +184,7 @@ export function PreviewPane({
             iframeRef={iframeRef}
             onIframeLoad={onIframeLoad}
             onCompositionLoadingChange={setCompositionLoading}
+            onRefreshSettled={handlePreviewRefreshSettled}
             portrait={portrait}
             directUrl={directUrl}
             suppressLoadingOverlay={hasLoadedOnceRef.current}
@@ -203,7 +204,7 @@ export function PreviewPane({
           iframeRef={iframeRef}
           containerRef={containerRef}
           activeSelection={editingEnabled ? domEditSelection : null}
-          hidden={timelineDisabled || !editingEnabled}
+          hidden={timelineDisabled || !editingEnabled || previewSelectionInteraction !== "primary"}
         />
       </div>
       {/* Transport row: no own background or border — the controls sit flat on

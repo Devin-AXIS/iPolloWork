@@ -1,11 +1,12 @@
 import { useCallback, useRef } from "react";
 import type { TimelineElement } from "../player";
 import { usePlayerStore } from "../player";
-import { saveProjectFilesWithHistory } from "../utils/studioFileHistory";
 import { getTimelineElementLabel, collectHtmlIds } from "../utils/studioHelpers";
 import { trackStudioRazorSplit } from "../telemetry/events";
 import {
+  buildOptimisticTimelineSplit,
   canSplitElementAt,
+  rollbackOptimisticTimelineSplit,
   selectSplittableElements,
   buildPatchTarget,
   readFileContent,
@@ -179,7 +180,6 @@ async function splitElementsAtTime(
       before: getOriginalContent(originals, result.targetPath),
       after: result.patchedContent,
     });
-    await writeProjectFile(result.targetPath, result.patchedContent, result.patchedContent);
     count++;
   }
   return count;
@@ -275,6 +275,7 @@ export function useRazorSplit({
 }: UseRazorSplitOptions) {
   const projectIdRef = useRef(projectId);
   projectIdRef.current = projectId;
+  const optimisticSplitSequenceRef = useRef(0);
 
   const handleRazorSplit = useCallback(
     // fallow-ignore-next-line complexity
@@ -286,6 +287,16 @@ export function useRazorSplit({
 
       const pid = projectIdRef.current;
       if (!pid || !canSplitElementAt(element, splitTime)) return;
+
+      const optimisticSplit = buildOptimisticTimelineSplit(
+        usePlayerStore.getState().elements,
+        element,
+        splitTime,
+        `${element.key ?? element.id}::pending-split-${++optimisticSplitSequenceRef.current}`,
+      );
+      if (optimisticSplit) {
+        usePlayerStore.setState({ elements: optimisticSplit.elements });
+      }
 
       try {
         const { targetPath, originalContent, patchedContent, changed, skippedSelectors } =
@@ -299,23 +310,33 @@ export function useRazorSplit({
           );
 
         if (!changed) {
+          if (optimisticSplit) {
+            usePlayerStore.setState((state) => ({
+              elements: rollbackOptimisticTimelineSplit(state.elements, optimisticSplit),
+            }));
+          }
           showToast("Failed to split clip — playhead may be outside the clip", "error");
           return;
         }
 
         domEditSaveTimestampRef.current = Date.now();
-        await saveProjectFilesWithHistory({
-          projectId: pid,
-          label: "Split timeline clip",
-          kind: "timeline",
-          files: { [targetPath]: patchedContent },
-          readFile: async () => originalContent,
-          writeFile: writeProjectFile,
-          recordEdit,
-        });
+        try {
+          await recordEdit({
+            label: "Split timeline clip",
+            kind: "timeline",
+            files: { [targetPath]: { before: originalContent, after: patchedContent } },
+          });
+        } catch (historyError) {
+          // The split endpoints already own the source write. Restore only when
+          // recording its undo snapshot fails; the normal path needs no duplicate
+          // PUT of bytes that are already on disk.
+          await writeProjectFile(targetPath, originalContent, patchedContent);
+          throw historyError;
+        }
 
         // Server writes bypass the SDK session, so reopen it before refreshing
-        // the preview. The split response already owns the final persisted bytes.
+        // the preview. The timeline already shows the optimistic split while the
+        // authoritative iframe replacement initializes.
         forceReloadSdkSession?.();
         reloadPreview();
         trackStudioRazorSplit({ mode: "single", count: 1 });
@@ -327,6 +348,11 @@ export function useRazorSplit({
           );
         }
       } catch (error) {
+        if (optimisticSplit) {
+          usePlayerStore.setState((state) => ({
+            elements: rollbackOptimisticTimelineSplit(state.elements, optimisticSplit),
+          }));
+        }
         const message = error instanceof Error ? error.message : "Failed to split timeline clip";
         showToast(message, "error");
       }

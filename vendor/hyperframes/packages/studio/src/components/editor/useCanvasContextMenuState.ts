@@ -5,6 +5,8 @@
  */
 import { useCallback, useEffect, useState, type RefObject } from "react";
 import type { DomEditSelection } from "./domEditing";
+import type { ApplyDomSelectionOptions } from "../../hooks/useDomSelection";
+import { domEditSelectionsTargetSame } from "../../utils/domEditHelpers";
 
 export interface CanvasContextMenuState {
   x: number;
@@ -14,8 +16,6 @@ export interface CanvasContextMenuState {
 
 interface UseCanvasContextMenuStateParams {
   selection: DomEditSelection | null;
-  selectionRef: RefObject<DomEditSelection | null>;
-  hoverSelectionRef: RefObject<DomEditSelection | null>;
   onCanvasPointerMoveRef: RefObject<
     (
       event: React.PointerEvent<HTMLDivElement>,
@@ -23,14 +23,12 @@ interface UseCanvasContextMenuStateParams {
     ) => Promise<DomEditSelection | null>
   >;
   onSelectionChangeRef: RefObject<
-    (selection: DomEditSelection, options?: { revealPanel?: boolean; additive?: boolean }) => void
+    (selection: DomEditSelection, options?: ApplyDomSelectionOptions) => void
   >;
 }
 
 export function useCanvasContextMenuState({
   selection,
-  selectionRef,
-  hoverSelectionRef,
   onCanvasPointerMoveRef,
   onSelectionChangeRef,
 }: UseCanvasContextMenuStateParams): {
@@ -52,7 +50,7 @@ export function useCanvasContextMenuState({
   // menu (same element) rather than immediately dismissing it.
   useEffect(() => {
     if (!contextMenu) return;
-    if (!selection || selection.element !== contextMenu.sel.element) {
+    if (selection && !domEditSelectionsTargetSame(selection, contextMenu.sel)) {
       setContextMenu(null);
     }
   }, [selection, contextMenu]);
@@ -62,30 +60,22 @@ export function useCanvasContextMenuState({
     async (event: React.MouseEvent<HTMLDivElement>) => {
       event.preventDefault();
 
-      // If no element is selected yet, resolve it from the pointer position first.
-      const currentSel = selectionRef.current;
-      let activeSel: DomEditSelection | null = currentSel;
-      if (!currentSel) {
-        const pointerEvent = event as unknown as React.PointerEvent<HTMLDivElement>;
-        const resolved = await onCanvasPointerMoveRef.current(pointerEvent);
-        if (!resolved) return; // Nothing under the cursor — skip menu.
-        onSelectionChangeRef.current(resolved, { revealPanel: true });
-        // Use `resolved` directly: React state (and therefore selectionRef) won't
-        // update synchronously after onSelectionChange — we'd be reading stale null.
-        activeSel = resolved;
-      } else {
-        // Check if the user right-clicked on an unselected element (hover target).
-        const hover = hoverSelectionRef.current;
-        if (hover && hover.element !== currentSel.element) {
-          onSelectionChangeRef.current(hover, { revealPanel: true });
-          activeSel = hover;
-        }
-      }
-
-      if (!activeSel) return;
-      setContextMenu({ x: event.clientX, y: event.clientY, sel: activeSel });
+      // Resolve every right-click at its actual pointer position. Reusing the
+      // current selection can target the wrong element when hover is stale.
+      const pointerEvent = event as unknown as React.PointerEvent<HTMLDivElement>;
+      const resolved = await onCanvasPointerMoveRef.current(pointerEvent);
+      const clickedSelectionChrome =
+        event.target instanceof Element &&
+        Boolean(event.target.closest('[data-dom-edit-selection-box="true"]'));
+      const activeSelection = resolved ?? (clickedSelectionChrome ? selection : null);
+      if (!activeSelection) return;
+      onSelectionChangeRef.current(activeSelection, {
+        revealPanel: false,
+        previewInteraction: "context-menu",
+      });
+      setContextMenu({ x: event.clientX, y: event.clientY, sel: activeSelection });
     },
-    [selectionRef, hoverSelectionRef, onCanvasPointerMoveRef, onSelectionChangeRef],
+    [onCanvasPointerMoveRef, onSelectionChangeRef, selection],
   );
 
   return { contextMenu, closeContextMenu, handleContextMenu };

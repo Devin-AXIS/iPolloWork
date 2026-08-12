@@ -17,12 +17,9 @@ import {
 } from "./gsapScriptCommitHelpers";
 import type {
   CommitMutation,
-  CommitMutationOptions,
   SafeGsapCommitMutation,
 } from "./gsapScriptCommitTypes";
 import {
-  compileMotionInstance,
-  createMotionInstance,
   defaultMotionDuration,
   getMotionPreset,
   type MotionMutationInput,
@@ -43,40 +40,6 @@ interface GsapAnimationOpsParams extends SdkAnimationDeps {
   showToast: (message: string, tone?: "error" | "info") => void;
 }
 
-function buildMotionInstantPatch(
-  selector: string,
-  targetKind: MotionTargetKind,
-  mutation: MotionMutationInput,
-  locator: { elementId?: string; hfId?: string },
-): CommitMutationOptions["instantPatch"] | undefined {
-  if (
-    mutation.operation !== "upsert" ||
-    !mutation.presetId ||
-    mutation.start === undefined ||
-    mutation.duration === undefined
-  ) {
-    return undefined;
-  }
-  try {
-    const instance = createMotionInstance({
-      presetId: mutation.presetId,
-      target: { selector, ...locator },
-      targetKind,
-      start: mutation.start,
-      duration: mutation.duration,
-      loop: mutation.loop,
-      parameters: mutation.parameters,
-    });
-    const compiled = compileMotionInstance(instance);
-    return {
-      selector: compiled.targetSelector,
-      change: { kind: "motion", motionId: instance.id, compiled },
-    };
-  } catch {
-    return undefined;
-  }
-}
-
 export function useGsapAnimationOps({
   projectIdRef,
   activeCompPath,
@@ -92,11 +55,11 @@ export function useGsapAnimationOps({
       targetKind: MotionTargetKind,
       mutation: MotionMutationInput,
     ) => {
+      const projectId = projectIdRef.current;
+      if (!projectId) return false;
       const { selector, autoId } = ensureElementAddressable(selection);
       if (autoId) {
-        const projectId = projectIdRef.current;
         const targetPath = selection.sourceFile || activeCompPath || "index.html";
-        if (!projectId) return;
         const assigned = await assignGsapTargetAutoIdIfNeeded({
           projectId,
           targetPath,
@@ -104,7 +67,7 @@ export function useGsapAnimationOps({
           autoId,
           showToast,
         });
-        if (!assigned) return;
+        if (!assigned) return false;
       }
       const locator = {
         ...(selection.id || autoId ? { elementId: selection.id ?? autoId } : {}),
@@ -129,12 +92,6 @@ export function useGsapAnimationOps({
             };
           })()
         : mutation;
-      const instantPatch = buildMotionInstantPatch(
-        selector,
-        targetKind,
-        normalizedMutation,
-        locator,
-      );
       await commitMutation(
         selection,
         {
@@ -149,10 +106,15 @@ export function useGsapAnimationOps({
             normalizedMutation.operation === "remove"
               ? "Remove motion preset"
               : "Apply motion preset",
-          softReload: true,
-          ...(instantPatch ? { instantPatch } : {}),
+          // A semantic upsert removes/recreates a tween and receives its stable
+          // motion id on the server. A client-side patch is built from a different
+          // provisional id and can leave the iframe playing the old timeline even
+          // though persistence succeeded. Rebuild the preview for upserts; removal
+          // remains safe on the existing scoped soft-reload path.
+          softReload: normalizedMutation.operation !== "upsert",
         },
       );
+      return true;
     },
     [activeCompPath, commitMutation, projectIdRef, showToast],
   );

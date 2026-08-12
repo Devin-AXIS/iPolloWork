@@ -38,7 +38,7 @@ import type { EffectInsertIntent } from "../../utils/blockInstaller";
 
 interface BlocksTabProps {
   page?: CatalogPage;
-  onAddBlock?: (blockName: string, intent?: EffectInsertIntent) => void;
+  onAddBlock?: (blockName: string, intent?: EffectInsertIntent) => Promise<boolean>;
 }
 
 const SECTION_TITLES: Record<AnimationLibrarySection, { en: string; zh: string }> = {
@@ -230,7 +230,7 @@ function CatalogSectionGrid({
   columnCount: CatalogColumnCount;
   onDensityWheel: (deltaY: number) => void;
   previewController: PreviewController;
-  onAddBlock?: (blockName: string, intent?: EffectInsertIntent) => void;
+  onAddBlock?: (blockName: string, intent?: EffectInsertIntent) => Promise<boolean>;
   showSectionHeaders: boolean;
   testId: string;
 }) {
@@ -521,7 +521,7 @@ const BlockCard = memo(function BlockCard({
   reducedMotion: boolean;
   registerCard: (name: string, element: HTMLElement | null) => void;
   previewController: PreviewController;
-  onAddBlock?: (blockName: string, intent?: EffectInsertIntent) => void;
+  onAddBlock?: (blockName: string, intent?: EffectInsertIntent) => Promise<boolean>;
   locale: "en" | "zh";
 }) {
   const [posterFailed, setPosterFailed] = useState(false);
@@ -530,7 +530,6 @@ const BlockCard = memo(function BlockCard({
   const [previewing, setPreviewing] = useState(false);
   const [previewReady, setPreviewReady] = useState(false);
   const hoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const addedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const mountedRef = useRef(true);
   const colors = getCategoryColors(block.category);
   const duration = block.type === "hyperframes:component" ? undefined : block.duration;
@@ -606,7 +605,6 @@ const BlockCard = memo(function BlockCard({
     return () => {
       mountedRef.current = false;
       clearHoverTimer();
-      if (addedTimerRef.current) clearTimeout(addedTimerRef.current);
       previewController.stop(block.name);
       registerCard(block.name, null);
     };
@@ -621,11 +619,9 @@ const BlockCard = memo(function BlockCard({
         : block.librarySection === "ending-effect"
           ? "ending"
           : "transition";
-    onAddBlock(block.name, intent);
-    if (addedTimerRef.current) clearTimeout(addedTimerRef.current);
-    addedTimerRef.current = setTimeout(() => {
+    void onAddBlock(block.name, intent).finally(() => {
       if (mountedRef.current) setAdding(false);
-    }, 1000);
+    });
   }, [adding, block.librarySection, block.name, onAddBlock]);
 
   const handleCardKeyDown = useCallback(
@@ -836,8 +832,8 @@ const BlockCard = memo(function BlockCard({
             <span className="truncate">
               {adding
                 ? locale === "zh"
-                  ? "已插入"
-                  : "Added"
+                  ? "插入中…"
+                  : "Inserting…"
                 : locale === "zh"
                   ? "插入片段"
                   : "Insert clip"}

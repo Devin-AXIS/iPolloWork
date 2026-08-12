@@ -4,7 +4,6 @@ import type { TimelineElement } from "../player";
 import { usePlayerStore } from "../player";
 import { useRazorSplit } from "./useRazorSplit";
 import { useTimelineAssetDropOps } from "./useTimelineAssetDropOps";
-import { saveProjectFilesWithHistory } from "../utils/studioFileHistory";
 import { setCompositionDurationToContent } from "../utils/timelineAssetDrop";
 import { furthestClipEndFromSource } from "../player/lib/timelineElementHelpers";
 import { getTimelineElementLabel } from "../utils/studioHelpers";
@@ -501,10 +500,17 @@ export function useTimelineEditing({
         sourceFile: targetPath,
       });
       let loadingShown = false;
+      let previewRefreshRequested = false;
       const loadingTimer = window.setTimeout(() => {
         loadingShown = true;
         usePlayerStore.getState().setPreviewDeletePending(true);
       }, 120);
+      const requestPreviewRefresh = () => {
+        previewRefreshRequested = true;
+        window.clearTimeout(loadingTimer);
+        usePlayerStore.getState().setPreviewDeletePending(true);
+        reloadPreview();
+      };
 
       const operation = (async () => {
         try {
@@ -529,7 +535,7 @@ export function useTimelineEditing({
               data.error === "element not found in source file"
             ) {
               forceReloadSdkSession?.();
-              if (!liveRemoval) reloadPreview();
+              requestPreviewRefresh();
               showToast(`${label} 已经从源文件移除，时间轴已同步。`, "info");
               return;
             }
@@ -580,17 +586,21 @@ export function useTimelineEditing({
           }
 
           forceReloadSdkSession?.();
-          if (!liveRemoval) reloadPreview();
+          // Immediate DOM/store removal is only optimistic. A seek or parser
+          // sync can repopulate the old snapshot before persistence finishes,
+          // so one coalesced refresh must always converge on the saved source.
+          requestPreviewRefresh();
           showToast(`Deleted ${label}. Use Undo to restore it.`, "info");
         } catch (error) {
           liveRemoval?.restore();
           usePlayerStore.setState(storeSnapshot);
-          const message =
-            error instanceof Error ? error.message : "Failed to delete timeline clip";
+          const message = error instanceof Error ? error.message : "Failed to delete timeline clip";
           showToast(message);
         } finally {
           window.clearTimeout(loadingTimer);
-          if (loadingShown) usePlayerStore.getState().setPreviewDeletePending(false);
+          if (!previewRefreshRequested && loadingShown) {
+            usePlayerStore.getState().setPreviewDeletePending(false);
+          }
         }
       })();
       timelineDeleteInFlightRef.current = operation;
@@ -659,6 +669,7 @@ export function useTimelineEditing({
     recordEdit,
     domEditSaveTimestampRef,
     reloadPreview,
+    forceReloadSdkSession,
     isRecordingRef,
   });
 

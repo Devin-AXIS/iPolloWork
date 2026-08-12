@@ -19,6 +19,8 @@ interface NLEPreviewProps {
   iframeRef: RefObject<HTMLIFrameElement | null>;
   onIframeLoad: () => void;
   onCompositionLoadingChange?: (loading: boolean) => void;
+  /** Fires when a staged refresh either replaces the visible preview or fails. */
+  onRefreshSettled?: () => void;
   portrait?: boolean;
   directUrl?: string;
   suppressLoadingOverlay?: boolean;
@@ -131,6 +133,7 @@ export const NLEPreview = memo(function NLEPreview({
   iframeRef,
   onIframeLoad,
   onCompositionLoadingChange,
+  onRefreshSettled,
   portrait,
   directUrl,
   suppressLoadingOverlay,
@@ -543,10 +546,20 @@ export const NLEPreview = memo(function NLEPreview({
                           setRetiringSlot(visibleSlot);
                           setVisibleSlot(slot);
                           setLoadingSlot(null);
+                          onRefreshSettled?.();
                           retireTimerRef.current = setTimeout(() => {
                             retireTimerRef.current = null;
                             setRetiringSlot(null);
                           }, 160);
+                        }
+                      : undefined
+                  }
+                  onError={
+                    incoming
+                      ? () => {
+                          if (loadingSlotKeyRef.current !== slot.key) return;
+                          setLoadingSlot(null);
+                          onRefreshSettled?.();
                         }
                       : undefined
                   }

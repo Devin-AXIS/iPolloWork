@@ -46,6 +46,10 @@ export interface PreviewMouseDownOptions {
   hoverSelection?: DomEditSelection | null;
 }
 
+export type PreviewSelectionPressEvent =
+  | React.MouseEvent<HTMLDivElement>
+  | React.PointerEvent<HTMLDivElement>;
+
 interface PreviewHoverRequest {
   clientX: number;
   clientY: number;
@@ -92,7 +96,7 @@ export function usePreviewInteraction({
 
   const handlePreviewCanvasMouseDown = useCallback(
     // fallow-ignore-next-line complexity
-    async (e: React.MouseEvent<HTMLDivElement>, options?: PreviewMouseDownOptions) => {
+    async (e: PreviewSelectionPressEvent, options?: PreviewMouseDownOptions) => {
       if (isPreviewTextSelectionSuppressingCanvas()) {
         e.preventDefault();
         e.stopPropagation();
@@ -145,7 +149,10 @@ export function usePreviewInteraction({
       }
       e.preventDefault();
       e.stopPropagation();
-      applyDomSelection(resolvedSelection);
+      applyDomSelection(resolvedSelection, {
+        revealPanel: false,
+        previewInteraction: "primary",
+      });
 
       if (!e.shiftKey && e.altKey && onClickToSource) {
         onClickToSource(resolvedSelection);

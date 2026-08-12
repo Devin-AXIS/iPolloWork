@@ -1,6 +1,54 @@
 /** Rendered height of a timeline-clip thumbnail strip, in CSS px. */
 export const THUMBNAIL_CLIP_HEIGHT = 24;
 export const MAX_THUMBNAIL_TILES = 24;
+export const MAX_CONCURRENT_TIMELINE_THUMBNAIL_TASKS = 2;
+
+interface TimelineThumbnailTask {
+  start: () => void;
+  started: boolean;
+  released: boolean;
+}
+
+const pendingTimelineThumbnailTasks: TimelineThumbnailTask[] = [];
+let activeTimelineThumbnailTasks = 0;
+
+function drainTimelineThumbnailTasks(): void {
+  while (
+    activeTimelineThumbnailTasks < MAX_CONCURRENT_TIMELINE_THUMBNAIL_TASKS &&
+    pendingTimelineThumbnailTasks.length > 0
+  ) {
+    const task = pendingTimelineThumbnailTasks.shift();
+    if (!task || task.released) continue;
+    task.started = true;
+    activeTimelineThumbnailTasks += 1;
+    try {
+      task.start();
+    } catch (error) {
+      task.released = true;
+      activeTimelineThumbnailTasks -= 1;
+      queueMicrotask(() => {
+        throw error;
+      });
+    }
+  }
+}
+
+/**
+ * Bounds expensive timeline thumbnail capture/decoding work across all clips.
+ * Call the returned release function when the task completes or is cancelled.
+ */
+export function scheduleTimelineThumbnailTask(start: () => void): () => void {
+  const task: TimelineThumbnailTask = { start, started: false, released: false };
+  pendingTimelineThumbnailTasks.push(task);
+  drainTimelineThumbnailTasks();
+
+  return () => {
+    if (task.released) return;
+    task.released = true;
+    if (task.started) activeTimelineThumbnailTasks -= 1;
+    drainTimelineThumbnailTasks();
+  };
+}
 
 export interface ThumbnailStripLayout {
   /** Width of a single tile, in CSS px. */

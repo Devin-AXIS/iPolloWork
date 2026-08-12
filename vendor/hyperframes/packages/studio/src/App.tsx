@@ -293,7 +293,6 @@ export function StudioApp() {
       reloadPreview,
       showToast,
     },
-    previewIframeRef,
     setCompositionLoading,
     setRightCollapsed: panelLayout.setRightCollapsed,
     setRightPanelTab: panelLayout.setRightPanelTab,

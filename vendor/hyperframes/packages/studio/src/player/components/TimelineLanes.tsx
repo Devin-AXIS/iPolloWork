@@ -70,7 +70,6 @@ export interface TimelineLaneBaseProps {
   onDrillDown?: (element: TimelineElement) => void;
   onSeek?: (time: number) => void;
   onSelectElement?: (element: TimelineElement | null) => void;
-  onRenameElement?: (element: TimelineElement, label: string) => Promise<void> | void;
   onContextMenuElement?: (element: TimelineElement, anchor: { x: number; y: number }) => void;
   setHoveredClip: (key: string | null) => void;
   setShowPopover: (v: boolean) => void;
@@ -144,7 +143,6 @@ export const TimelineLanes = memo(function TimelineLanes({
   onDrillDown,
   onSeek,
   onSelectElement,
-  onRenameElement,
   onContextMenuElement,
   setHoveredClip,
   setShowPopover,
@@ -298,7 +296,6 @@ export const TimelineLanes = memo(function TimelineLanes({
                   if (nextTime != null) onSeek?.(nextTime);
                   onSelectElement?.(element);
                 }}
-                onRename={onRenameElement}
                 onToggleExpanded={(element) => {
                   usePlayerStore
                     .getState()

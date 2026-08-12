@@ -48,3 +48,79 @@ export function selectSplittableElements(
 ): TimelineElement[] {
   return elements.filter((el) => canSplitElementAt(el, splitTime));
 }
+
+export interface OptimisticTimelineSplit {
+  original: TimelineElement;
+  originalKey: string;
+  pendingKey: string;
+  elements: TimelineElement[];
+}
+
+/**
+ * Build the immediate timeline-only result shown while the source mutation is
+ * being persisted. The original keeps its identity and selection; the second
+ * half gets a temporary identity that the authoritative preview reload replaces.
+ */
+export function buildOptimisticTimelineSplit(
+  elements: TimelineElement[],
+  target: TimelineElement,
+  splitTime: number,
+  pendingKey: string,
+): OptimisticTimelineSplit | null {
+  if (!canSplitElementAt(target, splitTime)) return null;
+
+  const originalKey = target.key ?? target.id;
+  const index = elements.findIndex((element) => (element.key ?? element.id) === originalKey);
+  if (index < 0) return null;
+
+  const original = elements[index];
+  const firstDuration = splitTime - original.start;
+  const secondDuration = original.duration - firstDuration;
+  if (firstDuration <= 0 || secondDuration <= 0) return null;
+
+  const playbackRate = original.playbackRate ?? 1;
+  const secondPlaybackStart =
+    original.playbackStart == null
+      ? undefined
+      : original.playbackStart + firstDuration * playbackRate;
+  const second: TimelineElement = {
+    ...original,
+    id: pendingKey,
+    key: pendingKey,
+    start: splitTime,
+    duration: secondDuration,
+    playbackStart: secondPlaybackStart,
+    // The clone does not exist in the preview DOM until persistence completes.
+    // Avoid temporarily pointing both timeline clips at the same live node.
+    domId: undefined,
+    hfId: undefined,
+    selector: undefined,
+    selectorIndex: undefined,
+  };
+  const nextElements = elements.slice();
+  nextElements.splice(index, 1, { ...original, duration: firstDuration }, second);
+  return { original, originalKey, pendingKey, elements: nextElements };
+}
+
+/** Roll back only this optimistic split without clobbering unrelated edits. */
+export function rollbackOptimisticTimelineSplit(
+  elements: TimelineElement[],
+  split: OptimisticTimelineSplit,
+): TimelineElement[] {
+  if (!elements.some((element) => (element.key ?? element.id) === split.pendingKey)) {
+    return elements;
+  }
+
+  return elements
+    .filter((element) => (element.key ?? element.id) !== split.pendingKey)
+    .map((element) =>
+      (element.key ?? element.id) === split.originalKey
+        ? {
+            ...element,
+            start: split.original.start,
+            duration: split.original.duration,
+            playbackStart: split.original.playbackStart,
+          }
+        : element,
+    );
+}

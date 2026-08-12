@@ -67,7 +67,6 @@ export const Timeline = memo(function Timeline({
   onBlockedEditAttempt: onBlockedEditAttemptOverride,
   onSplitElement: onSplitElementOverride,
   onSelectElement,
-  onRenameElement,
   onContextMenuElement,
   theme: themeOverrides,
 }: TimelineProps = {}) {
@@ -529,7 +528,6 @@ export const Timeline = memo(function Timeline({
           onDrillDown={onDrillDown}
           onSeek={onSeek}
           onSelectElement={onSelectElement}
-          onRenameElement={onRenameElement}
           onContextMenuElement={onContextMenuElement}
           setHoveredClip={setHoveredClip}
           setShowPopover={setShowPopover}

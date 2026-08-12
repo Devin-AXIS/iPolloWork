@@ -36,6 +36,7 @@ export interface ApplyDomSelectionOptions {
   revealPanel?: boolean;
   additive?: boolean;
   preserveGroup?: boolean;
+  previewInteraction?: "primary" | "context-menu";
   /** Clear only the canvas overlay while retaining the timeline/tree selection. */
   preserveTimelineSelection?: boolean;
 }
@@ -68,6 +69,7 @@ export interface UseDomSelectionReturn {
   domEditGroupSelections: DomEditSelection[];
   domEditHoverSelection: DomEditSelection | null;
   activeGroupElement: HTMLElement | null;
+  previewSelectionInteraction: "primary" | "context-menu" | null;
   // Refs
   domEditSelectionRef: React.MutableRefObject<DomEditSelection | null>;
   domEditGroupSelectionsRef: React.MutableRefObject<DomEditSelection[]>;
@@ -124,6 +126,9 @@ export function useDomSelection({
   const [domEditSelection, setDomEditSelection] = useState<DomEditSelection | null>(null);
   const [domEditGroupSelections, setDomEditGroupSelections] = useState<DomEditSelection[]>([]);
   const [domEditHoverSelection, setDomEditHoverSelection] = useState<DomEditSelection | null>(null);
+  const [previewSelectionInteraction, setPreviewSelectionInteraction] = useState<
+    "primary" | "context-menu" | null
+  >(null);
   // The data-hf-group wrapper the user has drilled into (null = top level).
   const [activeGroupElement, setActiveGroupElementState] = useState<HTMLElement | null>(null);
 
@@ -203,6 +208,7 @@ export function useDomSelection({
         domEditGroupSelectionsRef.current = [];
         setDomEditSelection(null);
         setDomEditGroupSelections([]);
+        setPreviewSelectionInteraction(null);
         if (!options?.preserveTimelineSelection) setSelectedTimelineElementId(null);
         return;
       }
@@ -242,6 +248,7 @@ export function useDomSelection({
       domEditGroupSelectionsRef.current = nextGroup;
       setDomEditSelection(nextSelection);
       setDomEditGroupSelections(nextGroup);
+      setPreviewSelectionInteraction(options?.previewInteraction ?? null);
 
       // Selecting something outside the drilled-into group exits the drill-in, so
       // a later click on the group selects it as a unit again (non-sticky drill-in).
@@ -604,6 +611,7 @@ export function useDomSelection({
     domEditGroupSelections,
     domEditHoverSelection,
     activeGroupElement,
+    previewSelectionInteraction,
     // Refs
     domEditSelectionRef,
     domEditGroupSelectionsRef,

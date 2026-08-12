@@ -59,7 +59,7 @@ interface LeftSidebarProps {
   lintFindingCount?: number;
   lintFindingsByFile?: Map<string, { count: number; messages: string[] }>;
   onToggleCollapse?: () => void;
-  onAddBlock?: (blockName: string, intent?: EffectInsertIntent) => void;
+  onAddBlock?: (blockName: string, intent?: EffectInsertIntent) => Promise<boolean>;
   takeoverContent?: ReactNode;
   onAddAssetToTimeline?: (path: string) => void;
 }

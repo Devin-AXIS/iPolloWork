@@ -52,6 +52,14 @@ describe("semantic motion mutation route", () => {
     });
   }
 
+  async function removeElement(target: Record<string, unknown>) {
+    return app.request("/projects/test/file-mutations/remove-element/index.html", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ target }),
+    });
+  }
+
   it("adds, reloads and replaces one text preset per phase", async () => {
     const first = await mutate({
       type: "mutate-motion",
@@ -102,6 +110,46 @@ describe("semantic motion mutation route", () => {
     expect(html).not.toContain("data-ipw-motion-char");
     expect(html).toContain("你好 mixed AI");
     expect(html).not.toContain("text.enter.typewriter");
+  });
+
+  it("removes semantic motion when its target element is deleted", async () => {
+    const applied = await mutate({
+      type: "mutate-motion",
+      operation: "upsert",
+      targetSelector: "#headline",
+      elementId: "headline",
+      targetKind: "text",
+      phase: "emphasis",
+      presetId: "text.emphasis.pulse",
+    });
+    expect(applied.status).toBe(200);
+
+    const removed = await removeElement({ id: "headline" });
+    expect(removed.status).toBe(200);
+
+    const html = readFileSync(join(projectDir, "index.html"), "utf8");
+    expect(html).not.toContain('id="headline"');
+    expect(html).not.toContain("ipw-motion:v1:");
+    expect(html).not.toContain("motion:#headline:emphasis");
+  });
+
+  it("does not delete a selector fallback when a stable target id is stale", async () => {
+    writeFileSync(
+      join(projectDir, "index.html"),
+      SOURCE.replace('id="headline"', 'id="headline" data-hf-id="hf-live"'),
+    );
+
+    const removed = await removeElement({
+      hfId: "hf-deleted",
+      id: "headline",
+      selector: "#headline",
+    });
+    expect(removed.status).toBe(404);
+    expect(await removed.json()).toMatchObject({ error: "element not found in source file" });
+
+    const html = readFileSync(join(projectDir, "index.html"), "utf8");
+    expect(html).toContain('data-hf-id="hf-live"');
+    expect(html).toContain('id="headline"');
   });
 
   it("replaces a legacy selector animation when the same element gains a stable hf id", async () => {

@@ -12,23 +12,9 @@ import type { EditHistoryKind } from "./editHistory";
 import { extendRootDurationInSource } from "./rootDuration";
 import { readRootCompositionDuration } from "./rootDuration";
 import { applyPatchByTarget } from "./sourcePatcher";
+import { trackStudioEvent } from "./studioTelemetry";
 
 export type EffectInsertIntent = "playhead" | "opening" | "ending" | "transition";
-
-function getMaxZIndexFromIframe(iframe: HTMLIFrameElement | null): number {
-  try {
-    const doc = iframe?.contentDocument;
-    if (!doc) return 0;
-    let max = 0;
-    for (const el of doc.body.querySelectorAll("*")) {
-      const z = parseInt(getComputedStyle(el).zIndex, 10);
-      if (Number.isFinite(z) && z > max) max = z;
-    }
-    return max;
-  } catch {
-    return 0;
-  }
-}
 
 interface AddBlockOptions {
   projectId: string;
@@ -36,7 +22,6 @@ interface AddBlockOptions {
   activeCompPath: string | null;
   placement?: { start: number; track: number };
   visualPosition?: { left: number; top: number };
-  previewIframe?: HTMLIFrameElement | null;
   currentTime?: number;
   effectIntent?: EffectInsertIntent;
   selectedElementId?: string | null;
@@ -226,6 +211,10 @@ export async function addBlockToProject(opts: AddBlockOptions): Promise<{
   insertedStart: number;
   insertedElementId: string;
 } | null> {
+  const startedAt = performance.now();
+  let registryInstallMs = 0;
+  let hostPatchMs = 0;
+  let persistMs = 0;
   const {
     projectId,
     blockName,
@@ -247,11 +236,13 @@ export async function addBlockToProject(opts: AddBlockOptions): Promise<{
     // composition is patched. Mark both phases as one Studio-owned mutation so
     // the file watcher does not start a stale intermediate preview reload.
     markStudioWrite();
+    const registryInstallStartedAt = performance.now();
     const res = await fetch(`/api/projects/${projectId}/registry/install`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ blockName }),
     });
+    registryInstallMs = performance.now() - registryInstallStartedAt;
 
     if (!res.ok) {
       const err = await res.json().catch(() => ({ error: "Install failed" }));
@@ -281,6 +272,7 @@ export async function addBlockToProject(opts: AddBlockOptions): Promise<{
     let insertedStart = opts.currentTime ?? 0;
     let insertedElementId = block.name;
     {
+      const hostPatchStartedAt = performance.now();
       const targetPath = activeCompPath || "index.html";
       const originalContent = await readProjectFile(targetPath);
       const existingIds = collectHtmlIds(originalContent);
@@ -337,7 +329,13 @@ export async function addBlockToProject(opts: AddBlockOptions): Promise<{
             ? Math.max(...relevantElements.map((te) => te.track)) + 1
             : 1);
 
-      const zIndex = getMaxZIndexFromIframe(opts.previewIframe ?? null) + 1;
+      // Timeline discovery already resolves authored and computed z-indexes.
+      // Reusing that snapshot avoids a synchronous getComputedStyle() walk over
+      // every node in the preview iframe, which can force a full style/layout
+      // flush while the editor and catalog previews are busy.
+      const zIndex =
+        relevantElements.reduce((highest, element) => Math.max(highest, element.zIndex ?? 0), 0) +
+        1;
 
       const width = hostDims.width;
       const height = hostDims.height;
@@ -379,8 +377,10 @@ export async function addBlockToProject(opts: AddBlockOptions): Promise<{
         patchedContent,
         Math.max(start + duration, originalContentEnd + shiftExistingBy),
       );
+      hostPatchMs = performance.now() - hostPatchStartedAt;
 
       markStudioWrite();
+      const persistStartedAt = performance.now();
       await saveProjectFilesWithHistory({
         projectId,
         label: `Add ${isBlock ? "block" : "component"}: ${block.title}`,
@@ -390,13 +390,36 @@ export async function addBlockToProject(opts: AddBlockOptions): Promise<{
         writeFile: writeProjectFile,
         recordEdit,
       });
+      persistMs = performance.now() - persistStartedAt;
     }
 
     reloadPreview();
-    await refreshFileTree();
+    // The watcher also refreshes the tree. Keep this explicit fallback for
+    // environments where watching is unavailable, but do not hold insertion
+    // completion or preview selection behind a full project-tree scan.
+    void refreshFileTree().catch(() => {
+      trackStudioEvent("block_install_file_tree_refresh_failed", {
+        block_name: blockName,
+      });
+    });
+
+    trackStudioEvent("block_install_timing", {
+      block_name: blockName,
+      effect_intent: opts.effectIntent ?? "playhead",
+      registry_install_ms: Math.round(registryInstallMs),
+      host_patch_ms: Math.round(hostPatchMs),
+      persist_ms: Math.round(persistMs),
+      total_ms: Math.round(performance.now() - startedAt),
+      timeline_element_count: timelineElements.length,
+    });
 
     return { block, compositionPath: compositionFile, insertedStart, insertedElementId };
   } catch (error) {
+    trackStudioEvent("block_install_failed", {
+      block_name: blockName,
+      total_ms: Math.round(performance.now() - startedAt),
+      error_message: error instanceof Error ? error.message : String(error),
+    });
     const message = error instanceof Error ? error.message : "Failed to add block";
     showToast(message);
     return null;

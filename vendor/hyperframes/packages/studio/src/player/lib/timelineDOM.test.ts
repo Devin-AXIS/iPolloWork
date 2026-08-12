@@ -83,6 +83,41 @@ describe("timeline manifest translation", () => {
     expect(findTimelineDomNodeForClip(document, sceneClip, 1, used)?.id).toBe("scene-intro");
   });
 
+  test("binds a composition clip to its timed host instead of a same-id inner root", () => {
+    document.body.innerHTML = `
+      <main data-composition-id="main" data-composition-file="index.html">
+        <div
+          data-composition-id="opening-editorial-rise"
+          data-start="10"
+          data-duration="4.6"
+          data-track-index="0"
+        >
+          <main
+            id="opening-editorial-rise"
+            data-composition-id="opening-editorial-rise"
+            data-start="0"
+            data-duration="4.6"
+          ></main>
+        </div>
+      </main>
+    `;
+    const clip: ClipManifestClip = {
+      ...MANIFEST_CLIP,
+      id: "opening-editorial-rise",
+      label: "Opening Editorial Rise",
+      start: 10,
+      duration: 4.6,
+      kind: "composition",
+      tagName: "div",
+      compositionId: "opening-editorial-rise",
+      compositionSrc: "compositions/opening-editorial-rise.html",
+    };
+
+    const host = findTimelineDomNodeForClip(document, clip, 0);
+    expect(host?.tagName).toBe("DIV");
+    expect(host?.getAttribute("data-start")).toBe("10");
+  });
+
   test("keeps fallback bindings in DOM order after an earlier host was claimed", () => {
     document.body.innerHTML = `
       <main data-composition-id="main" data-composition-file="index.html">

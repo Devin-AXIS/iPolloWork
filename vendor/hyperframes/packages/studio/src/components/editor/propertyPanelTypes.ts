@@ -94,7 +94,7 @@ export interface PropertyPanelProps {
     targetKind: MotionTargetKind,
     mutation: MotionMutationInput,
     selectionOverride?: DomEditSelection | null,
-  ) => void | Promise<void>;
+  ) => Promise<boolean>;
   onSetArcPath?: (
     animId: string,
     config: {
