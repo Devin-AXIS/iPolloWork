@@ -20,6 +20,8 @@ interface PlayerProps {
   deferReveal?: boolean;
   /** Fires after the deferred iframe is both runtime-ready and seek-restored. */
   onReadyToReveal?: () => void;
+  /** Fires when the player cannot load its composition. */
+  onError?: () => void;
 }
 
 interface HyperframesPlayerElement extends HTMLElement {
@@ -204,6 +206,7 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
       refreshToken,
       deferReveal,
       onReadyToReveal,
+      onError,
     },
     ref,
   ) => {
@@ -256,6 +259,13 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
           window.location.origin,
         );
         applyPreviewVariablesToUrl(srcUrl);
+        // A staged refresh mounts a new player, but the browser can still serve
+        // the previous HTML document when its URL is unchanged. Carry the
+        // refresh token into the request so a persisted delete cannot be
+        // visually resurrected from that stale preview response.
+        if (refreshToken !== undefined) {
+          srcUrl.searchParams.set("_hfRefresh", String(refreshToken));
+        }
         const src = srcUrl.pathname + srcUrl.search;
         player.setAttribute("shader-capture-scale", "1");
         player.setAttribute("shader-loading", "player");
@@ -335,6 +345,7 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
         };
         const handleError = () => {
           setCompositionLoading(false);
+          onError?.();
         };
         player.addEventListener("ready", handleReady);
         player.addEventListener("error", handleError);
@@ -342,7 +353,11 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
         // Forward the iframe's native load event to the studio's onIframeLoad.
         const handleLoad = () => {
           loadCountRef.current++;
-          setCompositionLoading(true);
+          // A staged replacement may report `ready` before the iframe's native
+          // load event reaches this listener. Once the replacement has already
+          // handed off, that late load must not reopen a redundant overlay over
+          // the freshly revealed preview.
+          if (!deferredReadyHandled) setCompositionLoading(true);
           // Reveal animation on reload (hot-reload, composition switch)
           if (loadCountRef.current > 1) {
             container.classList.remove("preview-revealing");

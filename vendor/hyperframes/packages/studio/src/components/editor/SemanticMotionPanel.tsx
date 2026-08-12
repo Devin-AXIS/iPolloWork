@@ -63,6 +63,8 @@ interface MotionPreviewTimeline {
     position: number,
   ) => MotionPreviewTimeline;
   play?: (position?: number) => MotionPreviewTimeline;
+  progress?: (value: number) => MotionPreviewTimeline;
+  eventCallback?: (type: "onComplete", callback: () => void) => MotionPreviewTimeline;
   kill?: () => void;
 }
 
@@ -98,6 +100,16 @@ function previewMotionDraft(
     ]),
   );
   const originalStyle = target.getAttribute("style");
+  let restored = false;
+  let previewFrame = 0;
+  const restoreCurrentFrame = () => {
+    if (restored) return;
+    restored = true;
+    if (previewFrame) window.cancelAnimationFrame(previewFrame);
+    timeline.kill?.();
+    if (originalStyle === null) target.removeAttribute("style");
+    else target.setAttribute("style", originalStyle);
+  };
   timeline.to(
     target,
     {
@@ -108,12 +120,34 @@ function previewMotionDraft(
     },
     0,
   );
-  timeline.play?.(0);
-  return () => {
-    timeline.kill?.();
-    if (originalStyle === null) target.removeAttribute("style");
-    else target.setAttribute("style", originalStyle);
-  };
+  if (!loop) timeline.eventCallback?.("onComplete", restoreCurrentFrame);
+  if (timeline.progress && window.requestAnimationFrame) {
+    // The composition pauses GSAP's global timeline while the video is
+    // paused. Drive this isolated, paused timeline from the Studio window so
+    // the selected element can preview without starting or seeking the video.
+    const durationMs = Math.max(1, duration * 1000);
+    let cycleStartedAt: number | null = null;
+    timeline.progress(0);
+    const drivePreview = (timestamp: number) => {
+      if (restored) return;
+      cycleStartedAt ??= timestamp;
+      const progress = Math.min(1, Math.max(0, (timestamp - cycleStartedAt) / durationMs));
+      timeline.progress?.(progress);
+      if (progress >= 1) {
+        if (!loop) {
+          restoreCurrentFrame();
+          return;
+        }
+        cycleStartedAt = timestamp;
+        timeline.progress?.(0);
+      }
+      previewFrame = window.requestAnimationFrame(drivePreview);
+    };
+    previewFrame = window.requestAnimationFrame(drivePreview);
+  } else {
+    timeline.play?.(0);
+  }
+  return restoreCurrentFrame;
 }
 
 function speedForDuration(preset: MotionPreset, duration: number): number {
@@ -126,6 +160,7 @@ export function AnimationPropertiesPanel({
   animations,
   onMutate,
   onApplied,
+  previewRequest = 0,
 }: {
   draft: AnimationTemplateDraft | null;
   element: DomEditSelection | null;
@@ -134,8 +169,9 @@ export function AnimationPropertiesPanel({
     targetKind: MotionTargetKind,
     mutation: MotionMutationInput,
     selectionOverride?: DomEditSelection | null,
-  ) => void | Promise<void>;
+  ) => Promise<boolean>;
   onApplied: () => void;
+  previewRequest?: number;
 }) {
   const existing = useMemo(() => resolveMotionInstances(animations).at(-1), [animations]);
   const selection = draft?.selection ?? element;
@@ -157,8 +193,18 @@ export function AnimationPropertiesPanel({
     preset ? speedForDuration(preset, initialDuration) : 1,
   );
   const [loop, setLoop] = useState(Boolean(initialLoop));
+  const [applying, setApplying] = useState(false);
+  const [applyFailed, setApplyFailed] = useState(false);
   const speedRef = useRef(speed);
   const loopRef = useRef(loop);
+  const activePreviewCleanupRef = useRef<(() => void) | null>(null);
+  useEffect(
+    () => () => {
+      activePreviewCleanupRef.current?.();
+      activePreviewCleanupRef.current = null;
+    },
+    [],
+  );
   const signature = `${selection?.sourceFile ?? ""}:${selection?.id ?? selection?.hfId ?? selection?.selector ?? ""}:${presetId ?? ""}`;
   const previewSignature =
     selection && preset && targetKind && parameters
@@ -180,6 +226,7 @@ export function AnimationPropertiesPanel({
     loopRef.current = nextLoop;
     setSpeed(nextSpeed);
     setLoop(nextLoop);
+    setApplyFailed(false);
   }, [initialDuration, initialLoop, preset, signature]);
 
   const duration = preset ? Number((defaultMotionDuration(preset) / speed).toFixed(2)) : 0.65;
@@ -199,8 +246,15 @@ export function AnimationPropertiesPanel({
   }, [previewSignature, selection?.element]);
   useEffect(() => {
     if (!previewDraft || !preset) return;
-    return previewMotionDraft(previewDraft, duration, loop);
-  }, [duration, loop, preset, previewDraft]);
+    const cleanup = previewMotionDraft(previewDraft, duration, loop);
+    activePreviewCleanupRef.current = cleanup ?? null;
+    return () => {
+      cleanup?.();
+      if (activePreviewCleanupRef.current === cleanup) {
+        activePreviewCleanupRef.current = null;
+      }
+    };
+  }, [duration, loop, preset, previewDraft, previewRequest]);
 
   if (!selection || !preset || !targetKind || !parameters) {
     return (
@@ -211,20 +265,35 @@ export function AnimationPropertiesPanel({
   }
 
   const confirm = async () => {
+    if (applying) return;
+    setApplying(true);
+    setApplyFailed(false);
     const confirmedDuration = Number((defaultMotionDuration(preset) / speedRef.current).toFixed(2));
-    await onMutate(
-      targetKind,
-      {
-        operation: "upsert",
-        phase: preset.phase,
-        presetId: preset.id,
-        duration: confirmedDuration,
-        loop: loopRef.current,
-        parameters,
-      },
-      selection,
-    );
-    onApplied();
+    const timing = resolveSemanticMotionTiming(selection, preset.phase, confirmedDuration);
+    try {
+      const applied = await onMutate(
+        targetKind,
+        {
+          operation: "upsert",
+          phase: preset.phase,
+          presetId: preset.id,
+          start: timing.position,
+          duration: timing.duration,
+          loop: loopRef.current,
+          parameters,
+        },
+        selection,
+      );
+      if (!applied) {
+        setApplyFailed(true);
+        return;
+      }
+      onApplied();
+    } catch {
+      setApplyFailed(true);
+    } finally {
+      setApplying(false);
+    }
   };
 
   return (
@@ -268,10 +337,16 @@ export function AnimationPropertiesPanel({
       <button
         type="button"
         onClick={() => void confirm()}
-        className="h-9 w-full rounded-[7px] bg-[#20bbc0] text-[12px] font-semibold text-white transition-colors hover:bg-[#18a9ae]"
+        disabled={applying}
+        className="h-9 w-full rounded-[7px] bg-[#20bbc0] text-[12px] font-semibold text-white transition-colors hover:bg-[#18a9ae] disabled:cursor-wait disabled:opacity-70"
       >
-        确定应用
+        {applying ? "正在应用…" : "确定应用"}
       </button>
+      {applyFailed ? (
+        <p role="alert" className="text-[10px] leading-4 text-red-400">
+          动画未能保存，请重新选择元素后再试。
+        </p>
+      ) : null}
     </div>
   );
 }
@@ -345,14 +420,12 @@ function AppliedMotionEditor({
   targetKind,
   variableBoundText,
   onMutate,
-  onPreview,
 }: {
   resolved: ResolvedMotionInstance;
   element: DomEditSelection;
   targetKind: MotionTargetKind;
   variableBoundText: boolean;
-  onMutate: (targetKind: MotionTargetKind, mutation: MotionMutationInput) => void | Promise<void>;
-  onPreview: (start: number, duration: number) => void;
+  onMutate: (targetKind: MotionTargetKind, mutation: MotionMutationInput) => Promise<boolean>;
 }) {
   const { animation, instance } = resolved;
   const preset = getMotionPreset(instance.presetId);
@@ -360,6 +433,21 @@ function AppliedMotionEditor({
   const start = displayStart(animation, instance);
   const persistedStart =
     typeof animation.position === "number" ? animation.position : instance.start;
+  const [previewRun, setPreviewRun] = useState(0);
+  useEffect(() => {
+    if (previewRun === 0) return;
+    return previewMotionDraft(
+      {
+        templateId: `applied:${instance.presetId}`,
+        presetId: instance.presetId,
+        targetKind,
+        selection: element,
+        parameters: instance.parameters,
+      },
+      instance.duration,
+      instance.loop,
+    );
+  }, [element.element, instance, previewRun, targetKind]);
   const apply = (updates: Partial<MotionMutationInput>) => {
     onMutate(targetKind, {
       operation: "upsert",
@@ -383,7 +471,7 @@ function AppliedMotionEditor({
         parameters: instance.parameters,
       });
     }
-    onPreview(timing.position, timing.duration);
+    setPreviewRun((run) => run + 1);
   };
   const updateParameter = (parameter: MotionParameter, value: string | number) => {
     apply({
@@ -481,12 +569,10 @@ export function SemanticMotionPanel({
   element,
   animations,
   onMutate,
-  onPreview,
 }: {
   element: DomEditSelection;
   animations: GsapAnimation[];
-  onMutate: (targetKind: MotionTargetKind, mutation: MotionMutationInput) => void | Promise<void>;
-  onPreview: (start: number, duration: number) => void;
+  onMutate: (targetKind: MotionTargetKind, mutation: MotionMutationInput) => Promise<boolean>;
 }) {
   const targetKind = resolveMotionTargetKind(element);
   const instances = useMemo(() => resolveMotionInstances(animations), [animations]);
@@ -535,7 +621,6 @@ export function SemanticMotionPanel({
           targetKind={targetKind}
           variableBoundText={element.element.hasAttribute("data-var-text")}
           onMutate={onMutate}
-          onPreview={onPreview}
         />
       ) : (
         <div className="rounded-[8px] bg-panel-input px-3 py-4 text-center text-[11px] leading-5 text-panel-text-3">

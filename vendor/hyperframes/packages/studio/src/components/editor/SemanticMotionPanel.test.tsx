@@ -4,7 +4,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
 import { compileMotionInstance, createMotionInstance } from "@hyperframes/core/motion-presets";
-import type { DomEditSelection } from "./domEditing";
+import { findElementForSelection, type DomEditSelection } from "./domEditing";
 import {
   AnimationPropertiesPanel,
   resolveMotionInstances,
@@ -80,7 +80,55 @@ function semanticAnimation(options: { duration?: number; loop?: boolean } = {}):
   };
 }
 
+function installMotionPreviewTimeline() {
+  let complete: (() => void) | null = null;
+  const timeline = {
+    to: vi.fn(),
+    play: vi.fn(),
+    eventCallback: vi.fn(),
+    kill: vi.fn(),
+  };
+  timeline.to.mockReturnValue(timeline);
+  timeline.eventCallback.mockImplementation((_type: string, callback: () => void) => {
+    complete = callback;
+    return timeline;
+  });
+  const createTimeline = vi.fn(() => timeline);
+  Object.defineProperty(window, "gsap", {
+    configurable: true,
+    value: { timeline: createTimeline },
+  });
+  return {
+    timeline,
+    createTimeline,
+    complete: () => complete?.(),
+  };
+}
+
 describe("SemanticMotionPanel", () => {
+  it("does not rebind a stale stable-id selection to a same-tag sibling", () => {
+    const previewDocument = document.implementation.createHTMLDocument();
+    previewDocument.body.innerHTML = `
+      <h2 data-hf-id="hf-first">First</h2>
+      <h2 data-hf-id="hf-second">Second</h2>
+    `;
+
+    expect(
+      findElementForSelection(previewDocument, {
+        hfId: "hf-deleted",
+        selector: "h2",
+        selectorIndex: 0,
+      }),
+    ).toBeNull();
+    expect(
+      findElementForSelection(previewDocument, {
+        hfId: "hf-second",
+        selector: "h2",
+        selectorIndex: 0,
+      })?.textContent,
+    ).toBe("Second");
+  });
+
   let container: HTMLDivElement;
   let root: Root;
 
@@ -94,6 +142,7 @@ describe("SemanticMotionPanel", () => {
     flushSync(() => root.unmount());
     container.remove();
     Reflect.deleteProperty(window, "gsap");
+    vi.unstubAllGlobals();
   });
 
   it("classifies only leaf editable text as a text motion target", () => {
@@ -111,7 +160,9 @@ describe("SemanticMotionPanel", () => {
     const title = document.createElement("h1");
     title.id = "title";
     title.textContent = "Title";
+    title.style.opacity = "0.4";
     document.body.append(title);
+    const currentFrameStyle = title.getAttribute("style");
     const selected = selection(title);
     const instance = createMotionInstance({
       presetId: "text.enter.rise",
@@ -119,18 +170,8 @@ describe("SemanticMotionPanel", () => {
       targetKind: "text",
       start: 0,
     });
-    const timeline = {
-      to: vi.fn(),
-      play: vi.fn(),
-      kill: vi.fn(),
-    };
-    timeline.to.mockReturnValue(timeline);
-    const createTimeline = vi.fn(() => timeline);
-    Object.defineProperty(window, "gsap", {
-      configurable: true,
-      value: { timeline: createTimeline },
-    });
-    const onMutate = vi.fn().mockResolvedValue(undefined);
+    const { timeline, createTimeline, complete } = installMotionPreviewTimeline();
+    const onMutate = vi.fn().mockResolvedValue(true);
     const onApplied = vi.fn();
 
     flushSync(() =>
@@ -154,6 +195,7 @@ describe("SemanticMotionPanel", () => {
     expect(container.querySelector('[role="slider"][aria-label="动画速度"]')).not.toBeNull();
     expect(createTimeline).toHaveBeenCalledWith({ paused: true, repeat: 0 });
     expect(timeline.to).toHaveBeenCalledOnce();
+    expect(timeline.to.mock.calls[0]?.[0]).toBe(title);
     expect(timeline.play).toHaveBeenCalledWith(0);
     expect(onMutate).not.toHaveBeenCalled();
     const loopSwitch = container.querySelector('[role="switch"]');
@@ -179,12 +221,134 @@ describe("SemanticMotionPanel", () => {
       expect.objectContaining({
         operation: "upsert",
         presetId: "text.enter.rise",
+        start: 0,
+        duration: 0.65,
         loop: true,
       }),
       selected,
     );
     expect(onApplied).toHaveBeenCalledOnce();
+    expect(createTimeline).toHaveBeenCalledTimes(2);
+    flushSync(() =>
+      root.render(
+        <AnimationPropertiesPanel
+          draft={null}
+          element={selected}
+          animations={[semanticAnimation({ duration: 0.65, loop: true })]}
+          onMutate={onMutate}
+          onApplied={onApplied}
+          previewRequest={1}
+        />,
+      ),
+    );
+    expect(createTimeline).toHaveBeenCalledTimes(3);
+    expect(timeline.to).toHaveBeenCalledTimes(3);
+    expect(timeline.to.mock.calls.at(-1)?.[0]).toBe(title);
+    complete();
+    expect(title.getAttribute("style")).toBe(currentFrameStyle);
     title.remove();
+  });
+
+  it("drives the selected-element preview independently while video playback stays paused", () => {
+    const title = document.createElement("h1");
+    title.id = "title";
+    title.textContent = "Title";
+    title.style.opacity = "0.4";
+    document.body.append(title);
+    const selected = selection(title);
+    const frameCallbacks: FrameRequestCallback[] = [];
+    vi.stubGlobal(
+      "requestAnimationFrame",
+      vi.fn((callback: FrameRequestCallback) => {
+        frameCallbacks.push(callback);
+        return frameCallbacks.length;
+      }),
+    );
+    const cancelAnimationFrame = vi.fn();
+    vi.stubGlobal("cancelAnimationFrame", cancelAnimationFrame);
+    const timeline = {
+      to: vi.fn(),
+      play: vi.fn(),
+      progress: vi.fn(),
+      eventCallback: vi.fn(),
+      kill: vi.fn(),
+    };
+    timeline.to.mockReturnValue(timeline);
+    timeline.progress.mockReturnValue(timeline);
+    timeline.eventCallback.mockReturnValue(timeline);
+    Object.defineProperty(window, "gsap", {
+      configurable: true,
+      value: { timeline: vi.fn(() => timeline) },
+    });
+
+    flushSync(() =>
+      root.render(
+        <AnimationPropertiesPanel
+          draft={{
+            templateId: "general-fade-in",
+            presetId: "text.enter.fade",
+            targetKind: "text",
+            selection: selected,
+            parameters: {},
+          }}
+          element={selected}
+          animations={[]}
+          onMutate={vi.fn().mockResolvedValue(true)}
+          onApplied={vi.fn()}
+        />,
+      ),
+    );
+
+    expect(timeline.to.mock.calls[0]?.[0]).toBe(title);
+    expect(timeline.play).not.toHaveBeenCalled();
+    expect(timeline.progress).toHaveBeenCalledWith(0);
+    frameCallbacks.shift()?.(1_000);
+    frameCallbacks.shift()?.(1_325);
+    expect(timeline.progress).toHaveBeenCalledWith(0.5);
+    frameCallbacks.shift()?.(1_650);
+    expect(timeline.progress).toHaveBeenCalledWith(1);
+    expect(timeline.kill).toHaveBeenCalledOnce();
+    expect(cancelAnimationFrame).toHaveBeenCalled();
+    expect(title.style.opacity).toBe("0.4");
+    title.remove();
+  });
+
+  it("keeps the draft open and reports a failed animation save", async () => {
+    const title = document.createElement("h1");
+    title.id = "title";
+    title.textContent = "Title";
+    const selected = selection(title);
+    const onApplied = vi.fn();
+
+    flushSync(() =>
+      root.render(
+        <AnimationPropertiesPanel
+          draft={{
+            templateId: "general-fade-in",
+            presetId: "text.enter.fade",
+            targetKind: "text",
+            selection: selected,
+            parameters: {},
+          }}
+          element={selected}
+          animations={[]}
+          onMutate={vi.fn().mockResolvedValue(false)}
+          onApplied={onApplied}
+        />,
+      ),
+    );
+
+    const confirm = Array.from(container.querySelectorAll("button")).find(
+      (button) => button.textContent === "确定应用",
+    );
+    if (!(confirm instanceof HTMLButtonElement)) throw new Error("Confirm action missing");
+    confirm.click();
+
+    await vi.waitFor(() => {
+      expect(container.querySelector('[role="alert"]')?.textContent).toContain("动画未能保存");
+    });
+    expect(onApplied).not.toHaveBeenCalled();
+    expect(confirm.disabled).toBe(false);
   });
 
   it("does not replay a saved preview when only selection geometry refreshes", () => {
@@ -238,12 +402,7 @@ describe("SemanticMotionPanel", () => {
     const onMutate = vi.fn();
     flushSync(() =>
       root.render(
-        <SemanticMotionPanel
-          element={selection(title)}
-          animations={[]}
-          onMutate={onMutate}
-          onPreview={vi.fn()}
-        />,
+        <SemanticMotionPanel element={selection(title)} animations={[]} onMutate={onMutate} />,
       ),
     );
 
@@ -259,12 +418,7 @@ describe("SemanticMotionPanel", () => {
     const onMutate = vi.fn();
     flushSync(() =>
       root.render(
-        <SemanticMotionPanel
-          element={selection(card)}
-          animations={[]}
-          onMutate={onMutate}
-          onPreview={vi.fn()}
-        />,
+        <SemanticMotionPanel element={selection(card)} animations={[]} onMutate={onMutate} />,
       ),
     );
 
@@ -273,13 +427,13 @@ describe("SemanticMotionPanel", () => {
     expect(onMutate).not.toHaveBeenCalled();
   });
 
-  it("restores a saved semantic animation as an editable preset", () => {
+  it("restores a saved semantic animation as an editable preset", async () => {
     const title = document.createElement("h1");
     title.id = "title";
     title.textContent = "Title";
     const animation = semanticAnimation();
     const onMutate = vi.fn();
-    const onPreview = vi.fn();
+    const { timeline } = installMotionPreviewTimeline();
     expect(resolveMotionInstances([animation])).toHaveLength(1);
 
     flushSync(() =>
@@ -288,7 +442,6 @@ describe("SemanticMotionPanel", () => {
           element={selection(title)}
           animations={[animation]}
           onMutate={onMutate}
-          onPreview={onPreview}
         />,
       ),
     );
@@ -307,7 +460,9 @@ describe("SemanticMotionPanel", () => {
     );
     if (!(preview instanceof HTMLButtonElement)) throw new Error("Preview action missing");
     preview.click();
-    expect(onPreview).toHaveBeenCalledWith(1, 0.7);
+    await vi.waitFor(() => expect(timeline.play).toHaveBeenCalledWith(0));
+    expect(timeline.to.mock.calls[0]?.[0]).toBe(title);
+    expect(onMutate).not.toHaveBeenCalled();
 
     const fast = Array.from(container.querySelectorAll("button")).find(
       (button) => button.textContent === "快",
@@ -356,7 +511,6 @@ describe("SemanticMotionPanel", () => {
             ),
           ]}
           onMutate={vi.fn()}
-          onPreview={vi.fn()}
         />,
       ),
     );
@@ -393,8 +547,8 @@ describe("SemanticMotionPanel", () => {
       properties: {},
       extras: compiled.extras,
     };
-    const onMutate = vi.fn(async () => undefined);
-    const onPreview = vi.fn();
+    const onMutate = vi.fn(async () => true);
+    const { timeline } = installMotionPreviewTimeline();
 
     flushSync(() =>
       root.render(
@@ -402,7 +556,6 @@ describe("SemanticMotionPanel", () => {
           element={selection(card)}
           animations={[animation]}
           onMutate={onMutate}
-          onPreview={onPreview}
         />,
       ),
     );
@@ -423,7 +576,8 @@ describe("SemanticMotionPanel", () => {
           duration: 0.8,
         }),
       );
-      expect(onPreview).toHaveBeenCalledWith(16.7, 0.8);
+      expect(timeline.play).toHaveBeenCalledWith(0);
+      expect(timeline.to.mock.calls[0]?.[0]).toBe(card);
     });
     clip.remove();
   });
@@ -457,7 +611,6 @@ describe("SemanticMotionPanel", () => {
           element={selection(background)}
           animations={[animation]}
           onMutate={vi.fn()}
-          onPreview={vi.fn()}
         />,
       ),
     );
@@ -543,7 +696,6 @@ describe("SemanticMotionPanel", () => {
           element={selection(title)}
           animations={[semanticAnimation()]}
           onMutate={onMutate}
-          onPreview={vi.fn()}
         />,
       ),
     );

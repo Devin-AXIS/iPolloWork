@@ -42,9 +42,8 @@ describe("TimelineLayerHeader", () => {
     container.remove();
   });
 
-  it("selects the layer and enters inline rename mode on click", async () => {
+  it("selects the layer without entering rename mode", async () => {
     const onSelect = vi.fn();
-    const onRename = vi.fn(async () => undefined);
     await act(async () => {
       root.render(
         <TimelineLayerHeader
@@ -60,7 +59,6 @@ describe("TimelineLayerHeader", () => {
           onToggleHidden={vi.fn()}
           onToggleLocked={vi.fn()}
           onSelect={onSelect}
-          onRename={onRename}
           onToggleExpanded={vi.fn()}
         />,
       );
@@ -70,99 +68,37 @@ describe("TimelineLayerHeader", () => {
     await act(async () => select?.click());
 
     expect(onSelect).toHaveBeenCalledWith(element);
-    const input = container.querySelector<HTMLInputElement>(".hf-timeline-layer-header__rename-input");
-    expect(input?.value).toBe("Opening title");
-
-    await act(async () => {
-      if (!input) return;
-      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set?.call(
-        input,
-        "Renamed layer",
-      );
-      input.dispatchEvent(new Event("input", { bubbles: true }));
-      input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
-    });
-
-    expect(onRename).toHaveBeenCalledTimes(1);
-    expect(onRename).toHaveBeenCalledWith(element, "Renamed layer");
-  });
-
-  it("keeps the editor open when rename persistence fails", async () => {
-    const onRename = vi.fn(async () => {
-      throw new Error("save failed");
-    });
-    await act(async () => {
-      root.render(
-        <TimelineLayerHeader
-          track={0}
-          elements={[element]}
-          hidden={false}
-          locked={false}
-          selected
-          expanded={false}
-          expandable={false}
-          theme={defaultTimelineTheme}
-          visualStyle={visualStyle}
-          onToggleHidden={vi.fn()}
-          onToggleLocked={vi.fn()}
-          onSelect={vi.fn()}
-          onRename={onRename}
-          onToggleExpanded={vi.fn()}
-        />,
-      );
-    });
-
-    await act(async () =>
-      container.querySelector<HTMLElement>(".hf-timeline-layer-header__select")?.click(),
-    );
-    const input = container.querySelector<HTMLInputElement>(".hf-timeline-layer-header__rename-input");
-    await act(async () => {
-      if (!input) return;
-      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set?.call(
-        input,
-        "Retry this name",
-      );
-      input.dispatchEvent(new Event("input", { bubbles: true }));
-      input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
-    });
-
-    expect(onRename).toHaveBeenCalledTimes(1);
-    expect(container.querySelector<HTMLInputElement>(".hf-timeline-layer-header__rename-input")?.value)
-      .toBe("Retry this name");
-  });
-
-  it("cancels the rename without persisting when Escape is pressed", async () => {
-    const onRename = vi.fn();
-    await act(async () => {
-      root.render(
-        <TimelineLayerHeader
-          track={0}
-          elements={[element]}
-          hidden={false}
-          locked={false}
-          selected
-          expanded={false}
-          expandable={false}
-          theme={defaultTimelineTheme}
-          visualStyle={visualStyle}
-          onToggleHidden={vi.fn()}
-          onToggleLocked={vi.fn()}
-          onSelect={vi.fn()}
-          onRename={onRename}
-          onToggleExpanded={vi.fn()}
-        />,
-      );
-    });
-
-    await act(async () =>
-      container.querySelector<HTMLElement>(".hf-timeline-layer-header__select")?.click(),
-    );
-    const input = container.querySelector<HTMLInputElement>(".hf-timeline-layer-header__rename-input");
-    await act(async () =>
-      input?.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })),
-    );
-
-    expect(onRename).not.toHaveBeenCalled();
     expect(container.querySelector(".hf-timeline-layer-header__rename-input")).toBeNull();
+    expect(container.querySelector(".hf-timeline-layer-header__label")?.textContent).toBe(
+      "Opening title",
+    );
+  });
+
+  it("uses the eye action to request hiding the layer", async () => {
+    const onToggleHidden = vi.fn();
+    await act(async () => {
+      root.render(
+        <TimelineLayerHeader
+          track={0}
+          elements={[element]}
+          hidden={false}
+          locked={false}
+          selected
+          expanded={false}
+          expandable={false}
+          theme={defaultTimelineTheme}
+          visualStyle={visualStyle}
+          onToggleHidden={onToggleHidden}
+          onToggleLocked={vi.fn()}
+          onSelect={vi.fn()}
+          onToggleExpanded={vi.fn()}
+        />,
+      );
+    });
+
+    const eye = container.querySelector<HTMLButtonElement>(".hf-timeline-layer-header__visibility");
+    expect(eye?.getAttribute("aria-label")).toBe("Hide Opening title");
+    await act(async () => eye?.click());
+    expect(onToggleHidden).toHaveBeenCalledWith(true);
   });
 });

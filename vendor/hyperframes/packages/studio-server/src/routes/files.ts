@@ -538,15 +538,17 @@ function extractGsapScriptBlock(html: string): {
 }
 
 /**
- * Remove every GSAP animation that targets `selector` from an HTML string's
- * inline script. Used after unwrapping a group so its leftover `gsap.set("#id")`
- * (the wrapper is gone) doesn't throw "target not found" on every preview run.
+ * Remove every GSAP animation that targets any supplied selector from an HTML
+ * string's inline script. Used after deleting or unwrapping elements so
+ * leftover calls don't throw "target not found" on every preview run.
  */
-function stripGsapAnimationsForSelector(html: string, selector: string): string {
+function stripGsapAnimationsForSelectors(html: string, selectors: Iterable<string>): string {
   const block = extractGsapScriptBlock(html);
   if (!block) return html;
+  const targetSelectors = new Set(selectors);
+  if (targetSelectors.size === 0) return html;
   const parsed = parseGsapScriptAcorn(block.scriptText);
-  const matching = parsed.animations.filter((a) => a.targetSelector === selector);
+  const matching = parsed.animations.filter((a) => targetSelectors.has(a.targetSelector));
   if (matching.length === 0) return html;
   let script = block.scriptText;
   // Reverse so earlier removals don't shift the spans of later ones.
@@ -554,6 +556,10 @@ function stripGsapAnimationsForSelector(html: string, selector: string): string 
     script = removeAnimationFromScript(script, anim.id);
   }
   return block.replaceScript(script);
+}
+
+function stripGsapAnimationsForSelector(html: string, selector: string): string {
+  return stripGsapAnimationsForSelectors(html, [selector]);
 }
 
 /**
@@ -2463,13 +2469,17 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
     if (!removed.matched) {
       return c.json({ error: "element not found in source file" }, 404);
     }
+    const cleanedContent = stripGsapAnimationsForSelectors(
+      removed.html,
+      removed.removedSelectors,
+    );
     return writeIfChanged(
       c,
       ctx.project.dir,
       ctx.filePath,
       ctx.absPath,
       originalContent,
-      removed.html,
+      cleanedContent,
     );
   });
 

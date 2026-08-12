@@ -1,4 +1,4 @@
-import { useCallback, useEffect } from "react";
+import { useCallback } from "react";
 import { trackStudioEvent } from "../utils/studioTelemetry";
 import { usePlayerStore, type SelectElementOptions, type TimelineElement } from "../player";
 import type { ImportedFontAsset } from "../components/editor/fontAssets";
@@ -121,6 +121,7 @@ export function useDomEditSession({
     domEditGroupSelections,
     domEditHoverSelection,
     activeGroupElement,
+    previewSelectionInteraction,
     domEditSelectionRef,
     domEditGroupSelectionsRef,
     setActiveGroupElement,
@@ -538,6 +539,7 @@ export function useDomEditSession({
     domEditGroupSelections,
     domEditHoverSelection,
     activeGroupElement,
+    previewSelectionInteraction,
     agentModalOpen,
     agentModalAnchorPoint,
     copiedAgentPrompt,

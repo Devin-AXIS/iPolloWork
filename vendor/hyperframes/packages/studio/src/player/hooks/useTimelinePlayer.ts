@@ -79,7 +79,6 @@ export function useTimelinePlayer() {
   const pendingSeekRef = useRef<number | null>(null);
   const isRefreshingRef = useRef(false);
   const reverseRafRef = useRef<number>(0);
-  const rangePreviewRafRef = useRef<number>(0);
   const shuttleDirectionRef = useRef<"forward" | "backward" | null>(null);
   const shuttleSpeedIndexRef = useRef(0);
   const iframeShortcutCleanupRef = useRef<(() => void) | null>(null);
@@ -454,34 +453,6 @@ export function useTimelinePlayer() {
       seek,
     });
 
-  const previewRange = useCallback(
-    (start: number, duration: number) => {
-      cancelAnimationFrame(rangePreviewRafRef.current);
-      if (!Number.isFinite(start) || !Number.isFinite(duration) || start < 0 || duration <= 0) {
-        return;
-      }
-      pause();
-      if (!seek(start)) return;
-      play();
-      const adapter = getAdapter();
-      const end = Math.min(start + duration, adapter?.getDuration() ?? start + duration);
-      const monitor = () => {
-        const activeAdapter = getAdapter();
-        if (!activeAdapter?.isPlaying()) return;
-        const time = activeAdapter.getTime();
-        if (time < start - 0.05 || time > end + 0.1) return;
-        if (time >= end - 0.01) {
-          pause();
-          seek(end);
-          return;
-        }
-        rangePreviewRafRef.current = requestAnimationFrame(monitor);
-      };
-      rangePreviewRafRef.current = requestAnimationFrame(monitor);
-    },
-    [getAdapter, pause, play, seek],
-  );
-
   const { processTimelineMessageRef, enrichMissingCompositionsRef, onIframeLoad } =
     useTimelineSyncCallbacks({
       iframeRef,
@@ -611,7 +582,6 @@ export function useTimelinePlayer() {
       stopReverseLoop();
       stopScrubPreviewAudio();
       stopPreviewMedia();
-      cancelAnimationFrame(rangePreviewRafRef.current);
       releaseStaticSeekCache(staticSeekAdapterRef, staticSeekWarnedRef);
       if (probeIntervalRef.current) clearInterval(probeIntervalRef.current);
     };
@@ -642,7 +612,6 @@ export function useTimelinePlayer() {
     play,
     pause,
     togglePlay,
-    previewRange,
     seek,
     onIframeLoad,
     refreshPlayer,

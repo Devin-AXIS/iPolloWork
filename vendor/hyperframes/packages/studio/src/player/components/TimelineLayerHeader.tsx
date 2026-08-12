@@ -1,11 +1,5 @@
 import { DotsSixVertical, LinkSimple } from "@phosphor-icons/react";
-import {
-  useEffect,
-  useRef,
-  useState,
-  type KeyboardEvent as ReactKeyboardEvent,
-  type PointerEvent as ReactPointerEvent,
-} from "react";
+import { type PointerEvent as ReactPointerEvent } from "react";
 import type { TimelineElement, TimelineKind } from "../store/playerStore";
 import type { TimelineTheme, TimelineTrackStyle } from "./timelineTheme";
 import { GUTTER } from "./timelineLayout";
@@ -48,7 +42,6 @@ interface TimelineLayerHeaderProps {
   onToggleHidden: (hidden: boolean) => void;
   onToggleLocked: (locked: boolean) => void;
   onSelect: (element: TimelineElement | null) => void;
-  onRename?: (element: TimelineElement, label: string) => Promise<void> | void;
   onToggleExpanded: (element: TimelineElement) => void;
   onReorderPointerDown?: (
     event: ReactPointerEvent<HTMLButtonElement>,
@@ -69,7 +62,6 @@ export function TimelineLayerHeader({
   onToggleHidden,
   onToggleLocked,
   onSelect,
-  onRename,
   onToggleExpanded,
   onReorderPointerDown,
 }: TimelineLayerHeaderProps) {
@@ -110,60 +102,6 @@ export function TimelineLayerHeader({
       : canReorder
         ? "Drag vertically to reorder this layer"
         : statusTitle;
-  const canRename = Boolean(first && elements.length === 1 && onRename);
-  const [editing, setEditing] = useState(false);
-  const [draftLabel, setDraftLabel] = useState(label);
-  const renameInputRef = useRef<HTMLInputElement>(null);
-  const committingRef = useRef(false);
-
-  useEffect(() => {
-    if (!editing) setDraftLabel(label);
-  }, [editing, label]);
-
-  useEffect(() => {
-    if (!editing) return;
-    renameInputRef.current?.focus();
-    renameInputRef.current?.select();
-  }, [editing]);
-
-  const cancelRename = () => {
-    setDraftLabel(label);
-    setEditing(false);
-  };
-
-  const commitRename = async () => {
-    if (!first || !onRename || committingRef.current) return;
-    const nextLabel = draftLabel.trim();
-    if (!nextLabel || nextLabel === label) {
-      if (!nextLabel) setDraftLabel(label);
-      setEditing(false);
-      return;
-    }
-    committingRef.current = true;
-    try {
-      await onRename(first, nextLabel);
-      setEditing(false);
-    } catch {
-      // Persistence reports its own toast. Keep the editor open so the user can
-      // retry without losing the draft, and avoid an unhandled async rejection.
-      renameInputRef.current?.focus();
-    } finally {
-      committingRef.current = false;
-    }
-  };
-
-  const handleRenameKeyDown = (event: ReactKeyboardEvent<HTMLInputElement>) => {
-    event.stopPropagation();
-    if (event.key === "Enter") {
-      event.preventDefault();
-      // Blur is the single commit boundary. Calling commit here as well races
-      // the blur handler and can emit duplicate persistence errors.
-      event.currentTarget.blur();
-    } else if (event.key === "Escape") {
-      event.preventDefault();
-      cancelRename();
-    }
-  };
   return (
     <div
       className={`hf-timeline-layer-header sticky left-0 z-[12] flex flex-shrink-0 items-center ${
@@ -225,7 +163,6 @@ export function TimelineLayerHeader({
         onClick={(event) => {
           event.stopPropagation();
           onSelect(first);
-          if (canRename) setEditing(true);
         }}
         onKeyDown={(event) => {
           if (event.target !== event.currentTarget) return;
@@ -233,27 +170,12 @@ export function TimelineLayerHeader({
           event.preventDefault();
           event.stopPropagation();
           onSelect(first);
-          if (canRename) setEditing(true);
         }}
       >
         <span className="hf-timeline-layer-header__kind">
           <img src={resolveFigmaKindIcon(kind, selected)} alt="" aria-hidden="true" />
         </span>
-        {editing ? (
-          <input
-            ref={renameInputRef}
-            className="hf-timeline-layer-header__rename-input"
-            value={draftLabel}
-            aria-label={tx(`Rename ${label}`)}
-            onChange={(event) => setDraftLabel(event.target.value)}
-            onPointerDown={(event) => event.stopPropagation()}
-            onClick={(event) => event.stopPropagation()}
-            onKeyDown={handleRenameKeyDown}
-            onBlur={() => void commitRename()}
-          />
-        ) : (
-          <span className="hf-timeline-layer-header__label">{label}</span>
-        )}
+        <span className="hf-timeline-layer-header__label">{label}</span>
         {bindingId && (
           <span
             className="hf-timeline-layer-header__binding"
