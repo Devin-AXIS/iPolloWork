@@ -43,6 +43,7 @@ export interface ApplyDomSelectionOptions {
 
 export interface ResolveDomSelectionOptions {
   preferClipAncestor?: boolean;
+  exactTarget?: boolean;
   skipSourceProbe?: boolean;
   activeGroupElement?: HTMLElement | null;
 }
@@ -299,20 +300,12 @@ export function useDomSelection({
   );
 
   const buildDomSelectionFromTarget = useCallback(
-    (
-      target: HTMLElement,
-      options?: {
-        preferClipAncestor?: boolean;
-        skipSourceProbe?: boolean;
-        // Override the drill-in scope (used by canvas double-click to resolve the
-        // child inside a group before the activeGroupElement state has re-rendered).
-        activeGroupElement?: HTMLElement | null;
-      },
-    ) => {
+    (target: HTMLElement, options?: ResolveDomSelectionOptions) => {
       return resolveDomEditSelection(target, {
         activeCompositionPath: activeCompPath,
         isMasterView,
         preferClipAncestor: options?.preferClipAncestor,
+        exactTarget: options?.exactTarget,
         skipSourceProbe: options?.skipSourceProbe,
         activeGroupElement:
           options && "activeGroupElement" in options
@@ -329,11 +322,7 @@ export function useDomSelection({
     async (
       clientX: number,
       clientY: number,
-      options?: {
-        preferClipAncestor?: boolean;
-        skipSourceProbe?: boolean;
-        activeGroupElement?: HTMLElement | null;
-      },
+      options?: ResolveDomSelectionOptions,
     ) => {
       const iframe = previewIframeRef.current;
       if (!iframe || captionEditMode) return null;
@@ -350,11 +339,13 @@ export function useDomSelection({
         options && "activeGroupElement" in options
           ? {
               preferClipAncestor: options.preferClipAncestor,
+              exactTarget: options.exactTarget,
               skipSourceProbe: options.skipSourceProbe,
               activeGroupElement: options.activeGroupElement,
             }
           : {
               preferClipAncestor: options?.preferClipAncestor,
+              exactTarget: options?.exactTarget,
               skipSourceProbe: options?.skipSourceProbe,
               activeGroupElement: owningGroup,
             },
@@ -400,6 +391,7 @@ export function useDomSelection({
       const owningGroup = targetElement.closest<HTMLElement>("[data-hf-group]");
       return buildDomSelectionFromTarget(targetElement, {
         preferClipAncestor: false,
+        exactTarget: true,
         skipSourceProbe: true,
         activeGroupElement: owningGroup,
       });

@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer } from "electron";
 
 const NATIVE_DEEP_LINK_EVENT = "ipollowork:deep-link-native";
+const DESKTOP_RESUMED_EVENT = "ipollowork:desktop-resumed";
 const NATIVE_MENU_OPEN_SETTINGS_EVENT = "ipollowork:native-menu:open-settings";
 const NATIVE_MENU_TOGGLE_SIDEBAR_EVENT = "ipollowork:native-menu:toggle-sidebar";
 const NATIVE_MENU_CHECK_UPDATES_EVENT = "ipollowork:native-menu:check-updates";
@@ -188,6 +189,11 @@ contextBridge.exposeInMainWorld("__IPOLLOWORK_ELECTRON__", {
 ipcRenderer.on(NATIVE_DEEP_LINK_EVENT, (_event, urls) => {
   if (typeof window === "undefined") return;
   window.dispatchEvent(new CustomEvent(NATIVE_DEEP_LINK_EVENT, { detail: urls }));
+});
+
+ipcRenderer.on(DESKTOP_RESUMED_EVENT, (_event, result) => {
+  if (typeof window === "undefined") return;
+  window.dispatchEvent(new CustomEvent(DESKTOP_RESUMED_EVENT, { detail: result }));
 });
 
 ipcRenderer.on(NATIVE_MENU_OPEN_SETTINGS_EVENT, () => {

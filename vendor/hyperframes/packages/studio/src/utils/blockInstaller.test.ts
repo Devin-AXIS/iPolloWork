@@ -152,6 +152,7 @@ describe("addBlockToProject", () => {
     expect(writtenIndex).toContain(
       'data-composition-src="compositions/components/morph-text.html"',
     );
+    expect(writtenIndex).not.toContain("data-hf-edit-as-unit");
   });
 
   it("uses the timeline z-index snapshot without reading preview layout", async () => {

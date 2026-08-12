@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 const devScript = readFileSync(fileURLToPath(new URL("../scripts/electron-dev.mjs", import.meta.url)), "utf8");
 const iconScript = readFileSync(fileURLToPath(new URL("../scripts/generate-icons.mjs", import.meta.url)), "utf8");
 const main = readFileSync(fileURLToPath(new URL("./main.mjs", import.meta.url)), "utf8");
+const preload = readFileSync(fileURLToPath(new URL("./preload.mjs", import.meta.url)), "utf8");
 const workspacePackage = JSON.parse(readFileSync(fileURLToPath(new URL("../../../package.json", import.meta.url)), "utf8"));
 
 test("Electron development defaults to the configured iPolloCloud URL", () => {
@@ -22,6 +23,18 @@ test("development startup does not auto-install dependencies when the registry i
 test("embedded server requests use Electron's system-proxy-aware network stack", () => {
   assert.match(main, /Symbol\.for\("ipollowork\.mediaProviderFetch"\), electronNet\.fetch\.bind\(electronNet\)/);
   assert.doesNotMatch(main, /globalThis\.fetch\s*=/);
+});
+
+test("desktop sleep cancels stale requests and resume restores the runtime before notifying React", () => {
+  assert.match(main, /powerMonitor\.on\("suspend"/);
+  assert.match(main, /abortSuspendedDesktopFetches\(\)/);
+  assert.match(main, /powerMonitor\.on\("resume"/);
+  assert.match(main, /bootRuntimeForSelectedWorkspace\(\)\.catch/);
+  assert.match(main, /win\.webContents\.send\(DESKTOP_RESUMED_EVENT, result\)/);
+  assert.match(main, /activeDesktopFetchControllers\.add\(suspendController\)/);
+  assert.match(main, /activeDesktopFetchControllers\.delete\(suspendController\)/);
+  assert.match(preload, /ipcRenderer\.on\(DESKTOP_RESUMED_EVENT/);
+  assert.match(preload, /window\.dispatchEvent\(new CustomEvent\(DESKTOP_RESUMED_EVENT/);
 });
 
 test("macOS development shell embeds the iPollo application icon", () => {

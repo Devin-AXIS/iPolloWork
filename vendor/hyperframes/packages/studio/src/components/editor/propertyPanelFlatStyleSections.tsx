@@ -14,6 +14,7 @@ import { buildDefaultGradientModel, serializeGradient } from "./gradientValue";
 import { STROKE_STYLE_OPTIONS } from "./propertyPanelFlatStyleHelpers";
 import {
   buildBoxShadowPresetValue,
+  buildBoxShadowIntensityValue,
   buildStrokeStyleUpdates,
   buildStrokeWidthStyleUpdates,
   extractBackgroundImageUrl,
@@ -21,6 +22,7 @@ import {
   formatPxMetricValue,
   getCssFilterFunctionPx,
   inferBoxShadowPreset,
+  inferBoxShadowIntensity,
   normalizePanelPxValue,
   parseNumericValue,
   parsePxMetricValue,
@@ -31,7 +33,13 @@ import { FlatRow, FlatSelectRow, FlatSlider } from "./propertyPanelFlatPrimitive
 import { FlatMaskSection } from "./propertyPanelFlatMaskSection";
 import { resolveValueTier } from "./propertyPanelValueTier";
 import { ColorField } from "./propertyPanelColor";
-import { GradientField, ImageFillField } from "./propertyPanelFill";
+import {
+  commitElementBackgroundImage,
+  GradientField,
+  ImageFillField,
+  resolveEditableBackgroundImage,
+  syncLegacyThemeBackgroundPreview,
+} from "./propertyPanelFill";
 
 /* ------------------------------------------------------------------ */
 /*  Flat Fill sub-block (design_handoff_studio_inspector, #11a)        */
@@ -129,7 +137,7 @@ export function FlatFillSection({
   onImportAssets?: (files: FileList) => Promise<string[]>;
 }) {
   const styleEditingDisabled = !element.capabilities.canEditStyles;
-  const backgroundImage = styles["background-image"] ?? "none";
+  const backgroundImage = resolveEditableBackgroundImage(element.element, styles);
   const fillMode: FillMode =
     backgroundImage && backgroundImage !== "none"
       ? backgroundImage.includes("gradient")
@@ -146,15 +154,26 @@ export function FlatFillSection({
     setPreferredFillMode(fillMode);
   }, [fillMode, element.id, element.selector, backgroundImage]);
 
+  useEffect(() => {
+    // Keep image fills authored by older Studio versions visible immediately;
+    // also migrate the token once so subsequent preview reloads retain it.
+    if (syncLegacyThemeBackgroundPreview(element.element)) {
+      void Promise.resolve(onSetStyle("--ipw-bg-image", backgroundImage)).catch(() => undefined);
+    }
+  }, [element.element, backgroundImage, onSetStyle]);
+
+  const commitBackgroundImage = (nextValue: string) =>
+    commitElementBackgroundImage(element.element, nextValue, onSetStyle);
+
   const handleFillModeChange = async (nextMode: FillMode) => {
     setPreferredFillMode(nextMode);
     if (nextMode === "None") {
-      await onSetStyle("background-image", "none");
+      await commitBackgroundImage("none");
       await onSetStyle("background-color", "transparent");
       return;
     }
     if (nextMode === "Solid") {
-      await onSetStyle("background-image", "none");
+      await commitBackgroundImage("none");
       if (
         styles["background-color"] === "transparent" ||
         styles["background-color"] === "rgba(0, 0, 0, 0)"
@@ -164,8 +183,7 @@ export function FlatFillSection({
       return;
     }
     if (nextMode === "Gradient" && !backgroundImage.includes("gradient")) {
-      onSetStyle(
-        "background-image",
+      void commitBackgroundImage(
         serializeGradient(buildDefaultGradientModel(styles["background-color"])),
       );
     }
@@ -196,7 +214,7 @@ export function FlatFillSection({
             }
             fallbackColor={styles["background-color"]}
             disabled={styleEditingDisabled}
-            onCommit={(next) => onSetStyle("background-image", next)}
+            onCommit={(next) => void commitBackgroundImage(next)}
           />
         ) : (
           <ImageFillField
@@ -206,7 +224,7 @@ export function FlatFillSection({
             value={imageUrl}
             assets={assets}
             disabled={styleEditingDisabled}
-            onCommit={(next) => onSetStyle("background-image", next)}
+            onCommit={(next) => void commitBackgroundImage(next)}
             onImportAssets={onImportAssets}
           />
         ))}
@@ -519,14 +537,6 @@ function FlatAppearanceOpacityRow({
   );
 }
 
-const SHADOW_INTENSITY: Record<BoxShadowPreset, number> = {
-  none: 0,
-  soft: 25,
-  lift: 50,
-  glow: 75,
-  custom: 100,
-};
-
 function FlatAppearanceShadowRow({
   styles,
   disabled,
@@ -538,12 +548,8 @@ function FlatAppearanceShadowRow({
   onSetStyle: (prop: string, value: string) => void | Promise<void>;
   onPreviewStyle?: (prop: string, value: string) => void;
 }) {
-  const intensity = SHADOW_INTENSITY[inferBoxShadowPreset(styles["box-shadow"])];
-  const shadowValueFor = (next: number) => {
-    const preset: BoxShadowPreset =
-      next <= 0 ? "none" : next <= 33 ? "soft" : next <= 66 ? "lift" : "glow";
-    return buildBoxShadowPresetValue(preset, styles["box-shadow"]);
-  };
+  const intensity = inferBoxShadowIntensity(styles["box-shadow"]);
+  const shadowValueFor = (next: number) => buildBoxShadowIntensityValue(next);
   return (
     <FlatSlider
       large
@@ -553,6 +559,7 @@ function FlatAppearanceShadowRow({
       max={100}
       tier="explicitCustom"
       displayValue={`${intensity}%`}
+      showValue={false}
       disabled={disabled}
       commitMode={onPreviewStyle ? "release" : "live"}
       onPreview={(next) => onPreviewStyle?.("box-shadow", shadowValueFor(next))}

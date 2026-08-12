@@ -1,6 +1,11 @@
 import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
 import { Clock } from "../../icons/SystemIcons";
 import type { DomEditSelection } from "./domEditing";
+import {
+  clampPreviewTimeToElementRange,
+  deriveElementTiming,
+  resolveElementTimingEdit,
+} from "./propertyPanelFlatTimingDerivation";
 import { formatTimingValue, RESPONSIVE_GRID } from "./propertyPanelHelpers";
 import { MetricField, Section } from "./propertyPanelPrimitives";
 
@@ -10,81 +15,61 @@ export function parseTimingValue(input: string): number | null {
   return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
 }
 
-/**
- * Derive a time range from the element's GSAP tweens (earliest start → latest
- * end) so an element animated purely by GSAP — with no `data-start` /
- * `data-duration` — still shows a meaningful Timing range instead of 0s.
- */
-function deriveTimingFromAnimations(
-  animations: GsapAnimation[],
-): { start: number; duration: number } | null {
-  let lo = Infinity;
-  let hi = -Infinity;
-  for (const a of animations) {
-    const s = a.resolvedStart ?? (typeof a.position === "number" ? a.position : 0);
-    const d = a.duration ?? 0;
-    lo = Math.min(lo, s);
-    hi = Math.max(hi, s + d);
-  }
-  if (!Number.isFinite(lo) || !Number.isFinite(hi) || hi <= lo) return null;
-  return { start: lo, duration: hi - lo };
-}
-
 export function TimingSection({
   element,
   animations = [],
+  currentTime,
   onSetAttribute,
+  onSetAttributes,
+  onSeekToTime,
 }: {
   element: DomEditSelection;
   animations?: GsapAnimation[];
+  currentTime: number;
   onSetAttribute: (attr: string, value: string) => void | Promise<void>;
+  onSetAttributes?: (selection: DomEditSelection, attrs: Record<string, string>) => Promise<void>;
+  onSeekToTime?: (time: number) => void;
 }) {
-  const explicitStart = Number.parseFloat(element.dataAttributes.start ?? "0") || 0;
-  const explicitDuration =
-    Number.parseFloat(
-      element.dataAttributes.duration ?? element.dataAttributes["hf-authored-duration"] ?? "0",
-    ) || 0;
-
-  // No authored clip timing → infer the range from the element's animations.
-  const derived = explicitDuration > 0 ? null : deriveTimingFromAnimations(animations);
-  const start = derived ? derived.start : explicitStart;
-  const duration = derived ? derived.duration : explicitDuration;
+  const { start, duration, inferred } = deriveElementTiming(element, animations);
   const end = start + duration;
 
-  const commitStart = (nextValue: string) => {
+  const pinRange = async (nextStart: number, nextDuration: number) => {
+    const attrs = { start: nextStart.toFixed(2), duration: nextDuration.toFixed(2) };
+    if (onSetAttributes) {
+      await onSetAttributes(element, attrs);
+      return;
+    }
+    await onSetAttribute("start", attrs.start);
+    await onSetAttribute("duration", attrs.duration);
+  };
+
+  const commitRange = (field: "start" | "end", nextValue: string) => {
     const parsed = parseTimingValue(nextValue);
     if (parsed == null) return;
-    void onSetAttribute("start", parsed.toFixed(2));
-  };
-
-  const commitDuration = (nextValue: string) => {
-    const parsed = parseTimingValue(nextValue);
-    if (parsed == null || parsed <= 0) return;
-    void onSetAttribute("duration", parsed.toFixed(2));
-  };
-
-  const commitEnd = (nextValue: string) => {
-    const parsed = parseTimingValue(nextValue);
-    if (parsed == null || parsed <= start) return;
-    void onSetAttribute("duration", (parsed - start).toFixed(2));
+    const range = resolveElementTimingEdit(start, end, field, parsed);
+    if (!range) return;
+    const nextPreviewTime = clampPreviewTimeToElementRange(currentTime, range);
+    if (nextPreviewTime !== currentTime) onSeekToTime?.(nextPreviewTime);
+    void pinRange(range.start, range.duration);
   };
 
   return (
     <Section title="Timing" icon={<Clock size={15} />}>
       <div className={RESPONSIVE_GRID}>
-        <MetricField label="Start" value={formatTimingValue(start)} onCommit={commitStart} />
-        <MetricField label="End" value={formatTimingValue(end)} onCommit={commitEnd} />
-      </div>
-      <div className="mt-3">
         <MetricField
-          label="Duration"
-          value={formatTimingValue(duration)}
-          onCommit={commitDuration}
+          label="Start"
+          value={formatTimingValue(start)}
+          onCommit={(value) => commitRange("start", value)}
+        />
+        <MetricField
+          label="End"
+          value={formatTimingValue(end)}
+          onCommit={(value) => commitRange("end", value)}
         />
       </div>
-      {derived && (
+      {inferred && (
         <p className="mt-2 text-[10px] leading-snug text-neutral-500">
-          Inferred from this element’s animation — edit to pin an explicit clip range.
+          Inferred from this element's animation — edit to pin an explicit clip range.
         </p>
       )}
     </Section>

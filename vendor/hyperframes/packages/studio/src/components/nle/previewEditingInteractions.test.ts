@@ -40,8 +40,11 @@ describe("preview editing interactions", () => {
     expect(previewPaneSource).not.toContain("showSelectionToolbar");
     expect(overlaySource).toContain("target?.closest('[data-dom-edit-selection-box=\"true\"]')");
     expect(overlaySource).toContain(
-      "void onCanvasMouseDown(event, { hoverSelection: hoverSelectionRef.current })",
+      "onCanvasMouseDown(event, { hoverSelection: hoverSelectionRef.current })",
     );
+    expect(overlaySource).toContain('gestures.startGesture("drag", event, { selection: candidate');
+    expect(overlaySource).toContain("effectiveFreshTarget === candidate.element");
+    expect(overlaySource).not.toContain("Retarget before that surface starts a drag");
     expect(overlaySource).toContain('previewInteraction: "primary"');
     expect(contextMenuSource).toContain("onSelectionChangeRef.current(activeSelection, {");
     expect(contextMenuSource).toContain('previewInteraction: "context-menu"');
@@ -185,9 +188,20 @@ describe("preview editing interactions", () => {
     expect(source).toContain("setSelectedElementId(elementKey)");
     expect(source).toContain("onSelectElement?.(el)");
     expect(source).toContain("resolveTimelineSelectionSeekTime(");
-    expect(source).toContain("previewElement.start,");
+    expect(source).toContain("selectionTime,\n                                previewElement,");
     expect(source).not.toContain("selectedElementId === elementKey && !hadMultiSelection");
     expect(source).not.toContain("onSelectElement?.(nextElement)");
+  });
+
+  it("keeps composition clips in the master timeline when they are double-clicked", () => {
+    const paneSource = readFileSync(new URL("./TimelinePane.tsx", import.meta.url), "utf8");
+    const clipSource = readFileSync(
+      new URL("../../player/components/TimelineClip.tsx", import.meta.url),
+      "utf8",
+    );
+
+    expect(paneSource).not.toContain("onDrillDown={handleDrillDown}");
+    expect(clipSource).not.toContain("Double-click to open");
   });
 
   it("updates a hierarchy-row selection atomically before syncing the inspector", () => {
@@ -195,10 +209,15 @@ describe("preview editing interactions", () => {
       new URL("../../player/components/TimelineLanes.tsx", import.meta.url),
       "utf8",
     );
+    const selectionSource = readFileSync(
+      new URL("../../hooks/useDomSelection.ts", import.meta.url),
+      "utf8",
+    );
 
     expect(source).toContain(".setSelection(elementKey ? [elementKey] : [], elementKey)");
-    expect(source).toContain("resolveTimelineSelectionSeekTime(element?.start ?? 0, element)");
+    expect(source).toContain("resolveTimelineSelectionSeekTime(selectionTime, element)");
     expect(source).not.toContain("usePlayerStore.getState().clearSelectedElementIds();");
+    expect(selectionSource).toContain("exactTarget: true");
   });
 
   it("uses a visible proof frame when a timeline selection lands on a clip boundary", () => {

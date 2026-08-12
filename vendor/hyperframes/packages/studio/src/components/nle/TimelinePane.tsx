@@ -119,7 +119,6 @@ export function TimelinePane({
 }: TimelinePaneProps) {
   const {
     seek,
-    handleDrillDown,
     compositionStack,
     updateCompositionStack,
     timelineH,
@@ -272,7 +271,6 @@ export function TimelinePane({
           <div className="flex-shrink-0">{timelineToolbar}</div>
           <Timeline
             onSeek={seek}
-            onDrillDown={handleDrillDown}
             renderClipContent={renderClipContent}
             onFileDrop={onFileDrop}
             onDeleteElement={handleDeleteElement}

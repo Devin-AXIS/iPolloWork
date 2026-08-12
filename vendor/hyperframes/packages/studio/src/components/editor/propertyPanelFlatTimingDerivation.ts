@@ -1,8 +1,9 @@
 import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
+import { resolveElementVisibleTiming } from "../../player/lib/timedClipVisibility";
 import type { DomEditSelection } from "./domEditingTypes";
 
 /**
- * The single source of truth for an element's clip start/duration in the flat
+ * The single source of truth for an element's clip start/duration in the
  * inspector. Both the Motion group's Timing row (`FlatTimingRow`) and the
  * Layout group's keyframe gutter (fed via `elStart`/`elDuration` from
  * `PropertyPanel.tsx` through `PropertyPanelFlat.tsx`) must derive this the
@@ -10,19 +11,55 @@ import type { DomEditSelection } from "./domEditingTypes";
  * different absolute time than the range Motion displays for the same
  * element (found by the Plan 3a+3b whole-plan coherence review).
  *
- * Precedence: an explicit `data-duration` (or `data-hf-authored-duration`)
- * wins outright. Only when neither is present do we infer the range from the
+ * Precedence: the live DOM visibility window (the intersection of the element
+ * and its timed ancestors), then detached/authored data attributes, then the
  * element's own GSAP tweens (earliest tween start → latest tween end).
- *
- * Scoped to the FLAT inspector only — the legacy (non-flat) panel keeps its
- * own, unrelated `elStart`/`elDuration ?? 1` computation in `PropertyPanel.tsx`
- * untouched.
  */
 export interface ElementTiming {
   start: number;
   duration: number;
   /** True when duration/start came from `deriveTimingFromAnimations`, not an authored attribute. */
   inferred: boolean;
+}
+
+export interface ElementTimingRange {
+  start: number;
+  end: number;
+  duration: number;
+}
+
+const END_PREVIEW_EPSILON_SECONDS = 0.001;
+
+/** Keep the untouched boundary fixed when editing an absolute timeline range. */
+export function resolveElementTimingEdit(
+  start: number,
+  end: number,
+  field: "start" | "end",
+  value: number,
+): ElementTimingRange | null {
+  const nextStart = field === "start" ? value : start;
+  const nextEnd = field === "end" ? value : end;
+  if (
+    !Number.isFinite(nextStart) ||
+    !Number.isFinite(nextEnd) ||
+    nextStart < 0 ||
+    nextEnd <= nextStart
+  ) {
+    return null;
+  }
+  return { start: nextStart, end: nextEnd, duration: nextEnd - nextStart };
+}
+
+/** Keep the selected element visible after its timeline range is shortened. */
+export function clampPreviewTimeToElementRange(
+  currentTime: number,
+  range: Pick<ElementTimingRange, "start" | "end">,
+): number {
+  if (currentTime < range.start) return range.start;
+  if (currentTime >= range.end) {
+    return Math.max(range.start, range.end - END_PREVIEW_EPSILON_SECONDS);
+  }
+  return currentTime;
 }
 
 function deriveTimingFromAnimations(
@@ -41,9 +78,14 @@ function deriveTimingFromAnimations(
 }
 
 export function deriveElementTiming(
-  element: Pick<DomEditSelection, "dataAttributes">,
+  element: Pick<DomEditSelection, "dataAttributes" | "element">,
   animations: GsapAnimation[] = [],
 ): ElementTiming {
+  const visibleTiming = resolveElementVisibleTiming(element.element);
+  if (visibleTiming) {
+    return { ...visibleTiming, inferred: false };
+  }
+
   const explicitStart = Number.parseFloat(element.dataAttributes.start ?? "0") || 0;
   const explicitDuration =
     Number.parseFloat(

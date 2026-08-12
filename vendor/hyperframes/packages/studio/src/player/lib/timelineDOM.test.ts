@@ -7,7 +7,10 @@ import {
   findTimelineDomNodeForClip,
 } from "./timelineDOM";
 import { resolveDomEditSelection } from "../../components/editor/domEditing";
-import { buildStableSelector } from "../../components/editor/domEditingDom";
+import {
+  buildStableSelector,
+  setCompositionSourceMap,
+} from "../../components/editor/domEditingDom";
 import {
   findElementForTimelineElement,
   resolveAllVisualDomEditTargets,
@@ -220,6 +223,62 @@ describe("timeline manifest translation", () => {
     expect(file).toMatchObject({ hostId: "lfc-stream", parentId: "lfc-stream" });
     expect(small).toMatchObject({ hostId: "lfc-stream", parentId: file?.id });
     expect(hierarchy.children.some((child) => child.selector === ".lfc-stream")).toBe(false);
+  });
+
+  test("namespaces an effect child whose hf id collides with its manifest root", () => {
+    document.body.innerHTML = `
+      <main data-composition-id="main" data-composition-file="index.html">
+        <section data-composition-id="animated-card" data-start="0" data-duration="4">
+          <article class="card" data-hf-id="animated-card">Card</article>
+        </section>
+      </main>
+    `;
+    const host = document.querySelector("section");
+    expect(host).not.toBeNull();
+    const clip: ClipManifestClip = {
+      ...MANIFEST_CLIP,
+      id: "animated-card",
+      label: "Animated card",
+      start: 0,
+      duration: 4,
+      kind: "composition",
+      compositionId: "animated-card",
+      compositionSrc: "compositions/effects/animated-card.html",
+      tagName: "section",
+    };
+
+    const hierarchy = collectDomClipChildren(document, [clip], new Map([[clip, host!]]));
+    const card = hierarchy.children.find((child) => child.selector === ".card");
+
+    expect(card).toMatchObject({
+      hfId: "animated-card",
+      parentId: "animated-card",
+      hostId: "animated-card",
+      sourceFile: "compositions/effects/animated-card.html",
+    });
+    expect(card?.id).not.toBe("animated-card");
+    expect(hierarchy.parentMap.get(card!.id)).toBe("animated-card");
+
+    const sourceFile = card!.sourceFile!;
+    setCompositionSourceMap(new Map([["animated-card", sourceFile]]));
+    try {
+      expect(
+        findElementForTimelineElement(
+          document,
+          {
+            id: card!.id,
+            hfId: card!.hfId,
+            selector: card!.selector,
+            selectorIndex: card!.selectorIndex,
+            sourceFile,
+            previewHostId: card!.hostId,
+          },
+          { activeCompositionPath: "index.html", isMasterView: true },
+        ),
+      ).toBe(document.querySelector(".card"));
+    } finally {
+      setCompositionSourceMap(new Map());
+    }
   });
 
   test("keeps plain text children inside a group directly inspectable", async () => {

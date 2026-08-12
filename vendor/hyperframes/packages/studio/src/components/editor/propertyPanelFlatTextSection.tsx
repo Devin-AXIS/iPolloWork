@@ -48,6 +48,19 @@ const FONT_SIZE_OPTIONS = [
   "96",
 ].map((size) => ({ value: `${size}px`, label: size }));
 
+const LETTER_SPACING_OPTIONS = [
+  { value: "normal", label: "Normal" },
+  { value: "-2px", label: "-2 px" },
+  { value: "-1px", label: "-1 px" },
+  { value: "0px", label: "0 px" },
+  { value: "0.5px", label: "0.5 px" },
+  { value: "1px", label: "1 px" },
+  { value: "2px", label: "2 px" },
+  { value: "4px", label: "4 px" },
+  { value: "8px", label: "8 px" },
+  { value: "12px", label: "12 px" },
+];
+
 export function toggleDecoration(
   current: string,
   decoration: "underline" | "line-through",
@@ -175,6 +188,7 @@ function FlatTextFieldEditor({
           label="Line height"
           value={getTextStyleValue(field, styles, "line-height", "normal")}
           tier={resolveValueTier(field.inlineStyles["line-height"], "normal")}
+          liveCommit
           onCommit={(next) =>
             onSetTextFieldStyle(
               field.key,
@@ -184,11 +198,12 @@ function FlatTextFieldEditor({
           }
           onReset={() => onSetTextFieldStyle(field.key, "line-height", "")}
         />
-        <FlatRow
+        <FlatSelectRow
           label="Letter spacing"
           value={getTextStyleValue(field, styles, "letter-spacing", "0px")}
+          options={LETTER_SPACING_OPTIONS}
           tier={resolveValueTier(field.inlineStyles["letter-spacing"], "0px")}
-          onCommit={(next) =>
+          onChange={(next) =>
             onSetTextFieldStyle(
               field.key,
               "letter-spacing",

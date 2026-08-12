@@ -19,9 +19,11 @@ import {
   appendTimelineAnimationSegments,
   attachTimelineAnimationSegments,
   buildTimelineCacheUpdates,
+  resolveGsapTimelineTargetKeys,
   resolveMotionTimelineTargetKeys,
   type TimelineSegmentsByElement,
 } from "./gsapTimelineSegmentCache";
+import { buildTimelineElementKey } from "../player/lib/timelineElementHelpers";
 
 function extractIdFromSelector(selector: string): string | null {
   const match = selector.match(/^#([\w-]+)/);
@@ -162,7 +164,14 @@ export function resolveClipTimingBasis(
     start: number;
     duration: number;
   }>,
-  domClipChildren: ReadonlyArray<{ id: string; hostId: string }>,
+  domClipChildren: ReadonlyArray<{
+    id: string;
+    hostId: string;
+    domId?: string;
+    selector?: string;
+    selectorIndex?: number;
+    sourceFile?: string;
+  }>,
 ): { elStart: number; elDuration: number } {
   const direct = elements.find(
     (el) =>
@@ -171,7 +180,20 @@ export function resolveClipTimingBasis(
       (el.key ?? el.id) === `${sourceFile}#${elementId}`,
   );
   if (direct) return { elStart: direct.start, elDuration: direct.duration };
-  const hostId = domClipChildren.find((c) => c.id === elementId)?.hostId;
+  const hostId = domClipChildren.find(
+    (child) =>
+      child.id === elementId ||
+      child.domId === elementId ||
+      buildTimelineElementKey({
+        id: child.id,
+        fallbackIndex: 0,
+        domId: child.domId,
+        selector: child.selector,
+        selectorIndex: child.selectorIndex,
+        sourceFile: child.sourceFile ?? sourceFile,
+        previewHostId: child.hostId,
+      }) === elementId,
+  )?.hostId;
   const host = hostId
     ? elements.find((el) => el.domId === hostId || (el.key ?? el.id) === `index.html#${hostId}`)
     : undefined;
@@ -502,7 +524,12 @@ export function usePopulateKeyframeCacheForFile(
             ? motionTargetKeys
             : motion?.target.elementId
               ? [motion.target.elementId]
-              : resolveSelectorElementIds(anim.targetSelector, doc);
+              : resolveGsapTimelineTargetKeys(
+                  anim.targetSelector,
+                  sf,
+                  [...elements, ...domClipChildren],
+                  doc,
+                );
         appendTimelineAnimationSegments(animationSegmentsByElement, anim, targetIds, (id) => {
           const { elStart, elDuration } = resolveClipTimingBasis(id, sf, elements, domClipChildren);
           return { start: elStart, duration: elDuration };

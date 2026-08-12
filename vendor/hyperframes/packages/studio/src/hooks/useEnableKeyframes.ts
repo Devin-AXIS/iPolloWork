@@ -36,12 +36,18 @@ export interface EnableKeyframesSession {
     duration?: number,
     commitOverrides?: Partial<CommitMutationOptions>,
   ) => void | Promise<void>;
-  handleGsapRemoveKeyframe: (animId: string, pct: number) => void;
+  handleGsapRemoveKeyframe: (
+    animId: string,
+    pct: number,
+    commitOverrides?: Partial<CommitMutationOptions>,
+    selectionOverride?: DomEditSelection | null,
+  ) => void;
   handleGsapAddKeyframeBatch?: (
     animId: string,
     pct: number,
     properties: Record<string, number | string>,
     commitOverrides?: Partial<CommitMutationOptions>,
+    selectionOverride?: DomEditSelection | null,
   ) => Promise<void>;
   commitMutation?: (
     mutation: Record<string, unknown>,
@@ -265,13 +271,13 @@ async function applyKeyframeAtPlayhead(
   const pct = computeElementPercentage(t, sel, kfAnim);
   const existing = kfAnim.keyframes?.keyframes.find((k) => Math.abs(k.percentage - pct) <= 1);
   if (existing) {
-    session.handleGsapRemoveKeyframe(kfAnim.id, existing.percentage);
+    session.handleGsapRemoveKeyframe(kfAnim.id, existing.percentage, undefined, sel);
     return;
   }
   if (session.handleGsapAddKeyframeBatch) {
     const position = readElementPosition(iframe, sel, kfAnim);
     if (Object.keys(position).length > 0) {
-      await session.handleGsapAddKeyframeBatch(kfAnim.id, pct, position, commitOverrides);
+      await session.handleGsapAddKeyframeBatch(kfAnim.id, pct, position, commitOverrides, sel);
     }
   }
 }
