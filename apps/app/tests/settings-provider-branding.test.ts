@@ -53,4 +53,12 @@ describe("settings provider branding", () => {
     expect(providerIconSource).not.toContain('publicAssetUrl("ipollowork-logo.svg")');
     expect(providerIconSource).not.toContain('viewBox="0 0 476 500"');
   });
+
+  test("keeps OpenAI OAuth on the original desktop browser opener", () => {
+    expect(providerAuthModalSource).toContain("if (isDesktopRuntime()) {");
+    expect(providerAuthModalSource).toContain("isiPolloWorkBuiltInProvider(providerId)");
+    expect(providerAuthModalSource).toContain("await openDesktopAuthUrl(url)");
+    expect(providerAuthModalSource).toContain("await openDesktopUrl(url)");
+    expect(providerAuthModalSource).toContain("openOauthUrl = async (providerId: string, url: string)");
+  });
 });
