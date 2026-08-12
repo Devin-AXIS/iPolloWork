@@ -3,6 +3,7 @@ import {
   ANIMATION_TEMPLATES,
   createAnimationTemplateSections,
   resolveAnimationTemplateParameters,
+  resolveAnimationTemplateApplication,
   resolveAnimationTemplatePreset,
   sortTextAnimationTemplates,
 } from "./AnimationTemplatesTab";
@@ -82,12 +83,53 @@ describe("AnimationTemplatesTab catalog", () => {
     );
   });
 
+  it("keeps box automation templates in a dedicated section for text selections", () => {
+    const sections = createAnimationTemplateSections(ANIMATION_TEMPLATES, "text");
+    const boxSection = sections.find((section) => section.key === "box-automation");
+
+    expect(sections.map((section) => section.key)).toEqual([
+      "migrated-text",
+      "text",
+      "general",
+      "box-automation",
+    ]);
+    expect(boxSection?.title.zh).toBe("盒子与自动化");
+    expect(boxSection?.templates.map((template) => template.id)).toEqual([
+      "box-scale",
+      "box-lift",
+      "box-pulse",
+      "box-focus-tilt",
+      "box-bounce-card",
+      "box-spotlight-card",
+      "box-glare-sweep",
+    ]);
+  });
+
   it("resolves universal templates per target", () => {
     const fade = ANIMATION_TEMPLATES.find((template) => template.id === "general-fade-in");
     if (!fade) throw new Error("Expected animation template is missing");
 
     expect(resolveAnimationTemplatePreset(fade, "text")?.id).toBe("text.enter.fade");
     expect(resolveAnimationTemplatePreset(fade, "element")?.id).toBe("element.enter.fade");
+  });
+
+  it("applies element-only box templates to a text element as element motion", () => {
+    const scale = ANIMATION_TEMPLATES.find((template) => template.id === "box-scale");
+    const tilt = ANIMATION_TEMPLATES.find((template) => template.id === "box-focus-tilt");
+    if (!scale || !tilt) throw new Error("Expected box templates are missing");
+
+    expect(resolveAnimationTemplatePreset(scale, "text")).toMatchObject({
+      id: "element.enter.scale",
+      targetKinds: ["element"],
+    });
+    expect(resolveAnimationTemplateApplication(scale, "text")).toMatchObject({
+      targetKind: "element",
+      preset: { id: "element.enter.scale" },
+    });
+    expect(resolveAnimationTemplateApplication(tilt, "text")).toMatchObject({
+      targetKind: "element",
+      preset: { id: "motion.emphasis.focus-tilt" },
+    });
   });
 
   it("defaults every color-driven template to the active design theme", () => {
