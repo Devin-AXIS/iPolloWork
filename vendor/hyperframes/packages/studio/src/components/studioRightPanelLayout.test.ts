@@ -687,6 +687,18 @@ describe("Studio right panel layout", () => {
     expect(canvasContextMenu).toContain('tx("Saving…")');
   });
 
+  it("keeps timeline toolbar feature icons inset within their button hit areas", () => {
+    const toolbar = readFileSync(new URL("./TimelineToolbar.tsx", import.meta.url), "utf8");
+
+    expect(toolbar).toContain(
+      'function ToolbarIcon({ src, size = 16 }: { src: string; size?: number })',
+    );
+    expect(toolbar).toContain("<ToolbarIcon src={diamondIconSrc} />");
+    expect(toolbar).toContain("<ToolbarIcon src={trashIconSrc} />");
+    expect(toolbar).not.toContain("<ToolbarIcon src={diamondIconSrc} size={24} />");
+    expect(toolbar).not.toContain("<ToolbarIcon src={trashIconSrc} size={24} />");
+  });
+
   it("routes visible-element deletes through one immediate guarded transaction", () => {
     const toolbar = readFileSync(new URL("./TimelineToolbar.tsx", import.meta.url), "utf8");
     const editorShell = readFileSync(new URL("./EditorShell.tsx", import.meta.url), "utf8");

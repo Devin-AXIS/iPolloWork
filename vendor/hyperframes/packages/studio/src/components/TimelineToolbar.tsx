@@ -242,7 +242,7 @@ export function TimelineToolbar({
               aria-pressed={keyframeState === "active"}
               aria-busy={pendingAction === "keyframe"}
             >
-              <ToolbarIcon src={diamondIconSrc} size={24} />
+              <ToolbarIcon src={diamondIconSrc} />
             </button>
           </Tooltip>
         )}
@@ -265,7 +265,7 @@ export function TimelineToolbar({
               }
             }}
           >
-            <ToolbarIcon src={trashIconSrc} size={24} />
+            <ToolbarIcon src={trashIconSrc} />
           </button>
         </Tooltip>
       </div>
