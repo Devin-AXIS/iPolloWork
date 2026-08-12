@@ -18,6 +18,17 @@ export interface StudioHeaderProps {
   onPreviewModeChange: (previewMode: boolean) => void;
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+export function parseHostAiEditingMessage(value: unknown, projectId: string): boolean | null {
+  if (!isRecord(value)) return null;
+  if (value.type !== "ipollowork:studio-ai-editing") return null;
+  if (value.projectId !== projectId) return null;
+  return typeof value.active === "boolean" ? value.active : null;
+}
+
 export function StudioHeader({
   inspectorButtonActive,
   inspectorPanelActive,
@@ -30,6 +41,7 @@ export function StudioHeader({
   const { t } = useStudioI18n();
   const isRendering = renderQueue.isRendering;
   const [compositionTitle, setCompositionTitle] = useState(projectId);
+  const [aiEditing, setAiEditing] = useState(false);
 
   useEffect(() => {
     const preview = previewIframeRef.current;
@@ -41,6 +53,17 @@ export function StudioHeader({
     preview?.addEventListener("load", updateTitle);
     return () => preview?.removeEventListener("load", updateTitle);
   }, [compositionLoading, previewIframeRef, projectId, refreshKey]);
+
+  useEffect(() => {
+    setAiEditing(false);
+    const handleHostMessage = (event: MessageEvent<unknown>) => {
+      if (event.source !== window.parent) return;
+      const nextAiEditing = parseHostAiEditingMessage(event.data, projectId);
+      if (nextAiEditing !== null) setAiEditing(nextAiEditing);
+    };
+    window.addEventListener("message", handleHostMessage);
+    return () => window.removeEventListener("message", handleHostMessage);
+  }, [projectId]);
 
   const toggleProperties = () => {
     if (!STUDIO_INSPECTOR_PANELS_ENABLED) return;
@@ -77,10 +100,21 @@ export function StudioHeader({
 
   return (
     <header className="hf-studio-header relative flex h-[49px] flex-shrink-0 items-center border-b border-[var(--hf-panel-hairline)] bg-[var(--hf-studio-header-bg)] px-3 text-[var(--hf-panel-text-1)] backdrop-blur-sm">
-      <div className="min-w-0 flex-1">
-        <span className="block max-w-64 truncate text-[13px] font-medium text-[var(--hf-panel-text-3)]" title={compositionTitle}>
+      <div className="flex min-w-0 flex-1 items-center gap-2 pr-6">
+        <span className="block min-w-0 max-w-64 truncate text-[13px] font-medium text-[var(--hf-panel-text-3)]" title={compositionTitle}>
           {compositionTitle}
         </span>
+        {aiEditing ? (
+          <span
+            role="status"
+            aria-live="polite"
+            data-testid="studio-ai-editing-status"
+            className="inline-flex h-6 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border border-[var(--hf-ai-editing-border)] bg-[var(--hf-ai-editing-bg)] px-2.5 text-[11px] font-medium text-[var(--hf-ai-editing-text)]"
+          >
+            <span className="size-1.5 shrink-0 animate-pulse rounded-full bg-[var(--hf-ai-editing-dot)] motion-reduce:animate-none" aria-hidden="true" />
+            {t("header.aiEditingWarning")}
+          </span>
+        ) : null}
       </div>
 
       <div

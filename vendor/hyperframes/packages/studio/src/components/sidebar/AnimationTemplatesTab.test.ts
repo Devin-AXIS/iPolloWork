@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
   ANIMATION_TEMPLATES,
@@ -57,29 +58,48 @@ describe("AnimationTemplatesTab catalog", () => {
     }
   });
 
-  it("keeps migrated caption effects first in the text animation list", () => {
+  it("keeps advanced caption animations at the end of the text animation list", () => {
     const textTemplateIds = sortTextAnimationTemplates(
       ANIMATION_TEMPLATES.filter((template) => template.category === "text"),
     ).map((template) => template.id);
 
-    expect(textTemplateIds.slice(0, MIGRATED_TEMPLATES.length)).toEqual(
+    expect(textTemplateIds.slice(-MIGRATED_TEMPLATES.length)).toEqual(
       MIGRATED_TEMPLATES.map(([templateId]) => templateId),
     );
   });
 
-  it("groups migrated caption effects where users look for text animations", () => {
+  it("puts advanced caption animations in the final section", () => {
     const sections = createAnimationTemplateSections(ANIMATION_TEMPLATES, "text");
     const migratedSection = sections.find((section) => section.key === "migrated-text");
 
     expect(sections.map((section) => section.key).slice(0, 3)).toEqual([
-      "migrated-text",
-      "text",
       "general",
+      "text",
+      "migrated-text",
     ]);
-    expect(migratedSection?.title.zh).toBe("\u5b57\u5e55\u8fc1\u79fb\u52a8\u753b");
+    expect(migratedSection?.title.zh).toBe("\u5b57\u5e55\u9ad8\u7ea7\u52a8\u753b");
     expect(migratedSection?.templates.map((template) => template.id)).toEqual(
       MIGRATED_TEMPLATES.map(([templateId]) => templateId),
     );
+  });
+
+  it("shows only universal animations for non-text selections", () => {
+    expect(
+      createAnimationTemplateSections(ANIMATION_TEMPLATES, "element").map(
+        (section) => section.key,
+      ),
+    ).toEqual(["general"]);
+  });
+
+  it("keeps advanced previews idle until their card is hovered", () => {
+    const source = readFileSync(new URL("./AnimationTemplatesTab.tsx", import.meta.url), "utf8");
+
+    expect(source).toContain('const StructuredMotionThumbnail = lazy(() =>');
+    expect(source).toContain("structuredParameters && active");
+    expect(source).toContain('data-structured-preview-active={');
+    expect(source).toContain('onMouseEnter={() => setPreviewActive(true)}');
+    expect(source).toContain('onMouseLeave={() => setPreviewActive(false)}');
+    expect(source).toContain('contentVisibility: "auto"');
   });
 
   it("resolves universal templates per target", () => {

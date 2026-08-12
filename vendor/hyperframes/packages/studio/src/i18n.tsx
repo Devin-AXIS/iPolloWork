@@ -18,6 +18,7 @@ type TranslationKey =
   | "header.edit"
   | "header.preview"
   | "header.previewComingSoon"
+  | "header.aiEditingWarning"
   | "header.undo"
   | "header.redo"
   | "header.capture"
@@ -112,6 +113,7 @@ const messages: Record<StudioLocale, Record<TranslationKey, string>> = {
     "header.edit": "Edit",
     "header.preview": "Preview",
     "header.previewComingSoon": "Preview is coming soon",
+    "header.aiEditingWarning": "AI is editing the video · Avoid manual edits",
     "header.undo": "Undo",
     "header.redo": "Redo",
     "header.capture": "Capture",
@@ -206,6 +208,7 @@ const messages: Record<StudioLocale, Record<TranslationKey, string>> = {
     "header.edit": "编辑",
     "header.preview": "预览",
     "header.previewComingSoon": "预览功能即将开放",
+    "header.aiEditingWarning": "AI 修改视频中，建议不要手动修改",
     "header.undo": "撤销",
     "header.redo": "重做",
     "header.capture": "截图",

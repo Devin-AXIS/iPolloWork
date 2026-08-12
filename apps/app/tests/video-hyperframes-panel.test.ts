@@ -6,10 +6,12 @@ import {
   hyperframesStudioUrl,
   shouldInjectVideoTaskContext,
   videoCompositionHasVoiceover,
+  videoDeliveryRequirementsForPrompt,
   videoProjectDirectory,
   videoProjectId,
   videoProjectPath,
   videoPromptRequestsVoiceoverContext,
+  requestedVideoDurationSeconds,
   videoTaskSystemContext,
 } from "../src/react-app/domains/session/video/video-project";
 import {
@@ -19,6 +21,27 @@ import {
 } from "../src/react-app/domains/session/video/video-illustration";
 
 describe("HyperFrames Video Studio", () => {
+  test("shows a live warning while the current session AI is editing the video", () => {
+    const panelSource = readFileSync(
+      new URL("../src/react-app/domains/session/video/video-panel.tsx", import.meta.url),
+      "utf8",
+    );
+    const sessionPageSource = readFileSync(
+      new URL("../src/react-app/domains/session/chat/session-page.tsx", import.meta.url),
+      "utf8",
+    );
+    const headerSource = readFileSync(
+      new URL("../../../vendor/hyperframes/packages/studio/src/components/StudioHeader.tsx", import.meta.url),
+      "utf8",
+    );
+
+    expect(sessionPageSource).toContain("aiEditing={isStreamingSessionStatus(");
+    expect(panelSource).toContain('type: "ipollowork:studio-ai-editing"');
+    expect(panelSource).toContain("active: aiEditing");
+    expect(headerSource).toContain('data-testid="studio-ai-editing-status"');
+    expect(headerSource).toContain('t("header.aiEditingWarning")');
+  });
+
   test("passes the Ian illustration skill through the composer and asset-library contract", () => {
     const reference = parseVideoIllustrationReference({
       id: "ian-xiaohei-illustrations",
@@ -190,8 +213,10 @@ describe("HyperFrames Video Studio", () => {
       "utf8",
     );
 
-    expect(desktopSource).toContain("window.__ipolloworkSimpleVideoListener !== 15");
+    expect(desktopSource).toContain("window.__ipolloworkSimpleVideoListener !== 16");
     expect(desktopSource).toContain("new CustomEvent('ipollowork:studio-apply-selection'");
+    expect(desktopSource).toContain("hfId: target.hfId || undefined");
+    expect(desktopSource).toContain("'[data-hf-id=\"' + CSS.escape(hfId) + '\"]'");
     expect(desktopSource).toContain("applyCanvasSelectionLive(target, { revealPanel: true })");
     expect(desktopSource).not.toContain("const current = document.querySelector('button[aria-label=\"Inspector\"]')");
     expect(studioSource).toContain("const loadStudioRightPanelModule = () => import(\"./components/StudioRightPanel\")");
@@ -586,7 +611,7 @@ describe("HyperFrames Video Studio", () => {
     expect(electronSource).toContain("deleteSelectedElement");
     expect(electronSource).toContain("ipollowork:hyperframes:ask-ai-selection");
     expect(electronSource).toContain("selectedAiPayload");
-    expect(electronSource).toContain("hfId: element.getAttribute('data-hf-id')");
+    expect(electronSource).toContain("const hfId = element.getAttribute('data-hf-id') || undefined");
     expect(panelSource).toContain("onAskAi?: (context: DesignAiSelectionContext) => void");
     expect(panelSource).toContain("event.source !== studioFrameRef.current?.contentWindow");
     expect(panelSource).toContain('event.data?.type !== "ipollowork:hyperframes:ask-ai-selection"');
@@ -815,6 +840,10 @@ describe("HyperFrames Video Studio", () => {
     expect(contract).toContain("prepared blank composition");
     expect(contract).toContain("Never run npm/pnpm/yarn install");
     expect(contract).toContain("Batch compatible HTML/CSS/JS changes into one complete edit or write");
+    expect(contract).toContain("use at most two read-only inspection calls before the first mutation or media action");
+    expect(contract).toContain("A plan, outline, proposed scene list, or sentence such as 'let me structure' is never task completion");
+    expect(contract).toContain("perform the requested edits in the same run");
+    expect(contract).toContain("Prefer a smaller complete valid result over an ambitious plan that is never applied");
     expect(contract).toContain("Never create or inspect another `video/`/`videos/` project");
     expect(contract).toContain("Never stop all Node processes");
     expect(contract).toContain("not an HTML/JSON response saved with a media extension");
@@ -826,6 +855,14 @@ describe("HyperFrames Video Studio", () => {
     expect(contract).toContain("Root `data-duration` must cover the last scene/audio/clip");
     expect(contract).toContain("Delivery requirements contract");
     expect(contract).toContain('data-ipw-caption="true"');
+    expect(contract).toContain("Default captions are transparent text overlays in the bottom safe area");
+    expect(contract).toContain('data-ipw-caption-style="transparent-bottom"');
+    expect(contract).toContain("position:absolute;inset:auto 5% 5%;height:auto");
+    expect(contract).toContain('data-ipw-caption-text="true"');
+    expect(contract).toContain("do not add padding-backed color, a pill, card, band, or backdrop");
+    expect(contract).toContain("unless the user explicitly asks");
+    expect(contract).toContain('captionStyle: "transparent-bottom"');
+    expect(contract).toContain('captionStyle: "custom"');
     expect(contract).toContain('data-ipw-bgm="true"');
     expect(contract).toContain("animationReferences");
     expect(contract).toContain("unresolved earlier requests");
@@ -841,6 +878,21 @@ describe("HyperFrames Video Studio", () => {
     expect(contract).toContain("and local fallback");
   });
 
+  test("surfaces a silent provider stall without automatically replaying tools", () => {
+    const surfaceSource = readFileSync(
+      new URL("../src/react-app/domains/session/surface/session-surface.tsx", import.meta.url),
+      "utf8",
+    );
+
+    expect(surfaceSource).toContain("const STALLED_SESSION_WARNING_MS = 90_000");
+    expect(surfaceSource).toContain("if (!chatStreaming || activeToolLabel) return");
+    expect(surfaceSource).toContain('kind: "stalled"');
+    expect(surfaceSource).toContain('t("session.run_stalled")');
+    expect(surfaceSource).toContain("latestAssistantMessageCompleted");
+    expect(surfaceSource).toContain('t("session.run_ended_incomplete")');
+    expect(surfaceSource).not.toContain("autoRetryStalledSession");
+  });
+
   test("gives video agents the selected Studio voice without forcing narration", () => {
     const contract = videoTaskSystemContext("ses/current video", "/workspace/current", null, { includeVoiceover: true });
     expect(contract).toContain("/workspace/current/video/ses_current_video/voiceover.json");
@@ -854,6 +906,7 @@ describe("HyperFrames Video Studio", () => {
     expect(contract).toContain("Never use generic `speech_synthesize`");
     expect(contract).toContain("voiceId");
     expect(contract).toContain("assets/voiceover-<revision>-<scene>.mp3");
+    expect(contract).toContain("never write narration to the workspace-root assets directory");
     expect(contract).toContain("directly under the root composition");
     expect(contract).toContain("immutable");
     expect(contract).toContain("compositionPath");
@@ -862,6 +915,8 @@ describe("HyperFrames Video Studio", () => {
     expect(contract).toContain("cumulative shifts");
     expect(contract).toContain("Keep narrated text visible");
     expect(contract).toContain("voiceover_timeline_validate");
+    expect(contract).toContain("not complete when synthesis returns");
+    expect(contract).toContain("Never use cross-session search/read to recover this task");
     expect(contract).toContain("fix all reported issues together");
     expect(contract).toContain('data-ipw-voiceover="true"');
     expect(contract).toContain('data-ipw-narration-source="true"');
@@ -886,6 +941,27 @@ describe("HyperFrames Video Studio", () => {
     expect(videoPromptRequestsVoiceoverContext(undefined, "Make the second scene longer")).toBe(false);
     expect(videoCompositionHasVoiceover('<audio data-ipw-voiceover="true" src="assets/voiceover-a.mp3"></audio>')).toBe(true);
     expect(videoCompositionHasVoiceover('<main data-composition-id="main"></main>')).toBe(false);
+  });
+
+  test("parses requested media and final duration into an explicit delivery gate", () => {
+    expect(requestedVideoDurationSeconds("最终视频总时长两分钟左右")).toBe(120);
+    expect(requestedVideoDurationSeconds("make it about 90 seconds")).toBe(90);
+    const requirements = videoDeliveryRequirementsForPrompt({
+      promptText: "请做配音字幕并加 BGM，最终视频总时长两分钟左右",
+    });
+    expect(requirements).toEqual({
+      voiceover: true,
+      captions: true,
+      bgm: true,
+      animationReferences: [],
+      targetDurationSeconds: 120,
+    });
+    const contract = videoTaskSystemContext("ses_video_a", "/workspace/current", null, {
+      includeVoiceover: true,
+      deliveryRequirements: requirements,
+    });
+    expect(contract).toContain('"targetDurationSeconds":120');
+    expect(contract).toContain("preserve them exactly in the validator call");
   });
 
   test("uses an adaptive operation plan without forcing one video workflow", () => {

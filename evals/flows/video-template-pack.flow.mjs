@@ -4,7 +4,6 @@ const vo = await loadVoiceoverParagraphs("video-template-pack");
 const templates = [
   { title: "Agent Command Center", voiceover: vo[0] },
   { title: "Multi-Agent Relay", voiceover: vo[1] },
-  { title: "Remote Worker Connect", voiceover: vo[2] },
   { title: "Connector Pulse", voiceover: vo[3] },
   { title: "Release Spotlight", voiceover: vo[4] },
   { title: "Meeting Action Conveyor", voiceover: vo[5] },
@@ -89,7 +88,7 @@ function templateStateExpression(title) {
 
 export default {
   id: "video-template-pack",
-  title: "Fifteen themeable HyperFrames templates appear as usable Video packages",
+  title: "Fourteen themeable HyperFrames templates appear as usable Video packages",
   kind: "user-facing",
   precondition: async (ctx) => {
     await ctx.waitFor("Boolean(window.__ipolloworkControl)", { timeoutMs: 60_000, label: "iPolloWork control API" });

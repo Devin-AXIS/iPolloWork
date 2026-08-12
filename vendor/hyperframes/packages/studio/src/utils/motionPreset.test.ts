@@ -6,6 +6,7 @@ import {
   resolveMotionPresetSelection,
   resolveMotionPresetTiming,
   resolveSemanticMotionTiming,
+  resolveStructuredTextMotionTiming,
 } from "./motionPreset";
 
 const openingPreset: RegistryMotionPreset = {
@@ -92,11 +93,7 @@ describe("resolveMotionPresetTiming", () => {
     const card = window.document.getElementById("card") as unknown as HTMLElement;
 
     expect(
-      resolveSemanticMotionTiming(
-        { element: card, dataAttributes: {} },
-        "emphasis",
-        0.8,
-      ),
+      resolveSemanticMotionTiming({ element: card, dataAttributes: {} }, "emphasis", 0.8),
     ).toEqual({ position: 10.7, duration: 0.8 });
   });
 
@@ -109,19 +106,50 @@ describe("resolveMotionPresetTiming", () => {
     const card = window.document.getElementById("result-card") as unknown as HTMLElement;
 
     expect(
-      resolveSemanticMotionTiming(
-        { element: card, dataAttributes: {} },
-        "emphasis",
-        0.8,
-        0.1,
-      ),
+      resolveSemanticMotionTiming({ element: card, dataAttributes: {} }, "emphasis", 0.8, 0.1),
     ).toEqual({ position: 16.7, duration: 0.8 });
   });
 
   it("clamps semantic motion duration to a short owner", () => {
+    expect(resolveSemanticMotionTiming(timingSelection("3", "0.5"), "enter", 1.2)).toEqual({
+      position: 3,
+      duration: 0.5,
+    });
+  });
+
+  it("starts structured caption motion at the caption clip start", () => {
+    const window = new Window();
+    window.document.body.innerHTML = `
+      <section class="clip" data-ipw-caption="true" data-start="6" data-duration="4">
+        <span id="caption-text" data-ipw-caption-text="true">Animated caption</span>
+      </section>`;
+    const captionText = window.document.getElementById("caption-text") as unknown as HTMLElement;
+
     expect(
-      resolveSemanticMotionTiming(timingSelection("3", "0.5"), "enter", 1.2),
-    ).toEqual({ position: 3, duration: 0.5 });
+      resolveStructuredTextMotionTiming(
+        { element: captionText, dataAttributes: {} },
+        "emphasis",
+        1.2,
+      ),
+    ).toEqual({ position: 6, duration: 1.2 });
+  });
+
+  it("keeps body structured text on normal phase timing", () => {
+    const window = new Window();
+    window.document.body.innerHTML = `
+      <section class="clip" data-start="6" data-duration="4">
+        <h2 id="headline">Animated headline</h2>
+      </section>`;
+    const headline = window.document.getElementById("headline") as unknown as HTMLElement;
+
+    expect(
+      resolveStructuredTextMotionTiming(
+        { element: headline, dataAttributes: {} },
+        "emphasis",
+        1.2,
+        6.5,
+      ),
+    ).toEqual({ position: 6.5, duration: 1.2 });
   });
 });
 
@@ -143,6 +171,24 @@ describe("resolveMotionPresetSelection", () => {
     expect(result.compatible).toBe(true);
     expect(result.targetElement).toBe(content);
     expect(result.kinds).toContain("caption");
+  });
+
+  it("recognizes the canonical generated caption text marker", () => {
+    const window = new Window();
+    window.document.body.innerHTML = `
+      <div id="caption" data-ipw-caption="true">
+        <span id="content" data-ipw-caption-text="true">Generated caption</span>
+      </div>`;
+    const owner = window.document.getElementById("caption") as unknown as HTMLElement;
+    const content = window.document.getElementById("content") as unknown as HTMLElement;
+    const result = resolveMotionPresetSelection(domSelection(owner), {
+      ...openingPreset,
+      category: "caption",
+      targets: ["caption", "text"],
+    });
+
+    expect(result.compatible).toBe(true);
+    expect(result.targetElement).toBe(content);
   });
 
   it("resolves a visible caption wrapper linked to a timed owner", () => {

@@ -12,7 +12,10 @@ import { usePreviewVariablesStore } from "../hooks/previewVariablesStore";
 import type { RenderJob } from "./renders/useRenderQueue";
 import type { BlockParam } from "@hyperframes/core/registry";
 import { readMotionInstanceFromExtras } from "@hyperframes/core/motion-presets";
-import { STUDIO_INSPECTOR_PANELS_ENABLED } from "./editor/manualEditingAvailability";
+import {
+  STUDIO_ILLUSTRATION_PANEL_ENABLED,
+  STUDIO_INSPECTOR_PANELS_ENABLED,
+} from "./editor/manualEditingAvailability";
 import type { Composition } from "@hyperframes/sdk";
 import type { EditHistoryKind } from "../utils/editHistory";
 import type { UseSlideshowPersistParams } from "../hooks/useSlideshowPersist";
@@ -67,11 +70,12 @@ export const preloadStudioEffectsPanel = async (): Promise<void> => {
     import("../hooks/useBlockCatalog").then((module) => module.preloadBlockCatalog()),
   ]);
 };
-const AnimationTemplatesTab = lazy(() =>
+const loadAnimationTemplatesTab = () =>
   import("./sidebar/AnimationTemplatesTab").then((module) => ({
     default: module.AnimationTemplatesTab,
-  })),
-);
+  }));
+const AnimationTemplatesTab = lazy(loadAnimationTemplatesTab);
+export const preloadStudioAnimationPanel = () => loadAnimationTemplatesTab();
 const AnimationPropertiesPanel = lazy(() =>
   import("./editor/SemanticMotionPanel").then((module) => ({
     default: module.AnimationPropertiesPanel,
@@ -556,6 +560,12 @@ export function StudioRightPanel({
 
   useEffect(() => () => closeHostPanel(), [closeHostPanel]);
 
+  useEffect(() => {
+    if (!STUDIO_ILLUSTRATION_PANEL_ENABLED && rightPanelTab === "illustration") {
+      setRightPanelTab("assets");
+    }
+  }, [rightPanelTab, setRightPanelTab]);
+
   const selectStudioPanel = (
     panel:
       | "design"
@@ -648,12 +658,14 @@ export function StudioRightPanel({
                       active={rightPanelTab === "voice"}
                       onClick={() => openHostPanel("voice")}
                     />
-                    <PanelTabButton
-                      label={t("right.illustration")}
-                      tooltip={t("right.illustrationTooltip")}
-                      active={rightPanelTab === "illustration"}
-                      onClick={() => selectStudioPanel("illustration")}
-                    />
+                    {STUDIO_ILLUSTRATION_PANEL_ENABLED && (
+                      <PanelTabButton
+                        label={t("right.illustration")}
+                        tooltip={t("right.illustrationTooltip")}
+                        active={rightPanelTab === "illustration"}
+                        onClick={() => selectStudioPanel("illustration")}
+                      />
+                    )}
                     <PanelTabButton
                       label={t("right.assets")}
                       tooltip={t("right.assetsTooltip")}
@@ -695,7 +707,8 @@ export function StudioRightPanel({
                     <BlocksTab page="effects" onAddBlock={onAddBlock} />
                   ) : animationPanelActive ? (
                     animationPanel
-                  ) : rightPanelTab === "illustration" ? (
+                  ) : STUDIO_ILLUSTRATION_PANEL_ENABLED &&
+                    rightPanelTab === "illustration" ? (
                     <IllustrationTab />
                   ) : rightPanelTab === "assets" ? (
                     <AssetsTab

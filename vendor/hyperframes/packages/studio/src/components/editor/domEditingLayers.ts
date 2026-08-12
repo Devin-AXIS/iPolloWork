@@ -30,6 +30,7 @@ import {
   getDomLayerPatchTarget,
   getDirectLayerChildren,
   getSelectionCandidate,
+  getStructuredMotionSelectionRoot,
 } from "./domEditingElement";
 import { isCompositionRootLayer } from "./domEditingRootLayer";
 
@@ -337,21 +338,22 @@ export async function resolveDomEditSelection(
   options: DomEditContextOptions & { projectId?: string | null; skipSourceProbe?: boolean },
 ): Promise<DomEditSelection | null> {
   if (!startEl) return null;
-  const doc = startEl.ownerDocument;
+  const normalizedStartEl = getStructuredMotionSelectionRoot(startEl) ?? startEl;
+  const doc = normalizedStartEl.ownerDocument;
 
-  let capture = resolveGroupCapture(startEl, options.activeGroupElement ?? null);
+  let capture = resolveGroupCapture(normalizedStartEl, options.activeGroupElement ?? null);
   if (capture.kind === "out-of-scope") {
     // Drill-in is non-sticky: clicking/hovering OUTSIDE the drilled-into group
     // exits it and resolves the target normally, rather than selecting nothing
     // (which felt like "can't select anything" once you'd drilled in).
-    capture = resolveGroupCapture(startEl, null);
+    capture = resolveGroupCapture(normalizedStartEl, null);
   }
   let current: HTMLElement | null =
     capture.kind === "unit"
       ? capture.element
       : options.exactTarget
-        ? startEl
-        : getSelectionCandidate(startEl, options);
+        ? normalizedStartEl
+        : getSelectionCandidate(normalizedStartEl, options);
   while (current && current !== doc.body && current !== doc.documentElement) {
     const selector = buildStableSelector(current);
     const hfId = readHfId(current);

@@ -416,6 +416,7 @@ export function useDomEditCommits({
     buildDomSelectionFromTarget,
     removeDomTextFieldElement,
     persistDomEditOperations,
+    queueDomEditSave,
     resolveImportedFontAsset,
     showToast,
   });

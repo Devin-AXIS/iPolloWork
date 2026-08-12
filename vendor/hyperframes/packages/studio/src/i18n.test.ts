@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { readFileSync } from "node:fs";
 import type { GsapAnimation } from "@hyperframes/parsers/gsap-parser";
 import { translateStudioLiteral } from "./i18n";
 import { buildTweenSummary } from "./components/editor/gsapAnimationHelpers";
@@ -22,6 +23,13 @@ describe("translateStudioLiteral", () => {
     expect(translateStudioLiteral("zh", "Add keyframe")).toBe("添加关键");
     expect(translateStudioLiteral("zh", "Add keyframe at playhead")).toBe(
       "当前片段时刻添加关键帧",
+    );
+  });
+
+  it("uses the approved AI video-editing warning copy", () => {
+    const source = readFileSync(new URL("./i18n.tsx", import.meta.url), "utf8");
+    expect(source).toContain(
+      '"header.aiEditingWarning": "AI 修改视频中，建议不要手动修改"',
     );
   });
 

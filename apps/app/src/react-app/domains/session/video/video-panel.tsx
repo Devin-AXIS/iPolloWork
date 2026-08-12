@@ -42,6 +42,7 @@ type VideoPanelProps = {
   workspaceId: string | null;
   isRemoteWorkspace?: boolean;
   launcherItems?: SidePanelLauncherItem[];
+  aiEditing?: boolean;
   expanded?: boolean;
   onExpandedChange?: (expanded: boolean) => void;
   onAskAi?: (context: DesignAiSelectionContext) => void;
@@ -84,7 +85,7 @@ function normalizeVideoThemeTypeScale(source: string) {
   return replaceDesignTokenValue(source, "--ipw-type-scale", "1");
 }
 
-export function VideoPanel({ sessionId, workspaceRoot, client, workspaceId, isRemoteWorkspace = false, launcherItems = [], expanded = false, onExpandedChange, onAskAi, onSaveAsTemplate, onClose }: VideoPanelProps) {
+export function VideoPanel({ sessionId, workspaceRoot, client, workspaceId, isRemoteWorkspace = false, launcherItems = [], aiEditing = false, expanded = false, onExpandedChange, onAskAi, onSaveAsTemplate, onClose }: VideoPanelProps) {
   const terminalIdRef = React.useRef<string | null>(null);
   const studioFrameRef = React.useRef<HTMLIFrameElement | null>(null);
   const keepStudioWarmOnCloseRef = React.useRef(false);
@@ -492,6 +493,24 @@ export function VideoPanel({ sessionId, workspaceRoot, client, workspaceId, isRe
     );
   }, [studioUrl]);
 
+  const syncStudioAiEditing = React.useCallback(() => {
+    const frameWindow = studioFrameRef.current?.contentWindow;
+    if (!frameWindow) return;
+    frameWindow.postMessage(
+      {
+        type: "ipollowork:studio-ai-editing",
+        projectId: videoProjectId(sessionId),
+        active: aiEditing,
+      },
+      new URL(studioUrl).origin,
+    );
+  }, [aiEditing, sessionId, studioUrl]);
+
+  React.useEffect(() => {
+    if (!studioFrameLoaded) return;
+    syncStudioAiEditing();
+  }, [studioFrameLoaded, syncStudioAiEditing]);
+
   React.useEffect(() => {
     if (!client || !workspaceId || !onAskAi) return;
     const handleMessage = (event: MessageEvent) => {
@@ -626,11 +645,12 @@ export function VideoPanel({ sessionId, workspaceRoot, client, workspaceId, isRe
       setDetail(t("video.ready_on_port", { port: activeStudioPort }));
       scheduleStudioLocaleSync();
       syncStudioTheme();
+      syncStudioAiEditing();
       replayPendingStudioDesignTokens();
     };
     window.addEventListener("message", handleStudioReady);
     return () => window.removeEventListener("message", handleStudioReady);
-  }, [activeStudioPort, replayPendingStudioDesignTokens, scheduleStudioLocaleSync, sessionId, studioUrl, syncStudioTheme]);
+  }, [activeStudioPort, replayPendingStudioDesignTokens, scheduleStudioLocaleSync, sessionId, studioUrl, syncStudioAiEditing, syncStudioTheme]);
 
   React.useEffect(() => {
     setStatus("starting");
@@ -836,6 +856,7 @@ export function VideoPanel({ sessionId, workspaceRoot, client, workspaceId, isRe
               setStudioChromeReady(true);
               scheduleStudioLocaleSync();
               syncStudioTheme();
+              syncStudioAiEditing();
               replayPendingStudioDesignTokens();
             }, 8_000);
           }} onError={() => {

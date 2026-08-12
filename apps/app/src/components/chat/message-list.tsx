@@ -86,7 +86,7 @@ import {
   getActiveToolLabel,
 } from "@/lib/tool-activity"
 import { cn } from "@/lib/utils"
-import { assistantResponseMarkdownFilename, buildAssistantResponseMarkdown, buildQuoteFollowUpPrompt, groupMessages, isMessageGroup, getLastTextPart, getAssistantRenderGroups, getFileTitle, getMediaBadge, getMessageCompleted, getMessageCreated, formatMessageTimestamp, formatProcessDuration, type UIMessageWithIndex, getMessagesText, splitAssistantRenderGroups, type AssistantProcessRenderGroup } from "./utils"
+import { assistantResponseMarkdownFilename, buildAssistantResponseMarkdown, buildQuoteFollowUpPrompt, groupMessages, isMessageGroup, getLastTextPart, getAssistantRenderGroups, getFileTitle, getMediaBadge, getMessageCompleted, getMessageCreated, formatMessageTimestamp, formatProcessDuration, type UIMessageWithIndex, getMessagesText, isInternalContinuationMessage, splitAssistantRenderGroups, type AssistantProcessRenderGroup } from "./utils"
 
 const SEARCH_HIGHLIGHT_MARK_CLASS = "rounded px-0.5 bg-amber-4/70 text-current"
 
@@ -1005,7 +1005,9 @@ function MessageGroup({
   // client-side messages (e.g. session errors) don't exist on the server and
   // silently corrupt fork/revert boundaries.
   const lastRealItem = items.findLast((item) => !isSessionErrorMessage(item.message))
-  const isLiveGroup = isStreaming && lastItem !== undefined && lastItem.index === messages.length - 1
+  const isLiveGroup = isStreaming
+    && lastItem !== undefined
+    && messages.slice(lastItem.index + 1).every(isInternalContinuationMessage)
   const stepsRef = React.useRef<HTMLDivElement>(null)
   const artifactMessages = React.useMemo(
     () => getAssistantGroupArtifactMessages(items),
@@ -1021,11 +1023,7 @@ function MessageGroup({
   })
 
   if (!lastItem || isMessageEmptyGroup(items)) {
-    if (isStreaming) {
-      return null;
-    }
-
-    return <EmptyMessage />
+    return null
   }
 
   const renderableItems = getRenderableMessages(items)
@@ -1150,7 +1148,6 @@ function MessageGroup({
           {/* <MessageSources messages={items.map((item) => item.message)} /> */}
         </div>
       )}
-      {renderableItems.length === 0 && !isStreaming ? <EmptyMessage /> : null}
       </div>
   )
 }
@@ -1166,7 +1163,7 @@ interface MessageListProps {
 
 export function MessageList({ messages, status, retryStatus, templateEntryPath, artifactFiles, artifactContext }: MessageListProps) {
   const isStreaming = status === "submitted" || status === "streaming" || status === "retrying"
-  const items = React.useMemo(() => groupMessages(messages, status), [messages, status]);
+  const items = React.useMemo(() => groupMessages(messages), [messages])
   const latestAssistantMessageId = React.useMemo(
     () => getLatestArtifactAssistantMessageId(messages),
     [messages],

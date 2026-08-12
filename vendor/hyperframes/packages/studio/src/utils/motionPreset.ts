@@ -6,7 +6,7 @@ const TEXT_TAGS = new Set(["P", "SPAN", "H1", "H2", "H3", "H4", "H5", "H6", "LAB
 const MEDIA_TAGS = new Set(["IMG", "VIDEO", "CANVAS", "PICTURE"]);
 const SHAPE_TAGS = new Set(["SVG", "PATH", "RECT", "CIRCLE", "ELLIPSE", "POLYGON", "LINE"]);
 const CAPTION_CONTENT_SELECTOR =
-  "[data-ipw-caption-content], [data-caption-content], [data-hf-caption-content]";
+  '[data-ipw-caption-text="true"], [data-ipw-caption-content], [data-caption-content], [data-hf-caption-content]';
 
 export interface MotionPresetSelection {
   compatible: boolean;
@@ -71,6 +71,10 @@ function captionOwnerFor(element: HTMLElement): HTMLElement | null {
   const linked = element.closest<HTMLElement>("[data-ipw-caption-owner]");
   const ownerId = linked?.dataset.ipwCaptionOwner;
   return ownerId ? element.ownerDocument.getElementById(ownerId) : null;
+}
+
+export function isCaptionMotionTarget(element: HTMLElement | null | undefined): boolean {
+  return Boolean(element && captionOwnerFor(element));
 }
 
 function captionContentFor(element: HTMLElement, captionOwner: HTMLElement): HTMLElement | null {
@@ -188,9 +192,22 @@ export function resolveSemanticMotionTiming(
   const position =
     requestedPosition !== undefined &&
     Number.isFinite(requestedPosition) &&
-    (!span.constrained ||
-      (requestedPosition >= span.start && requestedPosition <= latestStart))
+    (!span.constrained || (requestedPosition >= span.start && requestedPosition <= latestStart))
       ? requestedPosition
       : defaultPosition;
   return { position: roundTo3(position), duration: roundTo3(duration) };
+}
+
+export function resolveStructuredTextMotionTiming(
+  selection: MotionPresetTimingSource,
+  phase: MotionPhase,
+  requestedDuration: number,
+  requestedPosition?: number,
+): MotionPresetTiming {
+  if (!isCaptionMotionTarget(selection.element) || phase === "exit") {
+    return resolveSemanticMotionTiming(selection, phase, requestedDuration, requestedPosition);
+  }
+
+  const span = resolveTimingSpan(selection, requestedDuration);
+  return resolveSemanticMotionTiming(selection, phase, requestedDuration, span.start);
 }

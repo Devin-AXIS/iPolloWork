@@ -34,11 +34,6 @@ interface PropertyPanel3dTransformProps {
   elStart: number;
   elDuration: number;
   element: DomEditSelection;
-  onCommitAnimatedProperty?: (
-    element: DomEditSelection,
-    property: string,
-    value: number,
-  ) => Promise<void>;
   /** Batched commit — several props into one keyframe (the cube's rotationX/Y/Z). */
   onCommitAnimatedProperties?: (
     element: DomEditSelection,
@@ -195,7 +190,6 @@ export function PropertyPanel3dTransform({
   elStart,
   elDuration,
   element,
-  onCommitAnimatedProperty,
   onCommitAnimatedProperties,
   onSeekToTime,
   onRemoveKeyframe,
@@ -223,37 +217,6 @@ export function PropertyPanel3dTransform({
     setPresetOpen(false);
     if (name !== "Custom") void onCommitAnimatedProperties?.(element, pose);
   };
-  const commitRange = (property: "z" | "scale", raw: string) => {
-    const value = Number.parseFloat(raw);
-    if (!Number.isFinite(value)) return;
-    void onCommitAnimatedProperty?.(element, property, value);
-  };
-  const rangeControls: Array<{
-    label: string;
-    property: "z" | "scale";
-    value: number;
-    min: number;
-    max: number;
-    step: number;
-  }> = [
-    {
-      label: "Depth",
-      property: "z",
-      value: gsapRuntimeValues.z ?? 0,
-      min: -500,
-      max: 500,
-      step: 1,
-    },
-    {
-      label: "Size",
-      property: "scale",
-      value: gsapRuntimeValues.scale ?? 1,
-      min: 0.1,
-      max: 3,
-      step: 0.05,
-    },
-  ];
-
   return (
     <div data-flat-3d-transform="true" className="grid gap-2">
       {onCommitAnimatedProperties && (
@@ -303,26 +266,6 @@ export function PropertyPanel3dTransform({
             ))}
           </div>
         )}
-      </div>
-      <div className="hf-flat-responsive-grid grid grid-cols-2 gap-2 px-2">
-        {rangeControls.map((control) => (
-          <label
-            key={control.property}
-            className="flex h-[34px] items-center gap-1 text-[10px] text-[#858a94]"
-          >
-            <span>{tx(control.label)}</span>
-            <input
-              type="range"
-              aria-label={tx(control.label)}
-              min={control.min}
-              max={control.max}
-              step={control.step}
-              value={control.value}
-              onChange={(event) => commitRange(control.property, event.target.value)}
-              className="min-w-0 flex-1 accent-black dark:accent-white"
-            />
-          </label>
-        ))}
       </div>
     </div>
   );

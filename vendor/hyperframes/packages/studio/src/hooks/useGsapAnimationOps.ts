@@ -15,17 +15,18 @@ import {
   assignGsapTargetAutoIdIfNeeded,
   ensureElementAddressable,
 } from "./gsapScriptCommitHelpers";
-import type {
-  CommitMutation,
-  SafeGsapCommitMutation,
-} from "./gsapScriptCommitTypes";
+import type { CommitMutation, SafeGsapCommitMutation } from "./gsapScriptCommitTypes";
 import {
   defaultMotionDuration,
   getMotionPreset,
   type MotionMutationInput,
   type MotionTargetKind,
 } from "@hyperframes/core/motion-presets";
-import { resolveMotionPresetTiming, resolveSemanticMotionTiming } from "../utils/motionPreset";
+import {
+  resolveMotionPresetTiming,
+  resolveSemanticMotionTiming,
+  resolveStructuredTextMotionTiming,
+} from "../utils/motionPreset";
 
 interface SdkAnimationDeps {
   sdkSession?: Composition | null;
@@ -79,12 +80,20 @@ export function useGsapAnimationOps({
           : undefined;
       const normalizedMutation = preset
         ? (() => {
-            const timing = resolveSemanticMotionTiming(
-              selection,
-              preset.phase,
-              mutation.duration ?? defaultMotionDuration(preset),
-              mutation.start,
-            );
+            const requestedDuration = mutation.duration ?? defaultMotionDuration(preset);
+            const timing = preset.structuredText
+              ? resolveStructuredTextMotionTiming(
+                  selection,
+                  preset.phase,
+                  requestedDuration,
+                  mutation.start,
+                )
+              : resolveSemanticMotionTiming(
+                  selection,
+                  preset.phase,
+                  requestedDuration,
+                  mutation.start,
+                );
             return {
               ...mutation,
               start: timing.position,

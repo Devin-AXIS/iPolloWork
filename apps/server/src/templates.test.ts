@@ -120,7 +120,6 @@ const flagshipVideoTemplateIds = [
   "ipollowork.hyperframes.prompt-ab-laboratory",
   "ipollowork.hyperframes.release-spotlight",
   "ipollowork.hyperframes.research-evidence-wall",
-  "ipollowork.hyperframes.remote-worker-connect",
 ];
 const novelVideoTemplates = [
   { id: "ipollowork.hyperframes.meeting-action-conveyor", composition: "meeting-action-conveyor", duration: "11", scenes: 4 },
@@ -732,7 +731,7 @@ describe("template installations", () => {
 
   test("ships every bundled template with a real 960 by 540 PNG cover", async () => {
     const directories = (await readdir(bundledTemplatesRoot)).filter((name) => !name.startsWith("."));
-    expect(directories).toHaveLength(117);
+    expect(directories).toHaveLength(116);
     const hashes = new Set<string>();
     for (const directory of directories) {
       const root = join(bundledTemplatesRoot, directory);
@@ -780,7 +779,7 @@ describe("template installations", () => {
     process.env.IPOLLOWORK_RUNTIME_DB = join(root, "runtime.sqlite");
     const serverConfig = config(root);
     const first = await listTemplates(serverConfig, "alpha");
-    expect(first.filter((item) => item.installed)).toHaveLength(117);
+    expect(first.filter((item) => item.installed)).toHaveLength(116);
     expect(first.some((item) => item.manifest.id === "ipollowork.saas-landing")).toBe(true);
     expect(first.some((item) => item.manifest.id === "ipollowork.pptx-northstar-strategy")).toBe(true);
     expect(new Set(first.map((item) => item.manifest.category)).size).toBe(9);

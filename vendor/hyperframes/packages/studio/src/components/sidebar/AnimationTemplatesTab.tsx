@@ -1,4 +1,4 @@
-import { memo, useCallback, useMemo, useState } from "react";
+import { lazy, memo, Suspense, useCallback, useMemo, useState } from "react";
 import {
   defaultMotionDuration,
   getMotionPreset,
@@ -14,7 +14,12 @@ import {
 } from "../editor/SemanticMotionPanel";
 import type { DomEditSelection } from "../editor/domEditing";
 import searchIconSrc from "../../icons/figmaAssetsSearch.svg?url";
-import { StructuredMotionThumbnail } from "./StructuredMotionThumbnail";
+
+const StructuredMotionThumbnail = lazy(() =>
+  import("./StructuredMotionThumbnail").then((module) => ({
+    default: module.StructuredMotionThumbnail,
+  })),
+);
 
 export type AnimationTemplateCategory = "general" | "text";
 
@@ -443,7 +448,13 @@ export function resolveAnimationTemplateParameters(
   return parameters;
 }
 
-function TemplatePreview({ template }: { template: AnimationTemplateDefinition }) {
+function TemplatePreview({
+  template,
+  active,
+}: {
+  template: AnimationTemplateDefinition;
+  active: boolean;
+}) {
   const boxPreview = template.id.startsWith("box-");
   const structuredPreset =
     template.category === "text" ? resolveAnimationTemplatePreset(template, "text") : null;
@@ -454,19 +465,24 @@ function TemplatePreview({ template }: { template: AnimationTemplateDefinition }
     <div
       className="hf-animation-template-preview relative h-[92px] overflow-hidden rounded-[8px]"
       data-preview={structuredPreset?.structuredText ? undefined : template.preview}
+      data-structured-preview-active={
+        structuredPreset?.structuredText ? (active ? "true" : "false") : undefined
+      }
       aria-hidden="true"
     >
       <div className="hf-animation-template-grid" />
       <div className="hf-animation-template-glow hf-animation-template-glow-a" />
       <div className="hf-animation-template-glow hf-animation-template-glow-b" />
       <div className="hf-animation-template-subject">
-        {structuredPreset?.structuredText && structuredParameters ? (
-          <StructuredMotionThumbnail
-            presetId={structuredPreset.id}
-            targetKind="text"
-            parameters={structuredParameters}
-            duration={defaultMotionDuration(structuredPreset)}
-          />
+        {structuredPreset?.structuredText && structuredParameters && active ? (
+          <Suspense fallback={<span>Make motion clear.</span>}>
+            <StructuredMotionThumbnail
+              presetId={structuredPreset.id}
+              targetKind="text"
+              parameters={structuredParameters}
+              duration={defaultMotionDuration(structuredPreset)}
+            />
+          </Suspense>
         ) : template.category === "text" ? "Make motion clear." : null}
         {template.category === "general" && !boxPreview ? "Motion" : null}
         {boxPreview ? <span className="hf-animation-template-box" /> : null}
@@ -479,9 +495,11 @@ export function sortTextAnimationTemplates(
   templates: readonly AnimationTemplateDefinition[],
 ): AnimationTemplateDefinition[] {
   return [...templates].sort((a, b) => {
-    const aRank = MIGRATED_TEXT_TEMPLATE_RANK.get(a.id) ?? Number.MAX_SAFE_INTEGER;
-    const bRank = MIGRATED_TEXT_TEMPLATE_RANK.get(b.id) ?? Number.MAX_SAFE_INTEGER;
-    return aRank - bRank;
+    const aRank = MIGRATED_TEXT_TEMPLATE_RANK.get(a.id);
+    const bRank = MIGRATED_TEXT_TEMPLATE_RANK.get(b.id);
+    if (aRank === undefined && bRank !== undefined) return -1;
+    if (aRank !== undefined && bRank === undefined) return 1;
+    return (aRank ?? 0) - (bRank ?? 0);
   });
 }
 
@@ -515,17 +533,7 @@ export function createAnimationTemplateSections(
   }
 
   return [
-    targetKind === "text" && migratedTextTemplates.length > 0
-      ? {
-          key: "migrated-text",
-          title: { en: "Caption Effects Moved Here", zh: "\u5b57\u5e55\u8fc1\u79fb\u52a8\u753b" },
-          hint: {
-            en: "Former caption effects now apply to selected text",
-            zh: "\u539f\u6765\u5728\u5b57\u5e55\u7279\u6548\u91cc\u7684\u6548\u679c\uff0c\u73b0\u5728\u9009\u4e2d\u6587\u5b57\u540e\u5728\u8fd9\u91cc\u7528",
-          },
-          templates: migratedTextTemplates,
-        }
-      : null,
+    generalSection,
     targetKind === "text" && nativeTextTemplates.length > 0
       ? {
           key: "text",
@@ -534,9 +542,57 @@ export function createAnimationTemplateSections(
           templates: nativeTextTemplates,
         }
       : null,
-    generalSection,
+    targetKind === "text" && migratedTextTemplates.length > 0
+      ? {
+          key: "migrated-text",
+          title: { en: "Advanced Caption Animations", zh: "\u5b57\u5e55\u9ad8\u7ea7\u52a8\u753b" },
+          hint: {
+            en: "Advanced effects for the selected caption or text element",
+            zh: "\u9009\u4e2d\u5b57\u5e55\u6216\u6587\u5b57\u5143\u7d20\u540e\uff0c\u53ef\u5728\u8fd9\u91cc\u5e94\u7528\u9ad8\u7ea7\u52a8\u753b",
+          },
+          templates: migratedTextTemplates,
+        }
+      : null,
   ].filter((section): section is AnimationTemplateSection => section !== null);
 }
+
+const AnimationTemplateCard = memo(function AnimationTemplateCard({
+  template,
+  locale,
+  onApply,
+}: {
+  template: AnimationTemplateDefinition;
+  locale: "en" | "zh";
+  onApply: (template: AnimationTemplateDefinition) => void;
+}) {
+  const [previewActive, setPreviewActive] = useState(false);
+
+  return (
+    <article
+      className="hf-animation-template-card group min-w-0"
+      data-testid="animation-template-card"
+      data-template-id={template.id}
+      style={{ contentVisibility: "auto", containIntrinsicSize: "188px" }}
+      onMouseEnter={() => setPreviewActive(true)}
+      onMouseLeave={() => setPreviewActive(false)}
+    >
+      <TemplatePreview template={template} active={previewActive} />
+      <div className="mt-2 truncate text-[12px] font-semibold text-panel-text-1">
+        {template.title[locale]}
+      </div>
+      <div className="mt-0.5 min-h-8 text-[10px] leading-4 text-panel-text-3">
+        {template.description[locale]}
+      </div>
+      <button
+        type="button"
+        onClick={() => onApply(template)}
+        className="mt-2 h-7 w-full rounded-[6px] bg-panel-input text-[10px] font-medium text-panel-text-1 transition-colors hover:bg-[#20bbc0]/15 hover:text-[#168e92]"
+      >
+        {locale === "zh" ? "\u5e94\u7528" : "Apply"}
+      </button>
+    </article>
+  );
+});
 
 export const AnimationTemplatesTab = memo(function AnimationTemplatesTab({
   onSelectTemplate,
@@ -654,26 +710,12 @@ export const AnimationTemplatesTab = memo(function AnimationTemplatesTab({
                 </div>
                 <div className="grid grid-cols-2 gap-x-[10px] gap-y-4">
                   {section.templates.map((template) => (
-                    <article
+                    <AnimationTemplateCard
                       key={template.id}
-                      className="hf-animation-template-card group min-w-0"
-                      data-testid="animation-template-card"
-                    >
-                      <TemplatePreview template={template} />
-                      <div className="mt-2 truncate text-[12px] font-semibold text-panel-text-1">
-                        {template.title[locale]}
-                      </div>
-                      <div className="mt-0.5 min-h-8 text-[10px] leading-4 text-panel-text-3">
-                        {template.description[locale]}
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => applyTemplate(template)}
-                        className="mt-2 h-7 w-full rounded-[6px] bg-panel-input text-[10px] font-medium text-panel-text-1 transition-colors hover:bg-[#20bbc0]/15 hover:text-[#168e92]"
-                      >
-                        {locale === "zh" ? "应用" : "Apply"}
-                      </button>
-                    </article>
+                      template={template}
+                      locale={locale}
+                      onApply={applyTemplate}
+                    />
                   ))}
                 </div>
               </section>

@@ -78,7 +78,6 @@ export function TextAreaField({
   const track = useTrackDesignInput();
   const [draft, setDraft] = useState(value);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
-  const commitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const interactionChangedRef = useRef(false);
   const focusedRef = useRef(false);
   const valueRef = useRef(value);
@@ -88,36 +87,17 @@ export function TextAreaField({
     if (focusedRef.current) return;
     setDraft(value);
   }, [value]);
-  useEffect(
-    () => () => {
-      if (commitTimerRef.current) clearTimeout(commitTimerRef.current);
-    },
-    [],
-  );
   useEffect(() => {
     if (!autoFocus) return;
     textareaRef.current?.focus();
   }, [autoFocus]);
 
   const commitDraft = (d: string) => {
-    if (commitTimerRef.current) clearTimeout(commitTimerRef.current);
     if (interactionChangedRef.current) {
       interactionChangedRef.current = false;
       track("text", label);
     }
     if (d !== valueRef.current) onCommit(d);
-  };
-  const scheduleCommit = (d: string) => {
-    if (commitTimerRef.current) clearTimeout(commitTimerRef.current);
-    commitTimerRef.current = setTimeout(() => {
-      if (d !== valueRef.current) {
-        if (interactionChangedRef.current) {
-          interactionChangedRef.current = false;
-          track("text", label);
-        }
-        onCommit(d);
-      }
-    }, 120);
   };
 
   const handleFocus = () => {
@@ -126,7 +106,6 @@ export function TextAreaField({
   const handleChange = (e: ChangeEvent<HTMLTextAreaElement>) => {
     setDraft(e.target.value);
     interactionChangedRef.current = true;
-    scheduleCommit(e.target.value);
   };
   const handleBlur = () => {
     focusedRef.current = false;

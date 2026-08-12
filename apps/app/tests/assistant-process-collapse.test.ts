@@ -3,6 +3,8 @@ import { readFileSync } from "node:fs";
 
 import {
   getAssistantRenderGroups,
+  groupMessages,
+  isMessageGroup,
   splitAssistantRenderGroups,
 } from "../src/components/chat/utils";
 
@@ -65,5 +67,28 @@ describe("assistant process collapse sections", () => {
 
     expect(sections.processGroups).toEqual([]);
     expect(sections.resultGroups).toEqual(groups);
+  });
+
+  test("keeps automatic compaction continuations inside one assistant turn", () => {
+    const messages = [
+      { id: "user-1", role: "user", parts: [{ type: "text", text: "Update the video" }] },
+      { id: "assistant-1", role: "assistant", parts: [{ type: "reasoning", text: "Starting", state: "done" }] },
+      { id: "compaction", role: "user", parts: [] },
+      { id: "assistant-2", role: "assistant", parts: [{ type: "reasoning", text: "Continuing", state: "done" }] },
+      { id: "continue", role: "user", parts: [] },
+      { id: "assistant-3", role: "assistant", parts: [{ type: "text", text: "Finished" }] },
+      { id: "user-2", role: "user", parts: [{ type: "text", text: "One more change" }] },
+    ] satisfies Parameters<typeof groupMessages>[0];
+
+    const items = groupMessages(messages);
+
+    expect(items).toHaveLength(3);
+    expect(isMessageGroup(items[1])).toBe(true);
+    if (!isMessageGroup(items[1])) throw new Error("Expected one assistant message group");
+    expect(items[1].messages.map((item) => item.message.id)).toEqual([
+      "assistant-1",
+      "assistant-2",
+      "assistant-3",
+    ]);
   });
 });

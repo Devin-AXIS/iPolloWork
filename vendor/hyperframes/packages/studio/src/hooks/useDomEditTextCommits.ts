@@ -54,6 +54,7 @@ export interface UseDomEditTextCommitsParams {
   ) => Promise<DomEditSelection | null>;
   removeDomTextFieldElement: (selection: DomEditSelection) => Promise<void>;
   persistDomEditOperations: PersistDomEditOperations;
+  queueDomEditSave: <T>(save: () => Promise<T>) => Promise<T>;
   resolveImportedFontAsset: (fontFamilyValue: string) => ImportedFontAsset | null;
 }
 
@@ -160,6 +161,7 @@ export function useDomEditTextCommits({
   buildDomSelectionFromTarget,
   removeDomTextFieldElement,
   persistDomEditOperations,
+  queueDomEditSave,
   resolveImportedFontAsset,
 }: UseDomEditTextCommitsParams) {
   const domTextCommitVersionRef = useRef(0);
@@ -226,13 +228,15 @@ export function useDomEditTextCommits({
           }
         },
         persist: () =>
-          persistDomEditOperations(domEditSelection, operations, {
-            label: "Edit layer style",
-            skipRefresh,
-            prepareContent: importedFont
-              ? (html, sourceFile) => ensureImportedFontFace(html, importedFont, sourceFile)
-              : undefined,
-          }),
+          queueDomEditSave(() =>
+            persistDomEditOperations(domEditSelection, operations, {
+              label: "Edit layer style",
+              skipRefresh,
+              prepareContent: importedFont
+                ? (html, sourceFile) => ensureImportedFontFace(html, importedFont, sourceFile)
+                : undefined,
+            }),
+          ),
         shouldRevert: () => isLatestStyleCommit(),
         revert: () => {
           if (!editedElement || previousInlineValue === null) return;
@@ -253,6 +257,7 @@ export function useDomEditTextCommits({
       activeCompPath,
       domEditSelection,
       persistDomEditOperations,
+      queueDomEditSave,
       refreshDomEditSelectionFromPreview,
       resolveImportedFontAsset,
       showToast,

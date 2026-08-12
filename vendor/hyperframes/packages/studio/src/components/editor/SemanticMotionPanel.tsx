@@ -15,7 +15,10 @@ import {
 } from "@hyperframes/core/motion-presets";
 import type { AnimationTemplateDraft } from "../sidebar/AnimationTemplatesTab";
 import { Trash } from "../../icons/SystemIcons";
-import { resolveSemanticMotionTiming } from "../../utils/motionPreset";
+import {
+  resolveSemanticMotionTiming,
+  resolveStructuredTextMotionTiming,
+} from "../../utils/motionPreset";
 import type { DomEditSelection } from "./domEditing";
 import { isTextEditableSelection } from "./domEditing";
 import { ColorField } from "./propertyPanelColor";
@@ -86,7 +89,11 @@ type MotionPreviewWindow = Window & {
 };
 
 function keyframesForPreview(
-  keyframes: Array<{ percentage: number; properties: Record<string, number | string>; ease?: string }>,
+  keyframes: Array<{
+    percentage: number;
+    properties: Record<string, number | string>;
+    ease?: string;
+  }>,
 ): Record<string, Record<string, number | string>> {
   return Object.fromEntries(
     keyframes.map((frame) => [
@@ -305,7 +312,9 @@ export function AnimationPropertiesPanel({
     setApplying(true);
     setApplyFailed(false);
     const confirmedDuration = Number((defaultMotionDuration(preset) / speedRef.current).toFixed(2));
-    const timing = resolveSemanticMotionTiming(selection, preset.phase, confirmedDuration);
+    const timing = preset.structuredText
+      ? resolveStructuredTextMotionTiming(selection, preset.phase, confirmedDuration)
+      : resolveSemanticMotionTiming(selection, preset.phase, confirmedDuration);
     try {
       const applied = await onMutate(
         targetKind,

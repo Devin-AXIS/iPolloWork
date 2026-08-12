@@ -66,9 +66,10 @@ describe("personal and Enterprise chat entry wiring", () => {
     expect(workContext).not.toContain("rememberWorkspaceForWorkContext");
   });
 
-  test("keeps the selected template library scope when an Enterprise launches a template", () => {
+  test("keeps market launches scoped while the starter catalog stays personal", () => {
     expect(sessionPage).toMatch(/template\.manifest\.id,\s+templateResourceScope,/);
-    expect(sessionPage).toMatch(/props\.selectedSessionId,\s+undefined,\s+templateResourceScope,/);
+    expect(sessionPage).toMatch(/props\.selectedSessionId,\s+undefined,\s+PERSONAL_WORK_CONTEXT_ID,/);
+    expect(sessionPage).toContain("designTemplates={starterTemplateCatalog}");
     expect(sessionRoute).toContain("templateScope ?? readActiveWorkContextId()");
     expect(sessionRoute).toContain("Template unavailable");
     expect(sessionRoute).toContain("deleteSession(endpoint.workspaceId, createdSessionId)");
