@@ -126,6 +126,14 @@ function sourceFromCompositionId(ownerRoot: HTMLElement | null): string | undefi
   );
 }
 
+export function getCompositionSourceForHost(el: HTMLElement): string | undefined {
+  return (
+    el.getAttribute("data-composition-file") ??
+    el.getAttribute("data-composition-src") ??
+    (el.hasAttribute("data-composition-id") ? sourceFromCompositionId(el) : undefined)
+  );
+}
+
 export function getSourceFileForElement(
   el: HTMLElement,
   activeCompositionPath: string | null,
@@ -133,11 +141,14 @@ export function getSourceFileForElement(
   const sourceHost = findClosestByAttribute(el, ["data-composition-file", "data-composition-src"]);
   const ownerRoot = findClosestByAttribute(el, ["data-composition-id"]);
   const sourceFile =
-    sourceHost?.getAttribute("data-composition-file") ??
-    sourceHost?.getAttribute("data-composition-src") ??
     ownerRoot?.getAttribute("data-composition-file") ??
     ownerRoot?.getAttribute("data-composition-src") ??
     sourceFromCompositionId(ownerRoot) ??
+    // Inlined effect roots sit below the outer index.html source host. Their
+    // recovered composition-id mapping must win; otherwise every child is
+    // mis-owned by index.html and exact timeline/canvas lookup returns null.
+    sourceHost?.getAttribute("data-composition-file") ??
+    sourceHost?.getAttribute("data-composition-src") ??
     activeCompositionPath ??
     "index.html";
 
@@ -145,6 +156,32 @@ export function getSourceFileForElement(
     sourceFile,
     compositionPath: sourceFile,
   };
+}
+
+/**
+ * Resolve the file that owns edits to `el` itself.
+ *
+ * A composition host's `data-composition-src` points at the child document it
+ * renders, but the host tag (and therefore its position, size, rotation, label,
+ * visibility, etc.) is authored in the parent document. Descendants keep using
+ * the child document through `getSourceFileForElement`; only the host itself is
+ * rebased to its parent composition here.
+ */
+export function getEditableSourceFileForElement(
+  el: HTMLElement,
+  activeCompositionPath: string | null,
+): { sourceFile: string; compositionPath: string } {
+  if (!getCompositionSourceForHost(el)) {
+    return getSourceFileForElement(el, activeCompositionPath);
+  }
+
+  const parent = el.parentElement;
+  return parent
+    ? getSourceFileForElement(parent, activeCompositionPath)
+    : {
+        sourceFile: activeCompositionPath ?? "index.html",
+        compositionPath: activeCompositionPath ?? "index.html",
+      };
 }
 
 export function normalizeTimelineCompositionSource(value: string | undefined): string | undefined {
@@ -304,7 +341,7 @@ export function getSelectorIndex(
 
   return getSourceScopedSelectorIndex(doc, el, selector, sourceFile, (candidate) =>
     isHtmlElement(candidate)
-      ? getSourceFileForElement(candidate, activeCompositionPath).sourceFile
+      ? getEditableSourceFileForElement(candidate, activeCompositionPath).sourceFile
       : undefined,
   );
 }

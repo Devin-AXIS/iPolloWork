@@ -13,6 +13,16 @@ describe("translateStudioLiteral", () => {
     expect(translateStudioLiteral("zh", "3 effects")).toBe("3 个效果");
     expect(translateStudioLiteral("zh", "Lock Hero")).toBe("锁定 Hero");
     expect(translateStudioLiteral("zh", "Collapse Animation")).toBe("收起 动画");
+    expect(translateStudioLiteral("zh", "Post-processing")).toBe("后处理");
+    expect(translateStudioLiteral("zh", "Mask rectangle")).toBe("蒙层矩形");
+    expect(translateStudioLiteral("zh", "Mask circle")).toBe("蒙层圆形");
+    expect(translateStudioLiteral("zh", "Split clip at playhead")).toBe(
+      "当前片段时刻分割",
+    );
+    expect(translateStudioLiteral("zh", "Add keyframe")).toBe("添加关键");
+    expect(translateStudioLiteral("zh", "Add keyframe at playhead")).toBe(
+      "当前片段时刻添加关键帧",
+    );
   });
 
   it("translates the existing animation editor controls", () => {

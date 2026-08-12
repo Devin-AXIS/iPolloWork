@@ -293,6 +293,15 @@ export function collectDomClipChildren(
   const children: DomClipChild[] = [];
   const parentMap = new Map<string, string>();
   const collectedTreeIds = new Set<string>();
+  const manifestTreeIds = new Set(clips.flatMap((clip) => (clip.id ? [clip.id] : [])));
+  const descendantSourceByHostId = new Map(
+    clips.flatMap((clip) => {
+      if (!clip.id) return [];
+      const sourceFile =
+        clip.kind === "composition" ? (clip.compositionSrc ?? clip.sourceFile) : clip.sourceFile;
+      return sourceFile ? [[clip.id, sourceFile] as const] : [];
+    }),
+  );
   const resolvedHostElements = new Set(resolvedClipHosts.values());
 
   const collect = (parentEl: Element, parentId: string, hostId: string) => {
@@ -306,12 +315,27 @@ export function collectDomClipChildren(
         const selector = getTimelineElementSelector(child);
         if (selector) {
           const htmlChild = child as HTMLElement;
-          const sourceFile = getTimelineElementSourceFile(child);
+          // The runtime flattens subcompositions below index.html. DOM-only
+          // ancestor probing can therefore see the outer source first; the
+          // resolved manifest host is the authoritative owner for descendants.
+          const sourceFile =
+            descendantSourceByHostId.get(hostId) ?? getTimelineElementSourceFile(child);
           const selectorIndex = getTimelineElementSelectorIndex(doc, child, selector);
           const domId = htmlChild.id || undefined;
           const hfId = child.getAttribute("data-hf-id") || undefined;
-          const treeId =
+          const authoredTreeId =
             domId ?? hfId ?? `${sourceFile ?? "index.html"}:${selector}:${selectorIndex ?? 0}`;
+          // Authored DOM ids and hf ids are only unique inside their source
+          // composition. An inserted effect commonly gives its visual child
+          // the same id as the composition root. Keeping that raw id here
+          // aliases the child row to the manifest host: clicking the child is
+          // immediately reconciled back to the host and drag commits target
+          // the wrong node. Preserve the compact legacy id when it is safe,
+          // and namespace only collisions by their actual preview instance.
+          const treeId =
+            manifestTreeIds.has(authoredTreeId) || collectedTreeIds.has(authoredTreeId)
+              ? `${hostId}::${sourceFile ?? "index.html"}:${authoredTreeId}:${selectorIndex ?? 0}`
+              : authoredTreeId;
           childParentId = treeId;
           if (!collectedTreeIds.has(treeId)) {
             collectedTreeIds.add(treeId);

@@ -24,7 +24,7 @@ import {
   readDenSettings,
   type DenDesktopConfig,
 } from "../../../app/lib/den";
-import { applyBrandAppName, applyBrandIcon } from "../../../app/lib/desktop";
+import { applyBrandAppName, applyBrandIcon, desktopResumeEvent } from "../../../app/lib/desktop";
 import { createiPolloWorkServerClient } from "../../../app/lib/ipollowork-server";
 import {
   denSessionUpdatedEvent,
@@ -288,6 +288,12 @@ export function DesktopConfigProvider({ children }: DesktopConfigProviderProps) 
     window.addEventListener(denSessionUpdatedEvent, handleSettingsChanged);
     window.addEventListener(denSettingsChangedEvent, handleSettingsChanged);
 
+    const handleDesktopResume = () => {
+      void desktopConfigHandler();
+    };
+    window.addEventListener(desktopResumeEvent, handleDesktopResume);
+    window.addEventListener("online", handleDesktopResume);
+
     const interval = window.setInterval(() => {
       if (!isSignedIn) return;
       void desktopConfigHandler();
@@ -296,6 +302,8 @@ export function DesktopConfigProvider({ children }: DesktopConfigProviderProps) 
     return () => {
       window.removeEventListener(denSessionUpdatedEvent, handleSettingsChanged);
       window.removeEventListener(denSettingsChangedEvent, handleSettingsChanged);
+      window.removeEventListener(desktopResumeEvent, handleDesktopResume);
+      window.removeEventListener("online", handleDesktopResume);
       window.clearInterval(interval);
     };
   }, [desktopConfigHandler, isSignedIn]);

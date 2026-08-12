@@ -110,7 +110,7 @@ describe("HyperFrames Video Studio", () => {
     expect(panelSource).toContain("readLocalImageAsDataUrl(pickedPath)");
     expect(panelSource).toContain('"--ipw-bg-image": `url(\"${dataUrl}\")`');
     expect(panelSource).toContain("onChooseBackgroundImage={() => void chooseDesignSystemBackgroundImage()}");
-    expect(registrySource).toContain("[data-composition-id], .composition, .scene.clip");
+    expect(registrySource).toContain("[data-composition-file][data-composition-id]");
     expect(panelSource).toContain("top-[90px]");
   });
 
@@ -136,28 +136,27 @@ describe("HyperFrames Video Studio", () => {
     expect(previewPersistenceSource).toContain("domEditSaveTimestampRef.current = Date.now()");
   });
 
-  test("scales legacy video typography tokens and common text classes through the theme bridge", () => {
+  test("bridges global video theme tokens without overriding scene geometry", () => {
     const registrySource = readFileSync(
       new URL("../src/react-app/domains/session/design/design-system-registry.ts", import.meta.url),
       "utf8",
     );
 
     expect(registrySource).toContain("function templateTokenAliasLine");
-    expect(registrySource).toContain("/^--text-[A-Za-z0-9_-]+$/.test(name)");
+    expect(registrySource).toContain("/^--(?:text|font-size|fs)-[A-Za-z0-9_-]+$/.test(name)");
     expect(registrySource).toContain("calc(var(${storageName}) * var(--ipw-type-scale)) !important");
-    expect(registrySource).toContain("var(--ipw-od-text-4xl, 2.5rem)");
-    expect(registrySource).toContain(".title, .headline, .hero-title, .section-title, .card-title");
-    expect(registrySource).toContain(".body, .copy, .caption, .meta, .label, .metric, .stat, .badge");
-    expect(registrySource).toContain(".title, .headline, .hero-title, .section-title, .card-title, .body, .copy, .caption, .meta");
+    expect(registrySource).toContain("body :where(*):not(svg):not(svg *)");
+    expect(registrySource).toContain(".title, .title *, .headline, .headline *, .heading, .heading *");
     expect(registrySource).toContain("buildStableTokenBridgeCss");
-    expect(registrySource).toContain(".scene, .hero, .section, .content, .media");
+    expect(registrySource).toContain("--page-padding: var(--ipw-page-padding)");
+    expect(registrySource).toContain("--duration-normal: var(--ipw-motion-duration)");
     expect(registrySource).toContain("box-shadow: var(--ipw-card-shadow) !important");
     expect(registrySource).toContain("--ipw-motion-duration");
-    expect(registrySource).toContain("h1, [data-ipw-theme-role=\"heading\"], .title, .headline, .hero-title");
-    expect(registrySource).not.toContain(":where(div, span)");
+    expect(registrySource).not.toContain('[class*="-card"]');
+    expect(registrySource).not.toContain("[data-composition-id] > section");
   });
 
-  test("persists the embedded motion control instead of local-only state", () => {
+  test("hides the theme-level motion control while preserving motion token compatibility", () => {
     const drawerSource = readFileSync(
       new URL("../src/react-app/domains/session/design/design-system-drawer.tsx", import.meta.url),
       "utf8",
@@ -167,9 +166,11 @@ describe("HyperFrames Video Studio", () => {
       "utf8",
     );
 
-    expect(drawerSource).toContain('"--ipw-motion-style": profile.value');
-    expect(drawerSource).toContain('"--ipw-motion-duration": profile.duration');
+    expect(drawerSource).not.toContain("MOTION_OPTION_DEFS");
+    expect(drawerSource).not.toContain('PanelSection title={t("design_system.embedded.motion")}');
     expect(drawerSource).not.toContain("const [motion, setMotion] = React.useState");
+    expect(drawerSource).toContain('"--ipw-motion-style": "none"');
+    expect(drawerSource).toContain('"--ipw-motion-duration": "0ms"');
     expect(panelSource).toContain("ensureVideoTokenBridge");
     expect(panelSource).toContain("buildStableTokenBridgeCss");
     expect(panelSource).toContain('replaceDesignTokenValue(source, "--ipw-type-scale", "1")');
@@ -257,6 +258,8 @@ describe("HyperFrames Video Studio", () => {
     expect(drawerSource).toContain("onTokenChangeMany?: (values: DesignTokenValues) => void");
     expect(drawerSource).toContain("if (onTokenChangeMany) {");
     expect(drawerSource).toContain("onTokenChangeMany(next)");
+    expect(drawerSource).toContain('"--ipw-bg-mode": selectedTheme ? "solid" : "none"');
+    expect(drawerSource).toContain('"--ipw-bg-image": "none"');
     expect(panelSource).toContain("const handleDesignTokenChanges = React.useCallback");
     expect(panelSource).toContain("for (const [name, value] of Object.entries(values))");
     expect(panelSource).toContain("syncStudioDesignTokens(values, next)");

@@ -1,5 +1,7 @@
 import { nativeDeepLinkEvent } from "./deep-link-bridge";
 
+export const desktopResumeEvent = "ipollowork:desktop-resumed";
+
 export type * from "./desktop-types";
 export type {
   EngineInfo,

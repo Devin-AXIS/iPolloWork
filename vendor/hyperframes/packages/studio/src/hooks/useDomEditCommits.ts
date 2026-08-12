@@ -368,6 +368,31 @@ export function useDomEditCommits({
     ],
   );
 
+  // ── Element lifecycle (delete, z-index reorder) ──
+
+  const { handleDomEditElementDelete, handleDomZIndexReorderCommit } = useElementLifecycleOps({
+    activeCompPath,
+    previewIframeRef,
+    queueDomEditSave,
+    showToast,
+    writeProjectFile,
+    domEditSaveTimestampRef,
+    editHistory,
+    projectIdRef,
+    reloadPreview,
+    clearDomSelection,
+    onTrySdkDelete,
+    onReorderShadow,
+    forceReloadSdkSession,
+    commitDomEditPatchBatches,
+  });
+
+  const removeDomTextFieldElement = useCallback(
+    (selection: DomEditSelection) =>
+      handleDomEditElementDelete(selection, { clearSelection: false }),
+    [handleDomEditElementDelete],
+  );
+
   // ── Text & style commits (delegated to useDomEditTextCommits) ──
 
   const {
@@ -389,6 +414,7 @@ export function useDomEditCommits({
     applyDomSelection,
     refreshDomEditSelectionFromPreview,
     buildDomSelectionFromTarget,
+    removeDomTextFieldElement,
     persistDomEditOperations,
     resolveImportedFontAsset,
     showToast,
@@ -414,25 +440,6 @@ export function useDomEditCommits({
     previewIframeRef,
     showToast,
     commitPositionPatchToHtml,
-  });
-
-  // ── Element lifecycle (delete, z-index reorder) ──
-
-  const { handleDomEditElementDelete, handleDomZIndexReorderCommit } = useElementLifecycleOps({
-    activeCompPath,
-    previewIframeRef,
-    queueDomEditSave,
-    showToast,
-    writeProjectFile,
-    domEditSaveTimestampRef,
-    editHistory,
-    projectIdRef,
-    reloadPreview,
-    clearDomSelection,
-    onTrySdkDelete,
-    onReorderShadow,
-    forceReloadSdkSession,
-    commitDomEditPatchBatches,
   });
 
   return {

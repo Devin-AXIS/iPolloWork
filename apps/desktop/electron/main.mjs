@@ -17,7 +17,7 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { app, BrowserWindow, dialog, ipcMain, nativeImage, nativeTheme, net as electronNet, Notification as ElectronNotification, screen, session, shell, systemPreferences } from "electron";
+import { app, BrowserWindow, dialog, ipcMain, nativeImage, nativeTheme, net as electronNet, Notification as ElectronNotification, powerMonitor, screen, session, shell, systemPreferences } from "electron";
 import { configureFakeMediaForTests, installMediaPermissionHandlers } from "./media-permissions.mjs";
 import { registerMigrationIpc } from "./migration.mjs";
 import { createRuntimeManager } from "./runtime.mjs";
@@ -58,6 +58,7 @@ protectOutputStreamFromBrokenPipe(process.stderr);
 const require = createRequire(import.meta.url);
 const pty = require(["node", "pty"].join("-"));
 const NATIVE_DEEP_LINK_EVENT = "ipollowork:deep-link-native";
+const DESKTOP_RESUMED_EVENT = "ipollowork:desktop-resumed";
 const TAURI_APP_IDENTIFIER = "com.differentai.ipollowork";
 const DEV_APP_IDENTIFIER = "com.differentai.ipollowork.dev";
 const isDevMode = process.env.IPOLLOWORK_DEV_MODE === "1";
@@ -1656,6 +1657,10 @@ const runtimeManager = createRuntimeManager({
 let runtimeDisposedForQuit = false;
 let runtimeDisposeInProgress = false;
 let runtimeBootstrapPromise = null;
+let runtimeResumePromise = null;
+let desktopNetworkSuspended = false;
+let lastRuntimeResumeStartedAt = 0;
+const activeDesktopFetchControllers = new Set();
 
 function showShutdownScreen() {
   const win = mainWindow;
@@ -1790,6 +1795,68 @@ function ensureRuntimeBootstrap() {
     }));
   }
   return runtimeBootstrapPromise;
+}
+
+function abortSuspendedDesktopFetches() {
+  for (const controller of activeDesktopFetchControllers) {
+    controller.abort(new Error("Desktop network I/O was suspended."));
+  }
+  activeDesktopFetchControllers.clear();
+}
+
+function notifyRendererDesktopResumed(result) {
+  const win = mainWindow;
+  if (!win || win.isDestroyed() || win.webContents.isDestroyed()) return;
+  win.webContents.send(DESKTOP_RESUMED_EVENT, result);
+}
+
+function recoverRuntimeAfterDesktopResume(trigger) {
+  desktopNetworkSuspended = false;
+  if (runtimeResumePromise) return runtimeResumePromise;
+  const startedAt = Date.now();
+  if (startedAt - lastRuntimeResumeStartedAt < 60_000) return runtimeBootstrapPromise;
+  lastRuntimeResumeStartedAt = startedAt;
+  console.info(`[power] desktop ${trigger}; checking local runtime`);
+
+  const recovery = bootRuntimeForSelectedWorkspace().catch((error) => ({
+    ok: false,
+    error: error instanceof Error ? error.message : String(error),
+  }));
+  runtimeBootstrapPromise = recovery;
+  runtimeResumePromise = recovery
+    .then((result) => {
+      if (result.ok === false) runtimeBootstrapPromise = null;
+      notifyRendererDesktopResumed(result);
+      console.info(`[power] desktop resume recovery completed in ${Date.now() - startedAt}ms`, {
+        ok: result.ok !== false,
+      });
+      return result;
+    })
+    .finally(() => {
+      runtimeResumePromise = null;
+    });
+  return runtimeResumePromise;
+}
+
+let desktopPowerRecoveryInstalled = false;
+function installDesktopPowerRecovery() {
+  if (desktopPowerRecoveryInstalled) return;
+  desktopPowerRecoveryInstalled = true;
+  powerMonitor.on("suspend", () => {
+    desktopNetworkSuspended = true;
+    lastRuntimeResumeStartedAt = 0;
+    abortSuspendedDesktopFetches();
+    console.info("[power] desktop suspended; cancelled pending network requests");
+  });
+  powerMonitor.on("resume", () => {
+    void recoverRuntimeAfterDesktopResume("resumed");
+  });
+  // Some Windows machines report only lock/unlock around modern standby.
+  // The debounce in recoverRuntimeAfterDesktopResume coalesces an unlock that
+  // follows a normal resume event.
+  powerMonitor.on("unlock-screen", () => {
+    void recoverRuntimeAfterDesktopResume("unlocked");
+  });
 }
 
 function resolveOpencodeConfigPath(scope, projectDir) {
@@ -2603,23 +2670,38 @@ const desktopCommandHandlers = {
       const url = String(args[0] ?? "").trim();
       const init = args[1] ?? {};
       if (!url) throw new Error("URL is required.");
+      if (desktopNetworkSuspended) {
+        throw new Error("Desktop network is suspended. Retry after the computer resumes.");
+      }
       const timeoutMs = Number(init.timeoutMs);
-      const response = await electronNet.fetch(url, {
-        method: typeof init.method === "string" ? init.method : undefined,
-        headers: init.headers && typeof init.headers === "object" ? init.headers : undefined,
-        body: typeof init.body === "string" ? init.body : undefined,
-        signal: Number.isFinite(timeoutMs) && timeoutMs > 0 ? AbortSignal.timeout(timeoutMs) : undefined,
-        credentials: "omit",
-        cache: "no-store",
-      });
-      return {
-        status: response.status,
-        statusText: response.statusText,
-        headers: Array.from(response.headers.entries()),
-        body: init.responseType === "arrayBuffer"
-          ? await response.arrayBuffer()
-          : await response.text(),
-      };
+      const suspendController = new AbortController();
+      const timeoutSignal = Number.isFinite(timeoutMs) && timeoutMs > 0
+        ? AbortSignal.timeout(timeoutMs)
+        : null;
+      const signal = timeoutSignal
+        ? AbortSignal.any([suspendController.signal, timeoutSignal])
+        : suspendController.signal;
+      activeDesktopFetchControllers.add(suspendController);
+      try {
+        const response = await electronNet.fetch(url, {
+          method: typeof init.method === "string" ? init.method : undefined,
+          headers: init.headers && typeof init.headers === "object" ? init.headers : undefined,
+          body: typeof init.body === "string" ? init.body : undefined,
+          signal,
+          credentials: "omit",
+          cache: "no-store",
+        });
+        return {
+          status: response.status,
+          statusText: response.statusText,
+          headers: Array.from(response.headers.entries()),
+          body: init.responseType === "arrayBuffer"
+            ? await response.arrayBuffer()
+            : await response.text(),
+        };
+      } finally {
+        activeDesktopFetchControllers.delete(suspendController);
+      }
   },
   "__homeDir": async (event, ...args) => {
       return os.homedir();
@@ -4017,6 +4099,7 @@ if (!app.requestSingleInstanceLock()) {
   app.whenReady().then(async () => {
     const startupStartedAt = Date.now();
     console.info("[startup] Electron ready");
+    installDesktopPowerRecovery();
     installMediaPermissionHandlers(session, () => mainWindow);
     await workspaceStore.importBundledDesktopBootstrapConfigIfPreferred();
     const bootstrapConfig = await workspaceStore.getDesktopBootstrapConfig();

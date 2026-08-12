@@ -12,6 +12,8 @@ import type {
 import {
   buildStableSelector,
   escapeCssString,
+  getCompositionSourceForHost,
+  getEditableSourceFileForElement,
   getSelectorIndex,
   getSourceFileForElement,
   isHtmlElement,
@@ -111,7 +113,7 @@ export function getDomLayerPatchTarget(
   const selector = buildStableSelector(el);
   if (!selector) return null;
 
-  const { sourceFile } = getSourceFileForElement(el, activeCompositionPath);
+  const { sourceFile } = getEditableSourceFileForElement(el, activeCompositionPath);
   return {
     id: el.id || undefined,
     hfId: el.getAttribute("data-hf-id") || undefined,
@@ -143,12 +145,29 @@ function getPreferredClipAncestor(startEl: HTMLElement): HTMLElement | null {
   return null;
 }
 
+export function getEditableUnitSelectionTarget(startEl: HTMLElement): HTMLElement | null {
+  let editableUnit: HTMLElement | null = startEl;
+  while (editableUnit) {
+    const compositionSource = getCompositionSourceForHost(editableUnit)?.replace(/\\/g, "/");
+    const isEffectComposition = compositionSource?.includes("/effects/") === true;
+    // Inserted effects expose their authored descendants in the expanded
+    // timeline and must behave like ordinary canvas elements. Older projects
+    // may still carry the temporary edit-as-unit marker, so explicitly ignore
+    // it on effect hosts while preserving the marker for intentional units.
+    if (editableUnit.hasAttribute("data-hf-edit-as-unit") && !isEffectComposition) {
+      return editableUnit;
+    }
+    editableUnit = editableUnit.parentElement;
+  }
+  return null;
+}
+
 export function getSelectionCandidate(
   startEl: HTMLElement,
   options: DomEditContextOptions,
 ): HTMLElement {
-  const structuredTextRoot = startEl.closest<HTMLElement>('[data-ipw-motion-structure="v1"]');
-  if (structuredTextRoot) return structuredTextRoot;
+  const editableUnit = getEditableUnitSelectionTarget(startEl);
+  if (editableUnit) return editableUnit;
 
   if (options.preferClipAncestor) {
     const clipAncestor = getPreferredClipAncestor(startEl);
@@ -243,7 +262,7 @@ export function findElementForSelection(
   const sourceMatches = (candidate: Element): candidate is HTMLElement =>
     isHtmlElement(candidate) &&
     (!selection.sourceFile ||
-      getSourceFileForElement(candidate, activeCompositionPath).sourceFile ===
+      getEditableSourceFileForElement(candidate, activeCompositionPath).sourceFile ===
         selection.sourceFile);
   const findAll = (selector: string): HTMLElement[] =>
     querySelectorAllSafely(queryRoot, selector).filter(sourceMatches);
@@ -295,7 +314,8 @@ function findElementForTimelineTiming(
           timelineNumberMatches(candidate, "data-start", element.start ?? 0) &&
           timelineNumberMatches(candidate, "data-duration", element.duration ?? 0) &&
           timelineNumberMatches(candidate, "data-track-index", element.track ?? 0) &&
-          getSourceFileForElement(candidate, activeCompositionPath).sourceFile === sourceFile,
+          getEditableSourceFileForElement(candidate, activeCompositionPath).sourceFile ===
+            sourceFile,
       ) ?? null
   );
 }
@@ -310,8 +330,10 @@ export function findElementForTimelineElement(
   const compositionSource =
     normalizeTimelineCompositionSource(element.compositionSrc) ??
     options.compIdToSrc?.get(elementId);
+  // A composition host renders `compositionSource`, but its own tag is authored
+  // in the parent source file. Expanded descendants already carry their child
+  // `sourceFile`, so this owner-first rule works for both levels.
   const sourceFile =
-    compositionSource ??
     normalizeTimelineCompositionSource(element.sourceFile) ??
     options.activeCompositionPath ??
     "index.html";

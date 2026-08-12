@@ -286,6 +286,8 @@ export function VideoPanel({ sessionId, workspaceRoot, client, workspaceId, isRe
     }
     handleDesignTokenChanges({
       "--ipw-bg-image": `url("${dataUrl}")`,
+      "--ipw-bg-color": "var(--ipw-color-bg)",
+      "--ipw-bg-decoration-opacity": "1",
       "--ipw-bg-gradient": "none",
       "--ipw-bg-overlay": "linear-gradient(rgba(28,27,26,.45), rgba(28,27,26,.45))",
       "--ipw-bg-overlay-opacity": "0.45",

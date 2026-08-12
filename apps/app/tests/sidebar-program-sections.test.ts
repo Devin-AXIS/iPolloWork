@@ -84,4 +84,11 @@ describe("sidebar Program and Ungrouped sections", () => {
     expect(sessionPageSource).toContain('title={t("session_management.remove_group_title")}');
     expect(sessionPageSource).toContain("removeGroup(removeGroupTarget.workspaceId, removeGroupTarget.groupId)");
   });
+
+  test("renders the selected workspace history instead of the first workspace", () => {
+    expect(sidebarSource).toContain("const sidebarWorkspaceSessionGroups = React.useMemo");
+    expect(sidebarSource).toContain("entry.workspace.id === props.selectedWorkspaceId");
+    expect(sidebarSource).toContain("{sidebarWorkspaceSessionGroups.map((group) => (");
+    expect(sidebarSource).not.toContain("{props.workspaceSessionGroups.slice(0, 1).map((group) => (");
+  });
 });

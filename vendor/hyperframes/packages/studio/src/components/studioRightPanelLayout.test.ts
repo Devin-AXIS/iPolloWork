@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { flipScaleValue } from "./editor/propertyPanelFlatLayoutSection";
+import { flipScaleValue, parseCssScaleValue } from "./editor/propertyPanelFlatLayoutSection";
 import {
   resolveInspectorElementKind,
   resolveInspectorGroupOrder,
@@ -232,14 +232,18 @@ describe("Studio right panel layout", () => {
     expect(layout).toContain("<RotateCw size={16}");
     expect(layout).toContain("<FlipHorizontal size={16}");
     expect(layout).toContain("<FlipVertical size={16}");
-    expect(layout).toContain('aria-label={tx("Flip horizontally (unavailable)")}');
-    expect(layout).toContain('aria-label={tx("Flip vertically (unavailable)")}');
-    expect(layout).not.toContain('commitScaleFlip("scaleX")');
-    expect(layout).not.toContain('commitScaleFlip("scaleY")');
+    expect(layout).toContain('aria-label={tx("Flip horizontally")}');
+    expect(layout).toContain('aria-label={tx("Flip vertically")}');
+    expect(layout).toContain('onClick={() => commitFlip("x")}');
+    expect(layout).toContain('onClick={() => commitFlip("y")}');
     expect(flipScaleValue(1)).toBe(-1);
     expect(flipScaleValue(-1.25)).toBe(1.25);
     expect(flipScaleValue(0)).toBe(-1);
     expect(flipScaleValue(undefined)).toBe(-1);
+    expect(parseCssScaleValue(undefined)).toEqual({ x: 1, y: 1 });
+    expect(parseCssScaleValue("none")).toEqual({ x: 1, y: 1 });
+    expect(parseCssScaleValue("-1 1")).toEqual({ x: -1, y: 1 });
+    expect(parseCssScaleValue("0.75")).toEqual({ x: 0.75, y: 0.75 });
     expect(layout).not.toContain("style={{ opacity: hasKeyframesOnProp ? 1 : 0.3 }}");
     expect(keyframeDiamond).toContain('state === "active" ? "#3CE6AC" : "#858A94"');
     expect(keyframeDiamond).not.toContain("style={{ color, opacity }}");
@@ -252,7 +256,8 @@ describe("Studio right panel layout", () => {
     expect(styles).toContain('label="Radius"');
     expect(styles).toContain('label="Opacity"');
     expect(styles).toContain('label="Shadow"');
-    expect(styles).toContain("SHADOW_INTENSITY");
+    expect(styles).toContain("inferBoxShadowIntensity");
+    expect(styles).toContain("showValue={false}");
     expect(colors).toContain('className="block size-5 rounded-[4px]');
     expect(colors).toContain('{ value: "hsb", label: "HSB" }');
     expect(colors).toContain('{ value: "rgb", label: "RGB" }');
@@ -327,9 +332,10 @@ describe("Studio right panel layout", () => {
     expect(styles).toContain("active:bg-[#e2e5ea]");
     expect(styles).toContain("disabled:opacity-40");
     expect(mask).toContain('label="Style"');
-    expect(mask).toContain("figmaMaskInvert.svg?url");
-    expect(mask).toContain('label="Rotation"');
-    expect(mask).toContain('label="Feather"');
+    expect(mask).toContain('label: "Mask rectangle"');
+    expect(mask).toContain('label: "Mask circle"');
+    expect(mask).not.toContain("figmaMaskInvert.svg?url");
+    expect(mask).not.toContain("<FlatRow");
     expect(mask).toContain("buildMaskGeometry(");
     expect(fill).toContain('aria-label={tx("Close gradient editor")}');
     expect(fill).toContain('{ value: "hsb", label: "HSB" }');
@@ -395,6 +401,33 @@ describe("Studio right panel layout", () => {
     expect(textSection).toContain('aria-label="Text formatting"');
     expect(textSection).toContain('<TextIconButton label="Bulleted list" disabled>');
     expect(textSection).toContain('"text-decoration-line"');
+    expect(textSection).toMatch(/label="Line height"[\s\S]*?liveCommit/);
+    expect(textSection).toMatch(/label="Letter spacing"[\s\S]*?options=\{LETTER_SPACING_OPTIONS\}/);
+  });
+
+  it("applies selected background images as full-element cover fills", () => {
+    const commits = readFileSync(
+      new URL("../hooks/useDomEditTextCommits.ts", import.meta.url),
+      "utf8",
+    );
+
+    expect(commits).toContain('buildDomEditStylePatchOperation("background-size", "cover")');
+    expect(commits).toContain('editedElement.style.setProperty("background-size", "cover")');
+    expect(commits).not.toContain('"background-size", "contain"');
+  });
+
+  it("uses two-way geometry steppers without an inline keyframe button", () => {
+    const layout = readFileSync(
+      new URL("./editor/propertyPanelFlatLayoutSection.tsx", import.meta.url),
+      "utf8",
+    );
+
+    expect(layout).toContain('data-geometry-stepper="true"');
+    expect(layout).toContain("onLivePreviewProps?.(element, { [property]: value })");
+    expect(layout).toContain("applyStudioPathOffsetDraft");
+    expect(layout).toContain("applyStudioRotationDraft");
+    expect(layout).not.toContain("function KeyframeGutter");
+    expect(layout).not.toContain('data-flat-kf-gutter="true"');
   });
 
   it("separates selected-element animation editing from the effects catalog", () => {
@@ -402,7 +435,7 @@ describe("Studio right panel layout", () => {
 
     expect(source).toContain('label={t("right.design")}');
     expect(source).toContain('label={t("right.animation")}');
-    expect(source).toContain('label={t("right.catalog")}');
+    expect(source).not.toContain('label={t("right.catalog")}');
     expect(source).toContain("setPendingMotionDraft(null);");
     expect(source).toContain('selectStudioPanel("animation");');
     expect(source).toContain(
@@ -638,6 +671,11 @@ describe("Studio right panel layout", () => {
     expect(toolbar).toContain('aria-busy={pendingAction === "split"}');
     expect(toolbar).toContain('aria-busy={pendingAction === "keyframe"}');
     expect(toolbar).toContain('aria-busy={pendingAction === "delete"}');
+    expect(toolbar).toContain('canSplit ? "Split clip at playhead"');
+    expect(toolbar).toContain("isSplitTimeWithinBounds(currentTime");
+    expect(toolbar).toContain("enabled: STUDIO_KEYFRAMES_ENABLED && canToggleKeyframe");
+    expect(toolbar).toContain('!canToggleKeyframe');
+    expect(toolbar).toContain(': "Add keyframe at playhead"');
     expect(toolbar).toContain("figmaToolbarUndo.svg?url");
     expect(toolbar).toContain("figmaToolbarRedo.svg?url");
     expect(toolbar).toContain("figmaToolbarFit.svg?url");
@@ -726,6 +764,8 @@ describe("Studio right panel layout", () => {
       toolbarDelete.indexOf("selectedElement && onDeleteElement"),
     );
     expect(toolbar).toContain("findMatchingTimelineElementId(domEditSelection, elements)");
+    expect(toolbar).toContain("useKeyframeToggle(\n    domEditSession,\n    matchingDomSelection,");
+    expect(toolbar).toContain("{ ...session, domEditSelection: selection }");
     expect(editorShell).not.toContain(
       "handleDomEditElementDelete(timelineClipContextMenu.selection)",
     );

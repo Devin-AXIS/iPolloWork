@@ -25,6 +25,10 @@ const loadingOverlaySource = readFileSync(
   new URL("../src/react-app/shell/loading-overlay.tsx", import.meta.url),
   "utf8",
 ).replaceAll("\r\n", "\n");
+const desktopConfigSource = readFileSync(
+  new URL("../src/react-app/domains/cloud/desktop-config-provider.tsx", import.meta.url),
+  "utf8",
+).replaceAll("\r\n", "\n");
 
 describe("startup session loading", () => {
   test("opens a fresh conversation instead of restoring a historical session", () => {
@@ -70,5 +74,23 @@ describe("startup session loading", () => {
     );
     expect(sessionSurfaceSource).toContain("props.onLoadSettled?.(props.sessionId);");
     expect(loadingOverlaySource).toContain("export function IPollo" + "LoadingArtwork()");
+  });
+
+  test("invalidates pre-sleep requests and refreshes local and cloud state after desktop resume", () => {
+    expect(routeStateSource).toContain("const refreshEpochRef = useRef(0)");
+    expect(routeStateSource).toContain("const sessionLoadEpoch = refreshEpochRef.current");
+    expect(routeStateSource).toContain("window.addEventListener(desktopResumeEvent, handleDesktopResume)");
+    expect(routeStateSource).toContain('window.addEventListener("online", handleDesktopResume)');
+    expect(routeStateSource).toContain("backgroundSessionLoadInFlight.current.clear()");
+    expect(routeStateSource).toContain("if (!isCurrentRefresh()) return");
+    expect(routeStateSource).toContain("if (!isCurrentSessionLoad()) return");
+    expect(desktopConfigSource).toContain("window.addEventListener(desktopResumeEvent, handleDesktopResume)");
+    expect(desktopConfigSource).toContain("void desktopConfigHandler()");
+  });
+
+  test("trusts workspace-scoped session results instead of filtering by path aliases", () => {
+    expect(routeStateSource).toContain("const items = fetchedItems;");
+    expect(routeStateSource).toContain("const sessions = cachedSessions;");
+    expect(routeStateSource).not.toContain("normalizeDirectoryPath(session?.directory ?? \"\") === workspaceRoot");
   });
 });

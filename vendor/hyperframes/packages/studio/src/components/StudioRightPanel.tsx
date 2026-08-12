@@ -643,12 +643,6 @@ export function StudioRightPanel({
                       }}
                     />
                     <PanelTabButton
-                      label={t("right.catalog")}
-                      tooltip={t("right.catalogTooltip")}
-                      active={rightPanelTab === "catalog" || rightPanelTab === "effects"}
-                      onClick={() => selectStudioPanel("catalog")}
-                    />
-                    <PanelTabButton
                       label={t("right.voice")}
                       tooltip={t("right.voiceTooltip")}
                       active={rightPanelTab === "voice"}

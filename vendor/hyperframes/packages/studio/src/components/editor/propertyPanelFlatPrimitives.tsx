@@ -298,6 +298,7 @@ export function FlatSlider({
   step = 1,
   tier,
   displayValue,
+  showValue = true,
   disabled,
   centerTick,
   large = true,
@@ -314,6 +315,8 @@ export function FlatSlider({
   step?: number;
   tier: "default" | "explicitCustom";
   displayValue: string;
+  /** Hide the read-only value surface when the slider is the only intended control. */
+  showValue?: boolean;
   disabled?: boolean;
   centerTick?: boolean;
   /** Figma's labeled two-column slider used by expanded Layer sections. */
@@ -337,6 +340,9 @@ export function FlatSlider({
   // the leading edge and on a trailing timer, so the preview keeps updating
   // while dragging, with an immediate flush on release for the final value.
   const [draft, setDraft] = useState(value);
+  // Synchronous source of truth for the last position the user actually saw.
+  // React state can still be one render behind during a fast capture loss.
+  const draftRef = useRef(value);
   const commitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastCommitAtRef = useRef(0);
   const pendingRef = useRef<number | null>(null);
@@ -389,6 +395,7 @@ export function FlatSlider({
 
   useEffect(() => {
     if (draggingRef.current) return;
+    draftRef.current = value;
     setDraft(value);
     lastCommittedRef.current = value;
   }, [value]);
@@ -415,6 +422,7 @@ export function FlatSlider({
     return Math.max(min, Math.min(max, stepped));
   };
   const applyDraft = (nextDraft: number) => {
+    draftRef.current = nextDraft;
     setDraft(nextDraft);
     onPreviewRef.current?.(nextDraft);
   };
@@ -461,6 +469,7 @@ export function FlatSlider({
       explicitReleaseRef.current = true;
       target.releasePointerCapture(pointerId);
     }
+    draftRef.current = dragStartValueRef.current;
     setDraft(dragStartValueRef.current);
     if (onPreviewCancelRef.current) onPreviewCancelRef.current();
     else onPreviewRef.current?.(dragStartValueRef.current);
@@ -494,7 +503,7 @@ export function FlatSlider({
         aria-disabled={disabled}
         tabIndex={disabled ? -1 : 0}
         style={{ touchAction: "none" }}
-        className={`relative ${large ? "h-[34px] w-full" : "h-5 flex-1"} ${
+        className={`relative ${large ? `h-[34px] w-full ${showValue ? "" : "col-span-2"}` : "h-5 flex-1"} ${
           disabled ? "cursor-not-allowed" : "cursor-pointer"
         }`}
         onPointerDown={(e) => {
@@ -514,13 +523,10 @@ export function FlatSlider({
           scheduleCommit(stepped);
         }}
         onPointerUp={(e) => {
-          if (e.currentTarget.hasPointerCapture(e.pointerId)) {
-            explicitReleaseRef.current = true;
-            e.currentTarget.releasePointerCapture(e.pointerId);
-          }
           if (disabled) return;
           if (!draggingRef.current) return;
           draggingRef.current = false;
+          activePointerIdRef.current = null;
           // Recompute from the event itself rather than reading the `draft`
           // closure — if pointerdown+pointerup land in the same React batch
           // (e.g. a very fast click), the onPointerUp handler can still be
@@ -529,6 +535,13 @@ export function FlatSlider({
           applyDraft(stepped);
           commitDraft(stepped);
           if (stepped !== dragStartValueRef.current) track("slider", label);
+          // Persist the final position before releasing capture. Some Chromium
+          // input paths dispatch lostpointercapture synchronously; releasing
+          // first allowed that event to restore a stale parent value.
+          if (e.currentTarget.hasPointerCapture(e.pointerId)) {
+            explicitReleaseRef.current = true;
+            e.currentTarget.releasePointerCapture(e.pointerId);
+          }
         }}
         onPointerCancel={(e) => {
           // A native pointercancel means the platform aborted the gesture (a
@@ -549,17 +562,13 @@ export function FlatSlider({
             explicitReleaseRef.current = false;
             return;
           }
-          // A genuine EXTERNAL capture loss (another element steals it, or
-          // the browser reclaims it for a scroll/touch gesture) — no other
-          // handler is about to run, so resync immediately and directly
-          // from latestValueRef rather than only clearing draggingRef and
-          // waiting for the [value] effect to notice (that effect depends
-          // on `value` actually changing again to re-run).
+          if (!draggingRef.current) return;
+          // Capture loss without pointercancel is an implicit release, not a
+          // cancellation. Persist the last position rendered under the pointer;
+          // explicit cancel paths still go through cancelDrag.
           draggingRef.current = false;
-          setDraft(latestValueRef.current);
-          if (onPreviewCancelRef.current) onPreviewCancelRef.current();
-          else onPreviewRef.current?.(latestValueRef.current);
-          lastCommittedRef.current = latestValueRef.current;
+          activePointerIdRef.current = null;
+          commitDraft(draftRef.current);
         }}
         onKeyDown={(e) => {
           if (disabled) return;
@@ -615,25 +624,27 @@ export function FlatSlider({
           style={{ left: `${clampedPct}%` }}
         />
       </div>
-      <span
-        data-flat-slider-value="true"
-        className={
-          large
-            ? "flex h-[34px] w-full items-center justify-between rounded-[6px] bg-panel-input px-4 font-sans text-[13px] font-normal text-[#24262b]"
-            : `w-10 flex-shrink-0 text-right font-mono text-[9px] ${
-                tier === "explicitCustom" ? "text-panel-text-0" : "text-panel-text-3"
-              }`
-        }
-      >
-        {large && displayValue.endsWith("%") ? (
-          <>
-            <span>{displayValue.slice(0, -1)}</span>
-            <span className="text-[10px] text-[#858a94]">%</span>
-          </>
-        ) : (
-          displayValue
-        )}
-      </span>
+      {showValue && (
+        <span
+          data-flat-slider-value="true"
+          className={
+            large
+              ? "flex h-[34px] w-full items-center justify-between rounded-[6px] bg-panel-input px-4 font-sans text-[13px] font-normal text-[#24262b]"
+              : `w-10 flex-shrink-0 text-right font-mono text-[9px] ${
+                  tier === "explicitCustom" ? "text-panel-text-0" : "text-panel-text-3"
+                }`
+          }
+        >
+          {large && displayValue.endsWith("%") ? (
+            <>
+              <span>{displayValue.slice(0, -1)}</span>
+              <span className="text-[10px] text-[#858a94]">%</span>
+            </>
+          ) : (
+            displayValue
+          )}
+        </span>
+      )}
       {!large && (centerTick || onReset) && (
         <span data-flat-slider-reset-slot="true" className="w-3.5 flex-shrink-0">
           {tier === "explicitCustom" && onReset && (
