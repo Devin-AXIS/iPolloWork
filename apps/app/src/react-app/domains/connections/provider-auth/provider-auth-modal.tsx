@@ -375,10 +375,14 @@ export default function ProviderAuthModal(props: ProviderAuthModalProps) {
     startProviderPolling();
   }, [isActiveProviderConnected, isOauthView, props.open]);
 
-  const openOauthUrl = async (url: string) => {
+  const openOauthUrl = async (providerId: string, url: string) => {
     if (!url) return;
     if (isDesktopRuntime()) {
-      await openDesktopAuthUrl(url);
+      if (isiPolloWorkBuiltInProvider(providerId)) {
+        await openDesktopAuthUrl(url);
+      } else {
+        await openDesktopUrl(url);
+      }
       setOauthBrowserOpened(true);
       return;
     }
@@ -474,13 +478,13 @@ export default function ProviderAuthModal(props: ProviderAuthModalProps) {
       setOauthSession(nextSession);
 
       if (started.authorization.method === "code") {
-        await openOauthUrl(started.authorization.url);
+        await openOauthUrl(entry.id, started.authorization.url);
         setView("oauth-code");
         return;
       }
 
       if (!isOpenAiHeadlessMethod(selectedMethod)) {
-        await openOauthUrl(started.authorization.url);
+        await openOauthUrl(entry.id, started.authorization.url);
       }
 
       setView("oauth-auto");
@@ -1097,7 +1101,7 @@ export default function ProviderAuthModal(props: ProviderAuthModalProps) {
                     <Button
                       variant="outline"
                       onClick={() => {
-                        void openOauthUrl(oauthSession.authorization.url ?? "");
+                        void openOauthUrl(oauthSession.providerId, oauthSession.authorization.url ?? "");
                       }}
                     >
                       Open browser again
@@ -1160,7 +1164,7 @@ export default function ProviderAuthModal(props: ProviderAuthModalProps) {
                     <Button
                       variant="outline"
                       onClick={() => {
-                        void openOauthUrl(oauthSession.authorization.url ?? "");
+                        void openOauthUrl(oauthSession.providerId, oauthSession.authorization.url ?? "");
                       }}
                     >
                       {isOpenAiHeadlessSession
