@@ -119,6 +119,7 @@ export {
   revokeTemplateReferenceAttachmentPreviews,
 } from "../references/template-reference-submit";
 import { TemplateMarketDialog } from "../templates/template-market-dialog";
+import { shouldRefreshTemplateCatalogOnOpen } from "../templates/template-market-refresh";
 import { savePromptTemplate } from "@/react-app/domains/session/templates/prompt-template-store";
 import { SidePanel, type SidePanelLauncherItem } from "../panel/side-panel";
 import { TerminalDock } from "../terminal/terminal-dock";
@@ -599,6 +600,7 @@ export function SessionPage(props: SessionPageProps) {
   const starterTemplateCatalogRequestIdRef = useRef(0);
   const templateImportInFlightRef = useRef(false);
   const [templateMarketOpen, setTemplateMarketOpen] = useState(false);
+  const previousTemplateMarketOpenRef = useRef(false);
   const [cloudSignInComingSoonOpen, setCloudSignInComingSoonOpen] = useState(false);
   const [templateSessionData, setTemplateSessionData] = useState<TemplateSessionData | null>(null);
   const [templateSessionLoading, setTemplateSessionLoading] = useState(false);
