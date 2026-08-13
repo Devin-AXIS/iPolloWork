@@ -32,12 +32,6 @@ Codex-style coding is only the starting point. When the output is a deck, web pa
 - **Local control** — run on your machine, bring your own model or provider, approve permissions, and extend the workspace with Skills, plugins, MCP servers, and browser automation.
 - **Two agent ecosystems, one workflow** — native [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) subagent collaboration is in active development, designed to let iPolloWork delegate focused work to DSH while both sides keep their own Skills and plugins.
 
-## The short version
-
-iPolloWork is for people who want a Codex-like agent with a visual, local-first workspace around it. It is not a chat-only wrapper and it does not require iPolloCloud for local use.
-
-This source-available repository contains the Work client and its local runtime integration. Accounts, organization administration, hosted worker management, payments, and mobile Apps are separate iPolloCloud capabilities and are not required for local use.
-
 ## DeepSeek Harness subagent collaboration
 
 iPolloWork is integrating [DeepSeek Harness (DSH)](https://github.com/deepseek-ai/deepseek-harness) as an optional subagent runtime. The integration is in active development and is not included in the latest stable release yet.
