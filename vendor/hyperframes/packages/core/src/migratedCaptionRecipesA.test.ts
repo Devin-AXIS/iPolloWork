@@ -2,21 +2,85 @@ import { describe, expect, it } from "vitest";
 import { validateStructuredTextRecipe } from "./structuredTextMotion";
 import {
   resolveClipWipeStructuredRecipe,
+  resolveEditorialEmphasisStructuredRecipe,
   resolveGradientFillStructuredRecipe,
+  resolveKaraokeFlowStructuredRecipe,
   resolveMatrixDecodeStructuredRecipe,
   resolveWeightShiftStructuredRecipe,
 } from "./migratedCaptionRecipesA";
 
 describe("migrated caption recipes A", () => {
-  it("produces valid structured recipes for all four migrated effects", () => {
+  it("produces valid structured recipes for all migrated effects", () => {
     const recipes = [
       resolveMatrixDecodeStructuredRecipe(),
       resolveGradientFillStructuredRecipe(),
       resolveClipWipeStructuredRecipe(),
       resolveWeightShiftStructuredRecipe(),
+      resolveEditorialEmphasisStructuredRecipe(),
+      resolveKaraokeFlowStructuredRecipe(),
     ];
 
     for (const recipe of recipes) expect(() => validateStructuredTextRecipe(recipe)).not.toThrow();
+  });
+
+  it("settles Editorial Emphasis back into the authored text style", () => {
+    const recipe = resolveEditorialEmphasisStructuredRecipe({
+      direction: "left",
+      distance: 40,
+      blur: 8,
+      emphasisWeight: 850,
+      stagger: 0.08,
+      colorSource: "theme",
+    });
+
+    expect(recipe).toMatchObject({
+      id: "caption-editorial-emphasis.word-focus",
+      presetId: "text.enter.editorial-emphasis",
+      split: "word",
+    });
+    expect(recipe.tracks[0]?.keyframes[0]?.properties).toMatchObject({
+      opacity: 0,
+      x: -40,
+      y: 0,
+      filter: "blur(8px)",
+    });
+    expect(recipe.tracks[0]?.keyframes.at(-1)?.properties).toMatchObject({
+      opacity: 1,
+      x: 0,
+      y: 0,
+      scale: 1,
+      filter: "blur(0px)",
+    });
+    expect(recipe.tracks[1]?.keyframes[1]?.properties).toMatchObject({
+      color: "var(--ipw-color-accent, #20BBC0)",
+      fontWeight: 850,
+    });
+    expect(recipe.tracks[1]?.keyframes.at(-1)?.properties).toMatchObject({
+      color: "inherit",
+      fontWeight: "inherit",
+    });
+  });
+
+  it("hands Karaoke Flow across words and restores readable text", () => {
+    const recipe = resolveKaraokeFlowStructuredRecipe({
+      colorSource: "theme",
+      stagger: 0.14,
+      roundness: 14,
+      lift: 9,
+    });
+
+    expect(recipe.layers.map(({ role }) => role)).toEqual(["unit", "background", "text"]);
+    expect(recipe.tracks.every((track) => track.stagger === 0.14)).toBe(true);
+    expect(recipe.tracks[0]?.keyframes[1]?.properties).toMatchObject({
+      opacity: 1,
+      backgroundColor: "var(--ipw-color-accent, #20BBC0)",
+      borderRadius: "14px",
+    });
+    expect(recipe.tracks[1]?.keyframes[1]?.properties.y).toBe(-9);
+    expect(recipe.tracks[2]?.keyframes.at(-1)?.properties).toMatchObject({
+      color: "inherit",
+      textShadow: "none",
+    });
   });
 
   it("preserves Matrix Decode's two scramble states and 100ms ticks", () => {

@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   ANIMATION_TEMPLATES,
   createAnimationTemplateSections,
+  isAdvancedTextAnimationTemplate,
   resolveAnimationTemplateParameters,
   resolveAnimationTemplateApplication,
   resolveAnimationTemplatePreset,
@@ -10,6 +11,10 @@ import {
 } from "./AnimationTemplatesTab";
 
 const MIGRATED_TEMPLATES = [
+  ["text-editorial-emphasis", "text.enter.editorial-emphasis"],
+  ["text-karaoke-flow", "text.emphasis.karaoke-flow"],
+  ["text-camera-track", "text.enter.camera-track"],
+  ["text-visual-layers", "text.enter.visual-layers"],
   ["text-highlight-sweep", "text.emphasis.highlight-sweep"],
   ["text-matrix-decode", "text.enter.matrix-decode"],
   ["text-gradient-fill", "text.emphasis.gradient-fill"],
@@ -27,7 +32,7 @@ const MIGRATED_TEMPLATES = [
 
 describe("AnimationTemplatesTab catalog", () => {
   it("shows one universal catalog and appends text animation for text selections", () => {
-    expect(ANIMATION_TEMPLATES).toHaveLength(39);
+    expect(ANIMATION_TEMPLATES).toHaveLength(43);
     expect(new Set(ANIMATION_TEMPLATES.map((template) => template.category))).toEqual(
       new Set(["general", "text"]),
     );
@@ -59,6 +64,18 @@ describe("AnimationTemplatesTab catalog", () => {
     }
   });
 
+  it("marks the migrated family as advanced while keeping one text section", () => {
+    for (const [templateId] of MIGRATED_TEMPLATES) {
+      const template = ANIMATION_TEMPLATES.find((candidate) => candidate.id === templateId);
+      expect(template && isAdvancedTextAnimationTemplate(template), templateId).toBe(true);
+    }
+    expect(
+      isAdvancedTextAnimationTemplate(
+        ANIMATION_TEMPLATES.find((template) => template.id === "text-typewriter")!,
+      ),
+    ).toBe(false);
+  });
+
   it("keeps advanced caption animations at the end of the text animation list", () => {
     const textTemplateIds = sortTextAnimationTemplates(
       ANIMATION_TEMPLATES.filter((template) => template.category === "text"),
@@ -69,11 +86,11 @@ describe("AnimationTemplatesTab catalog", () => {
     );
   });
 
-  it("combines native and advanced effects in one text animation section", () => {
+  it("keeps general, box, and combined text animations available for text selections", () => {
     const sections = createAnimationTemplateSections(ANIMATION_TEMPLATES, "text");
     const textSection = sections.find((section) => section.key === "text");
 
-    expect(sections.map((section) => section.key)).toEqual(["general", "text"]);
+    expect(sections.map((section) => section.key)).toEqual(["general", "box-automation", "text"]);
     expect(textSection?.templates.map((template) => template.id)).toEqual(
       sortTextAnimationTemplates(
         ANIMATION_TEMPLATES.filter((template) => template.category === "text"),
@@ -125,31 +142,33 @@ describe("AnimationTemplatesTab catalog", () => {
     });
     expect(resolveAnimationTemplateApplication(scale, "text")).toMatchObject({
       targetKind: "element",
+      applicationKind: "box",
       preset: { id: "element.enter.scale" },
     });
     expect(resolveAnimationTemplateApplication(tilt, "text")).toMatchObject({
       targetKind: "element",
+      applicationKind: "box",
       preset: { id: "motion.emphasis.focus-tilt" },
     });
   });
 
-  it("locks text-template colors to the palette shown in the preview", () => {
-    const fixedTextPaletteIds = [
-      "text-prism-glow",
-      "text-shiny-sweep",
-      "text-matrix-decode",
-      "text-gradient-fill",
-      "text-neon-glow",
-      "text-neon-accent",
-      "text-rgb-glitch",
-      "text-texture-fill",
-      "text-particle-burst",
-    ];
+  it("labels universal and text templates for persisted replacement rules", () => {
+    const general = ANIMATION_TEMPLATES.find((template) => template.id === "general-fade-in");
+    const text = ANIMATION_TEMPLATES.find((template) => template.id === "text-typewriter");
+    if (!general || !text) throw new Error("Expected templates are missing");
 
-    for (const id of fixedTextPaletteIds) {
-      expect(ANIMATION_TEMPLATES.find((template) => template.id === id)?.parameters).toMatchObject({
-        colorSource: "custom",
-      });
+    expect(resolveAnimationTemplateApplication(general, "text")?.applicationKind).toBe("general");
+    expect(resolveAnimationTemplateApplication(text, "text")?.applicationKind).toBe("text");
+  });
+
+  it("locks text-template colors to the palette shown in the preview", () => {
+    for (const template of ANIMATION_TEMPLATES.filter((item) => item.category === "text")) {
+      const preset = resolveAnimationTemplatePreset(template, "text");
+      if (!preset?.parameterSchema.some((parameter) => parameter.id === "colorSource")) continue;
+      expect(
+        resolveAnimationTemplateParameters(template, preset, false),
+        template.id,
+      ).toMatchObject({ colorSource: "custom" });
     }
   });
 

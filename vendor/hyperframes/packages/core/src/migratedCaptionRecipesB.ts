@@ -463,3 +463,186 @@ export function resolveBlendDifferenceStructuredRecipe(
     ],
   };
 }
+
+function textSplit(parameters: MotionParameters): StructuredTextRecipe["split"] {
+  const unit = parameters.unit;
+  return unit === "whole" || unit === "character" || unit === "word" ? unit : "word";
+}
+
+function directionalOffset(direction: unknown, distance: number): { x: number; y: number } {
+  if (direction === "left") return { x: -distance, y: 0 };
+  if (direction === "right") return { x: distance, y: 0 };
+  if (direction === "down") return { x: 0, y: distance };
+  return { x: 0, y: -distance };
+}
+
+/** Depth-and-focus reveal that reads like a camera pulling focus across words. */
+export function resolveCameraTrackStructuredRecipe(
+  parameters: MotionParameters = {},
+): StructuredTextRecipe {
+  const speed = finiteNumber(parameters, "speed", 1, 0.01);
+  const intensity = finiteNumber(parameters, "intensity", 1, 0.2);
+  const distance = finiteNumber(parameters, "distance", 54) * intensity;
+  const blur = finiteNumber(parameters, "blur", 12);
+  const stagger = scaled(finiteNumber(parameters, "stagger", 0.075), speed);
+  const offset = directionalOffset(parameters.direction, distance);
+
+  return {
+    version: 1,
+    id: "caption-camera-track.depth-resolve",
+    presetId: "text.enter.camera-track",
+    split: textSplit(parameters),
+    layers: [
+      { role: "unit", perUnit: true, className: "ipw-camera-track-word" },
+      { role: "text", perUnit: true, className: "ipw-camera-track-text" },
+    ],
+    tracks: [
+      {
+        role: "unit",
+        position: 0,
+        duration: scaled(0.68, speed),
+        stagger,
+        keyframes: [
+          {
+            percentage: 0,
+            properties: {
+              opacity: 0.12,
+              x: offset.x,
+              y: offset.y,
+              scale: Math.max(0.48, 0.7 - intensity * 0.08),
+              rotationY: offset.x === 0 ? 0 : -Math.sign(offset.x) * 16 * intensity,
+              rotationX: offset.y === 0 ? 0 : Math.sign(offset.y) * 10 * intensity,
+              filter: `blur(${blur}px)`,
+              transformOrigin: "50% 50%",
+            },
+          },
+          {
+            percentage: 72,
+            ease: "power3.out",
+            properties: {
+              opacity: 1,
+              x: -offset.x * 0.055,
+              y: -offset.y * 0.055,
+              scale: 1.035,
+              rotationX: 0,
+              rotationY: 0,
+              filter: "blur(0px)",
+            },
+          },
+          {
+            percentage: 100,
+            ease: "power2.out",
+            properties: {
+              opacity: 1,
+              x: 0,
+              y: 0,
+              scale: 1,
+              rotationX: 0,
+              rotationY: 0,
+              filter: "blur(0px)",
+            },
+          },
+        ],
+      },
+      {
+        role: "text",
+        position: 0,
+        duration: scaled(0.68, speed),
+        stagger,
+        keyframes: [
+          { percentage: 0, properties: { color: "inherit", letterSpacing: "0.08em" } },
+          {
+            percentage: 100,
+            ease: "power2.out",
+            properties: { color: "inherit", letterSpacing: "inherit" },
+          },
+        ],
+      },
+    ],
+  };
+}
+
+/** Theme-aware color layers converge behind the authored text, then disappear. */
+export function resolveVisualLayersStructuredRecipe(
+  parameters: MotionParameters = {},
+): StructuredTextRecipe {
+  const speed = finiteNumber(parameters, "speed", 1, 0.01);
+  const intensity = finiteNumber(parameters, "intensity", 1, 0.2);
+  const distance = finiteNumber(parameters, "distance", 18) * intensity;
+  const blur = finiteNumber(parameters, "blur", 4);
+  const stagger = scaled(finiteNumber(parameters, "stagger", 0.055), speed);
+  const primary = effectColor(parameters, "color", "--ipw-color-primary", "#5B6CFF");
+  const accent = effectColor(parameters, "accentColor", "--ipw-color-accent", "#20BBC0");
+
+  return {
+    version: 1,
+    id: "caption-visual-layers.color-converge",
+    presetId: "text.enter.visual-layers",
+    split: textSplit(parameters),
+    layers: [
+      { role: "unit", perUnit: true, className: "ipw-visual-layers-word" },
+      { role: "clone-primary", perUnit: true, className: "ipw-visual-layers-primary" },
+      { role: "clone-accent", perUnit: true, className: "ipw-visual-layers-accent" },
+      { role: "text", perUnit: true, className: "ipw-visual-layers-text" },
+    ],
+    tracks: [
+      {
+        role: "unit",
+        position: 0,
+        duration: scaled(0.58, speed),
+        stagger,
+        keyframes: [
+          { percentage: 0, properties: { opacity: 0, scale: 0.9 } },
+          { percentage: 55, ease: "power3.out", properties: { opacity: 1, scale: 1.045 } },
+          { percentage: 100, ease: "power2.out", properties: { opacity: 1, scale: 1 } },
+        ],
+      },
+      {
+        role: "clone-primary",
+        position: 0,
+        duration: scaled(0.58, speed),
+        stagger,
+        keyframes: [
+          {
+            percentage: 0,
+            properties: { color: primary, opacity: 0.68, x: -distance, y: distance * 0.28, filter: `blur(${blur}px)` },
+          },
+          {
+            percentage: 58,
+            ease: "power3.out",
+            properties: { color: primary, opacity: 0.42, x: -2, y: 0, filter: "blur(0px)" },
+          },
+          { percentage: 100, ease: "power2.out", properties: { opacity: 0, x: 0, y: 0, filter: "blur(0px)" } },
+        ],
+      },
+      {
+        role: "clone-accent",
+        position: 0,
+        duration: scaled(0.58, speed),
+        stagger,
+        keyframes: [
+          {
+            percentage: 0,
+            properties: { color: accent, opacity: 0.68, x: distance, y: -distance * 0.28, filter: `blur(${blur}px)` },
+          },
+          {
+            percentage: 58,
+            ease: "power3.out",
+            properties: { color: accent, opacity: 0.42, x: 2, y: 0, filter: "blur(0px)" },
+          },
+          { percentage: 100, ease: "power2.out", properties: { opacity: 0, x: 0, y: 0, filter: "blur(0px)" } },
+        ],
+      },
+      {
+        role: "text",
+        position: 0,
+        duration: scaled(0.58, speed),
+        stagger,
+        keyframes: [
+          { percentage: 0, properties: { color: "inherit", opacity: 0.38 } },
+          { percentage: 100, ease: "power2.out", properties: { color: "inherit", opacity: 1 } },
+        ],
+      },
+    ],
+  };
+}

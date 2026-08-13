@@ -2,6 +2,7 @@ import { lazy, memo, Suspense, useCallback, useMemo, useState } from "react";
 import {
   defaultMotionDuration,
   getMotionPreset,
+  type MotionApplicationKind,
   type MotionParameters,
   type MotionPreset,
   type MotionTargetKind,
@@ -34,17 +35,20 @@ export interface AnimationTemplateDefinition {
   textPresetId?: string;
   elementPresetId?: string;
   parameters?: MotionParameters;
+  keywords?: readonly string[];
 }
 
 export interface AnimationTemplateApplication {
   preset: MotionPreset;
   targetKind: MotionTargetKind;
+  applicationKind: MotionApplicationKind;
 }
 
 export interface AnimationTemplateDraft {
   templateId: string;
   presetId: string;
   targetKind: MotionTargetKind;
+  applicationKind: MotionApplicationKind;
   selection: DomEditSelection;
   parameters: MotionParameters;
 }
@@ -57,6 +61,10 @@ export interface AnimationTemplateSection {
 }
 
 const MIGRATED_TEXT_TEMPLATE_ORDER = [
+  "text-editorial-emphasis",
+  "text-karaoke-flow",
+  "text-camera-track",
+  "text-visual-layers",
   "text-highlight-sweep",
   "text-matrix-decode",
   "text-gradient-fill",
@@ -75,6 +83,10 @@ const MIGRATED_TEXT_TEMPLATE_ORDER = [
 const MIGRATED_TEXT_TEMPLATE_RANK = new Map<string, number>(
   MIGRATED_TEXT_TEMPLATE_ORDER.map((id, index) => [id, index]),
 );
+
+export function isAdvancedTextAnimationTemplate(template: AnimationTemplateDefinition): boolean {
+  return template.category === "text" && MIGRATED_TEXT_TEMPLATE_RANK.has(template.id);
+}
 
 const CATEGORY_LABELS: Record<
   AnimationTemplateCategory,
@@ -265,6 +277,61 @@ export const ANIMATION_TEMPLATES: readonly AnimationTemplateDefinition[] = [
     presetId: "text.emphasis.true-focus",
   },
   {
+    id: "text-editorial-emphasis",
+    category: "text",
+    title: { en: "Editorial Emphasis", zh: "编辑重点" },
+    description: {
+      en: "Word-by-word editorial focus and settle",
+      zh: "逐词聚焦并自然落回原有排版",
+    },
+    preview: "text-focus",
+    presetId: "text.enter.editorial-emphasis",
+    parameters: { colorSource: "custom", color: "#20BBC0", unit: "word", stagger: 0.075 },
+    keywords: ["advanced", "高级", "editorial", "编辑"],
+  },
+  {
+    id: "text-karaoke-flow",
+    category: "text",
+    title: { en: "Karaoke Flow", zh: "移动卡拉 OK" },
+    description: { en: "A teal pill follows each spoken word", zh: "蓝绿色胶囊按词接力高亮" },
+    preview: "text-highlight",
+    presetId: "text.emphasis.karaoke-flow",
+    parameters: { colorSource: "custom", color: "#20BBC0", unit: "word", stagger: 0.12 },
+    keywords: ["advanced", "高级", "karaoke", "字幕", "逐词"],
+  },
+  {
+    id: "text-camera-track",
+    category: "text",
+    title: { en: "Camera Track", zh: "镜头跟随" },
+    description: {
+      en: "Depth, tracking, and focus resolve by word",
+      zh: "逐词景深、跟随与拉焦显现",
+    },
+    preview: "text-blur",
+    presetId: "text.enter.camera-track",
+    parameters: { unit: "word", stagger: 0.075 },
+    keywords: ["advanced", "高级", "camera", "镜头", "拉焦"],
+  },
+  {
+    id: "text-visual-layers",
+    category: "text",
+    title: { en: "Visual Layers", zh: "视觉层叠" },
+    description: {
+      en: "Blue and teal layers converge into readable type",
+      zh: "蓝色与蓝绿色文字分层聚合并保持清晰",
+    },
+    preview: "text-glow",
+    presetId: "text.enter.visual-layers",
+    parameters: {
+      colorSource: "custom",
+      color: "#5B6CFF",
+      accentColor: "#20BBC0",
+      unit: "word",
+      stagger: 0.055,
+    },
+    keywords: ["advanced", "高级", "layers", "层叠", "色彩"],
+  },
+  {
     id: "text-highlight-sweep",
     category: "text",
     title: { en: "Highlight Sweep", zh: "高亮扫过" },
@@ -325,6 +392,7 @@ export const ANIMATION_TEMPLATES: readonly AnimationTemplateDefinition[] = [
     description: { en: "Directional text wipe reveal", zh: "可调方向的文字裁切揭示" },
     preview: "text-mask",
     presetId: "text.enter.clip-wipe",
+    parameters: { colorSource: "custom", color: "#FFD700" },
   },
   {
     id: "text-blend-difference",
@@ -333,6 +401,7 @@ export const ANIMATION_TEMPLATES: readonly AnimationTemplateDefinition[] = [
     description: { en: "Invert-style text emphasis", zh: "反色混合风格文字强调" },
     preview: "text-focus",
     presetId: "text.emphasis.blend-difference",
+    parameters: { colorSource: "custom", color: "#FFFFFF" },
   },
   {
     id: "text-weight-shift",
@@ -460,7 +529,12 @@ export function resolveAnimationTemplateApplication(
     targetKind === "text" && isBoxAutomationTemplate(template) ? "element" : targetKind;
   const preset = resolveAnimationTemplatePreset(template, applicationTargetKind);
   if (!preset?.targetKinds.includes(applicationTargetKind)) return null;
-  return { preset, targetKind: applicationTargetKind };
+  return {
+    preset,
+    targetKind: applicationTargetKind,
+    applicationKind:
+      template.category === "text" ? "text" : isBoxAutomationTemplate(template) ? "box" : "general",
+  };
 }
 
 export function resolveAnimationTemplateParameters(
@@ -572,7 +646,7 @@ export function createAnimationTemplateSections(
           templates: textTemplates,
         }
       : null;
-  return [generalSection, textSection].filter(
+  return [generalSection, boxAutomationSection, textSection].filter(
     (section): section is AnimationTemplateSection => section !== null,
   );
 }
@@ -587,19 +661,28 @@ const AnimationTemplateCard = memo(function AnimationTemplateCard({
   onApply: (template: AnimationTemplateDefinition) => void | Promise<void>;
 }) {
   const [previewActive, setPreviewActive] = useState(false);
+  const advanced = isAdvancedTextAnimationTemplate(template);
 
   return (
     <article
       className="hf-animation-template-card group min-w-0"
       data-testid="animation-template-card"
       data-template-id={template.id}
+      data-advanced-text-animation={advanced ? "true" : undefined}
       style={{ contentVisibility: "auto", containIntrinsicSize: "188px" }}
       onMouseEnter={() => setPreviewActive(true)}
       onMouseLeave={() => setPreviewActive(false)}
     >
       <TemplatePreview template={template} active={previewActive} />
-      <div className="mt-2 truncate text-[12px] font-semibold text-panel-text-1">
-        {template.title[locale]}
+      <div className="mt-2 flex min-w-0 items-center gap-1.5">
+        <div className="min-w-0 flex-1 truncate text-[12px] font-semibold text-panel-text-1">
+          {template.title[locale]}
+        </div>
+        {advanced ? (
+          <span className="shrink-0 rounded-full bg-[#20bbc0]/12 px-1.5 py-0.5 text-[8px] font-semibold text-[#168e92]">
+            {locale === "zh" ? "高级" : "Advanced"}
+          </span>
+        ) : null}
       </div>
       <div className="mt-0.5 min-h-8 text-[10px] leading-4 text-panel-text-3">
         {template.description[locale]}
@@ -638,24 +721,35 @@ export const AnimationTemplatesTab = memo(function AnimationTemplatesTab({
       if (!targetKind) return false;
       const application = resolveAnimationTemplateApplication(template, targetKind);
       if (!application) return false;
+      const advancedAliasMatch =
+        isAdvancedTextAnimationTemplate(template) &&
+        ["advanced", "高级", "高级文字动画"].some(
+          (keyword) => keyword.includes(query) || query.includes(keyword),
+        );
       return (
         !query ||
+        advancedAliasMatch ||
         template.title.en.toLowerCase().includes(query) ||
         template.title.zh.includes(query) ||
         template.description.en.toLowerCase().includes(query) ||
-        template.description.zh.includes(query)
+        template.description.zh.includes(query) ||
+        template.keywords?.some((keyword) => keyword.toLowerCase().includes(query))
       );
     });
     return createAnimationTemplateSections(matches, targetKind);
   }, [search, targetKind]);
   const appliedLabels = useMemo(() => {
     if (!targetKind) return [];
-    const presetIds = new Set(
-      resolveMotionInstances(selectedGsapAnimations).map(({ instance }) => instance.presetId),
+    const applications = new Set(
+      resolveMotionInstances(selectedGsapAnimations).map(
+        ({ instance }) => `${instance.applicationKind}:${instance.presetId}`,
+      ),
     );
     return ANIMATION_TEMPLATES.filter((template) => {
       const application = resolveAnimationTemplateApplication(template, targetKind);
-      return application ? presetIds.has(application.preset.id) : false;
+      return application
+        ? applications.has(`${application.applicationKind}:${application.preset.id}`)
+        : false;
     }).map((template) => template.title[locale]);
   }, [locale, selectedGsapAnimations, targetKind]);
 
@@ -674,6 +768,7 @@ export const AnimationTemplatesTab = memo(function AnimationTemplatesTab({
         templateId: template.id,
         presetId: application.preset.id,
         targetKind: application.targetKind,
+        applicationKind: application.applicationKind,
         selection,
         parameters: resolveAnimationTemplateParameters(
           template,

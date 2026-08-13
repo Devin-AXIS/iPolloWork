@@ -145,9 +145,12 @@ export function materializeMotionTextPreviewParts(
     const part = target.ownerDocument.createElement("span");
     part.style.display = "inline-block";
     part.style.whiteSpace = "pre";
-    part.style.fontWeight = "700";
-    part.style.lineHeight = "1.1";
-    part.style.letterSpacing = "-0.025em";
+    part.style.font = "inherit";
+    part.style.fontWeight = "inherit";
+    part.style.lineHeight = "inherit";
+    part.style.letterSpacing = "inherit";
+    part.style.color = "inherit";
+    part.style.setProperty("-webkit-text-stroke", "inherit");
     part.textContent = segment;
     targets.push(part);
     fragment.append(part);
@@ -183,9 +186,11 @@ function applyStructuredMotionPresentation(target: HTMLElement): void {
   for (const layer of target.querySelectorAll<HTMLElement>(
     '[data-ipw-motion-role="text"], [data-ipw-motion-role="clone-primary"], [data-ipw-motion-role="clone-accent"]',
   )) {
-    layer.style.fontWeight = "700";
-    layer.style.lineHeight = "1.1";
-    layer.style.letterSpacing = "-0.025em";
+    layer.style.fontWeight = "inherit";
+    layer.style.lineHeight = "inherit";
+    layer.style.letterSpacing = "inherit";
+    layer.style.color = "inherit";
+    layer.style.setProperty("-webkit-text-stroke", "inherit");
   }
 }
 

@@ -2,9 +2,11 @@ import { describe, expect, it } from "vitest";
 import { validateStructuredTextRecipe, type StructuredTextRecipe } from "./structuredTextMotion";
 import {
   resolveBlendDifferenceStructuredRecipe,
+  resolveCameraTrackStructuredRecipe,
   resolveGlitchRgbStructuredRecipe,
   resolveNeonAccentStructuredRecipe,
   resolveNeonGlowStructuredRecipe,
+  resolveVisualLayersStructuredRecipe,
 } from "./migratedCaptionRecipesB";
 
 function tracksFor(recipe: StructuredTextRecipe, role: string) {
@@ -18,6 +20,65 @@ function serializedProperties(recipe: StructuredTextRecipe): string {
 }
 
 describe("migrated caption recipes B", () => {
+  it("resolves Camera Track from depth into the authored position", () => {
+    const recipe = resolveCameraTrackStructuredRecipe({
+      direction: "right",
+      distance: 60,
+      blur: 10,
+      stagger: 0.07,
+    });
+
+    expect(() => validateStructuredTextRecipe(recipe)).not.toThrow();
+    expect(recipe).toMatchObject({
+      id: "caption-camera-track.depth-resolve",
+      presetId: "text.enter.camera-track",
+      split: "word",
+    });
+    expect(recipe.tracks[0]?.keyframes[0]?.properties).toMatchObject({
+      opacity: 0.12,
+      x: 60,
+      y: 0,
+      filter: "blur(10px)",
+    });
+    expect(recipe.tracks[0]?.keyframes.at(-1)?.properties).toMatchObject({
+      opacity: 1,
+      x: 0,
+      y: 0,
+      scale: 1,
+      filter: "blur(0px)",
+    });
+  });
+
+  it("converges Visual Layers without leaving duplicate text visible", () => {
+    const recipe = resolveVisualLayersStructuredRecipe({
+      colorSource: "theme",
+      distance: 20,
+      blur: 5,
+      stagger: 0.06,
+    });
+
+    expect(() => validateStructuredTextRecipe(recipe)).not.toThrow();
+    expect(recipe.layers.map(({ role }) => role)).toEqual([
+      "unit",
+      "clone-primary",
+      "clone-accent",
+      "text",
+    ]);
+    expect(tracksFor(recipe, "clone-primary")[0]?.keyframes[0]?.properties).toMatchObject({
+      color: "var(--ipw-color-primary, #5B6CFF)",
+      opacity: 0.68,
+      x: -20,
+    });
+    expect(tracksFor(recipe, "clone-accent")[0]?.keyframes[0]?.properties).toMatchObject({
+      color: "var(--ipw-color-accent, #20BBC0)",
+      opacity: 0.68,
+      x: 20,
+    });
+    expect(tracksFor(recipe, "clone-primary")[0]?.keyframes.at(-1)?.properties.opacity).toBe(0);
+    expect(tracksFor(recipe, "clone-accent")[0]?.keyframes.at(-1)?.properties.opacity).toBe(0);
+    expect(tracksFor(recipe, "text")[0]?.keyframes.at(-1)?.properties.opacity).toBe(1);
+  });
+
   it("runs Neon Glow as one smooth per-word color progression", () => {
     const recipe = resolveNeonGlowStructuredRecipe({ stagger: 0.3 });
 

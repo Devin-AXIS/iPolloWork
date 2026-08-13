@@ -7,15 +7,19 @@ import type {
 import type { StructuredTextRecipe } from "./structuredTextMotion.js";
 import {
   resolveClipWipeStructuredRecipe,
+  resolveEditorialEmphasisStructuredRecipe,
   resolveGradientFillStructuredRecipe,
+  resolveKaraokeFlowStructuredRecipe,
   resolveMatrixDecodeStructuredRecipe,
   resolveWeightShiftStructuredRecipe,
 } from "./migratedCaptionRecipesA.js";
 import {
   resolveBlendDifferenceStructuredRecipe,
+  resolveCameraTrackStructuredRecipe,
   resolveGlitchRgbStructuredRecipe,
   resolveNeonAccentStructuredRecipe,
   resolveNeonGlowStructuredRecipe,
+  resolveVisualLayersStructuredRecipe,
 } from "./migratedCaptionRecipesB.js";
 import {
   resolveEmojiPopStructuredRecipe,
@@ -298,6 +302,14 @@ export function resolveStructuredTextRecipe(
 ): StructuredTextRecipe | undefined {
   if (preset.id === "text.emphasis.highlight-sweep")
     return createHighlightSweepStructuredRecipe(parameters);
+  if (preset.id === "text.enter.editorial-emphasis")
+    return resolveEditorialEmphasisStructuredRecipe(parameters);
+  if (preset.id === "text.emphasis.karaoke-flow")
+    return resolveKaraokeFlowStructuredRecipe(parameters);
+  if (preset.id === "text.enter.camera-track")
+    return resolveCameraTrackStructuredRecipe(parameters);
+  if (preset.id === "text.enter.visual-layers")
+    return resolveVisualLayersStructuredRecipe(parameters);
   if (preset.id === "text.enter.matrix-decode")
     return resolveMatrixDecodeStructuredRecipe(parameters);
   if (preset.id === "text.emphasis.gradient-fill")
@@ -665,6 +677,122 @@ const TEXT_MOTION_PRESETS: readonly MotionPreset[] = [
 ] as const;
 
 const MIGRATED_CAPTION_TEXT_PRESETS: readonly MotionPreset[] = [
+  migratedTextPreset({
+    id: "text.enter.editorial-emphasis",
+    label: "编辑重点",
+    phase: "enter",
+    direction: true,
+    color: true,
+    defaults: {
+      unit: "word",
+      stagger: 0.075,
+      direction: "up",
+      colorSource: "theme",
+      color: "#20BBC0",
+      blur: 7,
+      distance: 28,
+      emphasisWeight: 800,
+      speed: 1,
+    },
+    extraParameters: [
+      MOTION_BLUR_PARAMETER,
+      MOTION_DISTANCE_PARAMETER,
+      {
+        id: "emphasisWeight",
+        label: "强调字重",
+        kind: "number",
+        min: 100,
+        max: 900,
+        step: 50,
+      },
+      MOTION_SPEED_PARAMETER,
+    ],
+    structuredText: resolveEditorialEmphasisStructuredRecipe(),
+    semantics: {
+      intents: ["编辑重点", "逐词强调", "标题显现"],
+      tones: ["编辑感", "高级", "清晰"],
+      preferredFor: ["标题", "关键句", "品牌主张"],
+      avoidFor: ["超长正文", "极小字号"],
+    },
+  }),
+  migratedTextPreset({
+    id: "text.emphasis.karaoke-flow",
+    label: "移动卡拉 OK",
+    phase: "emphasis",
+    color: true,
+    defaults: {
+      unit: "word",
+      stagger: 0.12,
+      colorSource: "theme",
+      color: "#20BBC0",
+      roundness: 10,
+      lift: 7,
+      speed: 1,
+    },
+    extraParameters: [
+      { id: "roundness", label: "圆角", kind: "number", min: 0, max: 40, step: 1, unit: "px" },
+      { id: "lift", label: "抬升距离", kind: "number", min: 0, max: 40, step: 1, unit: "px" },
+      MOTION_SPEED_PARAMETER,
+    ],
+    structuredText: resolveKaraokeFlowStructuredRecipe(),
+    semantics: {
+      intents: ["卡拉 OK", "逐词跟随", "字幕强调"],
+      tones: ["清晰", "节奏", "现代"],
+      preferredFor: ["字幕", "旁白重点", "短句"],
+      avoidFor: ["单字标题", "超长正文"],
+    },
+  }),
+  migratedTextPreset({
+    id: "text.enter.camera-track",
+    label: "镜头跟随",
+    phase: "enter",
+    direction: true,
+    defaults: {
+      unit: "word",
+      stagger: 0.075,
+      direction: "up",
+      distance: 54,
+      blur: 12,
+      speed: 1,
+    },
+    extraParameters: [MOTION_DISTANCE_PARAMETER, MOTION_BLUR_PARAMETER, MOTION_SPEED_PARAMETER],
+    structuredText: resolveCameraTrackStructuredRecipe(),
+    semantics: {
+      intents: ["镜头跟随", "拉焦", "景深显现"],
+      tones: ["电影感", "沉浸", "精致"],
+      preferredFor: ["标题", "章节文字", "短字幕"],
+      avoidFor: ["长段正文"],
+    },
+  }),
+  migratedTextPreset({
+    id: "text.enter.visual-layers",
+    label: "视觉层叠",
+    phase: "enter",
+    color: true,
+    defaults: {
+      unit: "word",
+      stagger: 0.055,
+      colorSource: "theme",
+      color: "#5B6CFF",
+      accentColor: "#20BBC0",
+      distance: 18,
+      blur: 4,
+      speed: 1,
+    },
+    extraParameters: [
+      { id: "accentColor", label: "强调色", kind: "color" },
+      MOTION_DISTANCE_PARAMETER,
+      MOTION_BLUR_PARAMETER,
+      MOTION_SPEED_PARAMETER,
+    ],
+    structuredText: resolveVisualLayersStructuredRecipe(),
+    semantics: {
+      intents: ["视觉层叠", "颜色分层", "聚合显现"],
+      tones: ["设计感", "品牌感", "现代"],
+      preferredFor: ["标题", "品牌词", "章节文字"],
+      avoidFor: ["小字号正文"],
+    },
+  }),
   migratedTextPreset({
     id: "text.emphasis.highlight-sweep",
     label: "高亮扫过",

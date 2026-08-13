@@ -193,6 +193,25 @@ describe("SemanticMotionPanel", () => {
     ]);
   });
 
+  it("collects legacy character motion as one original editable text field", () => {
+    const title = document.createElement("h1");
+    title.setAttribute("data-ipw-motion-split", "v1");
+    title.setAttribute("data-ipw-motion-source", JSON.stringify("Make motion clear."));
+    title.innerHTML = `
+      <span data-ipw-motion-word="">
+        <span data-ipw-motion-char="">M</span><span data-ipw-motion-char="">a</span>
+      </span>
+    `;
+
+    expect(collectDomEditTextFields(title)).toMatchObject([
+      {
+        source: "self",
+        value: "Make motion clear.",
+      },
+    ]);
+    expect(resolveMotionTargetKind(selection(title))).toBe("text");
+  });
+
   it("resolves clicks on structured motion words to the authored text element", async () => {
     const title = document.createElement("h1");
     title.id = "title";
@@ -259,6 +278,7 @@ describe("SemanticMotionPanel", () => {
             templateId: "general-slide-in",
             presetId: instance.presetId,
             targetKind: instance.targetKind,
+            applicationKind: "general",
             selection: selected,
             parameters: instance.parameters,
           }}
@@ -301,6 +321,8 @@ describe("SemanticMotionPanel", () => {
       expect.objectContaining({
         operation: "upsert",
         presetId: "text.enter.rise",
+        templateId: "general-slide-in",
+        applicationKind: "general",
         start: 0,
         end: 0.65,
         duration: 0.65,
@@ -369,6 +391,7 @@ describe("SemanticMotionPanel", () => {
             templateId: "general-fade-in",
             presetId: "text.enter.fade",
             targetKind: "text",
+            applicationKind: "general",
             selection: selected,
             parameters: {},
           }}
@@ -423,6 +446,7 @@ describe("SemanticMotionPanel", () => {
             templateId: "text-rise",
             presetId: "text.enter.rise",
             targetKind: "text",
+            applicationKind: "general",
             selection: selected,
             parameters: {
               ease: "power2.out",
@@ -460,6 +484,7 @@ describe("SemanticMotionPanel", () => {
             templateId: "general-fade-in",
             presetId: "text.enter.fade",
             targetKind: "text",
+            applicationKind: "general",
             selection: selected,
             parameters: {},
           }}
@@ -518,6 +543,7 @@ describe("SemanticMotionPanel", () => {
           templateId: "caption-highlight-word-sweep",
           presetId: instance.presetId,
           targetKind: instance.targetKind,
+          applicationKind: "text",
           selection: selected,
           parameters,
         }}
@@ -599,6 +625,7 @@ describe("SemanticMotionPanel", () => {
               templateId: "caption-highlight-character-sweep",
               presetId: instance.presetId,
               targetKind: instance.targetKind,
+              applicationKind: "text",
               selection: selected,
               parameters: instance.parameters,
             }}

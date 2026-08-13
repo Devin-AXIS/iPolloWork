@@ -1,10 +1,23 @@
 import { describe, expect, it, vi } from "vitest";
 
 import {
+  shouldUseDirectRuntimeAdapter,
   shouldUseDirectTimelineAdapter,
   shouldUseStudioClockForLegacyFrames,
   wrapAdapterWithDurationLimit,
 } from "./playbackAdapter";
+
+describe("shouldUseDirectRuntimeAdapter", () => {
+  it("rejects a partial runtime duration while Studio knows the full composition", () => {
+    expect(shouldUseDirectRuntimeAdapter(1.8, 12)).toBe(false);
+    expect(shouldUseDirectRuntimeAdapter(12, 12)).toBe(true);
+  });
+
+  it("accepts the first usable runtime duration when no longer duration is known", () => {
+    expect(shouldUseDirectRuntimeAdapter(12, 0)).toBe(true);
+    expect(shouldUseDirectRuntimeAdapter(0, 12)).toBe(false);
+  });
+});
 
 describe("shouldUseDirectTimelineAdapter", () => {
   it("keeps Studio on the runtime player while its duration is still settling", () => {

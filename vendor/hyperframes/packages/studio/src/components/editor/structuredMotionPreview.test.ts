@@ -26,7 +26,7 @@ describe("previewStructuredMotion", () => {
     const preview = materializeMotionTextPreviewParts(target, "character");
 
     expect(preview.targets).toHaveLength(11);
-    expect(preview.targets.every((part) => part.style.fontWeight === "700")).toBe(true);
+    expect(preview.targets.every((part) => part.style.fontWeight === "inherit")).toBe(true);
     expect(target.textContent).toBe("Exact motion");
 
     preview.restore();
@@ -70,9 +70,9 @@ describe("previewStructuredMotion", () => {
     expect(target.querySelectorAll('[data-ipw-motion-role="text"]')).toHaveLength(3);
     expect(target.getAttribute("data-ipw-motion-presentation")).toBe("text-v1");
     const previewText = target.querySelector<HTMLElement>('[data-ipw-motion-role="text"]');
-    expect(previewText?.style.fontWeight).toBe("700");
-    expect(previewText?.style.lineHeight).toBe("1.1");
-    expect(previewText?.style.letterSpacing).toBe("-0.025em");
+    expect(previewText?.style.fontWeight).toBe("inherit");
+    expect(previewText?.style.lineHeight).toBe("inherit");
+    expect(previewText?.style.letterSpacing).toBe("inherit");
     expect(timeline.to).toHaveBeenCalledTimes(4);
     expect(timeline.set).toHaveBeenCalledTimes(1);
 

@@ -414,6 +414,54 @@ describe("timeline manifest translation", () => {
     ).resolves.toMatchObject({ element: root, id: "caption-text" });
   });
 
+  test("treats legacy split motion characters as one selectable text layer", async () => {
+    document.body.innerHTML = `
+      <h1 id="split-title" data-ipw-motion-split="v1" data-ipw-motion-source='"Motion"'>
+        <span data-ipw-motion-word>
+          <span id="animated-character" data-ipw-motion-char>M</span>
+          <span data-ipw-motion-char>o</span>
+        </span>
+      </h1>`;
+    const root = document.getElementById("split-title") as HTMLElement;
+    const character = document.getElementById("animated-character") as HTMLElement;
+    const box = {
+      x: 0,
+      y: 0,
+      top: 0,
+      left: 0,
+      right: 100,
+      bottom: 30,
+      width: 100,
+      height: 30,
+      toJSON: () => ({}),
+    };
+    root.getBoundingClientRect = () => box;
+    character.getBoundingClientRect = () => box;
+
+    expect(getDomLayerPatchTarget(character, "index.html")).toBeNull();
+    expect(
+      getSelectionCandidate(character, {
+        activeCompositionPath: "index.html",
+        isMasterView: true,
+      }),
+    ).toBe(root);
+    expect(
+      resolveAllVisualDomEditTargets([character, root], { activeCompositionPath: "index.html" }),
+    ).toEqual([root]);
+    await expect(
+      resolveDomEditSelection(character, {
+        activeCompositionPath: "index.html",
+        isMasterView: true,
+        exactTarget: true,
+        skipSourceProbe: true,
+      }),
+    ).resolves.toMatchObject({
+      element: root,
+      id: "split-title",
+      textFields: [{ source: "self", value: "Motion" }],
+    });
+  });
+
   test("resolves a repeated authored selector inside the requested preview host", () => {
     document.body.innerHTML = `
       <main data-composition-id="main" data-composition-file="index.html">

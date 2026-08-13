@@ -163,7 +163,7 @@ For web browsing tasks, ALWAYS start with ipollowork_browser_open_url. It create
 Do not call browser_navigate without a target_id returned by ipollowork_browser_open_url. Do not use browser_* tools on the iPolloWork app target (avoid targets with title "iPolloWork" or URLs containing ":5173/#/").`;
 
 const IPOLLOWORK_MOTION_INSTRUCTION = `## Video motion presets
-For ordinary animation on an existing text element in the current Video Studio project, use list_motion_presets and mutate_motion. Choose a stable preset id and a small parameter set; do not hand-write GSAP for an effect these tools support. Each target has at most one enter, emphasis, and exit preset. The same contract applies when the user's request came from voice transcription. Use custom GSAP only for an explicitly advanced effect outside the preset catalog.`;
+For ordinary animation on an existing text element in the current Video Studio project, use list_motion_presets and mutate_motion. Generated captions use this exact same compiler: create a stable leaf text child marked data-ipw-caption-text="true", then target that child with mutate_motion instead of hand-writing a caption-specific approximation. Choose a stable preset id and a small parameter set; do not hand-write GSAP for an effect these tools support. Each target has at most one enter, emphasis, and exit preset. The same contract applies when the user's request came from voice transcription. Use custom GSAP only for an explicitly advanced effect outside the preset catalog.`;
 
 // ── UI control bridge discovery ──
 

@@ -34,7 +34,10 @@ function childRectsEqual(a: OverlayRect[], b: OverlayRect[]): boolean {
 }
 
 export function shouldMeasureDomEditChildRect(root: HTMLElement, child: HTMLElement): boolean {
-  if (root.getAttribute("data-ipw-motion-structure") !== "v1") return true;
+  const generatedMotionText =
+    root.getAttribute("data-ipw-motion-structure") === "v1" ||
+    root.getAttribute("data-ipw-motion-split") === "v1";
+  if (!generatedMotionText) return true;
   return !child.closest("[data-ipw-motion-role], [data-ipw-motion-word], [data-ipw-motion-char]");
 }
 

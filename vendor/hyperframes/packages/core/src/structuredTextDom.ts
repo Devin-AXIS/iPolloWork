@@ -10,11 +10,6 @@ const ROLE_ATTRIBUTE = "data-ipw-motion-role";
 const PRESENTATION_ATTRIBUTE = "data-ipw-motion-presentation";
 const STRUCTURED_TEXT_STYLE_ID = "ipw-structured-text-motion-styles";
 const STRUCTURED_TEXT_STYLES = `
-[data-ipw-motion-presentation="text-v1"] {
-  font-weight: 700;
-  line-height: 1.1;
-  letter-spacing: -0.025em;
-}
 [data-ipw-motion-role="clone-primary"]::before,
 [data-ipw-motion-role="clone-accent"]::before {
   content: attr(data-ipw-motion-clone-text);
@@ -138,11 +133,7 @@ function ensureStructuredTextStyles(document: Document): void {
   document.head?.append(style);
 }
 
-/**
- * Applies the same stable text presentation used by Studio animation cards.
- * The marker keeps the authored inline style untouched and is reversible when
- * the final text motion is removed.
- */
+/** Marks structured text without replacing the target's authored typography. */
 function applyMotionTextPresentation(target: Element): void {
   const document = target.ownerDocument;
   if (!document) return;
@@ -175,9 +166,10 @@ function applyLayerStyles(layer: HTMLElement, role: StructuredTextRole): void {
     layer.style.position = "relative";
     layer.style.zIndex = "1";
     layer.style.font = "inherit";
-    layer.style.fontWeight = "700";
-    layer.style.lineHeight = "1.1";
-    layer.style.letterSpacing = "-0.025em";
+    layer.style.fontWeight = "inherit";
+    layer.style.lineHeight = "inherit";
+    layer.style.letterSpacing = "inherit";
+    layer.style.color = "inherit";
     layer.style.whiteSpace = "pre";
     layer.style.setProperty("-webkit-text-stroke", "inherit");
   } else if (role === "clone-primary" || role === "clone-accent") {
@@ -187,10 +179,12 @@ function applyLayerStyles(layer: HTMLElement, role: StructuredTextRole): void {
     layer.style.pointerEvents = "none";
     layer.style.userSelect = "none";
     layer.style.font = "inherit";
-    layer.style.fontWeight = "700";
-    layer.style.lineHeight = "1.1";
-    layer.style.letterSpacing = "-0.025em";
+    layer.style.fontWeight = "inherit";
+    layer.style.lineHeight = "inherit";
+    layer.style.letterSpacing = "inherit";
+    layer.style.color = "inherit";
     layer.style.whiteSpace = "pre";
+    layer.style.setProperty("-webkit-text-stroke", "inherit");
   } else if (role === "particle-container") {
     layer.style.position = "absolute";
     layer.style.inset = "0";
