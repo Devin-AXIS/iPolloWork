@@ -354,6 +354,7 @@ function DefaultModelRow({
   opt: ModelOption; current: ModelRef; onSelect: (opt: ModelOption) => void; recommended?: boolean;
 }) {
   const active = modelEquals(current, { providerID: opt.providerID, modelID: opt.modelID });
+  const visionBadgeLabel = opt.supportsVision ? t("model_picker.badge_vision") : null;
 
   return (
     <button
@@ -366,8 +367,15 @@ function DefaultModelRow({
     >
       {recommended ? <Star size={12} className="shrink-0 text-amber-9" /> : <div className="w-3 shrink-0" />}
       <div className="min-w-0 flex-1">
-        <span className={["text-[12px]", active ? "font-medium text-dls-text" : "text-dls-text"].join(" ")}>{opt.title}</span>
-        <span className="ml-2 font-mono text-[10px] text-dls-secondary/60">{opt.modelID}</span>
+        <div className="flex min-w-0 items-center gap-1.5">
+          <span className={["truncate text-[12px]", active ? "font-medium text-dls-text" : "text-dls-text"].join(" ")}>{opt.title}</span>
+          {visionBadgeLabel ? (
+            <span className="shrink-0 rounded-md bg-emerald-3/40 px-1.5 py-0.5 text-[10px] font-medium text-emerald-11">
+              {visionBadgeLabel}
+            </span>
+          ) : null}
+        </div>
+        <span className="block truncate font-mono text-[10px] text-dls-secondary/60">{opt.modelID}</span>
       </div>
       {active ? <Check size={14} className="shrink-0 text-green-11" /> : null}
     </button>

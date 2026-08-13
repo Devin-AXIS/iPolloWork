@@ -1317,6 +1317,7 @@ export default {
   "model_picker.badge_cloud": "云端",
   "model_picker.badge_current": "当前",
   "model_picker.badge_new": "新",
+  "model_picker.badge_vision": "视觉",
   "model_picker.change_model": "切换模型",
   "model_picker.configure_models": "配置模型",
   "model_picker.connect_provider": "连接提供商",

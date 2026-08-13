@@ -1482,6 +1482,7 @@ export default {
   "model_picker.badge_cloud": "Cloud",
   "model_picker.badge_current": "Current",
   "model_picker.badge_new": "New",
+  "model_picker.badge_vision": "Vision",
   "model_picker.change_model": "Change model",
   "model_picker.configure_models": "Configure models",
   "model_picker.connect_provider": "Connect provider",
