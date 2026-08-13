@@ -141,8 +141,10 @@ function previewMotionDraft(
     compiled = compileMotionInstance(
       createMotionInstance({
         presetId: draft.presetId,
+        templateId: draft.templateId,
         target: { selector: "[data-ipw-motion-preview]" },
         targetKind: draft.targetKind,
+        applicationKind: draft.applicationKind,
         start: 0,
         duration,
         parameters: draft.parameters,
@@ -235,8 +237,10 @@ export function AnimationPropertiesPanel({
   const existing = useMemo(() => resolveMotionInstances(animations).at(-1), [animations]);
   const selection = draft?.selection ?? element;
   const presetId = draft?.presetId ?? existing?.instance.presetId;
+  const templateId = draft?.templateId ?? existing?.instance.templateId;
   const preset = presetId ? getMotionPreset(presetId) : undefined;
   const targetKind = draft?.targetKind ?? existing?.instance.targetKind;
+  const applicationKind = draft?.applicationKind ?? existing?.instance.applicationKind;
   const parameters = draft?.parameters ?? existing?.instance.parameters;
   const initialDuration = preset
     ? !draft && existing?.instance.presetId === preset.id
@@ -285,16 +289,17 @@ export function AnimationPropertiesPanel({
     },
     [],
   );
-  const signature = `${selection?.sourceFile ?? ""}:${selection?.id ?? selection?.hfId ?? selection?.selector ?? ""}:${presetId ?? ""}`;
+  const signature = `${selection?.sourceFile ?? ""}:${selection?.id ?? selection?.hfId ?? selection?.selector ?? ""}:${templateId ?? presetId ?? ""}`;
   const previewSignature =
-    selection && preset && targetKind && parameters
+    selection && preset && targetKind && applicationKind && parameters
       ? JSON.stringify({
-          templateId: draft?.templateId ?? `applied:${preset.id}`,
+          templateId: templateId ?? `applied:${preset.id}`,
           sourceFile: selection.sourceFile,
           compositionPath: selection.compositionPath,
           locator: selection.hfId ?? selection.id ?? selection.selector,
           presetId: preset.id,
           targetKind,
+          applicationKind,
           parameters,
         })
       : "";
@@ -319,11 +324,12 @@ export function AnimationPropertiesPanel({
   // same autoplay preview on every render.
   const previewDraft = useMemo<AnimationTemplateDraft | null>(() => {
     if (draft) return draft;
-    if (!selection || !preset || !targetKind || !parameters) return null;
+    if (!selection || !preset || !targetKind || !applicationKind || !parameters) return null;
     return {
-      templateId: `applied:${preset.id}`,
+      templateId: templateId ?? `applied:${preset.id}`,
       presetId: preset.id,
       targetKind,
+      applicationKind,
       selection,
       parameters,
     };
@@ -340,7 +346,7 @@ export function AnimationPropertiesPanel({
     };
   }, [duration, loop, preset, previewDraft]);
 
-  if (!selection || !preset || !targetKind || !parameters) {
+  if (!selection || !preset || !targetKind || !applicationKind || !parameters) {
     return (
       <div className="grid h-full place-items-center px-6 text-center text-[11px] leading-5 text-panel-text-3">
         请先选择一个动画，或在视频播放区选择已有动画的元素。
@@ -360,6 +366,8 @@ export function AnimationPropertiesPanel({
           operation: "upsert",
           phase: preset.phase,
           presetId: preset.id,
+          templateId,
+          applicationKind,
           start: startTimeRef.current,
           end: endTimeRef.current,
           duration: confirmedDuration,
@@ -575,9 +583,10 @@ function AppliedMotionEditor({
     if (previewRun === 0) return;
     return previewMotionDraft(
       {
-        templateId: `applied:${instance.presetId}`,
+        templateId: instance.templateId ?? `applied:${instance.presetId}`,
         presetId: instance.presetId,
         targetKind,
+        applicationKind: instance.applicationKind,
         selection: element,
         parameters: instance.parameters,
       },
@@ -590,6 +599,8 @@ function AppliedMotionEditor({
       operation: "upsert",
       phase: instance.phase,
       presetId: instance.presetId,
+      templateId: instance.templateId,
+      applicationKind: instance.applicationKind,
       start,
       duration: instance.duration,
       parameters: instance.parameters,
@@ -603,6 +614,8 @@ function AppliedMotionEditor({
         operation: "upsert",
         phase: instance.phase,
         presetId: instance.presetId,
+        templateId: instance.templateId,
+        applicationKind: instance.applicationKind,
         start: timing.position,
         duration: timing.duration,
         parameters: instance.parameters,
@@ -631,7 +644,14 @@ function AppliedMotionEditor({
         <button
           type="button"
           aria-label="删除动画"
-          onClick={() => onMutate(targetKind, { operation: "remove", phase: instance.phase })}
+          onClick={() =>
+            onMutate(targetKind, {
+              operation: "remove",
+              phase: instance.phase,
+              templateId: instance.templateId,
+              applicationKind: instance.applicationKind,
+            })
+          }
           className="flex h-[34px] items-center justify-center rounded-[6px] text-panel-text-3 transition-colors hover:bg-panel-input hover:text-panel-text-1"
         >
           <Trash size={17} />

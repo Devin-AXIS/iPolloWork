@@ -69,9 +69,9 @@ describe("structured text DOM", () => {
     expect((units[0]?.querySelector('[data-ipw-motion-role="background"]') as HTMLElement).style.position).toBe("absolute");
     expect((units[0]?.querySelector('[data-ipw-motion-role="text"]') as HTMLElement).style.zIndex).toBe("1");
     expect((units[0]?.querySelector('[data-ipw-motion-role="text"]') as HTMLElement).style.display).toBe("inline-block");
-    expect((units[0]?.querySelector('[data-ipw-motion-role="text"]') as HTMLElement).style.fontWeight).toBe("700");
-    expect((units[0]?.querySelector('[data-ipw-motion-role="text"]') as HTMLElement).style.lineHeight).toBe("1.1");
-    expect((units[0]?.querySelector('[data-ipw-motion-role="text"]') as HTMLElement).style.letterSpacing).toBe("-0.025em");
+    expect((units[0]?.querySelector('[data-ipw-motion-role="text"]') as HTMLElement).style.fontWeight).toBe("inherit");
+    expect((units[0]?.querySelector('[data-ipw-motion-role="text"]') as HTMLElement).style.lineHeight).toBe("inherit");
+    expect((units[0]?.querySelector('[data-ipw-motion-role="text"]') as HTMLElement).style.letterSpacing).toBe("inherit");
     expect(target.getAttribute("data-ipw-motion-structure")).toBe("v1");
     expect(target.getAttribute("data-ipw-motion-presentation")).toBe("text-v1");
     expect(target.getAttribute("data-ipw-motion-source")).toBeTruthy();
@@ -148,13 +148,13 @@ describe("structured text DOM", () => {
     expect(clone.style.pointerEvents).toBe("none");
     expect(clone.style.userSelect).toBe("none");
     expect(clone.style.zIndex).toBe("2");
-    expect(clone.style.fontWeight).toBe("700");
-    expect(clone.style.lineHeight).toBe("1.1");
-    expect(clone.style.letterSpacing).toBe("-0.025em");
+    expect(clone.style.fontWeight).toBe("inherit");
+    expect(clone.style.lineHeight).toBe("inherit");
+    expect(clone.style.letterSpacing).toBe("inherit");
     expect(target.textContent).toBe("Make motion clear.");
     const style = document.head.querySelector("#ipw-structured-text-motion-styles");
-    expect(style?.textContent).toContain('[data-ipw-motion-presentation="text-v1"]');
     expect(style?.textContent).toContain("content: attr(data-ipw-motion-clone-text)");
+    expect(style?.textContent).not.toContain("font-weight: 700");
 
     const originalMarker = target.getAttribute("data-ipw-motion-source");
     materializeStructuredText(target, compiled, "wrong repeated clone text");
@@ -162,6 +162,32 @@ describe("structured text DOM", () => {
     expect(target.getAttribute("data-ipw-motion-source")).toBe(originalMarker);
     unwrapStructuredText(target);
     expect(target.textContent).toBe("Make motion clear.");
+  });
+
+  it("keeps generated-caption typography while materializing the same text layers", () => {
+    const target = document.createElement("span");
+    target.setAttribute("data-ipw-caption-text", "true");
+    target.style.fontWeight = "550";
+    target.style.lineHeight = "1.4";
+    target.style.letterSpacing = "0.04em";
+    target.style.color = "rgb(245, 248, 255)";
+    target.style.textShadow = "0 2px 8px rgb(0 0 0 / 60%)";
+    target.textContent = "Make motion clear.";
+
+    materializeStructuredText(target, highlight(target.textContent));
+
+    const textLayers = Array.from(
+      target.querySelectorAll<HTMLElement>('[data-ipw-motion-role="text"]'),
+    );
+    expect(textLayers).toHaveLength(3);
+    expect(textLayers.every((layer) => layer.style.fontWeight === "inherit")).toBe(true);
+    expect(textLayers.every((layer) => layer.style.lineHeight === "inherit")).toBe(true);
+    expect(textLayers.every((layer) => layer.style.letterSpacing === "inherit")).toBe(true);
+    expect(target.style.fontWeight).toBe("550");
+    expect(target.style.lineHeight).toBe("1.4");
+    expect(target.style.letterSpacing).toBe("0.04em");
+    expect(target.style.color).toBe("rgb(245, 248, 255)");
+    expect(target.style.textShadow).toBe("0 2px 8px rgb(0 0 0 / 60%)");
   });
 
   it("keeps particles at a common origin and stores finite animation offsets", () => {

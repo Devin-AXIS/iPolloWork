@@ -89,6 +89,7 @@ import {
   snapshotStructuredText,
   unwrapStructuredText,
   type MotionParameters,
+  type MotionApplicationKind,
   type MotionInstance,
   type MotionPhase,
   type MotionTargetKind,
@@ -798,6 +799,8 @@ type GsapMutationRequest =
       targetKind: MotionTargetKind;
       phase: MotionPhase;
       presetId?: string;
+      templateId?: string;
+      applicationKind?: MotionApplicationKind;
       start?: number;
       end?: number;
       duration?: number;
@@ -1080,9 +1083,10 @@ function segmentText(value: string, granularity: "word" | "grapheme"): string[] 
 
 function unwrapMotionText(target: Element): void {
   if (target.getAttribute("data-ipw-motion-split") !== "v1") return;
-  const text = target.textContent ?? "";
+  const text = readMotionSourceText(target);
   target.replaceChildren(target.ownerDocument.createTextNode(text));
   target.removeAttribute("data-ipw-motion-split");
+  target.removeAttribute("data-ipw-motion-source");
 }
 
 function readMotionSourceText(target: Element): string {
@@ -1099,7 +1103,7 @@ function readMotionSourceText(target: Element): string {
 }
 
 function ensureMotionTextParts(target: Element, includeCharacters: boolean): number {
-  const text = target.textContent ?? "";
+  const text = readMotionSourceText(target);
   unwrapMotionText(target);
   const document = target.ownerDocument;
   const fragment = document.createDocumentFragment();
@@ -1113,7 +1117,7 @@ function ensureMotionTextParts(target: Element, includeCharacters: boolean): num
     wordSpan.setAttribute("data-ipw-motion-word", "");
     wordSpan.setAttribute(
       "style",
-      "display:inline-block;white-space:pre;font-weight:700;line-height:1.1;letter-spacing:-0.025em",
+      "display:inline-block;white-space:pre;font:inherit;font-weight:inherit;line-height:inherit;letter-spacing:inherit;color:inherit;-webkit-text-stroke:inherit",
     );
     if (includeCharacters) {
       for (const character of segmentText(word, "grapheme")) {
@@ -1131,6 +1135,7 @@ function ensureMotionTextParts(target: Element, includeCharacters: boolean): num
   }
   target.replaceChildren(fragment);
   target.setAttribute("data-ipw-motion-split", "v1");
+  target.setAttribute("data-ipw-motion-source", JSON.stringify(text));
   return characterCount;
 }
 
@@ -1333,9 +1338,11 @@ function materializeStructuredMotionText(
   for (const layer of target.querySelectorAll<HTMLElement>(
     '[data-ipw-motion-role="text"], [data-ipw-motion-role="clone-primary"], [data-ipw-motion-role="clone-accent"]',
   )) {
-    layer.style.fontWeight = "700";
-    layer.style.lineHeight = "1.1";
-    layer.style.letterSpacing = "-0.025em";
+    layer.style.fontWeight = "inherit";
+    layer.style.lineHeight = "inherit";
+    layer.style.letterSpacing = "inherit";
+    layer.style.color = "inherit";
+    layer.style.setProperty("-webkit-text-stroke", "inherit");
   }
 }
 
@@ -1388,6 +1395,28 @@ function rebaseCompiledMotionKeyframes(
   });
 }
 
+function resolveMotionApplicationKind(
+  requested: MotionApplicationKind | undefined,
+  presetId: string,
+): MotionApplicationKind {
+  if (requested === "general" || requested === "box" || requested === "text") return requested;
+  return presetId.startsWith("text.") ? "text" : "general";
+}
+
+function shouldReplaceMotion(
+  current: MotionInstance,
+  incomingKind: MotionApplicationKind,
+  incomingPresetId: string,
+  incomingTemplateId: string | undefined,
+  incomingPhase: MotionPhase,
+): boolean {
+  if (incomingKind === "text" || current.applicationKind === "text") return true;
+  if (incomingKind === "box") return current.applicationKind === "box";
+  if (current.applicationKind !== "general") return false;
+  if (incomingTemplateId && current.templateId) return incomingTemplateId === current.templateId;
+  return current.presetId === incomingPresetId && current.phase === incomingPhase;
+}
+
 function executeMotionMutation(
   body: MotionMutationRequest,
   block: NonNullable<ReturnType<typeof extractGsapScriptBlock>>,
@@ -1402,18 +1431,19 @@ function executeMotionMutation(
 
   const parsed = parseGsapScriptAcorn(block.scriptText);
   const authoredPositionBase = readAuthoredPositionBase(parsed.animations, body.targetSelector);
-  const existing = parsed.animations.flatMap((animation) => {
+  const targetMotions = parsed.animations.flatMap((animation) => {
     const instance = readMotionInstanceFromExtras(animation.extras);
-    return instance &&
-      motionInstanceTargetsElement(block.document, target, instance) &&
-      instance.phase === body.phase
+    return instance && motionInstanceTargetsElement(block.document, target, instance)
       ? [{ animation, instance }]
       : [];
   });
+  const existing = targetMotions.filter(
+    (entry) =>
+      entry.instance.phase === body.phase &&
+      (!body.applicationKind || entry.instance.applicationKind === body.applicationKind) &&
+      (!body.templateId || entry.instance.templateId === body.templateId),
+  );
   let script = block.scriptText;
-  for (const entry of [...existing].reverse()) {
-    script = removeAnimationFromScript(script, entry.animation.id);
-  }
 
   if (body.operation === "upsert") {
     const preset = body.presetId ? getMotionPreset(body.presetId) : undefined;
@@ -1421,7 +1451,14 @@ function executeMotionMutation(
     if (preset.phase !== body.phase || !preset.targetKinds.includes(body.targetKind)) {
       return respond({ error: "The preset does not support this target or phase" }, 400);
     }
-    const prior = existing[0];
+    const applicationKind = resolveMotionApplicationKind(body.applicationKind, preset.id);
+    const replaced = targetMotions.filter(({ instance }) =>
+      shouldReplaceMotion(instance, applicationKind, preset.id, body.templateId, body.phase),
+    );
+    for (const entry of [...replaced].reverse()) {
+      script = removeAnimationFromScript(script, entry.animation.id);
+    }
+    const prior = replaced.find((entry) => entry.instance.presetId === preset.id);
     const priorParameters =
       prior?.instance.presetId === preset.id
         ? prior.instance.parameters
@@ -1446,12 +1483,14 @@ function executeMotionMutation(
     try {
       instance = createMotionInstance({
         presetId: preset.id,
+        templateId: body.templateId,
         target: {
           selector: body.targetSelector,
           ...(body.elementId ? { elementId: body.elementId } : {}),
           ...(body.hfId ? { hfId: body.hfId } : {}),
         },
         targetKind: body.targetKind,
+        applicationKind,
         start: timing.start,
         end: playback.end,
         duration: playback.duration,
@@ -1525,6 +1564,10 @@ function executeMotionMutation(
       if (!added.id) return respond({ error: "Could not add motion to the GSAP timeline" }, 400);
       script = added.script;
     }
+  } else {
+    for (const entry of [...existing].reverse()) {
+      script = removeAnimationFromScript(script, entry.animation.id);
+    }
   }
 
   const remainingInstances = parseGsapScriptAcorn(script)
@@ -1552,10 +1595,7 @@ function executeMotionMutation(
       ensureStructuredCharacterParts(target);
     }
   } else {
-    if (
-      target.hasAttribute("data-ipw-motion-structure") ||
-      target.hasAttribute("data-ipw-motion-source")
-    ) {
+    if (target.hasAttribute("data-ipw-motion-structure")) {
       unwrapStructuredText(target);
       target.removeAttribute("data-ipw-motion-presentation");
     }

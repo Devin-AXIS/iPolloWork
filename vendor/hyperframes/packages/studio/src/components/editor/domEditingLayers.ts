@@ -38,15 +38,18 @@ export function isEditableTextLeaf(el: HTMLElement): boolean {
   return isTextBearingTag(el.tagName.toLowerCase()) && el.children.length === 0;
 }
 
-function readStructuredTextSource(el: HTMLElement): string | null {
-  if (el.getAttribute("data-ipw-motion-structure") !== "v1") return null;
+function readGeneratedMotionTextSource(el: HTMLElement): string | null {
+  const generated =
+    el.getAttribute("data-ipw-motion-structure") === "v1" ||
+    el.getAttribute("data-ipw-motion-split") === "v1";
+  if (!generated) return null;
   const encoded = el.getAttribute("data-ipw-motion-source");
-  if (!encoded) return null;
+  if (!encoded) return el.textContent ?? "";
   try {
     const source = JSON.parse(encoded);
-    return typeof source === "string" ? source : null;
+    return typeof source === "string" ? source : (el.textContent ?? "");
   } catch {
-    return null;
+    return el.textContent ?? "";
   }
 }
 
@@ -100,9 +103,9 @@ function buildTextField(
 
 // fallow-ignore-next-line complexity
 export function collectDomEditTextFields(el: HTMLElement): DomEditTextField[] {
-  const structuredSource = readStructuredTextSource(el);
-  if (structuredSource !== null) {
-    return [buildTextField(el, 0, 1, "self", undefined, structuredSource)];
+  const generatedMotionSource = readGeneratedMotionTextSource(el);
+  if (generatedMotionSource !== null) {
+    return [buildTextField(el, 0, 1, "self", undefined, generatedMotionSource)];
   }
 
   const childElements = Array.from(el.children).filter(isHtmlElement).filter(isEditableTextLeaf);

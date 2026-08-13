@@ -5,6 +5,8 @@ import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { PlaybackAdapter } from "../lib/playbackTypes";
 import { usePlayerStore } from "../store/playerStore";
+import { resolveForwardPlaybackWindow } from "./useTimelinePlayerLoop";
+import { useTimelinePlayer } from "./useTimelinePlayer";
 import { useTimelineSyncCallbacks } from "./useTimelineSyncCallbacks";
 
 function mountInitializationHarness(input: {
@@ -42,6 +44,28 @@ function mountInitializationHarness(input: {
   if (!initializeAdapter) throw new Error("Initialization callback missing");
   return {
     initializeAdapter,
+    unmount: () => {
+      flushSync(() => root.unmount());
+      container.remove();
+    },
+  };
+}
+
+function mountTimelinePlayerHarness() {
+  let saveSeekPosition: (() => void) | null = null;
+  const container = document.createElement("div");
+  document.body.append(container);
+  const root = createRoot(container);
+
+  function Harness() {
+    saveSeekPosition = useTimelinePlayer().saveSeekPosition;
+    return null;
+  }
+
+  flushSync(() => root.render(createElement(Harness)));
+  if (!saveSeekPosition) throw new Error("Timeline player callback missing");
+  return {
+    saveSeekPosition,
     unmount: () => {
       flushSync(() => root.unmount());
       container.remove();
@@ -121,5 +145,58 @@ describe("timeline adapter initialization", () => {
     expect(seek).toHaveBeenLastCalledWith(12.5);
     expect(resumePlayback).toHaveBeenCalledOnce();
     harness.unmount();
+  });
+});
+
+describe("playback refresh races", () => {
+  it("preserves user playback intent while a staged refresh is loading", () => {
+    usePlayerStore.setState({ isPlaying: true, currentTime: 1.25, duration: 12 });
+    const harness = mountTimelinePlayerHarness();
+
+    harness.saveSeekPosition();
+
+    expect(usePlayerStore.getState().isPlaying).toBe(true);
+    harness.unmount();
+  });
+
+  it("does not treat a temporarily missing adapter duration as the project end", () => {
+    expect(
+      resolveForwardPlaybackWindow({
+        adapterDuration: 0,
+        storeDuration: 0,
+        inPoint: null,
+        outPoint: null,
+      }),
+    ).toBeNull();
+    expect(
+      resolveForwardPlaybackWindow({
+        adapterDuration: 0,
+        storeDuration: 12,
+        inPoint: null,
+        outPoint: null,
+      }),
+    ).toEqual({ duration: 12, loopStart: 0, loopEnd: 12 });
+  });
+
+  it("uses a positive adapter duration after a composition is shortened", () => {
+    expect(
+      resolveForwardPlaybackWindow({
+        adapterDuration: 6,
+        storeDuration: 12,
+        inPoint: null,
+        outPoint: null,
+      }),
+    ).toEqual({ duration: 6, loopStart: 0, loopEnd: 6 });
+  });
+
+  it("still honours a deliberate out point", () => {
+    expect(
+      resolveForwardPlaybackWindow({
+        adapterDuration: 12,
+        storeDuration: 12,
+        inPoint: 1,
+        outPoint: 4,
+      }),
+    ).toEqual({ duration: 12, loopStart: 1, loopEnd: 4 });
   });
 });

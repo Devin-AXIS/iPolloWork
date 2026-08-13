@@ -32,6 +32,22 @@ describe("shouldMeasureDomEditChildRect", () => {
     ]);
   });
 
+  it("hides legacy split motion internals from selection child chrome", () => {
+    const root = document.createElement("h1");
+    root.setAttribute("data-ipw-motion-split", "v1");
+    root.innerHTML = `
+      <span data-ipw-motion-word="">
+        <span data-ipw-motion-char="">M</span>
+      </span>
+    `;
+
+    const generatedChildren = Array.from(root.querySelectorAll<HTMLElement>("span"));
+    expect(generatedChildren.map((child) => shouldMeasureDomEditChildRect(root, child))).toEqual([
+      false,
+      false,
+    ]);
+  });
+
   it("keeps authored child boxes visible for normal selected containers", () => {
     const root = document.createElement("div");
     const child = document.createElement("span");

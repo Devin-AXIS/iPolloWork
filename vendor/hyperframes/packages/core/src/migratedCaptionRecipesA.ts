@@ -314,3 +314,214 @@ export function resolveWeightShiftStructuredRecipe(
     ],
   };
 }
+
+function directionOffset(direction: string, distance: number): { x: number; y: number } {
+  if (direction === "left") return { x: -distance, y: 0 };
+  if (direction === "right") return { x: distance, y: 0 };
+  if (direction === "down") return { x: 0, y: distance };
+  return { x: 0, y: -distance };
+}
+
+/**
+ * Editorial headline entrance inspired by the canonical HyperFrames editorial
+ * caption: each word resolves independently, briefly takes focus, then settles
+ * back into the authored typography instead of replacing it.
+ */
+export function resolveEditorialEmphasisStructuredRecipe(
+  parameters: MotionParameters = {},
+): StructuredTextRecipe {
+  const motionSpeed = speed(parameters);
+  const intensity = bounded(parameters, "intensity", 1, 0.2, 2);
+  const stagger = bounded(parameters, "stagger", 0.075, 0, 10);
+  const blur = bounded(parameters, "blur", 7, 0, 32);
+  const emphasisWeight = bounded(parameters, "emphasisWeight", 800, 100, 900);
+  const accent = color(parameters, "color", "#20BBC0", "--ipw-color-accent");
+  const distance = bounded(parameters, "distance", 28, 0, 180) * intensity;
+  const offset = directionOffset(String(parameters.direction ?? "up"), distance);
+
+  return {
+    version: 1,
+    id: "caption-editorial-emphasis.word-focus",
+    presetId: "text.enter.editorial-emphasis",
+    split: split(parameters),
+    layers: [
+      { role: "unit", perUnit: true, className: "ipw-editorial-emphasis-word" },
+      { role: "text", perUnit: true, className: "ipw-editorial-emphasis-text" },
+    ],
+    tracks: [
+      {
+        role: "unit",
+        position: 0,
+        duration: 0.56 / motionSpeed,
+        stagger,
+        keyframes: [
+          {
+            percentage: 0,
+            properties: {
+              opacity: 0,
+              x: offset.x,
+              y: offset.y,
+              scale: Math.max(0.55, 0.82 - 0.08 * intensity),
+              filter: `blur(${blur}px)`,
+              transformOrigin: "50% 100%",
+            },
+          },
+          {
+            percentage: 68,
+            ease: "power3.out",
+            properties: {
+              opacity: 1,
+              x: -offset.x * 0.08,
+              y: -offset.y * 0.08,
+              scale: 1 + 0.065 * intensity,
+              filter: "blur(0px)",
+              transformOrigin: "50% 100%",
+            },
+          },
+          {
+            percentage: 100,
+            ease: "power2.out",
+            properties: {
+              opacity: 1,
+              x: 0,
+              y: 0,
+              scale: 1,
+              filter: "blur(0px)",
+              transformOrigin: "50% 100%",
+            },
+          },
+        ],
+      },
+      {
+        role: "text",
+        position: 0.18 / motionSpeed,
+        duration: 0.38 / motionSpeed,
+        stagger,
+        keyframes: [
+          { percentage: 0, properties: { color: "inherit", fontWeight: "inherit" } },
+          {
+            percentage: 46,
+            ease: "power2.out",
+            properties: { color: accent, fontWeight: emphasisWeight },
+          },
+          {
+            percentage: 100,
+            ease: "power2.out",
+            properties: { color: "inherit", fontWeight: "inherit" },
+          },
+        ],
+      },
+    ],
+  };
+}
+
+/** Per-word karaoke handoff with a theme-aware pill and a clean readable end. */
+export function resolveKaraokeFlowStructuredRecipe(
+  parameters: MotionParameters = {},
+): StructuredTextRecipe {
+  const motionSpeed = speed(parameters);
+  const intensity = bounded(parameters, "intensity", 1, 0.2, 2);
+  const stagger = bounded(parameters, "stagger", 0.12, 0, 10);
+  const roundness = bounded(parameters, "roundness", 10, 0, 40);
+  const lift = bounded(parameters, "lift", 7, 0, 40) * intensity;
+  const accent = color(parameters, "color", "#20BBC0", "--ipw-color-accent");
+  const onAccent = color(parameters, "onAccentColor", "#FFFFFF", "--ipw-color-on-accent");
+  const muted = color(parameters, "inactiveColor", "rgba(120, 126, 138, 0.72)", "--ipw-color-text-muted");
+  const duration = 0.54 / motionSpeed;
+
+  return {
+    version: 1,
+    id: "caption-pill-karaoke.word-handoff",
+    presetId: "text.emphasis.karaoke-flow",
+    split: split(parameters),
+    layers: [
+      { role: "unit", perUnit: true, className: "ipw-karaoke-flow-word" },
+      { role: "background", perUnit: true, className: "ipw-karaoke-flow-pill" },
+      { role: "text", perUnit: true, className: "ipw-karaoke-flow-text" },
+    ],
+    tracks: [
+      {
+        role: "background",
+        position: 0,
+        duration,
+        stagger,
+        keyframes: [
+          {
+            percentage: 0,
+            properties: {
+              opacity: 0,
+              scaleX: 0.45,
+              scaleY: 0.76,
+              backgroundColor: accent,
+              borderRadius: `${roundness}px`,
+              transformOrigin: "50% 50%",
+            },
+          },
+          {
+            percentage: 28,
+            ease: "back.out(1.7)",
+            properties: {
+              opacity: 1,
+              scaleX: 1.08,
+              scaleY: 1,
+              backgroundColor: accent,
+              borderRadius: `${roundness}px`,
+            },
+          },
+          {
+            percentage: 64,
+            ease: "power2.out",
+            properties: { opacity: 1, scaleX: 1, scaleY: 1 },
+          },
+          {
+            percentage: 100,
+            ease: "power2.in",
+            properties: { opacity: 0, scaleX: 1.05, scaleY: 0.94 },
+          },
+        ],
+      },
+      {
+        role: "unit",
+        position: 0,
+        duration,
+        stagger,
+        keyframes: [
+          { percentage: 0, properties: { opacity: 1, y: 0, scale: 1 } },
+          {
+            percentage: 34,
+            ease: "power3.out",
+            properties: { opacity: 1, y: -lift, scale: 1 + 0.055 * intensity },
+          },
+          {
+            percentage: 100,
+            ease: "power2.out",
+            properties: { opacity: 1, y: 0, scale: 1 },
+          },
+        ],
+      },
+      {
+        role: "text",
+        position: 0,
+        duration,
+        stagger,
+        keyframes: [
+          { percentage: 0, properties: { color: muted, textShadow: "none" } },
+          {
+            percentage: 26,
+            ease: "power2.out",
+            properties: { color: onAccent, textShadow: "0 2px 8px rgba(0,0,0,0.2)" },
+          },
+          {
+            percentage: 72,
+            properties: { color: onAccent, textShadow: "0 2px 8px rgba(0,0,0,0.2)" },
+          },
+          {
+            percentage: 100,
+            ease: "power2.out",
+            properties: { color: "inherit", textShadow: "none" },
+          },
+        ],
+      },
+    ],
+  };
+}

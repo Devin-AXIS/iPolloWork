@@ -113,7 +113,7 @@ describe("semantic motion mutation route", () => {
     expect(readFileSync(join(projectDir, "index.html"), "utf8")).toContain("repeat: 2");
   });
 
-  it("adds, reloads and replaces one text preset per phase", async () => {
+  it("adds, reloads and replaces one text preset on an element", async () => {
     const first = await mutate({
       type: "mutate-motion",
       operation: "upsert",
@@ -136,7 +136,8 @@ describe("semantic motion mutation route", () => {
 
     let html = readFileSync(join(projectDir, "index.html"), "utf8");
     expect(html).toContain("data-ipw-motion-char");
-    expect(html).toContain("font-weight:700");
+    expect(html).toContain("data-ipw-motion-source");
+    expect(html).toContain("font-weight:inherit");
     expect(html).toContain('data-ipw-animation-reference="text.enter.typewriter"');
     expect(html).toContain("ipw-motion:v1:");
 
@@ -287,9 +288,9 @@ describe("semantic motion mutation route", () => {
     expect(html).toContain(">clear.</span>");
     expect(html).toContain('data-ipw-motion-structure="v1"');
     expect(html).toContain('data-ipw-motion-presentation="text-v1"');
-    expect(html).toContain("font-weight:700");
-    expect(html).toContain("line-height:1.1");
-    expect(html).toContain("letter-spacing:-0.025em");
+    expect(html).toContain("font-weight:inherit");
+    expect(html).toContain("line-height:inherit");
+    expect(html).toContain("letter-spacing:inherit");
     expect(html).toContain('#headline [data-ipw-motion-role=\\"background\\"]');
     expect(html).toContain('#headline [data-ipw-motion-role=\\"unit\\"]');
     expect(html).toContain('#headline [data-ipw-motion-role=\\"text\\"]');
@@ -373,7 +374,7 @@ describe("semantic motion mutation route", () => {
     expect(html).toContain('\\"unit\\":\\"word\\"');
   });
 
-  it("keeps character motion addressable while Highlight is structured", async () => {
+  it("replaces split character motion with a structured word animation", async () => {
     writeFileSync(
       join(projectDir, "index.html"),
       SOURCE.replace("\u4f60\u597d mixed AI", "Make motion clear."),
@@ -404,15 +405,22 @@ describe("semantic motion mutation route", () => {
 
     let html = readFileSync(join(projectDir, "index.html"), "utf8");
     let document = parseHTML(html).document;
+    const appliedBody = await highlight.json();
+    const appliedMotions = appliedBody.parsed.animations
+      .map((animation: { extras?: Record<string, unknown> }) =>
+        readMotionInstanceFromExtras(animation.extras),
+      )
+      .filter(Boolean);
+    expect(new Set(appliedMotions.map((instance) => instance.presetId))).toEqual(
+      new Set(["text.emphasis.highlight-sweep"]),
+    );
     expect(document.querySelectorAll('[data-ipw-motion-role="text"]')).toHaveLength(3);
-    expect(
-      document.querySelectorAll('[data-ipw-motion-role="text"] [data-ipw-motion-char]').length,
-    ).toBeGreaterThan(0);
-    expect(document.querySelectorAll("#headline [data-ipw-motion-char]").length).toBeGreaterThan(0);
+    expect(document.querySelector("#headline [data-ipw-motion-char]")).toBeNull();
     expect(document.querySelectorAll('#headline [data-ipw-motion-role="background"]')).toHaveLength(
       3,
     );
-    expect(html).toContain("#headline [data-ipw-motion-char]");
+    expect(html).not.toContain("text.enter.typewriter");
+    expect(html).not.toContain("#headline [data-ipw-motion-char]");
     expect(html).toContain('#headline [data-ipw-motion-role=\\"background\\"]');
 
     const removed = await mutate({
@@ -429,18 +437,17 @@ describe("semantic motion mutation route", () => {
         readMotionInstanceFromExtras(animation.extras),
       )
       .filter(Boolean);
-    expect(remainingMotions).toHaveLength(1);
-    expect(remainingMotions[0].presetId).toBe("text.enter.typewriter");
+    expect(remainingMotions).toHaveLength(0);
 
     html = readFileSync(join(projectDir, "index.html"), "utf8");
     document = parseHTML(html).document;
     expect(html).not.toContain("data-ipw-motion-structure");
     expect(document.querySelector("[data-ipw-motion-role]")).toBeNull();
-    expect(document.querySelectorAll("#headline [data-ipw-motion-char]").length).toBeGreaterThan(0);
+    expect(document.querySelector("#headline [data-ipw-motion-char]")).toBeNull();
     expect(document.querySelector("#headline")?.textContent).toBe("Make motion clear.");
   });
 
-  it("keeps the structural layers required by advanced animations in different phases", async () => {
+  it("replaces advanced text structures across phases", async () => {
     writeFileSync(
       join(projectDir, "index.html"),
       SOURCE.replace("\u4f60\u597d mixed AI", "Make motion clear."),
@@ -471,19 +478,161 @@ describe("semantic motion mutation route", () => {
 
     const html = readFileSync(join(projectDir, "index.html"), "utf8");
     const document = parseHTML(html).document;
+    const response = await highlight.json();
+    const instances = response.parsed.animations
+      .map((animation: { extras?: Record<string, unknown> }) =>
+        readMotionInstanceFromExtras(animation.extras),
+      )
+      .filter(Boolean);
+    expect(new Set(instances.map((instance) => instance.presetId))).toEqual(
+      new Set(["text.emphasis.highlight-sweep"]),
+    );
     expect(document.querySelectorAll('#headline [data-ipw-motion-role="unit"]')).toHaveLength(3);
     expect(document.querySelectorAll('#headline [data-ipw-motion-role="background"]')).toHaveLength(
       3,
     );
-    expect(
-      document.querySelectorAll('#headline [data-ipw-motion-role="clone-primary"]'),
-    ).toHaveLength(3);
-    expect(
-      document.querySelectorAll('#headline [data-ipw-motion-role="clone-accent"]'),
-    ).toHaveLength(3);
+    expect(document.querySelector('#headline [data-ipw-motion-role="clone-primary"]')).toBeNull();
+    expect(document.querySelector('#headline [data-ipw-motion-role="clone-accent"]')).toBeNull();
     expect(document.querySelector("#headline")?.textContent).toBe("Make motion clear.");
-    expect(html).toContain('#headline [data-ipw-motion-role=\\"clone-primary\\"]');
+    expect(html).not.toContain("text.enter.matrix-decode");
+    expect(html).not.toContain('#headline [data-ipw-motion-role=\\"clone-primary\\"]');
     expect(html).toContain('#headline [data-ipw-motion-role=\\"background\\"]');
+  });
+
+  it("applies the new advanced text family through the real source mutation path", async () => {
+    writeFileSync(
+      join(projectDir, "index.html"),
+      SOURCE.replace("\u4f60\u597d mixed AI", "Make motion clear."),
+    );
+
+    const visualLayers = await mutate({
+      type: "mutate-motion",
+      operation: "upsert",
+      targetSelector: "#headline",
+      elementId: "headline",
+      targetKind: "text",
+      phase: "enter",
+      presetId: "text.enter.visual-layers",
+      parameters: { unit: "word", stagger: 0.055, colorSource: "theme" },
+    });
+    expect(visualLayers.status).toBe(200);
+
+    const karaoke = await mutate({
+      type: "mutate-motion",
+      operation: "upsert",
+      targetSelector: "#headline",
+      elementId: "headline",
+      targetKind: "text",
+      phase: "emphasis",
+      presetId: "text.emphasis.karaoke-flow",
+      parameters: { unit: "word", stagger: 0.12, colorSource: "theme" },
+    });
+    expect(karaoke.status).toBe(200);
+
+    const response = await karaoke.json();
+    const instances = response.parsed.animations
+      .map((animation: { extras?: Record<string, unknown> }) =>
+        readMotionInstanceFromExtras(animation.extras),
+      )
+      .filter(Boolean);
+    expect(new Set(instances.map((instance) => instance.presetId))).toEqual(
+      new Set(["text.emphasis.karaoke-flow"]),
+    );
+
+    const html = readFileSync(join(projectDir, "index.html"), "utf8");
+    const document = parseHTML(html).document;
+    expect(document.querySelectorAll('#headline [data-ipw-motion-role="unit"]')).toHaveLength(3);
+    expect(document.querySelectorAll('#headline [data-ipw-motion-role="background"]')).toHaveLength(
+      3,
+    );
+    expect(document.querySelector('#headline [data-ipw-motion-role="clone-primary"]')).toBeNull();
+    expect(document.querySelector('#headline [data-ipw-motion-role="clone-accent"]')).toBeNull();
+    expect(document.querySelector("#headline")?.textContent).toBe("Make motion clear.");
+    expect(html).not.toContain("text.enter.visual-layers");
+    expect(html).not.toContain('#headline [data-ipw-motion-role=\\"clone-primary\\"]');
+    expect(html).toContain('#headline [data-ipw-motion-role=\\"background\\"]');
+  });
+
+  it("compiles generated captions with the same structured text path as body copy", async () => {
+    writeFileSync(
+      join(projectDir, "index.html"),
+      `<!doctype html><html><body>
+        <h1 id="headline" data-start="1" data-duration="5">Make motion clear.</h1>
+        <section class="clip" data-ipw-caption="true" data-start="1" data-duration="5">
+          <span id="caption-text" data-ipw-caption-text="true" style="font-weight:550;line-height:1.4;letter-spacing:.04em;color:white;text-shadow:0 2px 8px black">Make motion clear.</span>
+        </section>
+        <script>
+          window.__timelines = window.__timelines || {};
+          const tl = gsap.timeline({ paused: true });
+          window.__timelines["main"] = tl;
+        </script>
+      </body></html>`,
+    );
+    const applyHighlight = (selector: string, elementId: string) =>
+      mutate({
+        type: "mutate-motion",
+        operation: "upsert",
+        targetSelector: selector,
+        elementId,
+        targetKind: "text",
+        phase: "emphasis",
+        presetId: "text.emphasis.highlight-sweep",
+        parameters: { unit: "word", stagger: 0.05 },
+      });
+
+    expect((await applyHighlight("#headline", "headline")).status).toBe(200);
+    const captionResponse = await applyHighlight("#caption-text", "caption-text");
+    expect(captionResponse.status).toBe(200);
+    const captionPayload = await captionResponse.json();
+    const compiledShapeFor = (selector: string) =>
+      captionPayload.parsed.animations
+        .filter((animation: { targetSelector: string }) =>
+          animation.targetSelector.startsWith(`${selector} [`),
+        )
+        .map(
+          (animation: {
+            targetSelector: string;
+            position: number;
+            duration: number;
+            keyframes: unknown;
+            extras?: { stagger?: number };
+          }) => ({
+            roleSelector: animation.targetSelector.slice(selector.length),
+            position: animation.position,
+            duration: animation.duration,
+            keyframes: animation.keyframes,
+            stagger: animation.extras?.stagger ?? 0,
+          }),
+        );
+    expect(compiledShapeFor("#caption-text")).toEqual(compiledShapeFor("#headline"));
+
+    const html = readFileSync(join(projectDir, "index.html"), "utf8");
+    const document = parseHTML(html).document;
+    for (const selector of ["#headline", "#caption-text"]) {
+      expect(document.querySelectorAll(`${selector} [data-ipw-motion-role="unit"]`)).toHaveLength(
+        3,
+      );
+      expect(
+        document.querySelectorAll(`${selector} [data-ipw-motion-role="background"]`),
+      ).toHaveLength(3);
+      expect(document.querySelectorAll(`${selector} [data-ipw-motion-role="text"]`)).toHaveLength(
+        3,
+      );
+      expect(html).toContain(`${selector} [data-ipw-motion-role=\\"background\\"]`);
+      expect(html).toContain(`${selector} [data-ipw-motion-role=\\"text\\"]`);
+    }
+    const caption = document.querySelector<HTMLElement>("#caption-text")!;
+    expect(caption.style.fontWeight).toBe("550");
+    expect(caption.style.lineHeight).toBe("1.4");
+    expect(caption.style.letterSpacing).toBe(".04em");
+    expect(
+      Array.from(caption.querySelectorAll<HTMLElement>('[data-ipw-motion-role="text"]')).every(
+        (layer) =>
+          layer.style.fontWeight === "inherit" &&
+          layer.style.lineHeight === "inherit" &&
+          layer.style.letterSpacing === "inherit",
+      ),
+    ).toBe(true);
   });
 
   it("restores materialized Highlight DOM when the structured writer cannot add a track", async () => {
@@ -598,7 +747,7 @@ describe("semantic motion mutation route", () => {
     expect(html).toContain('data-var-text="title"');
     expect(html).toContain("text.enter.fold-reveal");
     expect(html).toContain("data-ipw-motion-char");
-    expect(html).toContain("font-weight:700");
+    expect(html).toContain("font-weight:inherit");
   });
 
   it("keeps word motion shaped as whole words instead of splitting every character", async () => {
@@ -625,7 +774,7 @@ describe("semantic motion mutation route", () => {
     expect(document.querySelector("#headline")?.textContent).toBe("Office motion fidelity");
   });
 
-  it("keeps phases independent and removes only the requested phase", async () => {
+  it("keeps only the latest text animation across all phases", async () => {
     for (const [phase, presetId] of [
       ["enter", "text.enter.rise"],
       ["emphasis", "text.emphasis.pulse"],
@@ -637,18 +786,28 @@ describe("semantic motion mutation route", () => {
         targetSelector: "#headline",
         elementId: "headline",
         targetKind: "text",
+        applicationKind: "text",
         phase,
         presetId,
       });
       expect(response.status).toBe(200);
     }
 
+    let html = readFileSync(join(projectDir, "index.html"), "utf8");
+    let document = parseHTML(html).document;
+    expect(html).not.toContain("text.enter.rise");
+    expect(html).not.toContain("text.emphasis.pulse");
+    expect(html).toContain("text.exit.fade");
+    expect(document.querySelector("#headline")?.getAttribute("data-ipw-animation-reference")).toBe(
+      "text.exit.fade",
+    );
+
     const removed = await mutate({
       type: "mutate-motion",
       operation: "remove",
       targetSelector: "#headline",
       targetKind: "text",
-      phase: "emphasis",
+      phase: "exit",
     });
     const body = await removed.json();
     const phases = body.parsed.animations
@@ -657,11 +816,237 @@ describe("semantic motion mutation route", () => {
       )
       .filter(Boolean)
       .map((instance: { phase: string }) => instance.phase);
-    expect(phases).toEqual(["enter", "exit"]);
+    expect(phases).toEqual([]);
+    html = readFileSync(join(projectDir, "index.html"), "utf8");
+    document = parseHTML(html).document;
+    expect(document.querySelector("#headline")?.hasAttribute("data-ipw-animation-reference")).toBe(
+      false,
+    );
+  });
+
+  it("keeps multiple general animations, including animations in the same phase", async () => {
+    writeFileSync(
+      join(projectDir, "index.html"),
+      SOURCE.replace(
+        '<h1 id="headline" data-start="1" data-duration="5">你好 mixed AI</h1>',
+        '<div id="card" data-start="1" data-duration="5"><span>Nested</span></div>',
+      ),
+    );
+    for (const [templateId, phase, presetId] of [
+      ["general-slide-in", "enter", "element.enter.slide"],
+      ["general-scale-in", "enter", "element.enter.scale"],
+      ["general-soft-float", "emphasis", "motion.emphasis.soft-float"],
+    ]) {
+      const response = await mutate({
+        type: "mutate-motion",
+        operation: "upsert",
+        targetSelector: "#card",
+        elementId: "card",
+        targetKind: "element",
+        applicationKind: "general",
+        templateId,
+        phase,
+        presetId,
+      });
+      expect(response.status).toBe(200);
+    }
+
+    let html = readFileSync(join(projectDir, "index.html"), "utf8");
+    expect(html).toContain("element.enter.slide");
+    expect(html).toContain("element.enter.scale");
+    expect(html).toContain("motion.emphasis.soft-float");
+
+    const replacement = await mutate({
+      type: "mutate-motion",
+      operation: "upsert",
+      targetSelector: "#card",
+      elementId: "card",
+      targetKind: "element",
+      applicationKind: "general",
+      templateId: "general-slide-in",
+      phase: "enter",
+      presetId: "element.enter.slide",
+      parameters: { direction: "right" },
+    });
+    expect(replacement.status).toBe(200);
+    const replacementBody = await replacement.json();
+    const presetIds = replacementBody.parsed.animations
+      .map((animation: { extras?: Record<string, unknown> }) =>
+        readMotionInstanceFromExtras(animation.extras),
+      )
+      .filter(Boolean)
+      .map((instance: { presetId: string }) => instance.presetId);
+    expect(presetIds).toEqual([
+      "element.enter.scale",
+      "motion.emphasis.soft-float",
+      "element.enter.slide",
+    ]);
+    html = readFileSync(join(projectDir, "index.html"), "utf8");
+    expect(html).toContain("element.enter.slide");
+    expect(html).toContain("element.enter.scale");
+    expect(html).toContain("motion.emphasis.soft-float");
+
+    const removed = await mutate({
+      type: "mutate-motion",
+      operation: "remove",
+      targetSelector: "#card",
+      targetKind: "element",
+      applicationKind: "general",
+      templateId: "general-slide-in",
+      phase: "enter",
+    });
+    expect(removed.status).toBe(200);
+    html = readFileSync(join(projectDir, "index.html"), "utf8");
+    expect(html).not.toContain("element.enter.slide");
+    expect(html).toContain("element.enter.scale");
+    expect(html).toContain("motion.emphasis.soft-float");
+  });
+
+  it("keeps one box animation while preserving general animations in other phases", async () => {
+    writeFileSync(
+      join(projectDir, "index.html"),
+      SOURCE.replace(
+        '<h1 id="headline" data-start="1" data-duration="5">\u4f60\u597d mixed AI</h1>',
+        '<div id="card" data-start="1" data-duration="5"><span>Nested</span></div>',
+      ),
+    );
+    for (const input of [
+      {
+        applicationKind: "general",
+        templateId: "general-slide-in",
+        phase: "enter",
+        presetId: "element.enter.slide",
+      },
+      {
+        applicationKind: "box",
+        templateId: "box-lift",
+        phase: "emphasis",
+        presetId: "element.emphasis.lift",
+      },
+      {
+        applicationKind: "box",
+        templateId: "box-scale",
+        phase: "enter",
+        presetId: "element.enter.scale",
+      },
+    ]) {
+      const response = await mutate({
+        type: "mutate-motion",
+        operation: "upsert",
+        targetSelector: "#card",
+        elementId: "card",
+        targetKind: "element",
+        ...input,
+      });
+      const error = response.status === 200 ? "" : await response.text();
+      expect(response.status, error).toBe(200);
+    }
+
     const html = readFileSync(join(projectDir, "index.html"), "utf8");
+    expect(html).toContain("element.enter.slide");
+    expect(html).not.toContain("element.emphasis.lift");
+    expect(html).toContain("element.enter.scale");
+    const instances = parseHTML(html)
+      .document.querySelector("#card")
+      ?.getAttribute("data-ipw-animation-reference");
+    expect(instances).toBe("element.enter.slide,element.enter.scale");
+  });
+
+  it("makes text animations mutually exclusive with general and box animations", async () => {
+    for (const input of [
+      {
+        targetKind: "text",
+        applicationKind: "general",
+        templateId: "general-fade-in",
+        phase: "enter",
+        presetId: "text.enter.fade",
+      },
+      {
+        targetKind: "element",
+        applicationKind: "box",
+        templateId: "box-lift",
+        phase: "emphasis",
+        presetId: "element.emphasis.lift",
+      },
+    ]) {
+      expect(
+        (
+          await mutate({
+            type: "mutate-motion",
+            operation: "upsert",
+            targetSelector: "#headline",
+            elementId: "headline",
+            ...input,
+          })
+        ).status,
+      ).toBe(200);
+    }
+
+    const textMotion = await mutate({
+      type: "mutate-motion",
+      operation: "upsert",
+      targetSelector: "#headline",
+      elementId: "headline",
+      targetKind: "text",
+      applicationKind: "text",
+      templateId: "text-highlight-sweep",
+      phase: "emphasis",
+      presetId: "text.emphasis.highlight-sweep",
+    });
+    expect(textMotion.status).toBe(200);
+    let html = readFileSync(join(projectDir, "index.html"), "utf8");
+    expect(html).not.toContain("text.enter.fade");
+    expect(html).not.toContain("element.emphasis.lift");
+    expect(html).toContain("text.emphasis.highlight-sweep");
+
+    const generalMotion = await mutate({
+      type: "mutate-motion",
+      operation: "upsert",
+      targetSelector: "#headline",
+      elementId: "headline",
+      targetKind: "text",
+      applicationKind: "general",
+      templateId: "general-slide-in",
+      phase: "enter",
+      presetId: "text.enter.rise",
+    });
+    expect(generalMotion.status).toBe(200);
+    html = readFileSync(join(projectDir, "index.html"), "utf8");
+    expect(html).not.toContain("text.emphasis.highlight-sweep");
     expect(html).toContain("text.enter.rise");
-    expect(html).toContain("text.exit.fade");
-    expect(html).not.toContain("text.emphasis.pulse");
+
+    const secondGeneralMotion = await mutate({
+      type: "mutate-motion",
+      operation: "upsert",
+      targetSelector: "#headline",
+      elementId: "headline",
+      targetKind: "text",
+      applicationKind: "general",
+      templateId: "general-fade-in",
+      phase: "enter",
+      presetId: "text.enter.fade",
+    });
+    expect(secondGeneralMotion.status).toBe(200);
+    html = readFileSync(join(projectDir, "index.html"), "utf8");
+    expect(html).toContain("text.enter.rise");
+    expect(html).toContain("text.enter.fade");
+
+    const replacementTextMotion = await mutate({
+      type: "mutate-motion",
+      operation: "upsert",
+      targetSelector: "#headline",
+      elementId: "headline",
+      targetKind: "text",
+      applicationKind: "text",
+      templateId: "text-typewriter",
+      phase: "enter",
+      presetId: "text.enter.typewriter",
+    });
+    expect(replacementTextMotion.status).toBe(200);
+    html = readFileSync(join(projectDir, "index.html"), "utf8");
+    expect(html).not.toContain("text.enter.rise");
+    expect(html).not.toContain("text.enter.fade");
+    expect(html).toContain("text.enter.typewriter");
   });
 
   it("drops parameters unsupported by a replacement preset and clears the last marker", async () => {
