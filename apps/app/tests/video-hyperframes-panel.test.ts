@@ -838,6 +838,10 @@ describe("HyperFrames Video Studio", () => {
     const contract = videoTaskSystemContext("ses/current video", "/workspace/current");
     expect(contract).toContain("/workspace/current/video/ses_current_video/index.html");
     expect(contract).toContain("prepared blank composition");
+    expect(contract).toContain("At the start of every edit turn");
+    expect(contract).toContain("Studio manual edits are user-owned source state");
+    expect(contract).toContain("data-hf-studio-*");
+    expect(contract).toContain("never regenerate from an earlier response or cached HTML snapshot");
     expect(contract).toContain("Never run npm/pnpm/yarn install");
     expect(contract).toContain("Batch compatible HTML/CSS/JS changes into one complete edit or write");
     expect(contract).toContain("use at most two read-only inspection calls before the first mutation or media action");
@@ -983,6 +987,7 @@ describe("HyperFrames Video Studio", () => {
     expect(contract).toContain("source is template `Launch Film`");
     expect(contract).toContain("edit it rather than starting over");
     expect(contract).toContain("preserve the composition id");
+    expect(contract).toContain("at the start of every edit turn, re-read the current entry from disk");
     expect(contract).toContain("Replace inherited copy; Keep the visual language");
   });
 });

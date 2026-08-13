@@ -9,6 +9,42 @@ import {
   validateMotionParameters,
 } from "./motionPresets";
 
+function expectStructuredTextToRemainReadable(
+  structured: NonNullable<ReturnType<typeof compileMotionInstance>["structured"]>,
+  presetId: string,
+): void {
+  const final = new Map<string, { end: number; value: number | string }>();
+  for (const track of structured.tracks) {
+    if (track.role !== "unit" && track.role !== "text") continue;
+    const keyframe = track.keyframes.at(-1);
+    if (!keyframe) continue;
+    const end = track.position + track.duration;
+    for (const property of ["opacity", "visibility"] as const) {
+      const value = keyframe.properties[property];
+      if (value === undefined) continue;
+      const key = `${track.role}:${property}`;
+      if ((final.get(key)?.end ?? -1) <= end) final.set(key, { end, value });
+    }
+  }
+  for (const [property, state] of final) {
+    expect(state.value, `${presetId} ${property}`).not.toBe("hidden");
+    if (property.endsWith(":opacity")) {
+      expect(Number(state.value), `${presetId} ${property}`).toBeGreaterThan(0);
+    }
+  }
+}
+
+function compiledStructuredTrackTargetCount(
+  structured: NonNullable<ReturnType<typeof compileMotionInstance>["structured"]>,
+  role: NonNullable<
+    ReturnType<typeof compileMotionInstance>["structured"]
+  >["tracks"][number]["role"],
+): number {
+  if (role === "particle") return structured.particles?.length ?? 0;
+  const layer = structured.layers.find((candidate) => candidate.role === role);
+  return layer?.perUnit ? structured.units.length : 1;
+}
+
 describe("motion presets", () => {
   it("ships stable text and element presets across all three phases", () => {
     expect(MOTION_PRESETS).toHaveLength(63);
@@ -53,8 +89,14 @@ describe("motion presets", () => {
       const preset = MOTION_PRESETS.find((candidate) => candidate.id === id);
       expect(preset, id).toBeDefined();
       expect(preset?.targetKinds, id).toEqual(["text"]);
-      expect(preset?.parameterSchema.map((parameter) => parameter.id), id).toContain("intensity");
-      expect(preset?.parameterSchema.map((parameter) => parameter.id), id).toContain("ease");
+      expect(
+        preset?.parameterSchema.map((parameter) => parameter.id),
+        id,
+      ).toContain("intensity");
+      expect(
+        preset?.parameterSchema.map((parameter) => parameter.id),
+        id,
+      ).toContain("ease");
       expect(preset?.structuredText, id).toBeDefined();
       const compiled = compileMotionInstance(
         createMotionInstance({
@@ -67,6 +109,28 @@ describe("motion presets", () => {
       );
       expect(compiled.structured, id).toBeDefined();
       expect(compiled.structured?.units.length, id).toBeGreaterThan(0);
+      expect(compiled.structured?.split, id).toBe("word");
+      expect(
+        Math.max(...(compiled.structured?.tracks.map((track) => track.stagger) ?? [0])),
+        id,
+      ).toBeGreaterThan(0);
+      expectStructuredTextToRemainReadable(compiled.structured!, id);
+      const actualTrackEnd = Math.max(
+        ...compiled.structured!.tracks.map((track) =>
+          Number(
+            (
+              track.position +
+              track.duration +
+              track.stagger *
+                Math.max(
+                  0,
+                  compiledStructuredTrackTargetCount(compiled.structured!, track.role) - 1,
+                )
+            ).toFixed(9),
+          ),
+        ),
+      );
+      expect(actualTrackEnd, `${id} real target timing`).toBeCloseTo(compiled.duration, 8);
     }
 
     const specializedDefaults = {
@@ -89,7 +153,9 @@ describe("motion presets", () => {
     };
 
     for (const [id, defaults] of Object.entries(specializedDefaults)) {
-      expect(MOTION_PRESETS.find((preset) => preset.id === id)?.defaults, id).toMatchObject(defaults);
+      expect(MOTION_PRESETS.find((preset) => preset.id === id)?.defaults, id).toMatchObject(
+        defaults,
+      );
     }
 
     const commonParameterIds = new Set([
@@ -110,10 +176,12 @@ describe("motion presets", () => {
       }
     }
 
-    expect(listMotionPresets({ targetKind: "text", phase: "enter" }).map((preset) => preset.id))
-      .toEqual(expect.arrayContaining(["text.enter.matrix-decode", "text.enter.clip-wipe"]));
-    expect(listMotionPresets({ targetKind: "text", phase: "emphasis" }).map((preset) => preset.id))
-      .toEqual(expect.arrayContaining(migratedIds.filter((id) => id.includes(".emphasis."))));
+    expect(
+      listMotionPresets({ targetKind: "text", phase: "enter" }).map((preset) => preset.id),
+    ).toEqual(expect.arrayContaining(["text.enter.matrix-decode", "text.enter.clip-wipe"]));
+    expect(
+      listMotionPresets({ targetKind: "text", phase: "emphasis" }).map((preset) => preset.id),
+    ).toEqual(expect.arrayContaining(migratedIds.filter((id) => id.includes(".emphasis."))));
   });
 
   it("defaults migrated caption effects to readable showcase timing", () => {
@@ -433,12 +501,14 @@ describe("motion presets", () => {
     const reveal = tracks.find(
       (track) =>
         track.role === "background" &&
-        track.keyframes.some((keyframe) => keyframe.properties.backgroundImage === "linear-gradient(135deg, #ff1745 0%, #df1238 100%)"),
+        track.keyframes.some(
+          (keyframe) =>
+            keyframe.properties.backgroundImage ===
+            "linear-gradient(135deg, #ff1745 0%, #df1238 100%)",
+        ),
     );
     const exit = tracks.find(
-      (track) =>
-        track.role === "background" &&
-        track.keyframes.at(-1)?.properties.scaleX === 1.02,
+      (track) => track.role === "background" && track.keyframes.at(-1)?.properties.scaleX === 1.02,
     );
     const reset = tracks.find(
       (track) =>
@@ -488,7 +558,12 @@ describe("motion presets", () => {
       "power2.out",
       "power2.out",
     ]);
-    expect(text?.keyframes.every((keyframe) => keyframe.properties.color === "#ffffff")).toBe(true);
+    expect(text?.keyframes.map((keyframe) => keyframe.properties.color)).toEqual([
+      "inherit",
+      "#ffffff",
+      "#ffffff",
+      "inherit",
+    ]);
   });
 
   it("wires Highlight controls into its structured recipe", () => {
@@ -522,15 +597,23 @@ describe("motion presets", () => {
     expect(configured.tracks[0]?.stagger).not.toBe(baseline.tracks[0]?.stagger);
     expect(configured.tracks).not.toEqual(baseline.tracks);
     expect(faster.tracks[0]?.duration).toBeLessThan(baseline.tracks[0]?.duration ?? Infinity);
-    expect(configured.tracks.some((track) =>
-      track.keyframes.some((keyframe) => keyframe.properties.transformOrigin === "100% 50%"),
-    )).toBe(true);
-    expect(configured.tracks.some((track) =>
-      track.keyframes.some((keyframe) => String(keyframe.properties.backgroundImage).includes("#2563eb")),
-    )).toBe(true);
-    expect(configured.tracks.some((track) =>
-      track.keyframes.some((keyframe) => keyframe.properties.filter === "brightness(1.08)"),
-    )).toBe(true);
+    expect(
+      configured.tracks.some((track) =>
+        track.keyframes.some((keyframe) => keyframe.properties.transformOrigin === "100% 50%"),
+      ),
+    ).toBe(true);
+    expect(
+      configured.tracks.some((track) =>
+        track.keyframes.some((keyframe) =>
+          String(keyframe.properties.backgroundImage).includes("#2563eb"),
+        ),
+      ),
+    ).toBe(true);
+    expect(
+      configured.tracks.some((track) =>
+        track.keyframes.some((keyframe) => keyframe.properties.filter === "brightness(1.08)"),
+      ),
+    ).toBe(true);
   });
 
   it("uses directional clipped gradients for gradient fill", () => {

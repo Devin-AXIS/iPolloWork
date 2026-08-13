@@ -128,9 +128,7 @@ export function findDomTextFieldElement(
   return target?.nodeType === 1 ? (target as HTMLElement) : null;
 }
 
-export function textFieldStyleTargetsSelectedElement(
-  source: DomEditTextField["source"],
-): boolean {
+export function textFieldStyleTargetsSelectedElement(source: DomEditTextField["source"]): boolean {
   return source !== "child";
 }
 
@@ -293,16 +291,18 @@ export function useDomEditTextCommits({
             editedElement.textContent = value;
           }
         },
-        persist: async () => {
-          if (textCommit.usesSerializedTextFields && textCommit.childOperations === null) {
-            throw new DomEditPersistUnsupportedTextStructureError();
-          }
-          await persistDomEditOperations(domEditSelection, textCommit.operations, {
-            label: "Edit text",
-            skipRefresh: true,
-            shouldSave: isLatestTextCommit,
-          });
-        },
+        persist: () =>
+          queueDomEditSave(async () => {
+            if (textCommit.usesSerializedTextFields && textCommit.childOperations === null) {
+              throw new DomEditPersistUnsupportedTextStructureError();
+            }
+            await persistDomEditOperations(domEditSelection, textCommit.operations, {
+              label: "Edit text",
+              skipRefresh: true,
+              skipSdkCutover: true,
+              shouldSave: isLatestTextCommit,
+            });
+          }),
         shouldRevert: () => isLatestTextCommit(),
         revert: () => {
           if (!editedElement || previousInnerHtml === null) return;
@@ -328,6 +328,7 @@ export function useDomEditTextCommits({
       domEditSelection,
       persistDomEditOperations,
       previewIframeRef,
+      queueDomEditSave,
       showToast,
     ],
   );
@@ -340,9 +341,7 @@ export function useDomEditTextCommits({
       const doc = iframe?.contentDocument;
       let editedElement: HTMLElement | null = null;
       let previousInnerHtml: string | null = null;
-      const operations: PatchOperation[] = [
-        { type: "inner-html", property: "innerHTML", value },
-      ];
+      const operations: PatchOperation[] = [{ type: "inner-html", property: "innerHTML", value }];
 
       await runDomEditCommit({
         capture: () => {
@@ -357,18 +356,20 @@ export function useDomEditTextCommits({
           editedElement.innerHTML = value;
         },
         persist: () =>
-          persistDomEditOperations(selection, operations, {
-            label: "Format text",
-            skipRefresh: true,
-            shouldSave: isLatestTextCommit,
-          }),
+          queueDomEditSave(() =>
+            persistDomEditOperations(selection, operations, {
+              label: "Format text",
+              skipRefresh: true,
+              skipSdkCutover: true,
+              shouldSave: isLatestTextCommit,
+            }),
+          ),
         shouldRevert: () => isLatestTextCommit(),
         revert: () => {
           if (!editedElement || previousInnerHtml === null) return;
           editedElement.innerHTML = previousInnerHtml;
         },
-        onError: (error) =>
-          reportDomEditPersistFailure(selection, operations, error, showToast),
+        onError: (error) => reportDomEditPersistFailure(selection, operations, error, showToast),
         shouldResync: isLatestTextCommit,
         resync: () =>
           resyncDomTextSelectionFromPreview(
@@ -386,6 +387,7 @@ export function useDomEditTextCommits({
       buildDomSelectionFromTarget,
       persistDomEditOperations,
       previewIframeRef,
+      queueDomEditSave,
       showToast,
     ],
   );
@@ -424,18 +426,20 @@ export function useDomEditTextCommits({
             editedElement.textContent = textCommit.nextContent;
           }
         },
-        persist: async () => {
-          if (textCommit.usesSerializedTextFields && textCommit.childOperations === null) {
-            throw new DomEditPersistUnsupportedTextStructureError();
-          }
-          await persistDomEditOperations(selection, textCommit.operations, {
-            label: "Edit text",
-            skipRefresh: true,
-            prepareContent: importedFont
-              ? (html, sourceFile) => ensureImportedFontFace(html, importedFont, sourceFile)
-              : undefined,
-          });
-        },
+        persist: () =>
+          queueDomEditSave(async () => {
+            if (textCommit.usesSerializedTextFields && textCommit.childOperations === null) {
+              throw new DomEditPersistUnsupportedTextStructureError();
+            }
+            await persistDomEditOperations(selection, textCommit.operations, {
+              label: "Edit text",
+              skipRefresh: true,
+              skipSdkCutover: true,
+              prepareContent: importedFont
+                ? (html, sourceFile) => ensureImportedFontFace(html, importedFont, sourceFile)
+                : undefined,
+            });
+          }),
         shouldRevert: () => isLatestTextCommit(),
         revert: () => {
           if (!editedElement || previousInnerHtml === null) return;
@@ -460,6 +464,7 @@ export function useDomEditTextCommits({
       buildDomSelectionFromTarget,
       persistDomEditOperations,
       previewIframeRef,
+      queueDomEditSave,
       showToast,
     ],
   );
@@ -548,9 +553,7 @@ export function useDomEditTextCommits({
       }
 
       const doc = previewIframeRef.current?.contentDocument;
-      const parent = doc
-        ? findElementForSelection(doc, domEditSelection, activeCompPath)
-        : null;
+      const parent = doc ? findElementForSelection(doc, domEditSelection, activeCompPath) : null;
       const textFieldElement = parent
         ? findDomTextFieldElement(parent, domEditSelection.textFields, fieldKey)
         : null;

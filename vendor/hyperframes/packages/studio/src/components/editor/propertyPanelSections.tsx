@@ -77,6 +77,7 @@ export function TextAreaField({
 }) {
   const track = useTrackDesignInput();
   const [draft, setDraft] = useState(value);
+  const draftRef = useRef(value);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const interactionChangedRef = useRef(false);
   const focusedRef = useRef(false);
@@ -85,6 +86,7 @@ export function TextAreaField({
 
   useEffect(() => {
     if (focusedRef.current) return;
+    draftRef.current = value;
     setDraft(value);
   }, [value]);
   useEffect(() => {
@@ -104,12 +106,13 @@ export function TextAreaField({
     focusedRef.current = true;
   };
   const handleChange = (e: ChangeEvent<HTMLTextAreaElement>) => {
+    draftRef.current = e.target.value;
     setDraft(e.target.value);
     interactionChangedRef.current = true;
   };
   const handleBlur = () => {
     focusedRef.current = false;
-    commitDraft(draft);
+    commitDraft(draftRef.current);
   };
 
   if (flat) {
@@ -123,6 +126,12 @@ export function TextAreaField({
           aria-label={label}
           onFocus={handleFocus}
           onChange={handleChange}
+          onKeyDown={(event) => {
+            if (event.key !== "Enter" || event.nativeEvent.isComposing) return;
+            event.preventDefault();
+            event.stopPropagation();
+            event.currentTarget.blur();
+          }}
           onBlur={handleBlur}
           className="w-full resize-none bg-transparent font-sans text-[14px] font-normal leading-[20px] text-[#24262b] outline-none disabled:cursor-not-allowed disabled:text-panel-text-4 dark:text-panel-text-1"
         />

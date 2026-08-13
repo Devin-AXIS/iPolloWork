@@ -197,7 +197,12 @@ describe("text metric style commits", () => {
 
     expect(onSetTextFieldStyle).toHaveBeenNthCalledWith(1, "text-node:0", "font-size", "32px");
     expect(onSetTextFieldStyle).toHaveBeenNthCalledWith(2, "text-node:0", "line-height", "30px");
-    expect(onSetTextFieldStyle).toHaveBeenNthCalledWith(3, "text-node:0", "letter-spacing", "1.5px");
+    expect(onSetTextFieldStyle).toHaveBeenNthCalledWith(
+      3,
+      "text-node:0",
+      "letter-spacing",
+      "1.5px",
+    );
     flushSync(() => root.unmount());
     container.remove();
   });
@@ -274,16 +279,102 @@ describe("text content commits", () => {
     flushSync(() => {
       valueSetter.call(textarea, "2026 世界的");
       textarea.dispatchEvent(new Event("input", { bubbles: true }));
+      expect(onSetText).not.toHaveBeenCalled();
+      textarea.blur();
     });
-    vi.runAllTimers();
-    expect(onSetText).not.toHaveBeenCalled();
-
-    flushSync(() => textarea.blur());
     expect(onSetText).toHaveBeenCalledOnce();
     expect(onSetText).toHaveBeenCalledWith("2026 世界的", "text-node:0");
 
     flushSync(() => root.unmount());
     container.remove();
     vi.useRealTimers();
+  });
+
+  it("keeps the single-line value visible and commits it when Enter is pressed", () => {
+    const elementNode = document.createElement("p");
+    const element: DomEditSelection = {
+      element: elementNode,
+      label: "Version",
+      tagName: "p",
+      sourceFile: "index.html",
+      compositionPath: "index.html",
+      isCompositionHost: false,
+      isInsideLockedComposition: false,
+      boundingBox: { x: 0, y: 0, width: 320, height: 80 },
+      textContent: "2026",
+      dataAttributes: {},
+      inlineStyles: {},
+      computedStyles: {},
+      textFields: [
+        {
+          key: "text-node:0",
+          label: "2026",
+          value: "2026",
+          tagName: "p",
+          attributes: [],
+          inlineStyles: {},
+          computedStyles: {},
+          source: "text-node",
+        },
+      ],
+      capabilities: {
+        canSelect: true,
+        canEditStyles: true,
+        canCrop: true,
+        canMove: true,
+        canResize: true,
+        canApplyManualOffset: true,
+        canApplyManualSize: true,
+        canApplyManualRotation: true,
+      },
+    };
+    const onSetText = vi.fn();
+    const container = document.createElement("div");
+    document.body.append(container);
+    const root = createRoot(container);
+
+    flushSync(() =>
+      root.render(
+        <FlatTextSection
+          element={element}
+          styles={{}}
+          fontAssets={[]}
+          onSetText={onSetText}
+          onSetTextFieldStyle={vi.fn()}
+          onAddTextField={vi.fn()}
+          onRemoveTextField={vi.fn()}
+        />,
+      ),
+    );
+
+    const textarea = container.querySelector('textarea[aria-label="Content"]');
+    if (!(textarea instanceof HTMLTextAreaElement)) throw new Error("Text input missing");
+    const valueSetter = Object.getOwnPropertyDescriptor(
+      HTMLTextAreaElement.prototype,
+      "value",
+    )?.set;
+    if (!valueSetter) throw new Error("Textarea value setter missing");
+
+    textarea.focus();
+    let enterEvent: KeyboardEvent | undefined;
+    flushSync(() => {
+      valueSetter.call(textarea, "2026 world");
+      textarea.dispatchEvent(new Event("input", { bubbles: true }));
+      enterEvent = new KeyboardEvent("keydown", {
+        key: "Enter",
+        bubbles: true,
+        cancelable: true,
+      });
+      textarea.dispatchEvent(enterEvent);
+    });
+
+    expect(enterEvent?.defaultPrevented).toBe(true);
+    expect(document.activeElement).not.toBe(textarea);
+    expect(textarea.value).toBe("2026 world");
+    expect(onSetText).toHaveBeenCalledOnce();
+    expect(onSetText).toHaveBeenCalledWith("2026 world", "text-node:0");
+
+    flushSync(() => root.unmount());
+    container.remove();
   });
 });

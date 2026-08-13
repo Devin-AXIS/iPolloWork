@@ -3,8 +3,11 @@ import { describe, expect, it } from "vitest";
 import type { RegistryMotionPreset } from "@hyperframes/core/registry";
 import type { DomEditSelection } from "../components/editor/domEditingTypes";
 import {
+  rebaseMotionPresetKeyframes,
+  resolveCaptionMotionTargetElement,
   resolveMotionPresetSelection,
   resolveMotionPresetTiming,
+  resolveMotionTimelineSpan,
   resolveSemanticMotionTiming,
   resolveStructuredTextMotionTiming,
 } from "./motionPreset";
@@ -57,6 +60,14 @@ function domSelection(element: HTMLElement): DomEditSelection {
 }
 
 describe("resolveMotionPresetTiming", () => {
+  it("rebases relative preset motion around the user's placed position", () => {
+    expect(rebaseMotionPresetKeyframes(openingPreset.keyframes, { x: 120, y: 240 })).toEqual([
+      { percentage: 0, properties: { opacity: 0, y: 280 } },
+      { percentage: 100, properties: { opacity: 1, y: 240 } },
+    ]);
+    expect(openingPreset.keyframes[0]?.properties.y).toBe(40);
+  });
+
   it("anchors opening motion to the clip start", () => {
     expect(resolveMotionPresetTiming(timingSelection("2", "5"), openingPreset, 4)).toEqual({
       position: 2,
@@ -94,7 +105,13 @@ describe("resolveMotionPresetTiming", () => {
 
     expect(
       resolveSemanticMotionTiming({ element: card, dataAttributes: {} }, "emphasis", 0.8),
-    ).toEqual({ position: 10.7, duration: 0.8 });
+    ).toEqual({ position: 9.6, duration: 0.8 });
+    expect(resolveMotionTimelineSpan({ element: card, dataAttributes: {} }, 0.8)).toEqual({
+      start: 9.6,
+      end: 12.6,
+      duration: 3,
+      constrained: true,
+    });
   });
 
   it("repairs a stale semantic motion position outside its current owner", () => {
@@ -107,7 +124,7 @@ describe("resolveMotionPresetTiming", () => {
 
     expect(
       resolveSemanticMotionTiming({ element: card, dataAttributes: {} }, "emphasis", 0.8, 0.1),
-    ).toEqual({ position: 16.7, duration: 0.8 });
+    ).toEqual({ position: 15.6, duration: 0.8 });
   });
 
   it("clamps semantic motion duration to a short owner", () => {
@@ -154,6 +171,19 @@ describe("resolveMotionPresetTiming", () => {
 });
 
 describe("resolveMotionPresetSelection", () => {
+  it("normalizes a generated caption owner to its actual text node", () => {
+    const window = new Window();
+    window.document.body.innerHTML = `
+      <div id="caption" data-ipw-caption="true">
+        <span id="content" data-ipw-caption-text="true">Generated caption</span>
+      </div>`;
+    const owner = window.document.getElementById("caption") as unknown as HTMLElement;
+    const content = window.document.getElementById("content") as unknown as HTMLElement;
+
+    expect(resolveCaptionMotionTargetElement(owner)).toBe(content);
+    expect(resolveCaptionMotionTargetElement(content)).toBe(content);
+  });
+
   it("targets the editable content wrapper when a caption owner is selected", () => {
     const window = new Window();
     window.document.body.innerHTML = `

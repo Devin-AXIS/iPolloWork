@@ -444,7 +444,6 @@ export function useDomEditSession({
     resizeKeyframedTween,
     convertToKeyframes,
     removeAllKeyframes,
-    handleDomManualEditsReset,
   });
 
   // ── Preview interaction ──

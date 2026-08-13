@@ -235,7 +235,6 @@ export function StudioRightPanel({
 
   const backgroundRemovalAbortRef = useRef<AbortController | null>(null);
   const [pendingMotionDraft, setPendingMotionDraft] = useState<AnimationTemplateDraft | null>(null);
-  const [animationPreviewRequest, setAnimationPreviewRequest] = useState(0);
 
   useEffect(
     () => () => {
@@ -463,10 +462,8 @@ export function StudioRightPanel({
           element={singleDomEditSelection}
           animations={selectedGsapAnimations}
           onMutate={handleMotionMutation}
-          previewRequest={animationPreviewRequest}
           onApplied={() => {
             setPendingMotionDraft(null);
-            setAnimationPreviewRequest((request) => request + 1);
             showToast(tx("Animation applied"), "info");
           }}
         />
@@ -707,8 +704,7 @@ export function StudioRightPanel({
                     <BlocksTab page="effects" onAddBlock={onAddBlock} />
                   ) : animationPanelActive ? (
                     animationPanel
-                  ) : STUDIO_ILLUSTRATION_PANEL_ENABLED &&
-                    rightPanelTab === "illustration" ? (
+                  ) : STUDIO_ILLUSTRATION_PANEL_ENABLED && rightPanelTab === "illustration" ? (
                     <IllustrationTab />
                   ) : rightPanelTab === "assets" ? (
                     <AssetsTab

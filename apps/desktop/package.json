@@ -1,7 +1,7 @@
 {
   "name": "@ipollowork/desktop",
   "private": true,
-  "version": "0.20.0",
+  "version": "0.20.3",
   "description": "iPolloWork desktop shell",
   "author": {
     "name": "iPolloWork",
@@ -41,8 +41,10 @@
   "devDependencies": {
     "@electron/asar": "^3.4.1",
     "@ipollowork/types": "workspace:*",
+    "@opencode-ai/plugin": "1.18.16",
     "electron": "^35.0.0",
     "electron-builder": "^25.1.8",
-    "electron-devtools-installer": "^4.0.0"
+    "electron-devtools-installer": "^4.0.0",
+    "opencode-chrome-devtools": "1.0.4"
   }
 }

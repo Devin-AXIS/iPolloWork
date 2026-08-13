@@ -1,15 +1,37 @@
 import { describe, expect, it } from "vitest";
 import { parseGsapScriptAcorn } from "./gsapParserAcorn";
-import { addAnimationToScript, updateAnimationInScript } from "./gsapWriterAcorn";
+import {
+  addAnimationToScript,
+  isolateAnimationsForTargetInScript,
+  updateAnimationInScript,
+} from "./gsapWriterAcorn";
 
-const MOTION_MARKER =
-  'ipw-motion:v1:{"id":"motion:#title:enter","presetId":"text.enter.rise"}';
+const MOTION_MARKER = 'ipw-motion:v1:{"id":"motion:#title:enter","presetId":"text.enter.rise"}';
 
 function parsedMotionMarker(script: string): unknown {
   return parseGsapScriptAcorn(script).animations[0]?.extras?.data;
 }
 
 describe("GSAP semantic motion metadata", () => {
+  it("isolates every shared-selector tween without changing its authored payload", () => {
+    const script = [
+      "const tl = gsap.timeline({ paused: true });",
+      'tl.to(".card", { x: 80, duration: 1, repeat: 2 }, 0);',
+      'tl.to(".card", { scale: 1.1, duration: 0.4 }, 0.2);',
+    ].join("\n");
+    const selected = '[data-hf-id="card-two"]';
+    const remainder = ':is(.card):not([data-hf-id="card-two"])';
+
+    const isolated = isolateAnimationsForTargetInScript(script, ".card", selected, remainder);
+    const animations = parseGsapScriptAcorn(isolated).animations;
+
+    expect(animations.filter((animation) => animation.targetSelector === selected)).toHaveLength(2);
+    expect(animations.filter((animation) => animation.targetSelector === remainder)).toHaveLength(
+      2,
+    );
+    expect(isolated).toContain("repeat: 2");
+  });
+
   it("keeps the data marker outside editable properties and preserves it while updating", () => {
     const script = [
       "const tl = gsap.timeline({ paused: true });",

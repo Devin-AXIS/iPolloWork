@@ -40,7 +40,6 @@ export function useGsapSelectionHandlers({
   resizeKeyframedTween,
   convertToKeyframes,
   removeAllKeyframes,
-  handleDomManualEditsReset,
   selectedGsapAnimations,
   showToast,
 }: {
@@ -126,7 +125,6 @@ export function useGsapSelectionHandlers({
   ) => Promise<void>;
   removeAllKeyframes: (sel: DomEditSelection, animId: string) => Promise<void>;
 
-  handleDomManualEditsReset: (sel: DomEditSelection) => void;
   selectedGsapAnimations: GsapAnimation[];
   showToast: (message: string, tone?: "error" | "info") => void;
 }) {
@@ -219,11 +217,8 @@ export function useGsapSelectionHandlers({
           trackGsapHandlerFailure(error, domEditSelection, "add", `Add GSAP ${method} animation`);
         },
       );
-      if (domEditSelection.element.hasAttribute("data-hf-studio-path-offset")) {
-        handleDomManualEditsReset(domEditSelection);
-      }
     },
-    [domEditSelection, addGsapAnimation, handleDomManualEditsReset, trackGsapHandlerFailure],
+    [domEditSelection, addGsapAnimation, trackGsapHandlerFailure],
   );
 
   const handleMotionMutation = useCallback(
@@ -353,15 +348,11 @@ export function useGsapSelectionHandlers({
     ) => {
       const sel = selectionOverride ?? domEditSelection ?? lastSelectionRef.current;
       if (!sel) return Promise.resolve();
-      return addKeyframeBatch(
-        sel,
-        animId,
-        percentage,
-        properties,
-        commitOverrides,
-      ).catch((error) => {
-        trackGsapHandlerFailure(error, sel, "add-keyframe", "Add keyframe");
-      });
+      return addKeyframeBatch(sel, animId, percentage, properties, commitOverrides).catch(
+        (error) => {
+          trackGsapHandlerFailure(error, sel, "add-keyframe", "Add keyframe");
+        },
+      );
     },
     [domEditSelection, addKeyframeBatch, trackGsapHandlerFailure],
   );

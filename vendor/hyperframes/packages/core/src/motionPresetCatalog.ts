@@ -158,9 +158,10 @@ function highlightTransformOrigin(direction: string): string {
 }
 
 function highlightColor(parameters: MotionParameters): string {
-  const color = parameters.colorSource === "theme"
-    ? "var(--ipw-color-accent, #ff1745)"
-    : String(parameters.color ?? "#ff1745");
+  const color =
+    parameters.colorSource === "theme"
+      ? "var(--ipw-color-accent, #ff1745)"
+      : String(parameters.color ?? "#ff1745");
   return color.toLowerCase();
 }
 
@@ -266,11 +267,25 @@ export function createHighlightSweepStructuredRecipe(
       {
         role: "text",
         position: 0,
-        duration: 0.24 / speed,
+        duration: 0.33 / speed,
         stagger,
         keyframes: [
-          { percentage: 0, properties: { color: "#ffffff", textShadow: "0 6px 18px rgba(0, 0, 0, 0.45)" } },
-          { percentage: 100, properties: { color: "#ffffff", textShadow: "0 6px 18px rgba(0, 0, 0, 0.45)" } },
+          {
+            percentage: 0,
+            properties: { color: "inherit", textShadow: "none" },
+          },
+          {
+            percentage: 38,
+            properties: { color: "#ffffff", textShadow: "0 6px 18px rgba(0, 0, 0, 0.45)" },
+          },
+          {
+            percentage: 70,
+            properties: { color: "#ffffff", textShadow: "0 6px 18px rgba(0, 0, 0, 0.45)" },
+          },
+          {
+            percentage: 100,
+            properties: { color: "inherit", textShadow: "none" },
+          },
         ],
       },
     ],
@@ -281,19 +296,28 @@ export function resolveStructuredTextRecipe(
   preset: MotionPreset,
   parameters: MotionParameters,
 ): StructuredTextRecipe | undefined {
-  if (preset.id === "text.emphasis.highlight-sweep") return createHighlightSweepStructuredRecipe(parameters);
-  if (preset.id === "text.enter.matrix-decode") return resolveMatrixDecodeStructuredRecipe(parameters);
-  if (preset.id === "text.emphasis.gradient-fill") return resolveGradientFillStructuredRecipe(parameters);
+  if (preset.id === "text.emphasis.highlight-sweep")
+    return createHighlightSweepStructuredRecipe(parameters);
+  if (preset.id === "text.enter.matrix-decode")
+    return resolveMatrixDecodeStructuredRecipe(parameters);
+  if (preset.id === "text.emphasis.gradient-fill")
+    return resolveGradientFillStructuredRecipe(parameters);
   if (preset.id === "text.emphasis.neon-glow") return resolveNeonGlowStructuredRecipe(parameters);
-  if (preset.id === "text.emphasis.neon-accent") return resolveNeonAccentStructuredRecipe(parameters);
+  if (preset.id === "text.emphasis.neon-accent")
+    return resolveNeonAccentStructuredRecipe(parameters);
   if (preset.id === "text.emphasis.rgb-glitch") return resolveGlitchRgbStructuredRecipe(parameters);
   if (preset.id === "text.enter.clip-wipe") return resolveClipWipeStructuredRecipe(parameters);
-  if (preset.id === "text.emphasis.blend-difference") return resolveBlendDifferenceStructuredRecipe(parameters);
-  if (preset.id === "text.emphasis.weight-shift") return resolveWeightShiftStructuredRecipe(parameters);
-  if (preset.id === "text.emphasis.texture-fill") return resolveTextureFillStructuredRecipe(parameters);
-  if (preset.id === "text.emphasis.kinetic-slam") return resolveKineticSlamStructuredRecipe(parameters);
+  if (preset.id === "text.emphasis.blend-difference")
+    return resolveBlendDifferenceStructuredRecipe(parameters);
+  if (preset.id === "text.emphasis.weight-shift")
+    return resolveWeightShiftStructuredRecipe(parameters);
+  if (preset.id === "text.emphasis.texture-fill")
+    return resolveTextureFillStructuredRecipe(parameters);
+  if (preset.id === "text.emphasis.kinetic-slam")
+    return resolveKineticSlamStructuredRecipe(parameters);
   if (preset.id === "text.emphasis.emoji-pop") return resolveEmojiPopStructuredRecipe(parameters);
-  if (preset.id === "text.emphasis.particle-burst") return resolveParticleBurstStructuredRecipe(parameters);
+  if (preset.id === "text.emphasis.particle-burst")
+    return resolveParticleBurstStructuredRecipe(parameters);
   return preset.structuredText;
 }
 
@@ -357,7 +381,7 @@ function migratedTextPreset(
     defaults: {
       ease: seed.phase === "emphasis" ? "sine.inOut" : "power3.out",
       intensity: 1,
-      unit: "whole",
+      unit: "word",
       stagger: 0.04,
       ...(seed.direction ? { direction: "right" } : {}),
       ...(seed.color ? { colorSource: "theme", color: "#20BBC0" } : {}),
@@ -734,8 +758,20 @@ const MIGRATED_CAPTION_TEXT_PRESETS: readonly MotionPreset[] = [
     label: "RGB 故障",
     phase: "emphasis",
     color: true,
-    defaults: { unit: "word", stagger: 0.04, color: "#FF003C", preserveReadable: "true", blur: 0, density: 1, speed: 1 },
-    extraParameters: [MOTION_BLUR_PARAMETER, MOTION_DENSITY_PARAMETER, MOTION_READABILITY_PARAMETER],
+    defaults: {
+      unit: "word",
+      stagger: 0.04,
+      color: "#FF003C",
+      preserveReadable: "true",
+      blur: 0,
+      density: 1,
+      speed: 1,
+    },
+    extraParameters: [
+      MOTION_BLUR_PARAMETER,
+      MOTION_DENSITY_PARAMETER,
+      MOTION_READABILITY_PARAMETER,
+    ],
     structuredText: resolveGlitchRgbStructuredRecipe(),
     semantics: {
       intents: ["故障", "RGB", "扰动"],
@@ -764,7 +800,14 @@ const MIGRATED_CAPTION_TEXT_PRESETS: readonly MotionPreset[] = [
     label: "差值反色",
     phase: "emphasis",
     color: true,
-    defaults: { unit: "whole", color: "#FFFFFF", preserveReadable: "true", blur: 0 },
+    defaults: {
+      unit: "word",
+      stagger: 0.08,
+      color: "#FFFFFF",
+      preserveReadable: "true",
+      blur: 0,
+      speed: 1,
+    },
     extraParameters: [MOTION_BLUR_PARAMETER, MOTION_READABILITY_PARAMETER],
     structuredText: resolveBlendDifferenceStructuredRecipe(),
     semantics: {
@@ -778,7 +821,7 @@ const MIGRATED_CAPTION_TEXT_PRESETS: readonly MotionPreset[] = [
     id: "text.emphasis.weight-shift",
     label: "字重切换",
     phase: "emphasis",
-    defaults: { unit: "word", stagger: 0, minWeight: 300, maxWeight: 700, speed: 1 },
+    defaults: { unit: "word", stagger: 0.08, minWeight: 300, maxWeight: 700, speed: 1 },
     structuredText: resolveWeightShiftStructuredRecipe(),
     extraParameters: [
       { id: "minWeight", label: "起始字重", kind: "number", min: 100, max: 900, step: 50 },

@@ -6,7 +6,13 @@ function finite(parameters: MotionParameters, id: string, fallback: number): num
   return Number.isFinite(value) ? value : fallback;
 }
 
-function bounded(parameters: MotionParameters, id: string, fallback: number, min: number, max: number): number {
+function bounded(
+  parameters: MotionParameters,
+  id: string,
+  fallback: number,
+  min: number,
+  max: number,
+): number {
   return Math.min(max, Math.max(min, finite(parameters, id, fallback)));
 }
 
@@ -19,7 +25,12 @@ function split(parameters: MotionParameters, fallback: MotionTextUnit = "word"):
   return value === "whole" || value === "word" || value === "character" ? value : fallback;
 }
 
-function color(parameters: MotionParameters, id: string, fallback: string, themeToken?: string): string {
+function color(
+  parameters: MotionParameters,
+  id: string,
+  fallback: string,
+  themeToken?: string,
+): string {
   if (parameters.colorSource === "theme" && themeToken) return `var(${themeToken}, ${fallback})`;
   return String(parameters[id] ?? fallback);
 }
@@ -34,13 +45,6 @@ function hiddenInset(direction: string): string {
   if (direction === "left") return "inset(0% 100% 0% 0%)";
   if (direction === "right") return "inset(0% 0% 0% 100%)";
   return "inset(100% 0% 0% 0%)";
-}
-
-function exitInset(direction: string): string {
-  if (direction === "down") return "inset(100% 0% 0% 0%)";
-  if (direction === "left") return "inset(0% 0% 0% 100%)";
-  if (direction === "right") return "inset(0% 100% 0% 0%)";
-  return "inset(0% 0% 100% 0%)";
 }
 
 export function resolveMatrixDecodeStructuredRecipe(
@@ -71,31 +75,60 @@ export function resolveMatrixDecodeStructuredRecipe(
     ],
     tracks: [
       {
-        role: "clone-primary", position: 0, duration: 0, stagger,
-        keyframes: [{ percentage: 0, properties: { opacity: 1, visibility: "visible", ...stateStyle } }],
+        role: "clone-primary",
+        position: 0,
+        duration: 0,
+        stagger,
+        keyframes: [
+          { percentage: 0, properties: { opacity: 1, visibility: "visible", ...stateStyle } },
+        ],
       },
       {
-        role: "clone-primary", position: tick, duration: 0, stagger,
+        role: "clone-primary",
+        position: tick,
+        duration: 0,
+        stagger,
         keyframes: [{ percentage: 0, properties: { opacity: 0, visibility: "hidden" } }],
       },
       {
-        role: "clone-accent", position: tick, duration: 0, stagger,
-        keyframes: [{ percentage: 0, properties: { opacity: 1, visibility: "visible", ...stateStyle } }],
+        role: "clone-accent",
+        position: tick,
+        duration: 0,
+        stagger,
+        keyframes: [
+          { percentage: 0, properties: { opacity: 1, visibility: "visible", ...stateStyle } },
+        ],
       },
       {
-        role: "clone-accent", position: tick * 2, duration: 0, stagger,
+        role: "clone-accent",
+        position: tick * 2,
+        duration: 0,
+        stagger,
         keyframes: [{ percentage: 0, properties: { opacity: 0, visibility: "hidden" } }],
       },
       {
-        role: "text", position: 0, duration: 0, stagger,
-        keyframes: [{ percentage: 0, properties: { opacity: 0, visibility: "hidden", color: effectColor } }],
+        role: "text",
+        position: 0,
+        duration: 0,
+        stagger,
+        keyframes: [
+          { percentage: 0, properties: { opacity: 0, visibility: "hidden", color: effectColor } },
+        ],
       },
       {
-        role: "text", position: tick * 2, duration: 0, stagger,
-        keyframes: [{ percentage: 0, properties: { opacity: 1, visibility: "visible", color: effectColor } }],
+        role: "text",
+        position: tick * 2,
+        duration: 0,
+        stagger,
+        keyframes: [
+          { percentage: 0, properties: { opacity: 1, visibility: "visible", color: effectColor } },
+        ],
       },
       {
-        role: "unit", position: 0, duration: tick, stagger,
+        role: "unit",
+        position: 0,
+        duration: tick,
+        stagger,
         keyframes: [
           { percentage: 0, properties: { opacity: 0 } },
           { percentage: 100, properties: { opacity: 1 } },
@@ -109,12 +142,11 @@ function gradientGeometry(direction: string): {
   angle: number;
   start: string;
   end: string;
-  reset: string;
 } {
-  if (direction === "left") return { angle: 270, start: "55% 0", end: "100% 0", reset: "0% 0" };
-  if (direction === "up") return { angle: 0, start: "0 55%", end: "0 100%", reset: "0 0%" };
-  if (direction === "down") return { angle: 180, start: "0 45%", end: "0 0%", reset: "0 100%" };
-  return { angle: 90, start: "45% 0", end: "0% 0", reset: "100% 0" };
+  if (direction === "left") return { angle: 270, start: "55% 0", end: "100% 0" };
+  if (direction === "up") return { angle: 0, start: "0 55%", end: "0 100%" };
+  if (direction === "down") return { angle: 180, start: "0 45%", end: "0 0%" };
+  return { angle: 90, start: "45% 0", end: "0% 0" };
 }
 
 export function resolveGradientFillStructuredRecipe(
@@ -130,10 +162,13 @@ export function resolveGradientFillStructuredRecipe(
   const geometry = gradientGeometry(String(parameters.direction ?? "right"));
   const backgroundImage = `linear-gradient(${geometry.angle}deg, ${primary} 0%, #f76e49 10%, #ff2063 20%, ${accent} 30%, #ef7aff 40%, ${primary} 50%, white 50.5%, white 100%)`;
   const peakScale = 1 + 0.04 * intensity;
+  const totalDuration = duration + settleDuration;
+  const sweepPercentage = (duration / totalDuration) * 100;
   const paint = {
     color: "transparent",
     backgroundImage,
     backgroundClip: "text",
+    WebkitBackgroundClip: "text",
     WebkitTextFillColor: "transparent",
     backgroundSize: "350% 100%",
   };
@@ -149,21 +184,26 @@ export function resolveGradientFillStructuredRecipe(
     ],
     tracks: [
       {
-        role: "text", position: 0, duration, stagger,
+        role: "text",
+        position: 0,
+        duration: totalDuration,
+        stagger,
         keyframes: [
-          { percentage: 0, ease: "none", properties: { ...paint, backgroundPosition: geometry.start, scale: peakScale } },
-          { percentage: 100, ease: "none", properties: { ...paint, backgroundPosition: geometry.end, scale: peakScale } },
-        ],
-      },
-      {
-        role: "text", position: duration, duration: 0, stagger,
-        keyframes: [{ percentage: 0, properties: { ...paint, backgroundPosition: geometry.reset } }],
-      },
-      {
-        role: "text", position: duration, duration: settleDuration, stagger,
-        keyframes: [
-          { percentage: 0, properties: { scale: peakScale } },
-          { percentage: 100, ease: "power2.out", properties: { scale: 1 } },
+          {
+            percentage: 0,
+            ease: "none",
+            properties: { ...paint, backgroundPosition: geometry.start, scale: 1 },
+          },
+          {
+            percentage: sweepPercentage,
+            ease: "none",
+            properties: { ...paint, backgroundPosition: geometry.end, scale: peakScale },
+          },
+          {
+            percentage: 100,
+            ease: "power2.out",
+            properties: { ...paint, backgroundPosition: geometry.end, scale: 1 },
+          },
         ],
       },
     ],
@@ -178,14 +218,10 @@ export function resolveClipWipeStructuredRecipe(
   const accentDelay = 0.1 / motionSpeed;
   const accentDuration = 0.05 / motionSpeed;
   const dimDuration = 0.2 / motionSpeed;
-  const exitDuration = 0.25 / motionSpeed;
   const holdDuration = bounded(parameters, "holdDuration", 0.5, 0, 10);
   const stagger = bounded(parameters, "stagger", 0.04, 0, 10);
   const direction = String(parameters.direction ?? "right");
   const accentColor = color(parameters, "color", "#FFD700", "--ipw-color-accent");
-  const inactiveOpacity = bounded(parameters, "inactiveOpacity", 0.4, 0, 1);
-  const inactiveColor = `rgba(255,255,255,${inactiveOpacity})`;
-  const exitPosition = holdDuration + dimDuration;
 
   return {
     version: 1,
@@ -198,31 +234,37 @@ export function resolveClipWipeStructuredRecipe(
     ],
     tracks: [
       {
-        role: "text", position: 0, duration: revealDuration, stagger,
+        role: "text",
+        position: 0,
+        duration: revealDuration,
+        stagger,
         keyframes: [
           { percentage: 0, properties: { clipPath: hiddenInset(direction), opacity: 1 } },
-          { percentage: 100, ease: "power2.out", properties: { clipPath: "inset(0% 0% 0% 0%)", opacity: 1 } },
+          {
+            percentage: 100,
+            ease: "power2.out",
+            properties: { clipPath: "inset(0% 0% 0% 0%)", opacity: 1 },
+          },
         ],
       },
       {
-        role: "text", position: accentDelay, duration: accentDuration, stagger,
+        role: "text",
+        position: accentDelay,
+        duration: accentDuration,
+        stagger,
         keyframes: [
-          { percentage: 0, properties: { color: accentColor, opacity: 0 } },
+          { percentage: 0, properties: { color: "inherit", opacity: 1 } },
           { percentage: 100, properties: { color: accentColor, opacity: 1 } },
         ],
       },
       {
-        role: "text", position: holdDuration, duration: dimDuration, stagger,
+        role: "text",
+        position: holdDuration,
+        duration: dimDuration,
+        stagger,
         keyframes: [
-          { percentage: 0, properties: { color: "#ffffff" } },
-          { percentage: 100, properties: { color: inactiveColor } },
-        ],
-      },
-      {
-        role: "unit", position: exitPosition, duration: exitDuration, stagger: 0.04 / motionSpeed,
-        keyframes: [
-          { percentage: 0, properties: { clipPath: "inset(0% 0% 0% 0%)" } },
-          { percentage: 100, ease: "power2.in", properties: { clipPath: exitInset(direction) } },
+          { percentage: 0, properties: { color: accentColor, opacity: 1 } },
+          { percentage: 100, ease: "power2.out", properties: { color: "inherit", opacity: 1 } },
         ],
       },
     ],
@@ -236,7 +278,7 @@ export function resolveWeightShiftStructuredRecipe(
   const intensity = bounded(parameters, "intensity", 1, 0.2, 2);
   const minWeight = bounded(parameters, "minWeight", 300, 100, 900);
   const maxWeight = bounded(parameters, "maxWeight", 700, 100, 900);
-  const stagger = bounded(parameters, "stagger", 0, 0, 10);
+  const stagger = bounded(parameters, "stagger", 0.08, 0, 10);
   const switchPoint = bounded(parameters, "switchPoint", 0.35, 0, 10);
 
   return {
@@ -250,14 +292,20 @@ export function resolveWeightShiftStructuredRecipe(
     ],
     tracks: [
       {
-        role: "unit", position: 0, duration: 0.1 / motionSpeed, stagger: 0,
+        role: "unit",
+        position: 0,
+        duration: 0.1 / motionSpeed,
+        stagger: stagger * 0.5,
         keyframes: [
-          { percentage: 0, properties: { opacity: 0, scale: 1 - 0.15 * intensity } },
+          { percentage: 0, properties: { opacity: 1, scale: 1 - 0.15 * intensity } },
           { percentage: 100, ease: "power3.out", properties: { opacity: 1, scale: 1 } },
         ],
       },
       {
-        role: "text", position: switchPoint, duration: 0.1 / motionSpeed, stagger,
+        role: "text",
+        position: switchPoint,
+        duration: 0.1 / motionSpeed,
+        stagger,
         keyframes: [
           { percentage: 0, properties: { fontWeight: minWeight } },
           { percentage: 100, ease: "power2.out", properties: { fontWeight: maxWeight } },

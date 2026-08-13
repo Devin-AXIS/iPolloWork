@@ -75,6 +75,44 @@ describe("semantic motion mutation route", () => {
     });
   }
 
+  it("isolates shared GSAP targets before one element is edited", async () => {
+    writeFileSync(
+      join(projectDir, "index.html"),
+      `<!doctype html><html><body>
+        <article class="card" data-hf-id="card-one"></article>
+        <article class="card" data-hf-id="card-two"></article>
+        <article class="card" data-hf-id="card-three"></article>
+        <script>
+          const tl = gsap.timeline({ paused: true });
+          tl.to(".card", { x: 80, duration: 1, repeat: 2 }, 0);
+          tl.to(".card", { scale: 1.1, duration: 0.4 }, 0.2);
+        </script>
+      </body></html>`,
+    );
+    const selectedSelector = '[data-hf-id="card-two"]';
+    const remainderSelector = ':is(.card):not([data-hf-id="card-two"])';
+
+    const response = await mutate({
+      type: "isolate-selector-target",
+      targetSelector: ".card",
+      selectedSelector,
+      remainderSelector,
+    });
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(
+      body.parsed.animations.filter(
+        (animation: { targetSelector: string }) => animation.targetSelector === selectedSelector,
+      ),
+    ).toHaveLength(2);
+    expect(
+      body.parsed.animations.filter(
+        (animation: { targetSelector: string }) => animation.targetSelector === remainderSelector,
+      ),
+    ).toHaveLength(2);
+    expect(readFileSync(join(projectDir, "index.html"), "utf8")).toContain("repeat: 2");
+  });
+
   it("adds, reloads and replaces one text preset per phase", async () => {
     const first = await mutate({
       type: "mutate-motion",
@@ -98,6 +136,7 @@ describe("semantic motion mutation route", () => {
 
     let html = readFileSync(join(projectDir, "index.html"), "utf8");
     expect(html).toContain("data-ipw-motion-char");
+    expect(html).toContain("font-weight:700");
     expect(html).toContain('data-ipw-animation-reference="text.enter.typewriter"');
     expect(html).toContain("ipw-motion:v1:");
 
@@ -125,6 +164,36 @@ describe("semantic motion mutation route", () => {
     expect(html).not.toContain("data-ipw-motion-char");
     expect(html).toContain("你好 mixed AI");
     expect(html).not.toContain("text.enter.typewriter");
+  });
+
+  it("keeps a manually placed element anchored when semantic motion is added", async () => {
+    writeFileSync(
+      join(projectDir, "index.html"),
+      SOURCE.replace(
+        "const tl = gsap.timeline({ paused: true });",
+        'gsap.set("#headline", { x: 120, y: 240 });\n    const tl = gsap.timeline({ paused: true });',
+      ),
+    );
+
+    const response = await mutate({
+      type: "mutate-motion",
+      operation: "upsert",
+      targetSelector: "#headline",
+      elementId: "headline",
+      targetKind: "text",
+      phase: "enter",
+      presetId: "text.enter.rise",
+      parameters: { unit: "whole", direction: "left", intensity: 1 },
+    });
+
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    const motion = body.parsed.animations.find(
+      (animation: { keyframes?: unknown; extras?: Record<string, unknown> }) =>
+        animation.keyframes && readMotionInstanceFromExtras(animation.extras),
+    );
+    expect(motion.keyframes.keyframes[0].properties).toMatchObject({ x: 162, y: 240 });
+    expect(motion.keyframes.keyframes.at(-1).properties).toMatchObject({ x: 120, y: 240 });
   });
 
   it("removes semantic motion when its target element is deleted", async () => {
@@ -212,11 +281,15 @@ describe("semantic motion mutation route", () => {
       "motion:#headline:emphasis:4:text",
     ]);
     expect(new Set(runtimeIds).size).toBe(5);
-    expect((html.match(/data-ipw-motion-role="unit"/g) ?? [])).toHaveLength(3);
-    expect((html.match(/data-ipw-motion-role="background"/g) ?? [])).toHaveLength(3);
-    expect((html.match(/data-ipw-motion-role="text"/g) ?? [])).toHaveLength(3);
+    expect(html.match(/data-ipw-motion-role="unit"/g) ?? []).toHaveLength(3);
+    expect(html.match(/data-ipw-motion-role="background"/g) ?? []).toHaveLength(3);
+    expect(html.match(/data-ipw-motion-role="text"/g) ?? []).toHaveLength(3);
     expect(html).toContain(">clear.</span>");
     expect(html).toContain('data-ipw-motion-structure="v1"');
+    expect(html).toContain('data-ipw-motion-presentation="text-v1"');
+    expect(html).toContain("font-weight:700");
+    expect(html).toContain("line-height:1.1");
+    expect(html).toContain("letter-spacing:-0.025em");
     expect(html).toContain('#headline [data-ipw-motion-role=\\"background\\"]');
     expect(html).toContain('#headline [data-ipw-motion-role=\\"unit\\"]');
     expect(html).toContain('#headline [data-ipw-motion-role=\\"text\\"]');
@@ -237,15 +310,17 @@ describe("semantic motion mutation route", () => {
     const repeated = await mutate(highlight);
     expect(repeated.status).toBe(200);
     html = readFileSync(join(projectDir, "index.html"), "utf8");
-    expect((html.match(/data-ipw-motion-role="unit"/g) ?? [])).toHaveLength(3);
+    expect(html.match(/data-ipw-motion-role="unit"/g) ?? []).toHaveLength(3);
 
     const removed = await mutate({ ...highlight, operation: "remove" });
     expect(removed.status).toBe(200);
     html = readFileSync(join(projectDir, "index.html"), "utf8");
+    const removedDocument = parseHTML(html).document;
     expect(html).toContain(">Make motion clear.</h1>");
     expect(html).not.toContain("data-ipw-motion-structure");
     expect(html).not.toContain("data-ipw-motion-source");
-    expect(html).not.toContain("data-ipw-motion-role");
+    expect(removedDocument.querySelector("[data-ipw-motion-role]")).toBeNull();
+    expect(removedDocument.querySelector("[data-ipw-motion-presentation]")).toBeNull();
 
     const whole = await mutate({
       type: "mutate-motion",
@@ -293,7 +368,7 @@ describe("semantic motion mutation route", () => {
 
     expect(applied.status).toBe(200);
     const html = readFileSync(join(projectDir, "index.html"), "utf8");
-    expect((html.match(/data-ipw-motion-role="unit"/g) ?? [])).toHaveLength(3);
+    expect(html.match(/data-ipw-motion-role="unit"/g) ?? []).toHaveLength(3);
     expect(html).toContain('data-var-text="title"');
     expect(html).toContain('\\"unit\\":\\"word\\"');
   });
@@ -330,11 +405,14 @@ describe("semantic motion mutation route", () => {
     let html = readFileSync(join(projectDir, "index.html"), "utf8");
     let document = parseHTML(html).document;
     expect(document.querySelectorAll('[data-ipw-motion-role="text"]')).toHaveLength(3);
-    expect(document.querySelectorAll('[data-ipw-motion-role="text"] [data-ipw-motion-char]').length)
-      .toBeGreaterThan(0);
-    expect(document.querySelectorAll('#headline [data-ipw-motion-char]').length).toBeGreaterThan(0);
-    expect(document.querySelectorAll('#headline [data-ipw-motion-role="background"]')).toHaveLength(3);
-    expect(html).toContain('#headline [data-ipw-motion-char]');
+    expect(
+      document.querySelectorAll('[data-ipw-motion-role="text"] [data-ipw-motion-char]').length,
+    ).toBeGreaterThan(0);
+    expect(document.querySelectorAll("#headline [data-ipw-motion-char]").length).toBeGreaterThan(0);
+    expect(document.querySelectorAll('#headline [data-ipw-motion-role="background"]')).toHaveLength(
+      3,
+    );
+    expect(html).toContain("#headline [data-ipw-motion-char]");
     expect(html).toContain('#headline [data-ipw-motion-role=\\"background\\"]');
 
     const removed = await mutate({
@@ -357,14 +435,59 @@ describe("semantic motion mutation route", () => {
     html = readFileSync(join(projectDir, "index.html"), "utf8");
     document = parseHTML(html).document;
     expect(html).not.toContain("data-ipw-motion-structure");
-    expect(html).not.toContain("data-ipw-motion-role");
+    expect(document.querySelector("[data-ipw-motion-role]")).toBeNull();
     expect(document.querySelectorAll("#headline [data-ipw-motion-char]").length).toBeGreaterThan(0);
     expect(document.querySelector("#headline")?.textContent).toBe("Make motion clear.");
   });
 
+  it("keeps the structural layers required by advanced animations in different phases", async () => {
+    writeFileSync(
+      join(projectDir, "index.html"),
+      SOURCE.replace("\u4f60\u597d mixed AI", "Make motion clear."),
+    );
+    const matrix = await mutate({
+      type: "mutate-motion",
+      operation: "upsert",
+      targetSelector: "#headline",
+      elementId: "headline",
+      targetKind: "text",
+      phase: "enter",
+      presetId: "text.enter.matrix-decode",
+      parameters: { unit: "word", stagger: 0.05 },
+    });
+    expect(matrix.status).toBe(200);
+
+    const highlight = await mutate({
+      type: "mutate-motion",
+      operation: "upsert",
+      targetSelector: "#headline",
+      elementId: "headline",
+      targetKind: "text",
+      phase: "emphasis",
+      presetId: "text.emphasis.highlight-sweep",
+      parameters: { unit: "word", stagger: 0.05 },
+    });
+    expect(highlight.status).toBe(200);
+
+    const html = readFileSync(join(projectDir, "index.html"), "utf8");
+    const document = parseHTML(html).document;
+    expect(document.querySelectorAll('#headline [data-ipw-motion-role="unit"]')).toHaveLength(3);
+    expect(document.querySelectorAll('#headline [data-ipw-motion-role="background"]')).toHaveLength(
+      3,
+    );
+    expect(
+      document.querySelectorAll('#headline [data-ipw-motion-role="clone-primary"]'),
+    ).toHaveLength(3);
+    expect(
+      document.querySelectorAll('#headline [data-ipw-motion-role="clone-accent"]'),
+    ).toHaveLength(3);
+    expect(document.querySelector("#headline")?.textContent).toBe("Make motion clear.");
+    expect(html).toContain('#headline [data-ipw-motion-role=\\"clone-primary\\"]');
+    expect(html).toContain('#headline [data-ipw-motion-role=\\"background\\"]');
+  });
+
   it("restores materialized Highlight DOM when the structured writer cannot add a track", async () => {
-    const unwritableSource = SOURCE
-      .replace("\u4f60\u597d mixed AI", "Make motion clear.")
+    const unwritableSource = SOURCE.replace("\u4f60\u597d mixed AI", "Make motion clear.")
       .replace(
         "const tl = gsap.timeline({ paused: true });",
         "const timelines = [gsap.timeline({ paused: true })];",
@@ -441,11 +564,11 @@ describe("semantic motion mutation route", () => {
     expect(motions[0].target.hfId).toBe("hf-headline");
 
     const html = readFileSync(join(projectDir, "index.html"), "utf8");
-    expect(html).not.toContain('motion:.headline:emphasis');
+    expect(html).not.toContain("motion:.headline:emphasis");
     expect(html).toContain('data-ipw-animation-reference="text.emphasis.highlight"');
   });
 
-  it("keeps variable-bound text unsplit while preserving the requested motion", async () => {
+  it("keeps the requested character motion on variable-bound generated text", async () => {
     const variableSource = SOURCE.replace(
       '<h1 id="headline" data-start="1" data-duration="5">',
       '<h1 id="headline" data-var-text="title" data-start="1" data-duration="5">',
@@ -470,11 +593,36 @@ describe("semantic motion mutation route", () => {
         readMotionInstanceFromExtras(animation.extras),
       )
       .find(Boolean);
-    expect(instance.parameters.unit).toBe("whole");
+    expect(instance.parameters.unit).toBe("character");
     const html = readFileSync(join(projectDir, "index.html"), "utf8");
     expect(html).toContain('data-var-text="title"');
     expect(html).toContain("text.enter.fold-reveal");
-    expect(html).not.toContain("data-ipw-motion-char");
+    expect(html).toContain("data-ipw-motion-char");
+    expect(html).toContain("font-weight:700");
+  });
+
+  it("keeps word motion shaped as whole words instead of splitting every character", async () => {
+    writeFileSync(
+      join(projectDir, "index.html"),
+      SOURCE.replace("\u4f60\u597d mixed AI", "Office motion fidelity"),
+    );
+    const response = await mutate({
+      type: "mutate-motion",
+      operation: "upsert",
+      targetSelector: "#headline",
+      elementId: "headline",
+      targetKind: "text",
+      phase: "emphasis",
+      presetId: "text.emphasis.bounce",
+      parameters: { unit: "word", stagger: 0.05 },
+    });
+
+    expect(response.status).toBe(200);
+    const html = readFileSync(join(projectDir, "index.html"), "utf8");
+    const document = parseHTML(html).document;
+    expect(document.querySelectorAll("#headline > [data-ipw-motion-word]")).toHaveLength(3);
+    expect(document.querySelectorAll("#headline [data-ipw-motion-char]")).toHaveLength(0);
+    expect(document.querySelector("#headline")?.textContent).toBe("Office motion fidelity");
   });
 
   it("keeps phases independent and removes only the requested phase", async () => {
@@ -624,7 +772,7 @@ describe("semantic motion mutation route", () => {
         readMotionInstanceFromExtras(animation.extras),
       )
       .find(Boolean);
-    expect(instance.start).toBe(10.7);
+    expect(instance.start).toBe(9.6);
     expect(instance.duration).toBe(0.8);
   });
 
@@ -654,8 +802,80 @@ describe("semantic motion mutation route", () => {
         readMotionInstanceFromExtras(animation.extras),
       )
       .find(Boolean);
-    expect(instance).toMatchObject({ loop: true, repeat: 5, duration: 0.5 });
+    expect(instance).toMatchObject({ loop: true, repeat: 5, duration: 0.5, end: 5 });
     expect(readFileSync(join(projectDir, "index.html"), "utf8")).toContain("repeat: 5");
+  });
+
+  it("aligns every advanced caption track to the selected loop window", async () => {
+    const response = await mutate({
+      type: "mutate-motion",
+      operation: "upsert",
+      targetSelector: "#headline",
+      elementId: "headline",
+      targetKind: "text",
+      phase: "emphasis",
+      presetId: "text.emphasis.gradient-fill",
+      start: 1,
+      end: 6,
+      duration: 0.6,
+      loop: true,
+    });
+
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    const instances = body.parsed.animations
+      .map((animation: { extras?: Record<string, unknown> }) =>
+        readMotionInstanceFromExtras(animation.extras),
+      )
+      .filter(Boolean);
+    expect(instances).toHaveLength(1);
+    expect(instances[0]).toMatchObject({
+      start: 1,
+      end: 6,
+      duration: 0.625,
+      loop: true,
+      repeat: 7,
+    });
+    const content = readFileSync(join(projectDir, "index.html"), "utf8");
+    expect(content).toContain("repeat: 7");
+    expect(content).toContain("repeatDelay: 0.125");
+  });
+
+  it("keeps delayed advanced-caption tracks on the same loop cadence", async () => {
+    const response = await mutate({
+      type: "mutate-motion",
+      operation: "upsert",
+      targetSelector: "#headline",
+      elementId: "headline",
+      targetKind: "text",
+      phase: "emphasis",
+      presetId: "text.emphasis.neon-glow",
+      start: 1,
+      end: 6,
+      duration: 0.8,
+      loop: true,
+    });
+
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    const motionTracks = body.parsed.animations.filter(
+      (animation: { extras?: Record<string, unknown> }) =>
+        readMotionInstanceFromExtras(animation.extras),
+    );
+    const instance = readMotionInstanceFromExtras(motionTracks[0]?.extras);
+    if (!instance) throw new Error("Expected a semantic motion instance on the delayed track");
+    const delayedTrack = motionTracks.find(
+      (animation: { position: number; targetSelector: string }) =>
+        animation.position > instance.start && animation.targetSelector.includes('role="unit"'),
+    );
+    if (!delayedTrack) throw new Error("Expected a delayed zero-stagger structured track");
+    const readRawNumber = (value: unknown) => Number(String(value).replace("__raw:", ""));
+    expect(delayedTrack.position).toBeGreaterThan(instance.start);
+    expect(readRawNumber(delayedTrack.extras.stagger)).toBe(0);
+    expect(readRawNumber(delayedTrack.extras.repeatDelay)).toBeCloseTo(
+      instance.duration - delayedTrack.duration,
+      10,
+    );
   });
 
   it("repairs an older semantic position when its owner timing changed", async () => {
@@ -685,7 +905,7 @@ describe("semantic motion mutation route", () => {
         readMotionInstanceFromExtras(animation.extras),
       )
       .find(Boolean);
-    expect(instance.start).toBe(16.7);
+    expect(instance.start).toBe(15.6);
     expect(instance.parameters.intensity).toBe(1.4);
   });
 });
