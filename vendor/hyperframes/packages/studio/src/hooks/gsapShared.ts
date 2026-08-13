@@ -50,11 +50,18 @@ export function isInstantHold(animation: GsapAnimation): boolean {
 
 /**
  * Get a CSS selector string from a DomEditSelection.
- * Returns `#id` if the selection has an id, otherwise the raw selector,
- * or null if neither exists.
+ * Prefer stable per-element identities before the raw selector. The raw
+ * selector can be a shared class (for example `.card`) and must never be used
+ * as the write target for an edit made to one selected element.
  */
 export function selectorFromSelection(selection: DomEditSelection): string | null {
-  if (selection.id) return `#${selection.id}`;
+  const id = selection.id || selection.element.id;
+  if (id) return `#${id}`;
+  const hfId = selection.hfId || selection.element.getAttribute("data-hf-id") || undefined;
+  if (hfId) {
+    const escaped = hfId.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+    return `[data-hf-id="${escaped}"]`;
+  }
   if (selection.selector) return selection.selector;
   return null;
 }

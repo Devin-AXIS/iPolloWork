@@ -45,6 +45,10 @@
   --hf-animation-preview-text: #f8fafc;
   --hf-animation-preview-primary: #20bbc0;
   --hf-animation-preview-accent: #7c3aed;
+  --hf-ai-editing-bg: rgba(245, 158, 11, 0.14);
+  --hf-ai-editing-border: rgba(251, 191, 36, 0.38);
+  --hf-ai-editing-text: #fcd34d;
+  --hf-ai-editing-dot: #fbbf24;
 }
 
 :root[data-ipollowork-theme="light"] {
@@ -91,6 +95,10 @@
   --hf-animation-preview-text: #18181b;
   --hf-animation-preview-primary: #168e92;
   --hf-animation-preview-accent: #6d4aff;
+  --hf-ai-editing-bg: rgba(245, 158, 11, 0.12);
+  --hf-ai-editing-border: rgba(217, 119, 6, 0.32);
+  --hf-ai-editing-text: #92400e;
+  --hf-ai-editing-dot: #d97706;
 }
 
 :root:not([data-ipollowork-theme="light"]) .hf-studio-properties-icon,

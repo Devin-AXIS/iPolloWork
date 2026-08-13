@@ -46,6 +46,8 @@ export type PersistDomEditOperations = (
     coalesceKey?: string;
     coalesceMs?: number;
     skipRefresh?: boolean;
+    /** Use the lightweight server patcher instead of cloning the full SDK composition. */
+    skipSdkCutover?: boolean;
     prepareContent?: (html: string, sourceFile: string) => string;
     shouldSave?: () => boolean;
   },

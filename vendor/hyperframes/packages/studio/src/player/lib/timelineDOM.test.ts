@@ -13,6 +13,8 @@ import {
 } from "../../components/editor/domEditingDom";
 import {
   findElementForTimelineElement,
+  getDomLayerPatchTarget,
+  getSelectionCandidate,
   resolveAllVisualDomEditTargets,
 } from "../../components/editor/domEditingElement";
 
@@ -162,11 +164,7 @@ describe("timeline manifest translation", () => {
       kind: "element",
       tagName: "section",
     };
-    const hierarchy = collectDomClipChildren(
-      document,
-      [clip],
-      new Map([[clip, scene!]]),
-    );
+    const hierarchy = collectDomClipChildren(document, [clip], new Map([[clip, scene!]]));
     const hero = hierarchy.children.find((child) => child.selector === ".hero-copy");
     const title = hierarchy.children.find((child) => child.selector === "h1");
 
@@ -361,12 +359,59 @@ describe("timeline manifest translation", () => {
       element.getBoundingClientRect = () => box;
     }
 
-    expect(resolveAllVisualDomEditTargets([label, screen, stage], { activeCompositionPath: "index.html" })).toEqual([
-      label,
-    ]);
-    expect(resolveAllVisualDomEditTargets([stage, screen, label], { activeCompositionPath: "index.html" })).toEqual([
-      label,
-    ]);
+    expect(
+      resolveAllVisualDomEditTargets([label, screen, stage], {
+        activeCompositionPath: "index.html",
+      }),
+    ).toEqual([label]);
+    expect(
+      resolveAllVisualDomEditTargets([stage, screen, label], {
+        activeCompositionPath: "index.html",
+      }),
+    ).toEqual([label]);
+  });
+
+  test("treats structured motion spans as one selectable text layer", async () => {
+    document.body.innerHTML = `
+      <section id="caption-text" data-ipw-motion-structure="v1">
+        <span data-ipw-motion-word data-ipw-motion-role="unit">
+          <span id="animated-word" data-ipw-motion-role="text">Caption</span>
+        </span>
+      </section>`;
+    const root = document.getElementById("caption-text") as HTMLElement;
+    const word = document.getElementById("animated-word") as HTMLElement;
+    const box = {
+      x: 0,
+      y: 0,
+      top: 0,
+      left: 0,
+      right: 100,
+      bottom: 30,
+      width: 100,
+      height: 30,
+      toJSON: () => ({}),
+    };
+    root.getBoundingClientRect = () => box;
+    word.getBoundingClientRect = () => box;
+
+    expect(getDomLayerPatchTarget(word, "index.html")).toBeNull();
+    expect(
+      getSelectionCandidate(word, {
+        activeCompositionPath: "index.html",
+        isMasterView: true,
+      }),
+    ).toBe(root);
+    expect(
+      resolveAllVisualDomEditTargets([word, root], { activeCompositionPath: "index.html" }),
+    ).toEqual([root]);
+    await expect(
+      resolveDomEditSelection(word, {
+        activeCompositionPath: "index.html",
+        isMasterView: true,
+        exactTarget: true,
+        skipSourceProbe: true,
+      }),
+    ).resolves.toMatchObject({ element: root, id: "caption-text" });
   });
 
   test("resolves a repeated authored selector inside the requested preview host", () => {

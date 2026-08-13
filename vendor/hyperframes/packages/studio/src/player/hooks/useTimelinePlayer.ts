@@ -365,11 +365,19 @@ export function useTimelinePlayer() {
   );
   const pause = useCallback(() => {
     stopReverseLoop();
-    stopPreviewMedia();
     const adapter = getAdapter();
+    const pausedAt = adapter?.getTime();
+    // Freeze generated requestAnimationFrame loops before pausing their audio.
+    // Some generated caption systems derive the active caption from the only
+    // playing voiceover; letting one more frame run after audio.pause() makes
+    // them render an empty/zero-time caption state.
+    stopPreviewMedia();
     if (adapter) {
       adapter.pause();
-      setCurrentTime(adapter.getTime()); // sync store so Split/Delete have accurate time
+      // A deterministic seek after pause paints the exact held frame and also
+      // re-applies Studio's timed-clip visibility for captions and scenes.
+      adapter.seek(pausedAt ?? 0);
+      setCurrentTime(pausedAt ?? 0); // sync store so Split/Delete have accurate time
     }
     setIsPlaying(false);
     shuttleDirectionRef.current = null;
@@ -468,6 +476,7 @@ export function useTimelinePlayer() {
       attachIframeShortcutListeners,
       applyPreviewAudioState,
       stopPreviewMedia,
+      resumePlayback: play,
     });
   const saveSeekPosition = useCallback(() => {
     // Never DEGRADE the saved position. Overlapping reloads (e.g. an external

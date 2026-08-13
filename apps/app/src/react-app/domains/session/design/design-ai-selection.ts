@@ -33,6 +33,7 @@ const DESIGN_AI_SELECTION_DISPLAY_PREFIX = "Design selection display:";
 const DESIGN_HTML_THEME_TOKEN_LINES = [
   "- All generated or edited Design HTML must keep the shared theme stylesheet linked as `<link rel=\"stylesheet\" href=\"design-tokens.css\" data-ipw-design-tokens>` when the file lives beside that stylesheet. Keep it as the final stylesheet/style entry before `</head>` so the theme contract can override generated component CSS.",
   "- The current editable HTML file is the structural source of truth. Read it before editing and update its existing DOM and CSS in place.",
+  "- Manual Studio edits are user-owned source state. Preserve `data-hf-id`, `data-hf-studio-*`, `--hf-studio-*`, inline geometry/transform values, and existing GSAP position/scale/rotation writes unless the request explicitly changes that exact element and property; never rebuild from an earlier or cached HTML snapshot.",
   "- Preserve the existing root classes, section hierarchy and order, template-specific class names, component geometry, artwork, responsive behavior, animation, and timing unless the user explicitly requests a structural redesign.",
   "- Replace content inside the selected template; never replace it with a generic hero, statistics row, feature cards, project grid, dashboard, or another standard scaffold.",
   "- Preserve the existing HTML skeleton and component structure when applying or adapting a design system; theme changes must flow through CSS custom properties, not a rewritten layout.",

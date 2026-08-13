@@ -10,6 +10,7 @@ import { resolveServerConfig, type CliArgs } from "./config.js";
 import {
   createManagedOpencodeServer,
   forwardedProxyEnv,
+  offlineFirstOpencodeEnv,
   type ManagedOpencodeServer,
   type OpencodeExecutionSnapshot,
 } from "./managed-opencode.js";
@@ -27,6 +28,8 @@ export type EmbeddedServerOptions = CliArgs & {
   opencodeBin?: string;
   /** Working directory for the managed OpenCode process. */
   opencodeCwd?: string;
+  /** Desktop-owned home/config paths forwarded only to managed OpenCode. */
+  opencodeEnv?: Record<string, string>;
 };
 
 export type EmbeddedServerHandle = {
@@ -45,9 +48,6 @@ export type EmbeddedServerHandle = {
 export async function startEmbeddedServer(options: EmbeddedServerOptions): Promise<EmbeddedServerHandle> {
   const config = await resolveServerConfig(options);
   const serverUrl = `http://${config.host === "0.0.0.0" ? "127.0.0.1" : config.host}:${config.port}`;
-  const opencodeModelsUrl = process.env.IPOLLOWORK_DEV_MODE === "1"
-    ? "http://localhost:8791/models"
-    : "https://models.ipolloworklabs.com/";
 
   // Spawn managed OpenCode if requested and no explicit base URL was provided.
   let managedOpencode: ManagedOpencodeServer | null = null;
@@ -75,12 +75,13 @@ export async function startEmbeddedServer(options: EmbeddedServerOptions): Promi
         excludedPorts: [config.port],
         env: {
           ...forwardedProxyEnv(),
+          ...offlineFirstOpencodeEnv(),
+          ...options.opencodeEnv,
           ...(process.env.IPOLLOWORK_DEV_MODE ? { IPOLLOWORK_DEV_MODE: process.env.IPOLLOWORK_DEV_MODE } : {}),
           ...(process.env.IPOLLOWORK_UI_CONTROL_DISCOVERY ? { IPOLLOWORK_UI_CONTROL_DISCOVERY: process.env.IPOLLOWORK_UI_CONTROL_DISCOVERY } : {}),
           IPOLLOWORK_SERVER_URL: serverUrl,
           IPOLLOWORK_SERVER_TOKEN: config.token,
           OPENCODE_CONFIG: runtimeConfigPath,
-          OPENCODE_MODELS_URL: opencodeModelsUrl,
         },
       });
 

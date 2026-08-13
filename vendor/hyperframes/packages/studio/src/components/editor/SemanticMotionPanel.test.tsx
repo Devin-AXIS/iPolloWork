@@ -271,7 +271,9 @@ describe("SemanticMotionPanel", () => {
     );
 
     expect(container.querySelector('[role="slider"][aria-label="动画速度"]')).not.toBeNull();
-    expect(createTimeline).toHaveBeenCalledWith({ paused: true, repeat: 0 });
+    expect(container.querySelector('[aria-label="开始时间"]')).not.toBeNull();
+    expect(container.querySelector('[aria-label="结束时间"]')).not.toBeNull();
+    expect(createTimeline).toHaveBeenCalledWith({ paused: true });
     expect(timeline.to).toHaveBeenCalledOnce();
     expect(timeline.to.mock.calls[0]?.[0]).toBe(title);
     expect(timeline.play).toHaveBeenCalledWith(0);
@@ -300,6 +302,7 @@ describe("SemanticMotionPanel", () => {
         operation: "upsert",
         presetId: "text.enter.rise",
         start: 0,
+        end: 0.65,
         duration: 0.65,
         loop: true,
       }),
@@ -307,21 +310,21 @@ describe("SemanticMotionPanel", () => {
     );
     expect(onApplied).toHaveBeenCalledOnce();
     expect(createTimeline).toHaveBeenCalledTimes(2);
-    flushSync(() =>
-      root.render(
-        <AnimationPropertiesPanel
-          draft={null}
-          element={selected}
-          animations={[semanticAnimation({ duration: 0.65, loop: true })]}
-          onMutate={onMutate}
-          onApplied={onApplied}
-          previewRequest={1}
-        />,
-      ),
+    const appliedEditor = (
+      <AnimationPropertiesPanel
+        draft={null}
+        element={selected}
+        animations={[semanticAnimation({ duration: 0.65, loop: true })]}
+        onMutate={onMutate}
+        onApplied={onApplied}
+      />
     );
+    flushSync(() => root.render(appliedEditor));
     expect(createTimeline).toHaveBeenCalledTimes(3);
     expect(timeline.to).toHaveBeenCalledTimes(3);
     expect(timeline.to.mock.calls.at(-1)?.[0]).toBe(title);
+    flushSync(() => root.render(appliedEditor));
+    expect(createTimeline).toHaveBeenCalledTimes(3);
     complete();
     expect(title.getAttribute("style")).toBe(currentFrameStyle);
     title.remove();
@@ -388,6 +391,58 @@ describe("SemanticMotionPanel", () => {
     expect(timeline.kill).toHaveBeenCalledOnce();
     expect(cancelAnimationFrame).toHaveBeenCalled();
     expect(title.style.opacity).toBe("0.4");
+    title.remove();
+  });
+
+  it("previews whole-element motion around the element's dragged GSAP position", () => {
+    const title = document.createElement("h1");
+    title.id = "dragged-title";
+    title.textContent = "Dragged title";
+    document.body.append(title);
+    const selected = selection(title);
+    const timeline = {
+      to: vi.fn(),
+      play: vi.fn(),
+      eventCallback: vi.fn(),
+      kill: vi.fn(),
+    };
+    timeline.to.mockReturnValue(timeline);
+    timeline.eventCallback.mockReturnValue(timeline);
+    Object.defineProperty(window, "gsap", {
+      configurable: true,
+      value: {
+        timeline: vi.fn(() => timeline),
+        getProperty: vi.fn((_target: Element, property: string) => (property === "x" ? 120 : 240)),
+      },
+    });
+
+    flushSync(() =>
+      root.render(
+        <AnimationPropertiesPanel
+          draft={{
+            templateId: "text-rise",
+            presetId: "text.enter.rise",
+            targetKind: "text",
+            selection: selected,
+            parameters: {
+              ease: "power2.out",
+              intensity: 1,
+              unit: "whole",
+              stagger: 0.04,
+              direction: "up",
+            },
+          }}
+          element={selected}
+          animations={[]}
+          onMutate={vi.fn().mockResolvedValue(true)}
+          onApplied={vi.fn()}
+        />,
+      ),
+    );
+
+    const vars = timeline.to.mock.calls[0]?.[1];
+    expect(vars.keyframes["0%"]).toMatchObject({ x: 120, y: 282 });
+    expect(vars.keyframes["100%"]).toMatchObject({ x: 120, y: 240 });
     title.remove();
   });
 
@@ -501,7 +556,9 @@ describe("SemanticMotionPanel", () => {
 
     flushSync(() => root.render(renderDraft({ ...instance.parameters, intensity: 1.1 })));
     expect(title.querySelectorAll('[data-ipw-motion-role="unit"]')).toHaveLength(3);
-    expect(title.querySelectorAll('[data-ipw-motion-role="unit"] [data-ipw-motion-role="unit"]')).toHaveLength(0);
+    expect(
+      title.querySelectorAll('[data-ipw-motion-role="unit"] [data-ipw-motion-role="unit"]'),
+    ).toHaveLength(0);
 
     flushSync(() => root.render(<div />));
     expect(timeline.kill).toHaveBeenCalledTimes(2);
@@ -665,6 +722,9 @@ describe("SemanticMotionPanel", () => {
     expect(container.textContent).toContain("动作");
     expect(container.textContent).toContain("消失");
     expect(container.textContent).toContain("速度曲线");
+    expect(container.querySelector('[aria-label="开始时间"]')).not.toBeNull();
+    expect(container.querySelector('[aria-label="结束时间"]')).not.toBeNull();
+    expect(container.querySelector('[role="switch"][aria-label="循环播放"]')).not.toBeNull();
 
     const preview = Array.from(container.querySelectorAll("button")).find((button) =>
       button.textContent?.includes("预览动画"),

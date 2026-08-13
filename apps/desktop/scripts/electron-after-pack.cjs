@@ -7,6 +7,16 @@ const requiredAsarEntries = [
   "/server/dist/ipollowork-types/hyperframes.js",
   "/server/dist/ipollowork-types/templates.js",
 ];
+const requiredOpenCodePluginEntries = [
+  path.join("opencode-chrome-devtools", "dist", "plugin.js"),
+  path.join("opencode-chrome-devtools", "package.json"),
+];
+const requiredOpenCodeRuntimeEntries = [
+  "package.json",
+  "package-lock.json",
+  path.join("node_modules", "@opencode-ai", "plugin", "package.json"),
+  path.join("node_modules", "@opencode-ai", "plugin", "dist", "tool.js"),
+];
 
 // Only native executables are copied to their canonical aliases. The server
 // runs in-process inside Electron and Chrome DevTools MCP is an OpenCode
@@ -126,6 +136,21 @@ function assertPackagedRuntimeTypes(context) {
   );
 }
 
+function assertPackagedOpenCodePlugins(context) {
+  const resourcesDir = resolveResourcesDir(context);
+  const pluginsDir = path.join(resourcesDir, "opencode-plugins");
+  const missing = requiredOpenCodePluginEntries.filter((name) => !fs.existsSync(path.join(pluginsDir, name)));
+  const runtimeDir = path.join(resourcesDir, "opencode-runtime");
+  missing.push(
+    ...requiredOpenCodeRuntimeEntries.filter((name) => !fs.existsSync(path.join(runtimeDir, name))),
+  );
+  if (missing.length === 0) return;
+
+  throw new Error(
+    "Missing bundled OpenCode plugins in the packaged app: " + missing.join(", "),
+  );
+}
+
 function signComputerUseHelper(context) {
   const appPath = resolveMacAppPath(context);
   if (!appPath) return;
@@ -202,6 +227,7 @@ async function afterPack(context) {
 
   assertPackagedNodePty(context);
   assertPackagedRuntimeTypes(context);
+  assertPackagedOpenCodePlugins(context);
   signComputerUseHelper(context);
 }
 
@@ -209,3 +235,4 @@ module.exports = afterPack;
 module.exports.default = afterPack;
 module.exports.assertPackagedNodePty = assertPackagedNodePty;
 module.exports.assertPackagedRuntimeTypes = assertPackagedRuntimeTypes;
+module.exports.assertPackagedOpenCodePlugins = assertPackagedOpenCodePlugins;

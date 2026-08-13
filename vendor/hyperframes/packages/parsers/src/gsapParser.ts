@@ -1507,6 +1507,169 @@ export function scalePositionsInScript(
   return changed ? recast.print(parsed.ast).code : script;
 }
 
+function offsetNumericPositionProperties(
+  properties: Record<string, number | string>,
+  deltaX: number,
+  deltaY: number,
+  addMissingAxes = false,
+): { properties: Record<string, number | string>; changed: boolean } {
+  const next = { ...properties };
+  let changed = false;
+  const offsetAxis = (primary: "x" | "y", legacy: "translateX" | "translateY", delta: number) => {
+    const key =
+      typeof next[primary] === "number"
+        ? primary
+        : typeof next[legacy] === "number"
+          ? legacy
+          : null;
+    if (key) {
+      next[key] = Math.round(((next[key] as number) + delta) * 1000) / 1000;
+      changed = changed || delta !== 0;
+    } else if (addMissingAxes && delta !== 0) {
+      next[primary] = Math.round(delta * 1000) / 1000;
+      changed = true;
+    }
+  };
+  offsetAxis("x", "translateX", deltaX);
+  offsetAxis("y", "translateY", deltaY);
+  return { properties: next, changed };
+}
+
+function offsetMotionPathCoordinates(
+  varsArg: AstNode,
+  scope: ScopeBindings,
+  deltaX: number,
+  deltaY: number,
+): boolean {
+  const motionPath = findPropertyNode(varsArg, "motionPath");
+  if (!motionPath) return false;
+  const path =
+    motionPath.type === "ArrayExpression"
+      ? motionPath
+      : motionPath.type === "ObjectExpression"
+        ? findPropertyNode(motionPath, "path")
+        : null;
+  if (path?.type !== "ArrayExpression") return false;
+  let changed = false;
+  for (const point of path.elements ?? []) {
+    if (point?.type !== "ObjectExpression") continue;
+    for (const property of point.properties ?? []) {
+      if (!isObjectProperty(property)) continue;
+      const key = propKeyName(property);
+      const delta = key === "x" ? deltaX : key === "y" ? deltaY : 0;
+      const value = resolveNode(property.value, scope);
+      if (delta === 0 || typeof value !== "number") continue;
+      property.value = parseExpr(String(Math.round((value + delta) * 1000) / 1000));
+      changed = true;
+    }
+  }
+  return changed;
+}
+
+/**
+ * Move an element's complete authored position path by one delta.
+ *
+ * A Video Studio layer can legitimately have several position tweens (enter,
+ * emphasis and exit). Updating only the tween nearest the playhead makes the
+ * layer jump back when another tween takes ownership. This source-level write
+ * offsets every exact-selector position tween together and also maintains one
+ * off-timeline base set for gaps before/between tweens. Studio-generated
+ * pre-keyframe holds are skipped; the server rebuilds those from the shifted
+ * keyframes after this mutation.
+ */
+export function offsetPositionPathsInScript(
+  script: string,
+  targetSelector: string,
+  deltaX: number,
+  deltaY: number,
+): string {
+  if ((!Number.isFinite(deltaX) || deltaX === 0) && (!Number.isFinite(deltaY) || deltaY === 0)) {
+    return script;
+  }
+  let parsed: ParsedGsapAst;
+  try {
+    parsed = parseGsapAst(script);
+  } catch (error) {
+    console.warn("[gsap-parser] offsetPositionPathsInScript parse failed:", error);
+    return script;
+  }
+
+  let changed = false;
+  let hasGlobalPositionBase = false;
+  for (const entry of parsed.located) {
+    const animation = entry.animation;
+    if (animation.targetSelector !== targetSelector || isStudioHoldSet(animation)) continue;
+
+    const isGlobalBase = animation.method === "set" && animation.global;
+    if (isGlobalBase) {
+      const shifted = offsetNumericPositionProperties(animation.properties, deltaX, deltaY, true);
+      applyUpdatesToCall(entry.call, { properties: shifted.properties });
+      hasGlobalPositionBase = true;
+      changed = changed || shifted.changed;
+      continue;
+    }
+
+    if (animation.arcPath) {
+      changed =
+        offsetMotionPathCoordinates(entry.call.varsArg, parsed.scope, deltaX, deltaY) || changed;
+      continue;
+    }
+
+    if (animation.keyframes) {
+      const shiftedKeyframes = animation.keyframes.keyframes
+        .map((keyframe) => ({
+          ...keyframe,
+          ...offsetNumericPositionProperties(keyframe.properties, deltaX, deltaY),
+        }))
+        .map(({ changed: _changed, ...keyframe }) => keyframe);
+      const writesPosition = animation.keyframes.keyframes.some((keyframe) =>
+        ["x", "y", "translateX", "translateY"].some(
+          (property) => typeof keyframe.properties[property] === "number",
+        ),
+      );
+      if (!writesPosition) continue;
+      const keyframesProperty = entry.call.varsArg.properties.find(
+        (property: AstNode) => isObjectProperty(property) && propKeyName(property) === "keyframes",
+      );
+      if (!keyframesProperty) continue;
+      keyframesProperty.value = parseExpr(
+        buildKeyframeObjectCode(
+          shiftedKeyframes,
+          animation.keyframes.easeEach ? { easeEach: animation.keyframes.easeEach } : undefined,
+        ),
+      );
+      changed = true;
+      continue;
+    }
+
+    const shiftedTo = offsetNumericPositionProperties(animation.properties, deltaX, deltaY);
+    const shiftedFrom = animation.fromProperties
+      ? offsetNumericPositionProperties(animation.fromProperties, deltaX, deltaY)
+      : null;
+    if (!shiftedTo.changed && !shiftedFrom?.changed) continue;
+    applyUpdatesToCall(entry.call, {
+      properties: shiftedTo.properties,
+      ...(shiftedFrom ? { fromProperties: shiftedFrom.properties } : {}),
+    });
+    changed = true;
+  }
+
+  let result = changed ? recast.print(parsed.ast).code : script;
+  if (!hasGlobalPositionBase) {
+    result = addAnimationToScript(result, {
+      targetSelector,
+      method: "set",
+      position: 0,
+      properties: {
+        x: Math.round(deltaX * 1000) / 1000,
+        y: Math.round(deltaY * 1000) / 1000,
+      },
+      global: true,
+    }).script;
+  }
+  return result;
+}
+
 function updateAnimationSelector(script: string, animationId: string, newSelector: string): string {
   let parsed: ParsedGsapAst;
   try {

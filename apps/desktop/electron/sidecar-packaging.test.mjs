@@ -52,7 +52,21 @@ it("stages shared runtime types beside compiled server modules", async () => {
     await rm(root, { recursive: true, force: true });
   }
 });
-const { assertPackagedNodePty, assertPackagedRuntimeTypes } = afterPackModule;
+const {
+  assertPackagedNodePty,
+  assertPackagedOpenCodePlugins,
+  assertPackagedRuntimeTypes,
+} = afterPackModule;
+
+async function createOpenCodeRuntimeFixture(appOutDir) {
+  const runtimeDir = path.join(appOutDir, "resources", "opencode-runtime");
+  const sdkDir = path.join(runtimeDir, "node_modules", "@opencode-ai", "plugin");
+  await mkdir(path.join(sdkDir, "dist"), { recursive: true });
+  await writeFile(path.join(runtimeDir, "package.json"), '{"dependencies":{}}\n');
+  await writeFile(path.join(runtimeDir, "package-lock.json"), '{"lockfileVersion":3}\n');
+  await writeFile(path.join(sdkDir, "package.json"), '{"name":"@opencode-ai/plugin"}\n');
+  await writeFile(path.join(sdkDir, "dist", "tool.js"), "export const tool = {};\n");
+}
 
 it("requires the shared runtime types in packaged Electron archives", async () => {
   const appOutDir = await mkdtemp(path.join(os.tmpdir(), "ipollowork-runtime-types-"));
@@ -82,6 +96,35 @@ it("requires the shared runtime types in packaged Electron archives", async () =
   }
 });
 
+it("requires the bundled Chrome DevTools plugin in packaged Electron resources", async () => {
+  const appOutDir = await mkdtemp(path.join(os.tmpdir(), "ipollowork-opencode-plugin-"));
+  const pluginRoot = path.join(appOutDir, "resources", "opencode-plugins", "opencode-chrome-devtools");
+  const pluginDir = path.join(pluginRoot, "dist");
+  await mkdir(pluginDir, { recursive: true });
+
+  try {
+    assert.throws(() => assertPackagedOpenCodePlugins({
+      electronPlatformName: "win32",
+      appOutDir,
+    }), /opencode-chrome-devtools/);
+
+    await writeFile(path.join(pluginDir, "plugin.js"), "export default {};");
+    assert.throws(() => assertPackagedOpenCodePlugins({
+      electronPlatformName: "win32",
+      appOutDir,
+    }), /package\.json/);
+
+    await writeFile(path.join(pluginRoot, "package.json"), '{"name":"opencode-chrome-devtools"}\n');
+    await createOpenCodeRuntimeFixture(appOutDir);
+    assert.doesNotThrow(() => assertPackagedOpenCodePlugins({
+      electronPlatformName: "win32",
+      appOutDir,
+    }));
+  } finally {
+    await rm(appOutDir, { recursive: true, force: true });
+  }
+});
+
 async function createWindowsFixture(triple) {
   const appOutDir = await mkdtemp(path.join(os.tmpdir(), "ipollowork-after-pack-"));
   const sidecarsDir = path.join(appOutDir, "resources", "sidecars");
@@ -92,6 +135,12 @@ async function createWindowsFixture(triple) {
   await writeFile(path.join(runtimeTypes, "hyperframes.js"), "export {};\n");
   await writeFile(path.join(runtimeTypes, "templates.js"), "export {};\n");
   await createPackage(asarSource, path.join(appOutDir, "resources", "app.asar"));
+  const pluginRoot = path.join(appOutDir, "resources", "opencode-plugins", "opencode-chrome-devtools");
+  const pluginDir = path.join(pluginRoot, "dist");
+  await mkdir(pluginDir, { recursive: true });
+  await writeFile(path.join(pluginDir, "plugin.js"), "export default {};\n");
+  await writeFile(path.join(pluginRoot, "package.json"), '{"name":"opencode-chrome-devtools"}\n');
+  await createOpenCodeRuntimeFixture(appOutDir);
 
   for (const name of [
     `opencode-${triple}.exe`,

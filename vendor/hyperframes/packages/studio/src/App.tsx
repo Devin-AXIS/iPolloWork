@@ -189,7 +189,12 @@ export function StudioApp() {
     const preload = () => {
       if (!active) return;
       void loadStudioRightPanelModule()
-        .then((module) => module.preloadStudioEffectsPanel())
+        .then((module) =>
+          Promise.all([
+            module.preloadStudioEffectsPanel(),
+            module.preloadStudioAnimationPanel(),
+          ]),
+        )
         .catch(() => {});
     };
     const idleId = window.requestIdleCallback(preload, { timeout: 800 });

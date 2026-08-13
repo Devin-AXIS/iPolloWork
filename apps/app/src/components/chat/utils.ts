@@ -1,5 +1,4 @@
 import { isReasoningUIPart, isToolUIPart, type DynamicToolUIPart, type FileUIPart, type ToolUIPart, type UIMessage } from "ai"
-import type { ThreadStatus } from "@/lib/messages"
 import { t } from "@/i18n"
 
 interface MessageGroup {
@@ -159,27 +158,34 @@ export function isMessageGroup(item: MessageListItem): item is MessageGroup {
   return "messages" in item
 }
 
-export function groupMessages(messages: UIMessage[], status: ThreadStatus): MessageListItem[] {
+export function isInternalContinuationMessage(message: UIMessage): boolean {
+  return message.role === "user" && message.parts.length === 0
+}
+
+export function groupMessages(messages: UIMessage[]): MessageListItem[] {
   const items: MessageListItem[] = []
+  const visibleMessages = messages.flatMap((message, index) =>
+    isInternalContinuationMessage(message) ? [] : [{ index, message }]
+  )
   let index = 0
 
-  while (index < messages.length) {
-    const message = messages[index]
+  while (index < visibleMessages.length) {
+    const item = visibleMessages[index]
 
-    if (message.role !== "assistant") {
-      items.push({ index, message })
+    if (item.message.role !== "assistant") {
+      items.push(item)
       index++
       continue
     }
 
     const assistantMessages: UIMessageWithIndex[] = []
 
-    while (index < messages.length && messages[index].role === "assistant") {
-      assistantMessages.push({ message: messages[index], index });
+    while (index < visibleMessages.length && visibleMessages[index].message.role === "assistant") {
+      assistantMessages.push(visibleMessages[index])
       index++
     }
 
-    items.push({ messages: assistantMessages });
+    items.push({ messages: assistantMessages })
   }
 
   return items

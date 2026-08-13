@@ -6,7 +6,7 @@ const TEXT_TAGS = new Set(["P", "SPAN", "H1", "H2", "H3", "H4", "H5", "H6", "LAB
 const MEDIA_TAGS = new Set(["IMG", "VIDEO", "CANVAS", "PICTURE"]);
 const SHAPE_TAGS = new Set(["SVG", "PATH", "RECT", "CIRCLE", "ELLIPSE", "POLYGON", "LINE"]);
 const CAPTION_CONTENT_SELECTOR =
-  "[data-ipw-caption-content], [data-caption-content], [data-hf-caption-content]";
+  '[data-ipw-caption-text="true"], [data-ipw-caption-content], [data-caption-content], [data-hf-caption-content]';
 
 export interface MotionPresetSelection {
   compatible: boolean;
@@ -20,9 +20,41 @@ export interface MotionPresetTiming {
   duration: number;
 }
 
+export interface MotionTimelineSpan {
+  start: number;
+  end: number;
+  duration: number;
+  constrained: boolean;
+}
+
 export interface MotionPresetTimingSource {
   element?: HTMLElement | null;
   dataAttributes: Record<string, string>;
+}
+
+/**
+ * Registry motion coordinates are authored as offsets around the element's
+ * current layout position. Persist them as absolute GSAP coordinates so adding
+ * a preset never teleports an element that the user already placed.
+ */
+export function rebaseMotionPresetKeyframes(
+  keyframes: RegistryMotionPreset["keyframes"],
+  base: { x: number; y: number },
+): RegistryMotionPreset["keyframes"] {
+  return keyframes.map((keyframe) => {
+    const properties = { ...keyframe.properties };
+    for (const property of ["x", "translateX"] as const) {
+      if (typeof properties[property] === "number") {
+        properties[property] = roundTo3(properties[property] + base.x);
+      }
+    }
+    for (const property of ["y", "translateY"] as const) {
+      if (typeof properties[property] === "number") {
+        properties[property] = roundTo3(properties[property] + base.y);
+      }
+    }
+    return { ...keyframe, properties };
+  });
 }
 
 function roundTo3(value: number): number {
@@ -48,18 +80,21 @@ function timingOwnerFor(element: HTMLElement | null | undefined): HTMLElement | 
   );
 }
 
-function resolveTimingSpan(
+export function resolveMotionTimelineSpan(
   selection: MotionPresetTimingSource,
   fallbackDuration: number,
-): { start: number; duration: number; constrained: boolean } {
+): MotionTimelineSpan {
   const owner = timingOwnerFor(selection.element);
   const ownerStart = finiteNonNegative(owner?.dataset.start);
   const ownerDuration = finitePositive(owner?.dataset.duration);
   const selectionStart = finiteNonNegative(selection.dataAttributes.start);
   const selectionDuration = finitePositive(selection.dataAttributes.duration);
+  const start = ownerStart ?? selectionStart ?? 0;
+  const duration = ownerDuration ?? selectionDuration ?? fallbackDuration;
   return {
-    start: ownerStart ?? selectionStart ?? 0,
-    duration: ownerDuration ?? selectionDuration ?? fallbackDuration,
+    start,
+    end: roundTo3(start + duration),
+    duration,
     constrained: ownerDuration !== null || selectionDuration !== null,
   };
 }
@@ -71,6 +106,10 @@ function captionOwnerFor(element: HTMLElement): HTMLElement | null {
   const linked = element.closest<HTMLElement>("[data-ipw-caption-owner]");
   const ownerId = linked?.dataset.ipwCaptionOwner;
   return ownerId ? element.ownerDocument.getElementById(ownerId) : null;
+}
+
+export function isCaptionMotionTarget(element: HTMLElement | null | undefined): boolean {
+  return Boolean(element && captionOwnerFor(element));
 }
 
 function captionContentFor(element: HTMLElement, captionOwner: HTMLElement): HTMLElement | null {
@@ -89,6 +128,12 @@ function captionContentFor(element: HTMLElement, captionOwner: HTMLElement): HTM
     if (linkedContent) return linkedContent;
   }
   return null;
+}
+
+/** Resolve a generated caption wrapper to its authored text node. */
+export function resolveCaptionMotionTargetElement(element: HTMLElement): HTMLElement {
+  const owner = captionOwnerFor(element);
+  return owner ? (captionContentFor(element, owner) ?? element) : element;
 }
 
 function targetKinds(
@@ -150,7 +195,7 @@ export function resolveMotionPresetTiming(
   preset: RegistryMotionPreset,
   currentTime: number,
 ): MotionPresetTiming {
-  const span = resolveTimingSpan(selection, preset.duration);
+  const span = resolveMotionTimelineSpan(selection, preset.duration);
   const clipStart = span.start;
   const declaredClipDuration = span.duration;
   const clipDuration = Math.max(0.1, declaredClipDuration);
@@ -173,24 +218,33 @@ export function resolveSemanticMotionTiming(
   requestedDuration: number,
   requestedPosition?: number,
 ): MotionPresetTiming {
-  const span = resolveTimingSpan(selection, requestedDuration);
+  const span = resolveMotionTimelineSpan(selection, requestedDuration);
   const clipDuration = Math.max(0.1, span.duration);
   const duration = span.constrained
     ? Math.min(Math.max(0.1, requestedDuration), clipDuration)
     : Math.max(0.1, requestedDuration);
   const latestStart = span.start + clipDuration - duration;
   const defaultPosition =
-    phase === "enter"
-      ? span.start
-      : phase === "exit"
-        ? latestStart
-        : span.start + Math.max(0, (clipDuration - duration) / 2);
+    phase === "enter" ? span.start : phase === "exit" ? latestStart : span.start;
   const position =
     requestedPosition !== undefined &&
     Number.isFinite(requestedPosition) &&
-    (!span.constrained ||
-      (requestedPosition >= span.start && requestedPosition <= latestStart))
+    (!span.constrained || (requestedPosition >= span.start && requestedPosition <= latestStart))
       ? requestedPosition
       : defaultPosition;
   return { position: roundTo3(position), duration: roundTo3(duration) };
+}
+
+export function resolveStructuredTextMotionTiming(
+  selection: MotionPresetTimingSource,
+  phase: MotionPhase,
+  requestedDuration: number,
+  requestedPosition?: number,
+): MotionPresetTiming {
+  if (!isCaptionMotionTarget(selection.element) || phase === "exit") {
+    return resolveSemanticMotionTiming(selection, phase, requestedDuration, requestedPosition);
+  }
+
+  const span = resolveMotionTimelineSpan(selection, requestedDuration);
+  return resolveSemanticMotionTiming(selection, phase, requestedDuration, span.start);
 }

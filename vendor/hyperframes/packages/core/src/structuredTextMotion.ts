@@ -63,15 +63,46 @@ export interface CompiledStructuredTextMotion {
 }
 
 const STRUCTURED_TEXT_ROLES = new Set<StructuredTextRole>([
-  "unit", "text", "background", "clone-primary", "clone-accent", "mask", "texture",
-  "particle-container", "particle",
+  "unit",
+  "text",
+  "background",
+  "clone-primary",
+  "clone-accent",
+  "mask",
+  "texture",
+  "particle-container",
+  "particle",
 ]);
 
 const STRUCTURED_MOTION_PROPERTIES = new Set([
-  "opacity", "x", "y", "scale", "scaleX", "scaleY", "rotation", "rotationX", "rotationY",
-  "skewX", "skewY", "color", "backgroundColor", "backgroundImage", "backgroundClip",
-  "backgroundPosition", "backgroundSize", "borderRadius", "boxShadow", "clipPath", "filter",
-  "fontWeight", "letterSpacing", "mixBlendMode", "textShadow", "transformOrigin", "visibility",
+  "opacity",
+  "x",
+  "y",
+  "scale",
+  "scaleX",
+  "scaleY",
+  "rotation",
+  "rotationX",
+  "rotationY",
+  "skewX",
+  "skewY",
+  "color",
+  "backgroundColor",
+  "backgroundImage",
+  "backgroundClip",
+  "backgroundPosition",
+  "backgroundSize",
+  "borderRadius",
+  "boxShadow",
+  "clipPath",
+  "filter",
+  "fontWeight",
+  "letterSpacing",
+  "mixBlendMode",
+  "textShadow",
+  "transformOrigin",
+  "visibility",
+  "WebkitBackgroundClip",
   "WebkitTextFillColor",
 ]);
 
@@ -83,7 +114,8 @@ const MAX_TEXT_UNITS = 512;
 const MAX_ASSETS = 8;
 const MAX_ASSET_PATH_LENGTH = 256;
 const MAX_EASE_LENGTH = 96;
-const GSAP_EASE_PATTERN = /^(?:none|linear|(?:power[0-4]|sine|expo|circ|back|elastic|bounce|steps)(?:\.(?:in|out|inOut))?)(?:\(-?(?:\d+(?:\.\d+)?|\.\d+)(?:\s*,\s*-?(?:\d+(?:\.\d+)?|\.\d+))*\))?$/;
+const GSAP_EASE_PATTERN =
+  /^(?:none|linear|(?:power[0-4]|sine|expo|circ|back|elastic|bounce|steps)(?:\.(?:in|out|inOut))?)(?:\(-?(?:\d+(?:\.\d+)?|\.\d+)(?:\s*,\s*-?(?:\d+(?:\.\d+)?|\.\d+))*\))?$/;
 
 export function segmentStructuredText(text: string, split: MotionTextUnit): string[] {
   return segmentStructuredTextFallback(text, split);
@@ -143,7 +175,11 @@ function validateRole(role: string, path: string): void {
 }
 
 function validateKeyframes(keyframes: MotionKeyframe[], path: string): void {
-  if (!Array.isArray(keyframes) || keyframes.length === 0 || keyframes.length > MAX_KEYFRAMES_PER_TRACK) {
+  if (
+    !Array.isArray(keyframes) ||
+    keyframes.length === 0 ||
+    keyframes.length > MAX_KEYFRAMES_PER_TRACK
+  ) {
     throw new Error(`${path} must contain between 1 and ${MAX_KEYFRAMES_PER_TRACK} keyframes`);
   }
   for (const [index, keyframe] of keyframes.entries()) {
@@ -180,7 +216,9 @@ function validateRange(range: readonly [number, number], path: string): void {
 function copyValidatedAssets(assets: unknown): string[] | undefined {
   if (assets === undefined) return undefined;
   if (!Array.isArray(assets) || assets.length > MAX_ASSETS) {
-    throw new Error(`Structured text assets must contain at most ${MAX_ASSETS} registry-relative paths`);
+    throw new Error(
+      `Structured text assets must contain at most ${MAX_ASSETS} registry-relative paths`,
+    );
   }
   return assets.map((asset, index) => {
     if (
@@ -194,7 +232,9 @@ function copyValidatedAssets(assets: unknown): string[] | undefined {
       asset.startsWith("\\\\") ||
       /^[A-Za-z][A-Za-z0-9+.-]*:/.test(asset) ||
       !/^[A-Za-z0-9._/-]+$/.test(asset) ||
-      asset.split("/").some((segment) => segment.length === 0 || segment === "." || segment === "..")
+      asset
+        .split("/")
+        .some((segment) => segment.length === 0 || segment === "." || segment === "..")
     ) {
       throw new Error(`assets[${index}] must be a safe registry-relative path`);
     }
@@ -204,11 +244,16 @@ function copyValidatedAssets(assets: unknown): string[] | undefined {
 
 export function validateStructuredTextRecipe(recipe: StructuredTextRecipe): void {
   if (recipe.version !== 1) throw new Error("Structured text recipe version must be 1");
-  if (!recipe.id.trim() || !recipe.presetId.trim()) throw new Error("Structured text recipe ids are required");
+  if (!recipe.id.trim() || !recipe.presetId.trim())
+    throw new Error("Structured text recipe ids are required");
   if (!(["whole", "word", "character"] as const).includes(recipe.split)) {
     throw new Error(`Unsupported structured text split: ${recipe.split}`);
   }
-  if (!Array.isArray(recipe.layers) || recipe.layers.length === 0 || recipe.layers.length > MAX_LAYERS) {
+  if (
+    !Array.isArray(recipe.layers) ||
+    recipe.layers.length === 0 ||
+    recipe.layers.length > MAX_LAYERS
+  ) {
     throw new Error(`Structured text recipes support between 1 and ${MAX_LAYERS} layers`);
   }
   recipe.layers.forEach((layer, index) => {
@@ -217,7 +262,11 @@ export function validateStructuredTextRecipe(recipe: StructuredTextRecipe): void
       throw new Error(`layers[${index}] must use a boolean perUnit and safe className`);
     }
   });
-  if (!Array.isArray(recipe.tracks) || recipe.tracks.length === 0 || recipe.tracks.length > MAX_TRACKS) {
+  if (
+    !Array.isArray(recipe.tracks) ||
+    recipe.tracks.length === 0 ||
+    recipe.tracks.length > MAX_TRACKS
+  ) {
     throw new Error(`Structured text recipes support between 1 and ${MAX_TRACKS} tracks`);
   }
   recipe.tracks.forEach((track, index) => {
@@ -228,8 +277,14 @@ export function validateStructuredTextRecipe(recipe: StructuredTextRecipe): void
     validateKeyframes(track.keyframes, `tracks[${index}].keyframes`);
   });
   if (recipe.particles) {
-    if (!Number.isInteger(recipe.particles.count) || recipe.particles.count < 0 || recipe.particles.count > MAX_PARTICLES) {
-      throw new Error(`Structured text particle count must be an integer between 0 and ${MAX_PARTICLES}`);
+    if (
+      !Number.isInteger(recipe.particles.count) ||
+      recipe.particles.count < 0 ||
+      recipe.particles.count > MAX_PARTICLES
+    ) {
+      throw new Error(
+        `Structured text particle count must be an integer between 0 and ${MAX_PARTICLES}`,
+      );
     }
     validateRange(recipe.particles.x, "particles.x");
     validateRange(recipe.particles.y, "particles.y");
@@ -247,16 +302,34 @@ function roundTime(value: number): number {
   return Math.round(value * 1e12) / 1e12;
 }
 
-function naturalTrackEnd(track: CompiledStructuredTrack, unitCount: number): number {
-  return track.position + track.duration + track.stagger * Math.max(0, unitCount - 1);
+function recipeTrackTargetCount(
+  recipe: StructuredTextRecipe,
+  track: CompiledStructuredTrack,
+  unitCount: number,
+): number {
+  if (track.role === "particle") return recipe.particles?.count ?? 0;
+  const layer = recipe.layers.find((candidate) => candidate.role === track.role);
+  return layer?.perUnit ? unitCount : 1;
+}
+
+function naturalTrackEnd(
+  recipe: StructuredTextRecipe,
+  track: CompiledStructuredTrack,
+  unitCount: number,
+): number {
+  const targetCount = recipeTrackTargetCount(recipe, track, unitCount);
+  return track.position + track.duration + track.stagger * Math.max(0, targetCount - 1);
 }
 
 function structuredTimingScale(
-  tracks: readonly CompiledStructuredTrack[],
+  recipe: StructuredTextRecipe,
   unitCount: number,
   duration: number,
 ): number {
-  const naturalDuration = Math.max(...tracks.map((track) => naturalTrackEnd(track, unitCount)), 0);
+  const naturalDuration = Math.max(
+    ...recipe.tracks.map((track) => naturalTrackEnd(recipe, track, unitCount)),
+    0,
+  );
   if (naturalDuration <= 0) return 1;
   return duration / naturalDuration;
 }
@@ -279,16 +352,18 @@ export function compileStructuredTextMotion(
   const random = createStructuredTextRng(seed);
   const assets = copyValidatedAssets(recipe.assets);
   const particleSpec = recipe.particles;
-  const timingScale = structuredTimingScale(recipe.tracks, units.length, instance.duration);
-  const particles = particleSpec && units.length > 0
-    ? Array.from({ length: particleSpec.count }, (_, index) => ({
-        unitIndex: units.length ? index % units.length : 0,
-        x: randomInRange(random, particleSpec.x),
-        y: randomInRange(random, particleSpec.y),
-        size: randomInRange(random, particleSpec.size),
-        delay: randomInRange(random, particleSpec.delay),
-      }))
-    : undefined;
+  const actionDuration = instance.loop ? instance.duration * 0.8 : instance.duration;
+  const timingScale = structuredTimingScale(recipe, units.length, actionDuration);
+  const particles =
+    particleSpec && units.length > 0
+      ? Array.from({ length: particleSpec.count }, (_, index) => ({
+          unitIndex: units.length ? index % units.length : 0,
+          x: randomInRange(random, particleSpec.x),
+          y: randomInRange(random, particleSpec.y),
+          size: randomInRange(random, particleSpec.size),
+          delay: randomInRange(random, particleSpec.delay),
+        }))
+      : undefined;
   return {
     version: 1,
     recipeId: recipe.id,
@@ -300,7 +375,10 @@ export function compileStructuredTextMotion(
       position: roundTime(track.position * timingScale),
       duration: roundTime(track.duration * timingScale),
       stagger: roundTime(track.stagger * timingScale),
-      keyframes: track.keyframes.map((keyframe) => ({ ...keyframe, properties: { ...keyframe.properties } })),
+      keyframes: track.keyframes.map((keyframe) => ({
+        ...keyframe,
+        properties: { ...keyframe.properties },
+      })),
     })),
     ...(particles ? { particles } : {}),
     ...(assets ? { assets } : {}),

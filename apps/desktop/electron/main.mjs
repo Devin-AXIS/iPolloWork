@@ -3091,11 +3091,12 @@ ipcMain.handle("ipollowork:hyperframes:set-simple-mode", async (event, enabled) 
       if (changed) location.hash = path + '?' + params.toString();
     };
     const applyCanvasSelection = (target) => {
-      if (!target || (!target.id && !target.selector)) return false;
+      if (!target || (!target.hfId && !target.id && !target.selector)) return false;
       const [path, query = ''] = location.hash.slice(1).split('?');
       const params = new URLSearchParams(query);
       for (const key of [...params.keys()]) if (key.startsWith('sel')) params.delete(key);
       if (target.file) params.set('selFile', target.file);
+      if (target.hfId) params.set('selHfId', target.hfId);
       if (target.id) params.set('selId', target.id);
       if (target.selector) params.set('selSelector', target.selector);
       if (Number.isFinite(target.selectorIndex)) params.set('selIndex', String(target.selectorIndex));
@@ -3103,12 +3104,13 @@ ipcMain.handle("ipollowork:hyperframes:set-simple-mode", async (event, enabled) 
       return true;
     };
     const applyCanvasSelectionLive = (target, options = {}) => {
-      if (!target || (!target.id && !target.selector)) return false;
+      if (!target || (!target.hfId && !target.id && !target.selector)) return false;
       window.dispatchEvent(new CustomEvent('ipollowork:studio-apply-selection', {
         detail: {
           revealPanel: options.revealPanel === true,
           selection: {
             sourceFile: target.file || '',
+            hfId: target.hfId || undefined,
             id: target.id || undefined,
             selector: target.selector || undefined,
             selectorIndex: Number.isFinite(target.selectorIndex) ? target.selectorIndex : undefined,
@@ -3386,8 +3388,8 @@ ipcMain.handle("ipollowork:hyperframes:set-simple-mode", async (event, enabled) 
         iframe?.contentWindow?.__player?.seek?.(0);
       }, 120);
     }
-    if (window.__ipolloworkSimpleVideoListener !== 15) {
-      window.__ipolloworkSimpleVideoListener = 15;
+    if (window.__ipolloworkSimpleVideoListener !== 16) {
+      window.__ipolloworkSimpleVideoListener = 16;
       window.__ipolloworkVideoAdvancedExplicit = false;
       window.addEventListener('message', (event) => {
         const inspector = document.querySelector('button[aria-label="Inspector"]');
@@ -3517,8 +3519,8 @@ ipcMain.handle("ipollowork:hyperframes:set-simple-mode", async (event, enabled) 
   })()`);
   if (enabled) {
     await Promise.all(frames.filter((frame) => frame !== studioFrame).map((frame) => frame.executeJavaScript(`(() => {
-      if (window.__ipolloworkSimpleVideoClickInstalled === 22) return;
-      window.__ipolloworkSimpleVideoClickInstalled = 22;
+      if (window.__ipolloworkSimpleVideoClickInstalled === 23) return;
+      window.__ipolloworkSimpleVideoClickInstalled = 23;
       const encodedProjectId = location.pathname.match(/^\\/api\\/projects\\/([^/]+)/)?.[1];
       const projectId = encodedProjectId ? decodeURIComponent(encodedProjectId) : '';
       if (!projectId) return;
@@ -3594,18 +3596,30 @@ ipcMain.handle("ipollowork:hyperframes:set-simple-mode", async (event, enabled) 
         const composition = element.closest('[data-composition-file]') || element.closest('[data-composition-id]');
         const file = composition?.getAttribute('data-composition-file') || 'index.html';
         if (!composition) return null;
+        const hfId = element.getAttribute('data-hf-id') || undefined;
+        const id = element.id || undefined;
         const tag = element.tagName.toLowerCase();
-        const stableClasses = [...element.classList].filter((name) => !name.startsWith('__hf-'));
-        const selector = stableClasses.length
-          ? tag + stableClasses.map((name) => '.' + CSS.escape(name)).join('')
-          : tag;
+        const transientClasses = new Set(['active', 'current', 'playing', 'paused', 'selected', 'visible', 'hidden']);
+        const stableClasses = [...element.classList].filter((name) =>
+          !name.startsWith('__hf-') && !transientClasses.has(name)
+        );
+        // Generated compositions already carry an authored identity. Prefer it
+        // over runtime classes such as active, which change during playback
+        // and make a click resolve to a different source node after pausing.
+        const selector = hfId
+          ? '[data-hf-id="' + CSS.escape(hfId) + '"]'
+          : id
+            ? '#' + CSS.escape(id)
+            : stableClasses.length
+              ? tag + stableClasses.map((name) => '.' + CSS.escape(name)).join('')
+              : tag;
         const scope = composition.querySelector('[data-hf-inner-root]') || composition;
         const matches = [...scope.querySelectorAll(selector)];
         const selectorIndex = Math.max(0, matches.indexOf(element));
         return {
           file,
-          hfId: element.getAttribute('data-hf-id') || undefined,
-          id: element.id || undefined,
+          hfId,
+          id,
           selector,
           selectorIndex,
         };
@@ -3797,7 +3811,7 @@ ipcMain.handle("ipollowork:hyperframes:set-simple-mode", async (event, enabled) 
 
       const editableAtPoint = (x, y) => {
         const elements = document.elementsFromPoint(x, y).filter((element) => element instanceof Element && !toolbar.contains(element));
-        const patchable = elements.find((element) => sourceTargetFor(element));
+        const patchable = elements.find((element) => isEffectivelyVisible(element) && sourceTargetFor(element));
         const geometric = [...document.querySelectorAll('[id],[data-hf-id]')]
           .filter((element) => {
             if (toolbar.contains(element) || !sourceTargetFor(element)) return false;
@@ -3829,7 +3843,9 @@ ipcMain.handle("ipollowork:hyperframes:set-simple-mode", async (event, enabled) 
           const rect = element.getBoundingClientRect();
           return rect.width > 0 && rect.height > 0 && isEffectivelyVisible(element) &&
             x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom &&
-            Boolean((element.textContent || '').trim()) && sourceTargetFor(element);
+            Boolean((element.textContent || '').trim()) &&
+            (!element.closest('[data-ipw-caption="true"]') || element.hasAttribute('data-hf-id') || Boolean(element.id)) &&
+            sourceTargetFor(element);
         })
         .sort((a, b) => {
           const ar = a.getBoundingClientRect();

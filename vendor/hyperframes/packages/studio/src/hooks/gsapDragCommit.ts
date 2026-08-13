@@ -366,8 +366,9 @@ export async function commitKeyframedSizeFromResize(
   const newH = Math.round(size.height);
   const prior = resolvePriorSize(sizeSet, selection.element, newW, newH);
 
-  const ct = usePlayerStore.getState().currentTime;
-  const pct = Math.max(0, Math.min(100, Math.round(((ct - ts) / td) * 1000) / 10));
+  const { currentTime: ct, activeKeyframePct, setActiveKeyframePct } = usePlayerStore.getState();
+  const pct =
+    activeKeyframePct ?? Math.max(0, Math.min(100, Math.round(((ct - ts) / td) * 1000) / 10));
 
   // Base keyframe percentages from the animated tween (flat tween → 0 & 100),
   // plus the endpoints and the playhead. Each keeps the prior size except the
@@ -407,6 +408,12 @@ export async function commitKeyframedSizeFromResize(
       { label: "Resize layer", softReload: true },
     );
   }
+  if (
+    activeKeyframePct != null &&
+    usePlayerStore.getState().activeKeyframePct === activeKeyframePct
+  ) {
+    setActiveKeyframePct(null);
+  }
   return true;
 }
 
@@ -419,81 +426,45 @@ export async function commitKeyframedSizeFromResize(
  */
 // fallow-ignore-next-line code-duplication
 // fallow-ignore-next-line complexity
-export async function commitWholePathOffset(
+/**
+ * Offset every position tween owned by one layer in a single source mutation.
+ * Enter/emphasis/exit tweens can all target the same element; moving only the
+ * tween nearest the playhead makes another tween snap the layer back later.
+ */
+export async function commitAllPositionPathsOffset(
   selection: DomEditSelection,
-  anim: GsapAnimation,
   studioOffset: { x: number; y: number },
   gsapPos: { x: number; y: number },
-  iframe: HTMLIFrameElement | null,
   selector: string,
   callbacks: GsapDragCommitCallbacks,
 ): Promise<void> {
-  const el = selection.element;
+  const element = selection.element;
   const { newX, newY, baseGsapX, baseGsapY } = computeDraggedGsapPosition(
-    el,
+    element,
     studioOffset,
     gsapPos,
   );
-  const deltaX = newX - baseGsapX;
-  // fallow-ignore-next-line code-duplication
-  const deltaY = newY - baseGsapY;
-  const origX = Number.parseFloat(el.getAttribute("data-hf-drag-initial-offset-x") ?? "") || 0;
-  const origY = Number.parseFloat(el.getAttribute("data-hf-drag-initial-offset-y") ?? "") || 0;
+  const deltaX = roundTo3(newX - baseGsapX);
+  const deltaY = roundTo3(newY - baseGsapY);
+  const originalOffsetX =
+    Number.parseFloat(element.getAttribute("data-hf-drag-initial-offset-x") ?? "") || 0;
+  const originalOffsetY =
+    Number.parseFloat(element.getAttribute("data-hf-drag-initial-offset-y") ?? "") || 0;
   const restoreOffset = () => {
-    el.style.setProperty("--hf-studio-offset-x", `${origX}px`);
-    el.style.setProperty("--hf-studio-offset-y", `${origY}px`);
-    el.removeAttribute("data-hf-drag-initial-offset-x");
-    el.removeAttribute("data-hf-drag-initial-offset-y");
+    element.style.setProperty("--hf-studio-offset-x", `${originalOffsetX}px`);
+    element.style.setProperty("--hf-studio-offset-y", `${originalOffsetY}px`);
+    element.removeAttribute("data-hf-drag-initial-offset-x");
+    element.removeAttribute("data-hf-drag-initial-offset-y");
   };
-
-  // fallow-ignore-next-line code-duplication
-  let effectiveAnim = anim;
-  if (anim.keyframes) {
-    const newId = await materializeIfDynamic(anim, iframe, callbacks.commitMutation, selection);
-    if (newId) effectiveAnim = { ...anim, id: newId };
-  }
-
-  const ts = resolveTweenStart(effectiveAnim);
-  const td = resolveTweenDuration(effectiveAnim);
-  const ease = effectiveAnim.keyframes?.easeEach ?? effectiveAnim.ease;
-
-  let kfs = effectiveAnim.keyframes?.keyframes ?? [];
-  if (kfs.length === 0) {
-    const fromProps = effectiveAnim.fromProperties ?? {};
-    const toProps = effectiveAnim.properties ?? {};
-    const startX =
-      typeof fromProps.x === "number" ? fromProps.x : typeof toProps.x === "number" ? 0 : 0;
-    const startY =
-      typeof fromProps.y === "number" ? fromProps.y : typeof toProps.y === "number" ? 0 : 0;
-    const endX = typeof toProps.x === "number" ? toProps.x : startX;
-    const endY = typeof toProps.y === "number" ? toProps.y : startY;
-    kfs = [
-      { percentage: 0, properties: { x: startX, y: startY } },
-      { percentage: 100, properties: { x: endX, y: endY } },
-    ];
-  }
-
-  const shifted = kfs.map((kf) => ({
-    percentage: kf.percentage,
-    properties: {
-      ...kf.properties,
-      x: roundTo3((typeof kf.properties.x === "number" ? kf.properties.x : 0) + deltaX),
-      y: roundTo3((typeof kf.properties.y === "number" ? kf.properties.y : 0) + deltaY),
-    },
-    ...(kf.ease ? { ease: kf.ease } : {}),
-  }));
 
   await callbacks.commitMutation(
     selection,
     {
-      type: "replace-with-keyframes",
-      animationId: effectiveAnim.id,
-      targetSelector: effectiveAnim.targetSelector,
-      position: roundTo3(ts ?? 0),
-      duration: roundTo3(td || 1),
-      keyframes: shifted,
-      ease,
+      type: "offset-position-paths",
+      targetSelector: selector,
+      deltaX,
+      deltaY,
     },
-    { label: "Move animation path", softReload: true, beforeReload: restoreOffset },
+    { label: "Move animation paths", softReload: true, beforeReload: restoreOffset },
   );
 }

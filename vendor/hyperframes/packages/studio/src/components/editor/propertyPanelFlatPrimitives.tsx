@@ -21,6 +21,7 @@ export function FlatRow({
   liveCommit,
   suffix,
   dropdown,
+  inputType,
   large = true,
   onPreview,
   onCommit,
@@ -34,6 +35,7 @@ export function FlatRow({
   suffix?: ReactNode;
   /** Renders a trailing 10px caret-down, for select-backed rows. */
   dropdown?: boolean;
+  inputType?: "text" | "number";
   /** Figma's 34px inspector control used by the expanded Layer sections. */
   large?: boolean;
   onPreview?: (nextValue: string) => void;
@@ -71,6 +73,8 @@ export function FlatRow({
             disabled={disabled}
             liveCommit={liveCommit}
             align="right"
+            inputType={inputType}
+            ariaLabel={tx(label)}
             onPreview={onPreview}
             onCommit={(nextValue) => {
               track("metric", label);
@@ -527,12 +531,11 @@ export function FlatSlider({
           if (!draggingRef.current) return;
           draggingRef.current = false;
           activePointerIdRef.current = null;
-          // Recompute from the event itself rather than reading the `draft`
-          // closure — if pointerdown+pointerup land in the same React batch
-          // (e.g. a very fast click), the onPointerUp handler can still be
-          // bound to the pre-drag render, making `draft` stale.
-          const stepped = stepFromClientX(e.clientX, e.currentTarget.getBoundingClientRect());
-          applyDraft(stepped);
+          // Commit the last position already rendered during pointerdown/move.
+          // Some Chromium/touchpad paths report 0 or an out-of-track clientX
+          // on pointerup; recalculating from that event made the knob jump to
+          // min/max even though the drag itself ended in the middle.
+          const stepped = draftRef.current;
           commitDraft(stepped);
           if (stepped !== dragStartValueRef.current) track("slider", label);
           // Persist the final position before releasing capture. Some Chromium

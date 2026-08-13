@@ -76,6 +76,8 @@ export interface MotionInstance {
   targetKind: MotionTargetKind;
   phase: MotionPhase;
   start: number;
+  /** Absolute timeline boundary for the complete effect window. */
+  end?: number;
   duration: number;
   loop: boolean;
   repeat: number;
@@ -87,6 +89,7 @@ export interface MotionMutationInput {
   phase: MotionPhase;
   presetId?: string;
   start?: number;
+  end?: number;
   duration?: number;
   loop?: boolean;
   parameters?: MotionParameters;
@@ -327,7 +330,11 @@ export function readMotionInstanceFromExtras(
         : loop
           ? 1
           : 0;
-    return { ...value, loop, repeat, parameters: validated.parameters };
+    const end =
+      Number.isFinite(value.end) && Number(value.end) > value.start
+        ? Number(value.end)
+        : value.start + value.duration * (repeat + 1);
+    return { ...value, end, loop, repeat, parameters: validated.parameters };
   } catch {
     return null;
   }
@@ -406,6 +413,7 @@ export function createMotionInstance(input: {
   targetKind: MotionTargetKind;
   start: number;
   duration?: number;
+  end?: number;
   loop?: boolean;
   repeat?: number;
   parameters?: MotionParameters;
@@ -421,6 +429,11 @@ export function createMotionInstance(input: {
       : loop
         ? 1
         : 0;
+  const duration = input.duration ?? defaultMotionDuration(preset);
+  const end = input.end ?? input.start + duration * (repeat + 1);
+  if (!Number.isFinite(end) || end <= input.start) {
+    throw new Error("Motion end must be later than motion start");
+  }
   return {
     id: `motion:${input.target.selector}:${preset.phase}`,
     presetId: preset.id,
@@ -428,7 +441,8 @@ export function createMotionInstance(input: {
     targetKind: input.targetKind,
     phase: preset.phase,
     start: input.start,
-    duration: input.duration ?? defaultMotionDuration(preset),
+    end,
+    duration,
     loop,
     repeat,
     parameters: validated.parameters,

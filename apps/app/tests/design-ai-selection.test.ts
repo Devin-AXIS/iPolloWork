@@ -74,6 +74,8 @@ describe("Design AI selections", () => {
     expect(instruction).toContain("Current design template id: ipollowork.site-atelier-architecture");
     expect(instruction).toContain("Current design category: site");
     expect(instruction).toContain("current editable HTML file is the structural source of truth");
+    expect(instruction).toContain("Manual Studio edits are user-owned source state");
+    expect(instruction).toContain("data-hf-studio-*");
     expect(instruction).toContain("Preserve the existing root classes, section hierarchy and order");
     expect(instruction).toContain("never replace it with a generic hero");
   });

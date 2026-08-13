@@ -24,6 +24,32 @@ const emptyPendingPermissions: PendingPermission[] = [];
 const emptyPendingQuestions: PendingQuestion[] = [];
 const emptyTodos: TodoItem[] = [];
 
+function nonEmptyStringList(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((entry) => {
+    if (typeof entry !== "string") return [];
+    const pattern = entry.trim();
+    return pattern ? [pattern] : [];
+  });
+}
+
+/**
+ * OpenCode separates the resource used by the current tool call from the
+ * broader pattern that an "always" reply is meant to remember. Persist the
+ * latter so sibling files under the same approved directory do not prompt
+ * again. Older protocol versions may omit that scope, so retain the current
+ * resource as a compatibility fallback.
+ */
+export function persistentPermissionPatterns(permission: PendingPermission): string[] {
+  const savedPatterns = nonEmptyStringList(
+    permission.protocol === "v2" ? permission.v2?.save : permission.always,
+  );
+  const patterns = savedPatterns.length > 0
+    ? savedPatterns
+    : nonEmptyStringList(permission.patterns);
+  return [...new Set(patterns)];
+}
+
 export type UseSessionInteractionsInput = {
   client: Client | null;
   workspaceId: string;
@@ -135,21 +161,6 @@ export function useSessionInteractions(input: UseSessionInteractionsInput) {
       setPermissionReplyBusy(true);
       try {
         const pendingPermission = pendingPermissions.find((permission) => permission.id === requestID);
-        if (
-          reply === "always" &&
-          pendingPermission?.permission === "external_directory" &&
-          ipolloworkServerClient &&
-          runtimeWorkspaceId
-        ) {
-          const requestedFolders = pendingPermission.patterns.filter((pattern) => pattern.trim().length > 0);
-          if (requestedFolders.length > 0) {
-            const current = await ipolloworkServerClient.listAuthorizedFolders(runtimeWorkspaceId);
-            await ipolloworkServerClient.setAuthorizedFolders(runtimeWorkspaceId, [
-              ...current.folders,
-              ...requestedFolders,
-            ]);
-          }
-        }
         if (pendingPermission?.protocol === "v2") {
           const result = await client.v2.session.permission.reply({
             sessionID: pendingPermission.sessionID,
@@ -170,6 +181,31 @@ export function useSessionInteractions(input: UseSessionInteractionsInput) {
           permissionKey(workspaceId, sessionId),
           (current = []) => current.filter((permission) => permission.id !== requestID),
         );
+
+        // The current task must not remain blocked if persisting the future
+        // directory rule fails. Reply first, then save the broader "always"
+        // scope as a best-effort cross-session authorization.
+        if (
+          reply === "always" &&
+          pendingPermission?.permission === "external_directory" &&
+          ipolloworkServerClient &&
+          runtimeWorkspaceId
+        ) {
+          const requestedFolders = persistentPermissionPatterns(pendingPermission);
+          if (requestedFolders.length > 0) {
+            try {
+              const current = await ipolloworkServerClient.listAuthorizedFolders(runtimeWorkspaceId);
+              const nextFolders = [...new Set([...current.folders, ...requestedFolders])];
+              if (nextFolders.length !== current.folders.length) {
+                await ipolloworkServerClient.setAuthorizedFolders(runtimeWorkspaceId, nextFolders);
+              }
+            } catch (error) {
+              toast.error(t("app.error_request_failed"), {
+                description: describeRouteError(error),
+              });
+            }
+          }
+        }
       } catch (error) {
         toast.error(t("app.error_request_failed"), {
           description: describeRouteError(error),

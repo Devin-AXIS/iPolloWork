@@ -118,7 +118,6 @@ const flagshipVideoTemplateIds = [
   "ipollowork.hyperframes.prompt-ab-laboratory",
   "ipollowork.hyperframes.release-spotlight",
   "ipollowork.hyperframes.research-evidence-wall",
-  "ipollowork.hyperframes.remote-worker-connect",
 ];
 const novelVideoTemplates = [
   { id: "ipollowork.hyperframes.meeting-action-conveyor", composition: "meeting-action-conveyor", duration: "11", scenes: 4 },
@@ -728,7 +727,7 @@ describe("template installations", () => {
 
   test("ships every bundled template with a real 960 by 540 PNG cover", async () => {
     const directories = (await readdir(bundledTemplatesRoot)).filter((name) => !name.startsWith("."));
-    expect(directories).toHaveLength(108);
+    expect(directories).toHaveLength(116);
     const hashes = new Set<string>();
     for (const directory of directories) {
       const root = join(bundledTemplatesRoot, directory);
@@ -776,25 +775,13 @@ describe("template installations", () => {
     process.env.IPOLLOWORK_RUNTIME_DB = join(root, "runtime.sqlite");
     const serverConfig = config(root);
     const first = await listTemplates(serverConfig, "alpha");
-    const expected = (await readdir(bundledTemplatesRoot))
-      .filter((name) => !name.startsWith("."))
-      .map((directory) => JSON.parse(readFileSync(join(bundledTemplatesRoot, directory, "manifest.json"), "utf8")) as TemplateManifestV1)
-      .filter(isCustomerVisibleBundledTemplate)
-      .map((manifest) => manifest.id)
-      .sort();
-    expect(first.map((item) => item.manifest.id).sort()).toEqual(expected);
-    expect(first.filter((item) => item.installed)).toHaveLength(40);
-    expect(first.some((item) => item.manifest.id === "ipollowork.saas-landing")).toBe(false);
-    expect(first.some((item) => item.manifest.id === "ipollowork.pptx-northstar-strategy")).toBe(false);
-    expect(first.some((item) => item.manifest.id === "ipollowork.app-calm-mobile")).toBe(true);
-    expect(first.some((item) => item.manifest.id === "ipollowork.html-anything.social-carousel")).toBe(true);
-    expect(first.some((item) => item.manifest.id === "ipollowork.html-anything.data-report")).toBe(true);
-    expect(first.some((item) => item.manifest.id === "ipollowork.html-anything.deck-open-slide-canvas")).toBe(false);
-    expect(first.find((item) => item.manifest.id === "ipollowork.html-anything.wireframe-sketch")?.manifest.category).toBe("poster");
-    expect(first.find((item) => item.manifest.id === "ipollowork.site-atelier-architecture")?.manifest.category).toBe("article");
-    await uninstallTemplate(serverConfig, "alpha", "ipollowork.html-anything.prototype-web");
-    expect((await listTemplates(serverConfig, "alpha")).find((item) => item.manifest.id === "ipollowork.html-anything.prototype-web")?.installed).toBe(false);
-    expect((await listTemplates(serverConfig, "beta")).find((item) => item.manifest.id === "ipollowork.html-anything.prototype-web")?.installed).toBe(false);
+    expect(first.filter((item) => item.installed)).toHaveLength(116);
+    expect(first.some((item) => item.manifest.id === "ipollowork.saas-landing")).toBe(true);
+    expect(first.some((item) => item.manifest.id === "ipollowork.pptx-northstar-strategy")).toBe(true);
+    expect(new Set(first.map((item) => item.manifest.category)).size).toBe(9);
+    await uninstallTemplate(serverConfig, "alpha", "ipollowork.saas-landing");
+    expect((await listTemplates(serverConfig, "alpha")).find((item) => item.manifest.id === "ipollowork.saas-landing")?.installed).toBe(false);
+    expect((await listTemplates(serverConfig, "beta")).find((item) => item.manifest.id === "ipollowork.saas-landing")?.installed).toBe(false);
   });
 
   test("upgrades an installed bundled template before materializing it", async () => {

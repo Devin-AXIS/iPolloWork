@@ -50,13 +50,11 @@ export function resolveNeonGlowStructuredRecipe(
   parameters: MotionParameters = {},
 ): StructuredTextRecipe {
   const speed = finiteNumber(parameters, "speed", 1, 0.01);
-  const stagger = finiteNumber(parameters, "stagger", 0.3);
+  const stagger = finiteNumber(parameters, "stagger", 0.09);
   const glow = finiteNumber(parameters, "glow", 1);
-  const groupDuration = finiteNumber(parameters, "groupDuration", 1.05, 0.1);
   const primary = effectColor(parameters, "color", "--ipw-color-accent", "#00FFF0");
   const accent = effectColor(parameters, "accentColor", "--ipw-color-primary", "#FF0099");
   const quiet = String(parameters.quietColor ?? "rgba(0,255,240,0.14)");
-  const exitDuration = scaled(0.1, speed);
 
   return {
     version: 1,
@@ -74,7 +72,7 @@ export function resolveNeonGlowStructuredRecipe(
         duration: scaled(0.05, speed),
         stagger: 0,
         keyframes: [
-          { percentage: 0, properties: { opacity: 0, visibility: "visible" } },
+          { percentage: 0, properties: { opacity: 1, visibility: "visible" } },
           { percentage: 100, ease: "steps(1)", properties: { opacity: 1, visibility: "visible" } },
         ],
       },
@@ -89,33 +87,25 @@ export function resolveNeonGlowStructuredRecipe(
         ],
       },
       {
-        role: "unit",
-        position: Math.max(0, roundTime(scaled(groupDuration, speed) - exitDuration)),
-        duration: exitDuration,
-        stagger: 0,
-        keyframes: [
-          { percentage: 0, properties: { opacity: 1, x: 0, visibility: "visible" } },
-          { percentage: 100, ease: "steps(1)", properties: { opacity: 0, x: 6, visibility: "hidden" } },
-        ],
-      },
-      {
         role: "text",
         position: 0,
-        duration: scaled(0.06, speed),
+        duration: scaled(0.34, speed),
         stagger: scaled(stagger, speed),
         keyframes: [
           { percentage: 0, properties: { color: quiet, textShadow: "none" } },
-          { percentage: 100, properties: { color: primary, textShadow: glowShadow(primary, glow) } },
-        ],
-      },
-      {
-        role: "text",
-        position: scaled(0.24, speed),
-        duration: scaled(0.06, speed),
-        stagger: scaled(stagger, speed),
-        keyframes: [
-          { percentage: 0, properties: { color: accent, textShadow: glowShadow(accent, glow) } },
-          { percentage: 100, properties: { color: quiet, textShadow: "none" } },
+          {
+            percentage: 58,
+            ease: "power2.out",
+            properties: { color: accent, textShadow: glowShadow(accent, glow * 0.8) },
+          },
+          {
+            percentage: 100,
+            ease: "power2.out",
+            properties: {
+              color: primary,
+              textShadow: glowShadow(primary, Math.max(0.25, glow * 0.45)),
+            },
+          },
         ],
       },
     ],
@@ -128,13 +118,14 @@ export function resolveNeonAccentStructuredRecipe(
   const speed = finiteNumber(parameters, "speed", 1, 0.01);
   const intensity = finiteNumber(parameters, "intensity", 1);
   const glow = finiteNumber(parameters, "glow", 1);
+  const stagger = scaled(finiteNumber(parameters, "stagger", 0.08), speed);
   const primary = effectColor(parameters, "primaryColor", "--ipw-color-on-accent", "#FFFFFF");
   const green = effectColor(parameters, "color", "--ipw-color-accent", "#53FF01");
   const red = effectColor(parameters, "accentColor", "--ipw-color-primary", "#FF0002");
   const yellow = String(parameters.tertiaryColor ?? "#FCFF00");
   const direction = parameters.direction === "right" || parameters.direction === "down" ? 1 : -1;
   const wiggleDistance = finiteNumber(parameters, "distance", 14) * intensity * direction;
-  const halfCycle = scaled((2 / 1.3) / 2, speed);
+  const halfCycle = scaled(2 / 1.3 / 2, speed);
 
   return {
     version: 1,
@@ -152,9 +143,12 @@ export function resolveNeonAccentStructuredRecipe(
         role: "unit",
         position: 0,
         duration: scaled(7 / 30, speed),
-        stagger: 0,
+        stagger,
         keyframes: [
-          { percentage: 0, properties: { opacity: 0, scale: Math.max(0.1, 1 - 0.35 * intensity), x: 0, y: 0 } },
+          {
+            percentage: 0,
+            properties: { opacity: 1, scale: Math.max(0.1, 1 - 0.35 * intensity), x: 0, y: 0 },
+          },
           { percentage: 100, ease: "power3.out", properties: { opacity: 1, scale: 1, x: 0, y: 0 } },
         ],
       },
@@ -162,17 +156,21 @@ export function resolveNeonAccentStructuredRecipe(
         role: "unit",
         position: 0,
         duration: halfCycle,
-        stagger: 0,
+        stagger,
         keyframes: [
           { percentage: 0, properties: { x: 0, y: 0 } },
-          { percentage: 100, ease: "sine.inOut", properties: { x: wiggleDistance, y: wiggleDistance } },
+          {
+            percentage: 100,
+            ease: "sine.inOut",
+            properties: { x: wiggleDistance, y: wiggleDistance },
+          },
         ],
       },
       {
         role: "unit",
         position: halfCycle,
         duration: halfCycle,
-        stagger: 0,
+        stagger,
         keyframes: [
           { percentage: 0, properties: { x: wiggleDistance, y: wiggleDistance } },
           { percentage: 100, ease: "sine.inOut", properties: { x: 0, y: 0 } },
@@ -182,28 +180,47 @@ export function resolveNeonAccentStructuredRecipe(
         role: "text",
         position: 0,
         duration: 0,
-        stagger: 0,
-        keyframes: [{ percentage: 0, properties: { color: primary, textShadow: accentShadow(primary, glow) } }],
+        stagger,
+        keyframes: [
+          {
+            percentage: 0,
+            properties: { color: primary, textShadow: accentShadow(primary, glow) },
+          },
+        ],
       },
       {
         role: "clone-primary",
         position: 0,
         duration: 0,
-        stagger: 0,
-        keyframes: [{
-          percentage: 0,
-          properties: { color: green, opacity: 0.34, scale: 1.2, textShadow: accentShadow(green, glow) },
-        }],
+        stagger,
+        keyframes: [
+          {
+            percentage: 0,
+            properties: {
+              color: green,
+              opacity: 0.34,
+              scale: 1.2,
+              textShadow: accentShadow(green, glow),
+            },
+          },
+        ],
       },
       {
         role: "clone-accent",
         position: 0,
         duration: 0,
-        stagger: 0,
-        keyframes: [{
-          percentage: 0,
-          properties: { color: red, opacity: 0.3, scale: 1.2, textShadow: accentShadow(red, glow, yellow) },
-        }],
+        stagger,
+        keyframes: [
+          {
+            percentage: 0,
+            properties: {
+              color: red,
+              opacity: 0.3,
+              scale: 1.2,
+              textShadow: accentShadow(red, glow, yellow),
+            },
+          },
+        ],
       },
     ],
   };
@@ -219,12 +236,10 @@ export function resolveGlitchRgbStructuredRecipe(
   const red = effectColor(parameters, "color", "--ipw-color-accent", "#ff003c");
   const cyan = effectColor(parameters, "accentColor", "--ipw-color-primary", "#00e5ff");
   const scanlineOpacity = Math.min(1, finiteNumber(parameters, "scanlineOpacity", 0.55));
-  const groupDuration = finiteNumber(parameters, "groupDuration", 1, 0.1);
   const wordStagger = scaled(stagger, speed);
   const travel = -12 * density * intensity;
   const channelOffset = 8.5 * density;
   const aftershockTravel = -5 * density * intensity;
-  const exitDuration = scaled(0.1, speed);
   const baseShadow = "0 5px 18px rgba(0,0,0,0.52)";
 
   return {
@@ -246,26 +261,32 @@ export function resolveGlitchRgbStructuredRecipe(
         position: 0,
         duration: 0,
         stagger: 0,
-        keyframes: [{
-          percentage: 0,
-          properties: {
-            opacity: 1,
-            backgroundImage: "linear-gradient(to bottom, rgba(0, 0, 0, 0.08) 0%, rgba(0, 0, 0, 0.16) 54%, rgba(0, 0, 0, 0.5) 100%)",
+        keyframes: [
+          {
+            percentage: 0,
+            properties: {
+              opacity: 1,
+              backgroundImage:
+                "linear-gradient(to bottom, rgba(0, 0, 0, 0.08) 0%, rgba(0, 0, 0, 0.16) 54%, rgba(0, 0, 0, 0.5) 100%)",
+            },
           },
-        }],
+        ],
       },
       {
         role: "texture",
         position: 0,
         duration: 0,
         stagger: 0,
-        keyframes: [{
-          percentage: 0,
-          properties: {
-            opacity: scanlineOpacity,
-            backgroundImage: "repeating-linear-gradient(to bottom, transparent 0px, transparent 3px, rgba(0, 0, 0, 0.16) 3px, rgba(0, 0, 0, 0.16) 4px)",
+        keyframes: [
+          {
+            percentage: 0,
+            properties: {
+              opacity: scanlineOpacity,
+              backgroundImage:
+                "repeating-linear-gradient(to bottom, transparent 0px, transparent 3px, rgba(0, 0, 0, 0.16) 3px, rgba(0, 0, 0, 0.16) 4px)",
+            },
           },
-        }],
+        ],
       },
       {
         role: "unit",
@@ -273,8 +294,12 @@ export function resolveGlitchRgbStructuredRecipe(
         duration: scaled(0.12, speed),
         stagger: 0,
         keyframes: [
-          { percentage: 0, properties: { opacity: 0, visibility: "visible" } },
-          { percentage: 100, ease: "power2.out", properties: { opacity: 1, visibility: "visible" } },
+          { percentage: 0, properties: { opacity: 1, visibility: "visible" } },
+          {
+            percentage: 100,
+            ease: "power2.out",
+            properties: { opacity: 1, visibility: "visible" },
+          },
         ],
       },
       {
@@ -332,21 +357,11 @@ export function resolveGlitchRgbStructuredRecipe(
         ],
       },
       {
-        role: "unit",
-        position: Math.max(0, roundTime(scaled(groupDuration, speed) - exitDuration)),
-        duration: exitDuration,
-        stagger: 0,
-        keyframes: [
-          { percentage: 0, properties: { opacity: 1, visibility: "visible" } },
-          { percentage: 100, ease: "power2.in", properties: { opacity: 0, visibility: "hidden" } },
-        ],
-      },
-      {
         role: "text",
         position: 0,
         duration: 0,
         stagger: 0,
-        keyframes: [{ percentage: 0, properties: { color: "#ffffff", textShadow: baseShadow } }],
+        keyframes: [{ percentage: 0, properties: { color: "inherit", textShadow: baseShadow } }],
       },
       {
         role: "clone-primary",
@@ -355,7 +370,11 @@ export function resolveGlitchRgbStructuredRecipe(
         stagger: wordStagger,
         keyframes: [
           { percentage: 0, properties: { color: red, opacity: 0, x: 0 } },
-          { percentage: 100, ease: "none", properties: { color: red, opacity: 0.8, x: channelOffset } },
+          {
+            percentage: 100,
+            ease: "none",
+            properties: { color: red, opacity: 0.8, x: channelOffset },
+          },
         ],
       },
       {
@@ -375,7 +394,11 @@ export function resolveGlitchRgbStructuredRecipe(
         stagger: wordStagger,
         keyframes: [
           { percentage: 0, properties: { color: cyan, opacity: 0, x: 0 } },
-          { percentage: 100, ease: "none", properties: { color: cyan, opacity: 0.8, x: -channelOffset } },
+          {
+            percentage: 100,
+            ease: "none",
+            properties: { color: cyan, opacity: 0.8, x: -channelOffset },
+          },
         ],
       },
       {
@@ -395,17 +418,19 @@ export function resolveGlitchRgbStructuredRecipe(
 export function resolveBlendDifferenceStructuredRecipe(
   parameters: MotionParameters = {},
 ): StructuredTextRecipe {
+  const speed = finiteNumber(parameters, "speed", 1, 0.01);
+  const stagger = scaled(finiteNumber(parameters, "stagger", 0.08), speed);
+  const duration = scaled(0.18, speed);
   const requestedMode = String(parameters.blendMode ?? "difference");
-  const blendMode = requestedMode === "exclusion" || requestedMode === "screen"
-    ? requestedMode
-    : "difference";
+  const blendMode =
+    requestedMode === "exclusion" || requestedMode === "screen" ? requestedMode : "difference";
   const color = effectColor(parameters, "color", "--ipw-color-on-accent", "#FFFFFF");
 
   return {
     version: 1,
     id: "caption-blend-difference.persistent",
     presetId: "text.emphasis.blend-difference",
-    split: "whole",
+    split: "word",
     layers: [
       { role: "unit", perUnit: true, className: "ipw-blend-difference-scope" },
       { role: "text", perUnit: true, className: "ipw-blend-difference-text" },
@@ -414,16 +439,26 @@ export function resolveBlendDifferenceStructuredRecipe(
       {
         role: "unit",
         position: 0,
-        duration: 0,
-        stagger: 0,
-        keyframes: [{ percentage: 0, properties: { opacity: 1, mixBlendMode: blendMode } }],
+        duration,
+        stagger,
+        keyframes: [
+          { percentage: 0, properties: { opacity: 0.45, mixBlendMode: blendMode } },
+          {
+            percentage: 100,
+            ease: "power2.out",
+            properties: { opacity: 1, mixBlendMode: blendMode },
+          },
+        ],
       },
       {
         role: "text",
         position: 0,
-        duration: 0,
-        stagger: 0,
-        keyframes: [{ percentage: 0, properties: { color } }],
+        duration,
+        stagger,
+        keyframes: [
+          { percentage: 0, properties: { color: "rgba(255,255,255,0.35)" } },
+          { percentage: 100, ease: "power2.out", properties: { color } },
+        ],
       },
     ],
   };

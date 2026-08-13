@@ -56,6 +56,12 @@ import {
   type VideoVoiceAiReference,
 } from "../video/video-voice";
 import {
+  hasVideoDeliveryRequirements,
+  videoDeliveryRequirementsForPrompt,
+  videoProjectEntryPath,
+  type VideoDeliveryRequirements,
+} from "../video/video-project";
+import {
   parseVideoIllustrationReference,
   videoIllustrationReferenceInstruction,
   type VideoIllustrationAiReference,
@@ -100,6 +106,7 @@ import { NewConversationStarter, newConversationPlaceholder, type NewConversatio
 import { MessageListProvider, type DispatchAction } from "@/components/chat/message-list-provider";
 import { OpenTargetProvider, type OpenTargetOptions } from "@/lib/target-provider";
 import type { ThreadStatus } from "@/lib/messages";
+import { collectToolParts, getActiveToolLabel } from "@/lib/tool-activity";
 
 import {
   EnvironmentVariableProvider,
@@ -110,6 +117,7 @@ const EMPTY_TRANSCRIPT: UIMessage[] = [];
 const IDLE_STATUS: SessionStatus = { type: "idle" };
 const DEFAULT_COMPOSER_CONTROL_TEXT = "Help me outline the next iPolloWork task.";
 const SESSION_SURFACE_SELECTOR = "[data-session-surface-id]";
+const STALLED_SESSION_WARNING_MS = 90_000;
 const ACTIVE_SESSION_ACTIVITY_STATUSES = new Set<SessionActivityStatus>([
   "thinking",
   "responding",
@@ -119,12 +127,38 @@ const ACTIVE_SESSION_ACTIVITY_STATUSES = new Set<SessionActivityStatus>([
 
 type SessionError = {
   message: string;
-  kind?: "model-not-found" | "generic";
+  kind?: "model-not-found" | "generic" | "stalled";
   /** For model-not-found: the model that failed. */
   failedModel?: { providerID: string; modelID: string };
   /** For model-not-found: suggested replacements from the backend. */
   suggestions?: Array<{ providerID: string; modelID: string }>;
 };
+
+type PendingVideoDeliveryValidation = {
+  sourcePath: string;
+  requirements: VideoDeliveryRequirements;
+  recoveryAttempted: boolean;
+};
+
+type VideoDeliveryValidationOutput = {
+  valid: boolean;
+  issues: Array<{ code?: string; message?: string }>;
+};
+
+function videoDeliveryValidationOutput(response: unknown): VideoDeliveryValidationOutput | null {
+  if (!response || typeof response !== "object") return null;
+  const result = "result" in response && response.result && typeof response.result === "object"
+    ? response.result
+    : null;
+  const output = result && "output" in result && result.output && typeof result.output === "object"
+    ? result.output
+    : null;
+  if (!output || !("valid" in output) || typeof output.valid !== "boolean") return null;
+  const issues = "issues" in output && Array.isArray(output.issues)
+    ? output.issues.filter((issue): issue is { code?: string; message?: string } => Boolean(issue && typeof issue === "object"))
+    : [];
+  return { valid: output.valid, issues };
+}
 
 export type SessionSurfaceProps = {
   client: iPolloWorkServerClient;
@@ -296,6 +330,23 @@ function AssistantWaitingCard({ label = t("session.assistant_thinking") }: { lab
       </div>
     </div>
   );
+}
+
+function sessionProgressFingerprint(messages: UIMessage[]) {
+  const message = messages.at(-1);
+  if (!message) return "empty";
+  return `${message.id}:${message.parts.map((part) => {
+    if (part.type === "text" || part.type === "reasoning") return `${part.type}:${part.text.length}`;
+    if (part.type === "dynamic-tool") return `${part.type}:${part.toolName}:${part.state}`;
+    return part.type;
+  }).join("|")}`;
+}
+
+function latestAssistantMessageCompleted(messages: UIMessage[]) {
+  const latest = messages.findLast((message) => message.role === "assistant");
+  if (!latest) return false;
+  const metadata = latest.metadata as { opencode?: { completed?: unknown } } | undefined;
+  return typeof metadata?.opencode?.completed === "number";
 }
 
 function TodoPanel(props: { todos: TodoItem[] }) {
@@ -585,6 +636,9 @@ export function SessionSurface(props: SessionSurfaceProps) {
   const [selectedVoiceReference, setSelectedVoiceReference] = useState<VideoVoiceAiReference | null>(null);
   const [selectedIllustrationReference, setSelectedIllustrationReference] = useState<VideoIllustrationAiReference | null>(null);
   const runActivityObservedRef = useRef(false);
+  const stalledAtProgressRef = useRef<string | null>(null);
+  const pendingVideoDeliveryRef = useRef<PendingVideoDeliveryValidation | null>(null);
+  const videoDeliveryValidationInFlightRef = useRef(false);
 
   useEffect(() => {
     const addAnimationReference = (event: Event) => {
@@ -677,6 +731,9 @@ export function SessionSurface(props: SessionSurfaceProps) {
     setError(null);
     setSending(false);
     runActivityObservedRef.current = false;
+    stalledAtProgressRef.current = null;
+    pendingVideoDeliveryRef.current = null;
+    videoDeliveryValidationInFlightRef.current = false;
     setShowDelayedLoading(false);
     setAwaitingAssistantBaseline(null);
     // Composer draft state lives in the shared store keyed by session id, so
@@ -793,6 +850,33 @@ export function SessionSurface(props: SessionSurfaceProps) {
     () => deriveRenderedSessionMessages({ transcriptState, snapshot }),
     [snapshot, transcriptState],
   );
+  const progressFingerprint = useMemo(
+    () => sessionProgressFingerprint(renderedMessages),
+    [renderedMessages],
+  );
+  const latestAssistantCompleted = useMemo(
+    () => latestAssistantMessageCompleted(renderedMessages),
+    [renderedMessages],
+  );
+  const activeToolLabel = useMemo(
+    () => getActiveToolLabel(collectToolParts(renderedMessages)),
+    [renderedMessages],
+  );
+  useEffect(() => {
+    if (stalledAtProgressRef.current && stalledAtProgressRef.current !== progressFingerprint) {
+      stalledAtProgressRef.current = null;
+      setError((current) => current?.kind === "stalled" ? null : current);
+    }
+    if (!chatStreaming || activeToolLabel) return;
+    const timeout = window.setTimeout(() => {
+      stalledAtProgressRef.current = progressFingerprint;
+      setError((current) => current ?? {
+        kind: "stalled",
+        message: t("session.run_stalled"),
+      });
+    }, STALLED_SESSION_WARNING_MS);
+    return () => window.clearTimeout(timeout);
+  }, [activeToolLabel, chatStreaming, progressFingerprint]);
   useEffect(() => {
     props.onConversationMessagesChange?.(props.sessionId, renderedMessages);
   }, [props.onConversationMessagesChange, props.sessionId, renderedMessages]);
@@ -976,6 +1060,23 @@ export function SessionSurface(props: SessionSurfaceProps) {
     runActivityObservedRef.current = false;
     setSending(true);
     setAwaitingAssistantBaseline(renderedMessages.length);
+    const recoveryDraft = nextDraft.capability?.instruction.includes("authoritative delivery validation") === true;
+    const templateEntryPath = props.templateEntryPath?.replace(/\\/g, "/") ?? "";
+    const videoTask = newConversationMode === "video" || /^video\/[^/]+\/index\.html$/i.test(templateEntryPath);
+    if (videoTask && !recoveryDraft) {
+      const requirements = videoDeliveryRequirementsForPrompt({
+        capabilityId: nextDraft.capability?.id,
+        promptText: nextDraft.resolvedText ?? nextDraft.text,
+        animationReferences: selectedAnimations.map((selection) => selection.item.name),
+      });
+      if (hasVideoDeliveryRequirements(requirements)) {
+        pendingVideoDeliveryRef.current = {
+          sourcePath: templateEntryPath || videoProjectEntryPath(props.sessionId),
+          requirements,
+          recoveryAttempted: false,
+        };
+      }
+    }
     try {
       const dispatched = await props.onSendDraft(nextDraft, props.sessionId);
       if (selectedAnimations.length) {
@@ -1008,7 +1109,75 @@ export function SessionSurface(props: SessionSurfaceProps) {
       setSending(false);
       throw nextError;
     }
-  }, [appendComposerHistory, props.onSendDraft, props.sessionId, props.workspaceId, renderedMessages.length, selectedAnimations, setComposerDraft]);
+  }, [appendComposerHistory, newConversationMode, props.onSendDraft, props.sessionId, props.templateEntryPath, props.workspaceId, renderedMessages.length, selectedAnimations, setComposerDraft]);
+
+  const validatePendingVideoDelivery = useCallback(async () => {
+    const pending = pendingVideoDeliveryRef.current;
+    if (!pending || videoDeliveryValidationInFlightRef.current) return;
+    videoDeliveryValidationInFlightRef.current = true;
+    try {
+      const response = await props.client.callExtensionAction({
+        extensionId: "media",
+        action: "voiceover_timeline_validate",
+        args: {
+          sourcePath: pending.sourcePath,
+          requirements: {
+            ...pending.requirements,
+            ...(pending.requirements.captions ? { captionStyle: "transparent-bottom" } : {}),
+          },
+        },
+        context: { directory: props.workspaceRoot || undefined },
+      });
+      if (pendingVideoDeliveryRef.current !== pending) return;
+      if (!response.ok) throw new Error(response.message);
+      const output = videoDeliveryValidationOutput(response);
+      if (!output) throw new Error("Video delivery validation returned an unreadable result.");
+      if (output.valid) {
+        pendingVideoDeliveryRef.current = null;
+        toast.success(t("session.video_delivery_validated"));
+        return;
+      }
+
+      const issues = output.issues
+        .map((issue) => [issue.code, issue.message].filter(Boolean).join(": "))
+        .filter(Boolean);
+      if (!pending.recoveryAttempted) {
+        pending.recoveryAttempted = true;
+        toast.warning(t("session.video_delivery_repairing"));
+        const recoveryInstruction = [
+          "The preceding video run ended without satisfying the application's authoritative delivery validation.",
+          `Continue editing only ${pending.sourcePath} now. Do not merely plan, summarize, or explain.`,
+          `Required deliverables: ${JSON.stringify(pending.requirements)}.`,
+          "Fix every issue below in one complete pass. For narration, use the saved voiceover.json and the built-in media workspace batch synthesis action; patch the returned audio, captions, scene timing, and root duration into index.html.",
+          "Run media/voiceover_timeline_validate with the exact same requirements after the edit, and finish only when it returns valid.",
+          ...issues.map((issue) => `- ${issue}`),
+        ].join("\n");
+        await sendDraft({
+          mode: "prompt",
+          parts: [{ type: "text", text: recoveryInstruction, synthetic: true }],
+          attachments: [],
+          text: "Continue the unfinished video delivery.",
+          resolvedText: "Continue the unfinished video delivery.",
+          capability: { id: pending.requirements.voiceover ? "video-voice-reference" : "video-delivery-recovery", instruction: recoveryInstruction },
+        }, []);
+        return;
+      }
+
+      setError({
+        kind: "generic",
+        message: `${t("session.video_delivery_failed")} ${issues.slice(0, 3).join(" ")}`.trim(),
+      });
+    } catch (validationError) {
+      if (pendingVideoDeliveryRef.current === pending) {
+        setError({
+          kind: "generic",
+          message: validationError instanceof Error ? validationError.message : t("session.video_delivery_failed"),
+        });
+      }
+    } finally {
+      videoDeliveryValidationInFlightRef.current = false;
+    }
+  }, [props.client, props.workspaceRoot, sendDraft]);
 
   const clearComposer = useCallback(() => {
     clearComposerSession(props.sessionId);
@@ -1105,9 +1274,24 @@ export function SessionSurface(props: SessionSurfaceProps) {
     // request. Release the optimistic latch only after this run was observed,
     // or after new assistant output proves it actually ran.
     if (!runActivityObservedRef.current && !assistantOutputAfterAwaitStart) return;
-    runActivityObservedRef.current = false;
-    setSending(false);
-  }, [activityRunActive, assistantOutputAfterAwaitStart, liveStatus.type, sending]);
+    // OpenCode can emit idle just before the final message.updated event.
+    // Give that completion metadata a short reconciliation window; if it
+    // never arrives, surface the interrupted run instead of showing Ready as
+    // though a reasoning-only/tool-only turn were a finished task.
+    const timeout = window.setTimeout(() => {
+      runActivityObservedRef.current = false;
+      setSending(false);
+      if (assistantOutputAfterAwaitStart && !latestAssistantCompleted) {
+        setError((current) => current ?? {
+          kind: "stalled",
+          message: t("session.run_ended_incomplete"),
+        });
+      } else if (latestAssistantCompleted) {
+        void validatePendingVideoDelivery();
+      }
+    }, 1_200);
+    return () => window.clearTimeout(timeout);
+  }, [activityRunActive, assistantOutputAfterAwaitStart, latestAssistantCompleted, liveStatus.type, sending, validatePendingVideoDelivery]);
 
   // Drain one queued follow-up each time the session goes idle. The ref guards
   // against re-entrancy while the send is in flight.

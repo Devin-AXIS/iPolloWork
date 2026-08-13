@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
   ANIMATION_TEMPLATES,
@@ -58,51 +59,51 @@ describe("AnimationTemplatesTab catalog", () => {
     }
   });
 
-  it("keeps migrated caption effects first in the text animation list", () => {
+  it("keeps advanced caption animations at the end of the text animation list", () => {
     const textTemplateIds = sortTextAnimationTemplates(
       ANIMATION_TEMPLATES.filter((template) => template.category === "text"),
     ).map((template) => template.id);
 
-    expect(textTemplateIds.slice(0, MIGRATED_TEMPLATES.length)).toEqual(
+    expect(textTemplateIds.slice(-MIGRATED_TEMPLATES.length)).toEqual(
       MIGRATED_TEMPLATES.map(([templateId]) => templateId),
     );
   });
 
-  it("groups migrated caption effects where users look for text animations", () => {
+  it("combines native and advanced effects in one text animation section", () => {
     const sections = createAnimationTemplateSections(ANIMATION_TEMPLATES, "text");
-    const migratedSection = sections.find((section) => section.key === "migrated-text");
+    const textSection = sections.find((section) => section.key === "text");
 
-    expect(sections.map((section) => section.key).slice(0, 3)).toEqual([
-      "migrated-text",
-      "text",
-      "general",
-    ]);
-    expect(migratedSection?.title.zh).toBe("\u5b57\u5e55\u8fc1\u79fb\u52a8\u753b");
-    expect(migratedSection?.templates.map((template) => template.id)).toEqual(
-      MIGRATED_TEMPLATES.map(([templateId]) => templateId),
+    expect(sections.map((section) => section.key)).toEqual(["general", "text"]);
+    expect(textSection?.templates.map((template) => template.id)).toEqual(
+      sortTextAnimationTemplates(
+        ANIMATION_TEMPLATES.filter((template) => template.category === "text"),
+      ).map((template) => template.id),
     );
   });
 
-  it("keeps box automation templates in a dedicated section for text selections", () => {
-    const sections = createAnimationTemplateSections(ANIMATION_TEMPLATES, "text");
-    const boxSection = sections.find((section) => section.key === "box-automation");
+  it("uses character progression for decode and gradient previews", () => {
+    for (const id of ["text-matrix-decode", "text-gradient-fill"]) {
+      expect(ANIMATION_TEMPLATES.find((template) => template.id === id)?.parameters).toMatchObject({
+        unit: "character",
+      });
+    }
+  });
 
-    expect(sections.map((section) => section.key)).toEqual([
-      "migrated-text",
-      "text",
-      "general",
-      "box-automation",
-    ]);
-    expect(boxSection?.title.zh).toBe("盒子与自动化");
-    expect(boxSection?.templates.map((template) => template.id)).toEqual([
-      "box-scale",
-      "box-lift",
-      "box-pulse",
-      "box-focus-tilt",
-      "box-bounce-card",
-      "box-spotlight-card",
-      "box-glare-sweep",
-    ]);
+  it("shows universal and box automation animations for non-text selections", () => {
+    expect(
+      createAnimationTemplateSections(ANIMATION_TEMPLATES, "element").map((section) => section.key),
+    ).toEqual(["general", "box-automation"]);
+  });
+
+  it("runs every text preview through the real preset only while its card is hovered", () => {
+    const source = readFileSync(new URL("./AnimationTemplatesTab.tsx", import.meta.url), "utf8");
+
+    expect(source).toContain("const StructuredMotionThumbnail = lazy(() =>");
+    expect(source).toContain("textPreset && textParameters && active");
+    expect(source).toContain("data-structured-preview-active={");
+    expect(source).toContain("onMouseEnter={() => setPreviewActive(true)}");
+    expect(source).toContain("onMouseLeave={() => setPreviewActive(false)}");
+    expect(source).toContain('contentVisibility: "auto"');
   });
 
   it("resolves universal templates per target", () => {
@@ -132,8 +133,8 @@ describe("AnimationTemplatesTab catalog", () => {
     });
   });
 
-  it("defaults every color-driven template to the active design theme", () => {
-    const themeAwareIds = [
+  it("locks text-template colors to the palette shown in the preview", () => {
+    const fixedTextPaletteIds = [
       "text-prism-glow",
       "text-shiny-sweep",
       "text-matrix-decode",
@@ -143,9 +144,17 @@ describe("AnimationTemplatesTab catalog", () => {
       "text-rgb-glitch",
       "text-texture-fill",
       "text-particle-burst",
-      "box-spotlight-card",
-      "box-glare-sweep",
     ];
+
+    for (const id of fixedTextPaletteIds) {
+      expect(ANIMATION_TEMPLATES.find((template) => template.id === id)?.parameters).toMatchObject({
+        colorSource: "custom",
+      });
+    }
+  });
+
+  it("keeps theme-aware box effects bound to the active design theme", () => {
+    const themeAwareIds = ["box-spotlight-card", "box-glare-sweep"];
 
     for (const id of themeAwareIds) {
       expect(ANIMATION_TEMPLATES.find((template) => template.id === id)?.parameters).toMatchObject({
@@ -155,19 +164,21 @@ describe("AnimationTemplatesTab catalog", () => {
   });
 
   it("keeps the migrated highlight sweep on its original red by default", () => {
-    expect(ANIMATION_TEMPLATES.find((template) => template.id === "text-highlight-sweep")?.parameters).toMatchObject({
+    expect(
+      ANIMATION_TEMPLATES.find((template) => template.id === "text-highlight-sweep")?.parameters,
+    ).toMatchObject({
       colorSource: "custom",
       color: "#FF1745",
     });
   });
 
-  it("keeps variable-bound text intact by applying text motion to the whole element", () => {
+  it("keeps the selected word or character unit on variable-bound generated text", () => {
     const fold = ANIMATION_TEMPLATES.find((template) => template.id === "text-fold-reveal");
     if (!fold) throw new Error("Expected Fold Text template is missing");
     const preset = resolveAnimationTemplatePreset(fold, "text");
     if (!preset) throw new Error("Expected Fold Text preset is missing");
 
-    expect(resolveAnimationTemplateParameters(fold, preset, true).unit).toBe("whole");
+    expect(resolveAnimationTemplateParameters(fold, preset, true).unit).toBe("character");
     expect(resolveAnimationTemplateParameters(fold, preset, false).unit).toBe("character");
 
     const highlight = ANIMATION_TEMPLATES.find(

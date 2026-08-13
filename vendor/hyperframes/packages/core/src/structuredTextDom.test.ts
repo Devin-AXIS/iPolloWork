@@ -62,11 +62,18 @@ describe("structured text DOM", () => {
     expect(units[0]?.querySelector('[data-ipw-motion-role="background"]')?.textContent).toBe("");
     expect(units[0]?.querySelector('[data-ipw-motion-role="text"]')?.textContent).toBe("Make");
     expect((units[0] as HTMLElement).style.position).toBe("relative");
+    expect((units[0] as HTMLElement).style.whiteSpace).toBe("pre");
+    expect((units[0] as HTMLElement).style.verticalAlign).toBe("baseline");
     expect((units[0] as HTMLElement).style.padding).toBe("0.075em 0.15em 0.1em");
     expect((units[0] as HTMLElement).style.lineHeight).toBe("1");
     expect((units[0]?.querySelector('[data-ipw-motion-role="background"]') as HTMLElement).style.position).toBe("absolute");
     expect((units[0]?.querySelector('[data-ipw-motion-role="text"]') as HTMLElement).style.zIndex).toBe("1");
+    expect((units[0]?.querySelector('[data-ipw-motion-role="text"]') as HTMLElement).style.display).toBe("inline-block");
+    expect((units[0]?.querySelector('[data-ipw-motion-role="text"]') as HTMLElement).style.fontWeight).toBe("700");
+    expect((units[0]?.querySelector('[data-ipw-motion-role="text"]') as HTMLElement).style.lineHeight).toBe("1.1");
+    expect((units[0]?.querySelector('[data-ipw-motion-role="text"]') as HTMLElement).style.letterSpacing).toBe("-0.025em");
     expect(target.getAttribute("data-ipw-motion-structure")).toBe("v1");
+    expect(target.getAttribute("data-ipw-motion-presentation")).toBe("text-v1");
     expect(target.getAttribute("data-ipw-motion-source")).toBeTruthy();
 
     restoreStructuredText(target, snapshot);
@@ -76,6 +83,7 @@ describe("structured text DOM", () => {
     expect(target.lastChild).toBe(after);
     expect(target.textContent).toBe("Make motion clear.\n");
     expect(target.hasAttribute("data-ipw-motion-structure")).toBe(false);
+    expect(target.hasAttribute("data-ipw-motion-presentation")).toBe(false);
   });
 
   it("does not nest wrappers and unwraps to the exact source text", () => {
@@ -92,6 +100,7 @@ describe("structured text DOM", () => {
     expect(target.childNodes).toHaveLength(1);
     expect(target.firstChild?.nodeType).toBe(testWindow.Node.TEXT_NODE);
     expect(target.hasAttribute("data-ipw-motion-source")).toBe(false);
+    expect(target.hasAttribute("data-ipw-motion-presentation")).toBe(false);
   });
 
   it("uses split-specific compatibility markers", () => {
@@ -138,8 +147,13 @@ describe("structured text DOM", () => {
     expect(clone.style.inset).toBe("0");
     expect(clone.style.pointerEvents).toBe("none");
     expect(clone.style.userSelect).toBe("none");
+    expect(clone.style.zIndex).toBe("2");
+    expect(clone.style.fontWeight).toBe("700");
+    expect(clone.style.lineHeight).toBe("1.1");
+    expect(clone.style.letterSpacing).toBe("-0.025em");
     expect(target.textContent).toBe("Make motion clear.");
     const style = document.head.querySelector("#ipw-structured-text-motion-styles");
+    expect(style?.textContent).toContain('[data-ipw-motion-presentation="text-v1"]');
     expect(style?.textContent).toContain("content: attr(data-ipw-motion-clone-text)");
 
     const originalMarker = target.getAttribute("data-ipw-motion-source");
