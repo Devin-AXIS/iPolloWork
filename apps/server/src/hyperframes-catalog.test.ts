@@ -59,12 +59,12 @@ describe("HyperFrames catalog parameters", () => {
     const animations = gsapItems.filter((item) => item.kind === "animation");
     const effects = gsapItems.filter((item) => item.kind === "effect");
 
-    expect(gsapItems).toHaveLength(167);
+    expect(gsapItems).toHaveLength(163);
     expect(animations).toHaveLength(74);
-    expect(effects).toHaveLength(93);
+    expect(effects).toHaveLength(89);
     expect(gsapItems.filter((item) => item.source?.provider === "gsap-docs")).toHaveLength(25);
-    expect(gsapItems.filter((item) => item.source?.provider === "hyperframes")).toHaveLength(126);
-    expect(gsapItems.filter((item) => item.source?.provider === "ipollowork")).toHaveLength(16);
+    expect(gsapItems.filter((item) => item.source?.provider === "hyperframes")).toHaveLength(111);
+    expect(gsapItems.filter((item) => item.source?.provider === "ipollowork")).toHaveLength(27);
     expect(gsapItems.find((item) => item.name === "app-showcase")?.engine?.version).toBe("3.14.2");
     expect(
       gsapItems.find((item) => item.name === "gsap-scrolltrigger-story")?.engine?.plugins,
