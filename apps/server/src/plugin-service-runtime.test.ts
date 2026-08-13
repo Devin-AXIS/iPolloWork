@@ -1,8 +1,9 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { access, chmod, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 import { EnvService } from "./env-file.js";
 import { callExperimentalExtensionAction, listExperimentalExtensionActions } from "./extensions/index.js";
@@ -15,9 +16,11 @@ import {
 import { installPluginPackage } from "./plugin-package-lifecycle.js";
 import {
   callPluginServiceAction,
+  deletePluginServiceData,
   disposeAllPluginServices,
   disposePluginServices,
   listPluginServiceActions,
+  pluginServiceDataDirectory,
 } from "./plugin-service-runtime.js";
 import type { ServerConfig } from "./types.js";
 
@@ -52,6 +55,10 @@ async function temporaryRoot(prefix: string): Promise<string> {
   const root = await mkdtemp(join(tmpdir(), prefix));
   roots.push(root);
   return root;
+}
+
+function record(value: unknown): Record<string, unknown> | null {
+  return typeof value === "object" && value !== null && !Array.isArray(value) ? value as Record<string, unknown> : null;
 }
 
 async function writeServicePackage(root: string, id: string): Promise<void> {
@@ -120,6 +127,127 @@ export default async function createService(runtime) {
   }, null, 2), "utf8");
 }
 
+async function writeCapabilityPackage(root: string): Promise<void> {
+  await mkdir(join(root, "service"), { recursive: true });
+  await writeFile(join(root, "service", "capability.ts"), `
+import { mkdir, writeFile } from "node:fs/promises";
+import { join } from "node:path";
+
+export default async function createService(runtime) {
+  return {
+    actions: {
+      inspect: async (args) => {
+        await mkdir(runtime.storage.dataDir, { recursive: true });
+        await writeFile(join(runtime.storage.dataDir, "owned.txt"), "owned\\n", "utf8");
+        return {
+          value: await runtime.environment.get(args.name),
+          dataDir: runtime.storage.dataDir,
+          workspaceRoot: runtime.workspace.root,
+        };
+      },
+    },
+  };
+}
+`, "utf8");
+  await writeFile(join(root, "ipollowork.plugin.json"), JSON.stringify({
+    schemaVersion: 1,
+    id: "runtime-capability",
+    name: "Runtime Capability",
+    description: "Runtime capability fixture.",
+    source: { format: "ipollowork-extension-manifest", origin: "local", trusted: false },
+    package: {
+      version: "1.0.0",
+      updateId: "fixture/runtime-capability",
+      entrypoints: { service: "service/capability.ts" },
+    },
+    resources: [{
+      type: "local-service",
+      id: "runtime-capability-service",
+      path: "service/capability.ts",
+      environment: ["ALLOWED_PLUGIN_KEY"],
+      actions: [{
+        id: "inspect",
+        title: "Inspect",
+        description: "Inspect bounded runtime capabilities.",
+        inputSchema: {
+          type: "object",
+          properties: { name: { type: "string" } },
+          required: ["name"],
+          additionalProperties: false,
+        },
+      }],
+    }],
+  }, null, 2), "utf8");
+}
+
+async function git(root: string, args: string[]): Promise<void> {
+  const child = Bun.spawn(["git", ...args], { cwd: root, stdout: "pipe", stderr: "pipe" });
+  const [code, stderr] = await Promise.all([child.exited, new Response(child.stderr).text()]);
+  if (code !== 0) throw new Error(`git ${args.join(" ")} failed: ${stderr}`);
+}
+
+async function writeFakeHarnessRuntime(root: string): Promise<string> {
+  const path = join(root, "fake-dsh-runtime.mjs");
+  await writeFile(path, `#!/usr/bin/env node
+import { writeFileSync } from "node:fs";
+import { join } from "node:path";
+import { createInterface } from "node:readline";
+
+let seq = 0;
+const send = (value) => process.stdout.write(JSON.stringify(value) + "\\n");
+const notify = (method, params) => send({ jsonrpc: "2.0", method, params });
+const event = (sessionId, type, data) => notify("session.event", { sessionId, event: { type, seq: seq++, time: Date.now(), data } });
+
+createInterface({ input: process.stdin }).on("line", (line) => {
+  const frame = JSON.parse(line);
+  if (frame.method === "initialize") {
+    send({ jsonrpc: "2.0", id: frame.id, result: { serverInfo: { name: "deepseek-harness-sdk-runtime", version: "test" } } });
+    return;
+  }
+  if (frame.method === "session/prompt") {
+    const sessionId = frame.params.sessionId;
+    const messageId = "fake-user";
+    event(sessionId, "agent/inbox/spliced", { inserted: [{ id: messageId }] });
+    notify("session.status", { sessionId, status: "running" });
+    writeFileSync(join(process.cwd(), "dsh-output.txt"), "created by isolated DSH\\n");
+    event(sessionId, "assistant/message", { message: { content: [{ type: "text", text: "DSH completed the isolated task." }] } });
+    notify("session.status", { sessionId, status: "idle" });
+    send({ jsonrpc: "2.0", id: frame.id, result: { messageId } });
+    return;
+  }
+  if (frame.method === "shutdown") {
+    send({ jsonrpc: "2.0", id: frame.id, result: {} });
+    setImmediate(() => process.exit(0));
+  }
+});
+`, "utf8");
+  await chmod(path, 0o755);
+  return path;
+}
+
+async function createFakeRuntimeWheel(root: string) {
+  const filename = "deepseek_harness_runtime_bin-0.1.0rc6-py3-none-macosx_14_0_arm64.whl";
+  const wheelRoot = join(root, "wheel-root");
+  const runtimeDirectory = join(wheelRoot, "deepseek_harness_runtime", "runtime");
+  const runtimeName = "dsh-jsonrpc-agent-pkg-macos-arm64";
+  await mkdir(runtimeDirectory, { recursive: true });
+  await writeFile(join(runtimeDirectory, runtimeName), "#!/bin/sh\nexit 0\n", "utf8");
+  const wheelPath = join(root, filename);
+  const child = Bun.spawn(["/usr/bin/zip", "-qr", wheelPath, "deepseek_harness_runtime"], {
+    cwd: wheelRoot,
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+  const [code, stderr] = await Promise.all([child.exited, new Response(child.stderr).text()]);
+  if (code !== 0) throw new Error(`Unable to create fake DSH wheel: ${stderr}`);
+  const bytes = await readFile(wheelPath);
+  return {
+    bytes,
+    filename,
+    sha256: createHash("sha256").update(bytes).digest("hex"),
+  };
+}
+
 afterEach(async () => {
   globalThis.fetch = originalFetch;
   if (previousRuntimeDb === undefined) delete process.env.IPOLLOWORK_RUNTIME_DB;
@@ -135,6 +263,254 @@ afterEach(async () => {
 });
 
 describe("plugin service runtime", () => {
+  test("exposes only declared environment values and removes plugin-owned data", async () => {
+    const workspaceRoot = await temporaryRoot("ipollowork-plugin-capability-workspace-");
+    const packageRoot = await temporaryRoot("ipollowork-plugin-capability-package-");
+    const runtimeRoot = await temporaryRoot("ipollowork-plugin-capability-runtime-");
+    process.env.IPOLLOWORK_RUNTIME_DB = join(runtimeRoot, "runtime.sqlite");
+    await writeCapabilityPackage(packageRoot);
+    const serverConfig = config(workspaceRoot);
+    const env = new EnvService({ path: join(runtimeRoot, "env.json") });
+    await env.upsertMany([
+      { key: "ALLOWED_PLUGIN_KEY", value: "allowed-value" },
+      { key: "UNDECLARED_PLUGIN_KEY", value: "hidden-value" },
+    ]);
+    await installPluginPackage({ serverConfig, workspaceId: WORKSPACE_ID, packageRoot, workspaceRoot });
+
+    const inspected = await callPluginServiceAction({
+      config: serverConfig,
+      env,
+      workspaceId: WORKSPACE_ID,
+      pluginId: "runtime-capability",
+      action: "inspect",
+      args: { name: "ALLOWED_PLUGIN_KEY" },
+      context: {},
+    });
+    const dataDir = pluginServiceDataDirectory(serverConfig, WORKSPACE_ID, "runtime-capability");
+    expect(inspected).toMatchObject({
+      result: { value: "allowed-value", dataDir, workspaceRoot },
+    });
+    expect(await access(join(dataDir, "owned.txt")).then(() => true)).toBe(true);
+
+    await expect(callPluginServiceAction({
+      config: serverConfig,
+      env,
+      workspaceId: WORKSPACE_ID,
+      pluginId: "runtime-capability",
+      action: "inspect",
+      args: { name: "UNDECLARED_PLUGIN_KEY" },
+      context: {},
+    })).rejects.toMatchObject({ code: "plugin_environment_denied" });
+
+    await disposePluginServices(serverConfig, WORKSPACE_ID, "runtime-capability");
+    expect(await access(join(dataDir, "owned.txt")).then(() => true)).toBe(true);
+    await deletePluginServiceData(serverConfig, WORKSPACE_ID, "runtime-capability");
+    await expect(access(dataDir)).rejects.toThrow();
+  });
+
+  test("runs DSH in an isolated Git copy and returns a patch without touching the source", async () => {
+    const workspaceRoot = await temporaryRoot("ipollowork-dsh-workspace-");
+    const runtimeRoot = await temporaryRoot("ipollowork-dsh-runtime-");
+    const packageRoot = fileURLToPath(new URL("../../../examples/plugin-packages/deepseek-harness", import.meta.url));
+    process.env.IPOLLOWORK_RUNTIME_DB = join(runtimeRoot, "runtime.sqlite");
+    await writeFile(join(workspaceRoot, "README.md"), "# DSH fixture\n", "utf8");
+    await git(workspaceRoot, ["init"]);
+    await git(workspaceRoot, ["add", "README.md"]);
+    await git(workspaceRoot, ["-c", "user.name=iPolloWork", "-c", "user.email=test@ipollowork.invalid", "commit", "-m", "fixture"]);
+    const runtimePath = await writeFakeHarnessRuntime(runtimeRoot);
+    const env = new EnvService({ path: join(runtimeRoot, "env.json") });
+    await env.upsertMany([
+      { key: "DSH_RUNTIME_BIN", value: runtimePath },
+      { key: "DEEPSEEK_API_KEY", value: "test-deepseek-key" },
+    ]);
+    const serverConfig = config(workspaceRoot);
+    await installPluginPackage({ serverConfig, workspaceId: WORKSPACE_ID, packageRoot, workspaceRoot });
+
+    const capabilities = await callPluginServiceAction({
+      config: serverConfig,
+      env,
+      workspaceId: WORKSPACE_ID,
+      pluginId: "deepseek-harness",
+      action: "capabilities",
+      args: {},
+      context: { directory: workspaceRoot },
+    });
+    expect(capabilities).toMatchObject({
+      result: {
+        available: true,
+        runtime: { source: "environment" },
+        isolation: { originalWorkspaceWrite: false, uninstallDeletesData: true },
+      },
+    });
+
+    const started = await callPluginServiceAction({
+      config: serverConfig,
+      env,
+      workspaceId: WORKSPACE_ID,
+      pluginId: "deepseek-harness",
+      action: "start",
+      args: { prompt: "Create dsh-output.txt", mode: "code" },
+      context: { directory: workspaceRoot },
+    });
+    const jobId = record(started.result)?.jobId;
+    if (typeof jobId !== "string") throw new Error("DSH start did not return a job ID");
+
+    let status: Awaited<ReturnType<typeof callPluginServiceAction>> | null = null;
+    for (let attempt = 0; attempt < 400; attempt += 1) {
+      status = await callPluginServiceAction({
+        config: serverConfig,
+        env,
+        workspaceId: WORKSPACE_ID,
+        pluginId: "deepseek-harness",
+        action: "status",
+        args: { jobId },
+        context: { directory: workspaceRoot },
+      });
+      if (record(status.result)?.state !== "running") break;
+      await Bun.sleep(25);
+    }
+
+    expect(status).not.toBeNull();
+    expect(status).toMatchObject({
+      result: {
+        state: "completed",
+        result: {
+          finalResponse: "DSH completed the isolated task.",
+          patchHasMore: false,
+        },
+      },
+    });
+    const result = record(record(status?.result)?.result);
+    expect(typeof result?.patch === "string" ? result.patch : "").toContain("dsh-output.txt");
+    await expect(access(join(workspaceRoot, "dsh-output.txt"))).rejects.toThrow();
+
+    const dataDir = pluginServiceDataDirectory(serverConfig, WORKSPACE_ID, "deepseek-harness");
+    expect(await access(join(dataDir, "jobs", jobId, "result.json")).then(() => true)).toBe(true);
+    await disposePluginServices(serverConfig, WORKSPACE_ID, "deepseek-harness");
+    await deletePluginServiceData(serverConfig, WORKSPACE_ID, "deepseek-harness");
+    await expect(access(dataDir)).rejects.toThrow();
+  });
+
+  test("installs, activates, and removes a checksum-verified managed DSH runtime", async () => {
+    const workspaceRoot = await temporaryRoot("ipollowork-dsh-managed-workspace-");
+    const runtimeRoot = await temporaryRoot("ipollowork-dsh-managed-runtime-");
+    const packageRoot = fileURLToPath(new URL("../../../examples/plugin-packages/deepseek-harness", import.meta.url));
+    const wheel = await createFakeRuntimeWheel(runtimeRoot);
+    process.env.IPOLLOWORK_RUNTIME_DB = join(runtimeRoot, "runtime.sqlite");
+    globalThis.fetch = Object.assign(async (input: string | URL | Request) => {
+      const url = String(input);
+      if (url === "https://files.example.test/runtime.whl") {
+        return new Response(wheel.bytes, { headers: { "content-length": String(wheel.bytes.byteLength) } });
+      }
+      if (url === "https://pypi.org/pypi/deepseek-harness-runtime-bin/0.1.0rc6/json" || url === "https://pypi.org/pypi/deepseek-harness-runtime-bin/json") {
+        return Response.json({
+          info: { version: "0.1.0rc6" },
+          urls: [{
+            filename: wheel.filename,
+            url: "https://files.example.test/runtime.whl",
+            size: wheel.bytes.byteLength,
+            digests: { sha256: wheel.sha256 },
+          }],
+        });
+      }
+      throw new Error(`Unexpected fetch in managed DSH runtime test: ${url}`);
+    }, originalFetch);
+    const env = new EnvService({ path: join(runtimeRoot, "env.json") });
+    const serverConfig = config(workspaceRoot);
+    await installPluginPackage({ serverConfig, workspaceId: WORKSPACE_ID, packageRoot, workspaceRoot });
+
+    const installed = await callPluginServiceAction({
+      config: serverConfig,
+      env,
+      workspaceId: WORKSPACE_ID,
+      pluginId: "deepseek-harness",
+      action: "runtime_install",
+      args: { version: "0.1.0rc6" },
+      context: {},
+    });
+    expect(installed).toMatchObject({
+      result: {
+        installed: true,
+        active: { source: "managed", version: "0.1.0rc6" },
+        installedVersions: ["0.1.0rc6"],
+      },
+    });
+
+    const capabilities = await callPluginServiceAction({
+      config: serverConfig,
+      env,
+      workspaceId: WORKSPACE_ID,
+      pluginId: "deepseek-harness",
+      action: "capabilities",
+      args: {},
+      context: {},
+    });
+    expect(capabilities).toMatchObject({
+      result: {
+        available: true,
+        runtime: { source: "managed", version: "0.1.0rc6" },
+        runtimeManagement: { managedActiveVersion: "0.1.0rc6", installedVersions: ["0.1.0rc6"] },
+      },
+    });
+
+    const status = await callPluginServiceAction({
+      config: serverConfig,
+      env,
+      workspaceId: WORKSPACE_ID,
+      pluginId: "deepseek-harness",
+      action: "runtime_status",
+      args: {},
+      context: {},
+    });
+    expect(status).toMatchObject({ result: { latestVersion: "0.1.0rc6", updateAvailable: false } });
+
+    await callPluginServiceAction({
+      config: serverConfig,
+      env,
+      workspaceId: WORKSPACE_ID,
+      pluginId: "deepseek-harness",
+      action: "runtime_remove",
+      args: {},
+      context: {},
+    });
+    const dataDir = pluginServiceDataDirectory(serverConfig, WORKSPACE_ID, "deepseek-harness");
+    await expect(access(join(dataDir, "runtime"))).rejects.toThrow();
+  });
+
+  test("loads the bundled DSH service with the Node ESM runtime", async () => {
+    const packageRoot = fileURLToPath(new URL("../../../examples/plugin-packages/deepseek-harness", import.meta.url));
+    const servicePath = join(packageRoot, "service", "deepseek-harness.mjs");
+    const dataDir = await temporaryRoot("ipollowork-dsh-node-service-");
+    const script = `
+const loaded = await import(${JSON.stringify(pathToFileURL(servicePath).href)});
+const service = await loaded.default({
+  plugin: { id: "deepseek-harness", version: "0.2.1" },
+  authorization: { getCredential: async () => null },
+  environment: { get: async () => null },
+  storage: { dataDir: ${JSON.stringify(dataDir)} },
+  workspace: { root: ${JSON.stringify(packageRoot)} },
+});
+console.log(JSON.stringify(await service.actions.capabilities()));
+await service.dispose();
+`;
+    const child = Bun.spawn(["node", "--input-type=module", "--eval", script], {
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    const [code, stdout, stderr] = await Promise.all([
+      child.exited,
+      new Response(child.stdout).text(),
+      new Response(child.stderr).text(),
+    ]);
+    expect(code).toBe(0);
+    expect(stderr).toBe("");
+    expect(JSON.parse(stdout)).toMatchObject({
+      available: false,
+      modes: ["standard", "code", "review"],
+      isolation: { originalWorkspaceWrite: false, uninstallDeletesData: true },
+    });
+  });
+
   test("discovers declared actions and gives a service only its own authorization capability", async () => {
     const workspaceRoot = await temporaryRoot("ipollowork-plugin-service-workspace-");
     const alphaRoot = await temporaryRoot("ipollowork-plugin-service-alpha-");

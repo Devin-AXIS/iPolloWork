@@ -6,6 +6,7 @@ const LOCALE_RE = /^[a-z]{2,3}(?:-[A-Za-z0-9]{2,8})*$/;
 const ID_RE = /^[a-z0-9]+(?:[._/-][a-z0-9]+)*$/;
 const SIMPLE_ID_RE = /^[a-z0-9]+(?:[._-][a-z0-9]+)*$/;
 const FIELD_ID_RE = /^[A-Za-z][A-Za-z0-9._-]*$/;
+const ENV_KEY_RE = /^[A-Za-z_][A-Za-z0-9_]*$/;
 const RELATION_RE = /^(?:action|authorization|resource|service|workflow):[a-z0-9]+(?:[._/-][a-z0-9]+)*$/;
 const RESERVED_EXTENSION_IDS = new Set(["google-workspace", "media-center", "openai-image-generation", "storage"]);
 
@@ -88,6 +89,7 @@ const resourceSchema = z.object({
   oauth: z.boolean().optional(),
   localCommandRef: z.enum(["ipollowork.computerUseMcp", "ipollowork.uiMcp"]).optional(),
   actions: z.array(serviceActionSchema).optional(),
+  environment: z.array(z.string().regex(ENV_KEY_RE)).optional(),
   requires: z.array(relationSchema).optional(),
   provides: z.array(relationSchema).optional(),
   required: z.boolean().optional(),

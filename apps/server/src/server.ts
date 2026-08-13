@@ -57,7 +57,7 @@ import {
   savePluginSecretAuthorization,
   startIndependentPluginAuthorization,
 } from "./plugin-platform-runtime.js";
-import { disposeAllPluginServices, disposePluginServices } from "./plugin-service-runtime.js";
+import { deletePluginServiceData, disposeAllPluginServices, disposePluginServices } from "./plugin-service-runtime.js";
 import { resolveClaudePluginBundle } from "./claude-plugin-bundle.js";
 import {
   applyMaterializedBlueprintSessions,
@@ -2077,8 +2077,15 @@ function createRoutes(
       paths: [join(workspace.path, ".opencode")],
     });
     const result = await uninstallPluginPackage({ serverConfig: config, workspaceId: workspace.id, pluginId, workspaceRoot: workspace.path });
-    await disposePluginServices(config, workspace.id, pluginId);
-    await deletePluginAuthorization({ config, workspaceId: workspace.id, pluginId });
+    try {
+      await disposePluginServices(config, workspace.id, pluginId);
+    } finally {
+      try {
+        await deletePluginServiceData(config, workspace.id, pluginId);
+      } finally {
+        await deletePluginAuthorization({ config, workspaceId: workspace.id, pluginId });
+      }
+    }
     emitReloadEvent(ctx.reloadEvents, workspace, "plugins", { type: "plugin", name: pluginId, action: "removed" });
     return jsonResponse({ result });
   });

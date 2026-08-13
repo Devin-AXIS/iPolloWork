@@ -83,6 +83,7 @@ export async function callExperimentalExtensionAction(config: ServerConfig, env:
   if (!registered) {
     return callPluginServiceAction({
       config,
+      env,
       workspaceId: workspaceIdForPluginContext(config, context),
       pluginId: extensionId,
       action,
