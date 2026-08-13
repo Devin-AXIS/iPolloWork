@@ -209,7 +209,7 @@ async function materializeVideoTemplate(ctx) {
       'Content-Type': 'application/json',
       ...(hostToken ? { 'X-iPolloWork-Host-Token': hostToken } : {}),
     };
-    const templateId = 'ipollowork.html-anything.video-hyperframes';
+    const templateId = 'ipollowork.html-anything.motion-frames';
     const install = await fetch(baseUrl + '/workspace/' + encodeURIComponent(workspaceId) + '/templates/' + encodeURIComponent(templateId) + '/install', {
       method: 'POST',
       headers,
