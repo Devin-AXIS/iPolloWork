@@ -214,7 +214,7 @@ describe("HyperFrames Video Studio", () => {
     expect(urlStateSource.indexOf("setRightPanelTab(\"design\")")).toBeLessThan(urlStateSource.indexOf("applyUrlSelection(command.selection)"));
   });
 
-  test("deletes selected canvas elements in place without forcing a full preview reload", () => {
+  test("deletes selected canvas elements optimistically and refreshes once after persistence", () => {
     const desktopSource = readFileSync(
       new URL("../../../apps/desktop/electron/main.mjs", import.meta.url),
       "utf8",
@@ -231,7 +231,9 @@ describe("HyperFrames Video Studio", () => {
     expect(lifecycleSource).toContain("function removeLivePreviewElement");
     expect(lifecycleSource).toContain("findElementForSelection(doc, selection, activeCompPath)");
     expect(lifecycleSource).toContain("parent.insertBefore(element, nextSibling?.parentNode === parent ? nextSibling : null)");
-    expect(lifecycleSource).toContain("if (!liveRemoval) reloadPreview()");
+    expect(lifecycleSource).toContain("const requestPreviewRefresh = () => {");
+    expect(lifecycleSource).toContain("if (!previewRefreshRequested && loadingShown)");
+    expect(lifecycleSource).not.toContain("if (!liveRemoval) reloadPreview()");
     expect(lifecycleSource).not.toContain("forceReloadSdkSession?.();\n        reloadPreview();");
     expect(commitsSource).toContain("previewIframeRef,");
     const deleteFunctionStart = desktopSource.indexOf("const deleteSelectedElement = async () => {");

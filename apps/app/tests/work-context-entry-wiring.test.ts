@@ -58,7 +58,7 @@ describe("personal and Enterprise chat entry wiring", () => {
   test("scopes workspaces and therefore all sessions to the active work context", () => {
     expect(routeState).toContain("canonicalWorkspacesForWorkContext(");
     expect(routeState).toContain("pruneServerWorkspacesForWorkContext(");
-    expect(routeState).toContain("workContextRef.current !== requestedContextId");
+    expect(routeState).toContain("workContextRef.current === requestedContextId");
     expect(sessionRoute).toContain("workContextId: activeWorkContextId");
     expect(sessionRoute).toContain("sessionsByWorkspaceId,");
     expect(sessionRoute).not.toContain("ChatSpace");
