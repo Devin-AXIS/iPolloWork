@@ -32,12 +32,6 @@ Codex 式编码只是起点。当结果变成演示稿、网页、视觉设计�
 - **本地可控** — 在自己的设备上运行，接入自己的模型或服务商，逐项批准权限，并通过 Skills、插件、MCP 服务和浏览器自动化扩展能力。
 - **双智能体生态协作** — 正在原生接入 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) 子代理，让 iPolloWork 可以把边界明确的任务交给 DSH，同时两边继续使用各自的 Skills 和插件生态。
 
-## 一句话理解
-
-iPolloWork 是一个围绕 Codex 式智能体构建的可视化、本地优先工作空间。它不是只会聊天的包装层，本地使用也不要求 iPolloCloud 账号。
-
-源码可用仓库只包含 Work 客户端及本地运行能力。账号、组织管理、托管 Worker、支付、管理后台和移动 App 属于独立的 iPolloCloud，不影响 Work 单独使用。
-
 ## DeepSeek Harness 子代理协作
 
 iPolloWork 正在将 [DeepSeek Harness（DSH）](https://github.com/deepseek-ai/deepseek-harness) 作为可选子代理运行时原生接入。该功能目前仍在积极开发，尚未包含在最新稳定版中。
