@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { FloppyDisk } from "@phosphor-icons/react";
 import {
   STUDIO_INSPECTOR_PANELS_ENABLED,
   STUDIO_MANUAL_EDITING_DISABLED_TITLE,
@@ -8,6 +9,7 @@ import { usePanelLayoutContext } from "../contexts/PanelLayoutContext";
 import { trackStudioEvent } from "../utils/studioTelemetry";
 import { Tooltip } from "./ui";
 import { useStudioI18n } from "../i18n";
+import { RotateCw } from "../icons/SystemIcons";
 import propertiesIconSrc from "../icons/studioHeaderProperties.svg?url";
 import exportIconSrc from "../icons/studioHeaderExport.svg?url";
 
@@ -17,6 +19,14 @@ export interface StudioHeaderProps {
   previewMode: boolean;
   onPreviewModeChange: (previewMode: boolean) => void;
 }
+
+type StudioHostContext = {
+  title: string;
+  actions: {
+    reload: boolean;
+    saveAsTemplate: boolean;
+  };
+};
 
 export function StudioHeader({
   inspectorButtonActive,
@@ -30,6 +40,7 @@ export function StudioHeader({
   const { t } = useStudioI18n();
   const isRendering = renderQueue.isRendering;
   const [compositionTitle, setCompositionTitle] = useState(projectId);
+  const [hostContext, setHostContext] = useState<StudioHostContext | null>(null);
 
   useEffect(() => {
     const preview = previewIframeRef.current;
@@ -41,6 +52,33 @@ export function StudioHeader({
     preview?.addEventListener("load", updateTitle);
     return () => preview?.removeEventListener("load", updateTitle);
   }, [compositionLoading, previewIframeRef, projectId, refreshKey]);
+
+  useEffect(() => {
+    const handleHostContext = (event: MessageEvent) => {
+      if (event.source !== window.parent) return;
+      if (event.data?.type !== "ipollowork:studio-host-context") return;
+      if (event.data.projectId !== projectId || typeof event.data.title !== "string") return;
+      setHostContext({
+        title: event.data.title.trim(),
+        actions: {
+          reload: event.data.actions?.reload === true,
+          saveAsTemplate: event.data.actions?.saveAsTemplate === true,
+        },
+      });
+    };
+    window.addEventListener("message", handleHostContext);
+    return () => window.removeEventListener("message", handleHostContext);
+  }, [projectId]);
+
+  const displayTitle = hostContext?.title || compositionTitle;
+
+  const requestHostAction = (action: "reload" | "save-as-template") => {
+    if (window.parent === window) return;
+    window.parent.postMessage(
+      { type: "ipollowork:studio-host-action", projectId, action },
+      "*",
+    );
+  };
 
   const toggleProperties = () => {
     if (!STUDIO_INSPECTOR_PANELS_ENABLED) return;
@@ -78,8 +116,8 @@ export function StudioHeader({
   return (
     <header className="hf-studio-header relative flex h-[49px] flex-shrink-0 items-center border-b border-[var(--hf-panel-hairline)] bg-[var(--hf-studio-header-bg)] px-3 text-[var(--hf-panel-text-1)] backdrop-blur-sm">
       <div className="flex min-w-0 flex-1 items-center gap-2 pr-6">
-        <span className="block min-w-0 max-w-64 truncate text-[13px] font-medium text-[var(--hf-panel-text-3)]" title={compositionTitle}>
-          {compositionTitle}
+        <span className="block min-w-0 max-w-64 truncate text-[13px] font-medium text-[var(--hf-panel-text-3)]" title={displayTitle}>
+          {displayTitle}
         </span>
       </div>
 
@@ -119,6 +157,34 @@ export function StudioHeader({
       <div className="flex flex-1 items-center justify-end gap-4">
         {!previewMode ? (
           <>
+            {hostContext?.actions.reload || hostContext?.actions.saveAsTemplate ? (
+              <div className="mr-1 flex items-center gap-2">
+                {hostContext.actions.saveAsTemplate ? (
+                  <Tooltip label={t("header.saveAsTemplate")} side="bottom">
+                    <button
+                      type="button"
+                      onClick={() => requestHostAction("save-as-template")}
+                      className="grid h-8 w-8 shrink-0 place-items-center rounded-lg text-[var(--hf-panel-text-2)] transition-[background-color,color,transform] outline-none hover:bg-[var(--hf-panel-hover)] hover:text-[var(--hf-panel-text-0)] focus-visible:ring-2 focus-visible:ring-black/25 focus-visible:ring-offset-2 active:scale-[0.96]"
+                      aria-label={t("header.saveAsTemplate")}
+                    >
+                      <FloppyDisk className="h-4 w-4" aria-hidden="true" />
+                    </button>
+                  </Tooltip>
+                ) : null}
+                {hostContext.actions.reload ? (
+                  <Tooltip label={t("header.reloadStudio")} side="bottom">
+                    <button
+                      type="button"
+                      onClick={() => requestHostAction("reload")}
+                      className="grid h-8 w-8 shrink-0 place-items-center rounded-lg text-[var(--hf-panel-text-2)] transition-[background-color,color,transform] outline-none hover:bg-[var(--hf-panel-hover)] hover:text-[var(--hf-panel-text-0)] focus-visible:ring-2 focus-visible:ring-black/25 focus-visible:ring-offset-2 active:scale-[0.96]"
+                      aria-label={t("header.reloadStudio")}
+                    >
+                      <RotateCw className="h-4 w-4" />
+                    </button>
+                  </Tooltip>
+                ) : null}
+              </div>
+            ) : null}
             <Tooltip
               label={
                 STUDIO_INSPECTOR_PANELS_ENABLED ? t("header.inspector") : STUDIO_MANUAL_EDITING_DISABLED_TITLE

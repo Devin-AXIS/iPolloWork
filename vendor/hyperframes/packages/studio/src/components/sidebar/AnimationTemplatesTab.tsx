@@ -721,6 +721,7 @@ const AnimationTemplateCard = memo(function AnimationTemplateCard({
   duration,
   applied,
   loading,
+  applyDisabled,
   onApply,
   onEdit,
   onRemove,
@@ -730,6 +731,7 @@ const AnimationTemplateCard = memo(function AnimationTemplateCard({
   duration: number;
   applied: ResolvedMotionInstance | null;
   loading: boolean;
+  applyDisabled: boolean;
   onApply: (template: AnimationTemplateDefinition) => void | Promise<void>;
   onEdit: (template: AnimationTemplateDefinition, anchor: HTMLElement) => void | Promise<void>;
   onRemove: (
@@ -783,11 +785,11 @@ const AnimationTemplateCard = memo(function AnimationTemplateCard({
       ) : (
         <button
           type="button"
-          disabled={loading}
+          disabled={loading || applyDisabled}
           data-animation-action="apply"
           aria-label={`${t("animation.apply")} ${template.title[locale]}`}
           onClick={() => void onApply(template)}
-          className="block w-full rounded-[8px] text-left outline-none disabled:cursor-wait"
+          className="block w-full rounded-[8px] text-left outline-none disabled:cursor-not-allowed"
         >
           {preview}
         </button>
@@ -1067,6 +1069,7 @@ export const AnimationTemplatesTab = memo(function AnimationTemplatesTab({
             }
             applied={applied}
             loading={pendingTemplateId === template.id}
+            applyDisabled={!domEditSelection}
             onApply={applyTemplate}
             onEdit={openEditor}
             onRemove={removeTemplate}
@@ -1109,11 +1112,17 @@ export const AnimationTemplatesTab = memo(function AnimationTemplatesTab({
             className="h-[34px] w-full rounded-lg border-0 bg-panel-input pl-9 pr-3 text-[13px] text-panel-text-1 outline-none placeholder:text-[#a2a6af] focus:ring-1 focus:ring-[#20bbc0]/50"
           />
         </div>
-        {domEditSelection ? (
-          <div className="rounded-[8px] bg-[#20bbc0]/10 px-3 py-2 text-[10px] leading-4 text-[#168e92]">
-            {t("animation.selected", { label: domEditSelection.label })}
-          </div>
-        ) : null}
+        <div
+          className={`rounded-[8px] px-3 py-2 text-[10px] leading-4 ${
+            domEditSelection
+              ? "bg-[#20bbc0]/10 text-[#168e92]"
+              : "bg-panel-input text-panel-text-3"
+          }`}
+        >
+          {domEditSelection
+            ? t("animation.selected", { label: domEditSelection.label })
+            : t("animation.selectElement")}
+        </div>
       </div>
 
       <div className="hf-animation-template-scroll min-h-0 flex-1 overflow-y-auto">

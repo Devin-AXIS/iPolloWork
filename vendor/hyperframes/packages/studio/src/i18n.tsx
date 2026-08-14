@@ -24,6 +24,8 @@ type TranslationKey =
   | "header.capture"
   | "header.capturing"
   | "header.captureCurrentFrame"
+  | "header.saveAsTemplate"
+  | "header.reloadStudio"
   | "header.inspector"
   | "header.renderInProgress"
   | "header.renderExport"
@@ -144,6 +146,8 @@ const messages: Record<StudioLocale, Record<TranslationKey, string>> = {
     "header.capture": "Capture",
     "header.capturing": "Capturing...",
     "header.captureCurrentFrame": "Capture current frame",
+    "header.saveAsTemplate": "Save as work template",
+    "header.reloadStudio": "Reload Video Studio",
     "header.inspector": "Properties",
     "header.renderInProgress": "A render is already in progress",
     "header.renderExport": "Open export settings",
@@ -264,6 +268,8 @@ const messages: Record<StudioLocale, Record<TranslationKey, string>> = {
     "header.capture": "截图",
     "header.capturing": "截图中...",
     "header.captureCurrentFrame": "截取当前帧",
+    "header.saveAsTemplate": "保存为作品模板",
+    "header.reloadStudio": "重新加载视频工作室",
     "header.inspector": "属性",
     "header.renderInProgress": "已有渲染任务正在进行",
     "header.renderExport": "打开导出设置",

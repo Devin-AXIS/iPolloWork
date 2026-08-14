@@ -94,7 +94,6 @@ import { useDesignAiSelectionStore } from "../design/design-ai-selection-store";
 import { waitForTemplateEntrySurface } from "../templates/template-entry-route";
 import { loadTemplateSession } from "../templates/template-session-probe";
 import { TemplateSaveDialog, type TemplateSaveInput, type TemplateSaveMode } from "../templates/template-save-dialog";
-import { VideoPanel } from "../video/video-panel";
 import { videoProjectEntryPath } from "../video/video-project";
 import { isStreamingSessionStatus } from "../sidebar/utils";
 import {
@@ -590,6 +589,10 @@ export function SessionPage(props: SessionPageProps) {
   const artifactTargetCount = artifactFileTargets.length;
   const hasArtifactTargets = artifactTargetCount > 0;
   const activeSidePanel = voiceSidePanelOpen ? "voice" : sessionSidePanel;
+  const selectedSessionTitle = useMemo(
+    () => sessionTitleForId(props.sidebar.workspaceSessionGroups, props.selectedSessionId),
+    [props.selectedSessionId, props.sidebar.workspaceSessionGroups],
+  );
   const [templateSessionRevision, setTemplateSessionRevision] = useState(0);
   const [templateCatalog, setTemplateCatalog] = useState<TemplateCatalogItem[]>([]);
   const [templateResourceScope, setTemplateResourceScope] = useState<WorkContextId>(() => readActiveWorkContextId());
@@ -750,8 +753,15 @@ export function SessionPage(props: SessionPageProps) {
   const openCurrentVideoStudio = useCallback((options?: { auto?: boolean }) => {
     if (!props.selectedSessionId) return;
     if (!options?.auto) prioritizeRightPanel();
-    setSidePanelState(props.selectedSessionId, "video");
-  }, [prioritizeRightPanel, props.selectedSessionId, setSidePanelState]);
+    const videoTabId = `video:${props.selectedSessionId}`;
+    openTab(props.selectedSessionId, {
+      id: videoTabId,
+      type: "video",
+      label: selectedSessionTitle || t("video.title"),
+      sessionId: props.selectedSessionId,
+    });
+    setSidePanelState(props.selectedSessionId, "panel");
+  }, [openTab, prioritizeRightPanel, props.selectedSessionId, selectedSessionTitle, setSidePanelState]);
   const refreshTemplateCatalog = useCallback(async () => {
     if (!props.ipolloworkServerClient || !props.runtimeWorkspaceId) return;
     const requestId = ++templateCatalogRequestIdRef.current;
@@ -1152,19 +1162,19 @@ export function SessionPage(props: SessionPageProps) {
   const sidePanelOpen = effectiveSidePanelView !== null;
   const panelRailActive = activeSidePanel === "panel";
   const designRailActive = activeSidePanel === "design";
-  const videoRailActive = activeSidePanel === "video";
+  const videoRailActive = panelRailActive && activePanelTab?.type === "video";
   const extensionsRailActive = activeSidePanel === "extensions";
   const voiceRailActive = activeSidePanel === "voice";
+  useEffect(() => {
+    if (activeSidePanel === "video") openCurrentVideoStudio({ auto: true });
+  }, [activeSidePanel, openCurrentVideoStudio]);
   useEffect(() => {
     if (!props.selectedSessionId) return;
     if (isVideoSession) {
       setSidePanelState(GLOBAL_VOICE_SIDE_PANEL_KEY, null);
       return;
     }
-    if (isDesignSession && activeSidePanel === "video") {
-      setSidePanelState(props.selectedSessionId, "panel");
-    }
-  }, [activeSidePanel, isDesignSession, isVideoSession, props.selectedSessionId, setSidePanelState]);
+  }, [isVideoSession, props.selectedSessionId, setSidePanelState]);
   useEffect(() => {
     if (!props.selectedSessionId || !isVideoSession || !videoOutput) return;
     const status = props.sidebar.sessionStatusById[props.selectedSessionId] ?? "idle";
@@ -1322,17 +1332,9 @@ export function SessionPage(props: SessionPageProps) {
         preserveSidePanelOnPanelOpenRef.current = false;
         return;
       }
-      // Browser tools may open pages while an agent is editing a video. Keep
-      // that WebContentsView in the background so it cannot cover the Studio.
-      if (isVideoSession && activeSidePanel !== "panel") {
-        void browser.hide?.();
-        setCurrentSidePanel("video");
-        return;
-      }
       setCurrentSidePanel("panel");
     });
     const unsubClose = browser.onPanelClosed?.(() => {
-      if (isVideoSession && activeSidePanel !== "panel") return;
       const remainingTabs = props.selectedSessionId
         ? usePanelTabStore.getState().sessions[props.selectedSessionId]?.tabs ?? []
         : [];
@@ -1345,7 +1347,7 @@ export function SessionPage(props: SessionPageProps) {
       setCurrentSidePanel(null);
     });
     return () => { unsubOpen?.(); unsubClose?.(); };
-  }, [activeSidePanel, isVideoSession, props.selectedSessionId, setCurrentSidePanel]);
+  }, [props.selectedSessionId, setCurrentSidePanel]);
   const {
     leftSidebarResizing,
     leftSidebarWidth,
@@ -1360,15 +1362,15 @@ export function SessionPage(props: SessionPageProps) {
   const [rightPanelManuallyResized, setRightPanelManuallyResized] = useState(false);
   const [rightPanelResizing, setRightPanelResizing] = useState(false);
   const rightPanelElementRef = useRef<HTMLElement>(null);
-  const [videoStudioExpanded, setVideoStudioExpanded] = useState(false);
   const [rightPanelExpanded, setRightPanelExpanded] = useState(false);
-  const rightWorkspaceExpanded = rightPanelExpanded || videoStudioExpanded;
+  const rightWorkspaceExpanded = rightPanelExpanded;
   const [viewportWidth, setViewportWidth] = useState(() => (
     typeof window === "undefined" ? MAIN_WORKSPACE_MIN_WIDTH : window.innerWidth
   ));
   const narrowLayout = viewportWidth < NARROW_LAYOUT_WIDTH;
   const effectiveLeftSidebarWidth = narrowLayout ? Math.min(leftSidebarWidth, 200) : leftSidebarWidth;
   const designTabActive = effectiveSidePanelView === "panel" && activePanelTab?.type === "design";
+  const videoTabActive = effectiveSidePanelView === "panel" && activePanelTab?.type === "video";
   const desiredRightPanelWidth = designTabActive || effectiveSidePanelView === "design"
     ? MIN_DESIGN_PANEL_WIDTH
     : MIN_RIGHT_PANEL_WIDTH;
@@ -1386,7 +1388,7 @@ export function SessionPage(props: SessionPageProps) {
   const preferredVideoPanelWidth = rightPanelManuallyResized
     ? browserPanelDefaultWidth
     : Math.max(browserPanelDefaultWidth, VIDEO_PANEL_DEFAULT_WIDTH);
-  const preferredBrowserPanelWidth = effectiveSidePanelView === "video"
+  const preferredBrowserPanelWidth = videoTabActive
     ? preferredVideoPanelWidth
     : effectiveSidePanelView === "launcher"
       ? 320
@@ -1492,8 +1494,7 @@ export function SessionPage(props: SessionPageProps) {
   }, []);
   const closeExpandedWorkSurface = useCallback(() => {
     if (rightPanelExpanded) setRightPanelExpanded(false);
-    if (videoStudioExpanded) setVideoStudioExpanded(false);
-  }, [rightPanelExpanded, videoStudioExpanded]);
+  }, [rightPanelExpanded]);
   const handleSidebarOpenSession = useCallback((workspaceId: string, sessionId: string) => {
     closeExpandedWorkSurface();
     props.sidebar.onOpenSession(workspaceId, sessionId);
@@ -1510,7 +1511,7 @@ export function SessionPage(props: SessionPageProps) {
       effectiveRightPanelMinWidth,
       Math.min(
         workspaceWidth - mainWorkspaceMinWidth,
-        workspaceWidth * (effectiveSidePanelView === "video" ? 0.82 : 0.7),
+        workspaceWidth * (videoTabActive ? 0.82 : 0.7),
       ),
     );
     let nextWidth = effectiveBrowserPanelWidth;
@@ -1561,12 +1562,12 @@ export function SessionPage(props: SessionPageProps) {
   }, [
     effectiveBrowserPanelWidth,
     effectiveRightPanelMinWidth,
-    effectiveSidePanelView,
     mainWorkspaceMinWidth,
     rightWorkspaceExpanded,
     setBrowserPanelWidth,
     setRightPanelManuallyResized,
     sidePanelOpen,
+    videoTabActive,
     viewportWidth,
     visibleLeftSidebarWidth,
   ]);
@@ -1581,11 +1582,10 @@ export function SessionPage(props: SessionPageProps) {
       ),
     );
     if (rightPanelExpanded) setRightPanelExpanded(false);
-    if (videoStudioExpanded) setVideoStudioExpanded(false);
     window.requestAnimationFrame(() => {
       window.dispatchEvent(new Event("ipollowork:focusPrompt"));
     });
-  }, [rightPanelExpanded, videoStudioExpanded]);
+  }, [rightPanelExpanded]);
   const browserUrlForTarget = useCallback((target: OpenTarget) => {
     if (/^wss?:\/\//i.test(target.value)) return target.value.replace(/^ws:/i, "http:").replace(/^wss:/i, "https:");
     return target.value;
@@ -1722,7 +1722,6 @@ export function SessionPage(props: SessionPageProps) {
       autoCollapsedSidePanelRef.current = null;
     }
     setRightPanelExpanded(false);
-    setVideoStudioExpanded(false);
     setSessionPanelView(null);
     setCurrentSidePanel(null);
   }, [setCurrentSidePanel]);
@@ -1827,12 +1826,12 @@ export function SessionPage(props: SessionPageProps) {
       closeRightPane();
       return;
     }
-    setCurrentSidePanel("video");
-  }, [closeRightPane, setCurrentSidePanel, videoRailActive]);
+    openCurrentVideoStudio();
+  }, [closeRightPane, openCurrentVideoStudio, videoRailActive]);
   const showVideoRailPane = useCallback(() => {
     userOpenedSidebarWhileNarrowRef.current = false;
-    setCurrentSidePanel("video");
-  }, [setCurrentSidePanel]);
+    openCurrentVideoStudio();
+  }, [openCurrentVideoStudio]);
   const seedDesignHtmlControlAction = useMemo<iPolloWorkControlAction | null>(() => {
     if (!import.meta.env.DEV) return null;
 
@@ -2000,15 +1999,11 @@ export function SessionPage(props: SessionPageProps) {
       if (provider !== "auto" && provider !== "builtin") {
         return { ok: false, error: `Browser provider is not available yet: ${provider}` };
       }
-      if (!isVideoSession) setCurrentSidePanel("panel");
+      setCurrentSidePanel("panel");
       const result = await window.__IPOLLOWORK_ELECTRON__?.browser?.openUrl?.(url, provider);
-      if (isVideoSession) {
-        await window.__IPOLLOWORK_ELECTRON__?.browser?.hide?.();
-        setCurrentSidePanel("video");
-      }
       return result;
     },
-  }), [isVideoSession, setCurrentSidePanel]);
+  }), [setCurrentSidePanel]);
   useControlAction(openBrowserUrlControlAction);
   const setBrowserProxyControlAction = useMemo<iPolloWorkControlAction>(() => ({
     id: "browser.set_proxy",
@@ -2206,10 +2201,6 @@ export function SessionPage(props: SessionPageProps) {
     setSettledSessionId(sessionId);
   }, []);
 
-  const selectedSessionTitle = useMemo(
-    () => sessionTitleForId(props.sidebar.workspaceSessionGroups, props.selectedSessionId),
-    [props.selectedSessionId, props.sidebar.workspaceSessionGroups],
-  );
   const canSavePromptTemplate = Boolean(props.selectedSessionId && conversationMessages.some((message) => message.role === "user"));
   const exportSessionMarkdown = useCallback(() => {
     if (!props.selectedSessionId || conversationMessages.length === 0) return;
@@ -2760,7 +2751,7 @@ export function SessionPage(props: SessionPageProps) {
                             setSidePanelState(props.selectedSessionId, "design");
                             return;
                           }
-                          setSidePanelState(props.selectedSessionId, "video");
+                          openCurrentVideoStudio();
                         }}
                         onActivateVideoStudio={activateVideoStudio}
                         designTemplates={starterTemplateCatalog}
@@ -2916,33 +2907,6 @@ export function SessionPage(props: SessionPageProps) {
                       sessionId={props.selectedSessionId}
                       onClose={closeRightPane}
                     />
-                  ) : sidePanelOpen && activeSidePanel === "video" && props.selectedSessionId ? (
-                    <div
-                      className={cn(
-                        "h-full min-h-0",
-                        videoStudioExpanded ? "fixed inset-y-0 right-0 z-[60] bg-background" : "w-full",
-                        videoStudioExpanded && (!shellConfig.sidebar || !sidebarOpen) && "mac:[&_header]:!pl-20",
-                      )}
-                      style={videoStudioExpanded ? {
-                        left: shellConfig.sidebar && sidebarOpen ? `${effectiveLeftSidebarWidth}px` : "0",
-                      } : undefined}
-                    >
-                      <VideoPanel
-                        key={`${props.selectedWorkspaceId}:${props.selectedSessionId}`}
-                        sessionId={props.selectedSessionId}
-                        workspaceRoot={props.selectedWorkspaceRoot}
-                        client={props.ipolloworkServerClient}
-                        workspaceId={props.runtimeWorkspaceId}
-                        isRemoteWorkspace={props.selectedWorkspaceDisplay.workspaceType === "remote"}
-                        launcherItems={sidePanelLauncherItems}
-                        aiEditing={isStreamingSessionStatus(props.sidebar.sessionStatusById[props.selectedSessionId])}
-                        expanded={videoStudioExpanded}
-                        onExpandedChange={setVideoStudioExpanded}
-                        onAskAi={handleDesignAskAi}
-                        onSaveAsTemplate={hasTemplateSession && props.selectedWorkspaceDisplay.workspaceType === "local" ? openTemplateSave : undefined}
-                        onClose={closeRightPane}
-                      />
-                    </div>
                   ) : sidePanelOpen && activeSidePanel === "outputs" ? (
                     <ConversationOutputPanel
                       messages={conversationMessages}
@@ -2971,6 +2935,7 @@ export function SessionPage(props: SessionPageProps) {
                         workspaceRoot={props.selectedWorkspaceRoot}
                         isRemoteWorkspace={props.surface?.isRemoteWorkspace ?? false}
                         launcherItems={sidePanelLauncherItems}
+                        aiEditing={isStreamingSessionStatus(props.sidebar.sessionStatusById[props.selectedSessionId])}
                         onAskAi={handleDesignAskAi}
                         onSaveAsTemplate={hasTemplateSession && props.selectedWorkspaceDisplay.workspaceType === "local" ? openTemplateSave : undefined}
                         expanded={rightPanelExpanded}
