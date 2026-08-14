@@ -1,11 +1,13 @@
 /** @jsxImportSource react */
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { Agent } from "@opencode-ai/sdk/v2/client";
-import { AppWindowMac, ArrowUp, Check, ChevronRight, FileText, Plus, Plug, Settings, Square, Terminal, X, Zap } from "lucide-react";
+import { AppWindowMac, ArrowUp, Check, ChevronDown, ChevronRight, FileText, ListTodo, Plus, Plug, Settings, Square, Terminal, X, Zap } from "lucide-react";
 import fuzzysort from "fuzzysort";
 import { toast } from "@/components/ui/sonner";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { IPOLLOWORK_EXTENSION_CATALOG, type McpDirectoryInfo } from "@/app/constants";
 import type { CloudImportedPlugin, CloudImportedPluginFile } from "@/app/cloud/import-state";
+import type { iPolloWorkPluginPackageItem } from "@/app/lib/ipollowork-server";
 import type { ComposerAttachment, McpServerEntry, McpStatusMap, ModelRef, SkillCard, SlashCommandOption } from "@/app/types";
 import { formatBytes } from "@/app/utils";
 import { t } from "@/i18n";
@@ -34,7 +36,7 @@ type PastedTextChip = {
 
 type ToolMenuSettingsSection = "commands" | "skills" | "mcps" | "plugins";
 type ToolMenuSection = "commands" | "skills" | "mcps" | "extensions" | `plugin:${string}`;
-type PlusMenuSection = "tools" | "agents";
+type PlusMenuSection = "tools" | "delegation";
 
 function isComposerExtensionAvailable(entry: McpDirectoryInfo) {
   const hasSessionSurface = entry.extensionManifest?.contributions?.some((contribution) =>
@@ -72,7 +74,6 @@ type ComposerProps = {
   modelVariant: string | null;
   modelBehaviorOptions?: { value: string | null; label: string }[];
   onModelVariantChange: (value: string | null) => void;
-  agentLabel: string;
   selectedAgent: string | null;
   listAgents: () => Promise<Agent[]>;
   onSelectAgent: (agent: string | null) => void;
@@ -85,6 +86,7 @@ type ComposerProps = {
   mcpStatuses?: McpStatusMap;
   listImportedPlugins?: () => Promise<CloudImportedPlugin[]>;
   importedPlugins?: CloudImportedPlugin[];
+  listExternalAgents: () => Promise<iPolloWorkPluginPackageItem[]>;
   onOpenSettingsSection?: (section: ToolMenuSettingsSection) => void;
   recentFiles: string[];
   searchFiles: (query: string) => Promise<string[]>;
@@ -114,11 +116,6 @@ const IMAGE_COMPRESS_QUALITY = 0.82;
 const IMAGE_COMPRESS_TARGET_BYTES = 1_500_000;
 const FILE_URL_RE = /^file:\/\//i;
 const HTTP_URL_RE = /^https?:\/\//i;
-const DEFAULT_AGENT_NAME = "ipollowork";
-
-function isNonDefaultAgent(agent: Agent) {
-  return agent.name !== DEFAULT_AGENT_NAME;
-}
 
 /**
  * Extract external file/URL drops from a clipboard. Only used when the user
@@ -276,8 +273,9 @@ function pluginSlashCommandName(file: CloudImportedPluginFile) {
 export function ReactSessionComposer(props: ComposerProps) {
   const builtInExtensionsDisabled = useDesktopRestriction("allowBuiltInExtensions");
   let fileInput: HTMLInputElement | undefined;
-  const [agents, setAgents] = useState<Agent[]>([]);
-  const [agentMenuOpen, setAgentMenuOpen] = useState(false);
+  const [externalAgents, setExternalAgents] = useState<iPolloWorkPluginPackageItem[]>([]);
+  const [externalAgentsLoading, setExternalAgentsLoading] = useState(false);
+  const [delegationMenuOpen, setDelegationMenuOpen] = useState(false);
   const [commands, setCommands] = useState<SlashCommandOption[]>([]);
   const [commandsLoading, setCommandsLoading] = useState(false);
   const [skillsLoading, setSkillsLoading] = useState(false);
@@ -292,6 +290,7 @@ export function ReactSessionComposer(props: ComposerProps) {
   const [plusMenuOpen, setPlusMenuOpen] = useState(false);
   const [plusMenuSection, setPlusMenuSection] = useState<PlusMenuSection | null>(null);
   const [toolMenuOpen, setToolMenuOpen] = useState(false);
+  const [workModeOpen, setWorkModeOpen] = useState(false);
   const [toolMenuSection, setToolMenuSection] = useState<ToolMenuSection>("commands");
   const [mentionItems, setMentionItems] = useState<MentionItem[]>([]);
   const [mentionOpen, setMentionOpen] = useState(false);
@@ -304,6 +303,7 @@ export function ReactSessionComposer(props: ComposerProps) {
   const listSkillsRef = useRef(props.listSkills);
   const listMcpRef = useRef(props.listMcp);
   const listImportedPluginsRef = useRef(props.listImportedPlugins);
+  const listExternalAgentsRef = useRef(props.listExternalAgents);
   const toolMenuLoadRef = useRef({
     openId: 0,
     commands: false,
@@ -316,13 +316,13 @@ export function ReactSessionComposer(props: ComposerProps) {
   const [mcpLoaded, setMcpLoaded] = useState(Boolean(props.mcpServers));
   const [pluginsLoaded, setPluginsLoaded] = useState(Boolean(props.importedPlugins));
   const [, setExtensionStateVersion] = useState(0);
-  const [agentMenuIndex, setAgentMenuIndex] = useState(0);
-  const agentItemRefs = useRef<Array<HTMLButtonElement | null>>([]);
+  const [delegationMenuIndex, setDelegationMenuIndex] = useState(0);
+  const delegationItemRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const [dropzoneActive, setDropzoneActive] = useState(false);
   const plusMenuRef = useRef<HTMLDivElement | null>(null);
   const toolMenuRef = useRef<HTMLDivElement | null>(null);
   const editorRef = useRef<LexicalPromptEditorHandle | null>(null);
-  const agentMenuRef = useRef<HTMLDivElement | null>(null);
+  const delegationMenuRef = useRef<HTMLDivElement | null>(null);
   // IME composition guard: while an IME composition is active, we must not
   // treat Enter as a submit. Three signals keep this reliable across WebKit,
   // Chrome, and Safari: event.isComposing, event.keyCode === 229, and the
@@ -393,8 +393,6 @@ export function ReactSessionComposer(props: ComposerProps) {
   const mentionMatch = props.draft.match(/@([^\s@]*)$/);
   const mentionOpenNext = Boolean(mentionMatch);
   const mentionQuery = mentionMatch?.[1] ?? "";
-  const nonDefaultAgents = useMemo(() => agents.filter(isNonDefaultAgent), [agents]);
-  const showAgentPicker = props.selectedAgent !== null || nonDefaultAgents.length > 0;
 
   useEffect(() => {
     setSlashOpen(slashOpenNext);
@@ -405,27 +403,6 @@ export function ReactSessionComposer(props: ComposerProps) {
     setMentionOpen(mentionOpenNext);
     setMenuIndex(0);
   }, [mentionOpenNext, mentionQuery]);
-
-  useEffect(() => {
-    if (!agentMenuOpen) return;
-    void props.listAgents().then(setAgents).catch(() => setAgents([]));
-  }, [agentMenuOpen, props.listAgents]);
-
-  useEffect(() => {
-    if (!showAgentPicker) setAgentMenuOpen(false);
-  }, [showAgentPicker]);
-
-  useEffect(() => {
-    let cancelled = false;
-    void props.listAgents().then((next) => {
-      if (!cancelled) setAgents(next);
-    }).catch(() => {
-      if (!cancelled) setAgents([]);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [props.listAgents]);
 
   useEffect(() => {
     setSkills(props.skills ?? []);
@@ -458,13 +435,36 @@ export function ReactSessionComposer(props: ComposerProps) {
   }, [props.listImportedPlugins]);
 
   useEffect(() => {
-    setAgentMenuIndex(0);
-  }, [agentMenuOpen]);
+    listExternalAgentsRef.current = props.listExternalAgents;
+  }, [props.listExternalAgents]);
 
   useEffect(() => {
-    const target = agentItemRefs.current[agentMenuIndex];
+    if (!delegationMenuOpen) return;
+    let cancelled = false;
+    setExternalAgentsLoading(true);
+    void listExternalAgentsRef.current()
+      .then((next) => {
+        if (!cancelled) setExternalAgents(next);
+      })
+      .catch(() => {
+        if (!cancelled) setExternalAgents([]);
+      })
+      .finally(() => {
+        if (!cancelled) setExternalAgentsLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [delegationMenuOpen]);
+
+  useEffect(() => {
+    setDelegationMenuIndex(0);
+  }, [delegationMenuOpen]);
+
+  useEffect(() => {
+    const target = delegationItemRefs.current[delegationMenuIndex];
     target?.scrollIntoView({ block: "nearest" });
-  }, [agentMenuIndex, agentMenuOpen]);
+  }, [delegationMenuIndex, delegationMenuOpen]);
 
   useEffect(() => {
     commandsLoadVersionRef.current += 1;
@@ -512,12 +512,12 @@ export function ReactSessionComposer(props: ComposerProps) {
       if (
         plusMenuRef.current?.contains(target)
         || toolMenuRef.current?.contains(target)
-        || agentMenuRef.current?.contains(target)
+        || delegationMenuRef.current?.contains(target)
       ) return;
       setPlusMenuOpen(false);
       setPlusMenuSection(null);
       setToolMenuOpen(false);
-      setAgentMenuOpen(false);
+      setDelegationMenuOpen(false);
     };
     window.addEventListener("mousedown", handlePointerDown);
     return () => window.removeEventListener("mousedown", handlePointerDown);
@@ -526,7 +526,7 @@ export function ReactSessionComposer(props: ComposerProps) {
   useEffect(() => {
     if (!plusMenuOpen) return;
     setToolMenuOpen(plusMenuSection === "tools");
-    setAgentMenuOpen(plusMenuSection === "agents");
+    setDelegationMenuOpen(plusMenuSection === "delegation");
   }, [plusMenuOpen, plusMenuSection]);
 
   useEffect(() => {
@@ -620,18 +620,18 @@ export function ReactSessionComposer(props: ComposerProps) {
   }, [toolMenuOpen]);
 
   useEffect(() => {
-    if (!agentMenuOpen) return;
+    if (!delegationMenuOpen) return;
     const handlePointerDown = (event: MouseEvent) => {
       const target = event.target;
       if (!(target instanceof Node)) return;
-      if (plusMenuRef.current?.contains(target) || agentMenuRef.current?.contains(target)) return;
-      setAgentMenuOpen(false);
+      if (plusMenuRef.current?.contains(target) || delegationMenuRef.current?.contains(target)) return;
+      setDelegationMenuOpen(false);
     };
     window.addEventListener("mousedown", handlePointerDown);
     return () => {
       window.removeEventListener("mousedown", handlePointerDown);
     };
-  }, [agentMenuOpen]);
+  }, [delegationMenuOpen]);
 
   useEffect(() => {
     if (!toolMenuOpen) return;
@@ -821,10 +821,19 @@ export function ReactSessionComposer(props: ComposerProps) {
     setToolMenuOpen(false);
   };
 
-  const applyAgentSelection = (name: string | null) => {
-    props.onSelectAgent(name);
-    setAgentMenuOpen(false);
-    setToolMenuOpen(false);
+  const applyExternalAgentSelection = (item: iPolloWorkPluginPackageItem) => {
+    const prompt = item.manifest.composer?.prompt;
+    if (!prompt) return;
+    props.onDraftChange(props.draft.trim() ? `${prompt}\n\n${props.draft}` : `${prompt} `);
+    setDelegationMenuOpen(false);
+    setPlusMenuOpen(false);
+    setPlusMenuSection(null);
+    window.requestAnimationFrame(() => window.dispatchEvent(new Event(FOCUS_PROMPT_EVENT)));
+  };
+
+  const selectWorkMode = (agent: "build" | "plan") => {
+    props.onSelectAgent(agent);
+    setWorkModeOpen(false);
   };
 
   const applyExtensionSelection = (entry: McpDirectoryInfo) => {
@@ -898,7 +907,7 @@ export function ReactSessionComposer(props: ComposerProps) {
     // Escape-to-stop while the agent is busy. Only when no menu is open so
     // Escape can still close menus. First press arms a confirmation prompt
     // for 3s; a second Escape within that window stops the agent.
-    const anyMenuOpen = plusMenuOpen || agentMenuOpen || toolMenuOpen || Boolean(activeMenu);
+    const anyMenuOpen = plusMenuOpen || delegationMenuOpen || toolMenuOpen || Boolean(activeMenu);
     if (event.key === "Escape" && props.busy && !anyMenuOpen) {
       event.preventDefault();
       if (escapeArmed) {
@@ -914,28 +923,29 @@ export function ReactSessionComposer(props: ComposerProps) {
       }
       return;
     }
-    if (agentMenuOpen) {
-      const total = nonDefaultAgents.length + 1;
-      if (event.key === "ArrowDown") {
-        event.preventDefault();
-        setAgentMenuIndex((current) => (current + 1) % total);
-        return;
-      }
-      if (event.key === "ArrowUp") {
-        event.preventDefault();
-        setAgentMenuIndex((current) => (current - 1 + total) % total);
-        return;
-      }
-      if (event.key === "Enter" || event.key === "Tab") {
-        event.preventDefault();
-        const selected = agentMenuIndex === 0 ? null : nonDefaultAgents[agentMenuIndex - 1]?.name ?? null;
-        props.onSelectAgent(selected);
-        setAgentMenuOpen(false);
-        return;
-      }
+    if (delegationMenuOpen) {
       if (event.key === "Escape") {
         event.preventDefault();
-        setAgentMenuOpen(false);
+        setDelegationMenuOpen(false);
+        setPlusMenuOpen(false);
+        setPlusMenuSection(null);
+        return;
+      }
+      const total = externalAgents.length;
+      if (total > 0 && event.key === "ArrowDown") {
+        event.preventDefault();
+        setDelegationMenuIndex((current) => (current + 1) % total);
+        return;
+      }
+      if (total > 0 && event.key === "ArrowUp") {
+        event.preventDefault();
+        setDelegationMenuIndex((current) => (current - 1 + total) % total);
+        return;
+      }
+      if (total > 0 && (event.key === "Enter" || event.key === "Tab")) {
+        event.preventDefault();
+        const selected = externalAgents[delegationMenuIndex];
+        if (selected) applyExternalAgentSelection(selected);
         return;
       }
     }
@@ -957,7 +967,7 @@ export function ReactSessionComposer(props: ComposerProps) {
     if (
       (event.key === "ArrowUp" || event.key === "ArrowDown") &&
       !imeActive &&
-      !agentMenuOpen &&
+      !delegationMenuOpen &&
       !toolMenuOpen &&
       (!activeMenu || !activeItems.length)
     ) {
@@ -1351,8 +1361,9 @@ export function ReactSessionComposer(props: ComposerProps) {
                     type="button"
                     className={`inline-flex h-9 max-h-9 w-9 items-center justify-center rounded-md transition-colors ${plusMenuOpen ? "bg-gray-3 text-gray-12" : "text-gray-10 hover:bg-gray-3"}`}
                     onClick={() => {
+                      setWorkModeOpen(false);
                       setToolMenuOpen(false);
-                      setAgentMenuOpen(false);
+                      setDelegationMenuOpen(false);
                       setPlusMenuOpen((open) => {
                         if (open) setPlusMenuSection(null);
                         return !open;
@@ -1388,7 +1399,7 @@ export function ReactSessionComposer(props: ComposerProps) {
                         onClick={() => {
                           setPlusMenuSection("tools");
                           setToolMenuOpen(true);
-                          setAgentMenuOpen(false);
+                          setDelegationMenuOpen(false);
                         }}
                       >
                         <span>{t("composer.plus_tools")}</span>
@@ -1396,16 +1407,15 @@ export function ReactSessionComposer(props: ComposerProps) {
                       </button>
                       <button
                         type="button"
-                        className={`flex w-full items-center justify-between rounded-[12px] px-3 py-2.5 text-left text-sm disabled:cursor-not-allowed disabled:text-gray-9 disabled:opacity-60 ${plusMenuSection === "agents" ? "bg-gray-3 text-gray-12" : "text-gray-11 hover:bg-gray-2"}`}
-                        onMouseEnter={() => setPlusMenuSection("agents")}
+                        className={`flex w-full items-center justify-between rounded-[12px] px-3 py-2.5 text-left text-sm ${plusMenuSection === "delegation" ? "bg-gray-3 text-gray-12" : "text-gray-11 hover:bg-gray-2"}`}
+                        onMouseEnter={() => setPlusMenuSection("delegation")}
                         onClick={() => {
-                          setPlusMenuSection("agents");
-                          setAgentMenuOpen(true);
+                          setPlusMenuSection("delegation");
+                          setDelegationMenuOpen(true);
                           setToolMenuOpen(false);
                         }}
-                        disabled={!showAgentPicker || props.busy}
                       >
-                        <span>{t("composer.plus_agents")}</span>
+                        <span>{t("composer.delegate_external_agents")}</span>
                         <ChevronRight size={14} className="text-gray-9" />
                       </button>
                       </div>
@@ -1604,53 +1614,43 @@ export function ReactSessionComposer(props: ComposerProps) {
                   ) : null}
                 </div>
 
-                <div ref={agentMenuRef} className={showAgentPicker ? "relative" : "hidden"}>
-                  {agentMenuOpen ? (
+                <div ref={delegationMenuRef} className="relative">
+                  {delegationMenuOpen ? (
                     <div className="absolute left-[10.75rem] bottom-full z-40 mb-2 w-64 overflow-hidden rounded-[18px] border border-dls-border bg-dls-surface shadow-[var(--dls-shell-shadow)]">
                       <div className="border-b border-dls-border px-3 pb-1 pt-2 text-[10px] font-semibold uppercase tracking-[0.2em] text-gray-10">
-                        {t("composer.agent_label")}
+                        {t("composer.external_agents_label")}
                       </div>
                       <div
                         role="presentation"
                         className="max-h-64 space-y-1 overflow-y-auto p-2"
                         onMouseDown={(event) => event.preventDefault()}
                       >
-                        <button
-                          ref={(element) => {
-                            agentItemRefs.current[0] = element;
-                          }}
-                          type="button"
-                          className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-xs transition-colors ${!props.selectedAgent || agentMenuIndex === 0 ? "bg-gray-2 text-gray-12" : "text-gray-11 hover:bg-gray-2/70"}`}
-                          onMouseEnter={() => setAgentMenuIndex(0)}
-                          onMouseDown={(event) => {
-                            event.preventDefault();
-                            applyAgentSelection(null);
-                          }}
-                        >
-                          <span>{t("composer.default_agent")}</span>
-                          {!props.selectedAgent ? <Check size={14} className="text-gray-10" /> : null}
-                        </button>
-                        {nonDefaultAgents.map((agent, index) => {
-                          const active = props.selectedAgent === agent.name;
-                          return (
-                            <button
-                              key={agent.name}
-                              ref={(element) => {
-                                agentItemRefs.current[index + 1] = element;
-                              }}
-                              type="button"
-                              className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-xs transition-colors ${active || agentMenuIndex === index + 1 ? "bg-gray-2 text-gray-12" : "text-gray-11 hover:bg-gray-2/70"}`}
-                              onMouseEnter={() => setAgentMenuIndex(index + 1)}
-                              onMouseDown={(event) => {
-                                event.preventDefault();
-                                applyAgentSelection(agent.name);
-                              }}
-                            >
-                              <span className="truncate">{agent.name.charAt(0).toUpperCase() + agent.name.slice(1)}</span>
-                              {active ? <Check size={14} className="text-gray-10" /> : null}
-                            </button>
-                          );
-                        })}
+                        {externalAgents.map((agent, index) => (
+                          <button
+                            key={agent.pluginId}
+                            ref={(element) => {
+                              delegationItemRefs.current[index] = element;
+                            }}
+                            type="button"
+                            className={`flex w-full items-start gap-3 rounded-[14px] px-3 py-2.5 text-left transition-colors ${delegationMenuIndex === index ? "bg-gray-3 text-gray-12" : "text-gray-11 hover:bg-gray-2/70"}`}
+                            onMouseEnter={() => setDelegationMenuIndex(index)}
+                            onMouseDown={(event) => {
+                              event.preventDefault();
+                              applyExternalAgentSelection(agent);
+                            }}
+                          >
+                            <Zap size={14} className="mt-0.5 shrink-0 text-gray-9" />
+                            <span className="min-w-0">
+                              <span className="block truncate text-xs font-semibold">{agent.name}</span>
+                              <span className="mt-0.5 block line-clamp-2 text-[11px] leading-4 text-gray-10">{agent.manifest.description}</span>
+                            </span>
+                          </button>
+                        ))}
+                        {externalAgentsLoading ? (
+                          <div className="px-3 py-2 text-xs text-gray-10">{t("composer.loading_external_agents")}</div>
+                        ) : externalAgents.length === 0 ? (
+                          <div className="px-3 py-2 text-xs text-gray-10">{t("composer.no_external_agents")}</div>
+                        ) : null}
                       </div>
                     </div>
                   ) : null}
@@ -1667,6 +1667,52 @@ export function ReactSessionComposer(props: ComposerProps) {
                   onConfigureTokenStar={props.onConfigureTokenStar}
                   disabled={props.busy}
                 />
+                <Popover
+                  open={workModeOpen}
+                  onOpenChange={(open) => {
+                    setWorkModeOpen(open);
+                    if (!open) return;
+                    setPlusMenuOpen(false);
+                    setPlusMenuSection(null);
+                    setToolMenuOpen(false);
+                    setDelegationMenuOpen(false);
+                  }}
+                >
+                  <PopoverTrigger
+                    type="button"
+                    disabled={props.busy}
+                    aria-label={`${t("composer.work_mode_label")}: ${props.selectedAgent === "plan" ? t("composer.work_mode_plan") : t("composer.work_mode_execute")}`}
+                    className="inline-flex items-center gap-1.5 rounded-full bg-gray-3 px-3 py-1.5 text-sm text-gray-11 transition-colors hover:bg-gray-4 hover:text-gray-12 disabled:pointer-events-none disabled:opacity-60"
+                  >
+                    {props.selectedAgent === "plan" ? <ListTodo className="size-3.5 shrink-0" /> : <Zap className="size-3.5 shrink-0" />}
+                    <span>{props.selectedAgent === "plan" ? t("composer.work_mode_plan") : t("composer.work_mode_execute")}</span>
+                    <ChevronDown className="size-4 shrink-0" />
+                  </PopoverTrigger>
+                  <PopoverContent side="top" align="start" sideOffset={8} className="w-40 gap-0 p-1.5">
+                    <button
+                      type="button"
+                      data-work-mode-option="execute"
+                      aria-pressed={props.selectedAgent !== "plan"}
+                      className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2.5 text-left text-sm hover:bg-gray-2"
+                      onClick={() => selectWorkMode("build")}
+                    >
+                      <Zap className="size-4 text-gray-10" />
+                      <span className="flex-1">{t("composer.work_mode_execute")}</span>
+                      {props.selectedAgent !== "plan" ? <Check className="size-4 text-gray-11" /> : null}
+                    </button>
+                    <button
+                      type="button"
+                      data-work-mode-option="plan"
+                      aria-pressed={props.selectedAgent === "plan"}
+                      className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2.5 text-left text-sm hover:bg-gray-2"
+                      onClick={() => selectWorkMode("plan")}
+                    >
+                      <ListTodo className="size-4 text-gray-10" />
+                      <span className="flex-1">{t("composer.work_mode_plan")}</span>
+                      {props.selectedAgent === "plan" ? <Check className="size-4 text-gray-11" /> : null}
+                    </button>
+                  </PopoverContent>
+                </Popover>
                 {props.modelUnavailable ? (
                   <button
                     type="button"

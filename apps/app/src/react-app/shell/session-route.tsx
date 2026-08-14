@@ -631,16 +631,21 @@ export function SessionRoute() {
     return listCommands(opencodeClient, selectedWorkspaceRoot || undefined);
   }, [engineReloadVersion, opencodeClient, selectedWorkspaceRoot]);
 
-  // Shared by the composer (plug menu, @ mentions) and the command palette.
-  // Hidden and subagent-only entries are excluded — those are task-tool
-  // delegation targets, not agents the user can run a session as.
+  // Shared by @ mentions and the command palette. Plan and build are product
+  // modes controlled beside the model; hidden and subagent-only entries are
+  // task-tool delegation targets rather than session-level agents.
   const listAgents = useCallback(async () => {
     // Include engineReloadVersion so the composer refetches after newly added
     // agent files become available, even when the inline picker is hidden.
     void engineReloadVersion;
     if (!opencodeClient) return [];
     const list = unwrap(await opencodeClient.app.agents());
-    return list.filter((agent) => !agent.hidden && agent.mode !== "subagent");
+    return list.filter((agent) =>
+      !agent.hidden
+      && agent.mode !== "subagent"
+      && agent.name !== "build"
+      && agent.name !== "plan"
+    );
   }, [engineReloadVersion, opencodeClient]);
 
   const handleOpenSettings = useCallback((route = "/settings/preferences", workspaceId = sidebarActiveWorkspaceId) => {
@@ -1005,7 +1010,6 @@ export function SessionRoute() {
       onModelVariantChange: (value: string | null) => {
         local.setPrefs((previous) => ({ ...previous, modelVariant: value }));
       },
-      agentLabel: selectedAgent ? selectedAgent.charAt(0).toUpperCase() + selectedAgent.slice(1) : t("session.default_agent"),
       selectedAgent,
       listAgents,
       onSelectAgent: (agent: string | null) => setSelectedAgent(agent),

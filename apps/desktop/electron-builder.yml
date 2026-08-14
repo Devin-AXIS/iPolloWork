@@ -35,6 +35,15 @@ extraResources:
     to: plugin-packages/design-agent
   - from: ../../examples/plugin-packages/video-agent
     to: plugin-packages/video-agent
+  - from: ../../examples/plugin-packages/deepseek-harness
+    to: plugin-packages/deepseek-harness
+  # DSH creates profile links on first use, so its dependency tree must remain
+  # outside app.asar on both Windows and macOS.
+  - from: dsh-runtime
+    to: dsh-runtime
+    filter:
+      - package.json
+      - node_modules/**/*
   # Templates are installed by copying their full directory into the local
   # library. Electron's virtual ASAR filesystem can read them but Node cannot
   # recursively copy an ASAR directory on macOS, so keep these assets real.

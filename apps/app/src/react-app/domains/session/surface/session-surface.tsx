@@ -16,6 +16,7 @@ import type {
   HyperframesAnimationSelection,
   HyperframesCatalogItem,
   HyperframesEffectVariableValues,
+  iPolloWorkPluginPackageItem,
   iPolloWorkServerClient,
   iPolloWorkSessionSnapshot,
 } from "@/app/lib/ipollowork-server";
@@ -186,7 +187,6 @@ export type SessionSurfaceProps = {
   modelBehaviorOptions?: { value: string | null; label: string }[];
   onModelVariantChange: (value: string | null) => void;
   onConfigureTokenStar?: () => void;
-  agentLabel: string;
   selectedAgent: string | null;
   listAgents: () => Promise<import("@opencode-ai/sdk/v2/client").Agent[]>;
   onSelectAgent: (agent: string | null) => void;
@@ -1561,6 +1561,20 @@ export function SessionSurface(props: SessionSurfaceProps) {
     return plugins;
   };
 
+  const listExternalAgents = async (): Promise<iPolloWorkPluginPackageItem[]> => {
+    const response = await props.client.listPluginPackages(props.workspaceId);
+    return response.items
+      .filter((item) =>
+        item.enabled
+        && Boolean(item.manifest.composer?.prompt.trim())
+        && item.manifest.resources.some((resource) =>
+          resource.provides?.includes("service:external-subagent") === true
+          && !item.disabledResourceIds.includes(resource.id)
+        )
+      )
+      .sort((left, right) => left.name.localeCompare(right.name));
+  };
+
   const handleUploadInboxFiles = async (files: File[]) => {
     const input = files.filter(Boolean);
     if (!input.length) return;
@@ -1774,7 +1788,6 @@ export function SessionSurface(props: SessionSurfaceProps) {
           modelBehaviorOptions={props.modelBehaviorOptions}
           onModelVariantChange={props.onModelVariantChange}
           onConfigureTokenStar={props.onConfigureTokenStar}
-          agentLabel={props.agentLabel}
           selectedAgent={props.selectedAgent}
           listAgents={props.listAgents}
           onSelectAgent={props.onSelectAgent}
@@ -1787,6 +1800,7 @@ export function SessionSurface(props: SessionSurfaceProps) {
           mcpStatuses={toolMcpStatuses}
           listImportedPlugins={listImportedPlugins}
           importedPlugins={toolImportedPlugins}
+          listExternalAgents={listExternalAgents}
           onOpenSettingsSection={props.onOpenSettingsSection}
           recentFiles={props.recentFiles}
           searchFiles={props.searchFiles}
