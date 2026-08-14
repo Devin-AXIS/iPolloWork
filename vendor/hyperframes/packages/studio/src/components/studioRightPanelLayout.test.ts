@@ -6,30 +6,68 @@ import {
   resolveInspectorGroupOrder,
   resolveOpenInspectorGroup,
 } from "./editor/PropertyPanelFlat";
-import { parseHostAiEditingMessage } from "./StudioHeader";
+import { parseHostAiEditingMessage } from "../utils/studioHelpers";
 
 describe("Studio right panel layout", () => {
   it("accepts AI editing state only from the matching Studio project message", () => {
-    expect(parseHostAiEditingMessage({
-      type: "ipollowork:studio-ai-editing",
-      projectId: "video-1",
-      active: true,
-    }, "video-1")).toBe(true);
-    expect(parseHostAiEditingMessage({
-      type: "ipollowork:studio-ai-editing",
-      projectId: "video-1",
-      active: false,
-    }, "video-1")).toBe(false);
-    expect(parseHostAiEditingMessage({
-      type: "ipollowork:studio-ai-editing",
-      projectId: "video-2",
-      active: true,
-    }, "video-1")).toBeNull();
-    expect(parseHostAiEditingMessage({
-      type: "ipollowork:studio-ai-editing",
-      projectId: "video-1",
-      active: "true",
-    }, "video-1")).toBeNull();
+    expect(
+      parseHostAiEditingMessage(
+        {
+          type: "ipollowork:studio-ai-editing",
+          projectId: "video-1",
+          active: true,
+        },
+        "video-1",
+      ),
+    ).toBe(true);
+    expect(
+      parseHostAiEditingMessage(
+        {
+          type: "ipollowork:studio-ai-editing",
+          projectId: "video-1",
+          active: false,
+        },
+        "video-1",
+      ),
+    ).toBe(false);
+    expect(
+      parseHostAiEditingMessage(
+        {
+          type: "ipollowork:studio-ai-editing",
+          projectId: "video-2",
+          active: true,
+        },
+        "video-1",
+      ),
+    ).toBeNull();
+    expect(
+      parseHostAiEditingMessage(
+        {
+          type: "ipollowork:studio-ai-editing",
+          projectId: "video-1",
+          active: "true",
+        },
+        "video-1",
+      ),
+    ).toBeNull();
+  });
+
+  it("places the Figma AI editing status directly below the video canvas", () => {
+    const header = readFileSync(new URL("./StudioHeader.tsx", import.meta.url), "utf8");
+    const preview = readFileSync(new URL("./nle/PreviewPane.tsx", import.meta.url), "utf8");
+
+    expect(header).not.toContain('data-testid="studio-ai-editing-status"');
+    expect(preview).toContain('data-testid="studio-ai-editing-status"');
+    expect(preview).toContain('h-[34px] min-w-[241px]');
+    expect(preview).toContain('justify-center bg-transparent pb-2');
+    expect(preview).toContain('rounded-[6px] bg-[#087b82]');
+    expect(preview).toContain('text-[#a9e7ea]');
+    expect(preview).toContain('size-4 shrink-0 animate-spin text-[#a9e7ea]');
+    expect(preview).not.toContain('border-[#fff8e1]');
+    expect(preview).toContain('t("preview.aiEditingWarning")');
+    expect(preview.indexOf('data-testid="studio-ai-editing-status"')).toBeLessThan(
+      preview.indexOf("<PlayerControls"),
+    );
   });
 
   it("keeps the canvas selection frame independent from the right panel", () => {
@@ -455,31 +493,35 @@ describe("Studio right panel layout", () => {
 
   it("separates selected-element animation editing from the effects catalog", () => {
     const source = readFileSync(new URL("./StudioRightPanel.tsx", import.meta.url), "utf8");
+    const toast = readFileSync(new URL("./StudioToast.tsx", import.meta.url), "utf8");
 
     expect(source).toContain('label={t("right.design")}');
     expect(source).toContain('label={t("right.animation")}');
     expect(source).not.toContain('label={t("right.catalog")}');
-    expect(source).toContain("setPendingMotionDraft(null);");
     expect(source).toContain('selectStudioPanel("animation");');
-    expect(source).toContain(
-      'inspectorMode={rightPanelTab === "animation-properties" ? "animation" : "properties"}',
-    );
-    expect(source).toContain('showInspectorChrome={rightPanelTab !== "animation-properties"}');
+    expect(source).toContain('inspectorMode="properties"');
+    expect(source).toContain("showInspectorChrome");
     expect(source).not.toContain('role="tablist"');
     expect(source).not.toContain('t("right.animationTemplates")');
     expect(source).not.toContain('t("right.animationProperties")');
-    expect(source).toContain(
-      "<AnimationTemplatesTab onSelectTemplate={selectAnimationTemplate} />",
-    );
-    expect(source).toContain("<AnimationPropertiesPanel");
-    expect(source).toContain("onApplied={() => {");
-    expect(source).toContain("setPendingMotionDraft(null);");
+    expect(source).toContain("<AnimationTemplatesTab");
+    expect(source).toContain("onMutate={handleMotionMutation}");
+    expect(source).toContain("onStatus={(status) =>");
+    expect(source).not.toContain("<AnimationPropertiesPanel");
+    expect(source).not.toContain("pendingMotionDraft");
     expect(source).not.toContain("previewRange");
-    expect(source).toContain('showToast(tx("Animation applied"), "info");');
-    expect(source).toContain('setRightPanelTab("animation-properties")');
-    expect(source).toContain("const showAnimationProperties =");
-    expect(source).toContain("pendingMotionDraft !== null || hasSelectedSemanticMotion");
-    expect(source).toContain("currentAnimationSelectionKey !== pendingAnimationSelectionKey");
+    expect(source).toContain('status === "applied"');
+    expect(source).toContain('status === "selection-required"');
+    expect(source).toContain('? "animation.selectElement"');
+    expect(source).toContain('"notice"');
+    expect(toast).toContain('data-testid="studio-toast-surface"');
+    expect(toast).toContain('? "#FFFFFF"');
+    expect(toast).toContain('isNotice ? "text-black" : "text-neutral-200"');
+    expect(toast).toContain('isNotice ? "rounded-[6px] font-sans" : "rounded-2xl"');
+    expect(toast).toContain('? "none"');
+    expect(toast).toContain('? "0 8px 32px rgba(0,0,0,0.35)"');
+    expect(source).not.toContain('setRightPanelTab("animation-properties")');
+    expect(source).not.toContain("const showAnimationProperties =");
     expect(source).toContain('rightPanelTab === "catalog" || rightPanelTab === "effects"');
     expect(source).toContain('<BlocksTab page="effects" onAddBlock={onAddBlock} />');
     expect(source).not.toContain("<LayersPanel />");
@@ -710,7 +752,7 @@ describe("Studio right panel layout", () => {
     expect(toolbar).toContain('canSplit ? "Split clip at playhead"');
     expect(toolbar).toContain("isSplitTimeWithinBounds(currentTime");
     expect(toolbar).toContain("enabled: STUDIO_KEYFRAMES_ENABLED && canToggleKeyframe");
-    expect(toolbar).toContain('!canToggleKeyframe');
+    expect(toolbar).toContain("!canToggleKeyframe");
     expect(toolbar).toContain(': "Add keyframe at playhead"');
     expect(toolbar).toContain("figmaToolbarUndo.svg?url");
     expect(toolbar).toContain("figmaToolbarRedo.svg?url");
@@ -761,16 +803,23 @@ describe("Studio right panel layout", () => {
     expect(canvasContextMenu).toContain('tx("Saving…")');
   });
 
-  it("keeps timeline toolbar feature icons inset within their button hit areas", () => {
+  it("renders the timeline toolbar SVG resources at their exact Figma dimensions", () => {
     const toolbar = readFileSync(new URL("./TimelineToolbar.tsx", import.meta.url), "utf8");
+    const dividerIcon = readFileSync(
+      new URL("../icons/figmaToolbarDivider.svg", import.meta.url),
+      "utf8",
+    );
 
     expect(toolbar).toContain(
-      'function ToolbarIcon({ src, size = 16 }: { src: string; size?: number })',
+      "width = 16,\n  height = width,",
     );
-    expect(toolbar).toContain("<ToolbarIcon src={diamondIconSrc} />");
-    expect(toolbar).toContain("<ToolbarIcon src={trashIconSrc} />");
-    expect(toolbar).not.toContain("<ToolbarIcon src={diamondIconSrc} size={24} />");
-    expect(toolbar).not.toContain("<ToolbarIcon src={trashIconSrc} size={24} />");
+    expect(toolbar).toContain(
+      "<ToolbarIcon src={dividerIconSrc} width={6} height={16.667} />",
+    );
+    expect(toolbar).toContain("<ToolbarIcon src={diamondIconSrc} width={24} />");
+    expect(toolbar).toContain("<ToolbarIcon src={trashIconSrc} width={24} />");
+    expect(dividerIcon).toContain('width="6" height="16.6667"');
+    expect(dividerIcon).toContain('stroke="#EBEBEB" stroke-width="1.33333"');
   });
 
   it("routes visible-element deletes through one immediate guarded transaction", () => {
@@ -806,7 +855,9 @@ describe("Studio right panel layout", () => {
       "handleDomEditElementDelete(timelineClipContextMenu.selection)",
     );
     expect(editorShell).toContain("void onDeleteElement(element)");
-    expect(trashIcon).toContain('stroke="#DC2626"');
+    expect(trashIcon).toContain('id="lucide/trash-2"');
+    expect(trashIcon).toContain('stroke="#858A94"');
+    expect(trashIcon).not.toContain('stroke="#DC2626"');
 
     const hotkeyDelete = hotkeys.slice(hotkeys.indexOf('event.key === "Delete"'));
     expect(hotkeyDelete.indexOf("handleDomEditElementDelete(domSel)")).toBeLessThan(

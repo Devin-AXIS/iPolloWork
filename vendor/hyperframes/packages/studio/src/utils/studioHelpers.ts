@@ -10,7 +10,14 @@ export interface EditingFile {
 
 export interface AppToast {
   message: string;
-  tone: "error" | "info";
+  tone: "error" | "info" | "notice";
+}
+
+export function parseHostAiEditingMessage(value: unknown, projectId: string): boolean | null {
+  if (typeof value !== "object" || value === null) return null;
+  if (!("type" in value) || value.type !== "ipollowork:studio-ai-editing") return null;
+  if (!("projectId" in value) || value.projectId !== projectId) return null;
+  return "active" in value && typeof value.active === "boolean" ? value.active : null;
 }
 
 export type RightPanelTab =

@@ -18,7 +18,7 @@ type TranslationKey =
   | "header.edit"
   | "header.preview"
   | "header.previewComingSoon"
-  | "header.aiEditingWarning"
+  | "preview.aiEditingWarning"
   | "header.undo"
   | "header.redo"
   | "header.capture"
@@ -55,6 +55,31 @@ type TranslationKey =
   | "assets.categoryImages"
   | "assets.categoryVideo"
   | "assets.categoryFonts"
+  | "animation.searchPlaceholder"
+  | "animation.searchLabel"
+  | "animation.selected"
+  | "animation.filterAll"
+  | "animation.filterBoxAutomation"
+  | "animation.filterText"
+  | "animation.used"
+  | "animation.unused"
+  | "animation.inUse"
+  | "animation.apply"
+  | "animation.edit"
+  | "animation.remove"
+  | "animation.close"
+  | "animation.start"
+  | "animation.end"
+  | "animation.speed"
+  | "animation.loop"
+  | "animation.done"
+  | "animation.saving"
+  | "animation.saveError"
+  | "animation.noMatches"
+  | "animation.selectElement"
+  | "animation.applied"
+  | "animation.updated"
+  | "animation.removed"
   | "sidebar.selectFile"
   | "sidebar.lint"
   | "sidebar.linting"
@@ -113,7 +138,7 @@ const messages: Record<StudioLocale, Record<TranslationKey, string>> = {
     "header.edit": "Edit",
     "header.preview": "Preview",
     "header.previewComingSoon": "Preview is coming soon",
-    "header.aiEditingWarning": "AI is editing the video · Avoid manual edits",
+    "preview.aiEditingWarning": "AI is editing the video · Avoid manual edits",
     "header.undo": "Undo",
     "header.redo": "Redo",
     "header.capture": "Capture",
@@ -150,6 +175,31 @@ const messages: Record<StudioLocale, Record<TranslationKey, string>> = {
     "assets.categoryImages": "Images",
     "assets.categoryVideo": "Video",
     "assets.categoryFonts": "Fonts",
+    "animation.searchPlaceholder": "Search animations...",
+    "animation.searchLabel": "Search animations",
+    "animation.selected": "Selected: {label}",
+    "animation.filterAll": "All",
+    "animation.filterBoxAutomation": "Box & Automation",
+    "animation.filterText": "Text",
+    "animation.used": "In use",
+    "animation.unused": "Unused",
+    "animation.inUse": "In Use",
+    "animation.apply": "Apply",
+    "animation.edit": "Edit",
+    "animation.remove": "Remove",
+    "animation.close": "Close",
+    "animation.start": "Start",
+    "animation.end": "End",
+    "animation.speed": "Speed",
+    "animation.loop": "Loop",
+    "animation.done": "Done",
+    "animation.saving": "Saving...",
+    "animation.saveError": "The animation couldn't be saved. Please try again.",
+    "animation.noMatches": "No matching animations",
+    "animation.selectElement": "Select an element in the video preview first",
+    "animation.applied": "Animation applied",
+    "animation.updated": "Animation updated",
+    "animation.removed": "Animation removed",
     "sidebar.selectFile": "Select a file to edit",
     "sidebar.lint": "Lint",
     "sidebar.linting": "Linting...",
@@ -208,7 +258,7 @@ const messages: Record<StudioLocale, Record<TranslationKey, string>> = {
     "header.edit": "编辑",
     "header.preview": "预览",
     "header.previewComingSoon": "预览功能即将开放",
-    "header.aiEditingWarning": "AI 修改视频中，建议不要手动修改",
+    "preview.aiEditingWarning": "AI 修改视频中，建议不要手动修改",
     "header.undo": "撤销",
     "header.redo": "重做",
     "header.capture": "截图",
@@ -245,6 +295,31 @@ const messages: Record<StudioLocale, Record<TranslationKey, string>> = {
     "assets.categoryImages": "图片",
     "assets.categoryVideo": "视频",
     "assets.categoryFonts": "字体",
+    "animation.searchPlaceholder": "搜索动画...",
+    "animation.searchLabel": "搜索动画",
+    "animation.selected": "已选中：{label}",
+    "animation.filterAll": "全部",
+    "animation.filterBoxAutomation": "盒子与自动化",
+    "animation.filterText": "文字动画",
+    "animation.used": "已使用",
+    "animation.unused": "未使用",
+    "animation.inUse": "已应用",
+    "animation.apply": "应用",
+    "animation.edit": "编辑",
+    "animation.remove": "取消应用",
+    "animation.close": "关闭",
+    "animation.start": "开始",
+    "animation.end": "结束",
+    "animation.speed": "倍速",
+    "animation.loop": "循环播放",
+    "animation.done": "完成",
+    "animation.saving": "保存中...",
+    "animation.saveError": "动画未能保存，请重试。",
+    "animation.noMatches": "没有匹配的动画",
+    "animation.selectElement": "请先在视频播放区选中元素",
+    "animation.applied": "动画已应用",
+    "animation.updated": "动画已更新",
+    "animation.removed": "动画已取消应用",
     "sidebar.selectFile": "选择一个文件进行编辑",
     "sidebar.lint": "检查",
     "sidebar.linting": "检查中...",

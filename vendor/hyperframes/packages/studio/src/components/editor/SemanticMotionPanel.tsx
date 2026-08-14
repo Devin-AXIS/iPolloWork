@@ -14,7 +14,8 @@ import {
   type MotionTargetKind,
 } from "@hyperframes/core/motion-presets";
 import type { AnimationTemplateDraft } from "../sidebar/AnimationTemplatesTab";
-import { Trash } from "../../icons/SystemIcons";
+import { Trash, X } from "../../icons/SystemIcons";
+import { useStudioI18n } from "../../i18n";
 import {
   rebaseMotionPresetKeyframes,
   resolveSemanticMotionTiming,
@@ -223,6 +224,8 @@ export function AnimationPropertiesPanel({
   animations,
   onMutate,
   onApplied,
+  onClose,
+  title,
 }: {
   draft: AnimationTemplateDraft | null;
   element: DomEditSelection | null;
@@ -233,7 +236,10 @@ export function AnimationPropertiesPanel({
     selectionOverride?: DomEditSelection | null,
   ) => Promise<boolean>;
   onApplied: () => void;
+  onClose?: () => void;
+  title?: string;
 }) {
+  const { t } = useStudioI18n();
   const existing = useMemo(() => resolveMotionInstances(animations).at(-1), [animations]);
   const selection = draft?.selection ?? element;
   const presetId = draft?.presetId ?? existing?.instance.presetId;
@@ -277,6 +283,8 @@ export function AnimationPropertiesPanel({
   const [endTime, setEndTime] = useState(initialEnd);
   const [applying, setApplying] = useState(false);
   const [applyFailed, setApplyFailed] = useState(false);
+  const panelRef = useRef<HTMLDivElement | null>(null);
+  const closeButtonRef = useRef<HTMLButtonElement | null>(null);
   const speedRef = useRef(speed);
   const loopRef = useRef(loop);
   const startTimeRef = useRef(startTime);
@@ -289,6 +297,24 @@ export function AnimationPropertiesPanel({
     },
     [],
   );
+  useEffect(() => {
+    if (!onClose) return;
+    closeButtonRef.current?.focus();
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      onClose();
+    };
+    const closeOnOutsidePointer = (event: PointerEvent) => {
+      if (event.target instanceof Node && !panelRef.current?.contains(event.target)) onClose();
+    };
+    document.addEventListener("keydown", closeOnEscape);
+    document.addEventListener("pointerdown", closeOnOutsidePointer);
+    return () => {
+      document.removeEventListener("keydown", closeOnEscape);
+      document.removeEventListener("pointerdown", closeOnOutsidePointer);
+    };
+  }, [onClose]);
   const signature = `${selection?.sourceFile ?? ""}:${selection?.id ?? selection?.hfId ?? selection?.selector ?? ""}:${templateId ?? presetId ?? ""}`;
   const previewSignature =
     selection && preset && targetKind && applicationKind && parameters
@@ -349,7 +375,7 @@ export function AnimationPropertiesPanel({
   if (!selection || !preset || !targetKind || !applicationKind || !parameters) {
     return (
       <div className="grid h-full place-items-center px-6 text-center text-[11px] leading-5 text-panel-text-3">
-        请先选择一个动画，或在视频播放区选择已有动画的元素。
+        {t("animation.selectElement")}
       </div>
     );
   }
@@ -388,110 +414,155 @@ export function AnimationPropertiesPanel({
     }
   };
 
+  const speedOptions = [0.5, 0.75, 1, 1.25, 1.5, 2].includes(speed)
+    ? [0.5, 0.75, 1, 1.25, 1.5, 2]
+    : [0.5, 0.75, 1, 1.25, 1.5, 2, speed].sort((a, b) => a - b);
+
   return (
-    <div className="space-y-4 px-4 py-3" data-testid="animation-properties-panel">
-      <div className="rounded-[8px] bg-[#20bbc0]/10 px-3 py-2 text-[10px] leading-4 text-[#168e92]">
-        {selection.label} · {preset.label}
-      </div>
-      <FlatSlider
-        label="动画速度"
-        value={speed}
-        min={0.25}
-        max={2}
-        step={0.05}
-        tier="explicitCustom"
-        displayValue={`${speed.toFixed(2)}×`}
-        commitMode="release"
-        onCommit={(value) => {
-          speedRef.current = value;
-          setSpeed(value);
-          if (!loopRef.current && preset) {
-            const nextDuration = defaultMotionDuration(preset) / value;
-            const nextEnd = clampMotionTime(
-              startTimeRef.current + nextDuration,
-              startTimeRef.current + 0.1,
-              timelineSpan.end,
-            );
-            endTimeRef.current = nextEnd;
-            setEndTime(nextEnd);
-          }
-        }}
-      />
-      <div className="grid grid-cols-2 gap-2">
-        <FlatRow
-          label="开始时间"
-          value={startTime.toFixed(2)}
-          tier="explicitCustom"
-          inputType="number"
-          suffix={<span className="text-[10px] text-panel-text-3">s</span>}
-          onCommit={(value) => {
-            const next = clampMotionTime(
-              Number(value),
-              timelineSpan.start,
-              Math.max(timelineSpan.start, endTimeRef.current - 0.1),
-            );
-            startTimeRef.current = next;
-            setStartTime(next);
-          }}
-        />
-        <FlatRow
-          label="结束时间"
-          value={endTime.toFixed(2)}
-          tier="explicitCustom"
-          inputType="number"
-          suffix={<span className="text-[10px] text-panel-text-3">s</span>}
-          onCommit={(value) => {
-            const next = clampMotionTime(
-              Number(value),
-              startTimeRef.current + 0.1,
-              timelineSpan.end,
-            );
-            endTimeRef.current = next;
-            setEndTime(next);
-          }}
-        />
-      </div>
-      <div className="flex h-[38px] items-center justify-between rounded-[7px] bg-panel-input px-3">
-        <span className="text-[11px] text-panel-text-2">循环播放</span>
-        <button
-          type="button"
-          role="switch"
-          aria-checked={loop}
-          aria-label="循环播放"
-          onClick={() => {
-            const next = !loopRef.current;
-            loopRef.current = next;
-            setLoop(next);
-            const nextEnd = next
-              ? timelineSpan.end
-              : clampMotionTime(
-                  startTimeRef.current + duration,
+    <div
+      ref={panelRef}
+      role="dialog"
+      aria-label={title ?? preset.label}
+      className="w-[200px] overflow-hidden rounded-[8px] bg-white px-4 pb-4 pt-2 text-[#24262b] shadow-[0_12px_36px_rgba(22,30,36,0.22)] ring-1 ring-black/5"
+      data-testid="animation-editor-popover"
+      data-animation-id={existing?.animation.id}
+    >
+      <div className="space-y-2" data-testid="animation-properties-panel">
+        <div className="flex h-5 items-center justify-between gap-2">
+          <strong className="min-w-0 truncate text-[12px] font-semibold text-black">
+            {title ?? preset.label}
+          </strong>
+          {onClose ? (
+            <button
+              ref={closeButtonRef}
+              type="button"
+              onClick={onClose}
+              aria-label={t("animation.close")}
+              className="grid size-5 shrink-0 place-items-center rounded text-[#5a6774] hover:bg-[#f5f6f9]"
+            >
+              <X size={14} />
+            </button>
+          ) : null}
+        </div>
+
+        <div className="grid grid-cols-2 gap-2">
+          <label className="flex h-[34px] items-center gap-1 rounded-[6px] bg-[#f5f6f9] px-2">
+            <span className="text-[10px] text-[#858a94]">{t("animation.start")}</span>
+            <input
+              type="number"
+              step="0.1"
+              value={startTime}
+              aria-label={t("animation.start")}
+              onChange={(event) => {
+                const next = clampMotionTime(
+                  Number(event.target.value),
+                  timelineSpan.start,
+                  Math.max(timelineSpan.start, endTimeRef.current - 0.1),
+                );
+                startTimeRef.current = next;
+                setStartTime(next);
+              }}
+              className="min-w-0 flex-1 bg-transparent text-right text-[11px] tabular-nums outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+            />
+            <span className="text-[10px] text-[#858a94]">s</span>
+          </label>
+          <label className="flex h-[34px] items-center gap-1 rounded-[6px] bg-[#f5f6f9] px-2">
+            <span className="text-[10px] text-[#858a94]">{t("animation.end")}</span>
+            <input
+              type="number"
+              step="0.1"
+              value={endTime}
+              aria-label={t("animation.end")}
+              onChange={(event) => {
+                const next = clampMotionTime(
+                  Number(event.target.value),
                   startTimeRef.current + 0.1,
                   timelineSpan.end,
                 );
-            endTimeRef.current = nextEnd;
-            setEndTime(nextEnd);
-          }}
-          className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full p-0.5 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#20bbc0]/40 ${loop ? "bg-[#20bbc0]" : "bg-panel-border"}`}
+                endTimeRef.current = next;
+                setEndTime(next);
+              }}
+              className="min-w-0 flex-1 bg-transparent text-right text-[11px] tabular-nums outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+            />
+            <span className="text-[10px] text-[#858a94]">s</span>
+          </label>
+        </div>
+
+        <label className="flex h-[34px] items-center justify-between rounded-[6px] bg-[#f5f6f9] px-2">
+          <span className="text-[10px] text-[#858a94]">{t("animation.speed")}</span>
+          <select
+            value={speed}
+            aria-label={t("animation.speed")}
+            data-animation-control="speed"
+            onChange={(event) => {
+              const nextSpeed = Number(event.target.value);
+              speedRef.current = nextSpeed;
+              setSpeed(nextSpeed);
+              if (!loopRef.current) {
+                const nextEnd = clampMotionTime(
+                  startTimeRef.current + defaultMotionDuration(preset) / nextSpeed,
+                  startTimeRef.current + 0.1,
+                  timelineSpan.end,
+                );
+                endTimeRef.current = nextEnd;
+                setEndTime(nextEnd);
+              }
+            }}
+            className="bg-transparent text-[11px] outline-none"
+          >
+            {speedOptions.map((value) => (
+              <option key={value} value={value}>
+                {value}x
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <div className="flex h-[34px] items-center justify-between rounded-[6px] bg-[#f5f6f9] px-2">
+          <span className="text-[10px] text-[#858a94]">{t("animation.loop")}</span>
+          <button
+            type="button"
+            role="switch"
+            aria-checked={loop}
+            aria-label={t("animation.loop")}
+            data-animation-control="loop"
+            onClick={() => {
+              const next = !loopRef.current;
+              loopRef.current = next;
+              setLoop(next);
+              const nextEnd = next
+                ? timelineSpan.end
+                : clampMotionTime(
+                    startTimeRef.current + duration,
+                    startTimeRef.current + 0.1,
+                    timelineSpan.end,
+                  );
+              endTimeRef.current = nextEnd;
+              setEndTime(nextEnd);
+            }}
+            className={`relative inline-flex h-[15px] w-[30px] shrink-0 items-center rounded-full p-px transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#20bbc0]/40 ${loop ? "bg-[#20bbc0]" : "bg-[#d5d7dc]"}`}
+          >
+            <span
+              className={`pointer-events-none block size-[13px] rounded-full bg-white shadow-sm transition-transform ${loop ? "translate-x-[15px]" : "translate-x-0"}`}
+            />
+          </button>
+        </div>
+
+        <button
+          type="button"
+          onClick={() => void confirm()}
+          disabled={applying}
+          data-animation-action="done"
+          className="h-7 w-full rounded-[6px] bg-[#1fbac0] text-[10px] text-white hover:bg-[#18a9ae] disabled:cursor-wait disabled:opacity-70"
         >
-          <span
-            className={`pointer-events-none block h-4 w-4 rounded-full bg-white shadow-sm transition-transform ${loop ? "translate-x-4" : "translate-x-0"}`}
-          />
+          {applying ? t("animation.saving") : t("animation.done")}
         </button>
+        {applyFailed ? (
+          <p role="alert" className="text-[10px] leading-4 text-red-400">
+            {t("animation.saveError")}
+          </p>
+        ) : null}
       </div>
-      <button
-        type="button"
-        onClick={() => void confirm()}
-        disabled={applying}
-        className="h-9 w-full rounded-[7px] bg-[#20bbc0] text-[12px] font-semibold text-white transition-colors hover:bg-[#18a9ae] disabled:cursor-wait disabled:opacity-70"
-      >
-        {applying ? "正在应用…" : "确定应用"}
-      </button>
-      {applyFailed ? (
-        <p role="alert" className="text-[10px] leading-4 text-red-400">
-          动画未能保存，请重新选择元素后再试。
-        </p>
-      ) : null}
     </div>
   );
 }
