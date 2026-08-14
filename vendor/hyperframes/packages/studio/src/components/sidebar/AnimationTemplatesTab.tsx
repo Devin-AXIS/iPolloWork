@@ -308,7 +308,7 @@ export const ANIMATION_TEMPLATES: readonly AnimationTemplateDefinition[] = [
     },
     preview: "text-focus",
     presetId: "text.enter.editorial-emphasis",
-    parameters: { colorSource: "custom", color: "#20BBC0", unit: "word", stagger: 0.075 },
+    parameters: { colorSource: "custom", color: "#1FBAC0", unit: "word", stagger: 0.075 },
     keywords: ["advanced", "高级", "editorial", "编辑"],
   },
   {
@@ -318,7 +318,7 @@ export const ANIMATION_TEMPLATES: readonly AnimationTemplateDefinition[] = [
     description: { en: "A teal pill follows each spoken word", zh: "蓝绿色胶囊按词接力高亮" },
     preview: "text-highlight",
     presetId: "text.emphasis.karaoke-flow",
-    parameters: { colorSource: "custom", color: "#20BBC0", unit: "word", stagger: 0.12 },
+    parameters: { colorSource: "custom", color: "#1FBAC0", unit: "word", stagger: 0.12 },
     keywords: ["advanced", "高级", "karaoke", "字幕", "逐词"],
   },
   {
@@ -347,7 +347,7 @@ export const ANIMATION_TEMPLATES: readonly AnimationTemplateDefinition[] = [
     parameters: {
       colorSource: "custom",
       color: "#5B6CFF",
-      accentColor: "#20BBC0",
+      accentColor: "#1FBAC0",
       unit: "word",
       stagger: 0.055,
     },
@@ -748,7 +748,7 @@ const AnimationTemplateCard = memo(function AnimationTemplateCard({
       <div className="relative rounded-[8px]">
         <TemplatePreview template={template} active={previewActive} />
         <span
-          className="pointer-events-none absolute inset-0 rounded-[8px] border-2 border-[#20bbc0] opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100"
+          className="pointer-events-none absolute inset-0 rounded-[8px] border-2 border-[#1FBAC0] opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100"
           data-testid="animation-card-hover-border"
         />
       </div>
@@ -789,13 +789,13 @@ const AnimationTemplateCard = memo(function AnimationTemplateCard({
           data-animation-action="apply"
           aria-label={`${t("animation.apply")} ${template.title[locale]}`}
           onClick={() => void onApply(template)}
-          className="block w-full rounded-[8px] text-left outline-none disabled:cursor-not-allowed"
+          className="block w-full rounded-[8px] text-left outline-none active:scale-[0.99] focus-visible:ring-2 focus-visible:ring-[#1FBAC0]/60 focus-visible:ring-offset-1 focus-visible:ring-offset-panel-bg disabled:cursor-wait disabled:opacity-60"
         >
           {preview}
         </button>
       )}
       <div className="mt-1 flex h-5 min-w-0 items-center justify-between gap-1 pl-1">
-        <div className="min-w-0 flex-1 truncate text-[12px] font-semibold text-black">
+        <div className="min-w-0 flex-1 truncate text-[12px] font-semibold text-black dark:text-panel-text-1">
           {template.title[locale]}
         </div>
         {applied ? (
@@ -804,7 +804,7 @@ const AnimationTemplateCard = memo(function AnimationTemplateCard({
               type="button"
               data-animation-action="edit"
               onClick={(event) => void onEdit(template, event.currentTarget)}
-              className="h-5 rounded-[2px] px-1 text-[10px] text-[#5a6774] hover:bg-[#f5f6f9]"
+              className="h-5 rounded-[2px] px-1 text-[10px] text-[#5a6774] transition-[color,background-color,transform] hover:bg-[#f5f6f9] active:scale-[0.96] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1FBAC0]/50 dark:text-panel-text-2 dark:hover:bg-panel-hover dark:hover:text-panel-text-1"
             >
               {t("animation.edit")}
             </button>
@@ -813,7 +813,7 @@ const AnimationTemplateCard = memo(function AnimationTemplateCard({
               disabled={loading}
               data-animation-action="remove"
               onClick={() => void onRemove(template, applied)}
-              className="h-5 rounded-[2px] px-1 text-[10px] text-[#5a6774] hover:bg-[#f5f6f9] disabled:cursor-wait disabled:opacity-60"
+              className="h-5 rounded-[2px] px-1 text-[10px] text-[#5a6774] transition-[color,background-color,transform] hover:bg-[#f5f6f9] active:scale-[0.96] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1FBAC0]/50 disabled:cursor-wait disabled:opacity-60 dark:text-panel-text-2 dark:hover:bg-panel-hover dark:hover:text-panel-text-1"
             >
               {t("animation.remove")}
             </button>
@@ -843,7 +843,7 @@ function AnimationTemplateGroup({
         type="button"
         aria-expanded={expanded}
         onClick={onToggle}
-        className="flex h-12 w-full items-center justify-between px-[17px] text-[12px] font-medium text-[#2c2d2a] shadow-[inset_3px_0_0_#20bbc0]"
+        className="flex h-12 w-full items-center justify-between px-[17px] text-[12px] font-medium text-[#2c2d2a] shadow-[inset_3px_0_0_#1FBAC0] transition-colors hover:bg-[#f5f6f9] active:bg-[#eceef2] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#1FBAC0]/50 dark:text-panel-text-1 dark:hover:bg-panel-input dark:active:bg-panel-hover"
       >
         {title}
         <ChevronDown
@@ -1109,20 +1109,14 @@ export const AnimationTemplatesTab = memo(function AnimationTemplatesTab({
             onChange={(event) => setSearch(event.target.value)}
             placeholder={t("animation.searchPlaceholder")}
             aria-label={t("animation.searchLabel")}
-            className="h-[34px] w-full rounded-lg border-0 bg-panel-input pl-9 pr-3 text-[13px] text-panel-text-1 outline-none placeholder:text-[#a2a6af] focus:ring-1 focus:ring-[#20bbc0]/50"
+            className="h-[34px] w-full rounded-lg border-0 bg-panel-input pl-9 pr-3 text-[13px] text-panel-text-1 outline-none placeholder:text-[#a2a6af] focus:ring-1 focus:ring-[#1FBAC0]/50"
           />
         </div>
-        <div
-          className={`rounded-[8px] px-3 py-2 text-[10px] leading-4 ${
-            domEditSelection
-              ? "bg-[#20bbc0]/10 text-[#168e92]"
-              : "bg-panel-input text-panel-text-3"
-          }`}
-        >
-          {domEditSelection
-            ? t("animation.selected", { label: domEditSelection.label })
-            : t("animation.selectElement")}
-        </div>
+        {domEditSelection ? (
+          <div className="rounded-[8px] bg-[#1FBAC0]/10 px-3 py-2 text-[10px] leading-4 text-[#168e92]">
+            {t("animation.selected", { label: domEditSelection.label })}
+          </div>
+        ) : null}
       </div>
 
       <div className="hf-animation-template-scroll min-h-0 flex-1 overflow-y-auto">
@@ -1141,10 +1135,10 @@ export const AnimationTemplatesTab = memo(function AnimationTemplatesTab({
                 data-category={id}
                 aria-pressed={category === id}
                 onClick={() => setCategory(id)}
-                className={`hf-animation-category-filter h-7 rounded-[6px] px-2.5 text-[10px] font-medium transition-colors ${
+                className={`hf-animation-category-filter h-7 rounded-[6px] px-2.5 text-[10px] font-medium transition-[color,background-color,box-shadow,transform] active:scale-[0.97] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1FBAC0]/50 focus-visible:ring-offset-1 focus-visible:ring-offset-panel-bg ${
                   category === id
-                    ? "bg-black"
-                    : "bg-[#f5f6f9] text-[#5a6774] hover:bg-[#eceef2]"
+                    ? "bg-black text-white dark:bg-panel-accent/20 dark:text-panel-text-0 dark:ring-1 dark:ring-inset dark:ring-panel-accent/45"
+                    : "bg-[#f5f6f9] text-[#5a6774] hover:bg-[#eceef2] dark:bg-panel-input dark:text-panel-text-2 dark:hover:bg-panel-hover dark:hover:text-panel-text-1"
                 }`}
               >
                 {label}

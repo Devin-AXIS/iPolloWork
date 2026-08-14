@@ -499,7 +499,7 @@ export const AssetsTab = memo(function AssetsTab({
                 </span>
                 <span className="text-xs font-normal tabular-nums">{categorized[cat].length}</span>
                 <span
-                  className="absolute inset-y-0 left-0 w-[3px] bg-[#20bbc0]"
+                  className="absolute inset-y-0 left-0 w-[3px] bg-[#1FBAC0]"
                   aria-hidden="true"
                 />
               </button>

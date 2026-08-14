@@ -41,3 +41,9 @@ allowBuilds:
   node-pty: true
   protobufjs: true
   sharp: true
+
+# electron/osx-sign 1.3.1 walks every bundled file with unbounded parallel I/O.
+# The bundled DeepSeek Harness runtime is large enough to exhaust macOS file
+# descriptors during release signing, so keep filesystem reads bounded.
+patchedDependencies:
+  "@electron/osx-sign@1.3.1": patches/@electron__osx-sign@1.3.1.patch

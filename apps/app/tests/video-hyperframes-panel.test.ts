@@ -30,16 +30,16 @@ describe("HyperFrames Video Studio", () => {
       new URL("../src/react-app/domains/session/chat/session-page.tsx", import.meta.url),
       "utf8",
     );
-    const headerSource = readFileSync(
-      new URL("../../../vendor/hyperframes/packages/studio/src/components/StudioHeader.tsx", import.meta.url),
+    const previewSource = readFileSync(
+      new URL("../../../vendor/hyperframes/packages/studio/src/components/nle/PreviewPane.tsx", import.meta.url),
       "utf8",
     );
 
     expect(sessionPageSource).toContain("aiEditing={isStreamingSessionStatus(");
     expect(panelSource).toContain('type: "ipollowork:studio-ai-editing"');
     expect(panelSource).toContain("active: aiEditing");
-    expect(headerSource).toContain('data-testid="studio-ai-editing-status"');
-    expect(headerSource).toContain('t("header.aiEditingWarning")');
+    expect(previewSource).toContain('data-testid="studio-ai-editing-status"');
+    expect(previewSource).toContain('t("preview.aiEditingWarning")');
   });
 
   test("passes the Ian illustration skill through the composer and asset-library contract", () => {
@@ -518,7 +518,7 @@ describe("HyperFrames Video Studio", () => {
       "utf8",
     );
 
-    expect(voicePanelSource).toContain("将使用百炼免费临时存储");
+    expect(voicePanelSource).toContain('t("video.voice.temp_storage_help")');
     expect(voicePanelSource).toContain("disabled={cloning}");
     expect(voicePanelSource).not.toContain("disabled={!storageReady || cloning}");
     expect(voicePanelSource).not.toContain("!mediaReady || !storageReady");
@@ -703,7 +703,7 @@ describe("HyperFrames Video Studio", () => {
     );
 
     expect(electronDevSource).toContain('const hyperframesStudioBuild = resolve(hyperframesRoot, "packages", "cli", "dist", "studio", "index.html")');
-    expect(electronDevSource).toContain("newestMtimeMs(studioSourceRoot) > studioBuildTime");
+    expect(electronDevSource).toContain("newestBuildInputTime > studioBuildTime");
     expect(electronDevSource).toContain('runSync(bunCmd, ["run", "build:local-studio"]');
   });
 

@@ -134,7 +134,7 @@ describe("AnimationTemplatesTab catalog", () => {
     const removeAction = source.indexOf('data-animation-action="remove"');
 
     expect(source).toContain(
-      'absolute inset-0 rounded-[8px] border-2 border-[#20bbc0] opacity-0',
+      'absolute inset-0 rounded-[8px] border-2 border-[#1FBAC0] opacity-0',
     );
     expect(source).toContain('data-testid="animation-card-hover-border"');
     expect(source).toContain("hf-animation-category-filter");

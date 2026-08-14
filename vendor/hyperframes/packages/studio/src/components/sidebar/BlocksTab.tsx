@@ -144,7 +144,7 @@ export const BlocksTab = memo(function BlocksTab({ page = "effects", onAddBlock 
             placeholder={locale === "zh" ? "搜索特效片段…" : "Search effect clips…"}
             aria-label={locale === "zh" ? "搜索特效片段" : "Search effect clips"}
             data-testid="block-catalog-search"
-            className="h-[34px] w-full rounded-lg border-0 bg-panel-input pl-9 pr-3 text-[13px] text-panel-text-1 outline-none transition-shadow placeholder:text-[#a2a6af] focus:ring-1 focus:ring-[#20bbc0]/50"
+            className="h-[34px] w-full rounded-lg border-0 bg-panel-input pl-9 pr-3 text-[13px] text-panel-text-1 outline-none transition-shadow placeholder:text-[#a2a6af] focus:ring-1 focus:ring-[#1FBAC0]/50"
           />
         </div>
         <label className="grid gap-[5px] text-[10px] font-medium leading-3 text-panel-text-3">
@@ -161,7 +161,7 @@ export const BlocksTab = memo(function BlocksTab({ page = "effects", onAddBlock 
               if (match) setActiveSection(match.id);
             }}
             aria-label={locale === "zh" ? "特效分类" : "Effect category"}
-            className="h-[34px] w-full rounded-lg border-0 bg-panel-input px-[11px] text-[13px] font-medium text-panel-text-1 outline-none focus:ring-1 focus:ring-[#20bbc0]/50"
+            className="h-[34px] w-full rounded-lg border-0 bg-panel-input px-[11px] text-[13px] font-medium text-panel-text-1 outline-none focus:ring-1 focus:ring-[#1FBAC0]/50"
           >
             <option value={ALL_SECTIONS_FILTER}>
               {locale === "zh" ? "全部特效" : "All effects"} · {totalCount}
@@ -347,7 +347,7 @@ function CatalogSectionGrid({
                   className={`relative -mx-4 flex h-12 w-[calc(100%+32px)] items-center gap-2 px-4 text-left text-panel-text-1 transition-colors hover:bg-panel-input/50 ${collapsedSections.has(section.id) ? "" : "mb-[14px]"}`}
                 >
                   <span
-                    className="absolute inset-y-0 left-0 w-[3px] bg-[#20bbc0]"
+                    className="absolute inset-y-0 left-0 w-[3px] bg-[#1FBAC0]"
                     aria-hidden="true"
                   />
                   {collapsedSections.has(section.id) ? (
@@ -693,7 +693,7 @@ const BlockCard = memo(function BlockCard({
       ref={setCardRef}
       role="button"
       tabIndex={0}
-      className="group/card min-w-0 cursor-pointer rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#20bbc0]/60"
+      className="group/card min-w-0 cursor-pointer rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1FBAC0]/60"
       style={{ contentVisibility: "auto", containIntrinsicSize: "160px" }}
       data-testid="block-catalog-card"
       data-block-name={block.name}
@@ -854,7 +854,7 @@ const BlockCard = memo(function BlockCard({
                 ? "\u8ba9 AI \u6309\u5f53\u524d\u573a\u666f\u96c6\u6210"
                 : "Ask AI to integrate this effect"
             }
-            className="flex h-7 min-w-0 items-center justify-center rounded-md bg-panel-input px-1 text-[9px] font-medium text-panel-text-1 transition-colors hover:bg-[#20bbc0]/12 hover:text-[#168e92]"
+            className="flex h-7 min-w-0 items-center justify-center rounded-md bg-panel-input px-1 text-[9px] font-medium text-panel-text-1 transition-colors hover:bg-[#1FBAC0]/12 hover:text-[#168e92]"
           >
             <span className="truncate">{locale === "zh" ? "\u4ea4\u7ed9 AI" : "Ask AI"}</span>
           </button>

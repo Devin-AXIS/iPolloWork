@@ -420,7 +420,7 @@ export function GradientField({
       toHexColor(hsvToRgb({ ...baseHsv, value: Math.min(1, baseHsv.value + 0.22) })),
       toHexColor(hsvToRgb({ ...baseHsv, value: Math.max(0.18, baseHsv.value - 0.22) })),
       toHexColor(hsvToRgb({ ...baseHsv, hue: (baseHsv.hue + 32) % 360 })),
-      "#20BBC0",
+      "#1FBAC0",
       "#7C5CFC",
       "#F6C344",
     ];
