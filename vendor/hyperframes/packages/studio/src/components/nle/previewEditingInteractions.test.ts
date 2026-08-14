@@ -113,6 +113,8 @@ describe("preview editing interactions", () => {
     );
     expect(emptyStateSource).not.toContain('tx("Record a gesture")');
     expect(emptyStateSource).not.toContain('text-panel-danger">●');
+    expect(emptyStateSource).not.toContain('tx("Describe a change to the agent")');
+    expect(emptyStateSource).not.toContain("⌘K");
     expect(previewOverlaysSource).toContain(
       "STUDIO_MULTI_SELECTION_ENABLED ? applyMarqueeSelection : undefined",
     );

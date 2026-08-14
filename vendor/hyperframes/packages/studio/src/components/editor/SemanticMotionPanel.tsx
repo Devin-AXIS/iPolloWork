@@ -540,7 +540,7 @@ export function AnimationPropertiesPanel({
               endTimeRef.current = nextEnd;
               setEndTime(nextEnd);
             }}
-            className={`relative inline-flex h-[15px] w-[30px] shrink-0 items-center rounded-full p-px transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#20bbc0]/40 ${loop ? "bg-[#20bbc0]" : "bg-[#d5d7dc]"}`}
+            className={`relative inline-flex h-[15px] w-[30px] shrink-0 items-center rounded-full p-px transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1FBAC0]/40 ${loop ? "bg-[#1FBAC0]" : "bg-[#d5d7dc]"}`}
           >
             <span
               className={`pointer-events-none block size-[13px] rounded-full bg-white shadow-sm transition-transform ${loop ? "translate-x-[15px]" : "translate-x-0"}`}
@@ -553,7 +553,7 @@ export function AnimationPropertiesPanel({
           onClick={() => void confirm()}
           disabled={applying}
           data-animation-action="done"
-          className="h-7 w-full rounded-[6px] bg-[#1fbac0] text-[10px] text-white hover:bg-[#18a9ae] disabled:cursor-wait disabled:opacity-70"
+          className="h-7 w-full rounded-[6px] bg-[#1FBAC0] text-[10px] text-white hover:bg-[#18a9ae] disabled:cursor-wait disabled:opacity-70"
         >
           {applying ? t("animation.saving") : t("animation.done")}
         </button>
@@ -786,7 +786,7 @@ function AppliedMotionEditor({
                 : Math.min(timelineSpan.end, start + instance.duration),
             })
           }
-          className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full p-0.5 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#20bbc0]/40 ${instance.loop ? "bg-[#20bbc0]" : "bg-panel-border"}`}
+          className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full p-0.5 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1FBAC0]/40 ${instance.loop ? "bg-[#1FBAC0]" : "bg-panel-border"}`}
         >
           <span
             className={`pointer-events-none block h-4 w-4 rounded-full bg-white shadow-sm transition-transform ${instance.loop ? "translate-x-4" : "translate-x-0"}`}

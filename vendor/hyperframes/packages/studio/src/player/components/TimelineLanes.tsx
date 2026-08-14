@@ -48,6 +48,7 @@ import { resolveTimelineSelectionSeekTime } from "../../utils/studioHelpers";
  */
 export interface TimelineLaneBaseProps {
   pps: number;
+  gutterWidth: number;
   trackContentWidth: number;
   theme: TimelineTheme;
   displayTrackOrder: number[];
@@ -122,6 +123,7 @@ interface TimelineLanesProps extends TimelineLaneBaseProps {
 
 export const TimelineLanes = memo(function TimelineLanes({
   pps,
+  gutterWidth,
   trackContentWidth,
   theme,
   displayTrackOrder,
@@ -281,6 +283,7 @@ export const TimelineLanes = memo(function TimelineLanes({
                 expandable={expandable}
                 theme={theme}
                 visualStyle={ts}
+                gutterWidth={gutterWidth}
                 onToggleHidden={(hidden) => {
                   void onToggleTrackHidden?.(trackNum, hidden);
                 }}

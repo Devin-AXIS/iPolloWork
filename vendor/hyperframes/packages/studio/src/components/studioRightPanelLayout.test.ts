@@ -217,11 +217,14 @@ describe("Studio right panel layout", () => {
 
     expect(header).toContain("min-h-[69px]");
     expect(header).toContain('aria-label={tx("Ask AI about selected element")}');
-    expect(header).toContain("h-8 flex-shrink-0");
+    expect(header).toContain("h-7 flex-shrink-0");
     expect(header).toContain("figmaAskAiSparkle.svg?url");
+    expect(header).toContain("figmaAskAiWordmark.svg?url");
     expect(header).toContain("hf-property-ask-ai");
-    expect(header).toContain("hf-property-ask-ai__label");
-    expect(header).toContain("focus-visible:ring-[#54b2ff]/60");
+    expect(header).toContain('locale === "zh"');
+    expect(header).toContain("rounded-[6px] px-3 py-2");
+    expect(header).toContain("focus-visible:ring-[#1FBAC0]/40");
+    expect(studioStyles).toContain("background-color: #1FBAC0 !important");
     expect(primitives).toContain("flex h-12 w-full");
     expect(primitives).toContain('large ? "h-[34px] rounded-[6px] px-[10px]"');
     expect(primitives).toContain("px-[17px]");
@@ -229,7 +232,7 @@ describe("Studio right panel layout", () => {
     expect(primitives).toContain("<ChevronRight size={16}");
     expect(primitives).toContain("<ChevronDown size={16}");
     expect(primitives).not.toContain("rotate-180 text-[#858a94]");
-    expect(primitives).toContain("shadow-[inset_3px_0_0_#20bbc0]");
+    expect(primitives).toContain("shadow-[inset_3px_0_0_#1FBAC0]");
     expect(primitives).toContain("<ChevronDown size={16}");
     expect(selects).toContain('large ? "h-[34px] rounded-[6px] pl-2 pr-4"');
     expect(selects).toContain('role="listbox"');
@@ -252,7 +255,7 @@ describe("Studio right panel layout", () => {
     expect(panel).toContain("? visibleGroups.map");
     expect(panel).toContain("const visibleGroups = groups.filter");
     expect(panel).toContain("px-[17px] pb-[15px] pt-2");
-    expect(panel).not.toContain('className="border-l-2 border-[#20bbc0] pl-2"');
+    expect(panel).not.toContain('className="border-l-2 border-[#1FBAC0] pl-2"');
     expect(panel).not.toContain("min-h-0 flex-1 overflow-y-auto border-b");
 
     const timing = readFileSync(
@@ -264,6 +267,66 @@ describe("Studio right panel layout", () => {
     expect(timing).toContain("grid grid-cols-2 gap-2");
     expect(timing).toContain("text-[10px] font-normal text-[#878984]");
     expect(timing).toContain("text-[13px] font-normal text-[#242522]");
+  });
+
+  it("shares the desktop typography contract without changing canvas fonts", () => {
+    const styles = readFileSync(new URL("../styles/studio.css", import.meta.url), "utf8");
+    const preset = readFileSync(
+      new URL("../styles/tailwind-preset.shared.js", import.meta.url),
+      "utf8",
+    );
+
+    expect(styles).toContain("--ipollowork-font-sans:");
+    expect(styles).toContain("--ipollowork-font-mono:");
+    expect(styles).toContain("font-family: var(--ipollowork-font-sans);");
+    expect(styles).toContain("font-family: var(--ipollowork-font-mono);");
+    expect(styles).not.toContain('font-family: "SF Mono", "Fira Code", monospace;');
+    expect(styles).not.toContain("font-family:\n    Inter,");
+    expect(preset).toContain('sans: ["var(--ipollowork-font-sans)"]');
+    expect(preset).toContain('mono: ["var(--ipollowork-font-mono)"]');
+    expect(preset).toContain('"ui-control": ["0.8125rem", { lineHeight: "1.125rem" }]');
+  });
+
+  it("keeps dark property-panel text and interaction states visible", () => {
+    const styles = readFileSync(new URL("../styles/studio.css", import.meta.url), "utf8");
+    const theme = readFileSync(new URL("../ipolloworkTheme.ts", import.meta.url), "utf8");
+    const tailwindConfig = readFileSync(new URL("../../tailwind.config.js", import.meta.url), "utf8");
+    const primitives = readFileSync(
+      new URL("./editor/propertyPanelFlatPrimitives.tsx", import.meta.url),
+      "utf8",
+    );
+    const toggle = readFileSync(
+      new URL("./editor/propertyPanelFlatToggle.tsx", import.meta.url),
+      "utf8",
+    );
+    const selects = readFileSync(
+      new URL("./editor/propertyPanelFlatSelectRow.tsx", import.meta.url),
+      "utf8",
+    );
+    const layout = readFileSync(
+      new URL("./editor/propertyPanelFlatLayoutSection.tsx", import.meta.url),
+      "utf8",
+    );
+    const animations = readFileSync(
+      new URL("./sidebar/AnimationTemplatesTab.tsx", import.meta.url),
+      "utf8",
+    );
+
+    expect(styles).toContain("--hf-studio-muted: #8b8d98;");
+    expect(styles).toContain("--hf-panel-text-3: #8b8d98;");
+    expect(theme).toContain('classList.toggle("dark", theme === "dark")');
+    expect(tailwindConfig).toContain('darkMode: "selector"');
+    expect(primitives).toContain("dark:text-[10px] dark:leading-[14px] dark:text-panel-text-2");
+    expect(primitives).toContain("dark:bg-panel-accent/15 dark:text-panel-text-0");
+    expect(primitives).toContain("focus-visible:ring-panel-accent/50");
+    expect(toggle).toContain("active:scale-[0.96]");
+    expect(toggle).toContain("focus-visible:ring-panel-accent/60");
+    expect(selects).toContain("dark:active:bg-panel-hover");
+    expect(selects).toContain("focus-visible:ring-panel-accent/50");
+    expect(layout).toContain("dark:hover:bg-panel-hover dark:hover:text-panel-text-1");
+    expect(layout).not.toContain("dark:hover:text-[#24262b]");
+    expect(animations).toContain("bg-black text-white dark:bg-panel-accent/20");
+    expect(animations).toContain("dark:hover:bg-panel-hover dark:hover:text-panel-text-1");
   });
 
   it("matches the expanded Figma Layout, Stroke, and Appearance controls", () => {
@@ -308,7 +371,7 @@ describe("Studio right panel layout", () => {
     expect(parseCssScaleValue("-1 1")).toEqual({ x: -1, y: 1 });
     expect(parseCssScaleValue("0.75")).toEqual({ x: 0.75, y: 0.75 });
     expect(layout).not.toContain("style={{ opacity: hasKeyframesOnProp ? 1 : 0.3 }}");
-    expect(keyframeDiamond).toContain('state === "active" ? "#3CE6AC" : "#858A94"');
+    expect(keyframeDiamond).toContain('state === "active" ? "#1FBAC0" : "#858A94"');
     expect(keyframeDiamond).not.toContain("style={{ color, opacity }}");
     expect(keyframeNavigation.match(/stroke="#858A94"/g)).toHaveLength(2);
 
@@ -463,7 +526,9 @@ describe("Studio right panel layout", () => {
     expect(textSection).toContain('<TextIconButton label="Bulleted list" disabled>');
     expect(textSection).toContain('"text-decoration-line"');
     expect(textSection).toMatch(/label="Line height"[\s\S]*?liveCommit/);
-    expect(textSection).toMatch(/label="Letter spacing"[\s\S]*?options=\{LETTER_SPACING_OPTIONS\}/);
+    expect(textSection).toMatch(
+      /label="Letter spacing"[\s\S]*?liveCommit[\s\S]*?inputType="number"/,
+    );
   });
 
   it("applies selected background images as full-element cover fills", () => {
@@ -686,7 +751,10 @@ describe("Studio right panel layout", () => {
     const header = readFileSync(new URL("./StudioHeader.tsx", import.meta.url), "utf8");
     const styles = readFileSync(new URL("../styles/studio.css", import.meta.url), "utf8");
 
-    expect(layout).toContain("export const LAYER_HEADER_W = 255");
+    expect(layout).toContain("export const DEFAULT_TIMELINE_GUTTER_WIDTH = 255");
+    expect(layout).toContain("export const MIN_TIMELINE_GUTTER_WIDTH = 220");
+    expect(layout).toContain("export const MAX_TIMELINE_GUTTER_WIDTH = 420");
+    expect(layout).toContain("export function clampTimelineGutterWidth");
     expect(layout).toContain("export const TRACK_H = 47");
     expect(layout).toContain("export const RULER_H = 32");
     expect(layout).toContain("export const TRACKS_TOP_PAD = 0");
@@ -722,7 +790,7 @@ describe("Studio right panel layout", () => {
     expect(styles).toContain("--hf-timeline-clip-bg: #f5f6f9");
     expect(styles).toContain(".hf-timeline-layer-header.is-selected");
     expect(styles).toContain(".hf-timeline-layer-header.is-uneditable:not(.is-selected)");
-    expect(styles).toContain("background-color: #20bbc0 !important");
+    expect(styles).toContain("background-color: #1FBAC0 !important");
     expect(styles).toContain(".hf-timeline-ruler-label");
   });
 
@@ -978,7 +1046,7 @@ describe("Studio right panel layout", () => {
     expect(controls).toContain("figmaPlayerVolume.svg?url");
     expect(controls).toContain("h-[52px]");
     expect(controls).toContain("bg-[var(--hf-studio-controls-bg)]");
-    expect(controls).toContain("bg-[#20bbc0]");
+    expect(controls).toContain("bg-[#1FBAC0]");
     expect(controls).toContain("bg-[#858a94]");
     expect(controls.indexOf("<SpeedMenu")).toBeLessThan(controls.indexOf("<LoopButton"));
     expect(controls.indexOf("<LoopButton")).toBeLessThan(controls.indexOf("<MuteButton"));
@@ -1011,7 +1079,7 @@ describe("Studio right panel layout", () => {
       'scrollRoot.addEventListener("wheel", handleWheel, { passive: false })',
     );
     expect(catalog).toContain("new IntersectionObserver");
-    expect(catalog).toContain('{ root: scrollRoot, rootMargin: "80px 0px", threshold: 0 }');
+    expect(catalog).toContain('{ root: scrollRoot, rootMargin: "240px 0px", threshold: 0 }');
     expect(catalog).toContain("setTimeout(startPreview, 60)");
     expect(catalog).toContain("setPreviewing(true)");
     expect(catalog).toContain('data-testid="effect-clip-placement-help"');

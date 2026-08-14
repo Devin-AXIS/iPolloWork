@@ -1,7 +1,6 @@
 import { memo } from "react";
 import type { TimelineTheme } from "./timelineTheme";
 import {
-  GUTTER,
   RULER_H,
   TRACKS_LEFT_PAD,
   formatTimelineTickLabel,
@@ -22,6 +21,7 @@ interface TimelineRulerProps {
   theme: TimelineTheme;
   beatAnalysis?: MusicBeatAnalysis | null;
   visibleWindow: TimelineVisibleWindow;
+  gutterWidth: number;
 }
 
 export const TimelineRuler = memo(function TimelineRuler({
@@ -35,6 +35,7 @@ export const TimelineRuler = memo(function TimelineRuler({
   theme,
   beatAnalysis,
   visibleWindow,
+  gutterWidth,
 }: TimelineRulerProps) {
   const timeDisplayMode = usePlayerStore((s) => s.timeDisplayMode);
   const beatTimes = beatAnalysis?.beatTimes ?? [];
@@ -53,7 +54,7 @@ export const TimelineRuler = memo(function TimelineRuler({
           the ruler's own small ticks mark intervals (no full-height lines). */}
       <svg
         className="absolute pointer-events-none"
-        style={{ left: GUTTER + TRACKS_LEFT_PAD, width: trackContentWidth, zIndex: 0 }}
+        style={{ left: gutterWidth + TRACKS_LEFT_PAD, width: trackContentWidth, zIndex: 0 }}
         height={totalH}
       >
         {showBeats &&
@@ -85,14 +86,14 @@ export const TimelineRuler = memo(function TimelineRuler({
         className="hf-timeline-ruler sticky top-0 flex"
         style={{
           height: RULER_H,
-          width: GUTTER + TRACKS_LEFT_PAD + trackContentWidth,
+          width: gutterWidth + TRACKS_LEFT_PAD + trackContentWidth,
           zIndex: 70,
         }}
       >
         <div
           className="hf-timeline-ruler-gutter sticky left-0 z-[12] flex-shrink-0"
           style={{
-            width: GUTTER,
+            width: gutterWidth,
             // Ruler corner uses the panel surface — same as the ruler strip
             // itself, and NO right border: the ruler band stays completely
             // clean until 00:00 (the header-boundary line belongs to the track
