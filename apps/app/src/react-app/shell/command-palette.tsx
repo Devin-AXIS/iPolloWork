@@ -202,7 +202,7 @@ export function CommandPalette(props: CommandPaletteProps) {
           meta: props.selectedAgent
             ? props.selectedAgent.charAt(0).toUpperCase() + props.selectedAgent.slice(1)
             : t("session.default_agent"),
-          searchText: "agent agents switch pick select default build plan",
+          searchText: "agent agents switch pick select default",
           action: () => {
             setMode("agents");
           },

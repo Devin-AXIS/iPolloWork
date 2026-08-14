@@ -22,6 +22,16 @@ describe("session output issue regressions", () => {
     expect(source).toContain("sessionId={props.selectedSessionId ?? undefined}");
   });
 
+  test("template brief keeps the reference upload entry hidden", () => {
+    const source = readFileSync(
+      new URL("../src/react-app/domains/session/chat/session-page.tsx", import.meta.url),
+      "utf8",
+    );
+
+    expect(source).toContain("const TEMPLATE_REFERENCE_UPLOAD_VISIBLE = false;");
+    expect(source).toContain("{TEMPLATE_REFERENCE_UPLOAD_VISIBLE ? <div");
+  });
+
   test("output files can seed a follow-up revision prompt", () => {
     const source = readFileSync(
       new URL("../src/components/chat/artifact.tsx", import.meta.url),

@@ -57,6 +57,25 @@ protectOutputStreamFromBrokenPipe(process.stdout);
 protectOutputStreamFromBrokenPipe(process.stderr);
 const require = createRequire(import.meta.url);
 const pty = require(["node", "pty"].join("-"));
+
+function configureBundledDshRuntime() {
+  if (process.env.IPOLLOWORK_DSH_CLI?.trim()) return;
+  try {
+    const runtimeRoot = app.isPackaged
+      ? path.join(process.resourcesPath, "dsh-runtime")
+      : path.resolve(__dirname, "..", "dsh-runtime");
+    const packageRoot = path.join(runtimeRoot, "node_modules", "@deepseek-ai", "dsh");
+    const manifest = require(path.join(packageRoot, "package.json"));
+    const cliPath = path.join(packageRoot, "lib", "bin.js");
+    if (!existsSync(cliPath)) return;
+    process.env.IPOLLOWORK_DSH_CLI = cliPath;
+    if (typeof manifest.version === "string") process.env.IPOLLOWORK_DSH_CLI_VERSION = manifest.version;
+  } catch {
+    // The DSH plugin reports an unavailable runtime if packaging omitted it.
+  }
+}
+
+configureBundledDshRuntime();
 const NATIVE_DEEP_LINK_EVENT = "ipollowork:deep-link-native";
 const DESKTOP_RESUMED_EVENT = "ipollowork:desktop-resumed";
 const TAURI_APP_IDENTIFIER = "com.differentai.ipollowork";
