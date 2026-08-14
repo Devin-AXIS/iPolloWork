@@ -1,12 +1,11 @@
 /** @jsxImportSource react */
 import * as React from "react";
-import { AudioLines, Ellipsis, Film, LayoutTemplate, Loader2, Maximize2, Minimize2, Palette, Plus, RefreshCw, X } from "lucide-react";
+import { AudioLines, Loader2, Palette } from "lucide-react";
 
 import type { HyperframesCatalogItem, iPolloWorkServerClient } from "@/app/lib/ipollowork-server";
 import { pickLocalImageFile, readLocalImageAsDataUrl } from "@/app/lib/desktop";
 import { getResolvedThemeMode, subscribeToTheme } from "@/app/theme";
 import { Button } from "@/components/ui/button";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { toast } from "@/components/ui/sonner";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
@@ -17,7 +16,6 @@ import { DesignSystemDrawer } from "../design/design-system-drawer";
 import { mergeTemplateTokenCss, parseDesignTokenValues, refreshTemplateTokenCss, replaceDesignTokenValue, type DesignTokenValues } from "../design/design-system-files";
 import { buildStableTokenBridgeCss, buildTemplateTokenCss, getDesignSystemTheme, type DesignSystemTheme } from "../design/design-system-registry";
 import { ensureHtmlDesignSystemContract, readAppliedDesignSystemId } from "../design/design-system-theme-contract";
-import type { SidePanelLauncherItem } from "../panel/side-panel";
 import {
   HYPERFRAMES_STUDIO_LABEL,
   hyperframesStudioPort,
@@ -36,18 +34,17 @@ export {
 } from "./video-project";
 
 type VideoPanelProps = {
+  title: string;
   sessionId: string;
   workspaceRoot: string;
   client: iPolloWorkServerClient | null;
   workspaceId: string | null;
   isRemoteWorkspace?: boolean;
-  launcherItems?: SidePanelLauncherItem[];
   aiEditing?: boolean;
   expanded?: boolean;
   onExpandedChange?: (expanded: boolean) => void;
   onAskAi?: (context: DesignAiSelectionContext) => void;
   onSaveAsTemplate?: () => void;
-  onClose: () => void;
 };
 
 type StudioStartupStage = "starting-service" | "waiting-for-studio" | "loading-frame";
@@ -85,10 +82,9 @@ function normalizeVideoThemeTypeScale(source: string) {
   return replaceDesignTokenValue(source, "--ipw-type-scale", "1");
 }
 
-export function VideoPanel({ sessionId, workspaceRoot, client, workspaceId, isRemoteWorkspace = false, launcherItems = [], aiEditing = false, expanded = false, onExpandedChange, onAskAi, onSaveAsTemplate, onClose }: VideoPanelProps) {
+export function VideoPanel({ title, sessionId, workspaceRoot, client, workspaceId, isRemoteWorkspace = false, aiEditing = false, expanded = false, onExpandedChange, onAskAi, onSaveAsTemplate }: VideoPanelProps) {
   const terminalIdRef = React.useRef<string | null>(null);
   const studioFrameRef = React.useRef<HTMLIFrameElement | null>(null);
-  const keepStudioWarmOnCloseRef = React.useRef(false);
   const studioChromeReadyRef = React.useRef(false);
   const studioReadyFallbackRef = React.useRef<number | null>(null);
   const [revision, setRevision] = React.useState(0);
@@ -484,6 +480,28 @@ export function VideoPanel({ sessionId, workspaceRoot, client, workspaceId, isRe
     );
   }, [studioUrl]);
 
+  const syncStudioHostContext = React.useCallback(() => {
+    const frameWindow = studioFrameRef.current?.contentWindow;
+    if (!frameWindow) return;
+    frameWindow.postMessage(
+      {
+        type: "ipollowork:studio-host-context",
+        projectId: videoProjectId(sessionId),
+        title,
+        actions: {
+          reload: true,
+          saveAsTemplate: Boolean(onSaveAsTemplate),
+        },
+      },
+      new URL(studioUrl).origin,
+    );
+  }, [onSaveAsTemplate, sessionId, studioUrl, title]);
+
+  React.useEffect(() => {
+    if (!studioFrameLoaded) return;
+    syncStudioHostContext();
+  }, [studioFrameLoaded, syncStudioHostContext]);
+
   const syncStudioTheme = React.useCallback(() => {
     const frameWindow = studioFrameRef.current?.contentWindow;
     if (!frameWindow) return;
@@ -644,13 +662,14 @@ export function VideoPanel({ sessionId, workspaceRoot, client, workspaceId, isRe
       setStudioChromeReady(true);
       setDetail(t("video.ready_on_port", { port: activeStudioPort }));
       scheduleStudioLocaleSync();
+      syncStudioHostContext();
       syncStudioTheme();
       syncStudioAiEditing();
       replayPendingStudioDesignTokens();
     };
     window.addEventListener("message", handleStudioReady);
     return () => window.removeEventListener("message", handleStudioReady);
-  }, [activeStudioPort, replayPendingStudioDesignTokens, scheduleStudioLocaleSync, sessionId, studioUrl, syncStudioAiEditing, syncStudioTheme]);
+  }, [activeStudioPort, replayPendingStudioDesignTokens, scheduleStudioLocaleSync, sessionId, studioUrl, syncStudioAiEditing, syncStudioHostContext, syncStudioTheme]);
 
   React.useEffect(() => {
     setStatus("starting");
@@ -717,7 +736,7 @@ export function VideoPanel({ sessionId, workspaceRoot, client, workspaceId, isRe
         window.clearTimeout(studioReadyFallbackRef.current);
         studioReadyFallbackRef.current = null;
       }
-      void stopHyperframes(sessionId, { keepWarm: keepStudioWarmOnCloseRef.current });
+      void stopHyperframes(sessionId, { keepWarm: false });
     };
   }, [isRemoteWorkspace, projectDirectory, sessionId, startAttempt, studioPort, workspaceRoot]);
 
@@ -733,10 +752,6 @@ export function VideoPanel({ sessionId, workspaceRoot, client, workspaceId, isRe
     syncStudioTheme();
   }, [resolvedTheme, syncStudioTheme]);
 
-  const toggleFullscreen = React.useCallback(() => {
-    onExpandedChange?.(!expanded);
-  }, [expanded, onExpandedChange]);
-
   const reloadStudio = React.useCallback(() => {
     if (studioReadyFallbackRef.current != null) {
       window.clearTimeout(studioReadyFallbackRef.current);
@@ -750,6 +765,22 @@ export function VideoPanel({ sessionId, workspaceRoot, client, workspaceId, isRe
     setStudioHostPanel(null);
     setRevision((value) => value + 1);
   }, []);
+
+  React.useEffect(() => {
+    const handleStudioHostAction = (event: MessageEvent) => {
+      if (event.source !== studioFrameRef.current?.contentWindow) return;
+      if (event.origin !== new URL(studioUrl).origin) return;
+      if (event.data?.type !== "ipollowork:studio-host-action") return;
+      if (event.data.projectId !== videoProjectId(sessionId)) return;
+      if (event.data.action === "reload") {
+        reloadStudio();
+        return;
+      }
+      if (event.data.action === "save-as-template") onSaveAsTemplate?.();
+    };
+    window.addEventListener("message", handleStudioHostAction);
+    return () => window.removeEventListener("message", handleStudioHostAction);
+  }, [onSaveAsTemplate, reloadStudio, sessionId, studioUrl]);
 
   React.useEffect(() => {
     setStudioHostPanel(null);
@@ -768,68 +799,6 @@ export function VideoPanel({ sessionId, workspaceRoot, client, workspaceId, isRe
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-background" data-testid="video-panel" data-expanded={expanded ? "true" : "false"}>
-      <header className="flex h-11 shrink-0 items-center gap-2 border-b border-border px-3 [border-bottom-width:0.5px] mac:titlebar-drag">
-        <Film className="size-4 text-primary" />
-        <div className="flex min-w-0 flex-1 items-center">
-          <p className="truncate text-sm font-medium">{t("video.title")}</p>
-          <span className="ml-2 rounded-full border border-border bg-muted/40 px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
-            {status === "failed" ? t("video.status_failed") : status === "ready" && studioChromeReady ? t("video.status_ready") : startupStage === "waiting-for-studio" ? t("video.status_waiting") : t("video.status_starting")}
-          </span>
-        </div>
-        <Button variant="ghost" size="icon-xs" onClick={reloadStudio} aria-label={t("video.reload")}><RefreshCw /></Button>
-        <Button
-          variant={expanded ? "secondary" : "ghost"}
-          size="icon-xs"
-          onClick={toggleFullscreen}
-          aria-label={t("video.toggle_fullscreen")}
-          aria-pressed={expanded}
-        >
-          {expanded ? <Minimize2 /> : <Maximize2 />}
-        </Button>
-        {onSaveAsTemplate ? (
-          <DropdownMenu>
-            <DropdownMenuTrigger render={<Button variant="ghost" size="icon-xs" aria-label={t("template_authoring.more_actions")}><Ellipsis /></Button>} />
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem onClick={onSaveAsTemplate}><LayoutTemplate />{t("template_authoring.save_as_template")}</DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        ) : null}
-        {launcherItems.length > 0 ? (
-          <DropdownMenu>
-            <DropdownMenuTrigger
-              render={(
-                <Button variant="ghost" size="icon-xs" aria-label={t("session.right_panel_add")}>
-                  <Plus />
-                </Button>
-              )}
-            />
-            <DropdownMenuContent
-              align="end"
-              className="w-[296px] rounded-[18px] border border-border bg-popover p-3 text-popover-foreground shadow-[0_8px_24px_rgba(0,0,0,0.10)] before:hidden"
-            >
-              {launcherItems.map((item) => (
-                <DropdownMenuItem
-                  key={item.id}
-                  disabled={item.disabled}
-                  onClick={item.onClick}
-                  className={cn(
-                    "h-9 rounded-xl px-2 text-[14px] font-normal tracking-[-0.56px] text-foreground focus:bg-muted focus:text-foreground data-disabled:opacity-40",
-                    item.active && "bg-muted",
-                  )}
-                >
-                  <img src={item.iconSrc} alt="" className="size-4 shrink-0" />
-                  <span className="flex-1">{item.label}</span>
-                  {item.shortcut ? (
-                    <span className="text-[12px] tracking-[-0.24px] text-muted-foreground">{item.shortcut}</span>
-                  ) : null}
-                </DropdownMenuItem>
-              ))}
-            </DropdownMenuContent>
-          </DropdownMenu>
-        ) : null}
-        <Button variant="ghost" size="icon-xs" onClick={() => { keepStudioWarmOnCloseRef.current = true; onExpandedChange?.(false); onClose(); }} aria-label={t("video.close")} title={t("video.close")}><X /></Button>
-      </header>
-
       {isRemoteWorkspace ? (
         <div className="grid flex-1 place-items-center p-8 text-center text-sm text-muted-foreground">{t("video.local_only")}</div>
       ) : (
@@ -855,6 +824,7 @@ export function VideoPanel({ sessionId, workspaceRoot, client, workspaceId, isRe
               studioChromeReadyRef.current = true;
               setStudioChromeReady(true);
               scheduleStudioLocaleSync();
+              syncStudioHostContext();
               syncStudioTheme();
               syncStudioAiEditing();
               replayPendingStudioDesignTokens();

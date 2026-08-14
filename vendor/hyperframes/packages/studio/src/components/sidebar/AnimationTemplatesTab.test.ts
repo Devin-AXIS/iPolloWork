@@ -107,6 +107,8 @@ describe("AnimationTemplatesTab catalog", () => {
     expect(source).toContain('testId="animation-unused-section"');
     expect(source).toContain("data-state={state}");
     expect(source).toContain('data-animation-action="apply"');
+    expect(source).toContain("disabled={loading || applyDisabled}");
+    expect(source).toContain("applyDisabled={!domEditSelection}");
     expect(source).toContain('data-animation-action="edit"');
     expect(source).toContain('data-animation-action="remove"');
     expect(editor).toContain('data-testid="animation-editor-popover"');
@@ -121,6 +123,7 @@ describe("AnimationTemplatesTab catalog", () => {
       "if (targetKind && !resolveAnimationTemplateApplication(template, targetKind)) return false;",
     );
     expect(source).not.toContain("!domEditSelection ? (");
+    expect(source).toContain(': t("animation.selectElement")');
     expect(source).toContain("usedTemplates.length === 0 ? (");
     expect(source).toContain("renderCards(unusedTemplates)");
   });

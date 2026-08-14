@@ -721,6 +721,7 @@ const AnimationTemplateCard = memo(function AnimationTemplateCard({
   duration,
   applied,
   loading,
+  applyDisabled,
   onApply,
   onEdit,
   onRemove,
@@ -730,6 +731,7 @@ const AnimationTemplateCard = memo(function AnimationTemplateCard({
   duration: number;
   applied: ResolvedMotionInstance | null;
   loading: boolean;
+  applyDisabled: boolean;
   onApply: (template: AnimationTemplateDefinition) => void | Promise<void>;
   onEdit: (template: AnimationTemplateDefinition, anchor: HTMLElement) => void | Promise<void>;
   onRemove: (
@@ -783,7 +785,7 @@ const AnimationTemplateCard = memo(function AnimationTemplateCard({
       ) : (
         <button
           type="button"
-          disabled={loading}
+          disabled={loading || applyDisabled}
           data-animation-action="apply"
           aria-label={`${t("animation.apply")} ${template.title[locale]}`}
           onClick={() => void onApply(template)}
@@ -1067,6 +1069,7 @@ export const AnimationTemplatesTab = memo(function AnimationTemplatesTab({
             }
             applied={applied}
             loading={pendingTemplateId === template.id}
+            applyDisabled={!domEditSelection}
             onApply={applyTemplate}
             onEdit={openEditor}
             onRemove={removeTemplate}

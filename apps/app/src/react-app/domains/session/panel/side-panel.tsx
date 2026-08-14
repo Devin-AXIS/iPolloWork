@@ -4,6 +4,7 @@ import {
   ArrowLeft,
   ArrowRight,
   Code2,
+  Film,
   Globe,
   Loader2,
   Maximize2,
@@ -41,6 +42,7 @@ import type { OpenTarget } from "../artifacts/open-target";
 import { useSidePanelTabs } from "./use-side-panel-tabs";
 import { DesignPanel } from "../design/design-panel";
 import type { DesignAiSelectionContext } from "../design/design-ai-selection";
+import { VideoPanel } from "../video/video-panel";
 import {
   computeBounds,
   getElectronBrowser,
@@ -59,6 +61,7 @@ type SidePanelProps = {
   onClose: () => void;
   onAskAi?: (context: DesignAiSelectionContext) => void;
   onSaveAsTemplate?: () => void;
+  aiEditing?: boolean;
   expanded?: boolean;
   titlebarInset?: boolean;
   onExpandedChange?: (expanded: boolean) => void;
@@ -184,7 +187,7 @@ function SidePanelTab({ tab, active, onSelect, onClose }: SidePanelTabProps) {
               <Globe />
             )
           ) : (
-            tab.type === "design" ? <Code2 /> : <ArtifactIcon type={tab.preview} />
+            tab.type === "design" ? <Code2 /> : tab.type === "video" ? <Film /> : <ArtifactIcon type={tab.preview} />
           )}
           <span className="min-w-0 flex-1 truncate text-left">{tab.label}</span>
         </PanelTab>
@@ -456,6 +459,7 @@ export function SidePanel({
   launcherItems = [],
   onAskAi,
   onSaveAsTemplate,
+  aiEditing = false,
   expanded = false,
   titlebarInset = false,
   onExpandedChange,
@@ -720,6 +724,21 @@ export function SidePanel({
               onSaveAsTemplate={onSaveAsTemplate}
             />
           </DesignPanelErrorBoundary>
+        ) : activeTab?.type === "video" ? (
+          <VideoPanel
+            key={activeTab.id}
+            title={activeTab.label}
+            sessionId={activeTab.sessionId}
+            workspaceRoot={workspaceRoot}
+            client={client}
+            workspaceId={workspaceId}
+            isRemoteWorkspace={isRemoteWorkspace}
+            aiEditing={aiEditing}
+            expanded={expanded}
+            onExpandedChange={onExpandedChange}
+            onAskAi={onAskAi}
+            onSaveAsTemplate={onSaveAsTemplate}
+          />
         ) : activeTab?.type === "browser" ? (
           <BrowserPanelContent tab={activeTab} onClose={() => closeTab(activeTab)} />
         ) : activeTab?.type === "artifact" ? (

@@ -5,7 +5,7 @@ import { isCollectibleArtifactTarget, type OpenTarget, type OpenTargetPreview } 
 
 export const PERSISTED_PANEL_TAB_STORE_KEY = "ipollowork:panel-tabs:v1";
 
-export type PanelTabType = "artifact" | "browser" | "design";
+export type PanelTabType = "artifact" | "browser" | "design" | "video";
 
 export type { BrowserPanelTab } from "../../../../app/lib/desktop-types";
 import type { BrowserPanelTab } from "../../../../app/lib/desktop-types";
@@ -26,7 +26,14 @@ export type DesignPanelTab = {
   path?: string;
 };
 
-export type PanelTab = BrowserPanelTab | ArtifactPanelTab | DesignPanelTab;
+export type VideoPanelTab = {
+  id: string;
+  type: "video";
+  label: string;
+  sessionId: string;
+};
+
+export type PanelTab = BrowserPanelTab | ArtifactPanelTab | DesignPanelTab | VideoPanelTab;
 
 export type SessionPanelState = {
   tabs: PanelTab[];
@@ -162,6 +169,10 @@ function isSameTab(left: PanelTab, right: PanelTab) {
 
   if (left.type === "design" && right.type === "design") {
     return left.label === right.label && left.sessionId === right.sessionId && left.path === right.path;
+  }
+
+  if (left.type === "video" && right.type === "video") {
+    return left.label === right.label && left.sessionId === right.sessionId;
   }
 
   return false;
@@ -314,7 +325,7 @@ export const usePanelTabStore = create<PanelTabStore>()(
         const mergedTabs: PanelTab[] = [];
 
         for (const tab of session.tabs) {
-          if (tab.type === "artifact" || tab.type === "design") {
+          if (tab.type === "artifact" || tab.type === "design" || tab.type === "video") {
             mergedTabs.push(tab);
             continue;
           }

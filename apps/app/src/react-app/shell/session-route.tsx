@@ -58,7 +58,6 @@ import {
   userVisibleSessionsByWorkspaceId,
 } from "@/react-app/shell/route-workspaces";
 import { useLocal } from "@/react-app/kernel/local-provider";
-import { usePlatform } from "@/react-app/kernel/platform";
 import { SessionPage } from "@/react-app/domains/session/chat/session-page";
 import { isDesktopProviderBlocked, DESKTOP_RESTRICTION_OPENCODE_PROVIDER_ID } from "@/app/cloud/desktop-app-restrictions";
 import { useCheckDesktopRestriction } from "@/react-app/domains/cloud/desktop-config-provider";
@@ -100,14 +99,8 @@ import {
 import { useRemoteWorkspaceConnectionEditor } from "@/react-app/domains/workspace/use-remote-workspace-connection-editor";
 import { useDenAuth } from "@/react-app/domains/cloud/den-auth-provider";
 import { IPolloWorkModelsStartupDialog } from "@/react-app/domains/cloud/ipollowork-models-startup-dialog";
-import {
-  IPOLLOWORK_MODEL_PREVIEWS,
-  getiPolloWorkModelsActionUrl,
-  hideiPolloWorkModelsPromo,
-  markiPolloWorkModelsStartupPromoShown,
-} from "@/react-app/domains/cloud/ipollowork-models-promo";
+import { IPOLLOWORK_MODEL_PREVIEWS } from "@/react-app/domains/cloud/ipollowork-models-promo";
 import { FirstRunLoader } from "@/react-app/domains/onboarding/first-run-loader";
-import { ProviderSelectionStep } from "@/react-app/domains/onboarding/provider-selection-step";
 import { useiPolloWorkModelsStartupPromo } from "@/react-app/domains/cloud/use-ipollowork-models-startup-promo";
 import { ModelPickerModal } from "@/react-app/domains/session/modals/model-picker-modal";
 import { CommandPalette, type PaletteItem, type SessionGroupOption, type SessionOption as PaletteSessionOption } from "./command-palette";
@@ -196,7 +189,6 @@ let startupConversationPhase: "pending" | "creating" | "done" = "pending";
 
 export function SessionRoute() {
   const navigate = useNavigate();
-  const platform = usePlatform();
   const denAuth = useDenAuth();
   const local = useLocal();
   const reloadCoordinator = useReloadCoordinator();
@@ -264,11 +256,6 @@ export function SessionRoute() {
   );
   // One-way latch for "a refreshRouteState is currently running"; prevents
   // overlapping route refreshes from queueing up when the user clicks fast.
-  // Agent-screen-first onboarding: a one-shot provider selection intercepting
-  // the first send (the first-run default workspace is created further down).
-  const [providerStepOpen, setProviderStepOpen] = useState(false);
-  const pendingProviderDraftRef = useRef<{ draft: ComposerDraft; sessionId: string } | null>(null);
-  const providerStepResendRef = useRef(false);
   const firstRunSessionRef = useRef(false);
   const [developerMode, setDeveloperMode] = useState(() => {
     if (typeof window === "undefined") return false;
@@ -278,12 +265,6 @@ export function SessionRoute() {
   const [providers, setProviders] = useState<ProviderListItem[]>([]);
   const [providerDefaults, setProviderDefaults] = useState<Record<string, string>>({});
   const [providerConnectedIds, setProviderConnectedIds] = useState<string[]>([]);
-  // Exclude the built-in OpenCode Zen provider from the "user" count so the
-  // onboarding CTA ("Connect a model") only considers user-added providers.
-  const userProviderConnectedIds = useMemo(
-    () => providerConnectedIds.filter((id) => id !== DESKTOP_RESTRICTION_OPENCODE_PROVIDER_ID),
-    [providerConnectedIds],
-  );
   const [disabledProviderIds, setDisabledProviderIds] = useState<string[]>([]);
   // Bump to re-filter provider list when den session changes (sign-in/out)
   const [denSessionVersion, setDenSessionVersion] = useState(0);
@@ -765,20 +746,6 @@ export function SessionRoute() {
           toast.warning(t("composer.attachments_require_multimodal"));
           return false;
         }
-        // One-shot provider selection on the first send whenever no user-added
-        // provider is connected. The free default model being usable is the
-        // normal case here, not a reason to skip the step.
-        if (
-          !providerStepResendRef.current &&
-          !local.prefs.providerStepCompleted &&
-          isDesktopRuntime() &&
-          userProviderConnectedIds.length === 0 &&
-          draft.mode !== "shell"
-        ) {
-          pendingProviderDraftRef.current = { draft, sessionId: targetSessionId };
-          setProviderStepOpen(true);
-          return false;
-        }
         if (selectedModelUnavailable) {
           toast.error("Selected model is unavailable.", {
             description: "Choose another model before sending.",
@@ -1089,7 +1056,6 @@ export function SessionRoute() {
     handleApplyEnvironmentChanges,
     environmentRuntimeKey,
     local,
-    userProviderConnectedIds,
     listAgents,
     listSlashCommands,
     modelBehaviorOptions,
@@ -1112,8 +1078,7 @@ export function SessionRoute() {
     token,
   ]);
 
-  // Latest surfaceProps for the provider-step resend below; the memoized
-  // onSendDraft closure is otherwise unreachable from callbacks.
+  // Keep the latest send callback available to async task-creation kickoffs.
   const surfacePropsRef = useRef<typeof surfaceProps>(null);
   useEffect(() => {
     surfacePropsRef.current = surfaceProps;
@@ -1153,33 +1118,6 @@ export function SessionRoute() {
     selectedWorkspaceEndpoint,
     selectedWorkspaceServerToken,
   ]);
-
-  const completeProviderStep = useCallback((action: "ipollowork-models" | "byok" | "skip") => {
-    setProviderStepOpen(false);
-    local.setPrefs((prev) => ({ ...prev, providerStepCompleted: true }));
-    // The step IS the iPolloWork Models pitch — never auto-pop the startup
-    // promo on top of it afterwards.
-    markiPolloWorkModelsStartupPromoShown();
-    if (action === "ipollowork-models") {
-      platform.openLink(getiPolloWorkModelsActionUrl(denAuth.isSignedIn, "sign-up"));
-    } else if (action === "byok") {
-      hideiPolloWorkModelsPromo();
-      void sessionProviderAuthStore.openProviderAuthModal({ returnFocusTarget: "composer" });
-    }
-    // ponytail: the held draft is resent immediately on the free model for
-    // all three choices; a byok key applies from the next message onward.
-    const pending = pendingProviderDraftRef.current;
-    pendingProviderDraftRef.current = null;
-    const send = surfacePropsRef.current?.onSendDraft;
-    if (pending && send) {
-      providerStepResendRef.current = true;
-      void Promise.resolve(send(pending.draft, pending.sessionId))
-        .catch((error) => setRouteError(describeRouteError(error)))
-        .finally(() => {
-          providerStepResendRef.current = false;
-        });
-    }
-  }, [denAuth.isSignedIn, local, platform, sessionProviderAuthStore, setRouteError]);
 
   const handleCreateTaskInWorkspace = useCallback(async (
     workspaceId: string,
@@ -1887,13 +1825,6 @@ export function SessionRoute() {
       onContinueWithout={iPolloWorkModelsPromo.continueWithout}
     />
     {firstRunLoaderActive ? <FirstRunLoader /> : null}
-    {providerStepOpen ? (
-      <ProviderSelectionStep
-        oniPolloWorkModels={() => completeProviderStep("ipollowork-models")}
-        onBringYourOwn={() => completeProviderStep("byok")}
-        onSkip={() => completeProviderStep("skip")}
-      />
-    ) : null}
     <CreateRemoteWorkspaceModal
       open={remoteWorkspaceConnectionEditor.workspace !== null}
       onClose={remoteWorkspaceConnectionEditor.close}
