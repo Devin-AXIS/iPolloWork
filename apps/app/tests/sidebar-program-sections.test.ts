@@ -53,6 +53,18 @@ describe("sidebar Program and Ungrouped sections", () => {
     expect(sidebarSource).toContain("assignGroup(workspaceId, sessionId, group.id)");
   });
 
+  test("keeps global new conversations and template launches in the active project group", () => {
+    expect(storeSource).toContain("activeGroupByWorkspace: Record<string, string>;");
+    expect(storeSource).toContain("setActiveGroup: (workspaceId: string, groupId: string | null) => void;");
+    expect(sidebarSource).toContain("const activeSessionGroupId = useActiveWorkspaceGroupId(props.selectedWorkspaceId)");
+    expect(sidebarSource).toContain("isActive={activeSessionGroupId === group.id}");
+    expect(sidebarSource).toContain("setActiveGroup(workspaceId, group.id)");
+    expect(sidebarSource).toContain('props.onCreateTaskInWorkspace(props.selectedWorkspaceId, "work", undefined, undefined, activeSessionGroupId)');
+    expect(sessionPageSource).toContain("const activeSessionGroupId = useActiveWorkspaceGroupId(props.selectedWorkspaceId)");
+    expect(sessionPageSource).toContain("templateResourceScope,\n            activeSessionGroupId,");
+    expect(sessionPageSource).toContain("props.sidebar.onCreateTemplateAuthoring(props.selectedWorkspaceId, input, activeSessionGroupId)");
+  });
+
   test("reveals section and conversation actions only during interaction", () => {
     expect(sidebarSource).toContain("group-hover/section-header:opacity-100");
     expect(sidebarSource).toContain("group-focus-within/section-header:opacity-100");

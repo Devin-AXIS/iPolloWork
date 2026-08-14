@@ -1,6 +1,8 @@
 import { pathToFileURL } from "node:url";
-import { resolve, sep } from "node:path";
+import { mkdir, rm } from "node:fs/promises";
+import { join, resolve, sep } from "node:path";
 
+import type { EnvService } from "./env-file.js";
 import { ApiError } from "./errors.js";
 import { bindPluginAuthorizationRuntime, type BoundPluginAuthorizationRuntime } from "./plugin-platform-runtime.js";
 import {
@@ -8,6 +10,7 @@ import {
   resolveInstalledPluginService,
 } from "./plugin-package-lifecycle.js";
 import type { PluginPackageManifest } from "./plugin-package-manifest.js";
+import { runtimeStorageDir } from "./runtime-opencode-config-store.js";
 import type { ServerConfig } from "./types.js";
 
 export type PluginServiceAction = {
@@ -22,6 +25,15 @@ export type PluginServiceAction = {
 export type PluginServiceRuntime = {
   plugin: Readonly<{ id: string; version: string }>;
   authorization: BoundPluginAuthorizationRuntime;
+  environment: Readonly<{
+    get(name: string): Promise<string | null>;
+  }>;
+  storage: Readonly<{
+    dataDir: string;
+  }>;
+  workspace: Readonly<{
+    root: string;
+  }>;
 };
 
 type PluginService = {
@@ -47,6 +59,31 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 function serviceResource(manifest: PluginPackageManifest) {
   const path = manifest.package?.entrypoints.service;
   return path ? manifest.resources.find((resource) => resource.type === "local-service" && resource.path === path) : undefined;
+}
+
+function safeSegment(value: string): string {
+  return value.replace(/[^A-Za-z0-9._-]/g, "_") || "default";
+}
+
+export function pluginServiceDataDirectory(config: ServerConfig, workspaceId: string, pluginId: string): string {
+  return join(runtimeStorageDir(config), "plugin-data", safeSegment(workspaceId), safeSegment(pluginId));
+}
+
+export async function deletePluginServiceData(config: ServerConfig, workspaceId: string, pluginId: string): Promise<void> {
+  await rm(pluginServiceDataDirectory(config, workspaceId, pluginId), { recursive: true, force: true });
+}
+
+function bindPluginEnvironmentRuntime(manifest: PluginPackageManifest, env?: EnvService): PluginServiceRuntime["environment"] {
+  const allowed = new Set(serviceResource(manifest)?.environment ?? []);
+  return Object.freeze({
+    async get(name: string): Promise<string | null> {
+      if (!allowed.has(name)) {
+        throw new ApiError(403, "plugin_environment_denied", `Plugin service did not declare environment access: ${name}`);
+      }
+      const stored = env ? (await env.list()).find((entry) => entry.key === name)?.value : undefined;
+      return stored ?? process.env[name] ?? null;
+    },
+  });
 }
 
 function actionsForManifest(manifest: PluginPackageManifest): PluginServiceAction[] {
@@ -174,6 +211,7 @@ async function assertServiceAuthorizationReady(
 
 export async function callPluginServiceAction(input: {
   config: ServerConfig;
+  env?: EnvService;
   workspaceId: string;
   pluginId: string;
   action: string;
@@ -189,9 +227,16 @@ export async function callPluginServiceAction(input: {
   if (!declared) throw new ApiError(404, "plugin_service_action_not_found", "Plugin service action is not declared");
   const authorization = await bindPluginAuthorizationRuntime(input.config, input.workspaceId, input.pluginId);
   await assertServiceAuthorizationReady(installed.manifest, authorization);
+  const dataDir = pluginServiceDataDirectory(input.config, input.workspaceId, input.pluginId);
+  const workspace = input.config.workspaces.find((entry) => entry.id === input.workspaceId);
+  if (!workspace) throw new ApiError(404, "workspace_not_found", "Workspace not found for plugin service");
+  await mkdir(dataDir, { recursive: true, mode: 0o700 });
   const runtime = {
     plugin: Object.freeze({ id: input.pluginId, version: installed.version }),
     authorization,
+    environment: bindPluginEnvironmentRuntime(installed.manifest, input.env),
+    storage: Object.freeze({ dataDir }),
+    workspace: Object.freeze({ root: resolve(workspace.path) }),
   };
   const service = await persistentService({
     config: input.config,

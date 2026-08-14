@@ -30,15 +30,6 @@ function FlatEmptyState() {
       <div className="mt-2 flex w-full flex-col gap-1.5">
         <span className="flex items-center justify-between rounded-lg border border-panel-border bg-panel-bg px-3 py-2">
           <span className="flex items-center gap-2 text-[11px] text-panel-text-2">
-            <span className="text-panel-danger">●</span>
-            {tx("Record a gesture")}
-          </span>
-          <span className="rounded border border-panel-border-input px-[5px] py-px font-mono text-[9px] text-panel-text-5">
-            R
-          </span>
-        </span>
-        <span className="flex items-center justify-between rounded-lg border border-panel-border bg-panel-bg px-3 py-2">
-          <span className="flex items-center gap-2 text-[11px] text-panel-text-2">
             <span className="text-panel-accent">✦</span>
             {tx("Describe a change to the agent")}
           </span>

@@ -5,6 +5,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { readRuntimeOpencodeConfig } from "./runtime-opencode-config-store.js";
+import { pluginServiceDataDirectory } from "./plugin-service-runtime.js";
 import { startServer } from "./server.js";
 import type { ServerConfig } from "./types.js";
 
@@ -581,8 +582,38 @@ describe("plugin package lifecycle", () => {
           { pluginId: "wechat-official", version: "0.1.1", installedVersion: null, updateAvailable: false },
           { pluginId: "design-agent", version: "0.1.1", installedVersion: null, updateAvailable: false },
           { pluginId: "video-agent", version: "0.1.2", installedVersion: null, updateAvailable: false },
+          { pluginId: "deepseek-harness", version: "0.3.4", installedVersion: null, updateAvailable: false },
         ],
       });
+
+      const dshInstallation = await fetch(`${base}/workspace/${WORKSPACE_ID}/plugin-packages/catalog/deepseek-harness/install`, {
+        method: "POST",
+        headers,
+      });
+      expect(dshInstallation.status).toBe(200);
+      expect(await dshInstallation.json()).toMatchObject({
+        result: { status: "installed", pluginId: "deepseek-harness", version: "0.3.4" },
+      });
+      const dshCapabilities = await fetch(`${base}/experimental/extensions/call`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          extensionId: "deepseek-harness",
+          action: "capabilities",
+          args: {},
+          context: { directory: workspaceRoot },
+        }),
+      });
+      expect(dshCapabilities.status).toBe(200);
+      const dshDataDir = pluginServiceDataDirectory(config, WORKSPACE_ID, "deepseek-harness");
+      expect(await stat(dshDataDir).then(() => true)).toBe(true);
+      const dshRemoval = await fetch(`${base}/workspace/${WORKSPACE_ID}/plugin-packages/deepseek-harness`, {
+        method: "DELETE",
+        headers,
+      });
+      expect(dshRemoval.status).toBe(200);
+      await expectMissing(dshDataDir);
+      await expectMissing(join(workspaceRoot, ".opencode", "skills", "deepseek-harness", "SKILL.md"));
 
       const installation = await fetch(`${base}/workspace/${WORKSPACE_ID}/plugin-packages/catalog/figma/install`, {
         method: "POST",

@@ -1,17 +1,8 @@
-import {
-  lazy,
-  Suspense,
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
-  type MutableRefObject,
-} from "react";
+import { lazy, Suspense, useCallback, useEffect, useRef, type MutableRefObject } from "react";
 import { PanelTabButton } from "./PanelTabButton";
 import { usePreviewVariablesStore } from "../hooks/previewVariablesStore";
 import type { RenderJob } from "./renders/useRenderQueue";
 import type { BlockParam } from "@hyperframes/core/registry";
-import { readMotionInstanceFromExtras } from "@hyperframes/core/motion-presets";
 import {
   STUDIO_ILLUSTRATION_PANEL_ENABLED,
   STUDIO_INSPECTOR_PANELS_ENABLED,
@@ -20,7 +11,6 @@ import type { Composition } from "@hyperframes/sdk";
 import type { EditHistoryKind } from "../utils/editHistory";
 import type { UseSlideshowPersistParams } from "../hooks/useSlideshowPersist";
 import type { EffectInsertIntent } from "../utils/blockInstaller";
-import type { AnimationTemplateDraft } from "./sidebar/AnimationTemplatesTab";
 
 import { useStudioPlaybackContext, useStudioShellContext } from "../contexts/StudioContext";
 import { usePanelLayoutContext } from "../contexts/PanelLayoutContext";
@@ -76,11 +66,6 @@ const loadAnimationTemplatesTab = () =>
   }));
 const AnimationTemplatesTab = lazy(loadAnimationTemplatesTab);
 export const preloadStudioAnimationPanel = () => loadAnimationTemplatesTab();
-const AnimationPropertiesPanel = lazy(() =>
-  import("./editor/SemanticMotionPanel").then((module) => ({
-    default: module.AnimationPropertiesPanel,
-  })),
-);
 const AssetsTab = lazy(() =>
   import("./sidebar/AssetsTab").then((module) => ({ default: module.AssetsTab })),
 );
@@ -125,14 +110,6 @@ export interface StudioRightPanelProps {
   }) => Promise<void>;
   onToggleElementHidden?: ToggleHiddenHandler;
   onAddBlock?: (blockName: string, intent?: EffectInsertIntent) => Promise<boolean>;
-}
-
-function animationSelectionKey(
-  selection: AnimationTemplateDraft["selection"] | null | undefined,
-): string | null {
-  if (!selection) return null;
-  const locator = selection.hfId ?? selection.id ?? selection.selector;
-  return locator ? `${selection.compositionPath}:${selection.sourceFile}:${locator}` : null;
 }
 
 // fallow-ignore-next-line complexity
@@ -234,7 +211,6 @@ export function StudioRightPanel({
   } = useFileManagerContext();
 
   const backgroundRemovalAbortRef = useRef<AbortController | null>(null);
-  const [pendingMotionDraft, setPendingMotionDraft] = useState<AnimationTemplateDraft | null>(null);
 
   useEffect(
     () => () => {
@@ -345,8 +321,8 @@ export function StudioRightPanel({
       projectDir={projectDir}
       assets={assets}
       element={singleDomEditSelection}
-      inspectorMode={rightPanelTab === "animation-properties" ? "animation" : "properties"}
-      showInspectorChrome={rightPanelTab !== "animation-properties"}
+      inspectorMode="properties"
+      showInspectorChrome
       multiSelectCount={domEditGroupSelections.length}
       multiSelectedElements={domEditGroupSelections}
       onGroupSelection={handleGroupSelection}
@@ -429,47 +405,26 @@ export function StudioRightPanel({
   );
   const animationPanelActive =
     rightPanelTab === "animation" || rightPanelTab === "animation-properties";
-  const hasSelectedSemanticMotion = selectedGsapAnimations.some(
-    (animation) => readMotionInstanceFromExtras(animation.extras) !== null,
-  );
-  const showAnimationProperties =
-    rightPanelTab === "animation-properties" &&
-    (pendingMotionDraft !== null || hasSelectedSemanticMotion);
-  const selectAnimationTemplate = useCallback(
-    (draft: AnimationTemplateDraft) => {
-      setPendingMotionDraft(draft);
-      setRightPanelTab("animation-properties");
-    },
-    [setRightPanelTab],
-  );
-  const currentAnimationSelectionKey = animationSelectionKey(domEditSelection);
-  const pendingAnimationSelectionKey = animationSelectionKey(pendingMotionDraft?.selection);
-  useEffect(() => {
-    if (
-      pendingMotionDraft &&
-      currentAnimationSelectionKey &&
-      currentAnimationSelectionKey !== pendingAnimationSelectionKey
-    ) {
-      setPendingMotionDraft(null);
-    }
-  }, [currentAnimationSelectionKey, pendingAnimationSelectionKey, pendingMotionDraft]);
 
   const animationPanel = (
     <div className="h-full min-h-0 overflow-hidden">
-      {showAnimationProperties ? (
-        <AnimationPropertiesPanel
-          draft={pendingMotionDraft}
-          element={singleDomEditSelection}
-          animations={selectedGsapAnimations}
-          onMutate={handleMotionMutation}
-          onApplied={() => {
-            setPendingMotionDraft(null);
-            showToast(tx("Animation applied"), "info");
-          }}
-        />
-      ) : (
-        <AnimationTemplatesTab onSelectTemplate={selectAnimationTemplate} />
-      )}
+      <AnimationTemplatesTab
+        onMutate={handleMotionMutation}
+        onStatus={(status) =>
+          showToast(
+            t(
+              status === "applied"
+                ? "animation.applied"
+                : status === "selection-required"
+                  ? "animation.selectElement"
+                : status === "updated"
+                  ? "animation.updated"
+                  : "animation.removed",
+            ),
+            "notice",
+          )
+        }
+      />
     </div>
   );
 
@@ -645,7 +600,6 @@ export function StudioRightPanel({
                       tooltip={t("right.animationTooltip")}
                       active={animationPanelActive}
                       onClick={() => {
-                        setPendingMotionDraft(null);
                         selectStudioPanel("animation");
                       }}
                     />

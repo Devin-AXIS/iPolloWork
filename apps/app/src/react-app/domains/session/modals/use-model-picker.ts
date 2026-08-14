@@ -7,6 +7,7 @@ import { useEffect, useMemo, useState } from "react";
 
 import { isDesktopProviderBlocked } from "@/app/cloud/desktop-app-restrictions";
 import type { Client, ModelOption } from "@/app/types";
+import { modelSupportsVision } from "@/app/utils/model-capabilities";
 import { useCheckDesktopRestriction } from "@/react-app/domains/cloud/desktop-config-provider";
 import {
   ensureProviderListQuery,
@@ -115,6 +116,7 @@ export function useModelPicker(input: UseModelPickerInput) {
               isFree: false,
               isConnected: true,
               isRecommended: isNew,
+              supportsVision: modelSupportsVision(model),
               source: /^lpr_/i.test(provider.id) ? "cloud" as const : undefined,
             });
           }

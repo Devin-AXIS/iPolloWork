@@ -24,7 +24,6 @@ import {
 } from "@/components/ui/dialog";
 import { desktopFetchViaMain, openDesktopAuthUrl, openDesktopUrl } from "@/app/lib/desktop";
 import { isDesktopRuntime } from "@/app/utils";
-import { compareProviders } from "@/app/utils/providers";
 import { Button } from "@/components/ui/button";
 import { ProviderIcon } from "../../../design-system/provider-icon";
 import { TextInput } from "../../../design-system/text-input";
@@ -32,20 +31,18 @@ import {
   parseTokenStarModels,
   TOKENSTAR_PROVIDER,
 } from "./tokenstar-provider";
-import { formatProviderAuthName } from "./provider-auth-curation";
+import {
+  buildProviderAuthEntries,
+  getProviderAuthEntryGroups,
+  getProviderAuthEntryVariantLabel,
+  isOpenAiProvider,
+  type ProviderAuthEntry,
+} from "./provider-auth-curation";
 import type {
   ProviderAuthMethod,
   ProviderAuthProvider,
   ProviderOAuthStartResult,
 } from "./store";
-
-type ProviderAuthEntry = {
-  id: string;
-  name: string;
-  methods: ProviderAuthMethod[];
-  connected: boolean;
-  env: string[];
-};
 
 type ProviderOAuthSession = ProviderOAuthStartResult & {
   providerId: string;
@@ -100,6 +97,7 @@ export default function ProviderAuthModal(props: ProviderAuthModalProps) {
   const [oauthBrowserOpened, setOauthBrowserOpened] = useState(false);
   const [tokenStarCheckingModels, setTokenStarCheckingModels] = useState(false);
   const [tokenStarModelStatus, setTokenStarModelStatus] = useState<string | null>(null);
+  const [showMoreProviders, setShowMoreProviders] = useState(false);
 
   const searchInputRef = useRef<HTMLInputElement | null>(null);
   const providerPollRef = useRef<number | null>(null);
@@ -110,18 +108,6 @@ export default function ProviderAuthModal(props: ProviderAuthModalProps) {
   const isOpenAiHeadlessMethod = (method: ProviderAuthMethod) => {
     const label = method.label.toLowerCase();
     return method.type === "oauth" && (label.includes("headless") || label.includes("device"));
-  };
-
-  const isOpenAiProvider = (id: string, fallbackName?: string) => {
-    const normalizedId = id.trim().toLowerCase();
-    const normalizedName = fallbackName?.trim().toLowerCase() ?? "";
-    return normalizedId === "openai" || normalizedName === "openai";
-  };
-
-  const isAnthropicProvider = (id: string, fallbackName?: string) => {
-    const normalizedId = id.trim().toLowerCase();
-    const normalizedName = fallbackName?.trim().toLowerCase() ?? "";
-    return normalizedId === "anthropic" || normalizedName === "anthropic";
   };
 
   const isiPolloWorkBuiltInProvider = (id: string) => id.trim().toLowerCase() === "opencode";
@@ -139,55 +125,14 @@ export default function ProviderAuthModal(props: ProviderAuthModalProps) {
     window.open(url, "_blank", "noopener,noreferrer");
   };
 
-  const isClaudeProMaxMethod = (method: ProviderAuthMethod) => {
-    const label = method.label.toLowerCase();
-    return method.type === "oauth" && (label.includes("pro/max") || label.includes("create an api key"));
-  };
-
   const entries = useMemo<ProviderAuthEntry[]>(() => {
-    const methods = props.authMethods ?? {};
-    const connected = new Set(props.connectedProviderIds ?? []);
-    const providers = props.providers ?? [];
-
-    const providersById = new Map(providers.map((provider) => [provider.id, provider]));
-    const nextEntries = Object.keys(methods)
-      .flatMap((id) => {
-        const provider = providersById.get(id);
-        const entryMethods = (methods[id] ?? []).filter((method) => {
-          if (isAnthropicProvider(id, provider?.name) && isClaudeProMaxMethod(method)) {
-            return false;
-          }
-          if (!isOpenAiProvider(id, provider?.name)) return true;
-          if (method.type !== "oauth") return true;
-          if (isRemoteWorker) return isOpenAiHeadlessMethod(method);
-          return !isOpenAiHeadlessMethod(method);
-        });
-        if (entryMethods.length === 0) return [];
-        return [{
-          id,
-          name: formatProviderAuthName(id, provider?.name),
-          methods: entryMethods,
-          connected: connected.has(id),
-          env: Array.isArray(provider?.env) ? provider.env : [],
-        } satisfies ProviderAuthEntry];
-      })
-      .sort(compareProviders);
-
-    if (props.showiPolloWorkModelsSubscribe) {
-      const connectedToiPolloWork = connected.has(IPOLLOWORK_MODELS_PROVIDER_ID);
-      return [
-        {
-          id: IPOLLOWORK_MODELS_PROVIDER_ID,
-          name: "iPolloWork",
-          methods: [{ type: "cloud", label: "Subscribe" }],
-          connected: connectedToiPolloWork,
-          env: [],
-        },
-        ...nextEntries.filter((entry) => entry.id.trim().toLowerCase() !== IPOLLOWORK_MODELS_PROVIDER_ID),
-      ];
-    }
-
-    return nextEntries;
+    return buildProviderAuthEntries({
+      authMethods: props.authMethods ?? {},
+      connectedProviderIds: props.connectedProviderIds ?? [],
+      providers: props.providers ?? [],
+      isRemoteWorker,
+      showiPolloWorkModelsSubscribe: Boolean(props.showiPolloWorkModelsSubscribe),
+    });
   }, [isRemoteWorker, props.authMethods, props.connectedProviderIds, props.providers, props.showiPolloWorkModelsSubscribe]);
 
   const selectedEntry = useMemo(
@@ -201,14 +146,17 @@ export default function ProviderAuthModal(props: ProviderAuthModalProps) {
   const resolvedView = selectedEntry ? view : "list";
   const errorMessage = localError ?? props.error;
 
-  const filteredEntries = useMemo(() => {
-    const query = searchQuery.trim().toLowerCase();
-    if (!query) return entries;
-    return entries.filter((entry) => {
-      const methodText = entry.methods.map((method) => method.label || (method.type === "oauth" ? "OAuth" : "API key")).join(" ");
-      return `${entry.name} ${entry.id} ${methodText}`.toLowerCase().includes(query);
-    });
-  }, [entries, searchQuery]);
+  const entryGroups = useMemo(
+    () => getProviderAuthEntryGroups(entries, searchQuery),
+    [entries, searchQuery],
+  );
+  const filteredEntries = useMemo(
+    () => [
+      ...entryGroups.recommended,
+      ...(searchQuery.trim() || showMoreProviders ? entryGroups.more : []),
+    ],
+    [entryGroups.more, entryGroups.recommended, searchQuery, showMoreProviders],
+  );
 
   const oauthInstructions = oauthSession?.authorization.instructions?.trim() ?? "";
   const isOpenAiHeadlessSession = Boolean(
@@ -256,6 +204,7 @@ export default function ProviderAuthModal(props: ProviderAuthModalProps) {
     setLocalError(null);
     setOauthCodeCopied(false);
     setOauthBrowserOpened(false);
+    setShowMoreProviders(false);
     resetTokenStarState();
   };
 
@@ -745,6 +694,75 @@ export default function ProviderAuthModal(props: ProviderAuthModalProps) {
     return "Paste a secret key that iPolloWork stores locally on this device.";
   };
 
+  const renderProviderEntry = (entry: ProviderAuthEntry, index: number) => {
+    const variantLabel = getProviderAuthEntryVariantLabel(entry);
+
+    return (
+      <button
+        key={entry.id}
+        type="button"
+        className={`w-full group flex items-start gap-3.5 rounded-xl px-3.5 py-3 text-left transition-all duration-200 disabled:opacity-60 disabled:cursor-not-allowed ${
+          index === activeEntryIndex ? "bg-gray-3/60" : "hover:bg-gray-3/30"
+        }`}
+        disabled={actionDisabled}
+        onMouseEnter={() => setActiveEntryIndex(index)}
+        onClick={() => handleEntrySelect(entry)}
+      >
+        <div className="flex size-8 shrink-0 items-center justify-center rounded-full border border-gray-5/60 bg-gray-2 shadow-sm overflow-hidden">
+          <ProviderIcon providerId={entry.id} size={18} className="text-gray-12" />
+        </div>
+
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center justify-between gap-3">
+            <div className="min-w-0 flex items-center gap-2">
+              <div className="text-[14px] font-medium text-gray-12 truncate tracking-tight">
+                {entry.name}
+              </div>
+            </div>
+            <div className="flex items-center justify-end shrink-0">
+              {entry.connected ? (
+                <div className="flex items-center gap-1 text-[11px] font-medium text-green-11 bg-green-4/20 border border-green-5/30 px-1.5 py-0.5 rounded-md">
+                  <CheckCircle2 size={12} strokeWidth={2.5} />
+                  Connected
+                </div>
+              ) : (
+                <div className="text-[12px] font-medium text-gray-9 group-hover:text-gray-12 transition-colors flex items-center gap-0.5 opacity-80 group-hover:opacity-100">
+                  Connect
+                  <ChevronRight size={14} className="opacity-0 -ml-2 group-hover:opacity-100 group-hover:ml-0 transition-all duration-200" />
+                </div>
+              )}
+            </div>
+          </div>
+          <div className="text-[11px] text-gray-9 font-mono truncate mt-0.5 opacity-60 group-hover:opacity-80 transition-opacity">
+            {entry.id}
+          </div>
+          {variantLabel ? (
+            <div className="mt-1 text-[11px] text-gray-10 truncate">
+              Includes: {variantLabel}
+            </div>
+          ) : null}
+
+          <div className="mt-2 flex flex-wrap gap-1.5">
+            {entry.methods.map((method) => (
+              <span
+                key={`${entry.id}-${method.type}-${method.methodIndex ?? method.cloudProviderId ?? method.label}`}
+                className={`text-[10px] font-medium px-2 py-0.5 rounded-md border ${
+                  method.type === "oauth"
+                    ? "bg-indigo-3/30 text-indigo-11 border-indigo-5/30"
+                    : method.type === "cloud"
+                      ? "bg-emerald-3/30 text-emerald-11 border-emerald-5/30"
+                      : "bg-gray-3/40 text-gray-11 border-gray-6/40"
+                }`}
+              >
+                {methodLabel(method)}
+              </span>
+            ))}
+          </div>
+        </div>
+      </button>
+    );
+  };
+
   return (
     <Dialog
       open={props.open}
@@ -794,66 +812,53 @@ export default function ProviderAuthModal(props: ProviderAuthModalProps) {
                     />
                   </div>
 
-                  {filteredEntries.length ? (
-                    filteredEntries.map((entry, index) => (
-                      <button
-                        key={entry.id}
-                        type="button"
-                        className={`w-full group flex items-start gap-3.5 rounded-xl px-3.5 py-3 text-left transition-all duration-200 disabled:opacity-60 disabled:cursor-not-allowed ${
-                          index === activeEntryIndex ? "bg-gray-3/60" : "hover:bg-gray-3/30"
-                        }`}
-                        disabled={actionDisabled}
-                        onMouseEnter={() => setActiveEntryIndex(index)}
-                        onClick={() => handleEntrySelect(entry)}
-                      >
-                        <div className="flex size-8 shrink-0 items-center justify-center rounded-full border border-gray-5/60 bg-gray-2 shadow-sm overflow-hidden">
-                          <ProviderIcon providerId={entry.id} size={18} className="text-gray-12" />
+                  {entryGroups.recommended.length > 0 || entryGroups.more.length > 0 ? (
+                    <div className="space-y-3">
+                      {searchQuery.trim() ? (
+                        <div className="space-y-2">
+                          {entryGroups.recommended.map((entry, index) => renderProviderEntry(entry, index))}
                         </div>
-
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center justify-between gap-3">
-                            <div className="min-w-0 flex items-center gap-2">
-                              <div className="text-[14px] font-medium text-gray-12 truncate tracking-tight">
-                                {entry.name}
-                              </div>
+                      ) : (
+                        <>
+                          <div className="space-y-2">
+                            <div className="px-1 text-[11px] font-semibold uppercase tracking-normal text-gray-9">
+                              Recommended
                             </div>
-                            <div className="flex items-center justify-end shrink-0">
-                              {entry.connected ? (
-                                <div className="flex items-center gap-1 text-[11px] font-medium text-green-11 bg-green-4/20 border border-green-5/30 px-1.5 py-0.5 rounded-md">
-                                  <CheckCircle2 size={12} strokeWidth={2.5} />
-                                  Connected
+                            {entryGroups.recommended.map((entry, index) => renderProviderEntry(entry, index))}
+                          </div>
+
+                          {entryGroups.more.length ? (
+                            <div className="space-y-2">
+                              <button
+                                type="button"
+                                className="flex w-full items-center justify-between rounded-lg px-1 py-1 text-left text-[12px] font-medium text-gray-10 hover:text-gray-12"
+                                disabled={actionDisabled}
+                                onClick={() => {
+                                  setShowMoreProviders((value) => !value);
+                                  setActiveEntryIndex(0);
+                                }}
+                              >
+                                <span>More providers</span>
+                                <span className="text-[11px] text-gray-9">
+                                  {showMoreProviders ? "Hide" : `${entryGroups.more.length} advanced`}
+                                </span>
+                              </button>
+                              {showMoreProviders ? (
+                                <div className="space-y-2">
+                                  {entryGroups.more.map((entry, index) =>
+                                    renderProviderEntry(entry, entryGroups.recommended.length + index),
+                                  )}
                                 </div>
                               ) : (
-                                <div className="text-[12px] font-medium text-gray-9 group-hover:text-gray-12 transition-colors flex items-center gap-0.5 opacity-80 group-hover:opacity-100">
-                                  Connect
-                                  <ChevronRight size={14} className="opacity-0 -ml-2 group-hover:opacity-100 group-hover:ml-0 transition-all duration-200" />
+                                <div className="rounded-lg border border-gray-6/50 bg-gray-2/40 px-3 py-2 text-[11px] text-gray-10">
+                                  Search to find specific provider IDs, billing plans, regional endpoints, or long-tail gateways.
                                 </div>
                               )}
                             </div>
-                          </div>
-                          <div className="text-[11px] text-gray-9 font-mono truncate mt-0.5 opacity-60 group-hover:opacity-80 transition-opacity">
-                            {entry.id}
-                          </div>
-
-                          <div className="mt-2 flex flex-wrap gap-1.5">
-                            {entry.methods.map((method) => (
-                              <span
-                                key={`${entry.id}-${method.type}-${method.methodIndex ?? method.cloudProviderId ?? method.label}`}
-                                className={`text-[10px] font-medium px-2 py-0.5 rounded-md border ${
-                                  method.type === "oauth"
-                                    ? "bg-indigo-3/30 text-indigo-11 border-indigo-5/30"
-                                    : method.type === "cloud"
-                                      ? "bg-emerald-3/30 text-emerald-11 border-emerald-5/30"
-                                      : "bg-gray-3/40 text-gray-11 border-gray-6/40"
-                                }`}
-                              >
-                                {methodLabel(method)}
-                              </span>
-                            ))}
-                          </div>
-                        </div>
-                      </button>
-                    ))
+                          ) : null}
+                        </>
+                      )}
+                    </div>
                   ) : (
                     <div className="text-sm text-gray-10 pt-2">
                       {entries.length ? "No providers match your search." : "No providers available."}

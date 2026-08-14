@@ -631,16 +631,21 @@ export function SessionRoute() {
     return listCommands(opencodeClient, selectedWorkspaceRoot || undefined);
   }, [engineReloadVersion, opencodeClient, selectedWorkspaceRoot]);
 
-  // Shared by the composer (plug menu, @ mentions) and the command palette.
-  // Hidden and subagent-only entries are excluded — those are task-tool
-  // delegation targets, not agents the user can run a session as.
+  // Shared by @ mentions and the command palette. Plan and build are product
+  // modes controlled beside the model; hidden and subagent-only entries are
+  // task-tool delegation targets rather than session-level agents.
   const listAgents = useCallback(async () => {
     // Include engineReloadVersion so the composer refetches after newly added
     // agent files become available, even when the inline picker is hidden.
     void engineReloadVersion;
     if (!opencodeClient) return [];
     const list = unwrap(await opencodeClient.app.agents());
-    return list.filter((agent) => !agent.hidden && agent.mode !== "subagent");
+    return list.filter((agent) =>
+      !agent.hidden
+      && agent.mode !== "subagent"
+      && agent.name !== "build"
+      && agent.name !== "plan"
+    );
   }, [engineReloadVersion, opencodeClient]);
 
   const handleOpenSettings = useCallback((route = "/settings/preferences", workspaceId = sidebarActiveWorkspaceId) => {
@@ -1005,7 +1010,6 @@ export function SessionRoute() {
       onModelVariantChange: (value: string | null) => {
         local.setPrefs((previous) => ({ ...previous, modelVariant: value }));
       },
-      agentLabel: selectedAgent ? selectedAgent.charAt(0).toUpperCase() + selectedAgent.slice(1) : t("session.default_agent"),
       selectedAgent,
       listAgents,
       onSelectAgent: (agent: string | null) => setSelectedAgent(agent),
@@ -1182,6 +1186,7 @@ export function SessionRoute() {
     type: iPolloWorkSessionType = "work",
     templateId?: iPolloWorkTemplateId,
     templateScope?: WorkContextId,
+    groupId?: string | null,
     authoring?: { category: TemplateCategory; pptxCompatibility?: PptxCompatibility },
   ): Promise<string | null> => {
     const workspace = workspaces.find((item) => item.id === workspaceId);
@@ -1240,6 +1245,9 @@ export function SessionRoute() {
         }
       }
       setSessionType(session.id, sessionType);
+      if (groupId?.trim()) {
+        sessionManagementStore.getState().assignGroup(workspaceId, session.id, groupId);
+      }
       captureAnalyticsEvent("task_created", {
         source: "new_task",
         workspace_type: workspace.workspaceType ?? "unknown",
@@ -1291,7 +1299,7 @@ export function SessionRoute() {
           description: message,
           action: {
             label: "Retry",
-            onClick: () => void handleCreateTaskInWorkspace(workspaceId, type, templateId, templateScope, authoring),
+            onClick: () => void handleCreateTaskInWorkspace(workspaceId, type, templateId, templateScope, groupId, authoring),
           },
           duration: Infinity,
         });
@@ -1304,7 +1312,7 @@ export function SessionRoute() {
         description: message,
         action: {
           label: "Retry",
-          onClick: () => void handleCreateTaskInWorkspace(workspaceId, type, templateId, templateScope),
+          onClick: () => void handleCreateTaskInWorkspace(workspaceId, type, templateId, templateScope, groupId),
         },
         duration: Infinity,
       });
@@ -1781,10 +1789,10 @@ export function SessionRoute() {
           navigateToWorkspaceSession(workspaceId, sessionId);
         },
         onPrefetchSession: () => {},
-        onCreateTaskInWorkspace: (workspaceId, type, templateId, templateScope) =>
-          handleCreateTaskInWorkspace(workspaceId, type, templateId, templateScope),
-        onCreateTemplateAuthoring: (workspaceId, input) =>
-          handleCreateTaskInWorkspace(workspaceId, "work", undefined, undefined, input),
+        onCreateTaskInWorkspace: (workspaceId, type, templateId, templateScope, groupId) =>
+          handleCreateTaskInWorkspace(workspaceId, type, templateId, templateScope, groupId),
+        onCreateTemplateAuthoring: (workspaceId, input, groupId) =>
+          handleCreateTaskInWorkspace(workspaceId, "work", undefined, undefined, groupId, input),
         onCreateTaskWithPrompt: (workspaceId, prompt) => {
           void (async () => {
             const workspace = workspaces.find((item) => item.id === workspaceId);

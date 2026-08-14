@@ -64,7 +64,7 @@ import { RenameSessionModal } from "../modals/rename-session-modal";
 import { AppSidebar } from "../sidebar/app-sidebar";
 import type { iPolloWorkSessionType, iPolloWorkTemplateId } from "../sidebar/app-sidebar-provider";
 import { readSessionType, sessionTypeForTemplate, setSessionType } from "../sidebar/session-type";
-import { useSessionManagementStore } from "../sidebar/session-management-store";
+import { useSessionManagementStore, useActiveWorkspaceGroupId } from "../sidebar/session-management-store";
 import { SessionSurface, type SessionSurfaceProps } from "../surface/session-surface";
 import { replaceDesignSelectionToken } from "../surface/composer/composer-draft";
 import { getComposerDraft, useComposerStateStore } from "../surface/composer-state-store";
@@ -146,6 +146,7 @@ const NARROW_LAYOUT_WIDTH = 960;
 const VIDEO_PANEL_DEFAULT_WIDTH = 1120;
 const SESSION_SHELL_TRANSITION_MS = 220;
 const SESSION_SHELL_TRANSITION_EASING = "cubic-bezier(0.22, 1, 0.36, 1)";
+const TEMPLATE_REFERENCE_UPLOAD_VISIBLE = false;
 type SessionPanelView = SidePanelItem | "launcher";
 type TemplateSessionData = {
   sessionId: string;
@@ -181,11 +182,13 @@ export type SessionPageSidebarProps = {
     type?: iPolloWorkSessionType,
     templateId?: iPolloWorkTemplateId,
     templateScope?: WorkContextId,
+    groupId?: string | null,
   ) => Promise<string | null> | string | null | void;
   onCreateTaskWithPrompt?: (workspaceId: string, prompt: string) => void;
   onCreateTemplateAuthoring: (
     workspaceId: string,
     input: { category: TemplateCategory; pptxCompatibility?: PptxCompatibility },
+    groupId?: string | null,
   ) => Promise<string | null> | string | null | void;
   onRecoverWorkspace: (workspaceId: string) => Promise<boolean> | boolean | void;
   onTestWorkspaceConnection: (workspaceId: string) => Promise<boolean> | boolean | void;
@@ -528,7 +531,7 @@ function TemplateBriefCard({ template, onSubmit, onClose }: { template: Template
       </div>
       <div className="space-y-4 p-5">
         {config.fields.map((field) => <label key={field.key} className="block text-sm font-medium">{field.label}{field.optional ? <span className="ml-1 text-xs font-normal text-dls-secondary">{t("common.optional_parens")}</span> : null}<Input value={brief[field.key]} onChange={(event) => { const value = event.currentTarget.value; setBrief((current) => ({ ...current, [field.key]: value })); }} placeholder={field.placeholder} className="mt-2" /></label>)}
-        <div className="rounded-xl border border-dls-border bg-dls-canvas/45 p-3">
+        {TEMPLATE_REFERENCE_UPLOAD_VISIBLE ? <div className="rounded-xl border border-dls-border bg-dls-canvas/45 p-3">
           <div className="flex items-start justify-between gap-3">
             <div><div className="text-sm font-medium">{t("templates.brief.reference_label")}<span className="ml-1 text-xs font-normal text-dls-secondary">{t("common.optional_parens")}</span></div><p className="mt-1 text-xs leading-5 text-dls-secondary">{t("templates.brief.reference_description")}</p></div>
             <Button type="button" variant="outline" size="sm" className="h-8 shrink-0 rounded-lg px-2.5 text-xs" disabled={referenceBusy} onClick={() => referenceInputRef.current?.click()}>{referenceBusy ? <LoaderCircle className="size-3 animate-spin" /> : <Upload className="size-3" />}{t("templates.brief.reference_upload")}</Button>
@@ -544,7 +547,7 @@ function TemplateBriefCard({ template, onSubmit, onClose }: { template: Template
             <Button type="button" variant={reference.sendOriginal ? "secondary" : "ghost"} size="sm" className="h-7 shrink-0 rounded-lg px-2 text-[10px]" disabled={reference.status === "parsing" || !canSendOriginalReference(reference.file)} onClick={() => updateReferences((current) => current.map((item) => item.id === reference.id ? { ...item, sendOriginal: !item.sendOriginal } : item))}>{reference.sendOriginal ? t("templates.brief.reference_send_original_on") : t("templates.brief.reference_send_original_off")}</Button>
             <Button type="button" variant="ghost" size="icon-sm" className="size-7 shrink-0 rounded-lg text-dls-secondary hover:text-dls-text" aria-label={t("templates.brief.reference_remove", { name: reference.fileName })} onClick={() => removeReference(reference.id)}><X className="size-3.5" /></Button>
           </div>)}</div> : null}
-        </div>
+        </div> : null}
         <Button className="w-full" disabled={!brief.title.trim() || !brief.audience.trim() || referenceBusy} onClick={() => onSubmit({ title: brief.title.trim(), audience: brief.audience.trim(), details: brief.details.trim() }, references)}>{config.submitLabel}</Button>
       </div>
     </div>
@@ -625,6 +628,7 @@ export function SessionPage(props: SessionPageProps) {
       ? readSessionType(props.selectedSessionId)
       : null
   ), [props.selectedSessionId, sessionTypeRevision]);
+  const activeSessionGroupId = useActiveWorkspaceGroupId(props.selectedWorkspaceId);
   const isDesignSession = selectedSessionType === "design";
   const isVideoSession = selectedSessionType === "video";
   const currentVideoEntryPath = props.selectedSessionId && isVideoSession
@@ -2725,6 +2729,7 @@ export function SessionPage(props: SessionPageProps) {
                           type,
                           templateId,
                           PERSONAL_WORK_CONTEXT_ID,
+                          activeSessionGroupId,
                         )}
                         onMaterializeTemplate={async (templateId, surface) => {
                           if (!props.ipolloworkServerClient || !props.runtimeWorkspaceId || !props.selectedSessionId) return;
@@ -3012,7 +3017,7 @@ export function SessionPage(props: SessionPageProps) {
         onExport={(template) => void exportPersonalTemplate(template)}
         onImport={importDesignTemplate}
         canCreate={props.selectedWorkspaceDisplay.workspaceType === "local"}
-        onCreate={(input) => props.sidebar.onCreateTemplateAuthoring(props.selectedWorkspaceId, input)}
+        onCreate={(input) => props.sidebar.onCreateTemplateAuthoring(props.selectedWorkspaceId, input, activeSessionGroupId)}
         onUse={(template) => {
           if (template.manifest.surface === "video" && props.selectedWorkspaceDisplay.workspaceType === "remote") {
             toast.error(t("templates.video_local_only"));
@@ -3024,6 +3029,7 @@ export function SessionPage(props: SessionPageProps) {
             sessionTypeForTemplate(template.manifest),
             template.manifest.id,
             templateResourceScope,
+            activeSessionGroupId,
           );
         }}
       /> : null}

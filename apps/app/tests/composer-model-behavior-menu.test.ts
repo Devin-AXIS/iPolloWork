@@ -62,4 +62,23 @@ describe("Composer model and reasoning menu", () => {
     expect(model).not.toContain("openCodeZen.items.unshift(tokenStarEntry)");
     expect(menu).toContain("onConfigureTokenStar");
   });
+
+  test("Composer keeps execute and plan in a model-style selector", () => {
+    const composer = readFileSync(composerPath, "utf8");
+    const modelIndex = composer.indexOf("<ModelBehaviorMenu");
+    const modeIndex = composer.indexOf("open={workModeOpen}");
+
+    expect(modelIndex).toBeGreaterThan(-1);
+    expect(modeIndex).toBeGreaterThan(modelIndex);
+    expect(composer).toContain("<PopoverTrigger");
+    expect(composer).toContain("rounded-full bg-gray-3 px-3 py-1.5 text-sm");
+    expect(composer).toContain('data-work-mode-option="execute"');
+    expect(composer).toContain('data-work-mode-option="plan"');
+    expect(composer).toContain('onClick={() => selectWorkMode("build")}');
+    expect(composer).toContain('onClick={() => selectWorkMode("plan")}');
+    expect(composer).toContain("<ChevronDown");
+    expect(composer).toContain("<ListTodo");
+    expect(composer).toContain('t("composer.work_mode_execute")');
+    expect(composer).toContain('t("composer.work_mode_plan")');
+  });
 });
