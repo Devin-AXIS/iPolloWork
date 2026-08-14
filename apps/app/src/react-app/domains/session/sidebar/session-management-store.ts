@@ -58,12 +58,14 @@ type SessionManagementState = {
   pinnedIds: string[];
   orderByWorkspace: Record<string, string[]>;
   groupsByWorkspace: Record<string, WorkspaceGroupState>;
+  activeGroupByWorkspace: Record<string, string>;
 };
 
 type SessionManagementActions = {
   togglePin: (sessionId: string) => void;
   reorderSessions: (workspaceId: string, sessionIds: string[]) => void;
   assignGroup: (workspaceId: string, sessionId: string, groupId: string | null) => void;
+  setActiveGroup: (workspaceId: string, groupId: string | null) => void;
   createGroup: (workspaceId: string, label: string) => void;
   reorderGroups: (workspaceId: string, groupIds: string[]) => void;
   renameGroup: (workspaceId: string, groupId: string, label: string) => void;
@@ -170,6 +172,7 @@ export const useSessionManagementStore = create<SessionManagementStore>()(
       pinnedIds: [],
       orderByWorkspace: {},
       groupsByWorkspace: {},
+      activeGroupByWorkspace: {},
 
       togglePin: (sessionId) =>
         set((state) => {
@@ -208,6 +211,21 @@ export const useSessionManagementStore = create<SessionManagementStore>()(
           workspaceId,
         );
       },
+
+      setActiveGroup: (workspaceId, groupId) =>
+        set((state) => {
+          const ws = state.groupsByWorkspace[workspaceId] ?? EMPTY_GROUP_STATE;
+          if (groupId && ws.groups.some((group) => group.id === groupId)) {
+            return {
+              activeGroupByWorkspace: {
+                ...state.activeGroupByWorkspace,
+                [workspaceId]: groupId,
+              },
+            };
+          }
+          const { [workspaceId]: _active, ...rest } = state.activeGroupByWorkspace;
+          return { activeGroupByWorkspace: rest };
+        }),
 
       createGroup: (workspaceId, label) => {
         const id = `grp_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`;
@@ -291,6 +309,11 @@ export const useSessionManagementStore = create<SessionManagementStore>()(
           const collapsedGroupIds = (ws.collapsedGroupIds ?? []).filter(
             (id) => id === "__ipollowork_ungrouped" || knownGroupIds.has(id),
           );
+          const activeGroupByWorkspace = knownGroupIds.has(state.activeGroupByWorkspace[workspaceId] ?? "")
+            ? state.activeGroupByWorkspace
+            : Object.fromEntries(
+                Object.entries(state.activeGroupByWorkspace).filter(([id]) => id !== workspaceId),
+              );
           return {
             groupsByWorkspace: {
               ...state.groupsByWorkspace,
@@ -300,6 +323,7 @@ export const useSessionManagementStore = create<SessionManagementStore>()(
                 collapsedGroupIds,
               },
             },
+            activeGroupByWorkspace,
           };
         }),
 
@@ -318,6 +342,11 @@ export const useSessionManagementStore = create<SessionManagementStore>()(
               ...state.groupsByWorkspace,
               [workspaceId]: { groups, assignments, collapsedGroupIds },
             },
+            activeGroupByWorkspace: state.activeGroupByWorkspace[workspaceId] === groupId
+              ? Object.fromEntries(
+                  Object.entries(state.activeGroupByWorkspace).filter(([id]) => id !== workspaceId),
+                )
+              : state.activeGroupByWorkspace,
           };
         });
         syncServerState(sessionGroupSyncHandler?.removeGroup(workspaceId, groupId), workspaceId);
@@ -327,7 +356,8 @@ export const useSessionManagementStore = create<SessionManagementStore>()(
         set((state) => {
           const { [workspaceId]: _o, ...orderRest } = state.orderByWorkspace;
           const { [workspaceId]: _g, ...groupsRest } = state.groupsByWorkspace;
-          return { orderByWorkspace: orderRest, groupsByWorkspace: groupsRest };
+          const { [workspaceId]: _active, ...activeRest } = state.activeGroupByWorkspace;
+          return { orderByWorkspace: orderRest, groupsByWorkspace: groupsRest, activeGroupByWorkspace: activeRest };
         }),
     }),
     {
@@ -357,4 +387,13 @@ export function useSessionOrder(workspaceId: string): string[] {
 
 export function useWorkspaceGroups(workspaceId: string): WorkspaceGroupState {
   return useSessionManagementStore((s) => s.groupsByWorkspace[workspaceId] ?? EMPTY_GROUP_STATE);
+}
+
+export function useActiveWorkspaceGroupId(workspaceId: string): string | null {
+  return useSessionManagementStore((s) => {
+    const groupId = s.activeGroupByWorkspace[workspaceId] ?? null;
+    if (!groupId) return null;
+    const ws = s.groupsByWorkspace[workspaceId] ?? EMPTY_GROUP_STATE;
+    return ws.groups.some((group) => group.id === groupId) ? groupId : null;
+  });
 }

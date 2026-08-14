@@ -1182,6 +1182,7 @@ export function SessionRoute() {
     type: iPolloWorkSessionType = "work",
     templateId?: iPolloWorkTemplateId,
     templateScope?: WorkContextId,
+    groupId?: string | null,
     authoring?: { category: TemplateCategory; pptxCompatibility?: PptxCompatibility },
   ): Promise<string | null> => {
     const workspace = workspaces.find((item) => item.id === workspaceId);
@@ -1240,6 +1241,9 @@ export function SessionRoute() {
         }
       }
       setSessionType(session.id, sessionType);
+      if (groupId?.trim()) {
+        sessionManagementStore.getState().assignGroup(workspaceId, session.id, groupId);
+      }
       captureAnalyticsEvent("task_created", {
         source: "new_task",
         workspace_type: workspace.workspaceType ?? "unknown",
@@ -1291,7 +1295,7 @@ export function SessionRoute() {
           description: message,
           action: {
             label: "Retry",
-            onClick: () => void handleCreateTaskInWorkspace(workspaceId, type, templateId, templateScope, authoring),
+            onClick: () => void handleCreateTaskInWorkspace(workspaceId, type, templateId, templateScope, groupId, authoring),
           },
           duration: Infinity,
         });
@@ -1304,7 +1308,7 @@ export function SessionRoute() {
         description: message,
         action: {
           label: "Retry",
-          onClick: () => void handleCreateTaskInWorkspace(workspaceId, type, templateId, templateScope),
+          onClick: () => void handleCreateTaskInWorkspace(workspaceId, type, templateId, templateScope, groupId),
         },
         duration: Infinity,
       });
@@ -1781,10 +1785,10 @@ export function SessionRoute() {
           navigateToWorkspaceSession(workspaceId, sessionId);
         },
         onPrefetchSession: () => {},
-        onCreateTaskInWorkspace: (workspaceId, type, templateId, templateScope) =>
-          handleCreateTaskInWorkspace(workspaceId, type, templateId, templateScope),
-        onCreateTemplateAuthoring: (workspaceId, input) =>
-          handleCreateTaskInWorkspace(workspaceId, "work", undefined, undefined, input),
+        onCreateTaskInWorkspace: (workspaceId, type, templateId, templateScope, groupId) =>
+          handleCreateTaskInWorkspace(workspaceId, type, templateId, templateScope, groupId),
+        onCreateTemplateAuthoring: (workspaceId, input, groupId) =>
+          handleCreateTaskInWorkspace(workspaceId, "work", undefined, undefined, groupId, input),
         onCreateTaskWithPrompt: (workspaceId, prompt) => {
           void (async () => {
             const workspace = workspaces.find((item) => item.id === workspaceId);

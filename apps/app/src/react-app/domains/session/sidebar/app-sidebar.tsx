@@ -96,6 +96,7 @@ import {
 import type { FlattenedSessionRow, SessionListItem, SessionTreeState } from "./utils";
 import {
   useSessionManagementStore,
+  useActiveWorkspaceGroupId,
   usePinnedSessionIds,
   useSessionOrder,
   useWorkspaceGroups,
@@ -493,6 +494,7 @@ export type AppSidebarProps = {
     type?: iPolloWorkSessionType,
     templateId?: iPolloWorkTemplateId,
     templateScope?: WorkContextId,
+    groupId?: string | null,
   ) => Promise<string | null> | string | null | void;
   onOpenRenameSession?: (sessionId: string) => void;
   onOpenDeleteSession?: (sessionId: string) => void;
@@ -627,6 +629,7 @@ export function AppSidebar(props: AppSidebarProps) {
     ? activeEnterprise.logoUrl ?? DEFAULT_BRAND_LOGO_URL
     : brandLogoUrl ?? shellConfig.brandLogoDataUrl ?? DEFAULT_BRAND_LOGO_URL;
   const effectiveBrandAppName = activeEnterprise?.name ?? brandAppName;
+  const activeSessionGroupId = useActiveWorkspaceGroupId(props.selectedWorkspaceId);
   const sidebarWorkspaceSessionGroups = React.useMemo(() => {
     const selectedGroup = props.workspaceSessionGroups.find(
       (entry) => entry.workspace.id === props.selectedWorkspaceId,
@@ -686,7 +689,7 @@ export function AppSidebar(props: AppSidebarProps) {
                 disabled={props.newTaskDisabled || !props.selectedWorkspaceId}
                 aria-label={t("session.new_task")}
                 aria-keyshortcuts={isMacPlatform() ? "Meta+N" : "Control+N"}
-                onClick={() => props.onCreateTaskInWorkspace(props.selectedWorkspaceId, "work")}
+                onClick={() => props.onCreateTaskInWorkspace(props.selectedWorkspaceId, "work", undefined, undefined, activeSessionGroupId)}
               >
                 <span className="flex size-4 shrink-0 items-center justify-center" aria-hidden="true">
                   <img src={publicAssetUrl("sidebar-icon/figma-square-pen.svg")} alt="" className="size-[11px] dark:invert" />
@@ -868,6 +871,7 @@ function WorkspaceSidebarGroup({
   const pinnedIds = usePinnedSessionIds();
   const orderIds = useSessionOrder(workspace.id);
   const { groups: wsGroups, assignments: wsAssignments } = useWorkspaceGroups(workspace.id);
+  const activeSessionGroupId = useActiveWorkspaceGroupId(workspace.id);
   const store = useSessionManagementStore;
 
   const { archived: archivedSessions } = React.useMemo(
@@ -925,6 +929,7 @@ function WorkspaceSidebarGroup({
                       workspaceId={workspace.id}
                       forcedExpandedSessionIds={forcedExpandedSessionIds}
                       store={store}
+                      activeSessionGroupId={activeSessionGroupId}
                     />
                     {archivedSessions.length > 0 ? (
                       <ArchivedSessionsSection
@@ -1038,9 +1043,10 @@ function SidebarSectionHeader({ label, expanded, onToggle, onAdd, addDisabled, a
   );
 }
 
-function SessionGroupSeparator({ label, expanded, onToggle, onAdd, addDisabled, onRename, onRemove, onTitlePointerDown }: {
+function SessionGroupSeparator({ label, expanded, isActive, onToggle, onAdd, addDisabled, onRename, onRemove, onTitlePointerDown }: {
   label: string;
   expanded: boolean;
+  isActive: boolean;
   onToggle: () => void;
   onAdd: () => void;
   addDisabled?: boolean;
@@ -1049,7 +1055,7 @@ function SessionGroupSeparator({ label, expanded, onToggle, onAdd, addDisabled, 
   onTitlePointerDown?: React.PointerEventHandler<HTMLButtonElement>;
 }) {
   return (
-    <div className="group/session-group-row flex h-8 w-full items-center justify-between rounded-[8px] px-1 transition-colors hover:bg-sidebar-accent active:bg-sidebar-accent focus-within:ring-1 focus-within:ring-sidebar-ring">
+    <div className={cn("group/session-group-row flex h-8 w-full items-center justify-between rounded-[8px] px-1 transition-colors hover:bg-sidebar-accent active:bg-sidebar-accent focus-within:ring-1 focus-within:ring-sidebar-ring", isActive && "bg-sidebar-accent ring-1 ring-sidebar-ring")}>
       <button
         type="button"
         onClick={onToggle}
@@ -1152,7 +1158,7 @@ function GroupDropZone({ groupId, workspaceId, children }: {
 }
 
 /** Renders sessions partitioned by group. Empty groups always show. Ungrouped sessions render at the end. */
-function GroupedSessionList({ sessionRows, groups, assignments, pinnedIds, tree, workspaceId, forcedExpandedSessionIds, store }: {
+function GroupedSessionList({ sessionRows, groups, assignments, pinnedIds, tree, workspaceId, forcedExpandedSessionIds, store, activeSessionGroupId }: {
   sessionRows: FlattenedSessionRow[];
   groups: SessionGroupDefinition[];
   assignments: Record<string, string>;
@@ -1161,6 +1167,7 @@ function GroupedSessionList({ sessionRows, groups, assignments, pinnedIds, tree,
   workspaceId: string;
   forcedExpandedSessionIds: Set<string>;
   store: typeof useSessionManagementStore;
+  activeSessionGroupId: string | null;
 }) {
   const ctx = useSidebarContext();
   const [programExpanded, setProgramExpanded] = React.useState(true);
@@ -1218,7 +1225,7 @@ function GroupedSessionList({ sessionRows, groups, assignments, pinnedIds, tree,
   for (const rows of childrenByParent.values()) rows.sort(compareByMostRecent);
   ungroupedRows.sort(compareByMostRecent);
 
-  const renderRow = (row: FlattenedSessionRow) => (
+  const renderRow = (row: FlattenedSessionRow, groupContextId?: string | null) => (
     <React.Fragment key={row.session.id}>
       <SessionMenuItem
         session={row.session}
@@ -1228,8 +1235,9 @@ function GroupedSessionList({ sessionRows, groups, assignments, pinnedIds, tree,
         forcedExpandedSessionIds={forcedExpandedSessionIds}
         isPinned={pinnedIds.has(row.session.id)}
         rootIndent="group"
+        groupContextId={groupContextId}
       />
-      {(childrenByParent.get(row.session.id) ?? []).map(renderRow)}
+      {(childrenByParent.get(row.session.id) ?? []).map((child) => renderRow(child, groupContextId))}
     </React.Fragment>
   );
 
@@ -1246,6 +1254,7 @@ function GroupedSessionList({ sessionRows, groups, assignments, pinnedIds, tree,
         expanded={expanded}
         workspaceId={workspaceId}
         store={store}
+        activeSessionGroupId={activeSessionGroupId}
         renderRow={renderRow}
         previewCount={limit}
         onShowMore={() => showMoreInGroup(group.id, rows.length)}
@@ -1359,8 +1368,9 @@ function GroupedSessionList({ sessionRows, groups, assignments, pinnedIds, tree,
                       isPinned={pinnedIds.has(row.session.id)}
                       draggable={row.depth === 0}
                       rootIndent="recent"
+                      groupContextId={null}
                     />
-                    {(childrenByParent.get(row.session.id) ?? []).map(renderRow)}
+                    {(childrenByParent.get(row.session.id) ?? []).map((child) => renderRow(child, null))}
                   </React.Fragment>
                 ))}
               </Reorder.Group>
@@ -1384,13 +1394,14 @@ function GroupedSessionList({ sessionRows, groups, assignments, pinnedIds, tree,
   );
 }
 
-function SessionGroupSection({ group, rows, expanded, workspaceId, store, renderRow, previewCount, onShowMore }: {
+function SessionGroupSection({ group, rows, expanded, workspaceId, store, activeSessionGroupId, renderRow, previewCount, onShowMore }: {
   group: SessionGroupDefinition;
   rows: FlattenedSessionRow[];
   expanded: boolean;
   workspaceId: string;
   store: typeof useSessionManagementStore;
-  renderRow: (row: FlattenedSessionRow) => React.ReactNode;
+  activeSessionGroupId: string | null;
+  renderRow: (row: FlattenedSessionRow, groupContextId?: string | null) => React.ReactNode;
   previewCount: number;
   onShowMore: () => void;
 }) {
@@ -1419,8 +1430,13 @@ function SessionGroupSection({ group, rows, expanded, workspaceId, store, render
           <SessionGroupSeparator
             label={group.label}
             expanded={expanded}
-            onToggle={() => store.getState().toggleGroupExpanded(workspaceId, group.id)}
+            isActive={activeSessionGroupId === group.id}
+            onToggle={() => {
+              store.getState().setActiveGroup(workspaceId, group.id);
+              store.getState().toggleGroupExpanded(workspaceId, group.id);
+            }}
             onAdd={() => {
+              store.getState().setActiveGroup(workspaceId, group.id);
               void Promise.resolve(ctx.onCreateTaskInWorkspace(workspaceId, "work")).then((sessionId) => {
                 if (sessionId) store.getState().assignGroup(workspaceId, sessionId, group.id);
               });
@@ -1434,7 +1450,7 @@ function SessionGroupSection({ group, rows, expanded, workspaceId, store, render
             {visibleRows.length > 0
               ? (
                 <>
-                  {visibleRows.map(renderRow)}
+                  {visibleRows.map((row) => renderRow(row, group.id))}
                   {remaining > 0 ? (
                     <SidebarMenuSubItem>
                       <SidebarMenuSubButton
@@ -1482,6 +1498,7 @@ type SessionMenuItemProps = {
   isPinned?: boolean;
   draggable?: boolean;
   rootIndent?: "group" | "recent";
+  groupContextId?: string | null;
 };
 
 function SessionMenuItem({
@@ -1493,6 +1510,7 @@ function SessionMenuItem({
   isPinned = false,
   draggable = false,
   rootIndent,
+  groupContextId,
 }: SessionMenuItemProps) {
   const ctx = useSidebarContext();
   const isSelected = ctx.selectedSessionId === session.id;
@@ -1509,6 +1527,11 @@ function SessionMenuItem({
   const sessionFontWeight = ctx.language === "zh" ? "font-medium" : "font-normal";
 
   const openSession = () => {
+    const store = useSessionManagementStore.getState();
+    const groupId = groupContextId !== undefined
+      ? groupContextId
+      : store.groupsByWorkspace[workspaceId]?.assignments[session.id] ?? null;
+    store.setActiveGroup(workspaceId, groupId);
     ctx.onOpenSession(workspaceId, session.id);
   };
 

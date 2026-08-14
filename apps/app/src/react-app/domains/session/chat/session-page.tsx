@@ -64,7 +64,7 @@ import { RenameSessionModal } from "../modals/rename-session-modal";
 import { AppSidebar } from "../sidebar/app-sidebar";
 import type { iPolloWorkSessionType, iPolloWorkTemplateId } from "../sidebar/app-sidebar-provider";
 import { readSessionType, sessionTypeForTemplate, setSessionType } from "../sidebar/session-type";
-import { useSessionManagementStore } from "../sidebar/session-management-store";
+import { useSessionManagementStore, useActiveWorkspaceGroupId } from "../sidebar/session-management-store";
 import { SessionSurface, type SessionSurfaceProps } from "../surface/session-surface";
 import { replaceDesignSelectionToken } from "../surface/composer/composer-draft";
 import { getComposerDraft, useComposerStateStore } from "../surface/composer-state-store";
@@ -181,11 +181,13 @@ export type SessionPageSidebarProps = {
     type?: iPolloWorkSessionType,
     templateId?: iPolloWorkTemplateId,
     templateScope?: WorkContextId,
+    groupId?: string | null,
   ) => Promise<string | null> | string | null | void;
   onCreateTaskWithPrompt?: (workspaceId: string, prompt: string) => void;
   onCreateTemplateAuthoring: (
     workspaceId: string,
     input: { category: TemplateCategory; pptxCompatibility?: PptxCompatibility },
+    groupId?: string | null,
   ) => Promise<string | null> | string | null | void;
   onRecoverWorkspace: (workspaceId: string) => Promise<boolean> | boolean | void;
   onTestWorkspaceConnection: (workspaceId: string) => Promise<boolean> | boolean | void;
@@ -625,6 +627,7 @@ export function SessionPage(props: SessionPageProps) {
       ? readSessionType(props.selectedSessionId)
       : null
   ), [props.selectedSessionId, sessionTypeRevision]);
+  const activeSessionGroupId = useActiveWorkspaceGroupId(props.selectedWorkspaceId);
   const isDesignSession = selectedSessionType === "design";
   const isVideoSession = selectedSessionType === "video";
   const currentVideoEntryPath = props.selectedSessionId && isVideoSession
@@ -2725,6 +2728,7 @@ export function SessionPage(props: SessionPageProps) {
                           type,
                           templateId,
                           PERSONAL_WORK_CONTEXT_ID,
+                          activeSessionGroupId,
                         )}
                         onMaterializeTemplate={async (templateId, surface) => {
                           if (!props.ipolloworkServerClient || !props.runtimeWorkspaceId || !props.selectedSessionId) return;
@@ -3012,7 +3016,7 @@ export function SessionPage(props: SessionPageProps) {
         onExport={(template) => void exportPersonalTemplate(template)}
         onImport={importDesignTemplate}
         canCreate={props.selectedWorkspaceDisplay.workspaceType === "local"}
-        onCreate={(input) => props.sidebar.onCreateTemplateAuthoring(props.selectedWorkspaceId, input)}
+        onCreate={(input) => props.sidebar.onCreateTemplateAuthoring(props.selectedWorkspaceId, input, activeSessionGroupId)}
         onUse={(template) => {
           if (template.manifest.surface === "video" && props.selectedWorkspaceDisplay.workspaceType === "remote") {
             toast.error(t("templates.video_local_only"));
@@ -3024,6 +3028,7 @@ export function SessionPage(props: SessionPageProps) {
             sessionTypeForTemplate(template.manifest),
             template.manifest.id,
             templateResourceScope,
+            activeSessionGroupId,
           );
         }}
       /> : null}
