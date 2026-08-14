@@ -2374,6 +2374,7 @@ export default {
   "session.palette_no_matches": "没有匹配项。",
   "session.palette_placeholder_agents": "搜索智能体…",
   "session.preparing_workspace": "正在准备工作区",
+  "onboarding.installing_resources": "正在安装相关资源中\u2026",
   "session.revert_failed": "无法还原此对话，请在当前运行完成后重试。",
   "session.select_or_create_session": "选择或创建一个会话以开始使用。",
   "session.stop_failed": "无法停止运行，引擎未报告任何被中止的活动运行，请重试。",

@@ -1694,6 +1694,7 @@ export default {
   "session.export_markdown": "Export session as Markdown",
   "session.loading_detail": "Pulling in the latest messages for this task.",
   "session.preparing_workspace": "Preparing workspace",
+  "onboarding.installing_resources": "Installing required resources\u2026",
   "session.model": "Model",
   "session.outputs.title": "Outputs",
   "session.outputs.open": "Show conversation outputs",

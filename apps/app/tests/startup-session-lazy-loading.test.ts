@@ -25,6 +25,10 @@ const loadingOverlaySource = readFileSync(
   new URL("../src/react-app/shell/loading-overlay.tsx", import.meta.url),
   "utf8",
 ).replaceAll("\r\n", "\n");
+const firstRunLoaderSource = readFileSync(
+  new URL("../src/react-app/domains/onboarding/first-run-loader.tsx", import.meta.url),
+  "utf8",
+).replaceAll("\r\n", "\n");
 const desktopConfigSource = readFileSync(
   new URL("../src/react-app/domains/cloud/desktop-config-provider.tsx", import.meta.url),
   "utf8",
@@ -43,6 +47,14 @@ describe("startup session loading", () => {
       'if (startupConversationPhase !== "pending") return;',
     );
     expect(sessionRouteSource).not.toContain("const targetSessionId = remembered");
+  });
+
+  test("enters the first conversation with the free model and labels initial resource installation", () => {
+    expect(sessionRouteSource).not.toContain("ProviderSelectionStep");
+    expect(sessionRouteSource).not.toContain("providerStepCompleted");
+    expect(sessionRouteSource).not.toContain("pendingProviderDraftRef");
+    expect(firstRunLoaderSource).toContain('t("onboarding.installing_resources")');
+    expect(firstRunLoaderSource).not.toContain("Preparing workspace");
   });
 
   test("subscribes to resources for only the selected session", () => {

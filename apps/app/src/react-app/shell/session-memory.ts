@@ -134,9 +134,7 @@ export function writeWorkspaceProjectDimension(
 
 // Provider/org onboarding flags owned elsewhere but cleared together with the
 // workspace-memory keys so a "reset onboarding" (Settings → Recovery) or a
-// recovery-disabled dev launch produces a genuinely fresh first run — the
-// first-run loader arms, the first session auto-creates, and the provider step
-// (not the iPolloWork Models startup promo) shows on the first send.
+// recovery-disabled dev launch produces a genuinely fresh first run.
 const ONBOARDING_FLAG_KEYS = [
   "ipollowork.acknowledgedProviders",
   "ipollowork.orgOnboardingSeen",
@@ -168,7 +166,6 @@ export function resetFirstRunClientState(): void {
     if (raw) {
       const prefs = JSON.parse(raw) as Record<string, unknown>;
       prefs.hasCompletedOnboarding = false;
-      prefs.providerStepCompleted = false;
       window.localStorage.setItem(PREFERENCES_KEY, JSON.stringify(prefs));
     }
   } catch {
