@@ -222,8 +222,120 @@ export default {
             { timeoutMs: 60_000, label: "demo-card timeline layer" },
           );
 
-          await ctx.prove("Toolbar matches Figma and omits the inactive record prompt", {
-            claim: "The timeline toolbar uses the Figma SVG dimensions, including the 6 by 16.667 pixel divider and 24 pixel diamond and trash assets, while the unselected inspector omits Record gesture.",
+          await ctx.prove("Timeline layer rows hover and resize as one control", {
+            claim: "The full layer row receives hover feedback, and its right divider resizes the layer panel from 220 to 420 pixels while preserving at least 360 pixels for the timeline.",
+            action: async () => {
+              const geometry = await ctx.eval(`(() => {
+                const row = document.querySelector('.hf-timeline-layer-header');
+                const handle = document.querySelector('[data-testid="timeline-layer-resize-handle"]');
+                if (!(row instanceof HTMLElement) || !(handle instanceof HTMLElement)) return null;
+                const rowRect = row.getBoundingClientRect();
+                const handleRect = handle.getBoundingClientRect();
+                return {
+                  hoverX: rowRect.right - 42,
+                  hoverY: rowRect.top + rowRect.height / 2,
+                  handleX: handleRect.left + handleRect.width / 2,
+                  handleY: handleRect.top + Math.min(70, handleRect.height / 2),
+                };
+              })()`);
+              ctx.assert(geometry, "The timeline layer row or resize handle is unavailable.");
+              await ctx.client.send("Input.dispatchMouseEvent", {
+                type: "mouseMoved",
+                x: geometry.hoverX,
+                y: geometry.hoverY,
+              });
+              await new Promise((resolve) => setTimeout(resolve, 300));
+              await waitForPaint(ctx);
+              const hovered = await ctx.eval(`(() => {
+                const row = document.querySelector('.hf-timeline-layer-header');
+                return row instanceof HTMLElement ? getComputedStyle(row).backgroundColor : null;
+              })()`);
+              ctx.assert(hovered === "rgb(231, 234, 237)", `The full row hover is missing: ${hovered}.`);
+
+              await ctx.client.send("Input.dispatchMouseEvent", {
+                type: "mousePressed",
+                x: geometry.handleX,
+                y: geometry.handleY,
+                button: "left",
+                clickCount: 1,
+              });
+              await ctx.client.send("Input.dispatchMouseEvent", {
+                type: "mouseMoved",
+                x: geometry.handleX + 65,
+                y: geometry.handleY,
+                button: "left",
+                buttons: 1,
+              });
+              await ctx.client.send("Input.dispatchMouseEvent", {
+                type: "mouseReleased",
+                x: geometry.handleX + 65,
+                y: geometry.handleY,
+                button: "left",
+                clickCount: 1,
+              });
+              await ctx.waitFor(
+                `Math.abs(document.querySelector('.hf-timeline-layer-header')?.getBoundingClientRect().width - 320) < 1`,
+                { timeoutMs: 10_000, label: "320 pixel layer panel" },
+              );
+              const resizedRow = await ctx.eval(`(() => {
+                const row = document.querySelector('.hf-timeline-layer-header');
+                if (!(row instanceof HTMLElement)) return null;
+                const rect = row.getBoundingClientRect();
+                return { right: rect.right, top: rect.top, height: rect.height };
+              })()`);
+              ctx.assert(resizedRow, "The resized timeline row is unavailable.");
+              await ctx.client.send("Input.dispatchMouseEvent", {
+                type: "mouseMoved",
+                x: resizedRow.right - 42,
+                y: resizedRow.top + resizedRow.height / 2,
+              });
+              await new Promise((resolve) => setTimeout(resolve, 300));
+              await waitForPaint(ctx);
+            },
+            assert: async () => {
+              const state = await ctx.eval(`(() => {
+                const row = document.querySelector('.hf-timeline-layer-header');
+                const select = row?.querySelector('.hf-timeline-layer-header__select');
+                const rulerGutter = document.querySelector('.hf-timeline-ruler-gutter');
+                const handle = document.querySelector('[data-testid="timeline-layer-resize-handle"]');
+                const stored = JSON.parse(localStorage.getItem('hf-studio-ui-preferences') ?? '{}');
+                if (!(row instanceof HTMLElement) || !(select instanceof HTMLElement) || !(rulerGutter instanceof HTMLElement) || !(handle instanceof HTMLElement)) return null;
+                const rowRect = row.getBoundingClientRect();
+                const selectRect = select.getBoundingClientRect();
+                const handleRect = handle.getBoundingClientRect();
+                return {
+                  rowWidth: rowRect.width,
+                  selectWidth: selectRect.width,
+                  rulerWidth: rulerGutter.getBoundingClientRect().width,
+                  handleWidth: handleRect.width,
+                  handleAligned: Math.abs(handleRect.left + handleRect.width / 2 - rowRect.right) < 0.1,
+                  hoverBackground: getComputedStyle(row).backgroundColor,
+                  storedWidth: stored.timelineLayerWidth,
+                };
+              })()`);
+              ctx.assert(state, "The resized timeline geometry is unavailable.");
+              ctx.assert(
+                Math.abs(state.rowWidth - 320) < 1 && Math.abs(state.rulerWidth - 320) < 1,
+                `The layer and ruler widths drifted: ${JSON.stringify(state)}.`,
+              );
+              ctx.assert(
+                state.selectWidth < state.rowWidth && state.hoverBackground === "rgb(231, 234, 237)",
+                `Hover does not cover the full row: ${JSON.stringify(state)}.`,
+              );
+              ctx.assert(
+                state.handleWidth === 6 && state.handleAligned && state.storedWidth === 320,
+                `The resize handle or persistence is incorrect: ${JSON.stringify(state)}.`,
+              );
+            },
+            screenshot: {
+              name: "timeline-layer-full-row-hover-and-resize",
+              requireText: ["Demo Card"],
+              ...screenshotDefaults,
+            },
+          });
+
+          await ctx.prove("Toolbar matches Figma and omits inactive empty-state prompts", {
+            claim: "The timeline toolbar uses the Figma SVG dimensions, including the 6 by 16.667 pixel divider and 24 pixel diamond and trash assets, while the unselected inspector omits the unfinished Record gesture and Agent prompts.",
             voiceover: vo[0],
             action: async () => {
               const openedInspector = await ctx.eval(`(() => {
@@ -280,14 +392,17 @@ export default {
                   `Toolbar icon ${index} has the wrong Figma dimensions: ${JSON.stringify(size)}.`,
                 );
               });
-              ctx.assert(state.hasEmptyState && state.hasAgentPrompt, "The unselected inspector is unavailable.");
-              ctx.assert(!state.hasRecordPrompt, "The inactive Record gesture prompt is still visible.");
+              ctx.assert(state.hasEmptyState, "The unselected inspector is unavailable.");
+              ctx.assert(
+                !state.hasRecordPrompt && !state.hasAgentPrompt,
+                `An unfinished empty-state prompt is still visible: ${JSON.stringify(state)}.`,
+              );
             },
             screenshot: {
-              name: "figma-toolbar-without-record-prompt",
-              requireText: ["未选择任何元素", "向 Agent 描述修改"],
+              name: "figma-toolbar-without-inactive-prompts",
+              requireText: ["未选择任何元素"],
               ...screenshotDefaults,
-              rejectText: [...screenshotDefaults.rejectText, "录制手势"],
+              rejectText: [...screenshotDefaults.rejectText, "录制手势", "向 Agent 描述修改"],
             },
           });
 
@@ -512,6 +627,112 @@ export default {
               rejectText: [...screenshotDefaults.rejectText, "已使用", "未使用"],
             },
           });
+
+          await clickMatching(
+            ctx,
+            `[...document.querySelectorAll("button")].find((candidate) => ["Layers", "图层"].includes(candidate.innerText.trim()))`,
+            "The Layers inspector tab is unavailable.",
+          );
+          await ctx.waitFor('Boolean(document.querySelector("button.hf-property-ask-ai"))', {
+            timeoutMs: 20_000,
+            label: "Chinese Ask AI button",
+          });
+
+          await ctx.prove("The Chinese Ask AI button matches Figma", {
+            claim: "The selected-element inspector uses the Figma Chinese Ask AI button with its exact white SVG sparkle, copy, spacing, radius, and accent fill.",
+            assert: async () => {
+              const state = await ctx.eval(`(() => {
+                const button = document.querySelector('button.hf-property-ask-ai');
+                const icon = button?.querySelector('img');
+                const content = button?.firstElementChild;
+                if (!(button instanceof HTMLButtonElement) || !(icon instanceof HTMLImageElement) || !(content instanceof HTMLElement)) return null;
+                const rect = button.getBoundingClientRect();
+                const iconRect = icon.getBoundingClientRect();
+                const style = getComputedStyle(button);
+                return {
+                  text: button.innerText.trim(),
+                  width: rect.width,
+                  height: rect.height,
+                  radius: style.borderRadius,
+                  background: style.backgroundColor,
+                  color: style.color,
+                  border: style.borderTopWidth,
+                  gap: getComputedStyle(content).gap,
+                  iconWidth: iconRect.width,
+                  iconHeight: iconRect.height,
+                };
+              })()`);
+              ctx.assert(state, "The Chinese Ask AI button is missing.");
+              ctx.assert(
+                state.text === "交给AI" &&
+                  state.height === 28 &&
+                  state.radius === "6px" &&
+                  state.background === "rgb(31, 186, 192)" &&
+                  state.color === "rgb(255, 255, 255)" &&
+                  state.border === "0px" &&
+                  state.gap === "4px" &&
+                  state.iconWidth === 13 &&
+                  state.iconHeight === 12,
+                `Unexpected Chinese Ask AI button: ${JSON.stringify(state)}.`,
+              );
+            },
+            screenshot: {
+              name: "figma-ask-ai-chinese",
+              requireText: ["交给AI", "Demo Card"],
+              ...screenshotDefaults,
+            },
+          });
+
+          await ctx.prove("The English Ask AI button matches Figma", {
+            claim: "Switching the Studio to English swaps the Chinese label for the exact Figma Ask AI SVG wordmark without changing the button geometry.",
+            action: async () => {
+              await ctx.eval('window.postMessage({ type: "ipollowork:studio-locale", locale: "en" }, "*")');
+              await ctx.waitFor(
+                'document.querySelector("button.hf-property-ask-ai")?.getAttribute("aria-label") === "Ask AI about selected element"',
+                { timeoutMs: 20_000, label: "English Ask AI button" },
+              );
+              await waitForPaint(ctx);
+            },
+            assert: async () => {
+              const state = await ctx.eval(`(() => {
+                const button = document.querySelector('button.hf-property-ask-ai');
+                const wordmark = button?.querySelector('img');
+                if (!(button instanceof HTMLButtonElement) || !(wordmark instanceof HTMLImageElement)) return null;
+                const rect = button.getBoundingClientRect();
+                const markRect = wordmark.getBoundingClientRect();
+                return {
+                  text: button.innerText.trim(),
+                  width: rect.width,
+                  height: rect.height,
+                  background: getComputedStyle(button).backgroundColor,
+                  wordmarkWidth: markRect.width,
+                  wordmarkHeight: markRect.height,
+                };
+              })()`);
+              ctx.assert(state, "The English Ask AI button is missing.");
+              ctx.assert(
+                state.text === "" &&
+                  Math.abs(state.width - 78.063) < 0.1 &&
+                  state.height === 28 &&
+                  state.background === "rgb(31, 186, 192)" &&
+                  Math.abs(state.wordmarkWidth - 54.063) < 0.1 &&
+                  state.wordmarkHeight === 12,
+                `Unexpected English Ask AI button: ${JSON.stringify(state)}.`,
+              );
+            },
+            screenshot: {
+              name: "figma-ask-ai-english",
+              requireText: ["Demo Card"],
+              ...screenshotDefaults,
+            },
+          });
+
+          await ctx.eval('window.postMessage({ type: "ipollowork:studio-locale", locale: "zh" }, "*")');
+          await ctx.waitFor('document.querySelector("button.hf-property-ask-ai")?.innerText.trim() === "交给AI"', {
+            timeoutMs: 20_000,
+            label: "Chinese Studio locale restored",
+          });
+          await openAnimationTab(ctx);
 
           await ctx.eval(`(() => {
             const input = document.querySelector('[data-testid="animation-templates-tab"] input[type="search"]');

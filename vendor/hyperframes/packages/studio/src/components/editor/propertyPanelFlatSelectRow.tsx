@@ -106,7 +106,7 @@ export function FlatDropdown({
           const delta = event.key === "ArrowDown" ? 1 : -1;
           selectIndex((selectedIndex + delta + options.length) % options.length);
         }}
-        className={`flex min-w-0 items-center justify-between gap-1.5 text-left outline-none disabled:cursor-not-allowed disabled:opacity-40 ${className}`}
+        className={`flex min-w-0 items-center justify-between gap-1.5 text-left outline-none focus-visible:ring-2 focus-visible:ring-panel-accent/50 focus-visible:ring-offset-1 focus-visible:ring-offset-panel-bg disabled:cursor-not-allowed disabled:opacity-60 ${className}`}
       >
         <span className={`min-w-0 truncate ${valueClassName}`}>{selectedLabel}</span>
         <ChevronDown
@@ -141,14 +141,14 @@ export function FlatDropdown({
                   role="option"
                   aria-selected={selected}
                   onClick={() => selectIndex(index)}
-                  className={`flex h-[32px] w-full items-center justify-between gap-2 rounded-[5px] px-2 text-left text-[12px] transition-colors ${
+                  className={`flex h-[32px] w-full items-center justify-between gap-2 rounded-[5px] px-2 text-left text-[12px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-panel-accent/50 ${
                     selected
-                      ? "bg-[#f5f6f9] text-[#24262b] dark:bg-panel-input dark:text-panel-text-1"
-                      : "text-[#50535a] hover:bg-[#f5f6f9] active:bg-[#eceef2] dark:text-panel-text-3 dark:hover:bg-panel-input"
+                      ? "bg-[#f5f6f9] text-[#24262b] dark:bg-panel-accent/15 dark:text-panel-text-1 dark:ring-1 dark:ring-inset dark:ring-panel-accent/35"
+                      : "text-[#50535a] hover:bg-[#f5f6f9] active:bg-[#eceef2] dark:text-panel-text-3 dark:hover:bg-panel-input dark:active:bg-panel-hover"
                   }`}
                 >
                   <span className="min-w-0 truncate">{tx(option.label)}</span>
-                  {selected && <Check size={14} className="flex-shrink-0 text-[#20bbc0]" />}
+                  {selected && <Check size={14} className="flex-shrink-0 text-[#1FBAC0]" />}
                 </button>
               );
             })}

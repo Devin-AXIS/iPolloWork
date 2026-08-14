@@ -83,21 +83,27 @@ function customVoicesFrom(value: unknown): CustomVoice[] {
 
 function readableError(error: unknown) {
   const message = error instanceof Error ? error.message : "";
-  if (/Could not reach Alibaba Model Studio/i.test(message)) return "无法连接阿里百炼，请检查网络后重试。";
-  if (/Alibaba Model Studio did not respond before the request timed out/i.test(message)) return "阿里百炼响应超时，请稍后重试。";
-  if (/Could not upload the audio to Alibaba Model Studio temporary storage/i.test(message)) return "无法将音频上传到百炼临时存储，请检查网络后重试。";
-  return message || "操作没有完成，请稍后重试。";
+  if (/Could not reach Alibaba Model Studio/i.test(message)) return t("video.voice.error.unreachable");
+  if (/Alibaba Model Studio did not respond before the request timed out/i.test(message)) return t("video.voice.error.timeout");
+  if (/Could not upload the audio to Alibaba Model Studio temporary storage/i.test(message)) return t("video.voice.error.upload");
+  return message || t("video.voice.error.generic");
 }
 
 function canSynthesizeCustomVoice(voice: CustomVoice | undefined) {
   return voice?.status === "OK";
 }
 
+function presetVoiceLabel(voiceId: string) {
+  return BAILIAN_PRESET_VOICES.some((voice) => voice.id === voiceId)
+    ? t(`video.voice.preset_name.${voiceId}`)
+    : voiceId;
+}
+
 function customVoiceAvailabilityMessage(voice: CustomVoice | undefined) {
-  if (!voice) return "没有在当前百炼账号中找到这个复刻音色。请刷新后重新选择。";
-  if (voice.status === "DEPLOYING") return "该复刻音色正在百炼审核中，状态变为 OK 后才能试听和使用。";
-  if (voice.status === "UNDEPLOYED") return "该复刻音色未通过百炼审核，无法试听或使用。";
-  return "该复刻音色暂未就绪。请刷新状态后重试。";
+  if (!voice) return t("video.voice.error.cloned_not_found");
+  if (voice.status === "DEPLOYING") return t("video.voice.error.cloned_deploying");
+  if (voice.status === "UNDEPLOYED") return t("video.voice.error.cloned_undeployed");
+  return t("video.voice.error.cloned_unavailable");
 }
 
 function voiceSettings(voiceId: string, source: VideoVoiceoverSettings["source"], model = DEFAULT_COSYVOICE_MODEL): VideoVoiceoverSettings {
@@ -111,7 +117,7 @@ async function readAudioDuration(file: File): Promise<number> {
       const audio = new Audio();
       audio.preload = "metadata";
       audio.onloadedmetadata = () => resolve(audio.duration);
-      audio.onerror = () => reject(new Error("无法读取音频时长。"));
+      audio.onerror = () => reject(new Error(t("video.voice.error.duration_unreadable")));
       audio.src = objectUrl;
     });
   } finally {
@@ -141,16 +147,16 @@ export function VideoVoicePanel({ sessionId, workspaceRoot, client, workspaceId,
 
   const sendVoiceToAi = React.useCallback(() => {
     if (!activeVoice) {
-      setMessage("请先选择一个配音音色。");
+      setMessage(t("video.voice.select_first"));
       return;
     }
     const label = activeVoice.source === "preset"
-      ? BAILIAN_PRESET_VOICES.find((voice) => voice.id === activeVoice.voiceId)?.label ?? activeVoice.voiceId
-      : customVoices.find((voice) => voice.id === activeVoice.voiceId)?.name ?? "当前复刻声音";
+      ? presetVoiceLabel(activeVoice.voiceId)
+      : customVoices.find((voice) => voice.id === activeVoice.voiceId)?.name ?? t("video.voice.current_cloned");
     window.dispatchEvent(new CustomEvent("ipollowork:add-voice-reference", {
       detail: {
         sessionId,
-        reference: { voiceId: activeVoice.voiceId, model: activeVoice.model, label: `配音 · ${label}` },
+        reference: { voiceId: activeVoice.voiceId, model: activeVoice.model, label: t("video.voice.reference_label", { label }) },
       },
     }));
   }, [activeVoice, customVoices, sessionId]);
@@ -193,7 +199,7 @@ export function VideoVoicePanel({ sessionId, workspaceRoot, client, workspaceId,
   }, [client, context, loadCustomVoices, mediaReady]);
 
   const saveSettings = React.useCallback(async (next: VideoVoiceoverSettings) => {
-    if (!client || !workspaceId) throw new Error("当前工作区尚未准备好。");
+    if (!client || !workspaceId) throw new Error(t("video.voice.error.workspace_unavailable"));
     const written = await client.writeWorkspaceFile(workspaceId, {
       path: videoVoiceoverSettingsPath(sessionId),
       content: serializeVideoVoiceoverSettings(next),
@@ -229,7 +235,7 @@ export function VideoVoicePanel({ sessionId, workspaceRoot, client, workspaceId,
 
   const previewVoice = React.useCallback(async () => {
     if (!client || !activeVoice) {
-      setMessage("先选择一个百炼音色，再试听。");
+      setMessage(t("video.voice.preview_select_first"));
       return;
     }
     setPreviewing(true);
@@ -243,14 +249,14 @@ export function VideoVoicePanel({ sessionId, workspaceRoot, client, workspaceId,
         if (model !== activeVoice.model) await saveSettings(voiceSettings(activeVoice.voiceId, "cloned", model));
       }
       const result = await client.callMedia("speech_synthesize", {
-        text: "你好，这是当前视频的配音效果试听。",
+        text: t("video.voice.preview_sample"),
         voice: activeVoice.voiceId,
         model,
         format: "mp3",
       }, context);
       if (!result.ok) throw new Error(result.message);
       const url = synthesizedAudioUrl(mediaOutput(result.result));
-      if (!url) throw new Error("百炼已完成合成，但没有返回可播放的试听地址。");
+      if (!url) throw new Error(t("video.voice.error.preview_url_missing"));
       audioRef.current?.pause();
       const audio = new Audio(url);
       audioRef.current = audio;
@@ -263,7 +269,11 @@ export function VideoVoicePanel({ sessionId, workspaceRoot, client, workspaceId,
   }, [activeVoice, client, context]);
 
   const cloneVoice = React.useCallback(async (file: File) => {
-    const invalid = validateVoiceSampleFile(file);
+    const invalid = validateVoiceSampleFile(file, {
+      invalidType: t("video.voice.error.sample_type"),
+      empty: t("video.voice.error.sample_empty"),
+      tooLarge: t("video.voice.error.sample_too_large"),
+    });
     if (invalid) {
       setMessage(invalid);
       return;
@@ -275,7 +285,7 @@ export function VideoVoicePanel({ sessionId, workspaceRoot, client, workspaceId,
     try {
       const duration = await readAudioDuration(file);
       if (!Number.isFinite(duration) || duration < 10 || duration > 60) {
-        throw new Error("样本时长需为 10–60 秒；推荐 10–20 秒的清晰人声。");
+        throw new Error(t("video.voice.error.sample_duration"));
       }
       samplePath = voiceSampleWorkspacePath(sessionId, file.name);
       await client.writeWorkspaceBinaryFile(workspaceId, { path: samplePath, data: await file.arrayBuffer() });
@@ -284,14 +294,14 @@ export function VideoVoicePanel({ sessionId, workspaceRoot, client, workspaceId,
       const output = mediaOutput(result.result);
       const voiceId = readString(output, "voiceId");
       const model = readString(output, "model") || DEFAULT_COSYVOICE_MODEL;
-      if (!voiceId) throw new Error("百炼没有返回可用的声音 ID。");
+      if (!voiceId) throw new Error(t("video.voice.error.clone_id_missing"));
       const clonedVoice = (await loadCustomVoices()).find((voice) => voice.id === voiceId);
       if (!canSynthesizeCustomVoice(clonedVoice)) {
-        setMessage(`${customVoiceAvailabilityMessage(clonedVoice)} 刷新后即可选择。`);
+        setMessage(`${customVoiceAvailabilityMessage(clonedVoice)} ${t("video.voice.refresh_to_select")}`);
         return;
       }
       await saveSettings(voiceSettings(voiceId, "cloned", model));
-      setMessage("声音已复刻并设为当前视频的配音。");
+      setMessage(t("video.voice.clone_success"));
     } catch (error) {
       setMessage(readableError(error));
     } finally {
@@ -336,10 +346,10 @@ export function VideoVoicePanel({ sessionId, workspaceRoot, client, workspaceId,
                 baseUpdatedAt: saved.updatedAt,
               });
               setSettings({ settings: migrated, updatedAt: written.updatedAt });
-              setMessage("已将旧版百炼音色升级为兼容 CosyVoice v3 的音色。");
+              setMessage(t("video.voice.migration_success"));
             } catch (error) {
               setSettings({ settings: restored, updatedAt: saved.updatedAt });
-              setMessage(`已在本次打开中使用兼容音色；保存升级失败：${readableError(error)}`);
+              setMessage(t("video.voice.migration_save_failed", { error: readableError(error) }));
             }
           } else {
             setSettings({ settings: restored, updatedAt: saved.updatedAt });
@@ -371,55 +381,55 @@ export function VideoVoicePanel({ sessionId, workspaceRoot, client, workspaceId,
   }, [loading, previewRequest, previewVoice]);
 
   return (
-    <aside className={embedded ? "absolute bottom-0 right-0 top-[90px] z-20 flex min-h-0 min-w-0 max-w-full flex-col border-l border-border bg-popover" : "absolute inset-y-0 right-0 z-20 flex w-[22rem] max-w-[calc(100%-2rem)] flex-col border-l border-border bg-popover/95 shadow-2xl backdrop-blur-xl"} style={embedded ? { width: embeddedWidth } : undefined} aria-label="视频配音设置" data-testid="video-voice-panel" data-embedded={embedded ? "true" : "false"}>
+    <aside className={embedded ? "absolute bottom-0 right-0 top-[90px] z-20 flex min-h-0 min-w-0 max-w-full flex-col border-l border-border bg-popover" : "absolute inset-y-0 right-0 z-20 flex w-[22rem] max-w-[calc(100%-2rem)] flex-col border-l border-border bg-popover/95 shadow-2xl backdrop-blur-xl"} style={embedded ? { width: embeddedWidth } : undefined} aria-label={t("video.voice.panel_label")} data-testid="video-voice-panel" data-embedded={embedded ? "true" : "false"}>
       {!embedded ? <div className="flex h-11 shrink-0 items-center gap-2 border-b border-border px-3">
         <AudioLines className="size-4 text-primary" />
         <div className="min-w-0 flex-1">
-          <p className="text-sm font-medium">配音</p>
-          <p className="truncate text-[10px] text-muted-foreground">阿里百炼 · 仅保存当前视频的音色</p>
+          <p className="text-sm font-medium">{t("video.voice.title")}</p>
+          <p className="truncate text-[10px] text-muted-foreground">{t("video.voice.subtitle")}</p>
         </div>
-        <Button variant="ghost" size="icon-xs" onClick={() => void previewVoice()} disabled={!activeVoice || previewing} aria-label="试听当前音色">
+        <Button variant="ghost" size="icon-xs" onClick={() => void previewVoice()} disabled={!activeVoice || previewing} aria-label={t("video.voice.preview_current")}>
           {previewing ? <Loader2 className="animate-spin" /> : <Play />}
         </Button>
-        <Button variant="ghost" size="icon-xs" onClick={onClose} aria-label="关闭配音设置"><X /></Button>
+        <Button variant="ghost" size="icon-xs" onClick={onClose} aria-label={t("video.voice.close_settings")}><X /></Button>
       </div> : null}
 
       <ScrollArea className="min-h-0 flex-1">
         <ScrollAreaViewport className="px-3 py-3">
-          {loading ? <div className="grid min-h-40 place-items-center text-xs text-muted-foreground"><Loader2 className="mr-2 inline size-4 animate-spin" />正在读取百炼配置…</div> : null}
-          {!loading && !mediaReady ? <div className="rounded-xl border border-amber-500/25 bg-amber-500/8 p-3 text-xs leading-5 text-muted-foreground"><p className="font-medium text-foreground">{t("video.voice.configure_bailian_title")}</p><p className="mt-1">{t("video.voice.configure_bailian_body")}</p></div> : null}
+          {loading ? <div className="grid min-h-40 place-items-center text-xs text-muted-foreground"><Loader2 className="mr-2 inline size-4 animate-spin" />{t("video.voice.loading_config")}</div> : null}
+          {!loading && !mediaReady ? <div className="rounded-xl border border-amber-500/25 bg-amber-500/8 p-3 text-xs leading-5 text-muted-foreground"><p className="font-medium text-foreground">{t("video.voice.configure_title")}</p><p className="mt-1">{t("video.voice.configure_description")}</p></div> : null}
           {!loading && mediaReady ? <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value === "mine" ? "mine" : "preset")} className="gap-3">
             <TabsList className="w-full bg-muted/60">
-              <TabsTrigger value="preset"><AudioLines />百炼音色</TabsTrigger>
-              <TabsTrigger value="mine"><FileAudio />我的声音</TabsTrigger>
+              <TabsTrigger value="preset"><AudioLines />{t("video.voice.preset_tab")}</TabsTrigger>
+              <TabsTrigger value="mine"><FileAudio />{t("video.voice.my_voices_tab")}</TabsTrigger>
             </TabsList>
             <TabsContent value="preset" className="space-y-3">
               <div>
-                <p className="text-xs font-medium">官方预置音色</p>
-                <p className="mt-1 text-[11px] leading-4 text-muted-foreground">选择后立即保存在此视频项目中，不会写入时间线。</p>
+                <p className="text-xs font-medium">{t("video.voice.official_presets")}</p>
+                <p className="mt-1 text-[11px] leading-4 text-muted-foreground">{t("video.voice.preset_help")}</p>
               </div>
               <Select value={presetVoiceId} onValueChange={(value) => { if (value) void choosePreset(value); }}>
-                <SelectTrigger className="w-full" aria-label="百炼官方音色"><SelectValue placeholder="选择一个官方音色" /></SelectTrigger>
-                <SelectContent align="start"><SelectGroup><SelectLabel>CosyVoice</SelectLabel>{BAILIAN_PRESET_VOICES.map((voice) => <SelectItem key={voice.id} value={voice.id}>{voice.label} · {voice.description}</SelectItem>)}</SelectGroup></SelectContent>
+                <SelectTrigger className="w-full" aria-label={t("video.voice.official_aria")}><SelectValue placeholder={t("video.voice.choose_official")} /></SelectTrigger>
+                <SelectContent align="start"><SelectGroup><SelectLabel>CosyVoice</SelectLabel>{BAILIAN_PRESET_VOICES.map((voice) => <SelectItem key={voice.id} value={voice.id}>{presetVoiceLabel(voice.id)} · {t(`video.voice.preset_description.${voice.id}`)}</SelectItem>)}</SelectGroup></SelectContent>
               </Select>
-              {activeVoice?.source === "preset" ? <SelectedVoice voiceId={activeVoice.voiceId} label={BAILIAN_PRESET_VOICES.find((voice) => voice.id === activeVoice.voiceId)?.label ?? activeVoice.voiceId} /> : null}
+              {activeVoice?.source === "preset" ? <SelectedVoice voiceId={activeVoice.voiceId} label={presetVoiceLabel(activeVoice.voiceId)} /> : null}
               <VoiceAiButton disabled={!activeVoice || activeVoice.source !== "preset"} onClick={sendVoiceToAi} />
             </TabsContent>
             <TabsContent value="mine" className="space-y-3">
-              <div className="flex items-start justify-between gap-3"><div><p className="text-xs font-medium">我复刻的声音</p><p className="mt-1 text-[11px] leading-4 text-muted-foreground">复刻样本会通过私有临时链接交给百炼，完成后自动清理。</p></div><Button variant="ghost" size="icon-xs" onClick={() => void loadMineData()} disabled={loadingMineData} aria-label="刷新我的声音">{loadingMineData ? <Loader2 className="animate-spin" /> : <RefreshCw />}</Button></div>
-              {loadingMineData ? <p className="flex items-center gap-2 text-[11px] text-muted-foreground" role="status"><Loader2 className="size-3.5 animate-spin" />正在读取我的声音…</p> : null}
+              <div className="flex items-start justify-between gap-3"><div><p className="text-xs font-medium">{t("video.voice.cloned_heading")}</p><p className="mt-1 text-[11px] leading-4 text-muted-foreground">{t("video.voice.cloned_help")}</p></div><Button variant="ghost" size="icon-xs" onClick={() => void loadMineData()} disabled={loadingMineData} aria-label={t("video.voice.refresh_my_voices")}>{loadingMineData ? <Loader2 className="animate-spin" /> : <RefreshCw />}</Button></div>
+              {loadingMineData ? <p className="flex items-center gap-2 text-[11px] text-muted-foreground" role="status"><Loader2 className="size-3.5 animate-spin" />{t("video.voice.loading_my_voices")}</p> : null}
               <Select value={activeVoice?.source === "cloned" ? activeVoice.voiceId : ""} onValueChange={(value) => { if (value) void chooseCustomVoice(value); }}>
-                <SelectTrigger className="w-full" disabled={loadingMineData} aria-label="我的百炼声音"><SelectValue placeholder={loadingMineData ? "正在读取…" : customVoices.length ? "选择已复刻的声音" : "还没有复刻的声音"} /></SelectTrigger>
+                <SelectTrigger className="w-full" disabled={loadingMineData} aria-label={t("video.voice.my_voice_aria")}><SelectValue placeholder={loadingMineData ? t("video.voice.loading") : customVoices.length ? t("video.voice.choose_cloned") : t("video.voice.no_cloned")} /></SelectTrigger>
                 <SelectContent align="start"><SelectGroup>{customVoices.map((voice) => <SelectItem key={voice.id} value={voice.id} disabled={!canSynthesizeCustomVoice(voice)}>{voice.name}{voice.status === "OK" ? "" : ` · ${voice.status}`}</SelectItem>)}</SelectGroup></SelectContent>
               </Select>
               <input ref={uploadInputRef} type="file" accept="audio/wav,audio/mpeg,audio/mp4,.wav,.mp3,.m4a" className="hidden" onChange={(event) => { const file = event.currentTarget.files?.[0]; if (file) void cloneVoice(file); }} />
               <div className="rounded-xl border border-dashed border-border bg-muted/25 p-3">
-                <p className="text-xs font-medium">复刻自己的声音</p>
-                <p className="mt-1 text-[11px] leading-4 text-muted-foreground">WAV、MP3、M4A；10–60 秒、最大 10 MB。推荐 10–20 秒清晰人声。</p>
-                {!storageReady ? <p className="mt-2 text-[11px] text-muted-foreground">未配置 OSS/Wasabi，将使用百炼免费临时存储，文件会在 48 小时后自动清理。</p> : null}
-                <Button className="mt-3 w-full" variant="outline" size="sm" disabled={cloning} onClick={() => uploadInputRef.current?.click()}>{cloning ? <Loader2 className="animate-spin" /> : <Upload />}复刻声音</Button>
+                <p className="text-xs font-medium">{t("video.voice.clone_heading")}</p>
+                <p className="mt-1 text-[11px] leading-4 text-muted-foreground">{t("video.voice.clone_file_help")}</p>
+                {!storageReady ? <p className="mt-2 text-[11px] text-muted-foreground">{t("video.voice.temp_storage_help")}</p> : null}
+                <Button className="mt-3 w-full" variant="outline" size="sm" disabled={cloning} onClick={() => uploadInputRef.current?.click()}>{cloning ? <Loader2 className="animate-spin" /> : <Upload />}{t("video.voice.clone_action")}</Button>
               </div>
-              {activeVoice?.source === "cloned" ? <SelectedVoice voiceId={activeVoice.voiceId} label={customVoices.find((voice) => voice.id === activeVoice.voiceId)?.name ?? "当前复刻声音"} /> : null}
+              {activeVoice?.source === "cloned" ? <SelectedVoice voiceId={activeVoice.voiceId} label={customVoices.find((voice) => voice.id === activeVoice.voiceId)?.name ?? t("video.voice.current_cloned")} /> : null}
               <VoiceAiButton disabled={!activeVoice || activeVoice.source !== "cloned"} onClick={sendVoiceToAi} />
             </TabsContent>
           </Tabs> : null}
@@ -435,5 +445,5 @@ function SelectedVoice({ voiceId, label }: { voiceId: string; label: string }) {
 }
 
 function VoiceAiButton({ disabled, onClick }: { disabled: boolean; onClick: () => void }) {
-  return <Button type="button" className="w-full" variant="outline" size="sm" disabled={disabled} onClick={onClick}><Sparkles />AI 配音</Button>;
+  return <Button type="button" className="w-full" variant="outline" size="sm" disabled={disabled} onClick={onClick}><Sparkles />{t("video.voice.ai_action")}</Button>;
 }

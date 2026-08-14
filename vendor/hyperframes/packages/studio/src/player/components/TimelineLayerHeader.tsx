@@ -2,7 +2,6 @@ import { DotsSixVertical, LinkSimple } from "@phosphor-icons/react";
 import { type PointerEvent as ReactPointerEvent } from "react";
 import type { TimelineElement, TimelineKind } from "../store/playerStore";
 import type { TimelineTheme, TimelineTrackStyle } from "./timelineTheme";
-import { GUTTER } from "./timelineLayout";
 import { getTimelineEditCapabilities } from "./timelineEditing";
 import {
   resolveTimelineKind,
@@ -39,6 +38,7 @@ interface TimelineLayerHeaderProps {
   expandable: boolean;
   theme: TimelineTheme;
   visualStyle: TimelineTrackStyle;
+  gutterWidth: number;
   onToggleHidden: (hidden: boolean) => void;
   onToggleLocked: (locked: boolean) => void;
   onSelect: (element: TimelineElement | null) => void;
@@ -59,6 +59,7 @@ export function TimelineLayerHeader({
   expandable,
   theme,
   visualStyle,
+  gutterWidth,
   onToggleHidden,
   onToggleLocked,
   onSelect,
@@ -110,7 +111,7 @@ export function TimelineLayerHeader({
         editability === "limited" ? "is-limited" : ""
       }`}
       style={{
-        width: GUTTER,
+        width: gutterWidth,
         paddingLeft: 16 + depth * 19,
         color: selected ? theme.textPrimary : theme.textSecondary,
         background: theme.gutterBackground,
@@ -127,6 +128,7 @@ export function TimelineLayerHeader({
       data-layer-hf-id={first?.hfId}
       data-layer-source-file={first?.sourceFile}
       data-layer-selector={first?.selector}
+      onClick={() => onSelect(first)}
     >
       {first && expandable ? (
         <button
