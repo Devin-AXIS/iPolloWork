@@ -11,11 +11,13 @@ import { stageServerConstants, stageServerRuntimeTypes } from "../scripts/server
 const afterPack = afterPackModule.default ?? afterPackModule;
 
 it("prepares and packages the DSH CLI outside app.asar", async () => {
-  const [builderConfig, mainSource, buildSource, devSource] = await Promise.all([
+  const [builderConfig, mainSource, buildSource, devSource, workspaceConfig, osxSignPatch] = await Promise.all([
     readFile(new URL("../electron-builder.yml", import.meta.url), "utf8"),
     readFile(new URL("./main.mjs", import.meta.url), "utf8"),
     readFile(new URL("../scripts/electron-build.mjs", import.meta.url), "utf8"),
     readFile(new URL("../scripts/electron-dev.mjs", import.meta.url), "utf8"),
+    readFile(new URL("../../../pnpm-workspace.yaml", import.meta.url), "utf8"),
+    readFile(new URL("../../../patches/@electron__osx-sign@1.3.1.patch", import.meta.url), "utf8"),
   ]);
   assert.match(builderConfig, /from: dsh-runtime\s+to: dsh-runtime/);
   assert.match(builderConfig, /from: \.\.\/\.\.\/examples\/plugin-packages\/deepseek-harness/);
@@ -23,6 +25,9 @@ it("prepares and packages the DSH CLI outside app.asar", async () => {
   assert.match(mainSource, /IPOLLOWORK_DSH_CLI/);
   assert.match(buildSource, /prepare-dsh-runtime\.mjs/);
   assert.match(devSource, /prepare-dsh-runtime\.mjs/);
+  assert.match(workspaceConfig, /@electron\/osx-sign@1\.3\.1.*@electron__osx-sign@1\.3\.1\.patch/);
+  assert.match(osxSignPatch, /maxConcurrentFileOperations = 64/);
+  assert.match(osxSignPatch, /withFileOperationLimit\(\(\) => getFilePathIfBinary\(filePath\)\)/);
 });
 
 it("stages constants beside every compiled server module that imports them", async () => {
