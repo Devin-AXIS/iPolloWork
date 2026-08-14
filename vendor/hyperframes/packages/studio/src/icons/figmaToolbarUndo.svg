@@ -1,1 +1,5 @@
-<svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M6 2.66667L2.66667 6L6 9.33333M2.66667 6H9.66667C11.6917 6 13.3333 7.64162 13.3333 9.66667C13.3333 11.6917 11.6917 13.3333 9.66667 13.3333H7.33333" stroke="#858A94" stroke-width="1.33333" stroke-linecap="round" stroke-linejoin="round"/></svg>
+<svg preserveAspectRatio="none" overflow="visible" style="display: block;" width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+<g id="lucide/undo-2">
+<path id="Vector" d="M6 2.66667L2.66667 6L6 9.33333M2.66667 6H9.66667C10.1482 6 10.625 6.09484 11.0698 6.27911C11.5147 6.46338 11.9189 6.73346 12.2594 7.07394C12.5999 7.41442 12.87 7.81863 13.0542 8.26349C13.2385 8.70835 13.3333 9.18515 13.3333 9.66667C13.3333 10.1482 13.2385 10.625 13.0542 11.0698C12.87 11.5147 12.5999 11.9189 12.2594 12.2594C11.9189 12.5999 11.5147 12.87 11.0698 13.0542C10.625 13.2385 10.1482 13.3333 9.66667 13.3333H7.33333" stroke="#858A94" stroke-width="1.33333" stroke-linecap="round" stroke-linejoin="round"/>
+</g>
+</svg>
