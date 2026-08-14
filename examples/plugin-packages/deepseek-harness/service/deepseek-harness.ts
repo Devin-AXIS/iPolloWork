@@ -1,8 +1,10 @@
 import { randomUUID } from "node:crypto";
 import { mkdir, readFile, realpath, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { resolve, sep } from "node:path";
 
-import { runHarnessTurn } from "./dsh-jsonrpc.ts";
+import { runHarnessHeadless } from "./dsh-headless.ts";
+import { runHarnessTurn, type HarnessTurnResult } from "./dsh-jsonrpc.ts";
 import {
   assertProviderReady,
   bundledCordisConfigPath,
@@ -15,6 +17,7 @@ import {
   type EnvironmentRuntime,
   type JobMode,
   type RuntimeEnvironmentValues,
+  type RuntimeLocation,
 } from "./dsh-runtime.ts";
 import { collectWorkspacePatch, prepareIsolatedWorkspace } from "./isolated-git-workspace.ts";
 import {
@@ -76,6 +79,8 @@ type ActiveJob = {
 };
 
 const MAX_PATCH_CHUNK = 500_000;
+const MIN_MODEL_OUTPUT_TOKENS = 1_024;
+const BUNDLED_HEADLESS_PLATFORM = process.platform === "win32" || process.platform === "darwin";
 
 function record(value: unknown): Record<string, unknown> | null {
   return typeof value === "object" && value !== null && !Array.isArray(value) ? value as Record<string, unknown> : null;
@@ -101,17 +106,64 @@ function modeValue(args: Record<string, unknown>): JobMode {
   throw new Error("mode must be standard, code, or review");
 }
 
-function optionalPositiveInteger(args: Record<string, unknown>, key: string, maximum: number): number | undefined {
+function optionalInteger(args: Record<string, unknown>, key: string, minimum: number, maximum: number): number | undefined {
   const value = args[key];
   if (value === undefined) return undefined;
-  if (typeof value !== "number" || !Number.isInteger(value) || value < 1 || value > maximum) {
-    throw new Error(`${key} must be an integer between 1 and ${maximum}`);
+  if (typeof value !== "number" || !Number.isInteger(value) || value < minimum || value > maximum) {
+    throw new Error(`${key} must be an integer between ${minimum} and ${maximum}`);
   }
   return value;
 }
 
 function inside(root: string, candidate: string): boolean {
   return candidate === root || candidate.startsWith(`${root}${sep}`);
+}
+
+function headlessPatch(
+  provider: string,
+  model: string,
+  maxTokens: number | undefined,
+  values: RuntimeEnvironmentValues,
+  sessionsRoot: string,
+): string {
+  const entries: Record<string, unknown>[] = [
+    { id: "agent-default-model", config: { provider, model } },
+    { id: "session-persistence-jsonl", config: { root: sessionsRoot } },
+  ];
+  if (provider === "deepseek-official" && (maxTokens !== undefined || values.DEEPSEEK_BASE_URL)) {
+    entries.push({
+      id: "llm-deepseek",
+      config: {
+        apiKeyEnv: "DEEPSEEK_API_KEY",
+        ...(values.DEEPSEEK_BASE_URL ? { baseURL: values.DEEPSEEK_BASE_URL } : {}),
+        thinking: "enabled",
+        reasoningEffort: "max",
+        ...(maxTokens === undefined ? {} : { maxTokens }),
+      },
+    });
+  }
+  if (provider === "ipollowork") {
+    entries.push({
+      id: "llm-pi-ai",
+      config: {
+        providers: {
+          ipollowork: {
+            displayName: "iPolloWork",
+            apiKeyEnv: "IPOLLOWORK_API_KEY",
+            api: "openai-completions",
+            baseURL: values.IPOLLOWORK_INFERENCE_BASE_URL,
+            models: [{
+              id: model,
+              name: model,
+              contextWindow: 128_000,
+              ...(maxTokens === undefined ? {} : { maxTokens }),
+            }],
+          },
+        },
+      },
+    });
+  }
+  return `${JSON.stringify(entries, null, 2)}\n`;
 }
 
 
@@ -214,45 +266,76 @@ export default async function createDeepSeekHarnessService(runtime: ServiceRunti
     }
   }
 
-  async function execute(job: ActiveJob, runtimePath: string, values: RuntimeEnvironmentValues, maxTokens?: number): Promise<void> {
-    const requestedJobRoot = resolve(jobsRoot, job.jobId);
-    await mkdir(requestedJobRoot, { recursive: true, mode: 0o700 });
-    const jobRoot = await realpath(requestedJobRoot);
-    const workspaceRoot = resolve(jobRoot, "workspace");
-    const stateRoot = resolve(jobRoot, "state");
+  async function execute(job: ActiveJob, location: RuntimeLocation, values: RuntimeEnvironmentValues, maxTokens?: number): Promise<void> {
+    const requestedExecutionRoot = resolve(tmpdir(), "ipollowork-dsh", job.jobId);
+    await mkdir(requestedExecutionRoot, { recursive: true, mode: 0o700 });
+    const executionRoot = await realpath(requestedExecutionRoot);
+    const workspaceRoot = resolve(executionRoot, "workspace");
+    const stateRoot = resolve(executionRoot, "state");
     const sessionsRoot = resolve(stateRoot, "sessions");
     const homeRoot = resolve(stateRoot, "home");
+    const dshHome = resolve(runtime.storage.dataDir, "dsh-home");
     try {
       await mkdir(homeRoot, { recursive: true, mode: 0o700 });
       await mkdir(resolve(homeRoot, "tmp"), { recursive: true, mode: 0o700 });
+      await mkdir(resolve(homeRoot, "appdata"), { recursive: true, mode: 0o700 });
+      await mkdir(resolve(homeRoot, "localappdata"), { recursive: true, mode: 0o700 });
       await mkdir(sessionsRoot, { recursive: true, mode: 0o700 });
+      await mkdir(dshHome, { recursive: true, mode: 0o700 });
       const isolated = await prepareIsolatedWorkspace(job.sourceDirectory, workspaceRoot);
-      const configPath = values.DSH_CORDIS_CONFIG
+      const configPath = location.transport === "jsonrpc" && values.DSH_CORDIS_CONFIG
         ? resolve(values.DSH_CORDIS_CONFIG)
-        : bundledCordisConfigPath();
+        : location.transport === "jsonrpc" ? bundledCordisConfigPath() : undefined;
       const env = childEnvironment(process.env, values, {
         cwd: isolated.cwd,
         home: homeRoot,
+        dshHome,
         sessions: sessionsRoot,
         config: configPath,
         mode: job.mode,
         provider: job.provider,
         model: job.model,
       });
-      const turn = await runHarnessTurn({
-        command: "/usr/bin/sandbox-exec",
-        args: ["-p", sandboxProfile(job.mode, jobRoot, stateRoot, job.sourceDirectory), "--", runtimePath],
-        cwd: isolated.cwd,
-        env,
-        provider: job.provider,
-        model: job.model,
-        ...(maxTokens === undefined ? {} : { maxTokens }),
-        prompt: promptForMode(job.prompt, job.mode),
-        sessionId: `ipollowork-${job.jobId}`,
-        signal: job.abort.signal,
-      });
+      const prompt = promptForMode(job.prompt, job.mode);
+      let turn: HarnessTurnResult;
+      if (location.transport === "headless") {
+        const patchPath = resolve(stateRoot, "ipollowork.patch.yml");
+        await writeFile(patchPath, headlessPatch(job.provider, job.model, maxTokens, values, sessionsRoot), { encoding: "utf8", mode: 0o600 });
+        const useMacSandbox = process.platform === "darwin";
+        turn = await runHarnessHeadless({
+          command: useMacSandbox ? "/usr/bin/sandbox-exec" : process.execPath,
+          commandArgs: useMacSandbox
+            ? ["-p", sandboxProfile(job.mode, executionRoot, stateRoot, job.sourceDirectory, [dshHome]), "--", process.execPath]
+            : [],
+          script: location.path,
+          cwd: isolated.cwd,
+          env,
+          patch: patchPath,
+          prompt,
+          signal: job.abort.signal,
+        });
+      } else {
+        const useMacSandbox = process.platform === "darwin";
+        const useNodeScript = process.platform === "win32" && /\.[cm]?js$/i.test(location.path);
+        turn = await runHarnessTurn({
+          command: useMacSandbox ? "/usr/bin/sandbox-exec" : useNodeScript ? process.execPath : location.path,
+          args: useMacSandbox
+            ? ["-p", sandboxProfile(job.mode, executionRoot, stateRoot, job.sourceDirectory, [dshHome]), "--", location.path]
+            : useNodeScript ? [location.path] : [],
+          cwd: isolated.cwd,
+          env: {
+            ...env,
+            ...(useNodeScript && process.versions.electron ? { ELECTRON_RUN_AS_NODE: "1" } : {}),
+          },
+          provider: job.provider,
+          model: job.model,
+          ...(maxTokens === undefined ? {} : { maxTokens }),
+          prompt,
+          sessionId: `ipollowork-${job.jobId}`,
+          signal: job.abort.signal,
+        });
+      }
       job.result = { ...turn, patch: await collectWorkspacePatch(isolated) };
-      job.state = "completed";
     } catch (error) {
       if (job.abort.signal.aborted) {
         job.state = "cancelled";
@@ -262,9 +345,15 @@ export default async function createDeepSeekHarnessService(runtime: ServiceRunti
         job.error = error instanceof Error ? error.message : String(error);
       }
     } finally {
-      job.finishedAt = Date.now();
-      await rm(workspaceRoot, { recursive: true, force: true });
-      await persist(job);
+      const finalState = job.state === "running" ? "completed" : job.state;
+      const finishedAt = Date.now();
+      await rm(executionRoot, { recursive: true, force: true });
+      try {
+        await persist({ ...job, state: finalState, finishedAt });
+      } finally {
+        job.state = finalState;
+        job.finishedAt = finishedAt;
+      }
     }
   }
 
@@ -274,11 +363,23 @@ export default async function createDeepSeekHarnessService(runtime: ServiceRunti
         const values = await environmentValues();
         const managed = await managedRuntimeStatus(runtime.storage.dataDir);
         const location = await resolveRuntimeLocation(runtime.environment, runtime.storage.dataDir);
+        const macSandboxAvailable = process.platform !== "darwin" || await executable("/usr/bin/sandbox-exec");
+        const available = Boolean(location) && macSandboxAvailable;
+        const message = available
+          ? "DSH service is ready"
+          : !location && BUNDLED_HEADLESS_PLATFORM
+            ? "The bundled DSH CLI is missing. Reinstall iPolloWork and try again"
+            : !location
+              ? "The DeepSeek Harness runtime is unavailable"
+              : "The DeepSeek Harness sandbox is unavailable";
         return {
-          available: Boolean(location) && process.platform === "darwin" && await executable("/usr/bin/sandbox-exec"),
-          runtime: location ? { source: location.source, ...(location.version ? { version: location.version } : {}) } : null,
+          available,
+          serviceStatus: available ? "ready" : "unavailable",
+          message,
+          platform: process.platform,
+          runtime: location ? { source: location.source, transport: location.transport, ...(location.version ? { version: location.version } : {}) } : null,
           runtimeManagement: {
-            supported: true,
+            supported: !BUNDLED_HEADLESS_PLATFORM && location?.transport !== "headless",
             recommendedVersion: managed.recommendedVersion,
             installedVersions: managed.installedVersions,
             managedActiveVersion: managed.active?.version ?? null,
@@ -292,56 +393,77 @@ export default async function createDeepSeekHarnessService(runtime: ServiceRunti
           isolation: {
             originalWorkspaceWrite: false,
             gitClone: true,
-            macosSeatbelt: true,
+            macosSeatbelt: process.platform === "darwin" && macSandboxAvailable,
+            windowsPwshSandbox: process.platform === "win32" && location?.transport === "headless",
             uninstallDeletesData: true,
           },
         };
       },
       runtime_status: async () => {
-        const [managed, latestVersion, location] = await Promise.all([
+        const [managed, location] = await Promise.all([
           managedRuntimeStatus(runtime.storage.dataDir),
-          latestOfficialRuntimeVersion(),
           resolveRuntimeLocation(runtime.environment, runtime.storage.dataDir),
         ]);
+        const latestVersion = BUNDLED_HEADLESS_PLATFORM
+          ? location?.version ?? null
+          : await latestOfficialRuntimeVersion();
         return {
           active: location,
           managedActive: managed.active,
           installedVersions: managed.installedVersions,
           recommendedVersion: managed.recommendedVersion,
           latestVersion,
-          updateAvailable: managed.active?.version !== latestVersion,
+          updateAvailable: BUNDLED_HEADLESS_PLATFORM ? false : managed.active?.version !== latestVersion,
         };
       },
       runtime_install: async (args: Record<string, unknown>) => {
+        const active = await resolveRuntimeLocation(runtime.environment, runtime.storage.dataDir);
+        if (active?.transport === "headless") {
+          return { installed: false, active, installedVersions: [], recommendedVersion: active.version ?? null };
+        }
+        if (BUNDLED_HEADLESS_PLATFORM) throw new Error("The bundled DSH CLI is unavailable");
         const version = optionalText(args, "version", RECOMMENDED_DSH_RUNTIME_VERSION, 64);
         return installRuntime(version);
       },
       runtime_update: async () => {
+        const active = await resolveRuntimeLocation(runtime.environment, runtime.storage.dataDir);
+        if (active?.transport === "headless") {
+          return { installed: false, active, installedVersions: [], recommendedVersion: active.version ?? null };
+        }
+        if (BUNDLED_HEADLESS_PLATFORM) throw new Error("The bundled DSH CLI is unavailable");
         const version = await latestOfficialRuntimeVersion();
         return installRuntime(version);
       },
       runtime_remove: async () => {
         if (hasRunningJobs()) throw new Error("Cannot remove the DSH runtime while jobs are running");
+        const active = await resolveRuntimeLocation(runtime.environment, runtime.storage.dataDir);
+        if (BUNDLED_HEADLESS_PLATFORM) return { removed: false, reason: active?.transport === "headless" ? "bundled" : "external" };
         await serializeRuntimeMutation(() => removeManagedRuntimes(runtime.storage.dataDir));
         return { removed: true };
       },
       start: async (args: Record<string, unknown>, context: Record<string, unknown>) => {
-        if (process.platform !== "darwin") throw new Error("DeepSeek Harness plugin currently requires macOS Seatbelt isolation");
-        if (!await executable("/usr/bin/sandbox-exec")) throw new Error("macOS sandbox-exec is unavailable");
         const prompt = requiredText(args, "prompt", 100_000);
         const mode = modeValue(args);
         const provider = optionalText(args, "provider", "deepseek-official", 100);
         const model = optionalText(args, "model", provider === "deepseek-official" ? "deepseek-v4-flash" : "", 200);
         if (!model) throw new Error("model is required for this provider");
-        const maxTokens = optionalPositiveInteger(args, "maxTokens", 262_144);
+        const maxTokens = optionalInteger(args, "maxTokens", MIN_MODEL_OUTPUT_TOKENS, 262_144);
         const values = await environmentValues();
         if (!values.DSH_CORDIS_CONFIG) assertProviderReady(provider, values);
-        let location = await resolveRuntimeLocation(runtime.environment, runtime.storage.dataDir);
+        const location = await resolveRuntimeLocation(runtime.environment, runtime.storage.dataDir);
         if (!location) {
-          await installRuntime(RECOMMENDED_DSH_RUNTIME_VERSION);
-          location = await resolveRuntimeLocation(runtime.environment, runtime.storage.dataDir);
+          if (BUNDLED_HEADLESS_PLATFORM) throw new Error("DeepSeek Harness service is unavailable because the bundled DSH CLI is missing. Reinstall iPolloWork and try again");
+          throw new Error("DeepSeek Harness runtime installation did not produce an executable");
         }
-        if (!location) throw new Error("DeepSeek Harness runtime installation did not produce an executable");
+        if (location.transport === "headless" && values.DSH_CORDIS_CONFIG) {
+          throw new Error("Custom DSH_CORDIS_CONFIG is not supported by the bundled headless runtime");
+        }
+        if (process.platform === "darwin" && !await executable("/usr/bin/sandbox-exec")) {
+          throw new Error("macOS sandbox-exec is unavailable");
+        }
+        if (location.transport === "jsonrpc" && process.platform !== "darwin" && location.source !== "environment") {
+          throw new Error("The managed DSH JSON-RPC runtime requires macOS Seatbelt isolation");
+        }
         const requestedDirectory = typeof context.directory === "string" && context.directory.trim()
           ? resolve(context.directory)
           : runtime.workspace.root;
@@ -359,7 +481,7 @@ export default async function createDeepSeekHarnessService(runtime: ServiceRunti
           prompt,
         };
         jobs.set(jobId, job);
-        job.task = execute(job, location.path, values, maxTokens);
+        job.task = execute(job, location, values, maxTokens);
         return { jobId, state: job.state, mode, provider, model, isolated: true };
       },
       status: async (args: Record<string, unknown>) => {

@@ -582,7 +582,7 @@ describe("plugin package lifecycle", () => {
           { pluginId: "wechat-official", version: "0.1.1", installedVersion: null, updateAvailable: false },
           { pluginId: "design-agent", version: "0.1.1", installedVersion: null, updateAvailable: false },
           { pluginId: "video-agent", version: "0.1.2", installedVersion: null, updateAvailable: false },
-          { pluginId: "deepseek-harness", version: "0.2.3", installedVersion: null, updateAvailable: false },
+          { pluginId: "deepseek-harness", version: "0.3.4", installedVersion: null, updateAvailable: false },
         ],
       });
 
@@ -592,7 +592,7 @@ describe("plugin package lifecycle", () => {
       });
       expect(dshInstallation.status).toBe(200);
       expect(await dshInstallation.json()).toMatchObject({
-        result: { status: "installed", pluginId: "deepseek-harness", version: "0.2.3" },
+        result: { status: "installed", pluginId: "deepseek-harness", version: "0.3.4" },
       });
       const dshCapabilities = await fetch(`${base}/experimental/extensions/call`, {
         method: "POST",

@@ -29,7 +29,11 @@ const roots: string[] = [];
 const previousRuntimeDb = process.env.IPOLLOWORK_RUNTIME_DB;
 const previousGitHubApiBase = process.env.IPOLLOWORK_GITHUB_API_BASE;
 const previousWeChatOfficialApiBase = process.env.IPOLLOWORK_WECHAT_OFFICIAL_API_BASE;
+const previousDshCli = process.env.IPOLLOWORK_DSH_CLI;
+const previousDshCliVersion = process.env.IPOLLOWORK_DSH_CLI_VERSION;
 const originalFetch = globalThis.fetch;
+const bundledHeadlessTest = process.platform === "win32" || process.platform === "darwin" ? test : test.skip;
+const managedRuntimeTest = process.platform === "win32" || process.platform === "darwin" ? test.skip : test;
 
 function config(root: string): ServerConfig {
   return {
@@ -256,6 +260,10 @@ afterEach(async () => {
   else process.env.IPOLLOWORK_GITHUB_API_BASE = previousGitHubApiBase;
   if (previousWeChatOfficialApiBase === undefined) delete process.env.IPOLLOWORK_WECHAT_OFFICIAL_API_BASE;
   else process.env.IPOLLOWORK_WECHAT_OFFICIAL_API_BASE = previousWeChatOfficialApiBase;
+  if (previousDshCli === undefined) delete process.env.IPOLLOWORK_DSH_CLI;
+  else process.env.IPOLLOWORK_DSH_CLI = previousDshCli;
+  if (previousDshCliVersion === undefined) delete process.env.IPOLLOWORK_DSH_CLI_VERSION;
+  else process.env.IPOLLOWORK_DSH_CLI_VERSION = previousDshCliVersion;
   while (roots.length) {
     const root = roots.pop();
     if (root) await rm(root, { recursive: true, force: true });
@@ -308,15 +316,13 @@ describe("plugin service runtime", () => {
     await expect(access(dataDir)).rejects.toThrow();
   });
 
-  test("runs DSH in an isolated Git copy and returns a patch without touching the source", async () => {
+  test("runs DSH from an empty Git workspace and returns a patch without touching the source", async () => {
     const workspaceRoot = await temporaryRoot("ipollowork-dsh-workspace-");
     const runtimeRoot = await temporaryRoot("ipollowork-dsh-runtime-");
     const packageRoot = fileURLToPath(new URL("../../../examples/plugin-packages/deepseek-harness", import.meta.url));
     process.env.IPOLLOWORK_RUNTIME_DB = join(runtimeRoot, "runtime.sqlite");
     await writeFile(join(workspaceRoot, "README.md"), "# DSH fixture\n", "utf8");
     await git(workspaceRoot, ["init"]);
-    await git(workspaceRoot, ["add", "README.md"]);
-    await git(workspaceRoot, ["-c", "user.name=iPolloWork", "-c", "user.email=test@ipollowork.invalid", "commit", "-m", "fixture"]);
     const runtimePath = await writeFakeHarnessRuntime(runtimeRoot);
     const env = new EnvService({ path: join(runtimeRoot, "env.json") });
     await env.upsertMany([
@@ -338,6 +344,8 @@ describe("plugin service runtime", () => {
     expect(capabilities).toMatchObject({
       result: {
         available: true,
+        serviceStatus: "ready",
+        message: "DSH service is ready",
         runtime: { source: "environment" },
         isolation: { originalWorkspaceWrite: false, uninstallDeletesData: true },
       },
@@ -386,12 +394,150 @@ describe("plugin service runtime", () => {
 
     const dataDir = pluginServiceDataDirectory(serverConfig, WORKSPACE_ID, "deepseek-harness");
     expect(await access(join(dataDir, "jobs", jobId, "result.json")).then(() => true)).toBe(true);
+    await expect(access(join(dataDir, "jobs", jobId, "state"))).rejects.toThrow();
     await disposePluginServices(serverConfig, WORKSPACE_ID, "deepseek-harness");
     await deletePluginServiceData(serverConfig, WORKSPACE_ID, "deepseek-harness");
     await expect(access(dataDir)).rejects.toThrow();
   });
 
-  test("installs, activates, and removes a checksum-verified managed DSH runtime", async () => {
+  bundledHeadlessTest("runs the bundled desktop DSH CLI with long untracked paths", async () => {
+    const workspaceRoot = await temporaryRoot("ipollowork-dsh-desktop-workspace-");
+    const runtimeRoot = await temporaryRoot("ipollowork-dsh-desktop-runtime-");
+    const packageRoot = fileURLToPath(new URL("../../../examples/plugin-packages/deepseek-harness", import.meta.url));
+    const cliPath = join(runtimeRoot, "fake-dsh.mjs");
+    process.env.IPOLLOWORK_RUNTIME_DB = join(runtimeRoot, "runtime.sqlite");
+    await writeFile(join(workspaceRoot, "README.md"), "# DSH desktop fixture\n", "utf8");
+    await git(workspaceRoot, ["init"]);
+    await git(workspaceRoot, ["add", "README.md"]);
+    await git(workspaceRoot, ["-c", "user.name=iPolloWork", "-c", "user.email=test@ipollowork.invalid", "commit", "-m", "fixture"]);
+    const thumbnailDirectory = join(workspaceRoot, "video", "session", ".thumbnails");
+    const longThumbnailPath = join(thumbnailDirectory, `${"thumbnail".repeat(20)}.jpg`);
+    await mkdir(thumbnailDirectory, { recursive: true });
+    await writeFile(longThumbnailPath, "fixture", "utf8");
+    await writeFile(cliPath, `
+import { existsSync, writeFileSync } from "node:fs";
+const patchIndex = process.argv.indexOf("--patch");
+if (patchIndex < 0 || !existsSync(process.argv[patchIndex + 1])) throw new Error("Missing DSH patch");
+if (process.argv.at(-1)?.includes("FAIL_STDOUT")) {
+  process.stdout.write("DSH provider diagnostic from stdout.");
+  process.exit(1);
+}
+writeFileSync("dsh-output.txt", "created by desktop DSH headless runtime\\n");
+process.stdout.write("DSH completed the desktop headless task.");
+`, "utf8");
+    const env = new EnvService({ path: join(runtimeRoot, "env.json") });
+    process.env.IPOLLOWORK_DSH_CLI = cliPath;
+    process.env.IPOLLOWORK_DSH_CLI_VERSION = "test";
+    await env.upsertMany([{ key: "DEEPSEEK_API_KEY", value: "test-deepseek-key" }]);
+    const serverConfig = config(workspaceRoot);
+    await installPluginPackage({ serverConfig, workspaceId: WORKSPACE_ID, packageRoot, workspaceRoot });
+
+    const capabilities = await callPluginServiceAction({
+      config: serverConfig,
+      env,
+      workspaceId: WORKSPACE_ID,
+      pluginId: "deepseek-harness",
+      action: "capabilities",
+      args: {},
+      context: {},
+    });
+    expect(capabilities).toMatchObject({
+      result: {
+        available: true,
+        serviceStatus: "ready",
+        message: "DSH service is ready",
+        runtime: { source: "bundled", transport: "headless", version: "test" },
+        runtimeManagement: { supported: false },
+        isolation: {
+          macosSeatbelt: process.platform === "darwin",
+          windowsPwshSandbox: process.platform === "win32",
+          originalWorkspaceWrite: false,
+        },
+      },
+    });
+
+    await expect(callPluginServiceAction({
+      config: serverConfig,
+      env,
+      workspaceId: WORKSPACE_ID,
+      pluginId: "deepseek-harness",
+      action: "start",
+      args: { prompt: "Too small", maxTokens: 256 },
+      context: {},
+    })).rejects.toThrow("maxTokens must be an integer between 1024 and 262144");
+
+    const started = await callPluginServiceAction({
+      config: serverConfig,
+      env,
+      workspaceId: WORKSPACE_ID,
+      pluginId: "deepseek-harness",
+      action: "start",
+      args: { prompt: "Create dsh-output.txt", mode: "code" },
+      context: { directory: workspaceRoot },
+    });
+    const jobId = record(started.result)?.jobId;
+    if (typeof jobId !== "string") throw new Error("DSH start did not return a job ID");
+
+    let status: Awaited<ReturnType<typeof callPluginServiceAction>> | null = null;
+    for (let attempt = 0; attempt < 400; attempt += 1) {
+      status = await callPluginServiceAction({
+        config: serverConfig,
+        env,
+        workspaceId: WORKSPACE_ID,
+        pluginId: "deepseek-harness",
+        action: "status",
+        args: { jobId },
+        context: {},
+      });
+      if (record(status.result)?.state !== "running") break;
+      await Bun.sleep(25);
+    }
+    expect(status).toMatchObject({
+      result: {
+        state: "completed",
+        result: { finalResponse: "DSH completed the desktop headless task." },
+      },
+    });
+    expect(String(record(record(status?.result)?.result)?.patch)).toContain("dsh-output.txt");
+    await expect(access(join(workspaceRoot, "dsh-output.txt"))).rejects.toThrow();
+    expect(await readFile(longThumbnailPath, "utf8")).toBe("fixture");
+
+    const failed = await callPluginServiceAction({
+      config: serverConfig,
+      env,
+      workspaceId: WORKSPACE_ID,
+      pluginId: "deepseek-harness",
+      action: "start",
+      args: { prompt: "FAIL_STDOUT", mode: "review" },
+      context: {},
+    });
+    const failedJobId = record(failed.result)?.jobId;
+    if (typeof failedJobId !== "string") throw new Error("DSH failure test did not return a job ID");
+    let failedStatus: Awaited<ReturnType<typeof callPluginServiceAction>> | null = null;
+    for (let attempt = 0; attempt < 400; attempt += 1) {
+      failedStatus = await callPluginServiceAction({
+        config: serverConfig,
+        env,
+        workspaceId: WORKSPACE_ID,
+        pluginId: "deepseek-harness",
+        action: "status",
+        args: { jobId: failedJobId },
+        context: {},
+      });
+      if (record(failedStatus.result)?.state !== "running") break;
+      await Bun.sleep(25);
+    }
+    expect(failedStatus).toMatchObject({
+      result: {
+        state: "failed",
+        error: expect.stringContaining("stdout:\nDSH provider diagnostic from stdout."),
+      },
+    });
+    await disposePluginServices(serverConfig, WORKSPACE_ID, "deepseek-harness");
+    await deletePluginServiceData(serverConfig, WORKSPACE_ID, "deepseek-harness");
+  });
+
+  managedRuntimeTest("installs, activates, and removes a checksum-verified managed DSH runtime", async () => {
     const workspaceRoot = await temporaryRoot("ipollowork-dsh-managed-workspace-");
     const runtimeRoot = await temporaryRoot("ipollowork-dsh-managed-runtime-");
     const packageRoot = fileURLToPath(new URL("../../../examples/plugin-packages/deepseek-harness", import.meta.url));
@@ -484,7 +630,7 @@ describe("plugin service runtime", () => {
     const script = `
 const loaded = await import(${JSON.stringify(pathToFileURL(servicePath).href)});
 const service = await loaded.default({
-  plugin: { id: "deepseek-harness", version: "0.2.1" },
+  plugin: { id: "deepseek-harness", version: "0.3.4" },
   authorization: { getCredential: async () => null },
   environment: { get: async () => null },
   storage: { dataDir: ${JSON.stringify(dataDir)} },

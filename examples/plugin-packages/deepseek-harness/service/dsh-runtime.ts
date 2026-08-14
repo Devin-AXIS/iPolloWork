@@ -15,6 +15,7 @@ export type JobMode = "standard" | "code" | "review";
 export type RuntimeLocation = {
   path: string;
   source: "bundled" | "environment" | "managed";
+  transport: "headless" | "jsonrpc";
   version?: string;
 };
 
@@ -25,9 +26,19 @@ const ENVIRONMENT_KEYS = [
   "DEEPSEEK_BASE_URL",
   "IPOLLOWORK_API_KEY",
   "IPOLLOWORK_INFERENCE_BASE_URL",
+  "IPOLLOWORK_DSH_CLI",
+  "IPOLLOWORK_DSH_CLI_VERSION",
 ] as const;
 const SAFE_CHILD_ENV = [
   "PATH",
+  "PATHEXT",
+  "ComSpec",
+  "SystemRoot",
+  "WINDIR",
+  "PSModulePath",
+  "ProgramData",
+  "ProgramFiles",
+  "ProgramFiles(x86)",
   "LANG",
   "LC_ALL",
   "LC_CTYPE",
@@ -60,18 +71,38 @@ export async function executable(path: string): Promise<boolean> {
   }
 }
 
+async function readable(path: string): Promise<boolean> {
+  try {
+    await access(path, fsConstants.R_OK);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export async function resolveRuntimeLocation(environment: EnvironmentRuntime, dataDir: string): Promise<RuntimeLocation | null> {
   const configured = await environment.get("DSH_RUNTIME_BIN");
   if (configured) {
     const path = resolve(configured);
-    if (await executable(path)) return { path, source: "environment" };
+    if (await executable(path)) return { path, source: "environment", transport: "jsonrpc" };
+  }
+  if (process.platform === "win32" || process.platform === "darwin") {
+    const configuredCli = await environment.get("IPOLLOWORK_DSH_CLI");
+    if (configuredCli) {
+      const path = resolve(configuredCli);
+      if (await readable(path)) {
+        const version = await environment.get("IPOLLOWORK_DSH_CLI_VERSION");
+        return { path, source: "bundled", transport: "headless", ...(version ? { version } : {}) };
+      }
+    }
+    return null;
   }
   const managed: ManagedRuntime | null = (await managedRuntimeStatus(dataDir)).active;
-  if (managed) return managed;
+  if (managed) return { ...managed, transport: "jsonrpc" };
   const name = runtimeBinaryName();
   if (!name) return null;
   const path = fileURLToPath(new URL(`../runtime/${name}`, import.meta.url));
-  return await executable(path) ? { path, source: "bundled" } : null;
+  return await executable(path) ? { path, source: "bundled", transport: "jsonrpc" } : null;
 }
 
 export async function readEnvironmentValues(environment: EnvironmentRuntime): Promise<RuntimeEnvironmentValues> {
@@ -96,9 +127,15 @@ export function bundledCordisConfigPath(): string {
   return fileURLToPath(new URL("../cordis.yml", import.meta.url));
 }
 
-export function sandboxProfile(mode: JobMode, jobRoot: string, stateRoot: string, sourceRoot: string): string {
+export function sandboxProfile(
+  mode: JobMode,
+  jobRoot: string,
+  stateRoot: string,
+  sourceRoot: string,
+  additionalWritableRoots: string[] = [],
+): string {
   const escaped = (path: string) => quote(path).replaceAll("\\", "\\\\");
-  const writable = mode === "review" ? [stateRoot] : [jobRoot];
+  const writable = [...new Set([...(mode === "review" ? [stateRoot] : [jobRoot]), ...additionalWritableRoots])];
   const protectedRoots = [...new Set([homedir(), sourceRoot])];
   return [
     "(version 1)",
@@ -112,8 +149,9 @@ export function sandboxProfile(mode: JobMode, jobRoot: string, stateRoot: string
 export function childEnvironment(base: Record<string, string | undefined>, values: RuntimeEnvironmentValues, input: {
   cwd: string;
   home: string;
+  dshHome: string;
   sessions: string;
-  config: string;
+  config?: string;
   mode: JobMode;
   provider: string;
   model: string;
@@ -124,13 +162,19 @@ export function childEnvironment(base: Record<string, string | undefined>, value
     if (values[key]) env[key] = values[key] ?? undefined;
   }
   env.HOME = input.home;
+  env.USERPROFILE = input.home;
+  env.APPDATA = resolve(input.home, "appdata");
+  env.LOCALAPPDATA = resolve(input.home, "localappdata");
   env.TMPDIR = resolve(input.home, "tmp");
-  env.DSH_HOME = input.home;
+  env.TMP = resolve(input.home, "tmp");
+  env.TEMP = resolve(input.home, "tmp");
+  env.DSH_HOME = input.dshHome;
   env.DSH_CWD = input.cwd;
   env.DSH_SESSION_ROOT = input.sessions;
-  env.DSH_CORDIS_CONFIG = input.config;
+  if (input.config) env.DSH_CORDIS_CONFIG = input.config;
   env.DSH_PERMISSION_MODE = input.mode === "review" ? "read-only" : "workspace-write";
   env.DSH_TOOL_MODE = input.mode === "code" ? "code" : "native";
+  env.DSH_TOOLS_MODE = env.DSH_TOOL_MODE;
   env.DSH_SYSTEM_PROMPT = input.mode === "review"
     ? "You are an independent code reviewer. Inspect deeply, do not modify files, and return concise findings with evidence."
     : "You are an independent coding subagent. Work only inside the isolated repository, verify changes, and report exactly what changed.";

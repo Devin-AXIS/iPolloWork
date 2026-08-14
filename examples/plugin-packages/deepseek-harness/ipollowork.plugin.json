@@ -16,9 +16,9 @@
     "prompt": "请使用 DeepSeek Harness 协作完成以下任务："
   },
   "setup": {
-    "instructions": "安装官方 DeepSeek Harness 运行环境并连接 DeepSeek 后，即可开始委派任务。支持运行环境更新和版本切换。",
-    "primaryCta": "安装 DeepSeek Harness",
-    "secondaryCta": "查看能力"
+    "instructions": "软件已内置 Windows 和 macOS DeepSeek Harness 运行环境。连接 DeepSeek 后即可开始委派任务。",
+    "primaryCta": "连接 DeepSeek",
+    "secondaryCta": "检查服务状态"
   },
   "localization": {
     "defaultLocale": "zh",
@@ -30,9 +30,9 @@
           "prompt": "Work with DeepSeek Harness on the following task:"
         },
         "setup": {
-          "instructions": "Install the official DeepSeek Harness runtime and connect DeepSeek to start delegating tasks. Runtime updates and version switching are supported.",
-          "primaryCta": "Install DeepSeek Harness",
-          "secondaryCta": "View Capabilities"
+          "instructions": "The Windows and macOS DeepSeek Harness runtime is bundled. Connect DeepSeek to start delegating tasks.",
+          "primaryCta": "Connect DeepSeek",
+          "secondaryCta": "Check Service Status"
         },
         "resources": {
           "deepseek-harness-service": {
@@ -55,7 +55,7 @@
         },
         "permissions": {
           "network": {
-            "reason": "Download DeepSeek Harness and connect to the selected model provider."
+            "reason": "Connect the bundled DeepSeek Harness runtime to the selected model provider."
           },
           "workspace-read": {
             "reason": "Read the active project for delegated tasks."
@@ -68,7 +68,7 @@
     }
   },
   "package": {
-    "version": "0.2.3",
+    "version": "0.3.4",
     "publisher": {
       "id": "ipollowork",
       "name": "iPolloWork"
@@ -82,11 +82,11 @@
       "service": "service/deepseek-harness.mjs"
     }
   },
-  "platform": ["darwin"],
+  "platform": ["darwin", "windows"],
   "permissions": [
     {
       "id": "network",
-      "reason": "下载 DeepSeek Harness 并连接用户选择的模型服务。"
+      "reason": "使用内置 DeepSeek Harness 连接用户选择的模型服务。"
     },
     {
       "id": "workspace-read",
@@ -137,7 +137,9 @@
         "DEEPSEEK_API_KEY",
         "DEEPSEEK_BASE_URL",
         "IPOLLOWORK_API_KEY",
-        "IPOLLOWORK_INFERENCE_BASE_URL"
+        "IPOLLOWORK_INFERENCE_BASE_URL",
+        "IPOLLOWORK_DSH_CLI",
+        "IPOLLOWORK_DSH_CLI_VERSION"
       ],
       "provides": [
         "service:external-subagent",
@@ -222,7 +224,7 @@
               "mode": { "type": "string", "enum": ["standard", "code", "review"] },
               "provider": { "type": "string", "minLength": 1, "maxLength": 100 },
               "model": { "type": "string", "minLength": 1, "maxLength": 200 },
-              "maxTokens": { "type": "integer", "minimum": 1, "maximum": 262144 }
+              "maxTokens": { "type": "integer", "minimum": 1024, "maximum": 262144 }
             },
             "required": ["prompt"],
             "additionalProperties": false

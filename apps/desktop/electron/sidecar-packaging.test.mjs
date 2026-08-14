@@ -10,6 +10,21 @@ import { stageServerConstants, stageServerRuntimeTypes } from "../scripts/server
 
 const afterPack = afterPackModule.default ?? afterPackModule;
 
+it("prepares and packages the DSH CLI outside app.asar", async () => {
+  const [builderConfig, mainSource, buildSource, devSource] = await Promise.all([
+    readFile(new URL("../electron-builder.yml", import.meta.url), "utf8"),
+    readFile(new URL("./main.mjs", import.meta.url), "utf8"),
+    readFile(new URL("../scripts/electron-build.mjs", import.meta.url), "utf8"),
+    readFile(new URL("../scripts/electron-dev.mjs", import.meta.url), "utf8"),
+  ]);
+  assert.match(builderConfig, /from: dsh-runtime\s+to: dsh-runtime/);
+  assert.match(builderConfig, /from: \.\.\/\.\.\/examples\/plugin-packages\/deepseek-harness/);
+  assert.match(mainSource, /process\.resourcesPath, "dsh-runtime"/);
+  assert.match(mainSource, /IPOLLOWORK_DSH_CLI/);
+  assert.match(buildSource, /prepare-dsh-runtime\.mjs/);
+  assert.match(devSource, /prepare-dsh-runtime\.mjs/);
+});
+
 it("stages constants beside every compiled server module that imports them", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "ipollowork-server-package-"));
   const serverDistDir = path.join(root, "dist");
