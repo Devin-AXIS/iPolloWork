@@ -5,6 +5,7 @@ import {
   type ArtifactItem,
   artifactDirectoryPath,
   artifactPathMatchesTarget,
+  artifactPathReferencesEntry,
   canOpenArtifactInContext,
   selectArtifactContextOutputs,
   selectTemplateEntryArtifacts,
@@ -73,6 +74,15 @@ describe("video artifact entry routing", () => {
     )).toBe(false);
   });
 
+  test("treats bare index html as the current video entry only in context", () => {
+    const entryPath = videoProjectEntryPath("ses_video");
+
+    expect(artifactPathReferencesEntry("index.html", entryPath)).toBe(true);
+    expect(artifactPathReferencesEntry("workspaces/ws_local/video/ses_video/index.html", entryPath)).toBe(true);
+    expect(artifactPathReferencesEntry("video/another_session/index.html", entryPath)).toBe(false);
+    expect(artifactPathReferencesEntry("preview.html", entryPath)).toBe(false);
+  });
+
   test("selects the exact entry instead of another file with the same name", () => {
     const entryPath = videoProjectEntryPath("ses_video");
     const otherEntry = htmlArtifact("video/another_session/index.html");
@@ -82,6 +92,18 @@ describe("video artifact entry routing", () => {
       [otherEntry, currentEntry],
       entryPath,
     )).toEqual([currentEntry]);
+  });
+
+  test("opens a bare index html card as the video entry", () => {
+    const entryPath = videoProjectEntryPath("ses_video");
+    const context: ArtifactInteractionContext = { kind: "video", entryPath };
+    const bareEntry = htmlArtifact("index.html");
+
+    expect(canOpenArtifactInContext(bareEntry, context)).toBe(true);
+    expect(selectArtifactContextOutputs(
+      [bareEntry],
+      context,
+    )).toEqual([bareEntry]);
   });
 
   test("shows only the current entry in a video context", () => {

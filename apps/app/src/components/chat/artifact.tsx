@@ -22,7 +22,7 @@ import { cn } from "@/lib/utils";
 import {
   type ArtifactInteractionContext,
   type ArtifactItem,
-  artifactPathMatchesTarget,
+  artifactPathReferencesEntry,
   canOpenArtifactInContext,
   canPreviewArtifact,
   groupConversationOutputArtifacts,
@@ -55,7 +55,7 @@ function ArtifactButton({ artifact, sessionId, artifactContext, onOpenVideoStudi
   const canOpen = canOpenArtifactInContext(artifact, artifactContext);
   const canPreview = canPreviewArtifact(artifact);
   const isVideoEntry = artifactContext?.kind === "video"
-    && artifactPathMatchesTarget(artifact.path, artifactContext.entryPath);
+    && artifactPathReferencesEntry(artifact.path, artifactContext.entryPath);
   const canOpenVideoStudio = isVideoEntry && Boolean(onOpenVideoStudio);
   const canActivate = artifactContext?.kind === "video" ? canOpenVideoStudio : canOpen;
   const title = compactArtifactTitle(artifact.name);
