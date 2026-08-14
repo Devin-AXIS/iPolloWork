@@ -1,4 +1,7 @@
 import { describe, expect, test } from "bun:test";
+import { readFileSync } from "node:fs";
+
+import { t } from "../src/i18n";
 
 import {
   DEFAULT_COSYVOICE_MODEL,
@@ -76,5 +79,20 @@ describe("video voiceover settings", () => {
 
     expect(parseVideoVoiceDisplayMetadata(`Capability context\n${metadata}\nVoice instructions`)).toEqual(reference);
     expect(parseVideoVoiceDisplayMetadata("Selected video voiceover reference:")).toBeNull();
+  });
+
+  test("localizes the embedded voice authorization prompt", () => {
+    expect(t("video.voice.configure_bailian_title", { lng: "en" })).toBe("Configure Alibaba Model Studio first");
+    expect(t("video.voice.configure_bailian_body", { lng: "en" })).toBe(
+      "After saving your Model Studio API key in Authorization Center, you can choose and preview voices.",
+    );
+    expect(t("video.voice.configure_bailian_title", { lng: "zh" })).toBe("请先配置阿里百炼");
+
+    const panelSource = readFileSync(
+      new URL("../src/react-app/domains/session/video/video-voice-panel.tsx", import.meta.url),
+      "utf8",
+    );
+    expect(panelSource).toContain('t("video.voice.configure_bailian_title")');
+    expect(panelSource).toContain('t("video.voice.configure_bailian_body")');
   });
 });

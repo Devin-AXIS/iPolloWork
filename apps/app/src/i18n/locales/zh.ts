@@ -1860,6 +1860,8 @@ export default {
   "settings.integration.speech_input.auto": "自动选择已配置的服务商",
   "settings.integration.speech_input.none": "暂无已配置的语音服务商，请先在授权中心配置。",
   "settings.integration.speech_input.saved": "语音输入默认服务商已保存。",
+  "video.voice.configure_bailian_title": "请先配置阿里百炼",
+  "video.voice.configure_bailian_body": "在授权中心保存百炼 API Key 后，即可选择和试听音色。",
   "settings.authorization.option.aliyun_oss": "阿里云 OSS",
   "settings.authorization.option.wasabi": "Wasabi",
   "settings.tab_authorizations": "授权中心",
