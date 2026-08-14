@@ -143,6 +143,14 @@ describe("SemanticMotionPanel", () => {
     expect(resolveMotionTargetKind(selection(containerElement))).toBe("element");
   });
 
+  it("classifies inline-styled text spans as a text motion target", () => {
+    const title = document.createElement("h2");
+    title.id = "title";
+    title.innerHTML = 'Make every <span class="accent">person</span> count.';
+
+    expect(resolveMotionTargetKind(selection(title))).toBe("text");
+  });
+
   it("keeps structured text motion wrappers selectable as text", () => {
     const title = document.createElement("h1");
     title.id = "title";

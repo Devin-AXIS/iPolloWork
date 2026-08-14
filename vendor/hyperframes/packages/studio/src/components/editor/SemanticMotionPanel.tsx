@@ -49,9 +49,41 @@ export interface ResolvedMotionInstance {
   instance: MotionInstance;
 }
 
+const INLINE_TEXT_FORMATTING_TAGS = new Set([
+  "span",
+  "strong",
+  "em",
+  "b",
+  "i",
+  "u",
+  "s",
+  "mark",
+  "small",
+]);
+const TEXT_CONTAINER_TAGS_WITH_INLINE_FORMATTING = new Set([
+  "h1",
+  "h2",
+  "h3",
+  "h4",
+  "h5",
+  "h6",
+  "p",
+  ...INLINE_TEXT_FORMATTING_TAGS,
+]);
+
+function isInlineTextFormattingChild(child: Element): boolean {
+  const tagName = child.tagName.toLowerCase();
+  if (!INLINE_TEXT_FORMATTING_TAGS.has(tagName)) return false;
+  return Array.from(child.children).every(isInlineTextFormattingChild);
+}
+
 export function resolveMotionTargetKind(element: DomEditSelection): MotionTargetKind {
+  const allowsInlineFormattingChildren = TEXT_CONTAINER_TAGS_WITH_INLINE_FORMATTING.has(
+    element.tagName,
+  );
   const hasAuthoredChildren = Array.from(element.element.children).some(
     (child) =>
+      !(allowsInlineFormattingChildren && isInlineTextFormattingChild(child)) &&
       !child.hasAttribute("data-ipw-motion-word") &&
       !child.hasAttribute("data-ipw-motion-char") &&
       child.getAttribute("data-ipw-motion-role") !== "unit",

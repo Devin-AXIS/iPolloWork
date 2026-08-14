@@ -1,9 +1,11 @@
 import type { ComposerAttachment } from "@/app/types";
+import type { iPolloWorkAiFileParserResult } from "@/app/lib/ipollowork-server";
 import { buildDeterministicSummary } from "./compression";
 import { extractDocxReference } from "./extractors/docx";
 import { extractPdfReference } from "./extractors/pdf";
 import { extractTableReference } from "./extractors/table";
 import { extractTextReference } from "./extractors/text";
+import { chunkPlainText } from "./chunking";
 import { assessReferenceQuality } from "./quality";
 import type { ExtractedReferenceContent, ReferenceIngestionResult } from "./types";
 
@@ -115,6 +117,70 @@ export async function ingestReferenceFile(file: File): Promise<ReferenceIngestio
   };
 
   return { ...draft, summary: buildDeterministicSummary(draft) };
+}
+
+type AiReferenceClient = {
+  analyzeReferenceFile: (workspaceId: string, file: File) => Promise<iPolloWorkAiFileParserResult>;
+};
+
+function aiAnalysisToText(result: iPolloWorkAiFileParserResult) {
+  const analysis = result.analysis;
+  return [
+    `AI file analysis for ${result.fileName}`,
+    `Summary: ${analysis.summary}`,
+    `User intent: ${analysis.userIntent}`,
+    `Target audience: ${analysis.targetAudience}`,
+    analysis.keyFacts.length ? `Key facts:\n${analysis.keyFacts.map((item) => `- ${item}`).join("\n")}` : "",
+    analysis.designRequirements.length ? `Design requirements:\n${analysis.designRequirements.map((item) => `- ${item}`).join("\n")}` : "",
+    analysis.contentOutline.length ? `Content outline:\n${analysis.contentOutline.map((item) => `- ${item}`).join("\n")}` : "",
+    analysis.brandHints.length ? `Brand hints:\n${analysis.brandHints.map((item) => `- ${item}`).join("\n")}` : "",
+    analysis.dataFindings.length ? `Data findings:\n${analysis.dataFindings.map((item) => `- ${item}`).join("\n")}` : "",
+    analysis.missingInfo.length ? `Missing info:\n${analysis.missingInfo.map((item) => `- ${item}`).join("\n")}` : "",
+    `Confidence: ${analysis.confidence}`,
+  ].filter(Boolean).join("\n");
+}
+
+function aiQuality(confidence: iPolloWorkAiFileParserResult["analysis"]["confidence"]) {
+  if (confidence === "high") return "high" as const;
+  if (confidence === "low") return "low" as const;
+  return "medium" as const;
+}
+
+export async function ingestReferenceFileWithAi(
+  file: File,
+  options: { workspaceId?: string | null; client?: AiReferenceClient | null } = {},
+): Promise<ReferenceIngestionResult> {
+  if (options.workspaceId && options.client) {
+    try {
+      const parsed = await options.client.analyzeReferenceFile(options.workspaceId, file);
+      const text = aiAnalysisToText(parsed);
+      return {
+        id: `${file.name}-${file.lastModified}`,
+        fileName: file.name,
+        mimeType: referenceMime(file),
+        size: file.size,
+        sourceMode: "ai",
+        extractedText: text,
+        summary: parsed.analysis.summary || buildDeterministicSummary({
+          fileName: file.name,
+          mimeType: referenceMime(file),
+          extractedText: text,
+          chunks: [],
+          warnings: [],
+        }),
+        chunks: chunkPlainText({ source: file.name, text }),
+        quality: aiQuality(parsed.analysis.confidence),
+        warnings: [],
+      };
+    } catch {
+      const fallback = await ingestReferenceFile(file);
+      return {
+        ...fallback,
+        warnings: [...fallback.warnings, "AI parsing unavailable; used deterministic parser fallback."],
+      };
+    }
+  }
+  return ingestReferenceFile(file);
 }
 
 export async function prepareOriginalReferenceAttachment(file: File): Promise<ComposerAttachment> {

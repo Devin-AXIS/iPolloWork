@@ -182,6 +182,9 @@ export function getSelectionCandidate(
   startEl: HTMLElement,
   options: DomEditContextOptions,
 ): HTMLElement {
+  const structuredTextRoot = startEl.closest<HTMLElement>('[data-ipw-motion-structure="v1"]');
+  if (structuredTextRoot) return structuredTextRoot;
+
   const editableUnit = getEditableUnitSelectionTarget(startEl);
   if (editableUnit) return editableUnit;
 

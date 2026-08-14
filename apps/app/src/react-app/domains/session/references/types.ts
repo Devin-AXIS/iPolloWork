@@ -15,7 +15,7 @@ export type ReferenceIngestionResult = {
   fileName: string;
   mimeType: string;
   size: number;
-  sourceMode: "memory";
+  sourceMode: "memory" | "ai";
   extractedText: string;
   summary: string;
   chunks: ReferenceChunk[];

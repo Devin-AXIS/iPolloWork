@@ -36,6 +36,7 @@ allowBuilds:
   core-js: true
   electron: true
   esbuild: true
+  msgpackr-extract: true
   msw: false
   node-pty: true
   protobufjs: true

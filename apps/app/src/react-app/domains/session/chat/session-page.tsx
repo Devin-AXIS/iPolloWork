@@ -105,7 +105,7 @@ import {
 } from "../templates/template-brief";
 import {
   canSendOriginalReference,
-  ingestReferenceFile,
+  ingestReferenceFileWithAi,
   isReferenceFile,
 } from "../references/ingestion";
 import { inferTemplateBriefFromIngestions } from "../references/brief-autofill";
@@ -444,7 +444,19 @@ function DesignStarter({ client, workspaceId, templates, loading, busyId, error,
   </>);
 }
 
-function TemplateBriefCard({ template, onSubmit, onClose }: { template: TemplateManifestV1; onSubmit: (brief: TemplateBrief, references: TemplateReferenceItem[]) => void; onClose: () => void | Promise<void> }) {
+function TemplateBriefCard({
+  template,
+  referenceClient,
+  referenceWorkspaceId,
+  onSubmit,
+  onClose,
+}: {
+  template: TemplateManifestV1;
+  referenceClient?: iPolloWorkServerClient | null;
+  referenceWorkspaceId?: string | null;
+  onSubmit: (brief: TemplateBrief, references: TemplateReferenceItem[]) => void;
+  onClose: () => void | Promise<void>;
+}) {
   const config = templateBriefConfigFor(template);
   const [brief, setBrief] = useState<TemplateBrief>({ title: "", audience: "", details: "" });
   const [references, setReferences] = useState<TemplateReferenceItem[]>([]);
@@ -496,7 +508,10 @@ function TemplateBriefCard({ template, onSubmit, onClose }: { template: Template
     try {
       const results = await Promise.all(pending.map(async (item): Promise<TemplateReferenceItem> => {
         try {
-          const ingestion = await ingestReferenceFile(item.file);
+          const ingestion = await ingestReferenceFileWithAi(item.file, {
+            client: referenceClient,
+            workspaceId: referenceWorkspaceId,
+          });
           const status: TemplateReferenceItem["status"] = ingestion.quality === "high" || ingestion.quality === "medium" ? "ready" : ingestion.quality === "low" ? "weak" : "failed";
           return { ...item, mimeType: ingestion.mimeType, status, ingestion };
         } catch (error) {
@@ -603,6 +618,11 @@ export function SessionPage(props: SessionPageProps) {
   const templateImportInFlightRef = useRef(false);
   const [templateMarketOpen, setTemplateMarketOpen] = useState(false);
   const previousTemplateMarketOpenRef = useRef(false);
+  const [settledSessionId, setSettledSessionId] = useState<string | null>(null);
+  const templateBriefRecoveryRef = useRef<string | null>(null);
+  const handleSessionLoadSettled = useCallback((sessionId: string) => {
+    setSettledSessionId(sessionId);
+  }, []);
   const [cloudSignInComingSoonOpen, setCloudSignInComingSoonOpen] = useState(false);
   const [templateSessionData, setTemplateSessionData] = useState<TemplateSessionData | null>(null);
   const [templateSessionLoading, setTemplateSessionLoading] = useState(false);
@@ -806,6 +826,11 @@ export function SessionPage(props: SessionPageProps) {
       }
     }
   }, [props.ipolloworkServerClient, props.runtimeWorkspaceId]);
+  useEffect(() => {
+    const previouslyOpen = previousTemplateMarketOpenRef.current;
+    previousTemplateMarketOpenRef.current = templateMarketOpen;
+    if (shouldRefreshTemplateCatalogOnOpen(templateMarketOpen, previouslyOpen)) void refreshTemplateCatalog();
+  }, [refreshTemplateCatalog, templateMarketOpen]);
   const getTemplateCover = useCallback((templateId: string) => {
     if (!props.ipolloworkServerClient || !props.runtimeWorkspaceId) {
       return Promise.reject(new Error("Template cover is unavailable."));
@@ -1063,7 +1088,7 @@ export function SessionPage(props: SessionPageProps) {
     }
   }, [activeEnterprise, importDesignTemplate, templateResourceScope]);
   const submitTemplateBrief = useCallback(async (brief: TemplateBrief, references: TemplateReferenceItem[]) => {
-    if (!props.ipolloworkServerClient || !props.runtimeWorkspaceId || !props.selectedSessionId) return;
+    if (!props.ipolloworkServerClient || !props.runtimeWorkspaceId || !props.selectedSessionId || !props.surface) return;
     const templateSession = currentTemplateSessionData;
     if (!templateSession) return;
     const { manifest: template, state } = templateSession;
@@ -1092,18 +1117,10 @@ export function SessionPage(props: SessionPageProps) {
       }, null, 2),
       baseUpdatedAt: null,
       });
-      setTemplateSessionData((current) => current?.sessionId === props.selectedSessionId ? { ...current, hasBrief: true } : current);
-      setTemplateSessionRevision((value) => value + 1);
-      setDismissedTemplateBriefSessionIds((current) => {
-        if (!props.selectedSessionId || !current.has(props.selectedSessionId)) return current;
-        const next = new Set(current);
-        next.delete(props.selectedSessionId);
-        return next;
-      });
       const prompt = templateBriefPrompt({ template, entryPath: state.entry, briefPath: state.briefPath });
       const referencePrompt = referencePayload.contextPack.promptText.trim();
       const visibleTemplateMessage = t("templates.applied", { title: template.title });
-      props.surface?.onSendDraft({
+      const dispatched = await props.surface.onSendDraft({
         mode: "prompt",
         parts: [
           { type: "text", text: visibleTemplateMessage },
@@ -1114,6 +1131,15 @@ export function SessionPage(props: SessionPageProps) {
         text: visibleTemplateMessage,
         resolvedText: visibleTemplateMessage,
       }, props.selectedSessionId);
+      if (!dispatched) return;
+      setTemplateSessionData((current) => current?.sessionId === props.selectedSessionId ? { ...current, hasBrief: true } : current);
+      setTemplateSessionRevision((value) => value + 1);
+      setDismissedTemplateBriefSessionIds((current) => {
+        if (!props.selectedSessionId || !current.has(props.selectedSessionId)) return current;
+        const next = new Set(current);
+        next.delete(props.selectedSessionId);
+        return next;
+      });
     } catch (error) {
       toast.error(t("templates.brief.submit_failed"), {
         description: error instanceof Error ? error.message : undefined,
@@ -1122,6 +1148,45 @@ export function SessionPage(props: SessionPageProps) {
       if (referencePayload) revokeTemplateReferenceAttachmentPreviews(referencePayload.attachments);
     }
   }, [currentTemplateSessionData, props.ipolloworkServerClient, props.runtimeWorkspaceId, props.selectedSessionId, props.surface]);
+  useEffect(() => {
+    if (!props.surface || !props.selectedSessionId || !currentTemplateSessionData) return;
+    if (!hasTemplateBrief) return;
+    if (settledSessionId !== props.selectedSessionId) return;
+    if (conversationMessages.length > 0) return;
+    const surface = props.surface;
+    const sessionId = props.selectedSessionId;
+    const { manifest: template, state } = currentTemplateSessionData;
+    const recoveryKey = `${sessionId}:${state.briefPath}`;
+    if (templateBriefRecoveryRef.current === recoveryKey) return;
+    templateBriefRecoveryRef.current = recoveryKey;
+    const visibleTemplateMessage = t("templates.applied", { title: template.title });
+    const prompt = templateBriefPrompt({ template, entryPath: state.entry, briefPath: state.briefPath });
+    void (async () => {
+      const dispatched = await surface.onSendDraft({
+        mode: "prompt",
+        parts: [
+          { type: "text", text: visibleTemplateMessage },
+          { type: "text", text: prompt, synthetic: true },
+        ],
+        attachments: [],
+        text: visibleTemplateMessage,
+        resolvedText: visibleTemplateMessage,
+      }, sessionId);
+      if (!dispatched) templateBriefRecoveryRef.current = null;
+    })().catch((error) => {
+      templateBriefRecoveryRef.current = null;
+      toast.error(t("templates.brief.submit_failed"), {
+        description: error instanceof Error ? error.message : undefined,
+      });
+    });
+  }, [
+    conversationMessages.length,
+    currentTemplateSessionData,
+    hasTemplateBrief,
+    props.selectedSessionId,
+    props.surface,
+    settledSessionId,
+  ]);
   const closeTemplateBrief = useCallback(async () => {
     const sessionId = props.selectedSessionId;
     if (!sessionId) return;
@@ -2200,10 +2265,6 @@ export function SessionPage(props: SessionPageProps) {
   ), [activeSidePanel, setCurrentSidePanel, voiceExtensionEnabled]);
   useControlAction(closeVoicePanelControlAction);
   const [showDelayedSessionLoadingState, setShowDelayedSessionLoadingState] = useState(false);
-  const [settledSessionId, setSettledSessionId] = useState<string | null>(null);
-  const handleSessionLoadSettled = useCallback((sessionId: string) => {
-    setSettledSessionId(sessionId);
-  }, []);
 
   const selectedSessionTitle = useMemo(
     () => sessionTitleForId(props.sidebar.workspaceSessionGroups, props.selectedSessionId),
@@ -2691,7 +2752,13 @@ export function SessionPage(props: SessionPageProps) {
                           onImport={importDesignTemplate}
                         />
                       ) : currentTemplateSessionData && !hasTemplateBrief && !templateBriefDismissed ? (
-                        <TemplateBriefCard template={currentTemplateSessionData.manifest} onSubmit={(brief, references) => void submitTemplateBrief(brief, references)} onClose={() => void closeTemplateBrief()} />
+                        <TemplateBriefCard
+                          template={currentTemplateSessionData.manifest}
+                          referenceClient={props.ipolloworkServerClient}
+                          referenceWorkspaceId={props.runtimeWorkspaceId}
+                          onSubmit={(brief, references) => void submitTemplateBrief(brief, references)}
+                          onClose={() => void closeTemplateBrief()}
+                        />
                       ) : <SessionSurface
                         key={`${props.runtimeWorkspaceId}:${props.selectedSessionId}`}
                         // Spread `surface` first so the explicit per-workspace

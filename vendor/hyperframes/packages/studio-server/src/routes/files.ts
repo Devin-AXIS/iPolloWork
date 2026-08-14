@@ -1174,6 +1174,59 @@ function resolveSingleMotionTarget(
   }
 }
 
+function cssAttributeString(value: string): string {
+  return value.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+}
+
+function cssIdSelector(value: string): string {
+  return /^[A-Za-z_][A-Za-z0-9_-]*$/.test(value) ? `#${value}` : `[id="${cssAttributeString(value)}"]`;
+}
+
+function stableMotionTargetForElement(
+  target: Element,
+  fallbackSelector: string,
+): { target: Element; selector: string; elementId?: string; hfId?: string } {
+  const elementId = target.getAttribute("id")?.trim() || undefined;
+  const hfId = target.getAttribute("data-hf-id")?.trim() || undefined;
+  if (elementId) {
+    return { target, selector: cssIdSelector(elementId), elementId, ...(hfId ? { hfId } : {}) };
+  }
+  if (hfId) {
+    return {
+      target,
+      selector: `[data-hf-id="${cssAttributeString(hfId)}"]`,
+      hfId,
+    };
+  }
+  return { target, selector: fallbackSelector };
+}
+
+function resolveMotionMutationTarget(
+  document: Document,
+  body: MotionMutationRequest,
+): { target: Element; selector: string; elementId?: string; hfId?: string } | { error: string } {
+  const resolved = resolveSingleMotionTarget(document, body.targetSelector);
+  if ("error" in resolved) return resolved;
+  if (body.targetKind !== "text") {
+    return {
+      target: resolved.target,
+      selector: body.targetSelector,
+      ...(body.elementId ? { elementId: body.elementId } : {}),
+      ...(body.hfId ? { hfId: body.hfId } : {}),
+    };
+  }
+  const structuredRoot = resolved.target.closest('[data-ipw-motion-structure="v1"]');
+  if (structuredRoot && structuredRoot !== resolved.target) {
+    return stableMotionTargetForElement(structuredRoot, body.targetSelector);
+  }
+  return {
+    target: resolved.target,
+    selector: body.targetSelector,
+    ...(body.elementId ? { elementId: body.elementId } : {}),
+    ...(body.hfId ? { hfId: body.hfId } : {}),
+  };
+}
+
 function isLeafTextMotionTarget(target: Element): boolean {
   for (const child of Array.from(target.children)) {
     if (!child.hasAttribute("data-ipw-motion-word")) return false;
@@ -1422,9 +1475,10 @@ function executeMotionMutation(
   block: NonNullable<ReturnType<typeof extractGsapScriptBlock>>,
   respond: (data: unknown, status?: number) => Response,
 ): GsapMutationResult | Response {
-  const resolved = resolveSingleMotionTarget(block.document, body.targetSelector);
+  const resolved = resolveMotionMutationTarget(block.document, body);
   if ("error" in resolved) return respond({ error: resolved.error }, 400);
   const { target } = resolved;
+  const targetSelector = resolved.selector;
   if (body.targetKind === "text" && !isLeafTextMotionTarget(target)) {
     return respond({ error: "Text motion requires one leaf text element" }, 400);
   }
@@ -1485,9 +1539,9 @@ function executeMotionMutation(
         presetId: preset.id,
         templateId: body.templateId,
         target: {
-          selector: body.targetSelector,
-          ...(body.elementId ? { elementId: body.elementId } : {}),
-          ...(body.hfId ? { hfId: body.hfId } : {}),
+          selector: targetSelector,
+          ...(resolved.elementId ? { elementId: resolved.elementId } : {}),
+          ...(resolved.hfId ? { hfId: resolved.hfId } : {}),
         },
         targetKind: body.targetKind,
         applicationKind,
@@ -1515,7 +1569,7 @@ function executeMotionMutation(
         const staggerSpan = track.stagger * Math.max(0, targetCount - 1);
         const added = addAnimationWithKeyframesToScript(
           script,
-          structuredMotionSelector(body.targetSelector, track.role),
+          structuredMotionSelector(targetSelector, track.role),
           compiled.position + track.position,
           track.duration,
           track.keyframes,
@@ -1609,7 +1663,7 @@ function executeMotionMutation(
     }
   }
   if (remainingInstances.length > 0) {
-    target.setAttribute("data-ipw-motion-selector", body.targetSelector);
+    target.setAttribute("data-ipw-motion-selector", targetSelector);
   } else {
     target.removeAttribute("data-ipw-motion-selector");
   }

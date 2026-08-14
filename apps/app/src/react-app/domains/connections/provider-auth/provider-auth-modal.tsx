@@ -991,7 +991,7 @@ export default function ProviderAuthModal(props: ProviderAuthModalProps) {
                     </div>
                   ) : null}
                   <div className="flex items-center justify-between gap-3">
-                    <div className="text-[11px] text-gray-9">Keys are stored locally by OpenCode.</div>
+                    <div className="text-[11px] text-gray-9">Keys are stored locally by iPolloWork.</div>
                     <div className="flex items-center gap-2">
                       {selectedTokenStarConnected ? (
                         <Button variant="outline" onClick={() => void handleTokenStarDelete()} disabled={actionDisabled}>

@@ -145,6 +145,7 @@ import {
   isModelAvailableInSelectableChatProviders,
   useProviderListQuery,
 } from "@/react-app/infra/provider-list-query";
+import { validateDraftAttachmentsForModel } from "@/react-app/domains/session/sync/model-attachment-guard";
 import { resolvePreferredSelectableChatModel } from "@/react-app/infra/preferred-chat-model";
 import {
   designSelectionContextsForDraft,
@@ -832,6 +833,18 @@ export function SessionRoute() {
             throw new Error(serializeSDKError(result.error));
           }
           return true;
+        }
+
+        const attachmentValidation = validateDraftAttachmentsForModel(
+          draft,
+          providerListQuery.data,
+          local.prefs.defaultModel,
+        );
+        if (!attachmentValidation.ok) {
+          toast.error("This model does not support image input.", {
+            description: `${attachmentValidation.modelLabel} cannot read attached images. Choose a vision-capable model before sending.`,
+          });
+          return false;
         }
 
         const designSelectionScope = selectedWorkspaceEndpoint

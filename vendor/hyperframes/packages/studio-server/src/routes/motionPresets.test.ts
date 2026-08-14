@@ -437,6 +437,117 @@ describe("semantic motion mutation route", () => {
         readMotionInstanceFromExtras(animation.extras),
       )
       .filter(Boolean);
+    expect(remainingMotions.map((instance) => instance.presetId)).toEqual([]);
+    html = readFileSync(join(projectDir, "index.html"), "utf8");
+    document = parseHTML(html).document;
+    expect(document.querySelector("#headline")?.textContent).toBe("Make motion clear.");
+    expect(html).not.toContain("text.emphasis.highlight-sweep");
+    expect(html).not.toContain("data-ipw-motion-structure");
+  });
+
+  it("retargets structured text child motion mutations to the text root", async () => {
+    writeFileSync(
+      join(projectDir, "index.html"),
+      SOURCE.replace(
+        /<h1 id="headline" data-start="1" data-duration="5">.*?<\/h1>/,
+        `<h1 id="headline" data-hf-id="hf-headline" data-start="1" data-duration="5" data-ipw-motion-source="&quot;Duty, not consequence.&quot;" data-ipw-motion-structure="v1"><span data-ipw-motion-word="" data-ipw-motion-role="unit"><span data-ipw-motion-role="background"></span><span data-ipw-motion-role="text">Duty,</span></span> <span data-ipw-motion-word="" data-ipw-motion-role="unit"><span data-ipw-motion-role="background"></span><span data-ipw-motion-role="text">not</span></span> <span data-ipw-motion-word="" data-ipw-motion-role="unit"><span data-ipw-motion-role="background"></span><span data-hf-id="word-text" data-ipw-motion-role="text">consequence.</span></span></h1>`,
+      ),
+    );
+
+    const response = await mutate({
+      type: "mutate-motion",
+      operation: "upsert",
+      targetSelector: '[data-hf-id="word-text"]',
+      hfId: "word-text",
+      targetKind: "text",
+      phase: "emphasis",
+      presetId: "text.emphasis.particle-burst",
+      parameters: { unit: "word" },
+    });
+
+    const body = await response.json();
+    expect(response.status).toBe(200);
+    const motions = body.parsed.animations
+      .map((animation: { extras?: Record<string, unknown> }) =>
+        readMotionInstanceFromExtras(animation.extras),
+      )
+      .filter(Boolean);
+    expect(new Set(motions.map((motion: { id: string }) => motion.id))).toEqual(
+      new Set(["motion:#headline:emphasis"]),
+    );
+
+    const html = readFileSync(join(projectDir, "index.html"), "utf8");
+    expect(html).toContain('#headline [data-ipw-motion-role=\\"particle\\"]');
+    expect(html).not.toContain('motion:[data-hf-id=\\"word-text\\"]:emphasis');
+    expect(html).not.toContain('[data-hf-id=\\"word-text\\"] [data-ipw-motion-role');
+    expect(parseHTML(html).document.querySelector("#headline")?.textContent).toBe(
+      "Duty, not consequence.",
+    );
+  });
+
+  it("keeps character motion addressable while Highlight is structured", async () => {
+    writeFileSync(
+      join(projectDir, "index.html"),
+      SOURCE.replace("\u4f60\u597d mixed AI", "Make motion clear."),
+    );
+    const typewriter = await mutate({
+      type: "mutate-motion",
+      operation: "upsert",
+      targetSelector: "#headline",
+      elementId: "headline",
+      targetKind: "text",
+      phase: "enter",
+      presetId: "text.enter.typewriter",
+      parameters: { unit: "character", stagger: 0.04 },
+    });
+    expect(typewriter.status).toBe(200);
+
+    const highlight = await mutate({
+      type: "mutate-motion",
+      operation: "upsert",
+      targetSelector: "#headline",
+      elementId: "headline",
+      targetKind: "text",
+      phase: "emphasis",
+      presetId: "text.emphasis.highlight-sweep",
+      parameters: { unit: "word", stagger: 0.05 },
+    });
+    expect(highlight.status).toBe(200);
+
+    let html = readFileSync(join(projectDir, "index.html"), "utf8");
+    let document = parseHTML(html).document;
+    const appliedBody = await highlight.json();
+    const appliedMotions = appliedBody.parsed.animations
+      .map((animation: { extras?: Record<string, unknown> }) =>
+        readMotionInstanceFromExtras(animation.extras),
+      )
+      .filter(Boolean);
+    expect(new Set(appliedMotions.map((instance) => instance.presetId))).toEqual(
+      new Set(["text.emphasis.highlight-sweep"]),
+    );
+    expect(document.querySelectorAll('[data-ipw-motion-role="text"]')).toHaveLength(3);
+    expect(document.querySelector("#headline [data-ipw-motion-char]")).toBeNull();
+    expect(document.querySelectorAll('#headline [data-ipw-motion-role="background"]')).toHaveLength(
+      3,
+    );
+    expect(html).not.toContain("text.enter.typewriter");
+    expect(html).not.toContain("#headline [data-ipw-motion-char]");
+    expect(html).toContain('#headline [data-ipw-motion-role=\\"background\\"]');
+
+    const removed = await mutate({
+      type: "mutate-motion",
+      operation: "remove",
+      targetSelector: "#headline",
+      targetKind: "text",
+      phase: "emphasis",
+    });
+    expect(removed.status).toBe(200);
+    const removedBody = await removed.json();
+    const remainingMotions = removedBody.parsed.animations
+      .map((animation: { extras?: Record<string, unknown> }) =>
+        readMotionInstanceFromExtras(animation.extras),
+      )
+      .filter(Boolean);
     expect(remainingMotions).toHaveLength(0);
 
     html = readFileSync(join(projectDir, "index.html"), "utf8");

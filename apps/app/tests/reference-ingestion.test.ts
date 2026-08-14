@@ -27,6 +27,7 @@ import { extractTableReference } from "../src/react-app/domains/session/referenc
 import { extractDocxReference } from "../src/react-app/domains/session/references/extractors/docx";
 import { ensurePdfTypedArrayHexSupport, extractPdfReference } from "../src/react-app/domains/session/references/extractors/pdf";
 import {
+  ingestReferenceFileWithAi,
   ingestReferenceFile,
   isReferenceFile,
   prepareOriginalReferenceAttachment,
@@ -457,6 +458,57 @@ describe("reference extractors", () => {
 });
 
 describe("reference ingestion router", () => {
+  test("uses AI parser analysis when a server client is available", async () => {
+    const file = new File(["raw content"], "launch.txt", { type: "text/plain" });
+    const result = await ingestReferenceFileWithAi(file, {
+      workspaceId: "ws_1",
+      client: {
+        analyzeReferenceFile: async () => ({
+          ok: true,
+          source: "openai",
+          model: "gpt-4.1-mini",
+          fileName: "launch.txt",
+          mimeType: "text/plain",
+          analysis: {
+            summary: "AI summary for the launch reference.",
+            userIntent: "Generate a launch page.",
+            targetAudience: "Enterprise users",
+            keyFacts: ["Launch is Q4"],
+            designRequirements: ["Use clear hierarchy"],
+            contentOutline: ["Hero", "CTA"],
+            brandHints: ["Polished"],
+            dataFindings: [],
+            missingInfo: ["Budget"],
+            confidence: "high",
+          },
+        }),
+      },
+    });
+
+    expect(result.sourceMode).toBe("ai");
+    expect(result.quality).toBe("high");
+    expect(result.summary).toContain("AI summary for the launch reference.");
+    expect(result.extractedText).toContain("Generate a launch page.");
+    expect(result.chunks[0]?.text).toContain("Launch is Q4");
+  });
+
+  test("falls back to deterministic parsing when AI parser fails", async () => {
+    const file = new File(["Audience: product teams\nRequirements: keep the generated page concise."], "fallback.txt", { type: "text/plain" });
+    const result = await ingestReferenceFileWithAi(file, {
+      workspaceId: "ws_1",
+      client: {
+        analyzeReferenceFile: async () => {
+          throw new Error("parser unavailable");
+        },
+      },
+    });
+
+    expect(result.sourceMode).toBe("memory");
+    expect(result.quality).toBe("high");
+    expect(result.warnings).toContain("AI parsing unavailable; used deterministic parser fallback.");
+    expect(result.extractedText).toContain("Audience: product teams");
+  });
+
   test("does not send original source files unless opt in is selected", async () => {
     const file = new File([
       "Audience: team\nRequirements: provide a concise, source-grounded template brief for the upcoming review.",

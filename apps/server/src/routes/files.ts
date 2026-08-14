@@ -4,9 +4,11 @@ import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "nod
 import { Readable } from "node:stream";
 import { recordAudit } from "../audit.js";
 import { ApiError } from "../errors.js";
+import type { EnvService } from "../env-file.js";
 import { FileSessionStore } from "../file-sessions.js";
 import type { ApprovalRequest, ServerConfig, TokenScope, WorkspaceInfo } from "../types.js";
 import { ensureDir, exists, shortId } from "../utils.js";
+import { analyzeFileWithOpenAi } from "../ai-file-parser.js";
 import { addRoute, type RequestContext, type Route } from "./registry.js";
 
 const FILE_SESSION_DEFAULT_TTL_MS = 15 * 60 * 1000;
@@ -45,6 +47,7 @@ type CatalogWalkOptions = {
 interface RegisterFileRoutesOptions {
   routes: Route[];
   config: ServerConfig;
+  env: EnvService;
   jsonResponse: JsonResponse;
   readJsonBody: ReadJsonBody;
   ensureWritable: (config: ServerConfig) => void;
@@ -558,6 +561,7 @@ export function registerFileRoutes(options: RegisterFileRoutesOptions): void {
   const {
     routes,
     config,
+    env,
     jsonResponse,
     readJsonBody,
     ensureWritable,
@@ -696,6 +700,23 @@ export function registerFileRoutes(options: RegisterFileRoutesOptions): void {
     });
 
     return jsonResponse({ ok: true, path: relativePath, bytes: file.size });
+  });
+
+  addRoute(routes, "POST", "/workspace/:id/ai-file-parser/analyze", "client", async (ctx) => {
+    requireClientScope(ctx, "collaborator");
+    await resolveWorkspace(config, ctx.params.id);
+
+    const contentType = ctx.request.headers.get("content-type") ?? "";
+    if (!contentType.toLowerCase().includes("multipart/form-data")) {
+      throw new ApiError(400, "invalid_payload", "Expected multipart/form-data");
+    }
+    const form = await ctx.request.formData();
+    const file = form.get("file");
+    if (!(file instanceof File)) {
+      throw new ApiError(400, "file_required", "Form field 'file' is required");
+    }
+
+    return jsonResponse(await analyzeFileWithOpenAi(env, file));
   });
 
   addRoute(routes, "GET", "/workspace/:id/artifacts", "client", async (ctx) => {

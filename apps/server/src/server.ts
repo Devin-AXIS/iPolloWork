@@ -2540,6 +2540,7 @@ function createRoutes(
   registerFileRoutes({
     routes,
     config,
+    env,
     jsonResponse,
     readJsonBody,
     ensureWritable,

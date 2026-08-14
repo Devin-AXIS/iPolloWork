@@ -160,4 +160,22 @@ describe("template market actions", () => {
     expect(sessionPage).toContain('t("templates.brief.submit_failed")');
     expect(sessionPage).toContain("sentOriginal: reference.sendOriginal && canSendOriginalReference(reference.file)");
   });
+
+  test("keeps the template brief open unless its startup draft is accepted", () => {
+    expect(sessionPage).toContain("const dispatched = await props.surface.onSendDraft({");
+    expect(sessionPage).toContain("if (!dispatched) return;");
+    expect(sessionPage.indexOf("const dispatched = await props.surface.onSendDraft({")).toBeLessThan(
+      sessionPage.indexOf("setTemplateSessionData((current) => current?.sessionId === props.selectedSessionId ? { ...current, hasBrief: true } : current);"),
+    );
+  });
+
+  test("recovers materialized template sessions when the startup draft is missing", () => {
+    expect(sessionPage).toContain("const templateBriefRecoveryRef = useRef<string | null>(null)");
+    expect(sessionPage).toContain("if (!hasTemplateBrief) return;");
+    expect(sessionPage).toContain("if (settledSessionId !== props.selectedSessionId) return;");
+    expect(sessionPage).toContain("if (conversationMessages.length > 0) return;");
+    expect(sessionPage).toContain("templateBriefRecoveryRef.current = recoveryKey;");
+    expect(sessionPage).toContain("templateBriefRecoveryRef.current = null;");
+    expect(sessionPage).toContain("const dispatched = await props.surface.onSendDraft({");
+  });
 });

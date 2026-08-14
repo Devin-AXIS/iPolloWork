@@ -630,6 +630,28 @@ export type iPolloWorkInboxUploadResult = {
   bytes: number;
 };
 
+export type iPolloWorkAiFileAnalysis = {
+  summary: string;
+  userIntent: string;
+  targetAudience: string;
+  keyFacts: string[];
+  designRequirements: string[];
+  contentOutline: string[];
+  brandHints: string[];
+  dataFindings: string[];
+  missingInfo: string[];
+  confidence: "high" | "medium" | "low";
+};
+
+export type iPolloWorkAiFileParserResult = {
+  ok: true;
+  source: "openai";
+  model: string;
+  fileName: string;
+  mimeType: string;
+  analysis: iPolloWorkAiFileAnalysis;
+};
+
 export type iPolloWorkUserEnvItem = {
   key: string;
   updatedAt: number;
@@ -2009,6 +2031,39 @@ export function createiPolloWorkServerClient(options: { baseUrl: string; token?:
         path: options?.path?.trim() || file.name,
         bytes: file.size,
       } satisfies iPolloWorkInboxUploadResult;
+    },
+
+    analyzeReferenceFile: async (workspaceId: string, file: File) => {
+      const id = workspaceId.trim();
+      if (!id) throw new Error("workspaceId is required");
+      if (!file) throw new Error("file is required");
+      const form = new FormData();
+      form.append("file", file);
+
+      const result = await requestMultipartRaw(baseUrl, `/workspace/${encodeURIComponent(id)}/ai-file-parser/analyze`, {
+        token,
+        hostToken,
+        method: "POST",
+        body: form,
+        timeoutMs: timeouts.binary,
+      });
+
+      const body = result.text.trim();
+      let parsed: unknown = null;
+      try {
+        parsed = body ? JSON.parse(body) : null;
+      } catch {
+        parsed = null;
+      }
+      if (!result.ok) {
+        const record = parsed && typeof parsed === "object" ? parsed as Record<string, unknown> : {};
+        throw new iPolloWorkServerError(
+          result.status,
+          typeof record.code === "string" ? record.code : "request_failed",
+          typeof record.message === "string" ? record.message : "AI file parsing failed",
+        );
+      }
+      return parsed as iPolloWorkAiFileParserResult;
     },
 
     listInbox: (workspaceId: string) =>
