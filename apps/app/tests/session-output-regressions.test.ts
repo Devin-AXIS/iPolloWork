@@ -125,7 +125,7 @@ describe("session output issue regressions", () => {
     expect(sessionPageSource).toContain(".listWorkspaceFiles(workspaceId, artifactDirectory)");
     expect(sessionPageSource).toContain('selectedTemplate?.category === "slides"');
     expect(sessionPageSource).toContain('target.preview === "html"');
-    expect(sessionPageSource).toContain("artifactPathReferencesEntry(target.value, currentVideoEntryPath)");
+    expect(sessionPageSource).toContain("artifactPathMatchesTarget(target.value, currentVideoEntryPath)");
     expect(sessionPageSource).toContain('target.preview === "slides"');
     expect(sessionPageSource).toContain("openCurrentVideoStudio();");
   });

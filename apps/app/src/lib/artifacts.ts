@@ -164,7 +164,7 @@ export function canOpenArtifactInContext(
   context?: ArtifactInteractionContext,
 ) {
   if (!context) return canOpenArtifact(artifact);
-  if (artifactPathReferencesEntry(artifact.path, context.entryPath)) return true;
+  if (artifactPathMatchesTarget(artifact.path, context.entryPath)) return true;
   if (context.kind !== "presentation" || artifact.type !== "slides") return false;
 
   const directory = artifactDirectoryPath(context.entryPath);
@@ -187,7 +187,7 @@ export function selectArtifactContextOutputs(
 /** A template-backed chat turn exposes one final entry, never duplicate discovery records or implementation assets. */
 export function selectTemplateEntryArtifacts(artifacts: ArtifactItem[], templateEntryPath: string) {
   const exactEntries = artifacts.filter((artifact) => (
-    artifact.type === "html" && artifactPathReferencesEntry(artifact.path, templateEntryPath)
+    artifact.type === "html" && artifactPathMatchesTarget(artifact.path, templateEntryPath)
   ));
   const exactEntry = exactEntries.sort(compareArtifactsForPrimary)[0];
   if (exactEntry) return [exactEntry];
@@ -360,15 +360,6 @@ export function artifactPathMatchesTarget(path: string, targetValue: string) {
   const normalized = normalizeArtifactPath(path).toLowerCase();
   const target = normalizeArtifactPath(targetValue).toLowerCase();
   return normalized === target || normalized.endsWith(`/${target}`);
-}
-
-export function artifactPathReferencesEntry(path: string, entryPath: string) {
-  if (artifactPathMatchesTarget(path, entryPath)) return true;
-
-  const normalized = normalizeArtifactPath(path).toLowerCase();
-  if (normalized.includes("/")) return false;
-
-  return normalized === getArtifactName(normalizeArtifactPath(entryPath)).toLowerCase();
 }
 
 function openTargetFromArtifactPath(

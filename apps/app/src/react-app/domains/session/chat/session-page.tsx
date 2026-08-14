@@ -36,7 +36,6 @@ import {
   artifactDirectoryPath,
   artifactPathIsWithinDirectory,
   artifactPathMatchesTarget,
-  artifactPathReferencesEntry,
   getArtifactsFromMessages,
 } from "@/lib/artifacts";
 import { Button } from "@/components/ui/button";
@@ -1609,7 +1608,7 @@ export function SessionPage(props: SessionPageProps) {
     }
 
     if (isVideoSession && target.kind === "file" && target.preview === "html") {
-      if (currentVideoEntryPath && artifactPathReferencesEntry(target.value, currentVideoEntryPath)) {
+      if (currentVideoEntryPath && artifactPathMatchesTarget(target.value, currentVideoEntryPath)) {
         openCurrentVideoStudio();
       }
       return;
