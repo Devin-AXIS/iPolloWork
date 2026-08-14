@@ -2240,6 +2240,8 @@ export default {
   "settings.integration.speech_input.auto": "Automatically choose a configured provider",
   "settings.integration.speech_input.none": "No speech provider is configured yet. Configure one in Authorization Center first.",
   "settings.integration.speech_input.saved": "Speech input default provider saved.",
+  "video.voice.configure_bailian_title": "Configure Alibaba Model Studio first",
+  "video.voice.configure_bailian_body": "After saving your Model Studio API key in Authorization Center, you can choose and preview voices.",
   "settings.authorization.option.aliyun_oss": "Alibaba Cloud OSS",
   "settings.authorization.option.wasabi": "Wasabi",
   "settings.tab_authorizations": "Authorizations",
