@@ -25,6 +25,7 @@ export type SidebarContextValue = {
     type?: iPolloWorkSessionType,
     templateId?: iPolloWorkTemplateId,
     templateScope?: WorkContextId,
+    groupId?: string | null,
   ) => Promise<string | null> | string | null | void;
   onOpenRenameSession?: (sessionId: string) => void;
   onOpenDeleteSession?: (sessionId: string) => void;
