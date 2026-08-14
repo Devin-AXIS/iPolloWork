@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { ScrollArea, ScrollAreaViewport } from "@/components/ui/scroll-area";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { t } from "@/i18n";
 
 import {
   BAILIAN_PRESET_VOICES,
@@ -386,7 +387,7 @@ export function VideoVoicePanel({ sessionId, workspaceRoot, client, workspaceId,
       <ScrollArea className="min-h-0 flex-1">
         <ScrollAreaViewport className="px-3 py-3">
           {loading ? <div className="grid min-h-40 place-items-center text-xs text-muted-foreground"><Loader2 className="mr-2 inline size-4 animate-spin" />正在读取百炼配置…</div> : null}
-          {!loading && !mediaReady ? <div className="rounded-xl border border-amber-500/25 bg-amber-500/8 p-3 text-xs leading-5 text-muted-foreground"><p className="font-medium text-foreground">请先配置阿里百炼</p><p className="mt-1">在授权中心保存百炼 API Key 后，即可选择和试听音色。</p></div> : null}
+          {!loading && !mediaReady ? <div className="rounded-xl border border-amber-500/25 bg-amber-500/8 p-3 text-xs leading-5 text-muted-foreground"><p className="font-medium text-foreground">{t("video.voice.configure_bailian_title")}</p><p className="mt-1">{t("video.voice.configure_bailian_body")}</p></div> : null}
           {!loading && mediaReady ? <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value === "mine" ? "mine" : "preset")} className="gap-3">
             <TabsList className="w-full bg-muted/60">
               <TabsTrigger value="preset"><AudioLines />百炼音色</TabsTrigger>

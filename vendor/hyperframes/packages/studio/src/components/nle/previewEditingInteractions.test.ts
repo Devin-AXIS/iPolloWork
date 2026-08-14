@@ -111,6 +111,8 @@ describe("preview editing interactions", () => {
     expect(emptyStateSource).toContain(
       "const showMultiSelect = STUDIO_MULTI_SELECTION_ENABLED && multiSelectCount > 1",
     );
+    expect(emptyStateSource).not.toContain('tx("Record a gesture")');
+    expect(emptyStateSource).not.toContain('text-panel-danger">●');
     expect(previewOverlaysSource).toContain(
       "STUDIO_MULTI_SELECTION_ENABLED ? applyMarqueeSelection : undefined",
     );
