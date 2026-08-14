@@ -14,15 +14,32 @@ function resourcesPathFromAppAsarPath(path: string): string | null {
   return match ? path.slice(0, match.index) : null;
 }
 
-export function ipolloworkPluginPath(name: string, here = dirname(fileURLToPath(import.meta.url))): string {
+function electronResourcesPath(here: string): string | null {
   const resourcesPath = resourcesPathFromAppAsarPath(here);
+  if (!resourcesPath) return null;
+  const processResourcesPath = process.resourcesPath?.includes("app.asar")
+    ? resourcesPath
+    : process.resourcesPath?.trim();
+  return processResourcesPath || resourcesPath;
+}
+
+export function ipolloworkPluginPath(name: string, here = dirname(fileURLToPath(import.meta.url))): string {
+  const resourcesPath = electronResourcesPath(here);
   if (resourcesPath) {
-    const electronResourcesPath = process.resourcesPath?.includes("app.asar") ? resourcesPath : process.resourcesPath?.trim();
-    return join(electronResourcesPath || resourcesPath, "opencode-plugins", `${name}.js`);
+    return join(resourcesPath, "opencode-plugins", `${name}.js`);
   }
 
   const extension = basename(here) === "dist" ? "js" : "ts";
   return join(here, "opencode-plugins", `${name}.${extension}`);
+}
+
+export function opencodeChromeDevtoolsPluginPath(
+  here = dirname(fileURLToPath(import.meta.url)),
+): string {
+  const resourcesPath = electronResourcesPath(here);
+  return resourcesPath
+    ? join(resourcesPath, "opencode-plugins", "opencode-chrome-devtools", "dist", "plugin.js")
+    : "opencode-chrome-devtools";
 }
 
 export const ipolloworkExtensionsPreviewPluginPath = () => ipolloworkPluginPath("ipollowork-extensions-preview");

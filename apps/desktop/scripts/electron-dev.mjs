@@ -28,6 +28,19 @@ const hyperframesCliBuild = resolve(hyperframesRoot, "packages", "cli", "dist", 
 const hyperframesRuntimeVersion = resolve(hyperframesRoot, "packages", "cli", "dist", "runtimeVersion.js");
 const hyperframesStudioBuild = resolve(hyperframesRoot, "packages", "cli", "dist", "studio", "index.html");
 const hyperframesDependencies = resolve(hyperframesRoot, "node_modules", ".bun");
+const hyperframesDevBuildInputRoots = [
+  "cli",
+  "core",
+  "engine",
+  "lint",
+  "parsers",
+  "player",
+  "producer",
+  "sdk",
+  "shader-transitions",
+  "studio",
+  "studio-server",
+].map((packageName) => resolve(hyperframesRoot, "packages", packageName, "src"));
 const hyperframesDevProjectDir = resolve(repoRoot, ".ipollowork-dev", "hyperframes-preview");
 const hyperframesDevProjectName = ".ipollowork-dev/hyperframes-preview";
 const defaultDevDataDir = resolve(
@@ -171,12 +184,14 @@ function ensureHyperframesDevBuild() {
     console.log("[electron-dev] Installing HyperFrames dependencies...");
     runSync(bunCmd, ["install", "--frozen-lockfile"], { cwd: hyperframesRoot });
   }
-  const studioSourceRoot = resolve(hyperframesRoot, "packages", "studio", "src");
   const studioBuildTime = existsSync(hyperframesStudioBuild) ? statSync(hyperframesStudioBuild).mtimeMs : 0;
+  const newestBuildInputTime = Math.max(
+    ...hyperframesDevBuildInputRoots.map((root) => newestMtimeMs(root)),
+  );
   if (
     !existsSync(hyperframesCliBuild)
     || !existsSync(hyperframesRuntimeVersion)
-    || newestMtimeMs(studioSourceRoot) > studioBuildTime
+    || newestBuildInputTime > studioBuildTime
   ) {
     console.log("[electron-dev] Building HyperFrames Studio...");
     runSync(bunCmd, ["run", "build:local-studio"], { cwd: hyperframesRoot });

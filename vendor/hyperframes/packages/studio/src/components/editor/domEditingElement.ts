@@ -103,12 +103,28 @@ function isInspectableLayerElement(el: HTMLElement): boolean {
   return true;
 }
 
+const GENERATED_MOTION_TEXT_ROOT_SELECTOR =
+  '[data-ipw-motion-structure="v1"], [data-ipw-motion-split="v1"]';
+const STRUCTURED_MOTION_INTERNAL_SELECTOR =
+  "[data-ipw-motion-role], [data-ipw-motion-word], [data-ipw-motion-char]";
+
+/**
+ * Text motion materializes word/character spans so GSAP can animate them
+ * independently. Both structured recipes and legacy split presets use those
+ * spans as implementation details, never as independently selectable layers.
+ */
+export function getStructuredMotionSelectionRoot(el: HTMLElement): HTMLElement | null {
+  if (!el.matches(STRUCTURED_MOTION_INTERNAL_SELECTOR)) return null;
+  return el.closest<HTMLElement>(GENERATED_MOTION_TEXT_ROOT_SELECTOR);
+}
+
 export function getDomLayerPatchTarget(
   el: HTMLElement,
   activeCompositionPath: string | null,
 ): Pick<DomEditSelection, "id" | "hfId" | "selector" | "selectorIndex" | "sourceFile"> | null {
   if (!isInspectableLayerElement(el)) return null;
   if (el.hasAttribute("data-composition-id")) return null;
+  if (getStructuredMotionSelectionRoot(el)) return null;
 
   const selector = buildStableSelector(el);
   if (!selector) return null;
@@ -168,6 +184,9 @@ export function getSelectionCandidate(
 ): HTMLElement {
   const editableUnit = getEditableUnitSelectionTarget(startEl);
   if (editableUnit) return editableUnit;
+
+  const structuredMotionRoot = getStructuredMotionSelectionRoot(startEl);
+  if (structuredMotionRoot) return structuredMotionRoot;
 
   if (options.preferClipAncestor) {
     const clipAncestor = getPreferredClipAncestor(startEl);

@@ -6,8 +6,32 @@ import {
   resolveInspectorGroupOrder,
   resolveOpenInspectorGroup,
 } from "./editor/PropertyPanelFlat";
+import { parseHostAiEditingMessage } from "./StudioHeader";
 
 describe("Studio right panel layout", () => {
+  it("accepts AI editing state only from the matching Studio project message", () => {
+    expect(parseHostAiEditingMessage({
+      type: "ipollowork:studio-ai-editing",
+      projectId: "video-1",
+      active: true,
+    }, "video-1")).toBe(true);
+    expect(parseHostAiEditingMessage({
+      type: "ipollowork:studio-ai-editing",
+      projectId: "video-1",
+      active: false,
+    }, "video-1")).toBe(false);
+    expect(parseHostAiEditingMessage({
+      type: "ipollowork:studio-ai-editing",
+      projectId: "video-2",
+      active: true,
+    }, "video-1")).toBeNull();
+    expect(parseHostAiEditingMessage({
+      type: "ipollowork:studio-ai-editing",
+      projectId: "video-1",
+      active: "true",
+    }, "video-1")).toBeNull();
+  });
+
   it("keeps the canvas selection frame independent from the right panel", () => {
     const contextState = readFileSync(
       new URL("../hooks/useStudioContextValue.ts", import.meta.url),
@@ -225,6 +249,7 @@ describe("Studio right panel layout", () => {
       new URL("./editor/KeyframeNavigation.tsx", import.meta.url),
       "utf8",
     );
+    const appearance = styles.slice(styles.indexOf("export function FlatAppearanceSection"));
 
     expect(layout).toContain('label={large ? "Rotation" : "Angle"}');
     expect(layout).toContain('className="hf-flat-responsive-grid grid grid-cols-2 gap-2"');
@@ -255,9 +280,8 @@ describe("Studio right panel layout", () => {
     expect(styles).toContain('label="Width"');
     expect(styles).toContain('label="Radius"');
     expect(styles).toContain('label="Opacity"');
-    expect(styles).toContain('label="Shadow"');
-    expect(styles).toContain("inferBoxShadowIntensity");
-    expect(styles).toContain("showValue={false}");
+    expect(appearance).not.toContain('label="Shadow"');
+    expect(appearance).not.toContain("FlatAppearanceShadowRow");
     expect(colors).toContain('className="block size-5 rounded-[4px]');
     expect(colors).toContain('{ value: "hsb", label: "HSB" }');
     expect(colors).toContain('{ value: "rgb", label: "RGB" }');
@@ -354,10 +378,9 @@ describe("Studio right panel layout", () => {
     expect(transform).toContain("Drag to adjust the view");
     expect(transform).toContain('"Low Angle"');
     expect(transform).toContain("aria-expanded={presetOpen}");
-    expect(transform).toContain('label: "Depth"');
-    expect(transform).toContain('property: "z"');
-    expect(transform).toContain('label: "Size"');
-    expect(transform).toContain('property: "scale"');
+    expect(transform).not.toContain('label: "Depth"');
+    expect(transform).not.toContain('label: "Size"');
+    expect(transform).not.toContain('type="range"');
   });
 
   it("keeps Layer controls aligned and makes dropdown hit areas reliable", () => {
@@ -475,6 +498,10 @@ describe("Studio right panel layout", () => {
     const translations = readFileSync(new URL("../i18n.tsx", import.meta.url), "utf8");
     const header = readFileSync(new URL("./StudioHeader.tsx", import.meta.url), "utf8");
     const panel = readFileSync(new URL("./StudioRightPanel.tsx", import.meta.url), "utf8");
+    const featureFlags = readFileSync(
+      new URL("./editor/manualEditingAvailability.ts", import.meta.url),
+      "utf8",
+    );
     const tabButton = readFileSync(new URL("./PanelTabButton.tsx", import.meta.url), "utf8");
     const shell = readFileSync(new URL("./EditorShell.tsx", import.meta.url), "utf8");
     const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
@@ -497,11 +524,17 @@ describe("Studio right panel layout", () => {
     expect(panel).toContain('label={t("right.style")}');
     expect(panel).toContain('label={t("right.animation")}');
     expect(panel).toContain('label={t("right.assets")}');
+    expect(panel).toContain("STUDIO_ILLUSTRATION_PANEL_ENABLED && (");
     expect(panel).toContain('label={t("right.illustration")}');
     expect(panel).toContain('tooltip={t("right.illustrationTooltip")}');
     expect(translations).toContain('"right.illustration": "Illustrations"');
     expect(translations).toContain('"right.illustration": "插画"');
     expect(panel).toContain("<IllustrationTab />");
+    expect(panel).toContain('rightPanelTab === "illustration")');
+    expect(panel).toContain('setRightPanelTab("assets")');
+    expect(featureFlags).toMatch(
+      /STUDIO_ILLUSTRATION_PANEL_ENABLED = resolveStudioBooleanEnvFlag\([\s\S]*?VITE_STUDIO_ENABLE_ILLUSTRATION_PANEL[\s\S]*?false,\s*\);/,
+    );
     expect(panel).not.toContain('label={t("right.renders")}');
     expect(panel).not.toContain('label={t("right.effects")}');
     expect(panel).toContain('const exportDrawer = rightPanelTab === "renders"');
@@ -577,7 +610,7 @@ describe("Studio right panel layout", () => {
     expect(panel).toContain("propertyPanelContent");
   });
 
-  it("preloads and reuses the effects catalog before its tab is opened", () => {
+  it("preloads and reuses the effects and animation panels before their tabs are opened", () => {
     const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
     const panel = readFileSync(new URL("./StudioRightPanel.tsx", import.meta.url), "utf8");
     const catalogHook = readFileSync(
@@ -586,9 +619,12 @@ describe("Studio right panel layout", () => {
     );
 
     expect(app).toContain("module.preloadStudioEffectsPanel()");
+    expect(app).toContain("module.preloadStudioAnimationPanel()");
     expect(app).toContain("window.requestIdleCallback(preload, { timeout: 800 })");
     expect(panel).toContain("export const preloadStudioEffectsPanel");
+    expect(panel).toContain("export const preloadStudioAnimationPanel");
     expect(panel).toContain("const BlocksTab = lazy(loadBlocksTab)");
+    expect(panel).toContain("const AnimationTemplatesTab = lazy(loadAnimationTemplatesTab)");
     expect(catalogHook).toContain("let catalogCache: CatalogItem[] | null = null");
     expect(catalogHook).toContain("let catalogRequest: Promise<CatalogItem[]> | null = null");
     expect(catalogHook).toContain("export function preloadBlockCatalog()");

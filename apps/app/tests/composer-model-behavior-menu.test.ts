@@ -2,11 +2,39 @@ import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
+import {
+  modelSupportsAttachments,
+  type ProviderCatalog,
+} from "../src/react-app/domains/session/surface/use-model-behavior";
+
 const modelSelectPath = resolve(import.meta.dir, "../src/components/model-select.tsx");
 const composerPath = resolve(import.meta.dir, "../src/react-app/domains/session/surface/composer/composer.tsx");
 const menuPath = resolve(import.meta.dir, "../src/react-app/domains/session/surface/composer/model-behavior-menu.tsx");
+const sessionRoutePath = resolve(import.meta.dir, "../src/react-app/shell/session-route.tsx");
 
 describe("Composer model and reasoning menu", () => {
+  test("only enables attachments for models that declare attachment support", () => {
+    const catalog = {
+      provider: {
+        multimodal: { capabilities: { attachment: true } },
+        textOnly: { capabilities: { attachment: false } },
+      },
+    } as unknown as ProviderCatalog;
+
+    expect(modelSupportsAttachments(catalog, { providerID: "provider", modelID: "multimodal" })).toBe(true);
+    expect(modelSupportsAttachments(catalog, { providerID: "provider", modelID: "textOnly" })).toBe(false);
+    expect(modelSupportsAttachments(catalog, { providerID: "provider", modelID: "missing" })).toBe(false);
+    expect(modelSupportsAttachments(catalog, null)).toBe(false);
+  });
+
+  test("uses the selected model capability for both the attachment entry and send boundary", () => {
+    const route = readFileSync(sessionRoutePath, "utf8");
+
+    expect(route).toContain("attachmentsEnabled: selectedModelSupportsAttachments");
+    expect(route).toContain("draft.attachments.length > 0 && !selectedModelSupportsAttachments");
+    expect(route).toContain('t("composer.attachments_require_multimodal")');
+  });
+
   test("exports reusable Composer model-list content", () => {
     const source = readFileSync(modelSelectPath, "utf8");
 

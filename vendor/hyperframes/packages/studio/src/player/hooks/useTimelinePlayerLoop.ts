@@ -30,6 +30,38 @@ interface UseTimelinePlayerLoopResult {
   stopReverseLoop: () => void;
 }
 
+export function resolveForwardPlaybackWindow(input: {
+  adapterDuration: number;
+  storeDuration: number;
+  inPoint: number | null;
+  outPoint: number | null;
+}): { duration: number; loopStart: number; loopEnd: number } | null {
+  const adapterDuration =
+    Number.isFinite(input.adapterDuration) && input.adapterDuration > 0
+      ? input.adapterDuration
+      : 0;
+  const storeDuration =
+    Number.isFinite(input.storeDuration) && input.storeDuration > 0 ? input.storeDuration : 0;
+  // A positive adapter duration is authoritative, including after an edit that
+  // shortened the composition. The store is only a readiness fallback while
+  // the runtime temporarily reports no duration at all.
+  const duration = adapterDuration || storeDuration;
+  if (duration <= 0) return null;
+
+  const requestedStart =
+    input.inPoint !== null && Number.isFinite(input.inPoint)
+      ? Math.max(0, Math.min(input.inPoint, duration))
+      : 0;
+  const requestedEnd =
+    input.outPoint !== null && Number.isFinite(input.outPoint)
+      ? Math.max(0, Math.min(input.outPoint, duration))
+      : duration;
+  if (requestedStart >= requestedEnd) {
+    return { duration, loopStart: 0, loopEnd: duration };
+  }
+  return { duration, loopStart: requestedStart, loopEnd: requestedEnd };
+}
+
 export function useTimelinePlayerLoop({
   rafRef,
   reverseRafRef,
@@ -47,16 +79,25 @@ export function useTimelinePlayerLoop({
       const adapter = getAdapter();
       if (adapter) {
         const rawTime = adapter.getTime();
-        const dur = adapter.getDuration();
-        const time = dur > 0 ? Math.min(rawTime, dur) : rawTime;
+        const state = usePlayerStore.getState();
+        const playbackWindow = resolveForwardPlaybackWindow({
+          adapterDuration: adapter.getDuration(),
+          storeDuration: state.duration,
+          inPoint: state.inPoint,
+          outPoint: state.outPoint,
+        });
+        // Runtime readiness can briefly expose no usable duration. Keep the RAF
+        // alive until the authored/store duration or full adapter arrives; zero
+        // is not a real end-of-video signal.
+        if (!playbackWindow) {
+          rafRef.current = requestAnimationFrame(tick);
+          return;
+        }
+        const { duration, loopEnd, loopStart } = playbackWindow;
+        const time = Math.min(rawTime, duration);
         liveTime.notify(time); // direct DOM updates, no React re-render
-        const { inPoint, outPoint } = usePlayerStore.getState();
-        const rawLoopEnd = outPoint !== null ? Math.min(outPoint, dur) : dur;
-        const rawLoopStart = inPoint !== null ? inPoint : 0;
-        const loopEnd = rawLoopStart < rawLoopEnd ? rawLoopEnd : dur;
-        const loopStart = rawLoopStart < rawLoopEnd ? rawLoopStart : 0;
         if (time >= loopEnd) {
-          if (usePlayerStore.getState().loopEnabled && dur > 0) {
+          if (state.loopEnabled) {
             // keepPlaying skips the adapter's implicit pause; play() below is then a no-op.
             adapter.seek(loopStart, { keepPlaying: true });
             liveTime.notify(loopStart);

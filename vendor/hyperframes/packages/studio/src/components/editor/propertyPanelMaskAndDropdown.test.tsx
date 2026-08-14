@@ -3,10 +3,6 @@ import { flushSync } from "react-dom";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { buildMaskGeometry, inferMaskShape, parseMaskGeometry } from "./clipPathHelpers";
-import {
-  buildBoxShadowIntensityValue,
-  inferBoxShadowIntensity,
-} from "./propertyPanelHelpers";
 import { GeometryStepper } from "./propertyPanelFlatLayoutSection";
 import { FlatMaskSection } from "./propertyPanelFlatMaskSection";
 import { FlatRow, FlatSlider } from "./propertyPanelFlatPrimitives";
@@ -323,13 +319,66 @@ describe("FlatSlider value surface", () => {
     expect(onCommit).toHaveBeenCalledTimes(1);
     expect(onCommit).toHaveBeenLastCalledWith(73);
   });
-});
 
-describe("continuous shadow intensity", () => {
-  it("round-trips slider values without collapsing them into presets", () => {
-    const shadow = buildBoxShadowIntensityValue(42);
-    expect(shadow).not.toBe("none");
-    expect(inferBoxShadowIntensity(shadow)).toBe(42);
-    expect(buildBoxShadowIntensityValue(0)).toBe("none");
-  });
+  it.each([0, 10_000])(
+    "keeps the last visible value when pointerup reports clientX %s",
+    (releaseClientX) => {
+      const onPreview = vi.fn();
+      const onCommit = vi.fn();
+      flushSync(() =>
+        root.render(
+          <FlatSlider
+            label="Shadow"
+            value={20}
+            min={0}
+            max={100}
+            tier="explicitCustom"
+            displayValue="20%"
+            commitMode="release"
+            onPreview={onPreview}
+            onCommit={onCommit}
+          />,
+        ),
+      );
+
+      const slider = container.querySelector('[data-flat-slider-track="true"]');
+      if (!(slider instanceof HTMLDivElement)) throw new Error("Shadow slider missing");
+      Object.defineProperty(slider, "getBoundingClientRect", {
+        configurable: true,
+        value: () => ({ left: 0, right: 100, top: 0, bottom: 34, width: 100, height: 34 }),
+      });
+      let capturedPointer: number | null = null;
+      slider.setPointerCapture = (pointerId) => {
+        capturedPointer = pointerId;
+      };
+      slider.hasPointerCapture = (pointerId) => capturedPointer === pointerId;
+      slider.releasePointerCapture = () => {
+        capturedPointer = null;
+      };
+
+      flushSync(() =>
+        slider.dispatchEvent(
+          new PointerEvent("pointerdown", { bubbles: true, clientX: 30, pointerId: 1 }),
+        ),
+      );
+      flushSync(() =>
+        slider.dispatchEvent(
+          new PointerEvent("pointermove", { bubbles: true, clientX: 73, pointerId: 1 }),
+        ),
+      );
+      flushSync(() =>
+        slider.dispatchEvent(
+          new PointerEvent("pointerup", {
+            bubbles: true,
+            clientX: releaseClientX,
+            pointerId: 1,
+          }),
+        ),
+      );
+
+      expect(onPreview).toHaveBeenLastCalledWith(73);
+      expect(onCommit).toHaveBeenCalledTimes(1);
+      expect(onCommit).toHaveBeenLastCalledWith(73);
+    },
+  );
 });

@@ -152,7 +152,8 @@ const IPOLLOWORK_SESSION_MEMORY_INSTRUCTION =
   `## Cross-session memory
 When the user asks what they said, what happened, or what was decided in another iPolloWork chat/session, treat it as a session-history lookup, not hidden model memory.
 Use ipollowork_session_search first to search session titles and message transcripts across workspaces. If there is one clear match, use ipollowork_session_read with the returned sessionId/workspaceId to retrieve transcript context without navigating the UI.
-Answer only from the returned search/read results. If multiple sessions match, ask a short clarifying question. If the returned transcript is limited or missing the older context needed, say so instead of guessing.`;
+Answer only from the returned search/read results. If multiple sessions match, ask a short clarifying question. If the returned transcript is limited or missing the older context needed, say so instead of guessing.
+Never use these cross-session tools to recover the current task after an interruption/continuation, discover current project files, or infer what you were working on. Current-task continuity must come from the current transcript, current system context, and explicitly scoped current-project files.`;
 
 const IPOLLOWORK_BROWSER_INSTRUCTION =
   `Do NOT use browser_navigate, browser_click, or browser_snapshot to interact with the iPolloWork app itself. Those are for browsing external websites.
@@ -162,7 +163,7 @@ For web browsing tasks, ALWAYS start with ipollowork_browser_open_url. It create
 Do not call browser_navigate without a target_id returned by ipollowork_browser_open_url. Do not use browser_* tools on the iPolloWork app target (avoid targets with title "iPolloWork" or URLs containing ":5173/#/").`;
 
 const IPOLLOWORK_MOTION_INSTRUCTION = `## Video motion presets
-For ordinary animation on an existing text element in the current Video Studio project, use list_motion_presets and mutate_motion. Choose a stable preset id and a small parameter set; do not hand-write GSAP for an effect these tools support. Each target has at most one enter, emphasis, and exit preset. The same contract applies when the user's request came from voice transcription. Use custom GSAP only for an explicitly advanced effect outside the preset catalog.`;
+For ordinary animation on an existing text element in the current Video Studio project, use list_motion_presets and mutate_motion. Generated captions use this exact same compiler: create a stable leaf text child marked data-ipw-caption-text="true", then target that child with mutate_motion instead of hand-writing a caption-specific approximation. Choose a stable preset id and a small parameter set; do not hand-write GSAP for an effect these tools support. Each target has at most one enter, emphasis, and exit preset. The same contract applies when the user's request came from voice transcription. Use custom GSAP only for an explicitly advanced effect outside the preset catalog.`;
 
 // ── UI control bridge discovery ──
 
@@ -774,7 +775,7 @@ export const iPolloWorkExtensionsPreview = async () => {
     },
     } : {}),
     ipollowork_session_search: {
-      description: "Search iPolloWork past chat sessions by title and full message transcript text without navigating the UI. Use this when the user refers to another/past chat or asks what was said, decided, or done previously.",
+      description: "Search iPolloWork past chat sessions by title and full message transcript text without navigating the UI. Use only when the user explicitly refers to another/past chat or asks what was said, decided, or done previously. Never use it to recover or infer the current interrupted task.",
       args: sessionSearchArgsSchema.shape,
       async execute(rawArgs: unknown) {
         const result = await searchiPolloWorkSessions(rawArgs);
@@ -782,7 +783,7 @@ export const iPolloWorkExtensionsPreview = async () => {
       },
     },
     ipollowork_session_read: {
-      description: "Read recent transcript messages from a specific iPolloWork session without opening it. Use sessionId/workspaceId from ipollowork_session_search, then answer only from the returned transcript.",
+      description: "Read recent transcript messages from a specific past iPolloWork session without opening it. Use only after an explicit cross-session user request and a sessionId/workspaceId from ipollowork_session_search; never use it to recover or infer the current interrupted task.",
       args: sessionReadArgsSchema.shape,
       async execute(rawArgs: unknown) {
         const result = await readiPolloWorkSession(rawArgs);

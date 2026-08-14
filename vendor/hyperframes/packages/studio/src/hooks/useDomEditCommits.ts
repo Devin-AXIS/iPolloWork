@@ -179,7 +179,7 @@ export function useDomEditCommits({
       // Skip the SDK path when prepareContent is set (e.g. @font-face injection
       // for a custom font): sdkCutoverPersist serializes only the patched DOM
       // and would drop the injected content. Let the server path run prepareContent.
-      if (onTrySdkPersist && !options?.prepareContent) {
+      if (onTrySdkPersist && !options?.prepareContent && !options?.skipSdkCutover) {
         const cutover = await onTrySdkPersist(selection, operations, originalContent, targetPath, {
           label: options?.label,
           coalesceKey: options?.coalesceKey,
@@ -416,6 +416,7 @@ export function useDomEditCommits({
     buildDomSelectionFromTarget,
     removeDomTextFieldElement,
     persistDomEditOperations,
+    queueDomEditSave,
     resolveImportedFontAsset,
     showToast,
   });

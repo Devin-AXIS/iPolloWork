@@ -77,7 +77,10 @@ import { useDesignAiSelectionStore } from "@/react-app/domains/session/design/de
 import { readAppliedDesignSystemId } from "@/react-app/domains/session/design/design-system-theme-contract";
 import { templateAuthoringKickoff, templateAuthoringSystemContext } from "@/react-app/domains/session/templates/template-authoring";
 import { useSessionInteractions } from "@/react-app/domains/session/sync/use-session-interactions";
-import { useModelBehavior } from "@/react-app/domains/session/surface/use-model-behavior";
+import {
+  modelSupportsAttachments,
+  useModelBehavior,
+} from "@/react-app/domains/session/surface/use-model-behavior";
 import { tokenStarModelSupportsEffort } from "@/react-app/domains/connections/provider-auth/tokenstar-provider";
 import { useSessionFindStore } from "@/react-app/domains/session/surface/find-store";
 import { useModelPicker } from "@/react-app/domains/session/modals/use-model-picker";
@@ -90,8 +93,8 @@ import { readSessionType, sessionTypeForTemplate, setSessionType } from "@/react
 import {
   shouldInjectVideoTaskContext,
   videoCompositionHasVoiceover,
+  videoDeliveryRequirementsForPrompt,
   videoProjectEntryPath,
-  videoPromptRequestsVoiceoverContext,
   videoTaskSystemContext,
 } from "@/react-app/domains/session/video/video-project";
 import { useRemoteWorkspaceConnectionEditor } from "@/react-app/domains/workspace/use-remote-workspace-connection-editor";
@@ -436,12 +439,16 @@ export function SessionRoute() {
     baseUrl: opencodeBaseUrl,
     directory: selectedWorkspaceRoot || undefined,
   });
-  const { modelVariantLabel, modelBehaviorOptions, modelVariantValue } =
+  const { providerCatalog, modelVariantLabel, modelBehaviorOptions, modelVariantValue } =
     useModelBehavior({
       providerList: providerListQuery.data,
       defaultModel: local.prefs.defaultModel,
       modelVariant: local.prefs.modelVariant ?? null,
     });
+  const selectedModelSupportsAttachments = modelSupportsAttachments(
+    providerCatalog,
+    local.prefs.defaultModel,
+  );
   const modelPicker = useModelPicker({
     client: opencodeClient,
     baseUrl: opencodeBaseUrl,
@@ -754,6 +761,10 @@ export function SessionRoute() {
         if (!targetSessionId) return false;
         const text = (draft.resolvedText ?? draft.text).trim();
         if (!text && draft.attachments.length === 0) return false;
+        if (draft.attachments.length > 0 && !selectedModelSupportsAttachments) {
+          toast.warning(t("composer.attachments_require_multimodal"));
+          return false;
+        }
         // One-shot provider selection on the first send whenever no user-added
         // provider is connected. The free default model being usable is the
         // normal case here, not a reason to skip the step.
@@ -867,10 +878,12 @@ export function SessionRoute() {
           sessionTemplate?.manifest.surface,
           cachedSessionType,
         );
-        let includeVoiceoverContext = isVideoTask && videoPromptRequestsVoiceoverContext(
-          draft.capability?.id,
-          [draft.resolvedText ?? draft.text, draft.capability?.instruction].filter(Boolean).join("\n"),
-        );
+        const videoPromptText = draft.resolvedText ?? draft.text;
+        const videoDeliveryRequirements = videoDeliveryRequirementsForPrompt({
+          capabilityId: draft.capability?.id,
+          promptText: videoPromptText,
+        });
+        let includeVoiceoverContext = isVideoTask && videoDeliveryRequirements.voiceover;
         if (isVideoTask && !includeVoiceoverContext && selectedWorkspaceEndpoint) {
           const entryPath = sessionTemplate?.state.entry ?? videoProjectEntryPath(targetSessionId);
           const entry = await selectedWorkspaceEndpoint.client
@@ -883,7 +896,7 @@ export function SessionRoute() {
               targetSessionId,
               selectedWorkspaceRoot,
               sessionTemplate?.manifest.surface === "video" ? sessionTemplate.manifest : null,
-              { includeVoiceover: includeVoiceoverContext },
+              { includeVoiceover: includeVoiceoverContext, deliveryRequirements: videoDeliveryRequirements },
             )
           : null;
         const isDesignTask = sessionTemplate?.surface === "design";
@@ -987,8 +1000,10 @@ export function SessionRoute() {
       onDraftChange: () => {
         // Draft persistence will be wired once the full React shell owns session state.
       },
-      attachmentsEnabled: true,
-      attachmentsDisabledReason: null,
+      attachmentsEnabled: selectedModelSupportsAttachments,
+      attachmentsDisabledReason: selectedModelSupportsAttachments
+        ? null
+        : t("composer.attachments_require_multimodal"),
       modelVariantLabel,
       modelVariant: modelVariantValue,
       modelBehaviorOptions,
@@ -1087,6 +1102,7 @@ export function SessionRoute() {
     providerConnectedIds,
     selectedAgent,
     selectedSessionId,
+    selectedModelSupportsAttachments,
     selectedModelUnavailable,
     selectedWorkspace,
     selectedWorkspaceEndpoint,
@@ -1170,6 +1186,7 @@ export function SessionRoute() {
     type: iPolloWorkSessionType = "work",
     templateId?: iPolloWorkTemplateId,
     templateScope?: WorkContextId,
+    groupId?: string | null,
     authoring?: { category: TemplateCategory; pptxCompatibility?: PptxCompatibility },
   ): Promise<string | null> => {
     const workspace = workspaces.find((item) => item.id === workspaceId);
@@ -1228,6 +1245,9 @@ export function SessionRoute() {
         }
       }
       setSessionType(session.id, sessionType);
+      if (groupId?.trim()) {
+        sessionManagementStore.getState().assignGroup(workspaceId, session.id, groupId);
+      }
       captureAnalyticsEvent("task_created", {
         source: "new_task",
         workspace_type: workspace.workspaceType ?? "unknown",
@@ -1279,7 +1299,7 @@ export function SessionRoute() {
           description: message,
           action: {
             label: "Retry",
-            onClick: () => void handleCreateTaskInWorkspace(workspaceId, type, templateId, templateScope, authoring),
+            onClick: () => void handleCreateTaskInWorkspace(workspaceId, type, templateId, templateScope, groupId, authoring),
           },
           duration: Infinity,
         });
@@ -1292,7 +1312,7 @@ export function SessionRoute() {
         description: message,
         action: {
           label: "Retry",
-          onClick: () => void handleCreateTaskInWorkspace(workspaceId, type, templateId, templateScope),
+          onClick: () => void handleCreateTaskInWorkspace(workspaceId, type, templateId, templateScope, groupId),
         },
         duration: Infinity,
       });
@@ -1769,10 +1789,10 @@ export function SessionRoute() {
           navigateToWorkspaceSession(workspaceId, sessionId);
         },
         onPrefetchSession: () => {},
-        onCreateTaskInWorkspace: (workspaceId, type, templateId, templateScope) =>
-          handleCreateTaskInWorkspace(workspaceId, type, templateId, templateScope),
-        onCreateTemplateAuthoring: (workspaceId, input) =>
-          handleCreateTaskInWorkspace(workspaceId, "work", undefined, undefined, input),
+        onCreateTaskInWorkspace: (workspaceId, type, templateId, templateScope, groupId) =>
+          handleCreateTaskInWorkspace(workspaceId, type, templateId, templateScope, groupId),
+        onCreateTemplateAuthoring: (workspaceId, input, groupId) =>
+          handleCreateTaskInWorkspace(workspaceId, "work", undefined, undefined, groupId, input),
         onCreateTaskWithPrompt: (workspaceId, prompt) => {
           void (async () => {
             const workspace = workspaces.find((item) => item.id === workspaceId);

@@ -409,7 +409,6 @@ export function LayoutTransform3DBlock({
   elStart,
   elDuration,
   element,
-  onCommitAnimatedProperty,
   onCommitAnimatedProperties,
   onSeekToTime,
   onRemoveKeyframe,
@@ -428,11 +427,6 @@ export function LayoutTransform3DBlock({
   elStart: number;
   elDuration: number;
   element: DomEditSelection;
-  onCommitAnimatedProperty?: (
-    element: DomEditSelection,
-    property: string,
-    value: number,
-  ) => Promise<void>;
   onCommitAnimatedProperties?: (
     element: DomEditSelection,
     props: Record<string, number | string>,
@@ -453,7 +447,6 @@ export function LayoutTransform3DBlock({
         elStart={elStart}
         elDuration={elDuration}
         element={element}
-        onCommitAnimatedProperty={onCommitAnimatedProperty}
         onCommitAnimatedProperties={onCommitAnimatedProperties}
         onSeekToTime={onSeekToTime}
         onRemoveKeyframe={onRemoveKeyframe}

@@ -5,6 +5,7 @@ import { roundTo3 } from "./rounding";
 
 export interface StudioUrlSelectionState {
   sourceFile?: string;
+  hfId?: string;
   id?: string;
   selector?: string;
   selectorIndex?: number;
@@ -88,14 +89,16 @@ function parseTab(value: string | null): RightPanelTab | null {
 
 function normalizeSelection(params: URLSearchParams): StudioUrlSelectionState | null {
   const sourceFile = params.get("selFile") || undefined;
+  const hfId = params.get("selHfId") || undefined;
   const id = params.get("selId") || undefined;
   const selector = params.get("selSelector") || undefined;
   const selectorIndex = parseNumber(params.get("selIndex"));
 
-  if (!sourceFile && !id && !selector) return null;
+  if (!sourceFile && !hfId && !id && !selector) return null;
 
   return {
     sourceFile,
+    hfId,
     id,
     selector,
     selectorIndex: selectorIndex != null ? Math.max(0, Math.floor(selectorIndex)) : undefined,
@@ -148,6 +151,7 @@ export function buildStudioHash(projectId: string, state: StudioUrlState): strin
   if (state.timelineVisible != null) params.set("tv", state.timelineVisible ? "1" : "0");
   if (state.selection) {
     if (state.selection.sourceFile) params.set("selFile", state.selection.sourceFile);
+    if (state.selection.hfId) params.set("selHfId", state.selection.hfId);
     if (state.selection.id) params.set("selId", state.selection.id);
     if (state.selection.selector) params.set("selSelector", state.selection.selector);
     if (typeof state.selection.selectorIndex === "number") {

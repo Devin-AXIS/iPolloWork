@@ -26,6 +26,7 @@ export {
 export type MotionPhase = "enter" | "emphasis" | "exit";
 export type MotionTargetKind = "text" | "element";
 export type MotionTextUnit = "whole" | "word" | "character";
+export type MotionApplicationKind = "general" | "box" | "text";
 
 export type MotionParameterValue = string | number | boolean;
 export type MotionParameters = Record<string, MotionParameterValue>;
@@ -72,10 +73,14 @@ export interface StableElementLocator {
 export interface MotionInstance {
   id: string;
   presetId: string;
+  templateId?: string;
   target: StableElementLocator;
   targetKind: MotionTargetKind;
+  applicationKind: MotionApplicationKind;
   phase: MotionPhase;
   start: number;
+  /** Absolute timeline boundary for the complete effect window. */
+  end?: number;
   duration: number;
   loop: boolean;
   repeat: number;
@@ -86,7 +91,10 @@ export interface MotionMutationInput {
   operation: "upsert" | "remove";
   phase: MotionPhase;
   presetId?: string;
+  templateId?: string;
+  applicationKind?: MotionApplicationKind;
   start?: number;
+  end?: number;
   duration?: number;
   loop?: boolean;
   parameters?: MotionParameters;
@@ -125,6 +133,10 @@ export const MOTION_DATA_PREFIX = "ipw-motion:v1:";
 const PRESETS_BY_ID = new Map(MOTION_PRESETS.map((preset) => [preset.id, preset]));
 
 const MIGRATED_CAPTION_DURATIONS: Record<string, number> = {
+  "text.enter.editorial-emphasis": 1.55,
+  "text.emphasis.karaoke-flow": 2.1,
+  "text.enter.camera-track": 1.7,
+  "text.enter.visual-layers": 1.55,
   "text.emphasis.highlight-sweep": 1.45,
   "text.enter.matrix-decode": 1.8,
   "text.emphasis.gradient-fill": 1.5,
@@ -315,6 +327,7 @@ export function readMotionInstanceFromExtras(
     if (!value || typeof value !== "object") return null;
     const preset = getMotionPreset(value.presetId);
     if (!preset || !value.target?.selector) return null;
+    if (value.templateId !== undefined && typeof value.templateId !== "string") return null;
     if (preset.phase !== value.phase || !preset.targetKinds.includes(value.targetKind)) return null;
     if (!Number.isFinite(value.start) || value.start < 0) return null;
     if (!Number.isFinite(value.duration) || value.duration <= 0) return null;
@@ -327,7 +340,19 @@ export function readMotionInstanceFromExtras(
         : loop
           ? 1
           : 0;
-    return { ...value, loop, repeat, parameters: validated.parameters };
+    const end =
+      Number.isFinite(value.end) && Number(value.end) > value.start
+        ? Number(value.end)
+        : value.start + value.duration * (repeat + 1);
+    const applicationKind: MotionApplicationKind =
+      value.applicationKind === "general" ||
+      value.applicationKind === "box" ||
+      value.applicationKind === "text"
+        ? value.applicationKind
+        : preset.id.startsWith("text.")
+          ? "text"
+          : "general";
+    return { ...value, applicationKind, end, loop, repeat, parameters: validated.parameters };
   } catch {
     return null;
   }
@@ -402,10 +427,13 @@ export function defaultMotionDuration(preset: MotionPreset): number {
 
 export function createMotionInstance(input: {
   presetId: string;
+  templateId?: string;
   target: StableElementLocator;
   targetKind: MotionTargetKind;
+  applicationKind?: MotionApplicationKind;
   start: number;
   duration?: number;
+  end?: number;
   loop?: boolean;
   repeat?: number;
   parameters?: MotionParameters;
@@ -421,14 +449,27 @@ export function createMotionInstance(input: {
       : loop
         ? 1
         : 0;
+  const duration = input.duration ?? defaultMotionDuration(preset);
+  const end = input.end ?? input.start + duration * (repeat + 1);
+  if (!Number.isFinite(end) || end <= input.start) {
+    throw new Error("Motion end must be later than motion start");
+  }
+  const applicationKind =
+    input.applicationKind ?? (preset.id.startsWith("text.") ? "text" : "general");
+  const templateId = input.templateId?.trim() || undefined;
   return {
-    id: `motion:${input.target.selector}:${preset.phase}`,
+    id: templateId
+      ? `motion:${input.target.selector}:${applicationKind}:${templateId}`
+      : `motion:${input.target.selector}:${preset.phase}`,
     presetId: preset.id,
+    ...(templateId ? { templateId } : {}),
     target: input.target,
     targetKind: input.targetKind,
+    applicationKind,
     phase: preset.phase,
     start: input.start,
-    duration: input.duration ?? defaultMotionDuration(preset),
+    end,
+    duration,
     loop,
     repeat,
     parameters: validated.parameters,

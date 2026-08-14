@@ -30,6 +30,7 @@ import {
   getDomLayerPatchTarget,
   getDirectLayerChildren,
   getSelectionCandidate,
+  getStructuredMotionSelectionRoot,
 } from "./domEditingElement";
 import { isCompositionRootLayer } from "./domEditingRootLayer";
 
@@ -37,15 +38,18 @@ export function isEditableTextLeaf(el: HTMLElement): boolean {
   return isTextBearingTag(el.tagName.toLowerCase()) && el.children.length === 0;
 }
 
-function readStructuredTextSource(el: HTMLElement): string | null {
-  if (el.getAttribute("data-ipw-motion-structure") !== "v1") return null;
+function readGeneratedMotionTextSource(el: HTMLElement): string | null {
+  const generated =
+    el.getAttribute("data-ipw-motion-structure") === "v1" ||
+    el.getAttribute("data-ipw-motion-split") === "v1";
+  if (!generated) return null;
   const encoded = el.getAttribute("data-ipw-motion-source");
-  if (!encoded) return null;
+  if (!encoded) return el.textContent ?? "";
   try {
     const source = JSON.parse(encoded);
-    return typeof source === "string" ? source : null;
+    return typeof source === "string" ? source : (el.textContent ?? "");
   } catch {
-    return null;
+    return el.textContent ?? "";
   }
 }
 
@@ -99,9 +103,9 @@ function buildTextField(
 
 // fallow-ignore-next-line complexity
 export function collectDomEditTextFields(el: HTMLElement): DomEditTextField[] {
-  const structuredSource = readStructuredTextSource(el);
-  if (structuredSource !== null) {
-    return [buildTextField(el, 0, 1, "self", undefined, structuredSource)];
+  const generatedMotionSource = readGeneratedMotionTextSource(el);
+  if (generatedMotionSource !== null) {
+    return [buildTextField(el, 0, 1, "self", undefined, generatedMotionSource)];
   }
 
   const childElements = Array.from(el.children).filter(isHtmlElement).filter(isEditableTextLeaf);
@@ -337,21 +341,22 @@ export async function resolveDomEditSelection(
   options: DomEditContextOptions & { projectId?: string | null; skipSourceProbe?: boolean },
 ): Promise<DomEditSelection | null> {
   if (!startEl) return null;
-  const doc = startEl.ownerDocument;
+  const normalizedStartEl = getStructuredMotionSelectionRoot(startEl) ?? startEl;
+  const doc = normalizedStartEl.ownerDocument;
 
-  let capture = resolveGroupCapture(startEl, options.activeGroupElement ?? null);
+  let capture = resolveGroupCapture(normalizedStartEl, options.activeGroupElement ?? null);
   if (capture.kind === "out-of-scope") {
     // Drill-in is non-sticky: clicking/hovering OUTSIDE the drilled-into group
     // exits it and resolves the target normally, rather than selecting nothing
     // (which felt like "can't select anything" once you'd drilled in).
-    capture = resolveGroupCapture(startEl, null);
+    capture = resolveGroupCapture(normalizedStartEl, null);
   }
   let current: HTMLElement | null =
     capture.kind === "unit"
       ? capture.element
       : options.exactTarget
-        ? startEl
-        : getSelectionCandidate(startEl, options);
+        ? normalizedStartEl
+        : getSelectionCandidate(normalizedStartEl, options);
   while (current && current !== doc.body && current !== doc.documentElement) {
     const selector = buildStableSelector(current);
     const hfId = readHfId(current);

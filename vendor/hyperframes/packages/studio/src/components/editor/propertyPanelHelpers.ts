@@ -360,40 +360,6 @@ export function buildBoxShadowPresetValue(
   return BOX_SHADOW_PRESETS[preset];
 }
 
-const BOX_SHADOW_INTENSITY_BY_PRESET: Record<Exclude<BoxShadowPreset, "custom">, number> = {
-  none: 0,
-  soft: 25,
-  lift: 50,
-  glow: 75,
-};
-
-/** A continuous, neutral drop shadow used by the Appearance intensity slider. */
-export function buildBoxShadowIntensityValue(intensity: number): string {
-  const normalized = clampPanelNumber(intensity, 0, 100, 0);
-  if (normalized === 0) return "none";
-  const y = 2 + normalized * 0.16;
-  const blur = 8 + normalized * 0.48;
-  const alpha = 0.08 + normalized * 0.0034;
-  return `0 ${formatNumericValue(y)}px ${formatNumericValue(blur)}px rgba(0, 0, 0, ${formatNumericValue(alpha)})`;
-}
-
-export function inferBoxShadowIntensity(value: string | undefined): number {
-  const preset = inferBoxShadowPreset(value);
-  if (preset !== "custom") return BOX_SHADOW_INTENSITY_BY_PRESET[preset];
-  const normalized = value?.trim() ?? "";
-  const generated = /^0\s+-?\d+(?:\.\d+)?px\s+(\d+(?:\.\d+)?)px\s+rgba\(0,\s*0,\s*0,/i.exec(
-    normalized,
-  );
-  if (generated) {
-    const blur = Number.parseFloat(generated[1]);
-    return Math.round(clampPanelNumber((blur - 8) / 0.48, 0, 100, 100));
-  }
-  const match = /rgba\(0,\s*0,\s*0,\s*(0(?:\.\d+)?|1(?:\.0+)?)\)\s*$/i.exec(normalized);
-  if (!match) return 100;
-  const alpha = Number.parseFloat(match[1]);
-  return Math.round(clampPanelNumber((alpha - 0.08) / 0.0034, 0, 100, 100));
-}
-
 export function buildStrokeWidthStyleUpdates(
   nextWidth: string,
   currentBorderStyle: string | undefined,

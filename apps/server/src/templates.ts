@@ -41,6 +41,33 @@ const WITHDRAWN_BUNDLED_TEMPLATE_IDS = new Set([
   "ipollowork.html-anything.deck-xhs-post",
   "ipollowork.html-anything.social-x-post-card",
 ]);
+const CUSTOMER_VISIBLE_CURATED_CATEGORY_TEMPLATE_IDS = new Set([
+  "ipollowork.html-anything.prototype-web",
+  "ipollowork.site-afterglow-festival",
+  "ipollowork.html-anything.web-proto-soft",
+  "ipollowork.site-signal-workspace",
+  "ipollowork.site-orbit-data",
+  "ipollowork.html-anything.wireframe-sketch",
+  "ipollowork.site-atelier-architecture",
+  "ipollowork.hyperframes.agent-command-center",
+  "ipollowork.hyperframes.multi-agent-relay",
+  "ipollowork.hyperframes.course-journey",
+  "ipollowork.html-anything.motion-frames",
+  "ipollowork.hyperframes.permission-vault",
+  "ipollowork.hyperframes.code-explainer",
+  "ipollowork.pptx-brand-narrative",
+  "ipollowork.html-anything.deck-blueprint",
+  "ipollowork.html-anything.deck-xhs-pastel",
+  "ipollowork.html-anything.deck-hermes-cyber",
+  "ipollowork.html-anything.deck-presenter-mode",
+]);
+const CUSTOMER_CURATED_TEMPLATE_CATEGORIES = new Set<TemplateCategory>(["site", "video", "slides"]);
+
+export function isCustomerVisibleBundledTemplate(manifest: TemplateManifestV1): boolean {
+  return CUSTOMER_CURATED_TEMPLATE_CATEGORIES.has(manifest.category)
+    ? CUSTOMER_VISIBLE_CURATED_CATEGORY_TEMPLATE_IDS.has(manifest.id)
+    : true;
+}
 // The market is opened from the account menu, so local templates belong to
 // the signed-in desktop profile rather than an individual workstation. The
 // workspace route remains the authorization and materialization boundary.
@@ -592,7 +619,10 @@ export async function listTemplates(config: ServerConfig, workspaceId: string, s
   }
   const rows = db.list(libraryId);
   const byId = new Map(rows.map((row) => [row.templateId, row]));
-  const items: TemplateCatalogItem[] = bundled.map((item) => {
+  const visibleBundled = scope === "personal"
+    ? bundled.filter((item) => isCustomerVisibleBundledTemplate(item.manifest))
+    : bundled;
+  const items: TemplateCatalogItem[] = visibleBundled.map((item) => {
     const row = byId.get(item.manifest.id);
     return { manifest: item.manifest, sourceType: "bundled", installed: row?.status === "installed", installedVersion: row?.status === "installed" ? row.version : null, updateAvailable: row?.status === "installed" && compareVersions(item.manifest.version, row.version) > 0, verified: true };
   });
@@ -1337,7 +1367,7 @@ export async function adoptLegacyVideoSession(config: ServerConfig, workspace: W
     const entry = await stat(entryPath).catch(() => null);
     if (!entry?.isFile()) throw new ApiError(404, "video_session_project_missing", "This session has no Video Studio project to adopt");
 
-    const bundled = (await bundledTemplates()).find((candidate) => candidate.manifest.id === "ipollowork.html-anything.video-hyperframes");
+    const bundled = (await bundledTemplates()).find((candidate) => candidate.manifest.id === "ipollowork.html-anything.motion-frames");
     if (!bundled) throw new ApiError(500, "video_template_missing", "The bundled Video Studio template is unavailable");
     const manifest = bundled.manifest;
     const now = Date.now();

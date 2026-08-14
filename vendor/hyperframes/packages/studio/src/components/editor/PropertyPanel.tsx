@@ -529,7 +529,6 @@ export const PropertyPanel = memo(function PropertyPanel(props: PropertyPanelPro
               elStart={elStart}
               elDuration={elDuration}
               element={element}
-              onCommitAnimatedProperty={onCommitAnimatedProperty}
               onCommitAnimatedProperties={onCommitAnimatedProperties}
               onSeekToTime={onSeekToTime}
               onRemoveKeyframe={onRemoveKeyframe}

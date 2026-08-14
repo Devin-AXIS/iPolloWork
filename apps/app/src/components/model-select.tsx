@@ -4,6 +4,7 @@ import * as React from "react";
 import { ChevronDown, Settings2 } from "lucide-react";
 
 import type { ModelOption, ModelRef } from "@/app/types";
+import { modelSupportsVision } from "@/app/utils/model-capabilities";
 import { t } from "@/i18n";
 import { ProviderIcon } from "@/react-app/design-system/provider-icon";
 import {
@@ -90,6 +91,7 @@ function useModelOptions(open: boolean) {
           behaviorValue: null,
           isFree: false,
           isConnected: true,
+          supportsVision: modelSupportsVision(model),
         })),
       );
 
@@ -243,6 +245,7 @@ export function ModelListContent({
                   );
                 }
                 const option = item.option;
+                const visionBadgeLabel = option.supportsVision ? t("model_picker.badge_vision") : null;
                 return (
                   <CommandItem
                     className="gap-2"
@@ -253,7 +256,14 @@ export function ModelListContent({
                   >
                     <ProviderIcon providerId={option.providerID} providerName={option.description} className="size-3.5 opacity-70" size={14} />
                     <span className="min-w-0 flex-1">
-                      <span className="block truncate text-foreground">{option.title}</span>
+                      <span className="flex min-w-0 items-center gap-1.5">
+                        <span className="truncate text-foreground">{option.title}</span>
+                        {visionBadgeLabel ? (
+                          <span className="shrink-0 rounded-md bg-emerald-3/40 px-1.5 py-0.5 text-[10px] font-medium text-emerald-11">
+                            {visionBadgeLabel}
+                          </span>
+                        ) : null}
+                      </span>
                       <span className="block truncate text-xs text-muted-foreground">
                         {option.description ?? getProviderDisplayName(option.providerID)}
                       </span>

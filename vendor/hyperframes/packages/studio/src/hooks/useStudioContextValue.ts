@@ -85,23 +85,15 @@ export function useInspectorState(
     const designPanelActive =
       STUDIO_INSPECTOR_PANELS_ENABLED && inspectorTabActive && rightInspectorPanes.design;
     const inspectorPanelActive = layersPanelActive || designPanelActive;
-    const selectionOverlayPanelActive =
-      inspectorPanelActive ||
-      rightPanelTab === "variables" ||
-      rightPanelTab === "animation" ||
-      rightPanelTab === "animation-properties";
     return {
       layersPanelActive,
       designPanelActive,
       inspectorPanelActive,
       inspectorButtonActive:
         STUDIO_INSPECTOR_PANELS_ENABLED && !rightCollapsed && inspectorPanelActive,
-      // Keep the selection box + motion path drawn even when the Inspector is
-      // collapsed — closing the panel shouldn't visually deselect the element.
-      // Variables and both Animation views also act on the canvas selection,
-      // so the selection outline stays visible on those editing surfaces too.
-      shouldShowSelectedDomBounds:
-        selectionOverlayPanelActive && !isPlaying && !isGestureRecording,
+      // Canvas selection is independent from the active side panel. Keep the
+      // green chrome visible across every editing tab and collapsed Inspector.
+      shouldShowSelectedDomBounds: !isPlaying && !isGestureRecording,
     };
   }, [rightPanelTab, rightInspectorPanes, rightCollapsed, isPlaying, isGestureRecording]);
 }

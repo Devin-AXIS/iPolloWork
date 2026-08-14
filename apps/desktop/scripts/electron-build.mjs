@@ -1,6 +1,7 @@
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { copyFileSync, cpSync, existsSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { copyFileSync, cpSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { createRequire } from "node:module";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -17,10 +18,13 @@ const runtimeTypesRoot = resolve(repoRoot, "packages", "types");
 const hyperframesRoot = resolve(repoRoot, "vendor", "hyperframes");
 const hyperframesBuildStamp = resolve(desktopRoot, ".hyperframes-build-stamp.json");
 const hyperframesInstallStamp = resolve(desktopRoot, ".hyperframes-install-stamp.json");
+const serverDistDir = resolve(repoRoot, "apps", "server", "dist");
+const constantsSrc = resolve(repoRoot, "constants.json");
 
 const pnpmCmd = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
 const bunCmd = process.platform === "win32" ? "bun.exe" : "bun";
 const nodeCmd = process.execPath;
+const require = createRequire(import.meta.url);
 
 function needsShell(command) {
   return process.platform === "win32" && /\.(cmd|bat)$/i.test(command);
@@ -146,6 +150,105 @@ function ensureHyperframesBuild() {
   );
 }
 
+function bundleNodeModule(entry, output) {
+  mkdirSync(dirname(output), { recursive: true });
+  run(
+    bunCmd,
+    ["build", entry, "--outfile", output, "--target", "node", "--format", "esm", "--minify"],
+    desktopRoot,
+  );
+  if (!existsSync(output) || statSync(output).size === 0) {
+    throw new Error(`Failed to stage bundled Node module: ${output}`);
+  }
+}
+
+function stageBundledOpenCodeRuntime() {
+  const chromeEntry = fileURLToPath(import.meta.resolve("opencode-chrome-devtools"));
+  const chromeRoot = resolve(dirname(chromeEntry), "..");
+  const chromeDestinationRoot = resolve(
+    serverDistDir,
+    "opencode-plugins",
+    "opencode-chrome-devtools",
+  );
+  bundleNodeModule(chromeEntry, resolve(chromeDestinationRoot, "dist", "plugin.js"));
+  copyFileSync(resolve(chromeRoot, "package.json"), resolve(chromeDestinationRoot, "package.json"));
+
+  const sdkEntry = fileURLToPath(import.meta.resolve("@opencode-ai/plugin"));
+  const sdkRoot = resolve(dirname(sdkEntry), "..");
+  const sdkPackage = JSON.parse(readFileSync(resolve(sdkRoot, "package.json"), "utf8"));
+  const expectedSdkVersion = JSON.parse(readFileSync(constantsSrc, "utf8"))
+    .opencodeVersion.replace(/^v/, "");
+  if (sdkPackage.version !== expectedSdkVersion) {
+    throw new Error(
+      `OpenCode plugin SDK ${sdkPackage.version} must match bundled OpenCode ${expectedSdkVersion}`,
+    );
+  }
+
+  const runtimeRoot = resolve(serverDistDir, "opencode-runtime");
+  const sdkDestinationRoot = resolve(runtimeRoot, "node_modules", "@opencode-ai", "plugin");
+  rmSync(runtimeRoot, { recursive: true, force: true });
+  mkdirSync(resolve(sdkDestinationRoot, "dist"), { recursive: true });
+  bundleNodeModule(resolve(sdkRoot, "dist", "tool.js"), resolve(sdkDestinationRoot, "dist", "tool.js"));
+  writeFileSync(resolve(sdkDestinationRoot, "dist", "index.js"), 'export * from "./tool.js";\n');
+  for (const relativePath of [
+    "dist/tui.js",
+    "dist/v2/effect/index.js",
+    "dist/v2/effect/integration.js",
+    "dist/v2/effect/plugin.js",
+    "dist/v2/promise/index.js",
+    "dist/v2/promise/plugin.js",
+  ]) {
+    const destination = resolve(sdkDestinationRoot, relativePath);
+    mkdirSync(dirname(destination), { recursive: true });
+    copyFileSync(resolve(sdkRoot, relativePath), destination);
+  }
+
+  const runtimeSdkExports = Object.fromEntries(
+    Object.entries(sdkPackage.exports).map(([name, value]) => [name, value.import]),
+  );
+  writeFileSync(
+    resolve(sdkDestinationRoot, "package.json"),
+    `${JSON.stringify({
+      name: sdkPackage.name,
+      version: sdkPackage.version,
+      type: sdkPackage.type,
+      license: sdkPackage.license,
+      exports: runtimeSdkExports,
+    }, null, 2)}\n`,
+  );
+
+  const pnpmLock = require("yaml").parse(readFileSync(resolve(repoRoot, "pnpm-lock.yaml"), "utf8"));
+  const sdkIntegrity = pnpmLock.packages?.[`@opencode-ai/plugin@${sdkPackage.version}`]?.resolution?.integrity;
+  if (!sdkIntegrity) {
+    throw new Error(`Missing @opencode-ai/plugin@${sdkPackage.version} integrity in pnpm-lock.yaml`);
+  }
+  const runtimeDependencies = { "@opencode-ai/plugin": sdkPackage.version };
+  writeFileSync(
+    resolve(runtimeRoot, "package.json"),
+    `${JSON.stringify({ dependencies: runtimeDependencies }, null, 2)}\n`,
+  );
+  writeFileSync(
+    resolve(runtimeRoot, "package-lock.json"),
+    `${JSON.stringify({
+      name: "opencode",
+      lockfileVersion: 3,
+      requires: true,
+      packages: {
+        "": { dependencies: runtimeDependencies },
+        "node_modules/@opencode-ai/plugin": {
+          version: sdkPackage.version,
+          resolved: `https://registry.npmjs.org/@opencode-ai/plugin/-/plugin-${sdkPackage.version}.tgz`,
+          integrity: sdkIntegrity,
+        },
+      },
+    }, null, 2)}\n`,
+  );
+  writeFileSync(
+    resolve(runtimeRoot, ".gitignore"),
+    "node_modules\npackage.json\npackage-lock.json\nbun.lock\n.gitignore\n",
+  );
+}
+
 run(pnpmCmd, ["--filter", "@ipollowork/app", "typecheck"], repoRoot);
 run(nodeCmd, [resolve(__dirname, "prepare-sidecar.mjs"), "--force", "--outdir", electronSidecarDir], desktopRoot);
 run(nodeCmd, [resolve(__dirname, "prepare-computer-use-helper.mjs"), "--force", "--outdir", electronHelperDir], desktopRoot);
@@ -153,6 +256,7 @@ run(nodeCmd, [resolve(__dirname, "prepare-computer-use-helper.mjs"), "--force", 
 ensureHyperframesBuild();
 run(nodeCmd, [resolve(__dirname, "prepare-hyperframes-runtime.mjs")], desktopRoot);
 run(pnpmCmd, ["--filter", "ipollowork-server", "build"], repoRoot);
+stageBundledOpenCodeRuntime();
 // IPOLLOWORK_ELECTRON_BUILD tells Vite to emit relative asset paths so
 // index.html resolves /assets/* correctly when loaded via file:// from
 // inside the packaged .app bundle.
@@ -162,8 +266,6 @@ run(pnpmCmd, ["--filter", "@ipollowork/app", "build"], repoRoot, {
 run(nodeCmd, [resolve(__dirname, "validate-renderer-assets.mjs")], repoRoot);
 // Copy constants.json next to server dist and patch every compiled root module
 // that still points at the repository root. Imports cannot escape app.asar.
-const serverDistDir = resolve(repoRoot, "apps", "server", "dist");
-const constantsSrc = resolve(repoRoot, "constants.json");
 stageServerConstants({ serverDistDir, constantsSrc });
 stageServerRuntimeTypes({ serverDistDir, runtimeTypesDistDir: resolve(runtimeTypesRoot, "dist") });
 rmSync(packagedServerRoot, { recursive: true, force: true });

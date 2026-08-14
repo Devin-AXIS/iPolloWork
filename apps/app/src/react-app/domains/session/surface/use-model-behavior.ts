@@ -13,6 +13,14 @@ type ProviderModel = ProviderListItem["models"][string];
 
 export type ProviderCatalog = Record<string, Record<string, ProviderModel>>;
 
+export function modelSupportsAttachments(
+  providerCatalog: ProviderCatalog,
+  model: ModelRef | null,
+) {
+  if (!model) return false;
+  return providerCatalog[model.providerID]?.[model.modelID]?.capabilities.attachment === true;
+}
+
 const emptyModelBehaviorOptions: { value: string | null; label: string }[] = [];
 
 export type UseModelBehaviorInput = {

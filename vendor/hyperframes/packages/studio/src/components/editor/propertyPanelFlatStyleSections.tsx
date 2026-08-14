@@ -14,7 +14,6 @@ import { buildDefaultGradientModel, serializeGradient } from "./gradientValue";
 import { STROKE_STYLE_OPTIONS } from "./propertyPanelFlatStyleHelpers";
 import {
   buildBoxShadowPresetValue,
-  buildBoxShadowIntensityValue,
   buildStrokeStyleUpdates,
   buildStrokeWidthStyleUpdates,
   extractBackgroundImageUrl,
@@ -22,7 +21,6 @@ import {
   formatPxMetricValue,
   getCssFilterFunctionPx,
   inferBoxShadowPreset,
-  inferBoxShadowIntensity,
   normalizePanelPxValue,
   parseNumericValue,
   parsePxMetricValue,
@@ -537,38 +535,6 @@ function FlatAppearanceOpacityRow({
   );
 }
 
-function FlatAppearanceShadowRow({
-  styles,
-  disabled,
-  onSetStyle,
-  onPreviewStyle,
-}: {
-  styles: Record<string, string>;
-  disabled: boolean;
-  onSetStyle: (prop: string, value: string) => void | Promise<void>;
-  onPreviewStyle?: (prop: string, value: string) => void;
-}) {
-  const intensity = inferBoxShadowIntensity(styles["box-shadow"]);
-  const shadowValueFor = (next: number) => buildBoxShadowIntensityValue(next);
-  return (
-    <FlatSlider
-      large
-      label="Shadow"
-      value={intensity}
-      min={0}
-      max={100}
-      tier="explicitCustom"
-      displayValue={`${intensity}%`}
-      showValue={false}
-      disabled={disabled}
-      commitMode={onPreviewStyle ? "release" : "live"}
-      onPreview={(next) => onPreviewStyle?.("box-shadow", shadowValueFor(next))}
-      onPreviewCancel={() => onPreviewStyle?.("box-shadow", styles["box-shadow"] ?? "none")}
-      onCommit={(next) => void onSetStyle("box-shadow", shadowValueFor(next))}
-    />
-  );
-}
-
 export function FlatStyleSection({
   projectId,
   element,
@@ -652,12 +618,6 @@ export function FlatAppearanceSection({
         onPreviewStyle={onPreviewStyle}
       />
       <FlatAppearanceOpacityRow
-        styles={styles}
-        disabled={disabled}
-        onSetStyle={onSetStyle}
-        onPreviewStyle={onPreviewStyle}
-      />
-      <FlatAppearanceShadowRow
         styles={styles}
         disabled={disabled}
         onSetStyle={onSetStyle}

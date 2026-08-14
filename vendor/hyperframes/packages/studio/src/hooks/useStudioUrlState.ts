@@ -53,6 +53,7 @@ function selectionFromEventDetail(detail: unknown): {
   const sourceFile = typeof detail.selection.sourceFile === "string"
     ? detail.selection.sourceFile
     : undefined;
+  const hfId = typeof detail.selection.hfId === "string" ? detail.selection.hfId : undefined;
   const id = typeof detail.selection.id === "string" ? detail.selection.id : undefined;
   const selector = typeof detail.selection.selector === "string"
     ? detail.selection.selector
@@ -61,11 +62,12 @@ function selectionFromEventDetail(detail: unknown): {
     && Number.isFinite(detail.selection.selectorIndex)
     ? Math.max(0, Math.floor(detail.selection.selectorIndex))
     : undefined;
-  if (!sourceFile && !id && !selector) return { revealPanel, selection: null };
+  if (!sourceFile && !hfId && !id && !selector) return { revealPanel, selection: null };
   return {
     revealPanel,
     selection: {
       sourceFile,
+      hfId,
       id,
       selector,
       selectorIndex,
@@ -75,9 +77,10 @@ function selectionFromEventDetail(detail: unknown): {
 
 function toPersistedSelection(selection: DomEditSelection | null): StudioUrlSelectionState | null {
   if (!selection) return null;
-  if (!selection.id && !selection.selector) return null;
+  if (!selection.hfId && !selection.id && !selection.selector) return null;
   return {
     sourceFile: selection.sourceFile || undefined,
+    hfId: selection.hfId || undefined,
     id: selection.id || undefined,
     selector: selection.selector || undefined,
     selectorIndex: selection.selectorIndex ?? undefined,
@@ -154,6 +157,7 @@ export function useStudioUrlState({
         doc,
         {
           sourceFile: selection.sourceFile ?? "",
+          hfId: selection.hfId,
           id: selection.id,
           selector: selection.selector,
           selectorIndex: selection.selectorIndex,

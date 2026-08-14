@@ -11,8 +11,12 @@ import { useCallback } from "react";
 import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
 import { classifyPropertyGroup } from "@hyperframes/core/gsap-parser";
 import type { DomEditSelection } from "../components/editor/domEditingTypes";
-import { usePlayerStore } from "../player/store/playerStore";
-import { readAllAnimatedProperties, readGsapProperty } from "./gsapRuntimeBridge";
+import { shouldCommitAnimationKeyframe, usePlayerStore } from "../player/store/playerStore";
+import {
+  isolateSharedAnimationTargets,
+  readAllAnimatedProperties,
+  readGsapProperty,
+} from "./gsapRuntimeBridge";
 import type { SetPatchProps } from "./gsapRuntimePatch";
 import { selectorFromSelection, computeElementPercentage, isInstantHold } from "./gsapShared";
 import { resolveTweenStart, resolveTweenDuration } from "../utils/globalTimeCompiler";
@@ -41,6 +45,7 @@ interface CommitAnimatedPropertyDeps {
   convertToKeyframes: (selection: DomEditSelection, animId: string) => void;
   previewIframeRef: React.RefObject<HTMLIFrameElement | null>;
   bumpGsapCache: () => void;
+  makeFetchFallback: (selection: DomEditSelection) => () => Promise<GsapAnimation[]>;
 }
 
 function pickBestAnimation(
@@ -88,6 +93,8 @@ async function maybeAutoKeyframeSet(
   animations: GsapAnimation[],
   commit: NonNullable<CommitAnimatedPropertyDeps["gsapCommitMutation"]>,
 ): Promise<void> {
+  const { autoKeyframeEnabled, activeKeyframePct } = usePlayerStore.getState();
+  if (!shouldCommitAnimationKeyframe(autoKeyframeEnabled, activeKeyframePct)) return;
   const animatedTween = animations.find((a) => a.keyframes && a.id !== setAnim.id);
   if (!animatedTween) return;
   await commit(
@@ -288,7 +295,8 @@ async function commitKeyframeProps(
       { label: "Convert to keyframes", skipReload: true },
     );
   }
-  const ct = usePlayerStore.getState().currentTime;
+  const { currentTime: ct, activeKeyframePct, setActiveKeyframePct } =
+    usePlayerStore.getState();
   const runtimeProps = selector ? readAllAnimatedProperties(iframe, selector, anim) : {};
   const properties: Record<string, number | string> = { ...runtimeProps, ...props };
 
@@ -310,7 +318,7 @@ async function commitKeyframeProps(
   const kfs = anim.keyframes?.keyframes;
   const ts = resolveTweenStart(anim);
   const td = resolveTweenDuration(anim);
-  const hasSelectedKeyframe = usePlayerStore.getState().activeKeyframePct != null;
+  const hasSelectedKeyframe = activeKeyframePct != null;
   const playheadOutside = ts !== null && td > 0 && (ct < ts - 0.01 || ct > ts + td + 0.01);
   const willExtend = wasKeyframed && !!kfs && playheadOutside && !hasSelectedKeyframe;
   if (willExtend && kfs && ts !== null) {
@@ -346,7 +354,7 @@ async function commitKeyframeProps(
     return;
   }
 
-  const pct = computeElementPercentage(ct, selection, anim);
+  const pct = activeKeyframePct ?? computeElementPercentage(ct, selection, anim);
   const existingKf = anim.keyframes?.keyframes.some((kf) => Math.abs(kf.percentage - pct) < 0.05);
   // Rebuild the live keyframe tween in place so the edit shows instantly (no flash);
   // rebuildKeyframeTween declines → soft reload if the tween can't be safely rebuilt.
@@ -375,10 +383,22 @@ async function commitKeyframeProps(
       ...(instantPatch ? { instantPatch } : {}),
     },
   );
+  if (
+    activeKeyframePct != null &&
+    usePlayerStore.getState().activeKeyframePct === activeKeyframePct
+  ) {
+    setActiveKeyframePct(null);
+  }
 }
 
 export function useAnimatedPropertyCommit(deps: CommitAnimatedPropertyDeps) {
-  const { selectedGsapAnimations, gsapCommitMutation, previewIframeRef, bumpGsapCache } = deps;
+  const {
+    selectedGsapAnimations,
+    gsapCommitMutation,
+    previewIframeRef,
+    bumpGsapCache,
+    makeFetchFallback,
+  } = deps;
 
   const commitAnimatedProperties = useCallback(
     async (selection: DomEditSelection, props: Record<string, number | string>): Promise<void> => {
@@ -390,22 +410,33 @@ export function useAnimatedPropertyCommit(deps: CommitAnimatedPropertyDeps) {
       const iframe = previewIframeRef.current;
       const selector = selectorFromSelection(selection);
 
-      const anim: GsapAnimation | undefined = pickBestAnimation(
-        selectedGsapAnimations,
-        selector,
-        primaryProp,
-      );
-      // Whether the element is animated at all. A 3D edit only creates/edits
-      // keyframes when it IS — a static element (no keyframes on any of its tweens)
-      // gets a `tl.set`, never new keyframes (matches manual drag / resize / rotate).
-      const elementHasKeyframes = selectedGsapAnimations.some((a) => !!a.keyframes);
-
       // The picked anim comes from the (possibly stale) panel cache: if keyframes
       // were just removed or the script changed underneath us, its id is gone
       // server-side and the commit 404s. The raw commit already toasts; we catch
       // so the rejection doesn't escape as an uncaught promise, and bump the cache
       // so selectedGsapAnimations re-syncs and the user's next edit self-heals.
       try {
+        const isolation = await isolateSharedAnimationTargets(
+          selection,
+          selectedGsapAnimations,
+          gsapCommitMutation,
+          // The property panel already owns the selected-animation snapshot.
+          // Avoid the cold-parse retry budget for a genuinely static element;
+          // a re-fetch is only needed after a known animation is split.
+          selectedGsapAnimations.length > 0 ? makeFetchFallback(selection) : undefined,
+        );
+        const workingAnimations = isolation.animations;
+        const persistMutation = isolation.commitMutation;
+        const anim: GsapAnimation | undefined = pickBestAnimation(
+          workingAnimations,
+          selector,
+          primaryProp,
+        );
+        // A static element receives a hold; an already-keyframed element receives
+        // a keyframe at the playhead. Use the freshly isolated parse for both
+        // decisions so a shared class tween never leaks into sibling elements.
+        const elementHasKeyframes = workingAnimations.some((a) => !!a.keyframes);
+
         // Animated element → keyframe at the playhead, EXACTLY like manual drag /
         // resize / rotate: if the picked anim is still a static `set`,
         // commitKeyframeProps converts it to keyframes first, then writes the new
@@ -417,7 +448,8 @@ export function useAnimatedPropertyCommit(deps: CommitAnimatedPropertyDeps) {
         if (elementHasKeyframes && anim) {
           // With auto-keyframe off (#1808), nudge the whole tween instead of
           // adding/updating a keyframe at the playhead.
-          if (!usePlayerStore.getState().autoKeyframeEnabled) {
+          const { autoKeyframeEnabled, activeKeyframePct } = usePlayerStore.getState();
+          if (!shouldCommitAnimationKeyframe(autoKeyframeEnabled, activeKeyframePct)) {
             const pct = computeElementPercentage(
               usePlayerStore.getState().currentTime,
               selection,
@@ -431,7 +463,7 @@ export function useAnimatedPropertyCommit(deps: CommitAnimatedPropertyDeps) {
               ),
               pct,
               iframe,
-              { commitMutation: gsapCommitMutation },
+              { commitMutation: persistMutation },
               `Edit ${primaryProp} (whole animation)`,
             );
             return;
@@ -444,7 +476,7 @@ export function useAnimatedPropertyCommit(deps: CommitAnimatedPropertyDeps) {
             primaryProp,
             selector,
             iframe,
-            gsapCommitMutation,
+            persistMutation,
           );
           return;
         }
@@ -457,21 +489,25 @@ export function useAnimatedPropertyCommit(deps: CommitAnimatedPropertyDeps) {
             anim,
             propEntries,
             selector,
-            selectedGsapAnimations,
-            gsapCommitMutation,
+            workingAnimations,
+            persistMutation,
           );
           return;
         }
 
         // Static element (no keyframes anywhere) — persist as a `tl.set`, never
         // keyframes (incl. the no-animation case, which creates a fresh set).
-        if (!elementHasKeyframes) {
+        const { autoKeyframeEnabled, activeKeyframePct } = usePlayerStore.getState();
+        if (
+          !elementHasKeyframes ||
+          !shouldCommitAnimationKeyframe(autoKeyframeEnabled, activeKeyframePct)
+        ) {
           await commitStaticSet(
             selection,
             propEntries,
             selector,
-            selectedGsapAnimations,
-            gsapCommitMutation,
+            workingAnimations,
+            persistMutation,
           );
           return;
         }
@@ -483,7 +519,7 @@ export function useAnimatedPropertyCommit(deps: CommitAnimatedPropertyDeps) {
         // time range so the new group animates over the same span. The 0% baseline is
         // an `_auto` endpoint so it tracks the nearest keyframe as you add more.
         if (selector) {
-          const template = selectedGsapAnimations.find((a) => !!a.keyframes);
+          const template = workingAnimations.find((a) => !!a.keyframes);
           const tStart = template ? (resolveTweenStart(template) ?? 0) : 0;
           const tDur = template ? resolveTweenDuration(template) || 1 : 1;
           const ct = usePlayerStore.getState().currentTime;
@@ -499,7 +535,7 @@ export function useAnimatedPropertyCommit(deps: CommitAnimatedPropertyDeps) {
                   { percentage: 0, properties: { ...newProps, _auto: 1 } },
                   { percentage: pct, properties: newProps },
                 ];
-          await gsapCommitMutation(
+          await persistMutation(
             selection,
             {
               type: "add-with-keyframes",
@@ -517,7 +553,13 @@ export function useAnimatedPropertyCommit(deps: CommitAnimatedPropertyDeps) {
         bumpGsapCache();
       }
     },
-    [selectedGsapAnimations, gsapCommitMutation, previewIframeRef, bumpGsapCache],
+    [
+      selectedGsapAnimations,
+      gsapCommitMutation,
+      previewIframeRef,
+      bumpGsapCache,
+      makeFetchFallback,
+    ],
   );
 
   const commitAnimatedProperty = useCallback(

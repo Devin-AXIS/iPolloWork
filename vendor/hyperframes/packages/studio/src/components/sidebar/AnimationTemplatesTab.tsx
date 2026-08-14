@@ -1,20 +1,27 @@
-import { memo, useCallback, useMemo, useState } from "react";
+import { lazy, memo, Suspense, useCallback, useMemo, useState } from "react";
 import {
   defaultMotionDuration,
   getMotionPreset,
+  type MotionApplicationKind,
   type MotionParameters,
   type MotionPreset,
   type MotionTargetKind,
 } from "@hyperframes/core/motion-presets";
-import { useDomEditSelectionContext } from "../../contexts/DomEditContext";
-import { useStudioI18n } from "../../i18n";
 import {
-  resolveMotionInstances,
-  resolveMotionTargetKind,
-} from "../editor/SemanticMotionPanel";
+  useDomEditActionsContext,
+  useDomEditSelectionContext,
+} from "../../contexts/DomEditContext";
+import { useStudioI18n } from "../../i18n";
+import { resolveCaptionMotionTargetElement } from "../../utils/motionPreset";
+import { resolveMotionInstances, resolveMotionTargetKind } from "../editor/SemanticMotionPanel";
 import type { DomEditSelection } from "../editor/domEditing";
 import searchIconSrc from "../../icons/figmaAssetsSearch.svg?url";
-import { StructuredMotionThumbnail } from "./StructuredMotionThumbnail";
+
+const StructuredMotionThumbnail = lazy(() =>
+  import("./StructuredMotionThumbnail").then((module) => ({
+    default: module.StructuredMotionThumbnail,
+  })),
+);
 
 export type AnimationTemplateCategory = "general" | "text";
 
@@ -28,17 +35,20 @@ export interface AnimationTemplateDefinition {
   textPresetId?: string;
   elementPresetId?: string;
   parameters?: MotionParameters;
+  keywords?: readonly string[];
 }
 
 export interface AnimationTemplateApplication {
   preset: MotionPreset;
   targetKind: MotionTargetKind;
+  applicationKind: MotionApplicationKind;
 }
 
 export interface AnimationTemplateDraft {
   templateId: string;
   presetId: string;
   targetKind: MotionTargetKind;
+  applicationKind: MotionApplicationKind;
   selection: DomEditSelection;
   parameters: MotionParameters;
 }
@@ -51,6 +61,10 @@ export interface AnimationTemplateSection {
 }
 
 const MIGRATED_TEXT_TEMPLATE_ORDER = [
+  "text-editorial-emphasis",
+  "text-karaoke-flow",
+  "text-camera-track",
+  "text-visual-layers",
   "text-highlight-sweep",
   "text-matrix-decode",
   "text-gradient-fill",
@@ -70,7 +84,9 @@ const MIGRATED_TEXT_TEMPLATE_RANK = new Map<string, number>(
   MIGRATED_TEXT_TEMPLATE_ORDER.map((id, index) => [id, index]),
 );
 
-const MIGRATED_TEXT_TEMPLATE_IDS = new Set<string>(MIGRATED_TEXT_TEMPLATE_ORDER);
+export function isAdvancedTextAnimationTemplate(template: AnimationTemplateDefinition): boolean {
+  return template.category === "text" && MIGRATED_TEXT_TEMPLATE_RANK.has(template.id);
+}
 
 const CATEGORY_LABELS: Record<
   AnimationTemplateCategory,
@@ -217,7 +233,7 @@ export const ANIMATION_TEMPLATES: readonly AnimationTemplateDefinition[] = [
     description: { en: "Editable color and glow intensity", zh: "可调整流光颜色与强度" },
     preview: "text-glow",
     presetId: "text.emphasis.prism-glow",
-    parameters: { colorSource: "theme" },
+    parameters: { colorSource: "custom" },
   },
   {
     id: "text-typewriter",
@@ -250,7 +266,7 @@ export const ANIMATION_TEMPLATES: readonly AnimationTemplateDefinition[] = [
     description: { en: "Theme-aware shine with editable glow", zh: "跟随主题色并可调整辉光" },
     preview: "text-shine",
     presetId: "text.emphasis.shiny-sweep",
-    parameters: { colorSource: "theme" },
+    parameters: { colorSource: "custom" },
   },
   {
     id: "text-true-focus",
@@ -259,6 +275,61 @@ export const ANIMATION_TEMPLATES: readonly AnimationTemplateDefinition[] = [
     description: { en: "Word focus with blur and scale controls", zh: "逐词聚焦，模糊与缩放可调" },
     preview: "text-focus",
     presetId: "text.emphasis.true-focus",
+  },
+  {
+    id: "text-editorial-emphasis",
+    category: "text",
+    title: { en: "Editorial Emphasis", zh: "编辑重点" },
+    description: {
+      en: "Word-by-word editorial focus and settle",
+      zh: "逐词聚焦并自然落回原有排版",
+    },
+    preview: "text-focus",
+    presetId: "text.enter.editorial-emphasis",
+    parameters: { colorSource: "custom", color: "#20BBC0", unit: "word", stagger: 0.075 },
+    keywords: ["advanced", "高级", "editorial", "编辑"],
+  },
+  {
+    id: "text-karaoke-flow",
+    category: "text",
+    title: { en: "Karaoke Flow", zh: "移动卡拉 OK" },
+    description: { en: "A teal pill follows each spoken word", zh: "蓝绿色胶囊按词接力高亮" },
+    preview: "text-highlight",
+    presetId: "text.emphasis.karaoke-flow",
+    parameters: { colorSource: "custom", color: "#20BBC0", unit: "word", stagger: 0.12 },
+    keywords: ["advanced", "高级", "karaoke", "字幕", "逐词"],
+  },
+  {
+    id: "text-camera-track",
+    category: "text",
+    title: { en: "Camera Track", zh: "镜头跟随" },
+    description: {
+      en: "Depth, tracking, and focus resolve by word",
+      zh: "逐词景深、跟随与拉焦显现",
+    },
+    preview: "text-blur",
+    presetId: "text.enter.camera-track",
+    parameters: { unit: "word", stagger: 0.075 },
+    keywords: ["advanced", "高级", "camera", "镜头", "拉焦"],
+  },
+  {
+    id: "text-visual-layers",
+    category: "text",
+    title: { en: "Visual Layers", zh: "视觉层叠" },
+    description: {
+      en: "Blue and teal layers converge into readable type",
+      zh: "蓝色与蓝绿色文字分层聚合并保持清晰",
+    },
+    preview: "text-glow",
+    presetId: "text.enter.visual-layers",
+    parameters: {
+      colorSource: "custom",
+      color: "#5B6CFF",
+      accentColor: "#20BBC0",
+      unit: "word",
+      stagger: 0.055,
+    },
+    keywords: ["advanced", "高级", "layers", "层叠", "色彩"],
   },
   {
     id: "text-highlight-sweep",
@@ -276,7 +347,7 @@ export const ANIMATION_TEMPLATES: readonly AnimationTemplateDefinition[] = [
     description: { en: "Character decode with density controls", zh: "可调密度的字符解码显现" },
     preview: "decode",
     presetId: "text.enter.matrix-decode",
-    parameters: { colorSource: "theme" },
+    parameters: { colorSource: "custom", unit: "character", stagger: 0.035 },
   },
   {
     id: "text-gradient-fill",
@@ -285,7 +356,7 @@ export const ANIMATION_TEMPLATES: readonly AnimationTemplateDefinition[] = [
     description: { en: "Theme-aware gradient emphasis", zh: "跟随主题色的渐变文字强调" },
     preview: "text-shine",
     presetId: "text.emphasis.gradient-fill",
-    parameters: { colorSource: "theme" },
+    parameters: { colorSource: "custom", unit: "character", stagger: 0.045 },
   },
   {
     id: "text-neon-glow",
@@ -294,7 +365,7 @@ export const ANIMATION_TEMPLATES: readonly AnimationTemplateDefinition[] = [
     description: { en: "Editable glow color and strength", zh: "可调颜色与辉光强度" },
     preview: "text-glow",
     presetId: "text.emphasis.neon-glow",
-    parameters: { colorSource: "theme" },
+    parameters: { colorSource: "custom", stagger: 0.09 },
   },
   {
     id: "text-neon-accent",
@@ -303,7 +374,7 @@ export const ANIMATION_TEMPLATES: readonly AnimationTemplateDefinition[] = [
     description: { en: "Accent glow with subtle drift", zh: "带轻微漂移的强调辉光" },
     preview: "text-glow",
     presetId: "text.emphasis.neon-accent",
-    parameters: { colorSource: "theme" },
+    parameters: { colorSource: "custom" },
   },
   {
     id: "text-rgb-glitch",
@@ -312,7 +383,7 @@ export const ANIMATION_TEMPLATES: readonly AnimationTemplateDefinition[] = [
     description: { en: "Readable chromatic glitch", zh: "保持可读的色差故障" },
     preview: "decode",
     presetId: "text.emphasis.rgb-glitch",
-    parameters: { colorSource: "theme" },
+    parameters: { colorSource: "custom" },
   },
   {
     id: "text-clip-wipe",
@@ -321,6 +392,7 @@ export const ANIMATION_TEMPLATES: readonly AnimationTemplateDefinition[] = [
     description: { en: "Directional text wipe reveal", zh: "可调方向的文字裁切揭示" },
     preview: "text-mask",
     presetId: "text.enter.clip-wipe",
+    parameters: { colorSource: "custom", color: "#FFD700" },
   },
   {
     id: "text-blend-difference",
@@ -329,6 +401,7 @@ export const ANIMATION_TEMPLATES: readonly AnimationTemplateDefinition[] = [
     description: { en: "Invert-style text emphasis", zh: "反色混合风格文字强调" },
     preview: "text-focus",
     presetId: "text.emphasis.blend-difference",
+    parameters: { colorSource: "custom", color: "#FFFFFF" },
   },
   {
     id: "text-weight-shift",
@@ -345,7 +418,7 @@ export const ANIMATION_TEMPLATES: readonly AnimationTemplateDefinition[] = [
     description: { en: "Theme-aware texture-like fill", zh: "跟随主题的纹理填充感" },
     preview: "text-shine",
     presetId: "text.emphasis.texture-fill",
-    parameters: { colorSource: "theme" },
+    parameters: { colorSource: "custom" },
   },
   {
     id: "text-kinetic-slam",
@@ -370,7 +443,7 @@ export const ANIMATION_TEMPLATES: readonly AnimationTemplateDefinition[] = [
     description: { en: "Particle-like keyword emphasis", zh: "粒子感关键词强调" },
     preview: "text-glow",
     presetId: "text.emphasis.particle-burst",
-    parameters: { colorSource: "theme" },
+    parameters: { colorSource: "custom" },
   },
   {
     id: "box-scale",
@@ -456,46 +529,58 @@ export function resolveAnimationTemplateApplication(
     targetKind === "text" && isBoxAutomationTemplate(template) ? "element" : targetKind;
   const preset = resolveAnimationTemplatePreset(template, applicationTargetKind);
   if (!preset?.targetKinds.includes(applicationTargetKind)) return null;
-  return { preset, targetKind: applicationTargetKind };
+  return {
+    preset,
+    targetKind: applicationTargetKind,
+    applicationKind:
+      template.category === "text" ? "text" : isBoxAutomationTemplate(template) ? "box" : "general",
+  };
 }
 
 export function resolveAnimationTemplateParameters(
   template: AnimationTemplateDefinition,
   preset: MotionPreset,
-  variableBoundText: boolean,
+  _variableBoundText: boolean,
 ): MotionParameters {
-  const parameters = { ...preset.defaults, ...template.parameters };
-  if (variableBoundText && "unit" in parameters && !preset.structuredText) {
-    parameters.unit = "whole";
-  }
-  return parameters;
+  return { ...preset.defaults, ...template.parameters };
 }
 
-function TemplatePreview({ template }: { template: AnimationTemplateDefinition }) {
+function TemplatePreview({
+  template,
+  active,
+}: {
+  template: AnimationTemplateDefinition;
+  active: boolean;
+}) {
   const boxPreview = template.id.startsWith("box-");
-  const structuredPreset =
+  const textPreset =
     template.category === "text" ? resolveAnimationTemplatePreset(template, "text") : null;
-  const structuredParameters = structuredPreset?.structuredText
-    ? resolveAnimationTemplateParameters(template, structuredPreset, false)
+  const textParameters = textPreset
+    ? resolveAnimationTemplateParameters(template, textPreset, false)
     : null;
   return (
     <div
       className="hf-animation-template-preview relative h-[92px] overflow-hidden rounded-[8px]"
-      data-preview={structuredPreset?.structuredText ? undefined : template.preview}
+      data-preview={textPreset ? undefined : template.preview}
+      data-structured-preview-active={textPreset ? (active ? "true" : "false") : undefined}
       aria-hidden="true"
     >
       <div className="hf-animation-template-grid" />
       <div className="hf-animation-template-glow hf-animation-template-glow-a" />
       <div className="hf-animation-template-glow hf-animation-template-glow-b" />
       <div className="hf-animation-template-subject">
-        {structuredPreset?.structuredText && structuredParameters ? (
-          <StructuredMotionThumbnail
-            presetId={structuredPreset.id}
-            targetKind="text"
-            parameters={structuredParameters}
-            duration={defaultMotionDuration(structuredPreset)}
-          />
-        ) : template.category === "text" ? "Make motion clear." : null}
+        {textPreset && textParameters && active ? (
+          <Suspense fallback={<span>Make motion clear.</span>}>
+            <StructuredMotionThumbnail
+              presetId={textPreset.id}
+              targetKind="text"
+              parameters={textParameters}
+              duration={defaultMotionDuration(textPreset)}
+            />
+          </Suspense>
+        ) : template.category === "text" ? (
+          "Make motion clear."
+        ) : null}
         {template.category === "general" && !boxPreview ? "Motion" : null}
         {boxPreview ? <span className="hf-animation-template-box" /> : null}
       </div>
@@ -507,9 +592,11 @@ export function sortTextAnimationTemplates(
   templates: readonly AnimationTemplateDefinition[],
 ): AnimationTemplateDefinition[] {
   return [...templates].sort((a, b) => {
-    const aRank = MIGRATED_TEXT_TEMPLATE_RANK.get(a.id) ?? Number.MAX_SAFE_INTEGER;
-    const bRank = MIGRATED_TEXT_TEMPLATE_RANK.get(b.id) ?? Number.MAX_SAFE_INTEGER;
-    return aRank - bRank;
+    const aRank = MIGRATED_TEXT_TEMPLATE_RANK.get(a.id);
+    const bRank = MIGRATED_TEXT_TEMPLATE_RANK.get(b.id);
+    if (aRank === undefined && bRank !== undefined) return -1;
+    if (aRank !== undefined && bRank === undefined) return 1;
+    return (aRank ?? 0) - (bRank ?? 0);
   });
 }
 
@@ -523,12 +610,6 @@ export function createAnimationTemplateSections(
   const boxAutomationTemplates = templates.filter(isBoxAutomationTemplate);
   const textTemplates = sortTextAnimationTemplates(
     templates.filter((item) => item.category === "text"),
-  );
-  const migratedTextTemplates = textTemplates.filter((item) =>
-    MIGRATED_TEXT_TEMPLATE_IDS.has(item.id),
-  );
-  const nativeTextTemplates = textTemplates.filter(
-    (item) => !MIGRATED_TEXT_TEMPLATE_IDS.has(item.id),
   );
 
   const generalSection =
@@ -556,30 +637,66 @@ export function createAnimationTemplateSections(
     );
   }
 
-  return [
-    targetKind === "text" && migratedTextTemplates.length > 0
-      ? {
-          key: "migrated-text",
-          title: { en: "Caption Effects Moved Here", zh: "\u5b57\u5e55\u8fc1\u79fb\u52a8\u753b" },
-          hint: {
-            en: "Former caption effects now apply to selected text",
-            zh: "\u539f\u6765\u5728\u5b57\u5e55\u7279\u6548\u91cc\u7684\u6548\u679c\uff0c\u73b0\u5728\u9009\u4e2d\u6587\u5b57\u540e\u5728\u8fd9\u91cc\u7528",
-          },
-          templates: migratedTextTemplates,
-        }
-      : null,
-    targetKind === "text" && nativeTextTemplates.length > 0
+  const textSection: AnimationTemplateSection | null =
+    textTemplates.length > 0
       ? {
           key: "text",
-          title: CATEGORY_LABELS.text,
+          title: { en: CATEGORY_LABELS.text.en, zh: CATEGORY_LABELS.text.zh },
           hint: CATEGORY_LABELS.text.hint,
-          templates: nativeTextTemplates,
+          templates: textTemplates,
         }
-      : null,
-    generalSection,
-    boxAutomationSection,
-  ].filter((section): section is AnimationTemplateSection => section !== null);
+      : null;
+  return [generalSection, boxAutomationSection, textSection].filter(
+    (section): section is AnimationTemplateSection => section !== null,
+  );
 }
+
+const AnimationTemplateCard = memo(function AnimationTemplateCard({
+  template,
+  locale,
+  onApply,
+}: {
+  template: AnimationTemplateDefinition;
+  locale: "en" | "zh";
+  onApply: (template: AnimationTemplateDefinition) => void | Promise<void>;
+}) {
+  const [previewActive, setPreviewActive] = useState(false);
+  const advanced = isAdvancedTextAnimationTemplate(template);
+
+  return (
+    <article
+      className="hf-animation-template-card group min-w-0"
+      data-testid="animation-template-card"
+      data-template-id={template.id}
+      data-advanced-text-animation={advanced ? "true" : undefined}
+      style={{ contentVisibility: "auto", containIntrinsicSize: "188px" }}
+      onMouseEnter={() => setPreviewActive(true)}
+      onMouseLeave={() => setPreviewActive(false)}
+    >
+      <TemplatePreview template={template} active={previewActive} />
+      <div className="mt-2 flex min-w-0 items-center gap-1.5">
+        <div className="min-w-0 flex-1 truncate text-[12px] font-semibold text-panel-text-1">
+          {template.title[locale]}
+        </div>
+        {advanced ? (
+          <span className="shrink-0 rounded-full bg-[#20bbc0]/12 px-1.5 py-0.5 text-[8px] font-semibold text-[#168e92]">
+            {locale === "zh" ? "高级" : "Advanced"}
+          </span>
+        ) : null}
+      </div>
+      <div className="mt-0.5 min-h-8 text-[10px] leading-4 text-panel-text-3">
+        {template.description[locale]}
+      </div>
+      <button
+        type="button"
+        onClick={() => void onApply(template)}
+        className="mt-2 h-7 w-full rounded-[6px] bg-panel-input text-[10px] font-medium text-panel-text-1 transition-colors hover:bg-[#20bbc0]/15 hover:text-[#168e92]"
+      >
+        {locale === "zh" ? "\u5e94\u7528" : "Apply"}
+      </button>
+    </article>
+  );
+});
 
 export const AnimationTemplatesTab = memo(function AnimationTemplatesTab({
   onSelectTemplate,
@@ -587,53 +704,86 @@ export const AnimationTemplatesTab = memo(function AnimationTemplatesTab({
   onSelectTemplate: (draft: AnimationTemplateDraft) => void;
 }) {
   const { locale } = useStudioI18n();
+  const { buildDomSelectionFromTarget } = useDomEditActionsContext();
   const { domEditSelection, selectedGsapAnimations } = useDomEditSelectionContext();
   const [search, setSearch] = useState("");
-  const targetKind = domEditSelection ? resolveMotionTargetKind(domEditSelection) : null;
+  const captionMotionTarget = domEditSelection
+    ? resolveCaptionMotionTargetElement(domEditSelection.element)
+    : null;
+  const targetKind = domEditSelection
+    ? captionMotionTarget !== domEditSelection.element
+      ? "text"
+      : resolveMotionTargetKind(domEditSelection)
+    : null;
   const templateSections = useMemo(() => {
     const query = search.trim().toLowerCase();
     const matches = ANIMATION_TEMPLATES.filter((template) => {
       if (!targetKind) return false;
       const application = resolveAnimationTemplateApplication(template, targetKind);
       if (!application) return false;
-      return !query || (
+      const advancedAliasMatch =
+        isAdvancedTextAnimationTemplate(template) &&
+        ["advanced", "高级", "高级文字动画"].some(
+          (keyword) => keyword.includes(query) || query.includes(keyword),
+        );
+      return (
+        !query ||
+        advancedAliasMatch ||
         template.title.en.toLowerCase().includes(query) ||
         template.title.zh.includes(query) ||
         template.description.en.toLowerCase().includes(query) ||
-        template.description.zh.includes(query)
+        template.description.zh.includes(query) ||
+        template.keywords?.some((keyword) => keyword.toLowerCase().includes(query))
       );
     });
     return createAnimationTemplateSections(matches, targetKind);
   }, [search, targetKind]);
   const appliedLabels = useMemo(() => {
     if (!targetKind) return [];
-    const presetIds = new Set(
-      resolveMotionInstances(selectedGsapAnimations).map(({ instance }) => instance.presetId),
+    const applications = new Set(
+      resolveMotionInstances(selectedGsapAnimations).map(
+        ({ instance }) => `${instance.applicationKind}:${instance.presetId}`,
+      ),
     );
     return ANIMATION_TEMPLATES.filter((template) => {
       const application = resolveAnimationTemplateApplication(template, targetKind);
-      return application ? presetIds.has(application.preset.id) : false;
+      return application
+        ? applications.has(`${application.applicationKind}:${application.preset.id}`)
+        : false;
     }).map((template) => template.title[locale]);
   }, [locale, selectedGsapAnimations, targetKind]);
 
   const applyTemplate = useCallback(
-    (template: AnimationTemplateDefinition) => {
+    async (template: AnimationTemplateDefinition) => {
       if (!targetKind || !domEditSelection) return;
-      const application = resolveAnimationTemplateApplication(template, targetKind);
+      const selection =
+        captionMotionTarget && captionMotionTarget !== domEditSelection.element
+          ? await buildDomSelectionFromTarget(captionMotionTarget, { exactTarget: true })
+          : domEditSelection;
+      if (!selection) return;
+      const resolvedTargetKind = resolveMotionTargetKind(selection);
+      const application = resolveAnimationTemplateApplication(template, resolvedTargetKind);
       if (!application) return;
       onSelectTemplate({
         templateId: template.id,
         presetId: application.preset.id,
         targetKind: application.targetKind,
-        selection: domEditSelection,
+        applicationKind: application.applicationKind,
+        selection,
         parameters: resolveAnimationTemplateParameters(
           template,
           application.preset,
-          domEditSelection.element.hasAttribute("data-var-text"),
+          selection.element.hasAttribute("data-var-text"),
         ),
       });
     },
-    [domEditSelection, onSelectTemplate, targetKind],
+    [
+      buildDomSelectionFromTarget,
+      captionMotionTarget,
+      domEditSelection,
+      onSelectTemplate,
+      targetKind,
+    ],
   );
 
   return (
@@ -697,26 +847,12 @@ export const AnimationTemplatesTab = memo(function AnimationTemplatesTab({
                 </div>
                 <div className="grid grid-cols-2 gap-x-[10px] gap-y-4">
                   {section.templates.map((template) => (
-                    <article
+                    <AnimationTemplateCard
                       key={template.id}
-                      className="hf-animation-template-card group min-w-0"
-                      data-testid="animation-template-card"
-                    >
-                      <TemplatePreview template={template} />
-                      <div className="mt-2 truncate text-[12px] font-semibold text-panel-text-1">
-                        {template.title[locale]}
-                      </div>
-                      <div className="mt-0.5 min-h-8 text-[10px] leading-4 text-panel-text-3">
-                        {template.description[locale]}
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => applyTemplate(template)}
-                        className="mt-2 h-7 w-full rounded-[6px] bg-panel-input text-[10px] font-medium text-panel-text-1 transition-colors hover:bg-[#20bbc0]/15 hover:text-[#168e92]"
-                      >
-                        {locale === "zh" ? "应用" : "Apply"}
-                      </button>
-                    </article>
+                      template={template}
+                      locale={locale}
+                      onApply={applyTemplate}
+                    />
                   ))}
                 </div>
               </section>

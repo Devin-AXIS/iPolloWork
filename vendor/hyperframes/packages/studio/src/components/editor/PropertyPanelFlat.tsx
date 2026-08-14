@@ -606,7 +606,6 @@ export function PropertyPanelFlat({
           elStart={elStart}
           elDuration={elDuration}
           element={element}
-          onCommitAnimatedProperty={onCommitAnimatedProperty}
           onCommitAnimatedProperties={onCommitAnimatedProperties}
           onSeekToTime={onSeekToTime}
           onRemoveKeyframe={onRemoveKeyframe}

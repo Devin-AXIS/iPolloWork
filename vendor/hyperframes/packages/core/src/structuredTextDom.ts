@@ -7,6 +7,7 @@ import type {
 const STRUCTURE_ATTRIBUTE = "data-ipw-motion-structure";
 const SOURCE_ATTRIBUTE = "data-ipw-motion-source";
 const ROLE_ATTRIBUTE = "data-ipw-motion-role";
+const PRESENTATION_ATTRIBUTE = "data-ipw-motion-presentation";
 const STRUCTURED_TEXT_STYLE_ID = "ipw-structured-text-motion-styles";
 const STRUCTURED_TEXT_STYLES = `
 [data-ipw-motion-role="clone-primary"]::before,
@@ -132,10 +133,25 @@ function ensureStructuredTextStyles(document: Document): void {
   document.head?.append(style);
 }
 
+/** Marks structured text without replacing the target's authored typography. */
+function applyMotionTextPresentation(target: Element): void {
+  const document = target.ownerDocument;
+  if (!document) return;
+  ensureStructuredTextStyles(document);
+  target.setAttribute(PRESENTATION_ATTRIBUTE, "text-v1");
+}
+
+function removeMotionTextPresentation(target: Element): void {
+  target.removeAttribute(PRESENTATION_ATTRIBUTE);
+}
+
 function applyUnitStyles(unit: HTMLElement): void {
   unit.style.display = "inline-block";
   unit.style.position = "relative";
   unit.style.isolation = "isolate";
+  unit.style.whiteSpace = "pre";
+  unit.style.verticalAlign = "baseline";
+  unit.style.transformOrigin = "50% 50%";
 }
 
 function applyLayerStyles(layer: HTMLElement, role: StructuredTextRole): void {
@@ -146,16 +162,39 @@ function applyLayerStyles(layer: HTMLElement, role: StructuredTextRole): void {
     layer.style.pointerEvents = "none";
     layer.style.transformOrigin = "left center";
   } else if (role === "text") {
+    layer.style.display = "inline-block";
     layer.style.position = "relative";
     layer.style.zIndex = "1";
+    layer.style.font = "inherit";
+    layer.style.fontWeight = "inherit";
+    layer.style.lineHeight = "inherit";
+    layer.style.letterSpacing = "inherit";
+    layer.style.color = "inherit";
+    layer.style.whiteSpace = "pre";
+    layer.style.setProperty("-webkit-text-stroke", "inherit");
   } else if (role === "clone-primary" || role === "clone-accent") {
     layer.style.position = "absolute";
     layer.style.inset = "0";
+    layer.style.zIndex = "2";
     layer.style.pointerEvents = "none";
     layer.style.userSelect = "none";
+    layer.style.font = "inherit";
+    layer.style.fontWeight = "inherit";
+    layer.style.lineHeight = "inherit";
+    layer.style.letterSpacing = "inherit";
+    layer.style.color = "inherit";
+    layer.style.whiteSpace = "pre";
+    layer.style.setProperty("-webkit-text-stroke", "inherit");
   } else if (role === "particle-container") {
     layer.style.position = "absolute";
     layer.style.inset = "0";
+    layer.style.zIndex = "3";
+    layer.style.overflow = "visible";
+    layer.style.pointerEvents = "none";
+  } else if (role === "texture" || role === "mask") {
+    layer.style.position = "absolute";
+    layer.style.inset = "0";
+    layer.style.zIndex = "0";
     layer.style.pointerEvents = "none";
   }
 }
@@ -292,6 +331,7 @@ export function unwrapStructuredText(target: Element): void {
   target.replaceChildren(document.createTextNode(sourceText));
   target.removeAttribute(STRUCTURE_ATTRIBUTE);
   target.removeAttribute(SOURCE_ATTRIBUTE);
+  removeMotionTextPresentation(target);
 }
 
 export function materializeStructuredText(
@@ -305,9 +345,7 @@ export function materializeStructuredText(
   if (target.hasAttribute(STRUCTURE_ATTRIBUTE) || target.hasAttribute(SOURCE_ATTRIBUTE)) {
     unwrapStructuredText(target);
   }
-  if (compiled.layers.some(
-    (layer) => layer.role === "clone-primary" || layer.role === "clone-accent",
-  )) ensureStructuredTextStyles(document);
+  applyMotionTextPresentation(target);
 
   const fragment = document.createDocumentFragment();
   const unitByIndex = new Map<number, HTMLElement>();

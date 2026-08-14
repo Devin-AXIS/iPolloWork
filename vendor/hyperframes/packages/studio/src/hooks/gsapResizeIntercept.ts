@@ -9,7 +9,7 @@ import type { GsapAnimation, PropertyGroupName } from "@hyperframes/core/gsap-pa
 import type { DomEditSelection } from "../components/editor/domEditingTypes";
 import { clearStudioBoxSize } from "../components/editor/manualEdits";
 import { setElementGsapPosition } from "../utils/elementGsap";
-import { usePlayerStore } from "../player/store/playerStore";
+import { shouldCommitAnimationKeyframe, usePlayerStore } from "../player/store/playerStore";
 import { readAllAnimatedProperties, readGsapProperty } from "./gsapRuntimeReaders";
 import {
   commitStaticGsapPosition,
@@ -26,7 +26,11 @@ import { commitWholePropertyOffset } from "./gsapWholePropertyOffsetCommit";
 import { resolveTweenStart, resolveTweenDuration } from "../utils/globalTimeCompiler";
 import { isInstantHold, selectorFromSelection } from "./gsapShared";
 import { roundTo3 } from "../utils/rounding";
-import { resolveGroupTween, POSITION_CHANNELS } from "./gsapRuntimeBridge";
+import {
+  isolateSharedAnimationTargets,
+  resolveGroupTween,
+  POSITION_CHANNELS,
+} from "./gsapRuntimeBridge";
 import { hasNonHoldTweenForElement } from "./gsapRuntimeKeyframes";
 import { logResize } from "../utils/resizeDebug";
 
@@ -55,20 +59,34 @@ export async function tryGsapResizeIntercept(
   commitMutation: GsapDragCommitCallbacks["commitMutation"],
   fetchFallbackAnimations?: () => Promise<GsapAnimation[]>,
 ): Promise<boolean> {
+  const isolation = await isolateSharedAnimationTargets(
+    selection,
+    animations,
+    commitMutation,
+    fetchFallbackAnimations,
+  );
+  const workingAnimations = isolation.animations;
+  const persistMutation = isolation.commitMutation;
   // If the element already has a scale-group tween, resize should modify scale
   // (the user is resizing something whose visual size is driven by scale).
   // Otherwise, use the size group (width/height).
-  const hasScaleGroup = animations.some((a) => a.propertyGroup === "scale");
+  const hasScaleGroup = workingAnimations.some((a) => a.propertyGroup === "scale");
   const resizeGroup: PropertyGroupName = hasScaleGroup ? "scale" : "size";
   const resolved = await resolveGroupTween(
     resizeGroup,
-    animations,
+    workingAnimations,
     selection,
-    commitMutation,
+    persistMutation,
     fetchFallbackAnimations,
   );
 
   let anim = resolved?.anim ?? null;
+  const { activeKeyframePct, autoKeyframeEnabled, setActiveKeyframePct } =
+    usePlayerStore.getState();
+  const shouldCommitKeyframe = shouldCommitAnimationKeyframe(
+    autoKeyframeEnabled,
+    activeKeyframePct,
+  );
   logResize("intercept-enter", {
     hasScaleGroup,
     resizeGroup,
@@ -79,14 +97,14 @@ export async function tryGsapResizeIntercept(
   if (!anim || isInstantHold(anim)) {
     const sel = selectorFromSelection(selection);
     if (!sel) return false;
-    const sizeSet = anim ?? findSizeSetAnimation(animations, sel);
+    const sizeSet = anim ?? findSizeSetAnimation(workingAnimations, sel);
 
     // If the element is animated (has a real tween, not just a static size
     // hold), keyframe the size at the playhead so other keyframes keep theirs —
     // instead of a global set that resizes every frame.
-    if (resizeGroup === "size") {
+    if (resizeGroup === "size" && shouldCommitKeyframe) {
       const animatedTween = pickClosestToPlayhead(
-        animations.filter((a) => !isInstantHold(a) && resolveTweenDuration(a) > 0),
+        workingAnimations.filter((a) => !isInstantHold(a) && resolveTweenDuration(a) > 0),
       );
       if (animatedTween) {
         logResize("intercept-route", { route: "keyframed-size", tweenId: animatedTween.id });
@@ -96,7 +114,7 @@ export async function tryGsapResizeIntercept(
           sel,
           sizeSet,
           animatedTween,
-          { commitMutation, fetchAnimations: fetchFallbackAnimations },
+          { commitMutation: persistMutation, fetchAnimations: fetchFallbackAnimations },
         );
         if (handled) return true;
       }
@@ -104,7 +122,7 @@ export async function tryGsapResizeIntercept(
 
     logResize("intercept-route", { route: "static-size-set", hadSizeSet: !!sizeSet, resizeGroup });
     await commitStaticGsapSize(selection, size, sel, sizeSet, {
-      commitMutation,
+      commitMutation: persistMutation,
       fetchAnimations: fetchFallbackAnimations,
     });
     return true;
@@ -113,7 +131,6 @@ export async function tryGsapResizeIntercept(
   const tweenDuration = resolveTweenDuration(anim);
   if (tweenDuration <= 0) return false;
 
-  const { activeKeyframePct, setActiveKeyframePct } = usePlayerStore.getState();
   const pct = activeKeyframePct ?? computeCurrentPercentage(selection, anim);
   if (activeKeyframePct != null) setActiveKeyframePct(null);
   const selector = selectorFromSelection(selection);
@@ -241,7 +258,7 @@ export async function tryGsapResizeIntercept(
     // animation list (and its ids) may be stale for the position lookup.
     const currentAnimations = fetchFallbackAnimations
       ? await fetchFallbackAnimations()
-      : (resolved?.animations ?? animations);
+      : (resolved?.animations ?? workingAnimations);
     const existingSet = findExistingPositionWrite(currentAnimations, selector);
     // Delta chosen so the drag-path math composes back to exactly `corrected`
     // (no drag scratch attrs exist during a resize, so base = gsapPos).
@@ -252,7 +269,7 @@ export async function tryGsapResizeIntercept(
       selector,
       existingSet,
       {
-        commitMutation,
+        commitMutation: persistMutation,
         fetchAnimations: fetchFallbackAnimations,
       },
     );
@@ -261,15 +278,14 @@ export async function tryGsapResizeIntercept(
   // With auto-keyframe off (#1808), `anim` is already a real (non-"set")
   // tween for this resize group, so nudge it as a whole rather than adding a
   // keyframe at the playhead.
-  if (!usePlayerStore.getState().autoKeyframeEnabled) {
-    if (activeKeyframePct != null) setActiveKeyframePct(null);
+  if (!shouldCommitKeyframe) {
     await commitWholePropertyOffset(
       selection,
       anim,
       resizeProps,
       pct,
       iframe,
-      { commitMutation, fetchAnimations: fetchFallbackAnimations },
+      { commitMutation: persistMutation, fetchAnimations: fetchFallbackAnimations },
       "Resize animation",
     );
     await finalizeScaleResizeCommit();
@@ -284,13 +300,13 @@ export async function tryGsapResizeIntercept(
   if (!outsideRange) {
     // fallow-ignore-next-line code-duplication
     if (anim.hasUnresolvedKeyframes || anim.hasUnresolvedSelector) {
-      const newId = await materializeIfDynamic(anim, iframe, commitMutation, selection);
+      const newId = await materializeIfDynamic(anim, iframe, persistMutation, selection);
       if (newId) anim = { ...anim, id: newId };
     } else if (!anim.keyframes) {
       const resolvedFromValues = selector
         ? readAllAnimatedProperties(iframe, selector, anim, resizeGroup)
         : undefined;
-      await commitMutation(
+      await persistMutation(
         selection,
         { type: "convert-to-keyframes", animationId: anim.id, resolvedFromValues },
         { label: "Convert to keyframes for resize" },
@@ -367,7 +383,7 @@ export async function tryGsapResizeIntercept(
     else remapped.push({ percentage: targetPct, properties: resizeProps });
     remapped.sort((a, b) => a.percentage - b.percentage);
 
-    await commitMutation(
+    await persistMutation(
       selection,
       {
         type: "replace-with-keyframes",
@@ -395,7 +411,7 @@ export async function tryGsapResizeIntercept(
     backfillDefaults[k] = IDENTITY_ONE_PROPS.has(k) ? 1 : 0;
   }
 
-  await commitMutation(
+  await persistMutation(
     selection,
     {
       type: "add-keyframe",

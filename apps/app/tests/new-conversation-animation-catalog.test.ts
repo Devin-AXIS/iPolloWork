@@ -69,6 +69,15 @@ describe("new conversation animation catalog", () => {
     expect(surface).toContain("props.onCreateSession?.(surface === \"video\" ? \"video\" : \"design\", templateId)");
   });
 
+  test("keeps the starter template catalog independent from the template market scope", () => {
+    expect(sessionPage).toContain("const [starterTemplateCatalog, setStarterTemplateCatalog]");
+    expect(sessionPage).toContain("const refreshStarterTemplateCatalog = useCallback");
+    expect(sessionPage).toContain("PERSONAL_WORK_CONTEXT_ID");
+    expect(sessionPage).toMatch(/listTemplates\(\s*props\.runtimeWorkspaceId,\s*PERSONAL_WORK_CONTEXT_ID,/);
+    expect(sessionPage).toContain("designTemplates={starterTemplateCatalog}");
+    expect(sessionPage).toContain("onRequestDesignTemplates={() => void refreshStarterTemplateCatalog()}");
+  });
+
   test("opens a materialized design template in the Design panel", () => {
     expect(sessionPage).toContain("const autoOpenedDesignTemplateRef = useRef<string | null>(null)");
     expect(sessionPage).toContain("const templateKey = `${props.selectedSessionId}:${designTemplateEntryPath}`");

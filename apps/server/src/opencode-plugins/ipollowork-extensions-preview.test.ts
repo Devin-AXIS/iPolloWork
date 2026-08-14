@@ -225,6 +225,9 @@ describe("iPolloWorkExtensionsPreview UI control tools", () => {
     const system = await transformedSystem(plugin);
     expect(system).not.toContain("ipollowork_ui_");
     expect(system).toContain("ipollowork_session_search");
+    expect(system).toContain("Never use these cross-session tools to recover the current task");
+    expect(plugin.tool.ipollowork_session_search.description).toContain("Never use it to recover or infer the current interrupted task");
+    expect(plugin.tool.ipollowork_session_read.description).toContain("never use it to recover or infer the current interrupted task");
     expect(system).toContain("list_motion_presets");
     expect(system).toContain("mutate_motion");
   });

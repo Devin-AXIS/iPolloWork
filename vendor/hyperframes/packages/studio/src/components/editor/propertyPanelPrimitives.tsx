@@ -11,6 +11,8 @@ export function CommitField({
   disabled,
   liveCommit,
   align = "left",
+  inputType = "text",
+  ariaLabel,
   onPreview,
   onCommit,
 }: {
@@ -22,6 +24,8 @@ export function CommitField({
    *  where a left-aligned value looks stranded at the edge of its own
    *  right-hand box instead of lining up with every other row's value. */
   align?: "left" | "right";
+  inputType?: "text" | "number";
+  ariaLabel?: string;
   onPreview?: (nextValue: string) => void;
   onCommit: (nextValue: string) => void;
 }) {
@@ -84,7 +88,10 @@ export function CommitField({
   return (
     <input
       ref={inputRef}
-      type="text"
+      type={inputType}
+      inputMode={inputType === "number" ? "decimal" : undefined}
+      step={inputType === "number" ? "any" : undefined}
+      aria-label={ariaLabel}
       value={draft}
       disabled={disabled}
       onChange={(e) => {

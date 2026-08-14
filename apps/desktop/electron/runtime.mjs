@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { spawn, spawnSync } from "node:child_process";
-import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
+import { copyFileSync, cpSync, existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import net from "node:net";
 import os from "node:os";
@@ -80,6 +80,85 @@ export function applyEmbeddedServerEnvironment(targetEnv, sourceEnv) {
     if (!desktopOnlyKeys.has(key)) targetEnv[key] = value;
   }
   return targetEnv;
+}
+
+const MANAGED_OPENCODE_ENV_KEYS = [
+  "HOME",
+  "USERPROFILE",
+  "XDG_CONFIG_HOME",
+  "XDG_DATA_HOME",
+  "XDG_CACHE_HOME",
+  "XDG_STATE_HOME",
+  "OPENCODE_CONFIG_DIR",
+  "OPENCODE_TEST_HOME",
+];
+
+export function managedOpencodeEnvironment(sourceEnv = {}) {
+  return Object.fromEntries(
+    MANAGED_OPENCODE_ENV_KEYS.flatMap((name) => {
+      const value = String(sourceEnv[name] ?? "").trim();
+      return value ? [[name, value]] : [];
+    }),
+  );
+}
+
+export function stageBundledOpencodeRuntime(sourceDir, targetDir) {
+  if (!sourceDir || !existsSync(sourceDir)) return false;
+  mkdirSync(targetDir, { recursive: true });
+  const readJsonObject = (filePath) => {
+    try {
+      const parsed = JSON.parse(readFileSync(filePath, "utf8"));
+      return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
+    } catch {
+      return {};
+    }
+  };
+  const sourcePackage = readJsonObject(path.join(sourceDir, "package.json"));
+  const targetPackagePath = path.join(targetDir, "package.json");
+  const targetPackage = readJsonObject(targetPackagePath);
+  writeFileSync(targetPackagePath, `${JSON.stringify({
+    ...targetPackage,
+    dependencies: {
+      ...(targetPackage.dependencies ?? {}),
+      ...(sourcePackage.dependencies ?? {}),
+    },
+  }, null, 2)}\n`);
+
+  const sourceLock = readJsonObject(path.join(sourceDir, "package-lock.json"));
+  const targetLockPath = path.join(targetDir, "package-lock.json");
+  const targetLock = readJsonObject(targetLockPath);
+  const sourcePackages = sourceLock.packages ?? {};
+  const targetPackages = targetLock.packages ?? {};
+  writeFileSync(targetLockPath, `${JSON.stringify({
+    ...sourceLock,
+    ...targetLock,
+    lockfileVersion: sourceLock.lockfileVersion,
+    packages: {
+      ...targetPackages,
+      ...sourcePackages,
+      "": {
+        ...(targetPackages[""] ?? {}),
+        ...(sourcePackages[""] ?? {}),
+        dependencies: {
+          ...(targetPackages[""]?.dependencies ?? {}),
+          ...(sourcePackages[""]?.dependencies ?? {}),
+        },
+      },
+    },
+  }, null, 2)}\n`);
+
+  const sourceNodeModules = path.join(sourceDir, "node_modules");
+  if (existsSync(sourceNodeModules)) {
+    cpSync(sourceNodeModules, path.join(targetDir, "node_modules"), {
+      recursive: true,
+      force: true,
+    });
+  }
+  const targetGitignore = path.join(targetDir, ".gitignore");
+  if (!existsSync(targetGitignore) && existsSync(path.join(sourceDir, ".gitignore"))) {
+    copyFileSync(path.join(sourceDir, ".gitignore"), targetGitignore);
+  }
+  return true;
 }
 
 export function devModeHomeDirectoryPaths(homeDir) {
@@ -667,6 +746,7 @@ export function createRuntimeManager({ app, desktopRoot, listLocalWorkspacePaths
     path.join(path.dirname(app.getPath("exe")), "sidecars"),
   ].filter(Boolean);
   let systemCaEnvPromise = null;
+  let bundledOpencodeRuntimeStaged = false;
 
   function systemCaEnv() {
     systemCaEnvPromise ??= resolveSystemCaEnv({ tlsModule: tls, userDataDir, parentEnv: process.env });
@@ -882,6 +962,18 @@ export function createRuntimeManager({ app, desktopRoot, listLocalWorkspacePaths
       env.XDG_STATE_HOME = devPaths.xdgStateHome;
       env.OPENCODE_CONFIG_DIR = devPaths.opencodeConfigDir;
       env.OPENCODE_TEST_HOME = devPaths.homeDir;
+    } else if (process.resourcesPath) {
+      const bundledRuntimeDir = path.join(process.resourcesPath, "opencode-runtime");
+      const opencodeConfigDir = path.join(userDataDir, "opencode");
+      if (!bundledOpencodeRuntimeStaged) {
+        bundledOpencodeRuntimeStaged = stageBundledOpencodeRuntime(
+          bundledRuntimeDir,
+          opencodeConfigDir,
+        );
+      }
+      if (bundledOpencodeRuntimeStaged) {
+        env.OPENCODE_CONFIG_DIR = opencodeConfigDir;
+      }
     }
     return env;
   }
@@ -1309,6 +1401,7 @@ export function createRuntimeManager({ app, desktopRoot, listLocalWorkspacePaths
       manageOpencode: options.manageOpencode === true,
       opencodeBin: managedOpencode?.path ?? undefined,
       opencodeCwd: managedOpencodeWorkdir(),
+      opencodeEnv: managedOpencodeEnvironment(serverEnv),
     });
     console.info(`[startup] embedded server and OpenCode listening in ${nowMs() - serverStartedAt}ms`);
     inProcessServer = handle;

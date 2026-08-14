@@ -21,7 +21,10 @@ function stagger(parameters: MotionParameters, fallback: number): number {
   return finiteNumber(parameters, "stagger", fallback, 0, 10);
 }
 
-function split(parameters: MotionParameters, fallback: StructuredTextRecipe["split"]): StructuredTextRecipe["split"] {
+function split(
+  parameters: MotionParameters,
+  fallback: StructuredTextRecipe["split"],
+): StructuredTextRecipe["split"] {
   const value = String(parameters.unit ?? fallback);
   return value === "whole" || value === "character" || value === "word" ? value : fallback;
 }
@@ -39,29 +42,27 @@ function texturePositions(direction: string): [string, string] {
   return ["0% 50%", "100% 50%"];
 }
 
-function safeTextureName(value: unknown): string {
-  const name = String(value ?? "lava");
-  return /^[A-Za-z0-9_-]+$/.test(name) ? name : "lava";
-}
-
 export function resolveTextureFillStructuredRecipe(
   parameters: MotionParameters = {},
 ): StructuredTextRecipe {
   const rate = speed(parameters);
   const spacing = stagger(parameters, 0.04);
-  const texture = safeTextureName(parameters.texture);
-  const asset = `registry/components/caption-texture/${texture}.png`;
   const [startPosition, endPosition] = texturePositions(String(parameters.direction ?? "right"));
   const density = finiteNumber(parameters, "density", 1, 0.2, 2);
   const intensity = finiteNumber(parameters, "intensity", 1, 0.2, 2);
   const baseColor = effectColor(parameters, "#FFD0A0");
+  const textureSize = Math.max(8, Math.round(30 / density));
+  const texture = [
+    `repeating-linear-gradient(125deg, rgba(255,255,255,0.42) 0 1px, transparent 1px ${textureSize}px)`,
+    `radial-gradient(circle at 25% 30%, rgba(255,255,255,0.42) 0 1px, transparent 1.5px)`,
+    `linear-gradient(110deg, ${baseColor}, var(--ipw-color-primary, #FF6B35) 48%, ${baseColor})`,
+  ].join(", ");
 
   return {
     version: 1,
     id: "caption-texture.word-mask-sweep",
     presetId: "text.emphasis.texture-fill",
     split: split(parameters, "word"),
-    assets: [asset],
     layers: [
       { role: "unit", perUnit: true, className: "ipw-texture-word" },
       { role: "text", perUnit: true, className: "ipw-texture-word-text" },
@@ -76,7 +77,7 @@ export function resolveTextureFillStructuredRecipe(
           {
             percentage: 0,
             properties: {
-              opacity: 0,
+              opacity: 1,
               scale: 0.88,
               filter: "drop-shadow(0 4px 24px rgba(255, 100, 20, 0.55))",
             },
@@ -102,10 +103,11 @@ export function resolveTextureFillStructuredRecipe(
             percentage: 0,
             properties: {
               color: baseColor,
-              backgroundImage: `url("${asset}")`,
+              backgroundImage: texture,
               backgroundClip: "text",
+              WebkitBackgroundClip: "text",
               WebkitTextFillColor: "transparent",
-              backgroundSize: `${200 / density}% ${200 / density}%`,
+              backgroundSize: `${textureSize}px ${textureSize}px, ${textureSize * 2}px ${textureSize * 2}px, 220% 220%`,
               backgroundPosition: startPosition,
               filter: `contrast(${(1 + 0.2 * density).toFixed(2)}) brightness(1)`,
               letterSpacing: "0.04em",
@@ -116,33 +118,17 @@ export function resolveTextureFillStructuredRecipe(
             ease: "sine.inOut",
             properties: {
               color: baseColor,
-              backgroundImage: `url("${asset}")`,
+              backgroundImage: texture,
               backgroundClip: "text",
+              WebkitBackgroundClip: "text",
               WebkitTextFillColor: "transparent",
-              backgroundSize: `${200 / density}% ${200 / density}%`,
+              backgroundSize: `${textureSize}px ${textureSize}px, ${textureSize * 2}px ${textureSize * 2}px, 220% 220%`,
               backgroundPosition: endPosition,
               filter: `contrast(${(1 + 0.2 * density).toFixed(2)}) brightness(${(1 + 0.08 * intensity).toFixed(2)})`,
               letterSpacing: "0.04em",
             },
           },
         ],
-      },
-      {
-        role: "unit",
-        position: 0.3 / rate,
-        duration: 0.1 / rate,
-        stagger: spacing,
-        keyframes: [
-          { percentage: 0, properties: { opacity: 1, scale: 1 } },
-          { percentage: 100, ease: "power2.in", properties: { opacity: 0, scale: 1.08 } },
-        ],
-      },
-      {
-        role: "unit",
-        position: 0.4 / rate,
-        duration: 0,
-        stagger: spacing,
-        keyframes: [{ percentage: 0, properties: { opacity: 0, visibility: "hidden", scale: 1 } }],
       },
     ],
   };
@@ -161,13 +147,29 @@ function kineticEntrance(parameters: MotionParameters): KineticEntrance {
   const horizontalDistance = verticalDistance * 2.5;
   switch (String(parameters.direction ?? "right")) {
     case "up":
-      return { from: { x: 0, y: -verticalDistance, scale: 1, opacity: 0 }, duration: 0.22, ease: "back.out(1.7)" };
+      return {
+        from: { x: 0, y: -verticalDistance, scale: 1, opacity: 0 },
+        duration: 0.22,
+        ease: "power4.out",
+      };
     case "left":
-      return { from: { x: -horizontalDistance, y: 0, scale: 1, opacity: 0 }, duration: 0.2, ease: "expo.out" };
+      return {
+        from: { x: -horizontalDistance, y: 0, scale: 1, opacity: 0 },
+        duration: 0.2,
+        ease: "expo.out",
+      };
     case "down":
-      return { from: { x: 0, y: 0, scale: Math.max(0.05, 1 - 0.6 * intensity), opacity: 0 }, duration: 0.24, ease: "back.out(2.2)" };
+      return {
+        from: { x: 0, y: 0, scale: Math.max(0.2, 1 - 0.45 * intensity), opacity: 0 },
+        duration: 0.24,
+        ease: "power4.out",
+      };
     default:
-      return { from: { x: horizontalDistance, y: 0, scale: 1, opacity: 0 }, duration: 0.2, ease: "expo.out" };
+      return {
+        from: { x: horizontalDistance, y: 0, scale: 1, opacity: 0 },
+        duration: 0.2,
+        ease: "expo.out",
+      };
   }
 }
 
@@ -204,30 +206,13 @@ export function resolveKineticSlamStructuredRecipe(
         ],
       },
       {
-        role: "unit",
-        position: entranceDuration,
-        duration: 0.1 / rate,
-        stagger: spacing,
-        keyframes: [
-          { percentage: 0, properties: { opacity: 1 } },
-          { percentage: 100, ease: "power2.in", properties: { opacity: 0 } },
-        ],
-      },
-      {
-        role: "unit",
-        position: entranceDuration + 0.1 / rate,
-        duration: 0,
-        stagger: spacing,
-        keyframes: [{ percentage: 0, properties: { opacity: 0, visibility: "hidden", x: 0, y: 0, scale: 1 } }],
-      },
-      {
         role: "text",
         position: 0,
         duration: entranceDuration,
         stagger: spacing,
         keyframes: [
-          { percentage: 0, properties: { color: "#FFFFFF", letterSpacing: "0.04em" } },
-          { percentage: 100, properties: { color: "#FFFFFF", letterSpacing: "0.04em" } },
+          { percentage: 0, properties: { color: "inherit", letterSpacing: "0.04em" } },
+          { percentage: 100, properties: { color: "inherit", letterSpacing: "inherit" } },
         ],
       },
     ],
@@ -239,11 +224,10 @@ export function resolveEmojiPopStructuredRecipe(
 ): StructuredTextRecipe {
   const rate = speed(parameters);
   const spacing = stagger(parameters, 0.03);
-  const entryDuration = (4 / 30) / rate;
-  const exitDuration = (3 / 30) / rate;
+  const entryDuration = 4 / 30 / rate;
+  const exitDuration = 3 / 30 / rate;
   const intensity = finiteNumber(parameters, "intensity", 1, 0.2, 2);
   const entryScale = Math.max(0.4, 1 - 0.2 * intensity);
-  const exitScale = Math.max(0.35, 1 - 0.25 * intensity);
 
   return {
     version: 1,
@@ -262,8 +246,15 @@ export function resolveEmojiPopStructuredRecipe(
         duration: entryDuration,
         stagger: spacing,
         keyframes: [
-          { percentage: 0, properties: { opacity: 0, scaleX: entryScale, scaleY: 1, transformOrigin: "50% 50%" } },
-          { percentage: 100, ease: "power3.out", properties: { opacity: 1, scaleX: 1, scaleY: 1, transformOrigin: "50% 50%" } },
+          {
+            percentage: 0,
+            properties: { opacity: 1, scaleX: entryScale, scaleY: 1, transformOrigin: "50% 50%" },
+          },
+          {
+            percentage: 100,
+            ease: "power3.out",
+            properties: { opacity: 1, scaleX: 1, scaleY: 1, transformOrigin: "50% 50%" },
+          },
         ],
       },
       {
@@ -273,15 +264,8 @@ export function resolveEmojiPopStructuredRecipe(
         stagger: spacing,
         keyframes: [
           { percentage: 0, properties: { opacity: 1, scaleX: 1, scaleY: 1 } },
-          { percentage: 100, ease: "power2.in", properties: { opacity: 0.8, scaleX: exitScale, scaleY: 1 } },
+          { percentage: 100, ease: "power2.in", properties: { opacity: 1, scaleX: 1, scaleY: 1 } },
         ],
-      },
-      {
-        role: "unit",
-        position: entryDuration + exitDuration,
-        duration: 0,
-        stagger: spacing,
-        keyframes: [{ percentage: 0, properties: { opacity: 0, scaleX: 1, scaleY: 1 } }],
       },
       {
         role: "text",
@@ -292,16 +276,17 @@ export function resolveEmojiPopStructuredRecipe(
           {
             percentage: 0,
             properties: {
-              color: "#FFFFFF",
-              textShadow: "0 4px 8px rgba(0,0,0,0.7), 0 0 2px #B2F7FF, 0 0 8px rgba(178,247,255,0.6)",
+              color: "inherit",
+              textShadow:
+                "0 4px 8px rgba(0,0,0,0.7), 0 0 2px #B2F7FF, 0 0 8px rgba(178,247,255,0.6)",
               letterSpacing: "0em",
             },
           },
           {
             percentage: 100,
             properties: {
-              color: "#FFFFFF",
-              textShadow: "0 4px 8px rgba(0,0,0,0.7), 0 0 2px #B2F7FF, 0 0 8px rgba(178,247,255,0.6)",
+              color: "inherit",
+              textShadow: "none",
               letterSpacing: "0em",
             },
           },
@@ -361,7 +346,8 @@ export function resolveParticleBurstStructuredRecipe(
   const particleCount = Math.min(96, Math.max(0, Math.round(10 * density)));
   const burstDistance = 320 * intensity;
   const keywordColor = effectColor(parameters, "#FFD700");
-  const particlePalette = "radial-gradient(circle, #FFD700 0 18%, #FF6B35 19% 30%, #FF3C78 31% 42%, #9B5DE5 43% 54%, #00BBF9 55% 66%, #00F5D4 67% 78%, #FFFFFF 79% 89%, #F15BB5 90% 100%)";
+  const particlePalette =
+    "radial-gradient(circle, #FFD700 0 18%, #FF6B35 19% 30%, #FF3C78 31% 42%, #9B5DE5 43% 54%, #00BBF9 55% 66%, #00F5D4 67% 78%, #FFFFFF 79% 89%, #F15BB5 90% 100%)";
   const burstPercentage = (0.12 / 0.57) * 100;
 
   return {
@@ -390,8 +376,12 @@ export function resolveParticleBurstStructuredRecipe(
         duration: 0.2 / rate,
         stagger: wordSpacing,
         keyframes: [
-          { percentage: 0, properties: { opacity: 0, scale: 0.92, visibility: "visible" } },
-          { percentage: 100, ease: "back.out(1.5)", properties: { opacity: 1, scale: 1, visibility: "visible" } },
+          { percentage: 0, properties: { opacity: 1, scale: 0.92, visibility: "visible" } },
+          {
+            percentage: 100,
+            ease: "back.out(1.5)",
+            properties: { opacity: 1, scale: 1, visibility: "visible" },
+          },
         ],
       },
       {
@@ -411,7 +401,7 @@ export function resolveParticleBurstStructuredRecipe(
         stagger: wordSpacing,
         keyframes: [
           { percentage: 0, properties: { color: keywordColor, scale: 1 + 0.12 * intensity } },
-          { percentage: 100, properties: { color: "rgba(255,255,255,0.4)", scale: 1 } },
+          { percentage: 100, properties: { color: keywordColor, scale: 1 } },
         ],
       },
       {
@@ -463,23 +453,6 @@ export function resolveParticleBurstStructuredRecipe(
         duration: 0,
         stagger: 0,
         keyframes: [{ percentage: 0, properties: { opacity: 0, x: 0, y: 0, scale: 0.5 } }],
-      },
-      {
-        role: "unit",
-        position: 0.56 / rate,
-        duration: 0.14 / rate,
-        stagger: wordSpacing,
-        keyframes: [
-          { percentage: 0, properties: { opacity: 1 } },
-          { percentage: 100, ease: "power2.in", properties: { opacity: 0 } },
-        ],
-      },
-      {
-        role: "unit",
-        position: 0.7 / rate,
-        duration: 0,
-        stagger: wordSpacing,
-        keyframes: [{ percentage: 0, properties: { opacity: 0, visibility: "hidden", scale: 1 } }],
       },
     ],
   };

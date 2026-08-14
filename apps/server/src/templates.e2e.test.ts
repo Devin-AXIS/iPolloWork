@@ -58,7 +58,7 @@ describe("template API", () => {
     const materialized = await materializedResponse.json();
     expect(materialized.state.entry).toBe("design/session_api/entry.html");
 
-    const videoMaterializedResponse = await fetch(`${base}/workspace/ws/templates/ipollowork.html-anything.video-hyperframes/materialize`, { method: "POST", headers, body: JSON.stringify({ sessionId: "session_video" }) });
+    const videoMaterializedResponse = await fetch(`${base}/workspace/ws/templates/ipollowork.html-anything.motion-frames/materialize`, { method: "POST", headers, body: JSON.stringify({ sessionId: "session_video" }) });
     expect(videoMaterializedResponse.status).toBe(200);
     const videoMaterialized = await videoMaterializedResponse.json();
     expect(videoMaterialized.state.entry).toBe("video/session_video/index.html");

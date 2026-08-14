@@ -51,6 +51,22 @@ export function forwardedProxyEnv(env: NodeJS.ProcessEnv = process.env): Record<
   return forwarded;
 }
 
+export function offlineFirstOpencodeEnv(
+  env: NodeJS.ProcessEnv = process.env,
+): Record<string, string> {
+  const configuredModelsUrl = env.OPENCODE_MODELS_URL?.trim();
+  const developmentModelsUrl = env.IPOLLOWORK_DEV_MODE === "1"
+    ? "http://localhost:8791/models"
+    : undefined;
+  return {
+    ...(configuredModelsUrl || developmentModelsUrl
+      ? { OPENCODE_MODELS_URL: configuredModelsUrl || developmentModelsUrl! }
+      : {}),
+    OPENCODE_DISABLE_AUTOUPDATE: env.OPENCODE_DISABLE_AUTOUPDATE?.trim() || "1",
+    OPENCODE_DISABLE_MODELS_FETCH: env.OPENCODE_DISABLE_MODELS_FETCH?.trim() || "1",
+  };
+}
+
 function randomSecret(): string {
   return randomUUID().replace(/-/g, "") + randomUUID().replace(/-/g, "");
 }

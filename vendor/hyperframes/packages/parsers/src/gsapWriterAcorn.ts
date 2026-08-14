@@ -426,6 +426,53 @@ export function updateAnimationInScript(
 }
 
 /**
+ * Split every tween using a shared selector into two byte-preserving calls:
+ * the original call is retargeted to the unselected siblings and an exact copy
+ * is appended for the selected element. This gives subsequent Studio geometry
+ * edits a private animation target without changing either element's motion.
+ */
+export function isolateAnimationsForTargetInScript(
+  script: string,
+  targetSelector: string,
+  selectedSelector: string,
+  remainderSelector: string,
+): string {
+  if (!targetSelector || !selectedSelector || !remainderSelector) return script;
+  const parsed = parseGsapScriptAcornForWrite(script);
+  if (!parsed) return script;
+  const matches = parsed.located.filter(
+    ({ animation }) => animation.targetSelector === targetSelector,
+  );
+  if (matches.length === 0) return script;
+
+  const ms = new MagicString(script);
+  const appendedByStatement = new Map<Node, string[]>();
+  for (const { call } of matches) {
+    const args = call.node.arguments as Node[];
+    const targetArg = args[0];
+    if (!targetArg) continue;
+    ms.overwrite(targetArg.start, targetArg.end, JSON.stringify(remainderSelector));
+
+    const clonedArgs = [
+      JSON.stringify(selectedSelector),
+      ...args.slice(1).map((arg) => script.slice(arg.start, arg.end)),
+    ].join(", ");
+    const owner = call.global ? "gsap" : parsed.timelineVar;
+    const clonedCall = `${owner}.${call.method}(${clonedArgs});`;
+    const statement = findEnclosingExpressionStatement(call.ancestors);
+    if (!statement) continue;
+    const clones = appendedByStatement.get(statement) ?? [];
+    clones.push(clonedCall);
+    appendedByStatement.set(statement, clones);
+  }
+
+  for (const [statement, clones] of appendedByStatement) {
+    ms.appendRight(statement.end, `\n${clones.join("\n")}`);
+  }
+  return ms.toString();
+}
+
+/**
  * Overwrite a tween call's numeric position argument (the positionArg the parser
  * located: 3rd arg for fromTo, else 2nd), or append one when the call has no
  * explicit position. Shared by updateAnimationInScript and the

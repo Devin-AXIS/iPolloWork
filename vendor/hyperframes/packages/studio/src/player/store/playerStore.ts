@@ -29,6 +29,15 @@ export interface KeyframeCacheUpdate {
   data: KeyframeCacheEntry | undefined;
 }
 
+/** Ordinary edits affect the full animation unless auto-keyframing is enabled
+ * or the user explicitly selected a timeline keyframe. */
+export function shouldCommitAnimationKeyframe(
+  autoKeyframeEnabled: boolean,
+  activeKeyframePct: number | null,
+): boolean {
+  return autoKeyframeEnabled || activeKeyframePct != null;
+}
+
 export interface TimelineElement {
   id: string;
   label?: string;
@@ -202,10 +211,8 @@ interface PlayerState {
   setMotionPathArmed: (armed: boolean) => void;
   motionPathCreateAvailable: boolean;
   setMotionPathCreateAvailable: (available: boolean) => void;
-  /** Global toggle for the "Add keyframe" diamond in the timeline toolbar (#1808).
-   *  When false, a manual drag/resize/rotate edit on an element that already has
-   *  a live tween shifts every keyframe by the edit's delta (preserving the
-   *  animation's shape) instead of inserting/updating a keyframe at the playhead. */
+  /** Enables implicit playhead keyframes for ordinary element edits. Explicitly
+   *  selecting a keyframe still edits that keyframe while this is disabled. */
   autoKeyframeEnabled: boolean;
   setAutoKeyframeEnabled: (enabled: boolean) => void;
 
@@ -426,7 +433,10 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   setMotionPathArmed: (armed) => set({ motionPathArmed: armed }),
   motionPathCreateAvailable: false,
   setMotionPathCreateAvailable: (available) => set({ motionPathCreateAvailable: available }),
-  autoKeyframeEnabled: true,
+  // Ordinary Studio edits must remain stable for the element's whole lifetime.
+  // Keyframes are added explicitly from the timeline unless a future UI enables
+  // implicit auto-keyframing.
+  autoKeyframeEnabled: false,
   setAutoKeyframeEnabled: (enabled) => set({ autoKeyframeEnabled: enabled }),
 
   selectedElementIds: new Set<string>(),

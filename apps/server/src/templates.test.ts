@@ -2,7 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { Database } from "bun:sqlite";
 import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { mkdir, mkdtemp, readFile, readdir, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -10,7 +10,7 @@ import { fileURLToPath } from "node:url";
 import { deflateRawSync } from "node:zlib";
 import { IPOLLOWORK_PACKAGE_EXTENSION, MAX_TEMPLATE_PACKAGE_BYTES, TEMPLATE_AUTHORING_ID_PREFIX, TEMPLATE_STYLE_LABELS, type TemplateCategory, type TemplateManifestV1 } from "@ipollowork/types/templates";
 import type { ServerConfig, WorkspaceInfo } from "./types.js";
-import { adoptLegacyVideoSession, createTemplateAuthoringSession, exportLocalTemplatePackage, exportTemplateFromSession, importTemplate, installBundledTemplate, listTemplates, materializeTemplate, migrateTemplateSessionSnapshots, parseTemplateLibraryScope, readTemplateSession, resolveBundledTemplatesRoot, saveTemplateFromSession, uninstallTemplate, validateTemplateFromSession, validateTemplatePackageDirectory } from "./templates.js";
+import { isCustomerVisibleBundledTemplate, adoptLegacyVideoSession, createTemplateAuthoringSession, exportLocalTemplatePackage, exportTemplateFromSession, importTemplate, installBundledTemplate, listTemplates, materializeTemplate, migrateTemplateSessionSnapshots, parseTemplateLibraryScope, readTemplateSession, resolveBundledTemplatesRoot, saveTemplateFromSession, uninstallTemplate, validateTemplateFromSession, validateTemplatePackageDirectory } from "./templates.js";
 
 const previousRuntimeDb = process.env.IPOLLOWORK_RUNTIME_DB;
 const previousBundledTemplatesDir = process.env.IPOLLOWORK_BUNDLED_TEMPLATES_DIR;
@@ -82,12 +82,10 @@ function storedZip(files: Record<string, string | Buffer>): Uint8Array {
 
 const bundledTemplatesRoot = join(dirname(fileURLToPath(import.meta.url)), "..", "bundled-templates");
 const pptxCompatibleTemplateIds = [
-  "ipollowork.pptx-clinical-handoff",
   "ipollowork.pptx-exhibition-curation",
   "ipollowork.pptx-film-treatment",
   "ipollowork.pptx-impact-report",
   "ipollowork.pptx-learning-journey",
-  "ipollowork.pptx-match-analysis",
   "ipollowork.pptx-merger-integration",
   "ipollowork.pptx-restaurant-opening",
   "ipollowork.pptx-supply-continuity",
@@ -120,7 +118,6 @@ const flagshipVideoTemplateIds = [
   "ipollowork.hyperframes.prompt-ab-laboratory",
   "ipollowork.hyperframes.release-spotlight",
   "ipollowork.hyperframes.research-evidence-wall",
-  "ipollowork.hyperframes.remote-worker-connect",
 ];
 const novelVideoTemplates = [
   { id: "ipollowork.hyperframes.meeting-action-conveyor", composition: "meeting-action-conveyor", duration: "11", scenes: 4 },
@@ -328,7 +325,7 @@ describe("template installations", () => {
     const adopted = await adoptLegacyVideoSession(serverConfig, ws, sessionId);
     expect(adopted.surface).toBe("video");
     expect(adopted.state.entry).toBe(`video/${sessionId}/index.html`);
-    expect(adopted.manifest.id).toBe("ipollowork.html-anything.video-hyperframes");
+    expect(adopted.manifest.id).toBe("ipollowork.html-anything.motion-frames");
     expect(await readFile(join(ws.path, adopted.state.entry), "utf8")).toBe(source);
     expect(JSON.parse(await readFile(join(ws.path, adopted.state.briefPath), "utf8"))).toEqual({ source: "legacy-video-session" });
 
@@ -365,7 +362,7 @@ describe("template installations", () => {
 
   test("ships the reviewed HTML Anything catalog with iPolloWork categories, styles and editable variables", async () => {
     const directories = (await readdir(bundledTemplatesRoot)).filter((name) => name.startsWith("ipollowork.html-anything."));
-    expect(directories).toHaveLength(58);
+    expect(directories).toHaveLength(52);
     const categoryCounts: Record<string, number> = {};
     for (const directory of directories) {
       const root = join(bundledTemplatesRoot, directory);
@@ -376,7 +373,8 @@ describe("template installations", () => {
       expect(manifest.source.revision).toBe("d0efb1eaa3b65c731709981718cd5a0a0d4e8f71");
       const upgradedCategories = new Set(["site", "other", "video"]);
       const upgradedSlides = manifest.category === "slides" && manifest.id !== "ipollowork.html-anything.weekly-update";
-      expect(manifest.version).toBe(upgradedCategories.has(manifest.category) || upgradedSlides ? "1.1.5" : "1.1.4");
+      const recategorizedTemplates = new Set(["ipollowork.html-anything.wireframe-sketch"]);
+      expect(manifest.version).toBe(upgradedCategories.has(manifest.category) || upgradedSlides || recategorizedTemplates.has(manifest.id) ? "1.1.5" : "1.1.4");
       expect(manifest.cover).toBe("cover.png");
       expect(JSON.stringify(manifest)).not.toMatch(/[\u3000-\u30ff\u31f0-\u31ff\u3400-\u9fff\uac00-\ud7af\uf900-\ufaff\uff00-\uffef]/);
       expect(manifest.designSystem.variables.length).toBeGreaterThanOrEqual(manifest.surface === "video" ? 4 : 20);
@@ -418,7 +416,7 @@ describe("template installations", () => {
         for (const variable of manifest.designSystem.variables) expect(tokens).toContain(variable.id);
       }
     }
-    expect(categoryCounts).toEqual({ article: 4, cards: 6, other: 4, report: 4, slides: 22, video: 8, poster: 2, site: 8 });
+    expect(categoryCounts).toEqual({ article: 4, cards: 4, other: 4, report: 4, slides: 19, video: 7, poster: 3, site: 7 });
   });
 
   test("ships flagship HyperFrames video templates with local deterministic runtimes", async () => {
@@ -551,7 +549,7 @@ describe("template installations", () => {
     const serverConfig = config(root);
     const ws = workspace(root, "alpha");
     await listTemplates(serverConfig, ws.id);
-    await materializeTemplate(serverConfig, ws, "ipollowork.html-anything.saas-landing", "session_logo");
+    await materializeTemplate(serverConfig, ws, "ipollowork.html-anything.prototype-web", "session_logo");
     const logoPath = join(ws.path, "design", "session_logo", "assets", "ipollowork-logo.svg");
     await writeFile(logoPath, '<svg viewBox="0 0 476 500"><rect fill="white"/></svg>');
     const entryPath = join(ws.path, "design", "session_logo", "entry.html");
@@ -582,7 +580,7 @@ describe("template installations", () => {
       if (manifest.category !== "site") continue;
       websites.push({ manifest, entry: await readFile(join(root, manifest.entry), "utf8") });
     }
-    expect(websites).toHaveLength(25);
+    expect(websites).toHaveLength(22);
     for (const { manifest, entry } of websites) {
       expect(entry).toContain('name="viewport"');
       expect(entry).toContain('data-ipw-mobile-ready="true"');
@@ -610,12 +608,10 @@ describe("template installations", () => {
 
   test("keeps the scenario template batch structurally distinct", async () => {
     const signatures = new Map([
-      ["ipollowork.pptx-clinical-handoff", 'class="handoff-ledger"'],
       ["ipollowork.pptx-exhibition-curation", 'class="curator-wall"'],
       ["ipollowork.pptx-film-treatment", 'class="film-strip"'],
       ["ipollowork.pptx-impact-report", 'class="impact-river"'],
       ["ipollowork.pptx-learning-journey", 'class="lesson-path"'],
-      ["ipollowork.pptx-match-analysis", 'class="tactics-pitch"'],
       ["ipollowork.pptx-merger-integration", 'class="integration-rail"'],
       ["ipollowork.pptx-restaurant-opening", 'class="service-book"'],
       ["ipollowork.pptx-supply-continuity", 'class="continuity-board"'],
@@ -627,7 +623,6 @@ describe("template installations", () => {
       ["ipollowork.pptx-venture-blueprint", 'class="venture-deck"'],
       ["ipollowork.site-atelier-architecture", 'class="project-index"'],
       ["ipollowork.site-orbit-data", 'class="query-window"'],
-      ["ipollowork.site-casa-lume", 'class="booking-form"'],
       ["ipollowork.site-forma-portfolio", 'class="project-grid"'],
       ["ipollowork.site-kindred-care", 'class="pathways"'],
       ["ipollowork.site-afterglow-festival", 'class="lineup-marquee"'],
@@ -732,7 +727,7 @@ describe("template installations", () => {
 
   test("ships every bundled template with a real 960 by 540 PNG cover", async () => {
     const directories = (await readdir(bundledTemplatesRoot)).filter((name) => !name.startsWith("."));
-    expect(directories).toHaveLength(117);
+    expect(directories).toHaveLength(116);
     const hashes = new Set<string>();
     for (const directory of directories) {
       const root = join(bundledTemplatesRoot, directory);
@@ -775,12 +770,12 @@ describe("template installations", () => {
     }
   });
 
-  test("seeds the full personal template market and keeps its install state global", async () => {
+  test("publishes curated site, video and slide templates while keeping the other non-deleted categories", async () => {
     const root = await mkdtemp(join(tmpdir(), "ipw-templates-"));
     process.env.IPOLLOWORK_RUNTIME_DB = join(root, "runtime.sqlite");
     const serverConfig = config(root);
     const first = await listTemplates(serverConfig, "alpha");
-    expect(first.filter((item) => item.installed)).toHaveLength(117);
+    expect(first.filter((item) => item.installed)).toHaveLength(116);
     expect(first.some((item) => item.manifest.id === "ipollowork.saas-landing")).toBe(true);
     expect(first.some((item) => item.manifest.id === "ipollowork.pptx-northstar-strategy")).toBe(true);
     expect(new Set(first.map((item) => item.manifest.category)).size).toBe(9);
@@ -838,7 +833,7 @@ describe("template installations", () => {
     process.env.IPOLLOWORK_RUNTIME_DB = join(root, "runtime.sqlite");
     const serverConfig = config(root);
     const scope = parseTemplateLibraryScope("enterprise:ent_medical");
-    expect((await listTemplates(serverConfig, "alpha", scope)).every((item) => item.sourceType === "bundled")).toBe(true);
+    expect((await listTemplates(serverConfig, "alpha", scope)).filter((item) => item.sourceType === "bundled")).toHaveLength(108);
     const installed = await importTemplate(serverConfig, "alpha", localPackage(), "site", scope);
     expect((await listTemplates(serverConfig, "beta", scope)).map((item) => item.manifest.id)).toContain(installed.manifest.id);
     expect((await listTemplates(serverConfig, "beta", "personal")).map((item) => item.manifest.id)).not.toContain(installed.manifest.id);
@@ -854,11 +849,11 @@ describe("template installations", () => {
     const serverConfig = config(root);
     const ws = workspace(root, "alpha");
     await listTemplates(serverConfig, ws.id);
-    const created = await materializeTemplate(serverConfig, ws, "ipollowork.saas-landing", "session_1", { name: "Demo" });
+    const created = await materializeTemplate(serverConfig, ws, "ipollowork.html-anything.prototype-web", "session_1", { name: "Demo" });
     expect(created.state.entry).toBe("design/session_1/entry.html");
-    await uninstallTemplate(serverConfig, ws.id, "ipollowork.saas-landing");
-    expect(await readFile(join(ws.path, created.state.entry), "utf8")).toContain("<!doctype html>");
-    expect((await readTemplateSession(serverConfig, ws, "session_1")).manifest.id).toBe("ipollowork.saas-landing");
+    await uninstallTemplate(serverConfig, ws.id, "ipollowork.html-anything.prototype-web");
+    expect(await readFile(join(ws.path, created.state.entry), "utf8")).toMatch(/<!doctype html>/i);
+    expect((await readTemplateSession(serverConfig, ws, "session_1")).manifest.id).toBe("ipollowork.html-anything.prototype-web");
     expect(existsSync(join(ws.path, "design", "session_1", "template.json"))).toBe(false);
   });
 
@@ -954,7 +949,7 @@ describe("template installations", () => {
     const serverConfig = config(root);
     const ws = workspace(root, "alpha");
     await listTemplates(serverConfig, ws.id);
-    const created = await materializeTemplate(serverConfig, ws, "ipollowork.html-anything.video-hyperframes", "session_video");
+    const created = await materializeTemplate(serverConfig, ws, "ipollowork.html-anything.motion-frames", "session_video");
     expect(created.state.entry).toBe("video/session_video/index.html");
     expect(await readFile(join(ws.path, created.state.entry), "utf8")).toContain("data-composition-id");
     expect((await readTemplateSession(serverConfig, ws, "session_video")).manifest.surface).toBe("video");

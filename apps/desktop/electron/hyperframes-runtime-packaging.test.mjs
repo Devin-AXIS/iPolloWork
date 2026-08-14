@@ -11,6 +11,7 @@ const buildCopySource = await readFile(
   "utf8",
 );
 const electronMainSource = await readFile(new URL("./main.mjs", import.meta.url), "utf8");
+const electronDevSource = await readFile(new URL("../scripts/electron-dev.mjs", import.meta.url), "utf8");
 
 test("stages HyperFrames dependencies in an electron-builder-safe layout", () => {
   assert.match(prepareRuntimeSource, /"--linker", "hoisted"/);
@@ -50,6 +51,14 @@ test("cleans stale hashed Studio assets before copying a new build", () => {
 test("ships only the Studio browser application", () => {
   assert.match(buildCopySource, /\["index\.html", "assets", "icons", "favicon\.svg"\]/);
   assert.doesNotMatch(buildCopySource, /copyDirContents\(studioDist/);
+});
+
+test("rebuilds the dev Studio when shared HyperFrames source changes", () => {
+  assert.match(electronDevSource, /const hyperframesDevBuildInputRoots = \[/);
+  assert.match(electronDevSource, /"core"/);
+  assert.match(electronDevSource, /"studio"/);
+  assert.match(electronDevSource, /"studio-server"/);
+  assert.match(electronDevSource, /newestBuildInputTime > studioBuildTime/);
 });
 
 test("keeps a recently closed Studio process warm for a bounded same-session reopen", () => {

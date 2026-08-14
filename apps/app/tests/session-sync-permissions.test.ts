@@ -3,7 +3,9 @@ import type { UIMessage } from "ai";
 import type { PermissionRequest, PermissionV2Request, QuestionRequest } from "@opencode-ai/sdk/v2/client";
 
 import type { iPolloWorkSessionSnapshot } from "../src/app/lib/ipollowork-server";
+import type { PendingPermission } from "../src/app/types";
 import { getReactQueryClient } from "../src/react-app/infra/query-client";
+import { persistentPermissionPatterns } from "../src/react-app/domains/session/sync/use-session-interactions";
 import {
   __applySessionSyncEventForTest,
   __createWorkspaceSessionSyncForTest,
@@ -108,6 +110,42 @@ afterEach(() => {
 });
 
 describe("session permission sync", () => {
+  test("persists the broader legacy always scope instead of the current resource", () => {
+    expect(persistentPermissionPatterns({
+      ...permission("perm-legacy", "session-a"),
+      permission: "external_directory",
+      patterns: ["C:\\Users\\demo\\.agents\\skills\\hyperframes-core\\references\\*"],
+      always: ["C:\\Users\\demo\\.agents\\skills\\hyperframes-core\\*"],
+      receivedAt: 1,
+      protocol: "legacy",
+    })).toEqual(["C:\\Users\\demo\\.agents\\skills\\hyperframes-core\\*"]);
+  });
+
+  test("persists the v2 save scope and falls back for older requests", () => {
+    const normalized = {
+      id: "perm-v2",
+      sessionID: "session-a",
+      permission: "external_directory",
+      patterns: ["C:/Users/demo/outside/current.txt"],
+      metadata: {},
+      always: ["C:/Users/demo/outside/*"],
+      receivedAt: 1,
+      protocol: "v2" as const,
+      v2: {
+        action: "external_directory",
+        resources: ["C:/Users/demo/outside/current.txt"],
+        save: ["C:/Users/demo/outside/*", "C:/Users/demo/outside/*"],
+      },
+    } satisfies PendingPermission;
+
+    expect(persistentPermissionPatterns(normalized)).toEqual(["C:/Users/demo/outside/*"]);
+    expect(persistentPermissionPatterns({
+      ...normalized,
+      always: [],
+      v2: { ...normalized.v2, save: undefined },
+    })).toEqual(["C:/Users/demo/outside/current.txt"]);
+  });
+
   test("seeds only permissions for the selected session", () => {
     seedPermissionState("workspace-a", "session-a", [
       permission("perm-a", "session-a"),

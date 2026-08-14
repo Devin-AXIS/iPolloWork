@@ -12,7 +12,11 @@ import {
 } from "../../icons/SystemIcons";
 import { isTextEditableSelection, type DomEditSelection } from "./domEditing";
 import type { ImportedFontAsset } from "./fontAssets";
-import { normalizeTextMetricValue } from "./propertyPanelHelpers";
+import {
+  formatNumericValue,
+  normalizeTextMetricValue,
+  parseNumericToken,
+} from "./propertyPanelHelpers";
 import { FontFamilyField } from "./propertyPanelFont";
 import { PromotableControl } from "./PromotableControl";
 import { FlatRow, FlatSelectRow } from "./propertyPanelFlatPrimitives";
@@ -48,18 +52,34 @@ const FONT_SIZE_OPTIONS = [
   "96",
 ].map((size) => ({ value: `${size}px`, label: size }));
 
-const LETTER_SPACING_OPTIONS = [
-  { value: "normal", label: "Normal" },
-  { value: "-2px", label: "-2 px" },
-  { value: "-1px", label: "-1 px" },
-  { value: "0px", label: "0 px" },
-  { value: "0.5px", label: "0.5 px" },
-  { value: "1px", label: "1 px" },
-  { value: "2px", label: "2 px" },
-  { value: "4px", label: "4 px" },
-  { value: "8px", label: "8 px" },
-  { value: "12px", label: "12 px" },
-];
+export function resolveNumericTextMetricValue(
+  property: "letter-spacing" | "line-height",
+  value: string,
+  fontSize: string,
+): string {
+  const fontToken = parseNumericToken(fontSize);
+  const fontSizePx =
+    fontToken?.unit.toLowerCase() === "rem"
+      ? fontToken.value * 16
+      : fontToken?.value && fontToken.value > 0
+        ? fontToken.value
+        : 16;
+  const metric = parseNumericToken(value);
+  if (!metric) {
+    return property === "letter-spacing" ? "0" : formatNumericValue(fontSizePx * 1.2);
+  }
+
+  const unit = metric.unit.toLowerCase();
+  if (unit === "em") return formatNumericValue(metric.value * fontSizePx);
+  if (unit === "rem") return formatNumericValue(metric.value * 16);
+  if (property === "line-height" && unit === "%") {
+    return formatNumericValue((metric.value / 100) * fontSizePx);
+  }
+  if (property === "line-height" && !unit && metric.value <= 4) {
+    return formatNumericValue(metric.value * fontSizePx);
+  }
+  return formatNumericValue(metric.value);
+}
 
 export function toggleDecoration(
   current: string,
@@ -119,6 +139,17 @@ function FlatTextFieldEditor({
 }) {
   const track = useTrackDesignInput();
   const weight = getTextStyleValue(field, styles, "font-weight", "400");
+  const fontSize = field.computedStyles["font-size"] || styles["font-size"] || "16px";
+  const lineHeight = resolveNumericTextMetricValue(
+    "line-height",
+    getTextStyleValue(field, styles, "line-height", "normal"),
+    fontSize,
+  );
+  const letterSpacing = resolveNumericTextMetricValue(
+    "letter-spacing",
+    getTextStyleValue(field, styles, "letter-spacing", "normal"),
+    fontSize,
+  );
   const weightOptions = detectAvailableWeights(
     field.computedStyles["font-family"] || styles["font-family"] || "",
   );
@@ -176,7 +207,7 @@ function FlatTextFieldEditor({
         />
         <FlatSelectRow
           label="Size"
-          value={field.computedStyles["font-size"] || styles["font-size"] || "16px"}
+          value={fontSize}
           valueOnly
           options={FONT_SIZE_OPTIONS}
           tier={resolveValueTier(field.inlineStyles["font-size"], styles["font-size"] || "16px")}
@@ -186,9 +217,11 @@ function FlatTextFieldEditor({
       <div className="hf-flat-responsive-grid grid grid-cols-2 gap-3">
         <FlatRow
           label="Line height"
-          value={getTextStyleValue(field, styles, "line-height", "normal")}
+          value={lineHeight}
           tier={resolveValueTier(field.inlineStyles["line-height"], "normal")}
           liveCommit
+          inputType="number"
+          suffix={<span className="text-[10px] text-[#858a94]">px</span>}
           onCommit={(next) =>
             onSetTextFieldStyle(
               field.key,
@@ -198,12 +231,14 @@ function FlatTextFieldEditor({
           }
           onReset={() => onSetTextFieldStyle(field.key, "line-height", "")}
         />
-        <FlatSelectRow
+        <FlatRow
           label="Letter spacing"
-          value={getTextStyleValue(field, styles, "letter-spacing", "0px")}
-          options={LETTER_SPACING_OPTIONS}
+          value={letterSpacing}
           tier={resolveValueTier(field.inlineStyles["letter-spacing"], "0px")}
-          onChange={(next) =>
+          liveCommit
+          inputType="number"
+          suffix={<span className="text-[10px] text-[#858a94]">px</span>}
+          onCommit={(next) =>
             onSetTextFieldStyle(
               field.key,
               "letter-spacing",

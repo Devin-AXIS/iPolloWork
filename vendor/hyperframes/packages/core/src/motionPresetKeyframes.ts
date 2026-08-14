@@ -310,6 +310,46 @@ export function buildPresetKeyframes(presetId: string, params: MotionParameters)
     case "text.emphasis.highlight-sweep":
       // The structured recipe supplies the layered word backgrounds and text.
       return [frame(0, { opacity: 1 }), frame(100, { opacity: 1 })];
+    case "text.enter.editorial-emphasis": {
+      const offset = directionOffset(direction, 28 * intensity);
+      return [
+        frame(0, {
+          opacity: 0,
+          x: offset.x,
+          y: offset.y,
+          scale: 0.74,
+          filter: `blur(${Number(params.blur ?? 7)}px)`,
+        }),
+        frame(68, { opacity: 1, x: -offset.x * 0.08, y: -offset.y * 0.08, scale: 1.065, filter: "blur(0px)" }),
+        frame(100, { opacity: 1, x: 0, y: 0, scale: 1, filter: "blur(0px)" }),
+      ];
+    }
+    case "text.emphasis.karaoke-flow":
+      return [
+        frame(0, { opacity: 1, y: 0, scale: 1, color: "currentColor" }),
+        frame(34, { opacity: 1, y: -Number(params.lift ?? 7) * intensity, scale: 1.055, color }),
+        frame(100, { opacity: 1, y: 0, scale: 1, color: "currentColor" }),
+      ];
+    case "text.enter.camera-track": {
+      const offset = directionOffset(direction, Number(params.distance ?? 54) * intensity);
+      return [
+        frame(0, {
+          opacity: 0.12,
+          x: offset.x,
+          y: offset.y,
+          scale: 0.62,
+          filter: `blur(${Number(params.blur ?? 12)}px)`,
+        }),
+        frame(72, { opacity: 1, x: -offset.x * 0.055, y: -offset.y * 0.055, scale: 1.035, filter: "blur(0px)" }),
+        frame(100, { opacity: 1, x: 0, y: 0, scale: 1, filter: "blur(0px)" }),
+      ];
+    }
+    case "text.enter.visual-layers":
+      return [
+        frame(0, { opacity: 0, scale: 0.9, textShadow: `${-Number(params.distance ?? 18)}px 5px ${color}, ${Number(params.distance ?? 18)}px -5px ${secondColor(params, "#20BBC0")}` }),
+        frame(58, { opacity: 1, scale: 1.045, textShadow: `-2px 0 ${color}, 2px 0 ${secondColor(params, "#20BBC0")}` }),
+        frame(100, { opacity: 1, scale: 1, textShadow: "0 0 0 transparent" }),
+      ];
     case "text.enter.matrix-decode": {
       const density = Number(params.density ?? 1);
       const blur = Number(params.blur ?? 5);

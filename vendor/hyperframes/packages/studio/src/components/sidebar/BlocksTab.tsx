@@ -539,7 +539,7 @@ const BlockCard = memo(function BlockCard({
   const compositionPosterUrl = `${registryPreviewUrl}?time=${Math.min((duration ?? 4) / 2, 2).toFixed(2)}`;
   const compositionPlaybackUrl = `${registryPreviewUrl}?autoplay=1`;
   const prefersCompositionPreview =
-    block.type === "hyperframes:component" && block.librarySection === "caption-animation";
+    block.type === "hyperframes:component" && String(block.librarySection) === "caption-animation";
   const canShowPoster =
     visible && !prefersCompositionPreview && Boolean(posterUrl) && !posterFailed;
   const canShowVideoThumbnail =

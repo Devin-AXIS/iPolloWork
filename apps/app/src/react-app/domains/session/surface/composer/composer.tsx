@@ -1388,6 +1388,7 @@ export function ReactSessionComposer(props: ComposerProps) {
                           fileInput?.click();
                         }}
                         disabled={!props.attachmentsEnabled}
+                        title={!props.attachmentsEnabled ? props.attachmentsDisabledReason ?? undefined : undefined}
                       >
                         {t("composer.plus_attach_files")}
                       </button>
