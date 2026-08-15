@@ -1,5 +1,5 @@
 import { z } from "zod";
-export { hyperframesStudioPort, videoProjectDirectory, videoProjectId } from "./hyperframes-project";
+export { hyperframesStudioPort, videoProjectDirectory, videoProjectId } from "./hyperframes-project.js";
 
 export const hyperframesEffectVariableUpdateSchema = z.enum(["live", "rebuild", "reload"]);
 
