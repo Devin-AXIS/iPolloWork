@@ -100,6 +100,7 @@ describe("template authoring", () => {
     expect(page).toContain("repairCurrentTemplate");
     expect(page).toContain('manifest.id.startsWith("personal.")');
     expect(design).toContain("onSaveAsTemplate={onSaveAsTemplate}");
-    expect(video).toContain('t("template_authoring.save_as_template")');
+    expect(video).toContain("saveAsTemplate: Boolean(onSaveAsTemplate)");
+    expect(video).toContain('event.data.action === "save-as-template"');
   });
 });
