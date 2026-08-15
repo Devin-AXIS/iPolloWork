@@ -1,7 +1,7 @@
 # iPolloWork
 
 <p align="center">
-  <a href="../README.md">English</a> · <a href="./README_ZH.md">简体中文</a> · <a href="./README_ZH_hk.md">繁體中文</a> · 日本語
+  <a href="../../README.md">English</a> · <a href="./README_ZH.md">简体中文</a> · <a href="./README_ZH_hk.md">繁體中文</a> · 日本語
 </p>
 
 <p align="center">
@@ -113,7 +113,7 @@ corepack enable
 | 型チェックとデスクトップテスト | `./ipollowork check` | `.\ipollowork.cmd check` |
 | 本番ビルド | `./ipollowork build` | `.\ipollowork.cmd build` |
 
-Windows の開発ビルドでは、本番用の `ipollowork://` ハンドラーは自動登録されません。外部ブラウザーから Cloud サインインをテストする場合は、リポジトリにあるプロトコル切り替えツールを使用し、終了後に本番用ハンドラーへ戻してください。詳しくは [Windows プロトコル切り替え](../docs/windows-protocol-switcher.md) を参照してください。
+Windows の開発ビルドでは、本番用の `ipollowork://` ハンドラーは自動登録されません。外部ブラウザーから Cloud サインインをテストする場合は、リポジトリにあるプロトコル切り替えツールを使用し、終了後に本番用ハンドラーへ戻してください。詳しくは [Windows プロトコル切り替え](../windows-protocol-switcher.md) を参照してください。
 
 ## ビルドとパッケージ化
 
@@ -207,4 +207,4 @@ iPolloWork は **iPolloWork Source Available License 1.0** を使用します。
 - 事前の書面による許可で別のブランディングが明示的に認められていない限り、ユーザー向けフロントエンド表示には iPolloWork の名称、ロゴ、製品帰属表示を残す必要があります。
 - 個別にライセンスされたサードパーティコンポーネント、および過去に MIT ライセンスで公開されたコードには、それぞれの元のライセンスと既存の権利が引き続き適用されます。
 
-適用される条項は [`LICENSE`](../LICENSE) を参照してください。これはソースアベイラブルライセンスであり、OSI が承認するオープンソースライセンスではありません。
+適用される条項は [`LICENSE`](../../LICENSE) を参照してください。これはソースアベイラブルライセンスであり、OSI が承認するオープンソースライセンスではありません。
