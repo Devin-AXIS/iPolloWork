@@ -25,9 +25,17 @@ The iPolloWork repository is the only source of truth for product code. Every
 change to the shared Design Studio is built once and flows to both DeepSeek
 plugins. The public
 [`deepseek-design`](https://github.com/Devin-AXIS/deepseek-design) repository is
-an automatically generated distribution mirror: it provides complete runnable
-packages, source references, issues, and a focused discovery page without
-creating a second implementation to maintain.
+an automatically generated distribution and contribution mirror: it provides
+complete runnable packages, source references, issues, and a focused discovery
+page without creating a second implementation to maintain.
+
+## Contributing code
+
+Open source pull requests in `deepseek-design` against `source/` or the root
+README. Do not edit generated runtime files under `packages/` directly. After a
+source change is merged there, iPolloWork imports it as a reviewable upstream
+pull request. Merging the upstream pull request rebuilds both plugins and
+synchronizes the result back to `deepseek-design`.
 
 ## License
 
@@ -38,5 +46,6 @@ their respective licenses.
 ---
 
 DeepSeek Design 将 iPolloWork 的 Design Studio 与 PPT Studio 作为两个可独立安装
-的 DeepSeek Harness 插件提供。产品代码只在 iPolloWork 主库维护；公开的
-`deepseek-design` 仓库由主库自动生成和同步，不会形成两套代码。
+的 DeepSeek Harness 插件提供。大家可以在 `deepseek-design` 的 `source/` 目录
+提交代码；合并后会自动生成 iPolloWork 主库 PR。主库合并后再重新构建并同步
+回来，因此始终只有一套官方源码。

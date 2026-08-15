@@ -39,6 +39,8 @@
     "test:e2e": "pnpm --filter @ipollowork/app test:e2e",
     "audit:template-fidelity": "node scripts/audit-template-preview-fidelity.mjs",
     "export:deepseek-design": "node scripts/export-deepseek-design-repository.mjs",
+    "import:deepseek-design": "node scripts/import-deepseek-design-repository.mjs",
+    "test:deepseek-design-import": "node --test scripts/import-deepseek-design-repository.test.mjs",
     "evals": "node evals/runner/run.mjs",
     "fraimz": "node evals/runner/run.mjs",
     "gsap:generate": "bun vendor/hyperframes/scripts/gsap-catalog.ts generate",

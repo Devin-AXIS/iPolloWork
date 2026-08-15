@@ -21,6 +21,34 @@ const repositoryRoot = resolve(fileURLToPath(new URL("..", import.meta.url)));
 const publicRepository = "https://github.com/Devin-AXIS/deepseek-design";
 const sourceRepository = "https://github.com/Devin-AXIS/iPolloWork";
 
+export const deepSeekDesignSourceMappings = [
+  {
+    ipolloWorkPath: "external-plugins/deepseek-harness/README.md",
+    mirrorPath: "README.md",
+    type: "file",
+  },
+  {
+    ipolloWorkPath: "external-plugins/deepseek-harness/design-studio",
+    mirrorPath: "source/plugins/deepseek-idesign",
+    type: "directory",
+  },
+  {
+    ipolloWorkPath: "external-plugins/deepseek-harness/ppt-studio",
+    mirrorPath: "source/plugins/deepseek-ippt",
+    type: "directory",
+  },
+  {
+    ipolloWorkPath: "packages/design-studio",
+    mirrorPath: "source/shared/design-studio",
+    type: "directory",
+  },
+  {
+    ipolloWorkPath: "packages/types/src/templates.ts",
+    mirrorPath: "source/shared/types/templates.ts",
+    type: "file",
+  },
+];
+
 function usage() {
   return `Usage: pnpm export:deepseek-design -- --output <directory> --idesign <tarball> --ippt <tarball>`;
 }
@@ -124,7 +152,6 @@ async function main() {
   const sourceCommit = stdout.trim();
 
   for (const [source, destination] of [
-    ["external-plugins/deepseek-harness/README.md", "README.md"],
     ["CONTRIBUTING.md", "CONTRIBUTING.md"],
     ["LICENSE", "LICENSE"],
     ["LICENSES/MIT-legacy.txt", "LICENSES/MIT-legacy.txt"],
@@ -134,41 +161,31 @@ async function main() {
     await copyFile(join(repositoryRoot, source), join(options.output, destination));
   }
 
+  for (const mapping of deepSeekDesignSourceMappings) {
+    const source = join(repositoryRoot, mapping.ipolloWorkPath);
+    const destination = join(options.output, mapping.mirrorPath);
+    if (mapping.type === "directory") await copySourceDirectory(source, destination);
+    else await copyFile(source, destination);
+  }
+
   const packages = [];
   for (const packageEntry of options.packages) {
     packages.push(await extractPackage(packageEntry, options.output));
     await assertRunnablePackage(options.output, packageEntry.name);
   }
 
-  await copySourceDirectory(
-    join(repositoryRoot, "external-plugins/deepseek-harness/design-studio"),
-    join(options.output, "source/plugins/deepseek-idesign"),
-  );
-  await copySourceDirectory(
-    join(repositoryRoot, "external-plugins/deepseek-harness/ppt-studio"),
-    join(options.output, "source/plugins/deepseek-ippt"),
-  );
-  await copySourceDirectory(
-    join(repositoryRoot, "packages/design-studio"),
-    join(options.output, "source/shared/design-studio"),
-  );
-  await copyFile(
-    join(repositoryRoot, "packages/types/src/templates.ts"),
-    join(options.output, "source/shared/types/templates.ts"),
-  );
-
   await writeFile(
     join(options.output, "source/README.md"),
-    `# Source map\n\nThis directory mirrors the thin DeepSeek Harness adapters and shared Studio contract from [iPolloWork](${sourceRepository}/tree/${sourceCommit}). The complete, directly installable runtime is in \`packages/\`.\n\nThe Design and PPT interface remains single-sourced in [iPolloWork Design Studio](${sourceRepository}/tree/${sourceCommit}/apps/app/src/react-app/domains/session/design), and the curated templates remain in [bundled-templates](${sourceRepository}/tree/${sourceCommit}/apps/server/bundled-templates). Changes should be proposed in the main repository and are synchronized here after merge.\n`,
+    `# Source map\n\nThis directory mirrors the thin DeepSeek Harness adapters and shared Studio contract from [iPolloWork](${sourceRepository}/tree/${sourceCommit}). The complete, directly installable runtime is in \`packages/\`.\n\nSource pull requests are welcome in this repository. After a source change is merged here, iPolloWork imports it as a reviewable upstream pull request. When that upstream pull request is merged, the Studio and packages are rebuilt and synchronized back here. Do not edit generated files under \`packages/\` directly.\n\nThe Design and PPT interface remains single-sourced in [iPolloWork Design Studio](${sourceRepository}/tree/${sourceCommit}/apps/app/src/react-app/domains/session/design), and the curated templates remain in [bundled-templates](${sourceRepository}/tree/${sourceCommit}/apps/server/bundled-templates). Changes to those paths should be proposed directly in the main repository.\n`,
   );
   await writeFile(join(options.output, ".gitignore"), "node_modules/\n*.tgz\n.DS_Store\n");
   await writeFile(join(options.output, "SOURCE_COMMIT"), `${sourceCommit}\n`);
   await writeFile(
     join(options.output, "repository.json"),
-    `${JSON.stringify({ schemaVersion: 1, repository: publicRepository, source: { repository: sourceRepository, commit: sourceCommit }, packages }, null, 2)}\n`,
+    `${JSON.stringify({ schemaVersion: 1, repository: publicRepository, source: { repository: sourceRepository, commit: sourceCommit }, contributions: { mode: "upstream-pull-request", upstream: sourceRepository }, packages }, null, 2)}\n`,
   );
 
   console.log(`Exported ${packages.map(({ name, version }) => `${name}@${version}`).join(" and ")} from ${sourceCommit}.`);
 }
 
-await main();
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) await main();
