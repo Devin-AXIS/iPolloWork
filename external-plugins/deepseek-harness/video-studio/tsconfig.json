@@ -1,19 +1,20 @@
 {
   "compilerOptions": {
-    "target": "ES2023",
+    "target": "ES2024",
     "module": "ESNext",
     "moduleResolution": "Bundler",
     "jsx": "react-jsx",
-    "allowImportingTsExtensions": true,
     "baseUrl": ".",
     "paths": {
       "@deepseek-ai/*": ["node_modules/@deepseek-ai/*"],
+      "@ipollowork/types/hyperframes-project": ["../../../packages/types/src/hyperframes-project.ts"],
       "tsdown": ["node_modules/tsdown"],
-      "vite": ["node_modules/vite"]
+      "zod": ["node_modules/zod"]
     },
     "strict": true,
     "skipLibCheck": true,
+    "noEmit": true,
     "types": ["node"]
   },
-  "include": ["src", "tsdown.config.ts", "studio/vite.config.ts", "../design-studio/src", "../studio-host/src"]
+  "include": ["src", "../../../../packages/video-studio/src", "../studio-host/src"]
 }

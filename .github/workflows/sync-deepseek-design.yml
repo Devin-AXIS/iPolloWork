@@ -53,6 +53,10 @@ jobs:
         run: |
           pnpm --dir external-plugins/deepseek-harness/design-studio install --frozen-lockfile
           pnpm --dir external-plugins/deepseek-harness/ppt-studio install --frozen-lockfile
+          pnpm --dir external-plugins/deepseek-harness/video-studio install --frozen-lockfile
+
+      - name: Check HyperFrames version alignment
+        run: pnpm check:hyperframes-version-sync
 
       - name: Build runnable packages
         run: |
@@ -61,6 +65,9 @@ jobs:
           pnpm --dir external-plugins/deepseek-harness/design-studio pack --pack-destination "${RUNNER_TEMP}/deepseek-design-packages"
           pnpm --dir external-plugins/deepseek-harness/ppt-studio run check
           pnpm --dir external-plugins/deepseek-harness/ppt-studio pack --pack-destination "${RUNNER_TEMP}/deepseek-design-packages"
+          pnpm --dir external-plugins/deepseek-harness/video-studio run check
+          pnpm --dir external-plugins/deepseek-harness/video-studio run test
+          pnpm --dir external-plugins/deepseek-harness/video-studio pack --pack-destination "${RUNNER_TEMP}/deepseek-design-packages"
 
       - name: Configure repository deploy key
         env:
@@ -78,12 +85,15 @@ jobs:
           git clone git@github.com:Devin-AXIS/deepseek-design.git "${RUNNER_TEMP}/deepseek-design"
           idesign_tarball="$(find "${RUNNER_TEMP}/deepseek-design-packages" -maxdepth 1 -name 'deepseek-idesign-*.tgz' -print -quit)"
           ippt_tarball="$(find "${RUNNER_TEMP}/deepseek-design-packages" -maxdepth 1 -name 'deepseek-ippt-*.tgz' -print -quit)"
+          ivideo_tarball="$(find "${RUNNER_TEMP}/deepseek-design-packages" -maxdepth 1 -name 'deepseek-ivideo-*.tgz' -print -quit)"
           test -n "${idesign_tarball}"
           test -n "${ippt_tarball}"
+          test -n "${ivideo_tarball}"
           pnpm export:deepseek-design -- \
             --output "${RUNNER_TEMP}/deepseek-design" \
             --idesign "${idesign_tarball}" \
-            --ippt "${ippt_tarball}"
+            --ippt "${ippt_tarball}" \
+            --ivideo "${ivideo_tarball}"
 
       - name: Push synchronized snapshot
         env:

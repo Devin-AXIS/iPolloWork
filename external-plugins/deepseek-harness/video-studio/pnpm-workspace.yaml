@@ -1,0 +1,14 @@
+minimumReleaseAge: 4320
+minimumReleaseAgeExclude:
+  - "@deepseek-ai/*"
+  - "hyperframes"
+
+packages:
+  - "."
+
+allowBuilds:
+  '@google/genai': set this to true or false
+  esbuild: true
+  onnxruntime-node: set this to true or false
+  protobufjs: set this to true or false
+  sharp: true

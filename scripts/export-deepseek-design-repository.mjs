@@ -38,6 +38,16 @@ export const deepSeekDesignSourceMappings = [
     type: "directory",
   },
   {
+    ipolloWorkPath: "external-plugins/deepseek-harness/video-studio",
+    mirrorPath: "source/plugins/deepseek-ivideo",
+    type: "directory",
+  },
+  {
+    ipolloWorkPath: "external-plugins/deepseek-harness/studio-host",
+    mirrorPath: "source/shared/studio-host",
+    type: "directory",
+  },
+  {
     ipolloWorkPath: "packages/design-studio",
     mirrorPath: "source/shared/design-studio",
     type: "directory",
@@ -47,10 +57,20 @@ export const deepSeekDesignSourceMappings = [
     mirrorPath: "source/shared/types/templates.ts",
     type: "file",
   },
+  {
+    ipolloWorkPath: "packages/types/src/hyperframes-project.ts",
+    mirrorPath: "source/shared/types/hyperframes-project.ts",
+    type: "file",
+  },
+  {
+    ipolloWorkPath: "packages/video-studio",
+    mirrorPath: "source/shared/video-studio",
+    type: "directory",
+  },
 ];
 
 function usage() {
-  return `Usage: pnpm export:deepseek-design -- --output <directory> --idesign <tarball> --ippt <tarball>`;
+  return `Usage: pnpm export:deepseek-design -- --output <directory> --idesign <tarball> --ippt <tarball> --ivideo <tarball>`;
 }
 
 function parseArguments(argv) {
@@ -64,7 +84,7 @@ function parseArguments(argv) {
     }
     values.set(key.slice(2), value);
   }
-  for (const required of ["output", "idesign", "ippt"]) {
+  for (const required of ["output", "idesign", "ippt", "ivideo"]) {
     if (!values.has(required)) throw new Error(usage());
   }
   return {
@@ -72,6 +92,7 @@ function parseArguments(argv) {
     packages: [
       { name: "deepseek-idesign", tarball: resolve(values.get("idesign")) },
       { name: "deepseek-ippt", tarball: resolve(values.get("ippt")) },
+      { name: "deepseek-ivideo", tarball: resolve(values.get("ivideo")) },
     ],
   };
 }
@@ -176,7 +197,7 @@ async function main() {
 
   await writeFile(
     join(options.output, "source/README.md"),
-    `# Source map\n\nThis directory mirrors the thin DeepSeek Harness adapters and shared Studio contract from [iPolloWork](${sourceRepository}/tree/${sourceCommit}). The complete, directly installable runtime is in \`packages/\`.\n\nSource pull requests are welcome in this repository. After a source change is merged here, iPolloWork imports it as a reviewable upstream pull request. When that upstream pull request is merged, the Studio and packages are rebuilt and synchronized back here. Do not edit generated files under \`packages/\` directly.\n\nThe Design and PPT interface remains single-sourced in [iPolloWork Design Studio](${sourceRepository}/tree/${sourceCommit}/apps/app/src/react-app/domains/session/design), and the curated templates remain in [bundled-templates](${sourceRepository}/tree/${sourceCommit}/apps/server/bundled-templates). Changes to those paths should be proposed directly in the main repository.\n`,
+    `# Source map\n\nThis directory mirrors the thin DeepSeek Harness adapters and shared Studio contracts from [iPolloWork](${sourceRepository}/tree/${sourceCommit}). The complete, directly installable runtime is in \`packages/\`.\n\nSource pull requests are welcome in this repository. After a source change is merged here, iPolloWork imports it as a reviewable upstream pull request. When that upstream pull request is merged, all Studio packages are rebuilt and synchronized back here. Do not edit generated files under \`packages/\` directly.\n\nDesign, PPT, and Video remain single-sourced in iPolloWork. The curated templates remain in [bundled-templates](${sourceRepository}/tree/${sourceCommit}/apps/server/bundled-templates). Changes to core Studio surfaces or templates should be proposed directly in the main repository.\n`,
   );
   await writeFile(join(options.output, ".gitignore"), "node_modules/\n*.tgz\n.DS_Store\n");
   await writeFile(join(options.output, "SOURCE_COMMIT"), `${sourceCommit}\n`);

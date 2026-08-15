@@ -40,6 +40,12 @@
       "bun": "./src/hyperframes.ts",
       "default": "./dist/hyperframes.js"
     },
+    "./hyperframes-project": {
+      "types": "./src/hyperframes-project.ts",
+      "development": "./src/hyperframes-project.ts",
+      "bun": "./src/hyperframes-project.ts",
+      "default": "./dist/hyperframes-project.js"
+    },
     "./plugins": {
       "types": "./src/plugins.ts",
       "development": "./src/plugins.ts",

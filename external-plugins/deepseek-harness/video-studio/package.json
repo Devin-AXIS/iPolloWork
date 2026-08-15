@@ -1,0 +1,103 @@
+{
+  "name": "deepseek-ivideo",
+  "version": "0.1.0",
+  "description": "iPolloWork HyperFrames Video Studio and 27 editable video templates as a native DeepSeek Harness conversation view.",
+  "type": "module",
+  "main": "lib/index.js",
+  "exports": {
+    ".": "./lib/index.js",
+    "./client": "./lib/client.js",
+    "./contract": "./lib/contract.js",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib",
+    "studio/dist",
+    "cordis.patch.yml",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "pnpm run build:plugin && pnpm run build:studio",
+    "build:plugin": "tsdown",
+    "build:studio": "vite build --config studio/vite.config.ts",
+    "check": "tsc -p tsconfig.json --noEmit && tsc -p studio/tsconfig.json --noEmit",
+    "test": "pnpm run build && node --test test/*.test.mjs",
+    "prepack": "pnpm run build"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "inject": [
+        "@deepseek-ai/dsh-client-runtime",
+        "@deepseek-ai/dsh-client-ui-conversation"
+      ]
+    }
+  },
+  "keywords": [
+    "deepseek-harness",
+    "dsh-plugin",
+    "video-studio",
+    "hyperframes",
+    "ipollowork"
+  ],
+  "license": "SEE LICENSE IN LICENSE",
+  "engines": {
+    "node": ">=22"
+  },
+  "packageManager": "pnpm@11.4.0",
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Devin-AXIS/iPolloWork.git",
+    "directory": "external-plugins/deepseek-harness/video-studio"
+  },
+  "bugs": {
+    "url": "https://github.com/Devin-AXIS/deepseek-design/issues"
+  },
+  "homepage": "https://github.com/Devin-AXIS/deepseek-design#deepseek-ivideo",
+  "dependencies": {
+    "hyperframes": "0.7.60"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "^4.0.1",
+    "@deepseek-ai/dsh-client-runtime": ">=0.0.1-rc.1 <0.2.0-0",
+    "@deepseek-ai/dsh-client-ui-conversation": ">=0.0.1-rc.1 <0.2.0-0",
+    "@deepseek-ai/dsh-host-webserver": ">=0.0.1-rc.1 <0.2.0-0",
+    "@deepseek-ai/dsh-tools": ">=0.0.1-rc.1 <0.2.0-0",
+    "@deepseek-ai/dsh-workspace": ">=0.0.1-rc.1 <0.2.0-0",
+    "react": "^18.2.0"
+  },
+  "peerDependenciesMeta": {
+    "@deepseek-ai/cordis": { "optional": true },
+    "@deepseek-ai/dsh-client-runtime": { "optional": true },
+    "@deepseek-ai/dsh-client-ui-conversation": { "optional": true },
+    "@deepseek-ai/dsh-host-webserver": { "optional": true },
+    "@deepseek-ai/dsh-tools": { "optional": true },
+    "@deepseek-ai/dsh-workspace": { "optional": true },
+    "react": { "optional": true }
+  },
+  "devDependencies": {
+    "@deepseek-ai/cordis": "4.0.1",
+    "@deepseek-ai/dsh-client-runtime": "0.1.0-rc.6",
+    "@deepseek-ai/dsh-client-ui-conversation": "0.1.0-rc.6",
+    "@deepseek-ai/dsh-host-webserver": "0.1.0-rc.6",
+    "@deepseek-ai/dsh-tools": "0.1.0-rc.6",
+    "@deepseek-ai/dsh-workspace": "0.1.0-rc.6",
+    "@types/node": "25.6.0",
+    "@types/react": "18.3.1",
+    "@types/react-dom": "18.3.0",
+    "@vitejs/plugin-react": "5.0.4",
+    "react": "18.2.0",
+    "react-dom": "18.2.0",
+    "tsdown": "0.22.2",
+    "typescript": "5.9.3",
+    "vite": "6.0.1",
+    "zod": "4.4.3"
+  }
+}

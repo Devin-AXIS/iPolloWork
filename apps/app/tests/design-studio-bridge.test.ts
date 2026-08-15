@@ -11,6 +11,7 @@ import {
 
 const designPanel = readFileSync(new URL("../src/react-app/domains/session/design/design-panel.tsx", import.meta.url), "utf8");
 const templateDialog = readFileSync(new URL("../src/react-app/domains/session/design/design-template-dialog.tsx", import.meta.url), "utf8");
+const templateCatalogDialog = readFileSync(new URL("../src/components/template-catalog-dialog.tsx", import.meta.url), "utf8");
 const studioHost = readFileSync(new URL("../../../packages/design-studio/src/host.ts", import.meta.url), "utf8");
 
 const context: DesignAiSelectionContext = {
@@ -65,7 +66,8 @@ describe("Design Studio host bridge", () => {
     expect(studioHost).toContain("applyDesignStudioTemplate?");
     expect(designPanel).toContain('data-testid="design-template-market-button"');
     expect(designPanel).toContain("features.templates");
-    expect(templateDialog).toContain("ConfirmModal");
+    expect(templateDialog).toContain("TemplateCatalogDialog");
+    expect(templateCatalogDialog).toContain("ConfirmModal");
     expect(templateDialog).toContain("applyDesignStudioTemplate");
   });
 });

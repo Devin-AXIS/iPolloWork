@@ -41,6 +41,7 @@
     "export:deepseek-design": "node scripts/export-deepseek-design-repository.mjs",
     "import:deepseek-design": "node scripts/import-deepseek-design-repository.mjs",
     "test:deepseek-design-import": "node --test scripts/import-deepseek-design-repository.test.mjs",
+    "check:hyperframes-version-sync": "node scripts/check-hyperframes-version-sync.mjs",
     "evals": "node evals/runner/run.mjs",
     "fraimz": "node evals/runner/run.mjs",
     "gsap:generate": "bun vendor/hyperframes/scripts/gsap-catalog.ts generate",
