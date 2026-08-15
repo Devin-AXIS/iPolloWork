@@ -3,10 +3,16 @@
     "target": "ES2023",
     "module": "ESNext",
     "moduleResolution": "Bundler",
+    "allowImportingTsExtensions": true,
+    "baseUrl": ".",
+    "paths": {
+      "@deepseek-ai/*": ["node_modules/@deepseek-ai/*"],
+      "tsdown": ["node_modules/tsdown"]
+    },
     "jsx": "react-jsx",
     "strict": true,
     "skipLibCheck": true,
     "types": ["node"]
   },
-  "include": ["src", "tsdown.config.ts"]
+  "include": ["src", "tsdown.config.ts", "../studio-host/src"]
 }

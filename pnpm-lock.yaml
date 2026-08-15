@@ -68,6 +68,9 @@ importers:
       '@ipollowork/ui':
         specifier: workspace:*
         version: link:../../packages/ui
+      '@ipollowork/video-studio':
+        specifier: workspace:*
+        version: link:../../packages/video-studio
       '@lexical/react':
         specifier: ^0.35.0
         version: 0.35.0(react-dom@19.2.4(react@19.2.4))(react@19.2.4)(yjs@13.6.30)
@@ -500,6 +503,12 @@ importers:
       typescript:
         specifier: ^5.6.3
         version: 5.9.3
+
+  packages/video-studio:
+    dependencies:
+      '@ipollowork/types':
+        specifier: workspace:*
+        version: link:../types
 
 packages:
 

@@ -12,6 +12,7 @@
 <p align="center">
   <a href="https://www.npmjs.com/package/deepseek-idesign"><img alt="deepseek-idesign" src="https://img.shields.io/npm/v/deepseek-idesign?label=deepseek-idesign&color=3b82f6" /></a>
   <a href="https://www.npmjs.com/package/deepseek-ippt"><img alt="deepseek-ippt" src="https://img.shields.io/npm/v/deepseek-ippt?label=deepseek-ippt&color=8b5cf6" /></a>
+  <a href="https://www.npmjs.com/package/deepseek-ivideo"><img alt="deepseek-ivideo" src="https://img.shields.io/npm/v/deepseek-ivideo?label=deepseek-ivideo&color=1677ed" /></a>
   <a href="https://github.com/deepseek-ai/deepseek-harness"><img alt="DeepSeek Harness plugin" src="https://img.shields.io/badge/DeepSeek%20Harness-plugin-111827" /></a>
   <a href="LICENSE"><img alt="License" src="https://img.shields.io/badge/license-iPolloWork%20Source%20Available-0f766e" /></a>
 </p>
@@ -44,16 +45,15 @@ DeepSeek Design 不是另一个聊天机器人，也不会替换 DeepSeek Harnes
 描述需求 → AI 生成 → Studio 预览 → 手动精调 / Ask AI → 保存到工作区 → 继续迭代
 ```
 
-## 两个独立插件，一套设计系统
+## 三个独立插件，一套创作系统
 
 | 插件 | 面向场景 | 核心能力 |
 | --- | --- | --- |
 | [`deepseek-idesign`](https://www.npmjs.com/package/deepseek-idesign) | 网站、App 原型、海报、信息卡、数据报告、杂志与其他非幻灯片设计 | Design 模板市场、桌面/移动预览、可视化元素编辑、主题与设计令牌、选区 Ask AI |
 | [`deepseek-ippt`](https://www.npmjs.com/package/deepseek-ippt) | 演示文稿与幻灯片 | 独立 PPT 模板市场、逐页编辑、可视化精调、选区 Ask AI、PDF/PPTX 导出 |
+| [`deepseek-ivideo`](https://www.npmjs.com/package/deepseek-ivideo) | 动态视觉、产品演示、数据故事与短视频 | HyperFrames 时间线、动画与素材、27 个 Video 模板、选区 Ask AI、自动校验、视频导出 |
 
-两个插件可以单独安装，也可以一起使用。它们共享同一套 iPolloWork Design Studio 与模板协议，但项目目录彼此隔离，因此不会相互覆盖。
-
-Video Studio 不包含在本项目中，也不会因为安装 DeepSeek Design 而被下载或启动。
+三个插件可以单独安装，也可以一起使用。它们共享 iPolloWork Studio 契约和模板协议，但项目目录彼此隔离，因此不会相互覆盖。只安装所选 npm 包，不会下载另外两个插件。
 
 ## 核心特性
 
@@ -65,6 +65,7 @@ Video Studio 不包含在本项目中，也不会因为安装 DeepSeek Design �
 - **可逆编辑**：支持保存、撤销和文件变更冲突检测，降低 AI 与手动编辑同时发生时的覆盖风险。
 - **设计系统能力**：通过设计令牌统一管理颜色、字体、背景、圆角、阴影、间距和组件视觉语言。
 - **独立安装**：每个 npm 包都包含所需的浏览器资源，只安装选择的能力，不把完整 iPolloWork 主项目带入 Harness。
+- **原生 Video 工作流**：iVideo 直接复用 HyperFrames 时间线、可视化编辑、预览、校验与导出，不维护第二套视频引擎。
 
 ## 快速开始
 
@@ -82,10 +83,10 @@ npx @deepseek-ai/dsh plugin --profile web add deepseek-idesign
 npx @deepseek-ai/dsh web
 ```
 
-### 同时安装 Design 与 PPT
+### 同时安装 Design、PPT 与 Video
 
 ```sh
-npx @deepseek-ai/dsh plugin --profile web add deepseek-idesign deepseek-ippt
+npx @deepseek-ai/dsh plugin --profile web add deepseek-idesign deepseek-ippt deepseek-ivideo
 npx @deepseek-ai/dsh web
 ```
 
@@ -95,16 +96,16 @@ npx @deepseek-ai/dsh web
 
 ```sh
 # 更新
-npx @deepseek-ai/dsh plugin --profile web update deepseek-idesign deepseek-ippt
+npx @deepseek-ai/dsh plugin --profile web update deepseek-idesign deepseek-ippt deepseek-ivideo
 
 # 卸载
-npx @deepseek-ai/dsh plugin --profile web remove deepseek-idesign deepseek-ippt
+npx @deepseek-ai/dsh plugin --profile web remove deepseek-idesign deepseek-ippt deepseek-ivideo
 ```
 
 ## 如何使用
 
 1. 在要作为工作区的项目目录中启动 DeepSeek Harness。
-2. 新建或打开一个对话，在对话视图中选择 **Design** 或 **PPT**。
+2. 新建或打开一个对话，在对话视图中选择 **Design**、**PPT** 或 **Video**。
 3. 点击编辑开关旁的 `+` 打开对应模板市场，或直接让 AI 从当前空白项目开始创作。
 4. 点击画布中的元素进行精调；需要 AI 帮助时，点击 **Ask AI**，检查自动填入的修改要求后再发送。
 5. 所有修改都会回到当前工作区，后续对话仍可继续读取和编辑。
@@ -121,6 +122,12 @@ PPT 项目保存在：
 design/<sessionId>-ippt/
 ```
 
+Video 项目保存在：
+
+```text
+video/<sessionId>/
+```
+
 ## 安全与数据边界
 
 - 插件只接受 DeepSeek Harness 已注册的工作区，并将读写限制在工作区的 `design/` 目录内。
@@ -128,7 +135,7 @@ design/<sessionId>-ippt/
 - 文本写入带版本冲突检查并采用原子替换，避免静默覆盖较新的文件。
 - 模板应用先在隔离目录中完成校验，再原子替换当前项目；失败时恢复原项目。
 - **Ask AI** 只填写当前对话的草稿，不会代替用户发送消息。
-- 安装插件不会安装或启动 iPolloWork 桌面应用，也不会载入 Video Studio。
+- 安装插件不会安装或启动 iPolloWork 桌面应用；每个插件只载入自己的 Studio。
 
 ## 项目结构与同步方式
 
@@ -136,16 +143,17 @@ design/<sessionId>-ippt/
 packages/
   deepseek-idesign/       可直接安装的完整 Design 插件
   deepseek-ippt/          可直接安装的完整 PPT 插件
+  deepseek-ivideo/        可直接安装的完整 Video 插件
 source/
   plugins/                DeepSeek Harness 适配器源码
-  shared/                 两个插件共用的 Studio 协议与类型
+  shared/                 三个插件共用的 Studio 协议与类型
 SOURCE_COMMIT             对应的 iPolloWork 主库提交
 repository.json           包版本与源码来源清单
 ```
 
 [iPolloWork](https://github.com/Devin-AXIS/iPolloWork) 是产品源码的唯一事实来源；[`deepseek-design`](https://github.com/Devin-AXIS/deepseek-design) 是面向 DeepSeek Harness 用户的独立发布与贡献入口。
 
-社区可以在本仓库修改 `source/` 或根目录 README。合并后，自动流程会在 iPolloWork 主库创建可审查的上游 PR；上游合并后再统一构建两个插件，并把结果同步回本仓库。这样，iPolloWork、DeepSeek Design 和两个 npm 包始终由同一套 Studio 能力升级，不需要分别维护功能分叉。
+社区可以在本仓库修改 `source/` 或根目录 README。合并后，自动流程会在 iPolloWork 主库创建可审查的上游 PR；上游合并后再统一构建三个插件，并把结果同步回本仓库。这样，iPolloWork、DeepSeek Design 和三个 npm 包始终由同一套 Studio 能力升级，不需要分别维护功能分叉。
 
 请不要直接修改 `packages/` 下的生成产物。
 
@@ -185,14 +193,15 @@ Brief → AI generation → Studio preview → Visual edit / Ask AI → Workspac
 4. Edit directly on the canvas or select an element and use **Ask AI** for a focused change.
 5. Continue the conversation, switch templates, or undo changes; presentations can also be exported to PDF or PPTX.
 
-## Two plugins, one design system
+## Three plugins, one creative system
 
 | Plugin | Best for | Main capabilities |
 | --- | --- | --- |
 | [`deepseek-idesign`](https://www.npmjs.com/package/deepseek-idesign) | Websites, app prototypes, posters, cards, data reports, magazines, and other non-slide designs | Curated Design templates, desktop/mobile preview, direct element editing, themes and design tokens, selection-aware Ask AI |
 | [`deepseek-ippt`](https://www.npmjs.com/package/deepseek-ippt) | Presentations and slide decks | Dedicated slide templates, page-by-page editing, visual refinement, selection-aware Ask AI, PDF/PPTX export |
+| [`deepseek-ivideo`](https://www.npmjs.com/package/deepseek-ivideo) | Motion design, product demos, data stories, and short video | HyperFrames timeline, animation and media, 27 Video templates, selection-aware Ask AI, validation, and video export |
 
-Install either plugin or both. They share the same iPolloWork Design Studio and template contract, while keeping their project directories isolated. Video Studio is intentionally not part of this repository or either package.
+Install any plugin independently or use all three. They share iPolloWork Studio contracts and template protocols while keeping project directories isolated. Installing one package never downloads the other two.
 
 ## Highlights
 
@@ -204,6 +213,7 @@ Install either plugin or both. They share the same iPolloWork Design Studio and 
 - **Reversible editing** — save, undo, and write-conflict detection protect mixed AI and manual workflows.
 - **Design-system controls** — colors, typography, backgrounds, radii, shadows, spacing, and component language stay coordinated through design tokens.
 - **Independent installation** — each npm package includes its browser assets and installs only the selected capability.
+- **Native Video workflow** — iVideo reuses the HyperFrames timeline, visual editing, preview, validation, and export pipeline without a second video engine.
 
 ## Quick start
 
@@ -221,10 +231,10 @@ npx @deepseek-ai/dsh plugin --profile web add deepseek-idesign
 npx @deepseek-ai/dsh web
 ```
 
-### Install Design and PPT
+### Install Design, PPT, and Video
 
 ```sh
-npx @deepseek-ai/dsh plugin --profile web add deepseek-idesign deepseek-ippt
+npx @deepseek-ai/dsh plugin --profile web add deepseek-idesign deepseek-ippt deepseek-ivideo
 npx @deepseek-ai/dsh web
 ```
 
@@ -234,21 +244,21 @@ If `dsh` is already installed, replace `npx @deepseek-ai/dsh` with `dsh`. The We
 
 ```sh
 # Update
-npx @deepseek-ai/dsh plugin --profile web update deepseek-idesign deepseek-ippt
+npx @deepseek-ai/dsh plugin --profile web update deepseek-idesign deepseek-ippt deepseek-ivideo
 
 # Remove
-npx @deepseek-ai/dsh plugin --profile web remove deepseek-idesign deepseek-ippt
+npx @deepseek-ai/dsh plugin --profile web remove deepseek-idesign deepseek-ippt deepseek-ivideo
 ```
 
 ## Using the Studio
 
 1. Start DeepSeek Harness from the directory you want to use as the workspace.
-2. Create or open a conversation and choose the **Design** or **PPT** view.
+2. Create or open a conversation and choose the **Design**, **PPT**, or **Video** view.
 3. Use the `+` beside Edit to open the matching template catalog, or ask the AI to start from the blank project.
 4. Select elements for direct editing. Use **Ask AI** when you want Harness to make the next change, then review the prepared draft before sending it.
 5. Every change remains in the current workspace and can be read or edited by later turns.
 
-Design projects use `design/<sessionId>/`; PPT projects use `design/<sessionId>-ippt/`.
+Design projects use `design/<sessionId>/`; PPT projects use `design/<sessionId>-ippt/`; Video projects use `video/<sessionId>/`.
 
 ## Security and data boundaries
 
@@ -256,7 +266,7 @@ Design projects use `design/<sessionId>/`; PPT projects use `design/<sessionId>-
 - The Studio iframe uses a random per-process token and same-origin message checks.
 - Writes use conflict checks and atomic replacement; template changes are staged and validated before replacing a project.
 - **Ask AI** only prepares a draft in the current conversation and never submits it for the user.
-- Installing these packages does not install or launch the iPolloWork desktop app or Video Studio.
+- Installing these packages does not install or launch the iPolloWork desktop app; each package loads only its own Studio.
 
 ## Repository model
 
@@ -270,7 +280,7 @@ repository.json         Package and provenance manifest
 
 [iPolloWork](https://github.com/Devin-AXIS/iPolloWork) is the single source of truth for product code. [`deepseek-design`](https://github.com/Devin-AXIS/deepseek-design) is the focused distribution and contribution entry point for Harness users.
 
-Pull requests may update `source/` or this README. Accepted changes are imported into iPolloWork as a reviewable upstream pull request. After that pull request is merged, both plugins are rebuilt from the same Studio source and synchronized back here. Do not edit generated runtime files under `packages/` directly.
+Pull requests may update `source/` or this README. Accepted changes are imported into iPolloWork as a reviewable upstream pull request. After that pull request is merged, all three plugins are rebuilt from shared Studio sources and synchronized back here. Do not edit generated runtime files under `packages/` directly.
 
 ## Contributing
 

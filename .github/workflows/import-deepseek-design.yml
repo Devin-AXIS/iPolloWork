@@ -44,7 +44,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           MIRROR_SHA: ${{ steps.mirror.outputs.sha }}
         run: |
-          if [[ -z "$(git status --porcelain -- external-plugins/deepseek-harness packages/design-studio packages/types/src/templates.ts)" ]]; then
+          if [[ -z "$(git status --porcelain -- external-plugins/deepseek-harness packages/design-studio packages/video-studio packages/types/src/templates.ts packages/types/src/hyperframes-project.ts)" ]]; then
             echo "No incoming DeepSeek Design source changes."
             exit 0
           fi
@@ -61,12 +61,16 @@ jobs:
             external-plugins/deepseek-harness/README.md \
             external-plugins/deepseek-harness/design-studio \
             external-plugins/deepseek-harness/ppt-studio \
+            external-plugins/deepseek-harness/video-studio \
+            external-plugins/deepseek-harness/studio-host \
             packages/design-studio \
-            packages/types/src/templates.ts
+            packages/video-studio \
+            packages/types/src/templates.ts \
+            packages/types/src/hyperframes-project.ts
           git commit -m "sync: import DeepSeek Design ${MIRROR_SHA:0:12}"
           git push origin "${branch}"
           gh pr create \
             --base main \
             --head "${branch}" \
             --title "sync: import DeepSeek Design contribution" \
-            --body "Imports approved source paths from [DeepSeek Design](https://github.com/Devin-AXIS/deepseek-design/commit/${MIRROR_SHA}). Generated packages and repository policy files are intentionally excluded. After this pull request is merged, the normal forward sync rebuilds both plugins and updates the public repository."
+            --body "Imports approved source paths from [DeepSeek Design](https://github.com/Devin-AXIS/deepseek-design/commit/${MIRROR_SHA}). Generated packages and repository policy files are intentionally excluded. After this pull request is merged, the normal forward sync rebuilds all three plugins and updates the public repository."

@@ -10,7 +10,9 @@
       "@/*": ["../../../../apps/app/src/*"],
       "@ipollowork/design-studio": ["../../../../packages/design-studio/src/index.ts"],
       "@ipollowork/types/templates": ["../../../../packages/types/src/templates.ts"],
-      "@tanstack/react-query": ["../../../../apps/app/node_modules/@tanstack/react-query"]
+      "@tanstack/react-query": ["../../../../apps/app/node_modules/@tanstack/react-query"],
+      "@deepseek-ai/*": ["../node_modules/@deepseek-ai/*"],
+      "vite": ["../node_modules/vite"]
     },
     "typeRoots": [
       "../../../../apps/app/node_modules/@types",

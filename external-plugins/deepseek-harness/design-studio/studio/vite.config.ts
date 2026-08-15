@@ -1,13 +1,10 @@
-import { cp, mkdir, readFile, readdir, rm, stat } from "node:fs/promises";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { defineConfig, type PluginOption } from "vite";
+import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
-import {
-  isCustomerVisibleBundledTemplate,
-  templateManifestV1Schema,
-} from "../../../../packages/types/src/templates";
+import { isCustomerVisibleBundledTemplate } from "../../../../packages/types/src/templates";
+import { createBundledTemplateCopyPlugin } from "../../studio-host/build.ts";
 import type { DeepSeekDesignStudioMode } from "../src/index";
 
 const sourcePluginRoot = resolve(fileURLToPath(new URL("..", import.meta.url)));
@@ -20,34 +17,23 @@ export type DesignStudioViteOptions = {
   outputPluginRoot: string;
 };
 
-function copyTemplates(options: DesignStudioViteOptions): PluginOption {
-  return {
-    name: "ipollowork-design-studio-templates",
-    transformIndexHtml(html) {
-      return html.replace("iPolloWork Design Studio", `iPolloWork ${options.studioTitle}`);
-    },
-    async closeBundle() {
-      const sourceRoot = resolve(repositoryRoot, "apps/server/bundled-templates");
-      const destinationRoot = resolve(options.outputPluginRoot, "lib/templates");
-      await rm(destinationRoot, { recursive: true, force: true });
-      await mkdir(destinationRoot, { recursive: true });
-      for (const name of await readdir(sourceRoot)) {
-        const directory = resolve(sourceRoot, name);
-        if (!(await stat(directory)).isDirectory()) continue;
-        const parsed = templateManifestV1Schema.safeParse(JSON.parse(await readFile(resolve(directory, "manifest.json"), "utf8")));
-        if (!parsed.success || parsed.data.surface !== "design" || !isCustomerVisibleBundledTemplate(parsed.data)) continue;
-        const allowed = options.mode === "slides" ? parsed.data.category === "slides" : parsed.data.category !== "slides";
-        if (allowed) await cp(directory, resolve(destinationRoot, name), { recursive: true, errorOnExist: true });
-      }
-    },
-  };
-}
-
 export function createDesignStudioViteConfig(options: DesignStudioViteOptions) {
   return defineConfig({
     root: resolve(sourcePluginRoot, "studio"),
     base: "./",
-    plugins: [copyTemplates(options), tailwindcss(), react()],
+    plugins: [
+      createBundledTemplateCopyPlugin({
+        repositoryRoot,
+        outputPluginRoot: options.outputPluginRoot,
+        name: "ipollowork-design-studio-templates",
+        indexTitle: `iPolloWork ${options.studioTitle}`,
+        allows: (manifest) => manifest.surface === "design"
+          && isCustomerVisibleBundledTemplate(manifest)
+          && (options.mode === "slides" ? manifest.category === "slides" : manifest.category !== "slides"),
+      }),
+      tailwindcss(),
+      react(),
+    ],
     define: {
       __DEEPSEEK_STUDIO_MODE__: JSON.stringify(options.mode),
       __DEEPSEEK_STUDIO_TITLE__: JSON.stringify(options.studioTitle),

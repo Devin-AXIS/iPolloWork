@@ -1,0 +1,25 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "useDefineForClassFields": true,
+    "module": "ESNext",
+    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    "jsx": "react-jsx",
+    "jsxImportSource": "react",
+    "moduleResolution": "Bundler",
+    "baseUrl": ".",
+    "paths": {
+      "@ipollowork/video-studio": ["../../../../packages/video-studio/src/index.ts"],
+      "@ipollowork/types/templates": ["../../../../packages/types/src/templates.ts"],
+      "@ipollowork/types/hyperframes-project": ["../../../../packages/types/src/hyperframes-project.ts"],
+      "zod": ["../node_modules/zod"]
+    },
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "noEmit": true,
+    "strict": true,
+    "skipLibCheck": true,
+    "types": ["vite/client"]
+  },
+  "include": ["src"]
+}

@@ -47,6 +47,7 @@
     "@fontsource-variable/ibm-plex-sans": "^5.2.8",
     "@heroicons/react": "^2.2.0",
     "@ipollowork/design-studio": "workspace:*",
+    "@ipollowork/video-studio": "workspace:*",
     "@ipollowork/types": "workspace:*",
     "@ipollowork/ui": "workspace:*",
     "@lexical/react": "^0.35.0",
