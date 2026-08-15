@@ -263,7 +263,7 @@ export function CloudMarketplacesView({
   }
 
   return (
-    <section className="space-y-9">
+    <section className="space-y-7">
       {!embedded ? (
         <>
           <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
@@ -328,8 +328,8 @@ type MarketplaceSectionProps = {
 function MarketplaceSection(props: MarketplaceSectionProps) {
   return (
     <section>
-      <h2 className="border-b border-dls-border pb-3 text-base font-semibold text-dls-text">{props.title}</h2>
-      <div className="grid gap-x-8 sm:grid-cols-2">
+      <h2 className="border-b border-dls-border pb-2 text-sm font-semibold text-dls-text">{props.title}</h2>
+      <div className="grid gap-x-8 lg:grid-cols-2">
         {props.items.map((item) => {
           const localPackage = props.installed[item.pluginId];
           return (

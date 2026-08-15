@@ -49,14 +49,10 @@ export type ExtensionsViewProps = {
   workspaceId: string | null;
   pluginPackagesView: ReactNode;
   skillsView: ReactNode;
-  initialSection?: ExtensionsSection;
-  setSectionRoute?: (tab: "skills" | "plugins") => void;
+  activeTab: "plugins" | "skills";
 };
 
 export function ExtensionsView(props: ExtensionsViewProps) {
-  const [activeTab, setActiveTab] = useState<"plugins" | "skills">(
-    props.initialSection === "skills" ? "skills" : "plugins",
-  );
   const activeEnterprise = useActiveEnterpriseConnection();
   const [resourceScope, setResourceScope] = useState<WorkContextId>(() => readActiveWorkContextId());
   const [enterpriseResources, setEnterpriseResources] = useState<EnterpriseResource[]>([]);
@@ -101,11 +97,6 @@ export function ExtensionsView(props: ExtensionsViewProps) {
     return () => { current = false; };
   }, [activeEnterprise, enterpriseRefreshRevision, props.client, props.workspaceId, resourceScope]);
 
-  const selectTab = (tab: "plugins" | "skills") => {
-    setActiveTab(tab);
-    props.setSectionRoute?.(tab);
-  };
-
   const installEnterpriseExtension = async (resource: EnterpriseResource) => {
     if (!activeEnterprise || !props.client || !props.workspaceId || !resource.latestVersion) return;
     setEnterpriseBusyId(resource.id);
@@ -128,30 +119,9 @@ export function ExtensionsView(props: ExtensionsViewProps) {
   };
 
   return (
-    <section className="w-full max-w-5xl animate-in space-y-7 fade-in duration-300">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="inline-flex rounded-xl bg-dls-hover p-1" role="tablist" aria-label={t("plugin_library.navigation_label")}>
-          <button
-            type="button"
-            role="tab"
-            aria-selected={activeTab === "plugins"}
-            className={`rounded-lg px-4 py-2 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 ${activeTab === "plugins" ? "bg-dls-surface text-dls-text shadow-sm" : "text-dls-secondary hover:text-dls-text"}`}
-            onClick={() => selectTab("plugins")}
-          >
-            {t("plugin_library.plugins_tab")}
-          </button>
-          <button
-            type="button"
-            role="tab"
-            aria-selected={activeTab === "skills"}
-            className={`rounded-lg px-4 py-2 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 ${activeTab === "skills" ? "bg-dls-surface text-dls-text shadow-sm" : "text-dls-secondary hover:text-dls-text"}`}
-            onClick={() => selectTab("skills")}
-          >
-            {t("plugin_library.skills_tab")}
-          </button>
-        </div>
-
-        {activeEnterprise ? (
+    <section className="w-full max-w-5xl animate-in space-y-5 fade-in duration-300">
+      {activeEnterprise ? (
+        <div className="flex justify-end">
           <div className="flex items-center gap-2">
             <WorkResourceScopeSwitch enterprise={activeEnterprise} value={resourceScope} onChange={setResourceScope} />
             {resourceScope !== "personal" ? (
@@ -166,8 +136,8 @@ export function ExtensionsView(props: ExtensionsViewProps) {
               </Button>
             ) : null}
           </div>
-        ) : null}
-      </div>
+        </div>
+      ) : null}
 
       {resourceScope !== "personal" ? (
         enterpriseLoading ? (
@@ -208,7 +178,7 @@ export function ExtensionsView(props: ExtensionsViewProps) {
             <Building2 className="mx-auto mb-3 size-5" />{t("enterprise_connection.enterprise_extensions_empty")}
           </div>
         )
-      ) : activeTab === "skills" ? props.skillsView : (
+      ) : props.activeTab === "skills" ? props.skillsView : (
         <div className="space-y-8">
           {props.pluginPackagesView}
           {pluginCount > 0 ? (

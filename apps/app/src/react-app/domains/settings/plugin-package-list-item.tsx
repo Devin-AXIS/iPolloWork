@@ -43,15 +43,15 @@ export function PluginPackageListItem({
 
   if (compact) {
     return (
-      <div className="flex min-w-0 items-center gap-3 border-b border-dls-border py-4">
+      <div className="flex min-w-0 items-center gap-3 border-b border-dls-border py-3">
         <button
           type="button"
           className="flex min-w-0 flex-1 items-center gap-3 rounded-xl text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
           onClick={onOpen}
           disabled={!onOpen}
         >
-          <span className={`flex size-11 shrink-0 items-center justify-center overflow-hidden rounded-xl border bg-dls-surface ${featured ? "border-blue-6 text-blue-11" : "border-dls-border text-dls-secondary"}`}>
-            {iconUrl ? <img src={iconUrl} alt="" className="size-6 object-contain" /> : <Package size={19} />}
+          <span className={`flex size-10 shrink-0 items-center justify-center overflow-hidden rounded-lg border bg-dls-surface ${featured ? "border-blue-6 text-blue-11" : "border-dls-border text-dls-secondary"}`}>
+            {iconUrl ? <img src={iconUrl} alt="" className="size-5 object-contain" /> : <Package size={17} />}
           </span>
           <span className="min-w-0 flex-1">
             <span className="flex min-w-0 items-center gap-2">

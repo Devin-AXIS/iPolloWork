@@ -84,9 +84,10 @@ import { useFeatureFlagsPreferences } from "@/react-app/domains/settings/state/f
 import { DebugView } from "@/react-app/domains/settings/pages/debug-view";
 import { EnvironmentView } from "@/react-app/domains/settings/pages/environment-view";
 import { AuthorizationCenterView } from "@/react-app/domains/settings/pages/authorization-center-view";
-import { ExtensionsView } from "@/react-app/domains/settings/pages/extensions-view";
+import { ExtensionsView, type ExtensionsSection } from "@/react-app/domains/settings/pages/extensions-view";
 import { PluginPackagesPanel } from "@/react-app/domains/settings/plugin-packages-panel";
 import type { PluginPackageRelationships } from "@/react-app/domains/settings/plugin-platform-state";
+import { SettingsSegmentedTabs } from "@/react-app/domains/settings/settings-segmented-tabs";
 import { RecoveryView } from "@/react-app/domains/settings/pages/recovery-view";
 import { SkillsView } from "@/react-app/domains/settings/pages/skills-view";
 import { UpdatesView } from "@/react-app/domains/settings/pages/updates-view";
@@ -224,7 +225,7 @@ const SETTINGS_UPDATE_AUTO_DOWNLOAD_KEY = "ipollowork.react.settings.update-auto
 export function parseSettingsPath(pathname: string): {
   tab: SettingsTab;
   redirectPath: string | null;
-  extensionsSection?: "all" | "mcp" | "plugins";
+  extensionsSection?: ExtensionsSection;
   pluginPackageId?: string;
 } {
   const trimmed = pathname
@@ -269,7 +270,7 @@ export function parseSettingsPath(pathname: string): {
         };
       }
       if (tail === "mcp") return { tab: "extensions", redirectPath: null, extensionsSection: "mcp" };
-      if (tail === "skills") return { tab: "extensions", redirectPath: null, extensionsSection: "all" };
+      if (tail === "skills") return { tab: "extensions", redirectPath: null, extensionsSection: "skills" };
       if (tail === "plugins") return { tab: "extensions", redirectPath: null, extensionsSection: "plugins" };
       return { tab: "extensions", redirectPath: null, extensionsSection: "all" };
     default:
@@ -1780,11 +1781,7 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
             extensions={extensionsStore}
             client={selectedWorkspaceEndpoint?.client ?? ipolloworkClient}
             workspaceId={runtimeWorkspaceId}
-            initialSection={route.extensionsSection}
-            setSectionRoute={(section) => {
-              const path = `extensions/${section}`;
-              navigateSettingsPath(path);
-            }}
+            activeTab={route.extensionsSection === "skills" ? "skills" : "plugins"}
             pluginPackagesView={pluginPackagesView}
             skillsView={skillsView}
           />
@@ -1960,7 +1957,18 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
         busyHint={loading ? t("session.loading_detail") : busyLabel}
         onClose={props.onClose ?? (() => navigate(selectedWorkspaceId ? workspaceSessionRoute(selectedWorkspaceId, navigationSessionId) : "/session"))}
         compact={props.embedded}
-        hidePageHeader={Boolean(route.pluginPackageId)}
+        headerTitle={route.tab === "extensions" && !route.pluginPackageId ? (
+          <SettingsSegmentedTabs
+            value={route.extensionsSection === "skills" ? "skills" : "plugins"}
+            ariaLabel={t("plugin_library.navigation_label")}
+            items={[
+              { value: "plugins", label: t("plugin_library.plugins_tab") },
+              { value: "skills", label: t("plugin_library.skills_tab") },
+            ]}
+            onValueChange={(value) => navigateSettingsPath(value === "skills" ? "extensions/skills" : "extensions")}
+          />
+        ) : undefined}
+        hidePageHeader={route.tab === "extensions" || Boolean(route.pluginPackageId)}
         hideShellHeader={Boolean(route.pluginPackageId)}
       >
         {settingsView}

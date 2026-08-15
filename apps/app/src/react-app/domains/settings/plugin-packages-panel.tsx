@@ -33,6 +33,7 @@ import type { McpStatus, McpStatusMap } from "@/app/types";
 import { resolveExtensionIconUrl } from "@/react-app/design-system/extension-icon-src";
 import { AuthorizationFormDialog } from "@/react-app/domains/settings/authorization-form-dialog";
 import { SettingsListSearchInput } from "@/react-app/domains/settings/settings-list";
+import { SettingsSegmentedTabs } from "@/react-app/domains/settings/settings-segmented-tabs";
 import { PluginPackageImportModal } from "./plugin-package-import-modal";
 import { PluginPackageListItem } from "./plugin-package-list-item";
 import {
@@ -107,7 +108,7 @@ export function PluginPackagesPanel(props: PluginPackagesPanelProps) {
   const [secretEditor, setSecretEditor] = useState<SecretAuthorizationEditor | null>(null);
   const [mcpConnectionFeedbacks, setMcpConnectionFeedbacks] = useState<Record<string, McpConnectionFeedback>>({});
   const [loaded, setLoaded] = useState(false);
-  const [source, setSource] = useState<"marketplace" | "personal">("marketplace");
+  const [source, setSource] = useState<"marketplace" | "personal">("personal");
   const [search, setSearch] = useState("");
 
   const refresh = useCallback(async () => {
@@ -150,14 +151,9 @@ export function PluginPackagesPanel(props: PluginPackagesPanelProps) {
     return () => window.clearInterval(timer);
   }, [flows, refresh]);
 
-  const installedCount = items.length;
   const availableCatalogItems = useMemo(
     () => catalogItems.filter((item) => item.installedVersion === null || item.updateAvailable),
     [catalogItems],
-  );
-  const connectedCount = useMemo(
-    () => items.filter((item) => packageAuthorization(item, authorizations[item.pluginId], props.mcpStatuses).connected).length,
-    [authorizations, items, props.mcpStatuses],
   );
   const relationships = useMemo(
     () => collectPluginPackageRelationships(items, catalogItems),
@@ -719,11 +715,11 @@ export function PluginPackagesPanel(props: PluginPackagesPanelProps) {
   }
 
   return (
-    <section className="space-y-9">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+    <section className="space-y-7">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <h1 className="text-3xl font-semibold tracking-tight text-dls-text">{t("plugin_library.title")}</h1>
-          <p className="mt-2 text-sm text-dls-secondary">{t("plugin_library.description")}</p>
+          <h1 className="text-2xl font-semibold tracking-tight text-dls-text">{t("plugin_library.title")}</h1>
+          <p className="mt-1 text-sm text-dls-secondary">{t("plugin_library.description")}</p>
         </div>
         <div className="flex items-center gap-2">
           <Button
@@ -751,14 +747,11 @@ export function PluginPackagesPanel(props: PluginPackagesPanelProps) {
       />
 
       <div>
-        <div className="flex items-center justify-between gap-3 border-b border-dls-border pb-3">
-          <h2 className="text-base font-semibold text-dls-text">{t("plugin_library.installed")}</h2>
-          <span className="text-xs text-dls-secondary">
-            {t("plugin_platform.summary", { installed: installedCount, connected: connectedCount })}
-          </span>
+        <div className="border-b border-dls-border pb-2">
+          <h2 className="text-sm font-semibold text-dls-text">{t("plugin_library.installed")}</h2>
         </div>
         {localizedItems.length > 0 ? (
-          <div className="flex flex-wrap gap-3 pt-4">
+          <div className="flex flex-wrap gap-2 pt-3">
             {localizedItems.map((item) => {
               const iconUrl = resolveExtensionIconUrl({
                 iconSrc: item.manifest.icon?.src,
@@ -768,12 +761,12 @@ export function PluginPackagesPanel(props: PluginPackagesPanelProps) {
                 <button
                   key={item.pluginId}
                   type="button"
-                  className="group flex size-14 items-center justify-center overflow-hidden rounded-2xl border border-dls-border bg-dls-surface text-dls-secondary shadow-sm transition hover:-translate-y-0.5 hover:border-dls-secondary/40 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
+                  className="group flex size-9 items-center justify-center overflow-hidden rounded-lg border border-dls-border bg-dls-surface text-dls-secondary shadow-sm transition hover:-translate-y-0.5 hover:border-dls-secondary/40 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
                   title={item.name}
                   aria-label={t("plugin_library.open_plugin", { name: item.name })}
                   onClick={() => props.onSelectPlugin(item.pluginId)}
                 >
-                  {iconUrl ? <img src={iconUrl} alt="" className="size-8 object-contain" /> : <Package size={23} />}
+                  {iconUrl ? <img src={iconUrl} alt="" className="size-5 object-contain" /> : <Package size={16} />}
                 </button>
               );
             })}
@@ -784,39 +777,28 @@ export function PluginPackagesPanel(props: PluginPackagesPanelProps) {
       </div>
 
       <div>
-        <div className="flex items-center justify-between gap-4 border-b border-dls-border pb-3">
-          <div className="inline-flex rounded-xl bg-dls-hover p-1" role="tablist" aria-label={t("plugin_library.source_label")}>
-            <button
-              type="button"
-              role="tab"
-              aria-selected={source === "marketplace"}
-              className={`rounded-lg px-4 py-2 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 ${source === "marketplace" ? "bg-dls-surface text-dls-text shadow-sm" : "text-dls-secondary hover:text-dls-text"}`}
-              onClick={() => setSource("marketplace")}
-            >
-              {t("plugin_library.marketplace")}
-            </button>
-            <button
-              type="button"
-              role="tab"
-              aria-selected={source === "personal"}
-              className={`rounded-lg px-4 py-2 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 ${source === "personal" ? "bg-dls-surface text-dls-text shadow-sm" : "text-dls-secondary hover:text-dls-text"}`}
-              onClick={() => setSource("personal")}
-            >
-              {t("plugin_library.personal")}
-            </button>
-          </div>
+        <div className="border-b border-dls-border pb-2">
+          <SettingsSegmentedTabs
+            value={source}
+            ariaLabel={t("plugin_library.source_label")}
+            items={[
+              { value: "personal", label: t("plugin_library.personal") },
+              { value: "marketplace", label: t("plugin_library.marketplace") },
+            ]}
+            onValueChange={setSource}
+          />
         </div>
 
         {source === "marketplace" ? (
-          <div className="pt-7">{props.marketplaceView(search)}</div>
+          <div className="pt-5">{props.marketplaceView(search)}</div>
         ) : (
-          <div className="pt-7">
+          <div className="pt-5">
             <div className="mb-2">
-              <h2 className="text-base font-semibold text-dls-text">{t("plugin_library.personal_title")}</h2>
+              <h2 className="text-sm font-semibold text-dls-text">{t("plugin_library.personal_title")}</h2>
               <p className="mt-1 text-xs text-dls-secondary">{t("plugin_library.personal_description")}</p>
             </div>
             {(filteredCatalogItems.length > 0 || filteredItems.length > 0) ? (
-              <div className="grid gap-x-8 sm:grid-cols-2">
+              <div className="grid gap-x-8 lg:grid-cols-2">
                 {filteredCatalogItems.map((item) => (
                   <PluginPackageListItem
                     key={`catalog:${item.pluginId}`}

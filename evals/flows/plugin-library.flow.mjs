@@ -25,6 +25,28 @@ export default {
               timeoutMs: 30_000,
               label: "plugin library search",
             });
+            const compactStructure = await ctx.eval(`(() => {
+              const activeTabs = [...document.querySelectorAll('[role="tab"][aria-selected="true"]')]
+                .map((entry) => entry.textContent?.trim());
+              const shellHeader = document.querySelector('main > header');
+              const installedIcons = [...document.querySelectorAll('button[aria-label^="打开"], button[aria-label^="Open"]')];
+              return {
+                personalFirst: activeTabs.includes('个人') || activeTabs.includes('Personal'),
+                noExtensionTitle: ![...(shellHeader?.querySelectorAll('h1') ?? [])]
+                  .some((entry) => ['扩展', 'Extensions'].includes(entry.textContent?.trim() ?? '')),
+                compactIcons: installedIcons.every((entry) => entry.getBoundingClientRect().width <= 37),
+              };
+            })()`);
+            ctx.assert(compactStructure.personalFirst, "Personal plugins should be the default source.");
+            ctx.assert(compactStructure.noExtensionTitle, "The shell header should show plugin tabs instead of an Extensions title.");
+            ctx.assert(compactStructure.compactIcons, "Installed plugin icons should use the compact size.");
+            const marketplaceSelected = await ctx.eval(`(() => {
+              const tab = [...document.querySelectorAll('[role="tab"]')]
+                .find((entry) => ['市场', 'Marketplace'].includes(entry.textContent?.trim() ?? ''));
+              tab?.click();
+              return Boolean(tab);
+            })()`);
+            ctx.assert(marketplaceSelected, "Marketplace plugin source tab was not found.");
             await ctx.waitFor(`(() => {
               const text = document.body.innerText;
               const loading = text.includes('正在加载市场') || text.includes('Loading marketplace');
@@ -38,7 +60,9 @@ export default {
                 '登录后浏览插件市场',
                 'Sign in to browse the plugin marketplace',
               ].some((value) => text.includes(value));
-              return !loading && settled;
+              const pluginIcons = [...document.querySelectorAll('button[aria-label^="打开"] img, button[aria-label^="Open"] img')];
+              const iconsLoaded = pluginIcons.length === 0 || pluginIcons.every((image) => image.complete && image.naturalWidth > 0);
+              return !loading && settled && iconsLoaded;
             })()`, {
               timeoutMs: 30_000,
               label: "settled marketplace catalog",

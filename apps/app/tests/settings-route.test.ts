@@ -48,6 +48,19 @@ describe("settings route parsing", () => {
     });
   });
 
+  test("keeps the plugin and skill library tabs addressable", () => {
+    expect(parseSettingsPath("/settings/extensions")).toEqual({
+      tab: "extensions",
+      redirectPath: null,
+      extensionsSection: "all",
+    });
+    expect(parseSettingsPath("/settings/extensions/skills")).toEqual({
+      tab: "extensions",
+      redirectPath: null,
+      extensionsSection: "skills",
+    });
+  });
+
   test("returns to the task that opened settings", () => {
     expect(settingsRouteSource).toContain("workspaceSessionRoute(selectedWorkspaceId, navigationSessionId)");
   });
