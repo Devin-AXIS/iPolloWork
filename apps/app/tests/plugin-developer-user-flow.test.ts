@@ -171,13 +171,16 @@ describe("plugin developer and user flow", () => {
       manifest: {
         ...manifest,
         id: "figma",
-        resources: [{ type: "skill", id: "figma-use" }],
+        resources: [
+          { type: "skill", id: "figma-use" },
+          { type: "mcp", id: "figma-mcp", mcpServerName: "figma" },
+        ],
       },
     }];
 
     expect(collectPluginPackageRelationships(installed, catalog)).toEqual({
       skillNames: ["figma-use", "hyperframes-cli", "ipollowork-video-studio", "media-use"],
-      installedMcpServerNames: ["video"],
+      mcpServerNames: ["figma", "video"],
     });
   });
 

@@ -12,7 +12,7 @@ type PluginPackageRelationshipSource = { manifest: iPolloWorkExtensionManifest }
 
 export type PluginPackageRelationships = {
   skillNames: string[];
-  installedMcpServerNames: string[];
+  mcpServerNames: string[];
 };
 
 type PluginTranslationLayers = {
@@ -113,21 +113,19 @@ export function collectPluginPackageRelationships(
   catalog: PluginPackageRelationshipSource[],
 ): PluginPackageRelationships {
   const skillNames = new Set<string>();
-  const installedMcpServerNames = new Set<string>();
+  const mcpServerNames = new Set<string>();
   for (const item of [...installed, ...catalog]) {
     item.manifest.resources.forEach((resource) => {
       if (resource.type === "skill") skillNames.add(resource.id);
+      if (resource.type === "mcp" && resource.mcpServerName) mcpServerNames.add(resource.mcpServerName);
     });
   }
   installed.forEach((item) => {
     item.manifest.relatedSkills?.forEach((skillName) => skillNames.add(skillName));
-    item.manifest.resources.forEach((resource) => {
-      if (resource.type === "mcp" && resource.mcpServerName) installedMcpServerNames.add(resource.mcpServerName);
-    });
   });
   return {
     skillNames: [...skillNames].sort(),
-    installedMcpServerNames: [...installedMcpServerNames].sort(),
+    mcpServerNames: [...mcpServerNames].sort(),
   };
 }
 

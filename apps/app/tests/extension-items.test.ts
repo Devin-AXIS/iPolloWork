@@ -193,7 +193,7 @@ describe("extension item projection", () => {
       quickConnect: [notionQuickConnect],
       mcpServers: [directNotionServer],
       installedSkills: [],
-      installedPluginPackageMcpServerNames: ["notion"],
+      pluginPackageMcpServerNames: ["notion"],
       importedCloudPlugins: {},
       cloudMarketplaces: [],
       enablementContext: {},

@@ -415,7 +415,7 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
   const [extensionStateVersion, setExtensionStateVersion] = useState(0);
   const [pluginPackageRelationships, setPluginPackageRelationships] = useState<PluginPackageRelationships>({
     skillNames: [],
-    installedMcpServerNames: [],
+    mcpServerNames: [],
   });
   const [imageGenerationBusy, setImageGenerationBusy] = useState(false);
   const [imageGenerationStatus, setImageGenerationStatus] = useState<string | null>(null);
@@ -1525,7 +1525,7 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
       mcpServers: connectionsSnapshot.mcpServers,
       installedSkills: extensionsStore.skills(),
       pluginPackageSkillNames: pluginPackageRelationships.skillNames,
-      installedPluginPackageMcpServerNames: pluginPackageRelationships.installedMcpServerNames,
+      pluginPackageMcpServerNames: pluginPackageRelationships.mcpServerNames,
       importedCloudPlugins: extensionsStore.importedCloudPlugins(),
       pendingCloudPluginChanges: extensionsStore.pendingCloudPluginChanges(),
       cloudMarketplaces: extensionsStore.cloudOrgMarketplaces(),

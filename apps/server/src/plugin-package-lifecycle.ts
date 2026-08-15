@@ -40,7 +40,7 @@ const installedPackageSchema = z.object({
   versions: z.record(z.string(), installedVersionSchema),
 });
 const lifecycleStateSchema = z.object({
-  schemaVersion: z.literal(1),
+  schemaVersion: z.literal(2),
   packages: z.record(z.string(), installedPackageSchema),
 });
 
@@ -94,7 +94,7 @@ export type InstalledPluginService = {
 };
 
 function emptyState(): LifecycleState {
-  return { schemaVersion: 1, packages: {} };
+  return { schemaVersion: 2, packages: {} };
 }
 
 function errorCode(error: unknown): string | null {
