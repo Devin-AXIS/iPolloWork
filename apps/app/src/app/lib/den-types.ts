@@ -106,6 +106,35 @@ export type DenOrgMarketplace = {
   updatedAt: string | null;
 };
 
+export type DenMarketplacePlugin = {
+  pluginId: string;
+  name: string;
+  description: string;
+  category: string;
+  publisher: string;
+  icon: Record<string, unknown> | null;
+  version: string;
+  manifest: iPolloWorkExtensionManifest;
+  pointsCost: number;
+  acquired: boolean;
+  featured: boolean;
+  digest: string;
+  size: number;
+  updatedAt: string;
+};
+
+export type DenMarketplaceAcquireResult = {
+  acquired: true;
+  spentPoints: number;
+  balance: number | null;
+};
+
+export type DenMarketplacePluginDownload = {
+  bytes: Uint8Array;
+  fileName: string;
+  digest: string | null;
+};
+
 export type DenOrgPluginResolved = {
   plugin: DenOrgPlugin;
   memberships: DenPluginMembership[];

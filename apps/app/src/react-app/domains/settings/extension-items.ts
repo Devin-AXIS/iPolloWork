@@ -349,6 +349,5 @@ export function buildExtensionItems(input: ExtensionItemBuildInput) {
       }),
     ],
     installedSkills: standaloneSkillItems.flatMap((item) => item.skill ? [item.skill] : []),
-    installedCloudPlugins: Object.values(input.importedCloudPlugins),
   };
 }

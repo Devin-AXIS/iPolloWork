@@ -3,7 +3,7 @@
   "id": "stripe",
   "name": "Stripe",
   "description": "把支付调查、订阅与账单、对账和高风险操作审查组合成安全的 Stripe 工作流。",
-  "category": "支付与财务",
+  "category": "金融",
   "source": {
     "format": "ipollowork-extension-manifest",
     "origin": "builtin",
@@ -17,7 +17,7 @@
     "translations": {
       "en": {
         "description": "Combine payment investigation, subscriptions and billing, reconciliation, and high-risk operation review into safe Stripe workflows.",
-        "category": "Payments & Finance",
+        "category": "Finance",
         "composer": { "prompt": "Use the Stripe plugin to verify the test or production environment, object, and amount before investigating payments, subscriptions, invoices, or performing confirmed operations." },
         "resources": {
           "stripe-mcp": {

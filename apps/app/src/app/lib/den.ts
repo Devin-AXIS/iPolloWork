@@ -18,6 +18,7 @@ import {
 } from "./den-session-events";
 import {
   desktopFetch,
+  desktopFetchBinaryViaMain,
   desktopFetchViaMain,
   getDesktopBootstrapConfig as getDesktopBootstrapConfigFromShell,
   setDesktopBootstrapConfig as setDesktopBootstrapConfigInShell,
@@ -59,6 +60,9 @@ export const DEN_INFERENCE_PATH = "/dashboard/inference";
 export type * from "./den-types";
 import type {
   DenOrgExtensionProjection,
+  DenMarketplaceAcquireResult,
+  DenMarketplacePlugin,
+  DenMarketplacePluginDownload,
   DenOrgMarketplace,
   DenOrgPlugin,
   DenOrgPluginResolved,
@@ -1279,6 +1283,48 @@ function parseiPolloWorkExtensionManifest(value: unknown): iPolloWorkExtensionMa
   return result.success ? result.manifest : null;
 }
 
+function parseMarketplacePlugin(value: unknown): DenMarketplacePlugin | null {
+  if (!isRecord(value)) return null;
+  const manifest = parseiPolloWorkExtensionManifest(value.manifest);
+  if (
+    !manifest
+    || typeof value.pluginId !== "string"
+    || typeof value.name !== "string"
+    || typeof value.description !== "string"
+    || typeof value.category !== "string"
+    || typeof value.publisher !== "string"
+    || typeof value.version !== "string"
+    || typeof value.pointsCost !== "number"
+    || typeof value.acquired !== "boolean"
+    || typeof value.featured !== "boolean"
+    || typeof value.digest !== "string"
+    || typeof value.size !== "number"
+    || typeof value.updatedAt !== "string"
+  ) return null;
+  return {
+    pluginId: value.pluginId,
+    name: value.name,
+    description: value.description,
+    category: value.category,
+    publisher: value.publisher,
+    icon: isRecord(value.icon) ? value.icon : null,
+    version: value.version,
+    manifest,
+    pointsCost: value.pointsCost,
+    acquired: value.acquired,
+    featured: value.featured,
+    digest: value.digest,
+    size: value.size,
+    updatedAt: value.updatedAt,
+  };
+}
+
+function parseMarketplaceAcquireResult(value: unknown): DenMarketplaceAcquireResult | null {
+  if (!isRecord(value) || value.acquired !== true || typeof value.spentPoints !== "number") return null;
+  if (value.balance !== null && typeof value.balance !== "number") return null;
+  return { acquired: true, spentPoints: value.spentPoints, balance: value.balance };
+}
+
 function parseDenExtensionProjection(value: unknown): DenOrgExtensionProjection | null {
   if (!isRecord(value) || typeof value.id !== "string" || typeof value.name !== "string") return null;
   const sourceFormat = parseExtensionSourceFormat(value.sourceFormat);
@@ -1611,6 +1657,51 @@ async function requestJson<T>(
   return raw.json as T;
 }
 
+async function requestBinary(
+  input: string | DenBaseUrls,
+  path: string,
+  options: DenRequestOptions = {},
+): Promise<Response> {
+  const baseUrls = typeof input === "string" ? resolveDenBaseUrls(input) : input;
+  const url = `${resolveRequestBaseUrl(baseUrls, path)}${path}`;
+  const headers: Record<string, string> = { Accept: "application/zip" };
+  const token = options.token?.trim() ?? "";
+  if (token) headers.Authorization = `Bearer ${token}`;
+
+  const fetchImpl: FetchLike = isDesktopRuntime()
+    ? (requestInput, init) => desktopFetchBinaryViaMain(requestInput, init, options.timeoutMs ?? DEFAULT_DEN_TIMEOUT_MS)
+    : globalThis.fetch;
+  const response = await fetchWithTimeout(fetchImpl, url, {
+    method: options.method ?? "GET",
+    headers,
+    credentials: "include",
+  }, options.timeoutMs ?? DEFAULT_DEN_TIMEOUT_MS);
+  if (response.ok) return response;
+
+  const text = await response.text();
+  let payload: unknown = null;
+  try {
+    payload = text ? JSON.parse(text) : null;
+  } catch {
+    payload = null;
+  }
+  const code = isRecord(payload) && typeof payload.error === "string" ? payload.error : "request_failed";
+  throw new DenApiError(response.status, code, getErrorMessage(payload, `Request failed with ${response.status}.`));
+}
+
+function responseFileName(response: Response, fallback: string): string {
+  const disposition = response.headers.get("Content-Disposition") ?? "";
+  const encoded = disposition.match(/filename\*=UTF-8''([^;]+)/iu)?.[1];
+  if (encoded) {
+    try {
+      return decodeURIComponent(encoded);
+    } catch {
+      return fallback;
+    }
+  }
+  return disposition.match(/filename="([^"]+)"/u)?.[1] ?? fallback;
+}
+
 async function ensureActiveOrganization(
   baseUrls: DenBaseUrls,
   token: string | null,
@@ -1897,6 +1988,47 @@ export function createDenClient(options: { baseUrl: string; token?: string | nul
         `/v1/oauth-providers/${encodeURIComponent(providerId)}/disconnect`,
         { method: "POST", token, organizationId: orgId },
       );
+    },
+
+    async listMarketplacePlugins(): Promise<DenMarketplacePlugin[]> {
+      const payload = await requestJson<unknown>(baseUrls, "/api/v1/marketplace/plugins", { token });
+      if (!isRecord(payload) || !Array.isArray(payload.items)) {
+        throw new DenApiError(500, "invalid_marketplace_payload", "Marketplace response was invalid.");
+      }
+      const items = payload.items.map(parseMarketplacePlugin);
+      if (items.some((item) => item === null)) {
+        throw new DenApiError(500, "invalid_marketplace_payload", "Marketplace response contained an invalid plugin package.");
+      }
+      return items as DenMarketplacePlugin[];
+    },
+
+    async getMarketplacePlugin(pluginId: string): Promise<DenMarketplacePlugin> {
+      const payload = await requestJson<unknown>(baseUrls, `/api/v1/marketplace/plugins/${encodeURIComponent(pluginId)}`, { token });
+      const item = isRecord(payload) ? parseMarketplacePlugin(payload.item) : null;
+      if (!item) throw new DenApiError(500, "invalid_marketplace_payload", "Marketplace plugin response was invalid.");
+      return item;
+    },
+
+    async acquireMarketplacePlugin(pluginId: string): Promise<DenMarketplaceAcquireResult> {
+      const payload = await requestJson<unknown>(baseUrls, `/api/v1/marketplace/plugins/${encodeURIComponent(pluginId)}/acquire`, {
+        method: "POST",
+        token,
+      });
+      const result = parseMarketplaceAcquireResult(payload);
+      if (!result) throw new DenApiError(500, "invalid_marketplace_payload", "Marketplace purchase response was invalid.");
+      return result;
+    },
+
+    async downloadMarketplacePlugin(pluginId: string): Promise<DenMarketplacePluginDownload> {
+      const response = await requestBinary(baseUrls, `/api/v1/marketplace/plugins/${encodeURIComponent(pluginId)}/download`, {
+        token,
+        timeoutMs: 30_000,
+      });
+      return {
+        bytes: new Uint8Array(await response.arrayBuffer()),
+        fileName: responseFileName(response, `${pluginId.replaceAll("/", "-")}.ipollowork-plugin`),
+        digest: response.headers.get("X-iPollo-Artifact-SHA256"),
+      };
     },
 
     async listOrgMarketplaces(orgId: string): Promise<DenOrgMarketplace[]> {

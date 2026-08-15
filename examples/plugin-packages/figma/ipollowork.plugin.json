@@ -3,7 +3,7 @@
   "id": "figma",
   "name": "Figma",
   "description": "完整的 Figma 设计到代码、Code Connect、设计系统和画布写入工作流。",
-  "category": "设计与开发",
+  "category": "设计与创作",
   "source": {
     "format": "ipollowork-extension-manifest",
     "origin": "local",
@@ -26,7 +26,7 @@
     "translations": {
       "en": {
         "description": "Complete Figma design-to-code, Code Connect, design system, and canvas authoring workflows.",
-        "category": "Design & Development",
+        "category": "Design & Creative",
         "composer": { "prompt": "Use the Figma plugin to read design context and implement it according to the current project's conventions." },
         "setup": {
           "instructions": "Figma authorization is managed independently by Figma Desktop. Sign in to the desktop app, open a Design file, switch to Dev Mode, and enable the Desktop MCP server from the Inspect panel.",

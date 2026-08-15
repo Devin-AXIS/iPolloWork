@@ -3,7 +3,7 @@
   "id": "github",
   "name": "GitHub",
   "description": "检查仓库、处理 PR 与 Issue、诊断 Actions，并把本地修改安全发布为 Draft PR。",
-  "category": "开发者工具",
+  "category": "开发与运维",
   "source": {
     "format": "ipollowork-extension-manifest",
     "origin": "builtin",
@@ -21,7 +21,7 @@
     "translations": {
       "en": {
         "description": "Inspect repositories, handle pull requests and issues, diagnose Actions, and safely publish local changes as a draft pull request.",
-        "category": "Developer Tools",
+        "category": "Development & Operations",
         "composer": { "prompt": "Use GitHub to inspect pull requests, issues, and CI, confirming the local change scope before publishing code." },
         "resources": {
           "github-service": { "description": "Access fixed, bounded GitHub API capabilities through encrypted authorization." },
