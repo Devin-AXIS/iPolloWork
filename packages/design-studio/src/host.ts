@@ -1,4 +1,4 @@
-import type { TemplateSessionSnapshot } from "@ipollowork/types/templates";
+import type { TemplateCatalogItem, TemplateSessionSnapshot } from "@ipollowork/types/templates";
 
 export type DesignStudioCatalogEntry = {
   path: string;
@@ -62,13 +62,28 @@ export interface DesignStudioClient {
     args?: Record<string, unknown>,
     context?: Record<string, unknown>,
   ): Promise<DesignStudioStorageResult>;
+  listDesignStudioTemplates?(
+    workspaceId: string,
+  ): Promise<TemplateCatalogItem[]>;
+  getDesignStudioTemplateCover?(
+    workspaceId: string,
+    templateId: string,
+  ): Promise<DesignStudioBinaryFile>;
+  applyDesignStudioTemplate?(
+    workspaceId: string,
+    sessionId: string,
+    templateId: string,
+  ): Promise<TemplateSessionSnapshot>;
 }
 
 export type DesignStudioFeatures = {
   /** Object-storage publishing is host-owned and is available in iPolloWork. */
   publish: boolean;
+  /** External hosts can expose their bounded first-party template catalog. */
+  templates: false | { title: string; description: string };
 };
 
 export const IPOLLOWORK_DESIGN_STUDIO_FEATURES: DesignStudioFeatures = {
   publish: true,
+  templates: false,
 };

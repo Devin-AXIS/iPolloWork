@@ -1,7 +1,7 @@
 {
-  "name": "deepseek-idesign",
-  "version": "0.2.0",
-  "description": "iPolloWork Design Studio and its curated design templates as a native DeepSeek Harness conversation view.",
+  "name": "deepseek-ippt",
+  "version": "0.1.0",
+  "description": "iPolloWork PPT Studio and its curated slide templates as a native DeepSeek Harness conversation view.",
   "type": "module",
   "main": "lib/index.js",
   "exports": {
@@ -9,51 +9,32 @@
     "./client": "./lib/client.js",
     "./package.json": "./package.json"
   },
-  "files": [
-    "lib",
-    "studio/dist",
-    "cordis.patch.yml",
-    "README.md"
-  ],
+  "files": ["lib", "studio/dist", "cordis.patch.yml", "README.md"],
   "scripts": {
     "build": "pnpm run build:plugin && pnpm run build:studio",
     "build:plugin": "tsdown",
     "build:studio": "vite build --config studio/vite.config.ts",
-    "check": "tsc -p tsconfig.json --noEmit && tsc -p studio/tsconfig.json --noEmit",
+    "check": "tsc -p tsconfig.json --noEmit && tsc -p ../design-studio/studio/tsconfig.json --noEmit",
     "prepack": "pnpm run build"
   },
   "dsh": {
-    "bundle": {
-      "patch": "./cordis.patch.yml"
-    },
+    "bundle": { "patch": "./cordis.patch.yml" },
     "client": {
       "platform": "web",
-      "inject": [
-        "@deepseek-ai/dsh-client-runtime",
-        "@deepseek-ai/dsh-client-ui-conversation"
-      ]
+      "inject": ["@deepseek-ai/dsh-client-runtime", "@deepseek-ai/dsh-client-ui-conversation"]
     }
   },
-  "keywords": [
-    "deepseek-harness",
-    "dsh-plugin",
-    "design-studio",
-    "ipollowork"
-  ],
+  "keywords": ["deepseek-harness", "dsh-plugin", "ppt", "slides", "ipollowork"],
   "license": "MIT",
   "packageManager": "pnpm@11.4.0",
-  "publishConfig": {
-    "access": "public"
-  },
+  "publishConfig": { "access": "public" },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/Devin-AXIS/iPolloWork.git",
-    "directory": "external-plugins/deepseek-harness/design-studio"
+    "directory": "external-plugins/deepseek-harness/ppt-studio"
   },
-  "bugs": {
-    "url": "https://github.com/Devin-AXIS/iPolloWork/issues"
-  },
-  "homepage": "https://github.com/Devin-AXIS/iPolloWork/tree/main/external-plugins/deepseek-harness/design-studio#readme",
+  "bugs": { "url": "https://github.com/Devin-AXIS/iPolloWork/issues" },
+  "homepage": "https://github.com/Devin-AXIS/iPolloWork/tree/main/external-plugins/deepseek-harness/ppt-studio#readme",
   "peerDependencies": {
     "@deepseek-ai/cordis": "^4.0.1",
     "@deepseek-ai/dsh-client-runtime": ">=0.0.1-rc.1 <0.2.0-0",

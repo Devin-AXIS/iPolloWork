@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { readFileSync } from "node:fs";
 
 import {
   DESIGN_STUDIO_HOST_CHANNEL,
@@ -7,6 +8,10 @@ import {
   isDesignStudioHostMessage,
   type DesignAiSelectionContext,
 } from "@ipollowork/design-studio";
+
+const designPanel = readFileSync(new URL("../src/react-app/domains/session/design/design-panel.tsx", import.meta.url), "utf8");
+const templateDialog = readFileSync(new URL("../src/react-app/domains/session/design/design-template-dialog.tsx", import.meta.url), "utf8");
+const studioHost = readFileSync(new URL("../../../packages/design-studio/src/host.ts", import.meta.url), "utf8");
 
 const context: DesignAiSelectionContext = {
   id: "design-ai-bridge",
@@ -49,5 +54,14 @@ describe("Design Studio host bridge", () => {
     expect(prompt).toContain(context.target.locator);
     expect(prompt).not.toContain(context.beforeHtml);
     expect(prompt).toEndWith("My requested change:");
+  });
+
+  test("keeps the external template catalog optional and confirms replacement", () => {
+    expect(studioHost).toContain("listDesignStudioTemplates?");
+    expect(studioHost).toContain("applyDesignStudioTemplate?");
+    expect(designPanel).toContain('data-testid="design-template-market-button"');
+    expect(designPanel).toContain("features.templates");
+    expect(templateDialog).toContain("ConfirmModal");
+    expect(templateDialog).toContain("applyDesignStudioTemplate");
   });
 });
