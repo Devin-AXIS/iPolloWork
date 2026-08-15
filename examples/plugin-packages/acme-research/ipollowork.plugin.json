@@ -3,6 +3,7 @@
   "id": "acme-research",
   "name": "Acme Research",
   "description": "Minimal independent plugin package for local development.",
+  "category": "其他",
   "source": {
     "format": "ipollowork-extension-manifest",
     "origin": "local",

@@ -3,7 +3,7 @@
   "id": "design-agent",
   "name": "iPolloWork Design Agent",
   "description": "管理 iPolloWork Design Studio 与演示文稿的官方 Agent Skills，不改变内置设计工作台、模板或项目文件。",
-  "category": "创作与设计",
+  "category": "AI Agent 与自动化",
   "source": {
     "format": "ipollowork-extension-manifest",
     "origin": "builtin",
@@ -21,7 +21,7 @@
     "translations": {
       "en": {
         "description": "Official Agent Skills for iPolloWork Design Studio and presentations, without replacing the built-in design workspace, templates, or project files.",
-        "category": "Creative & Design",
+        "category": "AI Agents & Automation",
         "composer": { "prompt": "Use iPolloWork Design Agent to create or edit content in the current session's design project." },
         "resources": {
           "ipollowork-design-studio": { "description": "Safely create and edit HTML designs in the current iPolloWork Design session." },

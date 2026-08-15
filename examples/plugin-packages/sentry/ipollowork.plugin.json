@@ -3,7 +3,7 @@
   "id": "sentry",
   "name": "Sentry",
   "description": "把生产问题调查、回归监控、发布健康和修复验证组合成有证据的 Sentry 工作流。",
-  "category": "可观测性",
+  "category": "开发与运维",
   "source": {
     "format": "ipollowork-extension-manifest",
     "origin": "builtin",
@@ -17,7 +17,7 @@
     "translations": {
       "en": {
         "description": "Combine production issue investigation, regression monitoring, release health, and fix verification into evidence-backed Sentry workflows.",
-        "category": "Observability",
+        "category": "Development & Operations",
         "composer": { "prompt": "Use the Sentry plugin to read production evidence, confirming the organization, project, environment, and time range before investigating an issue or verifying a fix." },
         "resources": {
           "sentry-mcp": {

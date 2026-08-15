@@ -3,7 +3,7 @@
   "id": "notion",
   "name": "Notion",
   "description": "将 Notion 页面、数据库、项目文档和会议记录组合成可靠的知识工作流。",
-  "category": "知识与协作",
+  "category": "效率与协作",
   "source": {
     "format": "ipollowork-extension-manifest",
     "origin": "builtin",
@@ -17,7 +17,7 @@
     "translations": {
       "en": {
         "description": "Combine Notion pages, databases, project documents, and meeting notes into reliable knowledge workflows.",
-        "category": "Knowledge & Collaboration",
+        "category": "Productivity & Collaboration",
         "composer": { "prompt": "Use the Notion plugin to find, organize, or update team knowledge, confirming the target page or database before writing." },
         "resources": {
           "notion-mcp": {

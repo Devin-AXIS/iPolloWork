@@ -39,7 +39,7 @@ export type SettingsShellProps = SettingsPageFrameProps & {
   headerStatus?: string;
   busyHint?: string | null;
   onClose: () => void;
-  headerLeadingSlot?: React.ReactNode;
+  headerTitle?: React.ReactNode;
   children: React.ReactNode;
   modalSlot?: React.ReactNode;
   footer?: React.ReactNode;
@@ -55,11 +55,13 @@ export function SettingsShell(props: SettingsShellProps) {
       <div className="flex h-full min-h-0 w-full flex-col overflow-hidden bg-background">
         <header className="flex h-11 shrink-0 items-center justify-between gap-2 border-b border-dls-border px-3 mac:titlebar-drag">
           <div className="flex min-w-0 items-center gap-2 mac:titlebar-no-drag">
-            <SettingsSectionMenu
-              activeTab={props.activeTab}
-              developerMode={props.developerMode}
-              onSelectTab={props.onSelectTab}
-            />
+            {props.headerTitle ?? (
+              <SettingsSectionMenu
+                activeTab={props.activeTab}
+                developerMode={props.developerMode}
+                onSelectTab={props.onSelectTab}
+              />
+            )}
           </div>
           <div className="flex shrink-0 items-center gap-1 mac:titlebar-no-drag">
             <Button
@@ -103,8 +105,7 @@ export function SettingsShell(props: SettingsShellProps) {
               <header className="shrink-0 flex h-10 items-center justify-between border-b border-dls-border px-4 md:px-6 mac:titlebar-drag">
                 <div className="flex min-w-0 items-center gap-3">
                   <SidebarTrigger className="mac:titlebar-no-drag md:hidden" />
-                  {props.headerLeadingSlot}
-                  <h1 className="truncate text-[15px] font-semibold text-dls-text">{title}</h1>
+                  {props.headerTitle ?? <h1 className="truncate text-[15px] font-semibold text-dls-text">{title}</h1>}
                   {props.developerMode && props.headerStatus ? (
                     <span className="hidden text-[12px] text-dls-secondary lg:inline">
                       {props.headerStatus}

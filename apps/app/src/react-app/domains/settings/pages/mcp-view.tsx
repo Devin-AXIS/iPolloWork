@@ -26,7 +26,6 @@ import {
 import { isBuiltIniPolloWorkExtension, getMcpServerName, type McpDirectoryInfo } from "../../../../app/constants";
 import { evaluateEnablement } from "../../../../app/enablement";
 import type { EnablementResult } from "../../../../app/extensions";
-import type { CloudImportedPlugin } from "../../../../app/cloud/import-state";
 import { ExtensionCard } from "../../../design-system/extension-card";
 import { ExtensionDetailModal } from "../../../design-system/extension-detail-modal";
 import {
@@ -91,12 +90,8 @@ export type McpViewProps = {
   isRemoteWorkspace: boolean;
   /** Installed skills to render alongside MCPs in the grid. */
   installedSkills?: SkillItem[];
-  /** Installed marketplace packages to render alongside runtime extensions. */
-  installedPlugins?: CloudImportedPlugin[];
   /** Uninstall a skill by name. */
   uninstallSkill?: (name: string) => void;
-  /** Remove an imported marketplace package by plugin id. */
-  removeCloudPlugin?: (pluginId: string) => void | Promise<unknown>;
   /** Read skill content by name. */
   readSkill?: (name: string) => Promise<{ content: string } | null>;
   readConfigFile?: (scope: "project" | "global") => Promise<OpencodeConfigFile | null>;
@@ -237,7 +232,7 @@ function isToggleOnlyExtension(entry: McpDirectoryInfo) {
   ) === true;
 }
 
-type ExtensionFilter = "all" | "mcp" | "skill" | "plugin";
+type ExtensionFilter = "all" | "mcp" | "skill";
 
 export function McpView(props: McpViewProps) {
   const showHeader = props.showHeader !== false;
@@ -245,7 +240,6 @@ export function McpView(props: McpViewProps) {
   const [detailEntry, setDetailEntry] = useState<McpDirectoryInfo | null>(null);
   const [detailSkill, setDetailSkill] = useState<SkillItem | null>(null);
   const [detailSkillContent, setDetailSkillContent] = useState<string | null>(null);
-  const [detailPlugin, setDetailPlugin] = useState<CloudImportedPlugin | null>(null);
   const [detailOrgMcpItem, setDetailOrgMcpItem] = useState<ExtensionItem | null>(null);
   const [ipolloworkUiMcpCommand, setiPolloWorkUiMcpCommand] = useState<string[] | null>(null);
   const [ipolloworkUiMcpEnvironment, setiPolloWorkUiMcpEnvironment] = useState<Record<string, string> | null>(null);
@@ -447,8 +441,7 @@ export function McpView(props: McpViewProps) {
     (entry) => resolveStatus(entry) === "connected",
   ).length;
   const hiddenCount = quickConnectList.filter((entry) => isiPolloWorkExtensionHidden(entry)).length +
-    (props.installedSkills ?? []).filter((skill) => isiPolloWorkExtensionHidden(getSkillHiddenId(skill))).length +
-    (props.installedPlugins ?? []).filter((plugin) => isiPolloWorkExtensionHidden(`plugin:${plugin.pluginId}`)).length;
+    (props.installedSkills ?? []).filter((skill) => isiPolloWorkExtensionHidden(getSkillHiddenId(skill))).length;
   const policyHiddenBuiltInCount = props.builtInExtensionsDisabled
     ? quickConnectList.filter((entry) => isBuiltIniPolloWorkExtension(entry) && !isiPolloWorkExtensionHidden(entry)).length
     : 0;
@@ -592,18 +585,6 @@ export function McpView(props: McpViewProps) {
           })
         }
         locale={locale}
-        installedPlugins={
-          (props.installedPlugins ?? []).filter((plugin) => {
-            if (!showHidden && isiPolloWorkExtensionHidden(`plugin:${plugin.pluginId}`)) return false;
-            if (filter === "mcp" || filter === "skill") return false;
-            if (!search.trim()) return true;
-            const q = search.toLowerCase();
-            return [plugin.name, plugin.description ?? "", ...plugin.files.map((file) => `${file.title} ${file.objectType} ${file.path}`)]
-              .join(" ")
-              .toLowerCase()
-              .includes(q);
-          })
-        }
         installedOrgMcpItems={
           (props.installedOrgMcpItems ?? []).filter((item) => {
             if (!isOrgMcpConnectionItem(item)) return false;
@@ -617,7 +598,6 @@ export function McpView(props: McpViewProps) {
         connectingName={props.mcpConnectingName}
         isEntryHidden={(entry) => isiPolloWorkExtensionHidden(entry)}
         isSkillHidden={(skill) => isiPolloWorkExtensionHidden(getSkillHiddenId(skill))}
-        isPluginHidden={(plugin) => isiPolloWorkExtensionHidden(`plugin:${plugin.pluginId}`)}
         disabledReasonForEntry={(entry) =>
           props.builtInExtensionsDisabled && isBuiltIniPolloWorkExtension(entry)
             ? t("settings.extensions.disabled_by_organization")
@@ -647,7 +627,6 @@ export function McpView(props: McpViewProps) {
             });
           }
         }}
-        onPluginDetail={setDetailPlugin}
         onOrgMcpDetail={setDetailOrgMcpItem}
         orgMcpDisconnectingId={props.orgMcpDisconnectingId ?? null}
         disconnectOrgMcp={props.disconnectOrgMcp}
@@ -826,27 +805,6 @@ export function McpView(props: McpViewProps) {
         );
       })() : null}
 
-      {detailPlugin ? (() => {
-        const hidden = isiPolloWorkExtensionHidden(`plugin:${detailPlugin.pluginId}`);
-        return (
-          <ExtensionDetailModal
-            open={!!detailPlugin}
-            onClose={() => setDetailPlugin(null)}
-            name={detailPlugin.name}
-            description={detailPlugin.description ?? "Marketplace extension installed in this workspace."}
-            kind="extension"
-            connected={true}
-            hidden={hidden}
-            onUninstall={props.removeCloudPlugin ? () => {
-              void props.removeCloudPlugin?.(detailPlugin.pluginId);
-              setDetailPlugin(null);
-            } : undefined}
-            onHide={() => setiPolloWorkExtensionHidden(`plugin:${detailPlugin.pluginId}`, true)}
-            onShow={() => setiPolloWorkExtensionHidden(`plugin:${detailPlugin.pluginId}`, false)}
-          />
-        );
-      })() : null}
-
       {detailOrgMcpItem && isOrgMcpConnectionItem(detailOrgMcpItem) ? (() => {
         const connection = detailOrgMcpItem.orgMcpConnection;
         const canDisconnect = canDisconnectNativeProviderAccount(connection);
@@ -923,14 +881,12 @@ function McpCustomAppCard(props: { onOpen: () => void; onOpenGithubImport?: () =
 function McpQuickConnectSection(props: {
   entries: McpDirectoryInfo[];
   installedSkills?: SkillItem[];
-  installedPlugins?: CloudImportedPlugin[];
   installedOrgMcpItems?: ExtensionItem[];
   locale: Language;
   busy: boolean;
   connectingName: string | null;
   isEntryHidden: (entry: McpDirectoryInfo) => boolean;
   isSkillHidden: (skill: SkillItem) => boolean;
-  isPluginHidden: (plugin: CloudImportedPlugin) => boolean;
   disabledReasonForEntry: (entry: McpDirectoryInfo) => string | null;
   isConfigured: (entry: McpDirectoryInfo) => boolean;
   enablementForEntry?: (entry: McpDirectoryInfo) => { active: boolean; results: EnablementResult[] } | null;
@@ -938,7 +894,6 @@ function McpQuickConnectSection(props: {
   onConnect: (entry: McpDirectoryInfo) => void;
   onDetail: (entry: McpDirectoryInfo) => void;
   onSkillDetail?: (skill: SkillItem) => void;
-  onPluginDetail?: (plugin: CloudImportedPlugin) => void;
   onOrgMcpDetail?: (item: ExtensionItem) => void;
   orgMcpDisconnectingId: string | null;
   disconnectOrgMcp?: (connectionId: string) => void;
@@ -1001,23 +956,6 @@ function McpQuickConnectSection(props: {
           );
         })}
 
-        {(props.installedPlugins ?? []).map((plugin) => {
-          const hidden = props.isPluginHidden(plugin);
-          const fileCount = plugin.files.length;
-          return (
-            <ExtensionCard
-              key={`plugin:${plugin.pluginId}`}
-              name={plugin.name}
-              description={plugin.description ?? `Marketplace extension with ${fileCount} installed file${fileCount === 1 ? "" : "s"}.`}
-              kind="extension"
-              connected={true}
-              hidden={hidden}
-              actionLabel="View details"
-              onClick={() => props.onPluginDetail?.(plugin)}
-            />
-          );
-        })}
-
         {(props.installedOrgMcpItems ?? []).filter(isOrgMcpConnectionItem).map((item) => {
           const connection = item.orgMcpConnection;
           const canDisconnect = canDisconnectNativeProviderAccount(connection);
@@ -1050,7 +988,7 @@ function McpQuickConnectSection(props: {
           );
         })}
 
-        {props.entries.length === 0 && (props.installedSkills ?? []).length === 0 && (props.installedPlugins ?? []).length === 0 && (props.installedOrgMcpItems ?? []).length === 0 ? (
+        {props.entries.length === 0 && (props.installedSkills ?? []).length === 0 && (props.installedOrgMcpItems ?? []).length === 0 ? (
           <div className="col-span-full rounded-xl border border-dashed border-dls-border px-5 py-10 text-center">
             <Unplug size={24} className="mx-auto mb-3 text-dls-secondary/30" />
             <div className="text-sm font-medium text-dls-secondary">{t("settings.extensions.empty_title")}</div>

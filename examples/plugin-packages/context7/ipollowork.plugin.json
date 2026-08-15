@@ -3,7 +3,7 @@
   "id": "context7",
   "name": "Context7",
   "description": "通过版本感知的官方文档检索，为实现、升级和技术决策提供可追溯的上下文。",
-  "category": "开发者工具",
+  "category": "开发与运维",
   "source": {
     "format": "ipollowork-extension-manifest",
     "origin": "builtin",
@@ -17,7 +17,7 @@
     "translations": {
       "en": {
         "description": "Retrieve version-aware official documentation for traceable implementation, upgrade, and technical decisions.",
-        "category": "Developer Tools",
+        "category": "Development & Operations",
         "composer": { "prompt": "Use the Context7 plugin to confirm the library, version, and official documentation before answering implementation or upgrade questions." },
         "resources": {
           "context7-mcp": {

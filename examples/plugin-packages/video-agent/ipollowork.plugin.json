@@ -3,7 +3,7 @@
   "id": "video-agent",
   "name": "iPolloWork Video Agent",
   "description": "管理 iPolloWork Video Studio、HyperFrames 与旁白工作流的官方 Agent Skills，不改变内置 Studio、时间线或视频项目。",
-  "category": "创作与设计",
+  "category": "AI Agent 与自动化",
   "source": {
     "format": "ipollowork-extension-manifest",
     "origin": "builtin",
@@ -21,7 +21,7 @@
     "translations": {
       "en": {
         "description": "Official Agent Skills for iPolloWork Video Studio, HyperFrames, and voiceover workflows, without replacing the built-in Studio, timeline, or video project.",
-        "category": "Creative & Design",
+        "category": "AI Agents & Automation",
         "composer": { "prompt": "Use iPolloWork Video Agent to create or edit video in the current session's Video Studio project." },
         "resources": {
           "ipollowork-video-studio": { "description": "Safely create and edit HyperFrames video in the current iPolloWork Video Studio session." },

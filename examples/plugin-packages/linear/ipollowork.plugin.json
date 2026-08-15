@@ -3,7 +3,7 @@
   "id": "linear",
   "name": "Linear",
   "description": "把问题分流、Sprint 规划、交付跟进和项目更新组合成一致的 Linear 工作流。",
-  "category": "项目与工程",
+  "category": "效率与协作",
   "source": {
     "format": "ipollowork-extension-manifest",
     "origin": "builtin",
@@ -17,7 +17,7 @@
     "translations": {
       "en": {
         "description": "Combine issue triage, sprint planning, delivery follow-up, and project updates into a consistent Linear workflow.",
-        "category": "Projects & Engineering",
+        "category": "Productivity & Collaboration",
         "composer": { "prompt": "Use the Linear plugin to verify team, project, and issue status before triaging, planning, or updating within a clear scope." },
         "resources": {
           "linear-mcp": {

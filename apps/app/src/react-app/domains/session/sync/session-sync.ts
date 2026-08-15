@@ -19,7 +19,7 @@ import {
   useSessionActivityStore,
 } from "../status/session-activity-store";
 import { notifyDesktopEvent } from "../../../shell/desktop-notifications";
-import { parseDesignAiSelectionDisplayMetadata } from "../design/design-ai-selection";
+import { parseDesignAiSelectionDisplayMetadata } from "@ipollowork/design-studio";
 import { parseHyperframesAnimationDisplayMetadata } from "@/app/lib/hyperframes-effect-params";
 import { parseVideoVoiceDisplayMetadata } from "../video/video-voice";
 import { parseVideoIllustrationDisplayMetadata } from "../video/video-illustration";

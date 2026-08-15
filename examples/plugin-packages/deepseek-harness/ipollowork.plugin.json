@@ -3,7 +3,7 @@
   "id": "deepseek-harness",
   "name": "DeepSeek Harness",
   "description": "把代码审查、开发和研究任务委派给 DeepSeek Harness 协作完成。",
-  "category": "开发者工具",
+  "category": "AI Agent 与自动化",
   "preview": true,
   "source": {
     "format": "ipollowork-extension-manifest",
@@ -25,7 +25,7 @@
     "translations": {
       "en": {
         "description": "Delegate code review, development, and research tasks to DeepSeek Harness.",
-        "category": "Developer Tools",
+        "category": "AI Agents & Automation",
         "composer": {
           "prompt": "Work with DeepSeek Harness on the following task:"
         },

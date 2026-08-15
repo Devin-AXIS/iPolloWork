@@ -5,7 +5,7 @@ import type { FilePart, Part, ToolPart } from "@opencode-ai/sdk/v2/client";
 import type { iPolloWorkSessionSnapshot } from "../../../../app/lib/ipollowork-server";
 import { safeStringify } from "../../../../app/utils";
 import { SYNTHETIC_SESSION_ERROR_MESSAGE_PREFIX } from "../../../../app/types";
-import { parseDesignAiSelectionDisplayMetadata } from "../design/design-ai-selection";
+import { parseDesignAiSelectionDisplayMetadata } from "@ipollowork/design-studio";
 import { parseHyperframesAnimationDisplayMetadata } from "@/app/lib/hyperframes-effect-params";
 import { parseVideoVoiceDisplayMetadata } from "../video/video-voice";
 import { parseVideoIllustrationDisplayMetadata } from "../video/video-illustration";

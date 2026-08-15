@@ -3,7 +3,7 @@
   "id": "wechat-official",
   "name": "微信公众号",
   "description": "管理公众号图文、草稿、发布、评论、消息、粉丝、菜单与运营工作流。",
-  "category": "内容与运营",
+  "category": "商业与运营",
   "source": {
     "format": "ipollowork-extension-manifest",
     "origin": "builtin",
@@ -22,7 +22,7 @@
       "en": {
         "name": "WeChat Official Account",
         "description": "Manage WeChat Official Account articles, drafts, publishing, comments, messages, followers, menus, and operational workflows.",
-        "category": "Content & Operations",
+        "category": "Business & Operations",
         "composer": { "prompt": "Use the WeChat Official Account operations plugin to check account capabilities and draft status before handling content, comments, menus, or follower interactions within the confirmed scope." },
         "resources": {
           "wechat-official-service": {

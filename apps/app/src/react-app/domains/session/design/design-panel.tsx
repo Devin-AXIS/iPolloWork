@@ -3,7 +3,12 @@ import * as React from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, Check, ChevronLeft, ChevronRight, Code2, Focus, Loader2, Minus, Monitor, MousePointer2, Palette, Plus, Save, Share2, SlidersHorizontal, Smartphone, Undo2 } from "lucide-react";
 
-import type { iPolloWorkServerClient } from "@/app/lib/ipollowork-server";
+import {
+  IPOLLOWORK_DESIGN_STUDIO_FEATURES,
+  type DesignAiSelectionContext,
+  type DesignStudioClient,
+  type DesignStudioFeatures,
+} from "@ipollowork/design-studio";
 import { pickLocalImageFile, readLocalImageAsDataUrl } from "@/app/lib/desktop";
 import { downloadBlobAsFile } from "@/app/lib/download";
 import { Button } from "@/components/ui/button";
@@ -22,7 +27,6 @@ import { toast } from "@/components/ui/sonner";
 import { cn } from "@/lib/utils";
 import { isPptxCompatibleTemplate } from "@ipollowork/types/templates";
 import { ConfirmModal } from "@/react-app/design-system/modals/confirm-modal";
-import type { DesignAiSelectionContext } from "./design-ai-selection";
 import { useDesignAiSelectionStore } from "./design-ai-selection-store";
 import {
   buildDesignPreviewDocument,
@@ -118,11 +122,12 @@ import {
 
 type DesignPanelProps = {
   sessionId: string;
-  client: iPolloWorkServerClient | null;
+  client: DesignStudioClient | null;
   workspaceId: string | null;
   isRemoteWorkspace?: boolean;
   initialPath?: string;
   expanded?: boolean;
+  features?: DesignStudioFeatures;
   onAskAi: (context: DesignAiSelectionContext) => void;
   onSaveAsTemplate?: () => void;
 };
@@ -221,7 +226,7 @@ function arrayBufferToPreviewDataUrl(data: ArrayBuffer, contentType: string | nu
 
 async function hydrateDesignPreviewAssets(
   source: string,
-  input: { client: iPolloWorkServerClient | null; workspaceId: string | null; activePagePath: string },
+  input: { client: DesignStudioClient | null; workspaceId: string | null; activePagePath: string },
 ): Promise<HydratedDesignPreview> {
   if (!input.client || !input.workspaceId || !input.activePagePath || typeof DOMParser === "undefined") {
     return { source, objectUrls: [] };
@@ -529,6 +534,7 @@ export function DesignPanel({
   isRemoteWorkspace = false,
   initialPath,
   expanded = false,
+  features = IPOLLOWORK_DESIGN_STUDIO_FEATURES,
   onAskAi,
   onSaveAsTemplate,
 }: DesignPanelProps) {
@@ -538,6 +544,7 @@ export function DesignPanel({
   const previewViewportRef = React.useRef<HTMLDivElement>(null);
   const presentationPanRef = React.useRef<HTMLDivElement>(null);
   const imageInputRef = React.useRef<HTMLInputElement>(null);
+  const imageInputIntentRef = React.useRef<"replacement" | "element-background" | "design-background">("replacement");
   const designTokenDraftRef = React.useRef("");
   const designTokenSaveTimerRef = React.useRef<number | null>(null);
   const templateQuery = useQuery({
@@ -1661,8 +1668,8 @@ export function DesignPanel({
   const fontSize = Math.max(1, Math.round(Number.parseFloat(selection?.styles.fontSize || "16") || 16));
   const setFontSize = (next: number, remember = false) => applyField("fontSize", `${Math.max(1, Math.min(240, next))}px`, remember);
 
-  const replaceImageFromFile = async (file: File | undefined) => {
-    if (!file || !selection || selection.tag !== "img") return;
+  const applyBrowserImage = async (file: File | undefined) => {
+    if (!file) return;
     if (!file.type.startsWith("image/")) {
       toast.error("Choose an image file to replace this image.");
       return;
@@ -1673,9 +1680,25 @@ export function DesignPanel({
     }
     try {
       const result = await imageFileToPortableDataUrl(file);
-      rememberHistory();
-      applyField("src", result, false);
-      toast.success("Image replaced in the design.");
+      if (imageInputIntentRef.current === "replacement") {
+        if (!selection || selection.tag !== "img") return;
+        rememberHistory();
+        applyField("src", result, false);
+        toast.success("Image replaced in the design.");
+      } else if (imageInputIntentRef.current === "element-background") {
+        if (!selection || selection.tag === "img") return;
+        applyStyleFields({ backgroundColor: "transparent", backgroundImage: `url(\"${result}\")` });
+        toast.success("Image added as the fill.");
+      } else {
+        handleDesignTokenChange("--ipw-bg-image", `url(\"${result}\")`);
+        handleDesignTokenChange("--ipw-bg-gradient", "none");
+        handleDesignTokenChange("--ipw-bg-overlay", "linear-gradient(rgba(28,27,26,.45), rgba(28,27,26,.45))");
+        handleDesignTokenChange("--ipw-bg-overlay-opacity", "0.45");
+        handleDesignTokenChange("--ipw-bg-mode", "image");
+        handleDesignTokenChange("--ipw-bg-size", "cover");
+        handleDesignTokenChange("--ipw-bg-position", "50% 50%");
+        toast.success("Background image applied.");
+      }
     } catch {
       toast.error("Could not prepare that image. Try PNG, JPG, or WebP.");
     }
@@ -1696,6 +1719,7 @@ export function DesignPanel({
       return;
     }
     if (typeof window !== "undefined" && window.__IPOLLOWORK_ELECTRON__?.invokeDesktop) return;
+    imageInputIntentRef.current = "replacement";
     imageInputRef.current?.click();
   };
 
@@ -1787,7 +1811,12 @@ export function DesignPanel({
   const chooseBackgroundImage = async () => {
     if (!selection || selection.tag === "img") return;
     const pickedPath = await pickLocalImageFile("选择填充图片");
-    if (!pickedPath) return;
+    if (!pickedPath) {
+      if (typeof window !== "undefined" && window.__IPOLLOWORK_ELECTRON__?.invokeDesktop) return;
+      imageInputIntentRef.current = "element-background";
+      imageInputRef.current?.click();
+      return;
+    }
     const dataUrl = await readLocalImageAsDataUrl(pickedPath);
     if (!dataUrl) {
       toast.error("Could not prepare that image. Try PNG, JPG, or WebP.");
@@ -1799,7 +1828,12 @@ export function DesignPanel({
 
   const chooseDesignSystemBackgroundImage = async () => {
     const pickedPath = await pickLocalImageFile("选择全局背景图片");
-    if (!pickedPath) return;
+    if (!pickedPath) {
+      if (typeof window !== "undefined" && window.__IPOLLOWORK_ELECTRON__?.invokeDesktop) return;
+      imageInputIntentRef.current = "design-background";
+      imageInputRef.current?.click();
+      return;
+    }
     const dataUrl = await readLocalImageAsDataUrl(pickedPath);
     if (!dataUrl) {
       toast.error("Could not prepare that image. Try PNG, JPG, or WebP.");
@@ -1942,9 +1976,9 @@ export function DesignPanel({
         type="file"
         accept={LOCAL_IMAGE_ACCEPT}
         className="sr-only"
-        aria-label="Choose replacement image"
+        aria-label="Choose design image"
         onChange={(event) => {
-          replaceImageFromFile(event.currentTarget.files?.[0]);
+          void applyBrowserImage(event.currentTarget.files?.[0]);
           event.currentTarget.value = "";
         }}
       />
@@ -2086,7 +2120,7 @@ export function DesignPanel({
               >
                 {saveMutation.isPending ? <Loader2 className="animate-spin" /> : dirty ? <Save /> : <Check />}
               </Button>
-              {!compactToolbar ? (
+              {!compactToolbar && features.publish ? (
                 <Button
                   variant="ghost"
                   size="icon-sm"
@@ -2118,7 +2152,7 @@ export function DesignPanel({
                     setQuickEdit(null);
                     setAdvancedOpen(false);
                   } : undefined}
-                  onPublish={() => publishMutation.mutate()}
+                  onPublish={features.publish ? () => publishMutation.mutate() : undefined}
                   onExportPdf={() => void exportDeckToPdf()}
                   onExportPptx={() => setPptxConfirmationOpen(true)}
                   onSaveAsTemplate={onSaveAsTemplate}

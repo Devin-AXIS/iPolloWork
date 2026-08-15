@@ -8,7 +8,7 @@ import type { ComposerAttachment, ComposerDraft } from "@/app/types";
 import {
   designAiSelectionInstruction,
   type DesignAiSelectionContext,
-} from "@/react-app/domains/session/design/design-ai-selection";
+} from "@ipollowork/design-studio";
 import { useDesignAiSelectionStore } from "@/react-app/domains/session/design/design-ai-selection-store";
 import { firstLineLocalFileParts } from "@/react-app/domains/session/sync/prompt-file-parts";
 import { appMentionInstruction } from "@/react-app/domains/session/surface/composer/app-mentions";
