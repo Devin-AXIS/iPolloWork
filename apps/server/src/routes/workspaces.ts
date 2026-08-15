@@ -3,7 +3,7 @@ import { basename, dirname, resolve } from "node:path";
 import { recordAudit } from "../audit.js";
 import { ApiError } from "../errors.js";
 import { inheritWorkspaceOpencodeConnection, resolveWorkspaceOpencodeConnection } from "../opencode-connection.js";
-import type { ServerConfig, WorkspaceInfo } from "../types.js";
+import { DEFAULT_ENGINE_ID, type ServerConfig, type WorkspaceInfo } from "../types.js";
 import { ensureDir, exists, shortId } from "../utils.js";
 import { defaultWorkspaceiPolloWorkConfig, ensureWorkspaceFiles } from "../workspace-init.js";
 import { seediPolloWorkWorkspaceConfigIfEmpty } from "../ipollowork-workspace-config-store.js";
@@ -201,6 +201,7 @@ function serializeWorkspaceConfigEntry(workspace: WorkspaceInfo): Record<string,
     preset: workspace.preset,
     ...(workspace.workContextId ? { workContextId: workspace.workContextId } : {}),
     workspaceType: workspace.workspaceType,
+    engineId: workspace.engineId?.trim() || DEFAULT_ENGINE_ID,
     ...(workspace.remoteType ? { remoteType: workspace.remoteType } : {}),
     ...(!isLocalWorkspace && workspace.baseUrl ? { baseUrl: workspace.baseUrl } : {}),
     ...(!isLocalWorkspace && workspace.directory ? { directory: workspace.directory } : {}),
@@ -305,6 +306,7 @@ export function registerWorkspaceRoutes(options: RegisterWorkspaceRoutesOptions)
       preset,
       ...(workContextId ? { workContextId } : {}),
       workspaceType: "local",
+      engineId: DEFAULT_ENGINE_ID,
       ...inheritWorkspaceOpencodeConnection(config),
     };
 
@@ -392,6 +394,7 @@ export function registerWorkspaceRoutes(options: RegisterWorkspaceRoutesOptions)
       preset: "remote",
       ...(workContextId ? { workContextId } : {}),
       workspaceType: "remote",
+      engineId: DEFAULT_ENGINE_ID,
       remoteType,
       baseUrl: remoteType === "ipollowork" ? (ipolloworkHostUrl ?? baseUrl) : baseUrl,
       ...(directory ? { directory } : {}),

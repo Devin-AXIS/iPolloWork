@@ -6,13 +6,14 @@ import { z } from "zod";
 import { ApiError } from "./errors.js";
 import {
   parsePluginMcpEntries,
-  pluginEngineAdapter,
+  pluginEngineAdapters,
+  type PluginEngineAdapter,
   type PluginEngineVersion,
   type PluginWorkspaceFile,
 } from "./plugin-engine-adapter.js";
 import { parsePluginPackageManifest, type PluginPackageManifest } from "./plugin-package-manifest.js";
 import { runtimeStorageDir } from "./runtime-opencode-config-store.js";
-import type { ServerConfig } from "./types.js";
+import { DEFAULT_ENGINE_ID, type ServerConfig } from "./types.js";
 import serverPackage from "../package.json" with { type: "json" };
 
 const MANIFEST_FILE = "ipollowork.plugin.json";
@@ -23,6 +24,12 @@ const TRUSTED_IMPORT_PUBLISHER_KEYS = new Map([
     "MCowBQYDK2VwAyEARwKWW0VeQqnxh1WiOi8+kAutSITD476eRaRguDZkxYk=",
   ],
 ]);
+
+function workspaceEngineAdapter(config: ServerConfig, workspaceId: string): PluginEngineAdapter {
+  const workspace = config.workspaces.find((entry) => entry.id === workspaceId);
+  if (!workspace) throw new ApiError(404, "workspace_not_found", "Workspace not found");
+  return pluginEngineAdapters.get(workspace.engineId?.trim() || DEFAULT_ENGINE_ID);
+}
 
 const ownedFileSchema = z.object({ path: z.string(), sha256: z.string() });
 const installedVersionSchema = z.object({
@@ -273,18 +280,18 @@ function satisfiesRange(version: string, range: string): boolean {
   return satisfiesPredicate(tuple, range);
 }
 
-function assertRuntimeCompatibility(manifest: PluginPackageManifest): void {
+function assertRuntimeCompatibility(manifest: PluginPackageManifest, engineAdapter: PluginEngineAdapter): void {
   const compatibility = manifest.package?.compatibility;
   const supportedEngines = manifest.package?.engines;
-  if (supportedEngines && !supportedEngines.includes(pluginEngineAdapter.id)) {
-    throw new ApiError(409, "plugin_package_incompatible", `Plugin does not support ${pluginEngineAdapter.id}`, {
-      engine: pluginEngineAdapter.id,
+  if (supportedEngines && !supportedEngines.includes(engineAdapter.id)) {
+    throw new ApiError(409, "plugin_package_incompatible", `Plugin does not support ${engineAdapter.id}`, {
+      engine: engineAdapter.id,
       supportedEngines,
     });
   }
   const checks = [
     { name: "iPolloWork", version: serverPackage.version, range: compatibility?.ipollowork },
-    ...pluginEngineAdapter.compatibility(manifest),
+    ...engineAdapter.compatibility(manifest),
   ];
   for (const check of checks) {
     if (check.range && !satisfiesRange(check.version, check.range)) {
@@ -360,7 +367,7 @@ function workspaceActivationFiles(
   pluginId: string,
   version: InstalledVersion,
 ): PluginWorkspaceFile[] {
-  return pluginEngineAdapter.workspaceFiles(engineVersion(config, workspaceId, pluginId, version));
+  return workspaceEngineAdapter(config, workspaceId).workspaceFiles(engineVersion(config, workspaceId, pluginId, version));
 }
 
 function workspaceActivationPaths(
@@ -380,8 +387,9 @@ function skillActivationPaths(
   resourceIds: ReadonlySet<string>,
 ): Set<string> {
   const projected = engineVersion(config, workspaceId, pluginId, version);
+  const engineAdapter = workspaceEngineAdapter(config, workspaceId);
   return new Set([...resourceIds].flatMap((resourceId) => {
-    const targetPath = pluginEngineAdapter.skillTargetPath(projected, resourceId);
+    const targetPath = engineAdapter.skillTargetPath(projected, resourceId);
     return targetPath ? [targetPath] : [];
   }));
 }
@@ -497,6 +505,7 @@ async function applyVersion(
   }
 
   const enabled = installed?.enabled !== false;
+  const engineAdapter = workspaceEngineAdapter(config, workspaceId);
   try {
     for (const file of nextActivationFiles) {
       const source = resolveWithin(nextEngineVersion.artifactRoot, file.sourcePath);
@@ -514,7 +523,7 @@ async function applyVersion(
     for (const file of currentActivationFiles) {
       if (!nextPaths.has(file.targetPath)) await rm(resolveWithin(workspaceRoot, file.targetPath), { force: true });
     }
-    await pluginEngineAdapter.syncRuntime({
+    await engineAdapter.syncRuntime({
       config,
       workspaceId,
       resolvePath: resolveWithin,
@@ -523,7 +532,7 @@ async function applyVersion(
       enabled,
     });
   } catch (error) {
-    await pluginEngineAdapter.syncRuntime({
+    await engineAdapter.syncRuntime({
       config,
       workspaceId,
       resolvePath: resolveWithin,
@@ -552,7 +561,7 @@ async function applyVersion(
   }
 }
 
-export async function previewPluginPackage(input: { packageRoot: string; workspaceRoot: string }): Promise<PluginPackagePreview> {
+export async function previewPluginPackage(input: { packageRoot: string; workspaceRoot: string; engineId: string }): Promise<PluginPackagePreview> {
   const manifestPath = resolveWithin(input.packageRoot, MANIFEST_FILE);
   let sourceManifest: unknown;
   let manifest: PluginPackageManifest;
@@ -564,7 +573,8 @@ export async function previewPluginPackage(input: { packageRoot: string; workspa
     throw error;
   }
   if (!manifest.package) throw new ApiError(400, "plugin_package_metadata_required", "Package metadata is required for installation");
-  assertRuntimeCompatibility(manifest);
+  const engineAdapter = pluginEngineAdapters.get(input.engineId);
+  assertRuntimeCompatibility(manifest, engineAdapter);
   const resourcePaths = [...new Set([
     ...manifest.resources.flatMap((resource) => resource.path ? [resource.path] : []),
     ...manifest.engineBindings?.flatMap((binding) => binding.capabilities.flatMap((capability) => capability.path ? [capability.path] : [])) ?? [],
@@ -575,7 +585,7 @@ export async function previewPluginPackage(input: { packageRoot: string; workspa
   }
   const files: OwnedFile[] = [];
   for (const path of [...paths].sort()) files.push({ path, sha256: await sha256(resolveWithin(input.packageRoot, path)) });
-  const writes = pluginEngineAdapter.workspaceFiles({ manifest, artifactRoot: input.packageRoot, files })
+  const writes = engineAdapter.workspaceFiles({ manifest, artifactRoot: input.packageRoot, files })
     .map((file) => ({ path: file.targetPath, sha256: file.sha256 }));
   return { manifest, files, writes, integrity: integrityForManifest(manifest, files, sourceManifest) };
 }
@@ -758,7 +768,11 @@ export async function installPluginPackage(input: {
   packageRoot: string;
   workspaceRoot: string;
 }): Promise<PluginPackageInstallResult> {
-  const preview = await previewPluginPackage(input);
+  const preview = await previewPluginPackage({
+    packageRoot: input.packageRoot,
+    workspaceRoot: input.workspaceRoot,
+    engineId: workspaceEngineAdapter(input.serverConfig, input.workspaceId).id,
+  });
   if (!preview.manifest.package) throw new ApiError(400, "plugin_package_metadata_required", "Package metadata is required for installation");
   const state = await readState(input.serverConfig, input.workspaceId);
   const existing = state.packages[preview.manifest.id];
@@ -798,7 +812,11 @@ export async function updatePluginPackage(input: {
   packageRoot: string;
   workspaceRoot: string;
 }): Promise<PluginPackageUpdateResult> {
-  const preview = await previewPluginPackage(input);
+  const preview = await previewPluginPackage({
+    packageRoot: input.packageRoot,
+    workspaceRoot: input.workspaceRoot,
+    engineId: workspaceEngineAdapter(input.serverConfig, input.workspaceId).id,
+  });
   if (!preview.manifest.package) throw new ApiError(400, "plugin_package_metadata_required", "Package metadata is required for installation");
   const state = await readState(input.serverConfig, input.workspaceId);
   const installed = state.packages[preview.manifest.id];
@@ -875,6 +893,7 @@ export async function setPluginPackageEnabled(input: {
     inactiveActivationPaths(input.serverConfig, input.workspaceId, installed, current),
   );
   const currentEngineVersion = engineVersion(input.serverConfig, input.workspaceId, installed.pluginId, current);
+  const engineAdapter = workspaceEngineAdapter(input.serverConfig, input.workspaceId);
   const activationFiles = workspaceActivationFiles(input.serverConfig, input.workspaceId, installed.pluginId, current);
   const allActivationPaths = new Set(activationFiles.map((file) => file.targetPath));
   const disabledSkillPaths = skillActivationPaths(
@@ -894,7 +913,7 @@ export async function setPluginPackageEnabled(input: {
       throw new ApiError(409, "plugin_package_conflict", "Plugin skill targets already exist", { paths: conflicts });
     }
   }
-  await pluginEngineAdapter.syncRuntime({
+  await engineAdapter.syncRuntime({
     config: input.serverConfig,
     workspaceId: input.workspaceId,
     resolvePath: resolveWithin,
@@ -991,6 +1010,7 @@ export async function uninstallPluginPackage(input: {
   if (!installed) throw new ApiError(404, "plugin_package_not_installed", "Plugin package is not installed");
   const current = installed.versions[installed.currentVersion];
   if (!current) throw new ApiError(500, "plugin_package_state_invalid", "Installed package version is missing");
+  const engineAdapter = workspaceEngineAdapter(input.serverConfig, input.workspaceId);
   await assertOwnedFilesUnchanged(
     input.serverConfig,
     input.workspaceId,
@@ -999,7 +1019,7 @@ export async function uninstallPluginPackage(input: {
     current,
     inactiveActivationPaths(input.serverConfig, input.workspaceId, installed, current),
   );
-  await pluginEngineAdapter.syncRuntime({
+  await engineAdapter.syncRuntime({
     config: input.serverConfig,
     workspaceId: input.workspaceId,
     resolvePath: resolveWithin,
