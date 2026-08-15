@@ -55,8 +55,10 @@ jobs:
       - name: Install iPolloWork workspace
         run: pnpm install --frozen-lockfile
 
-      - name: Install plugin workspace
-        run: pnpm --dir external-plugins/deepseek-harness/${{ matrix.package }} install --frozen-lockfile
+      - name: Install plugin workspaces
+        run: |
+          pnpm --dir external-plugins/deepseek-harness/design-studio install --frozen-lockfile
+          pnpm --dir external-plugins/deepseek-harness/ppt-studio install --frozen-lockfile
 
       - name: Typecheck and package
         run: |
