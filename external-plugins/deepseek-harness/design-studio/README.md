@@ -35,3 +35,10 @@ The host bridge accepts only the workspace registered by DeepSeek Harness and
 only paths below its `design/` directory. Writes use conflict checks and atomic
 replacement. The Studio iframe receives a per-process token; selecting
 `Ask AI` stages a draft for the user to review and never submits it itself.
+
+## Contributing
+
+Propose Design adapter changes in this repository under
+`source/plugins/deepseek-idesign`. Accepted changes are sent to iPolloWork as a
+reviewable upstream pull request and return here through the normal release
+sync after they are merged upstream.
