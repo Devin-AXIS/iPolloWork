@@ -1,7 +1,7 @@
 /** @jsxImportSource react */
 import * as React from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Check, ChevronLeft, ChevronRight, Code2, Focus, Loader2, Minus, Monitor, MousePointer2, Palette, Plus, Save, Share2, SlidersHorizontal, Smartphone, Undo2 } from "lucide-react";
+import { ArrowLeft, Check, ChevronLeft, ChevronRight, Code2, Focus, Github, Layers3, Loader2, Minus, Monitor, MousePointer2, Palette, Plus, Presentation, Save, Share2, SlidersHorizontal, Smartphone, Sparkles, Undo2 } from "lucide-react";
 
 import {
   IPOLLOWORK_DESIGN_STUDIO_FEATURES,
@@ -129,6 +129,14 @@ type DesignPanelProps = {
   initialPath?: string;
   expanded?: boolean;
   features?: DesignStudioFeatures;
+  branding?: {
+    kind: "design" | "slides";
+    title: string;
+    byline: string;
+    bylineUrl: string;
+    repositoryUrl: string;
+    onAskAi: () => void;
+  };
   onAskAi: (context: DesignAiSelectionContext) => void;
   onSaveAsTemplate?: () => void;
 };
@@ -536,6 +544,7 @@ export function DesignPanel({
   initialPath,
   expanded = false,
   features = IPOLLOWORK_DESIGN_STUDIO_FEATURES,
+  branding,
   onAskAi,
   onSaveAsTemplate,
 }: DesignPanelProps) {
@@ -1997,6 +2006,36 @@ export function DesignPanel({
   const viewedVersionLabel = viewedVersionPath === "current"
     ? currentVersionLabel
     : `V${versionTargets.length - versionTargets.findIndex((version) => version.path === viewedVersionPath)}`;
+  const editControl = (
+    <Label className={cn("flex shrink-0 items-center gap-2 text-xs", !branding && "order-1")}>
+      <Switch
+        size="sm"
+        className="border-[#AEB2B9] bg-transparent shadow-none data-checked:!border-[#0A84FF] data-checked:!bg-[#0A84FF] data-unchecked:!border-[#AEB2B9] data-unchecked:!bg-transparent [&_[data-slot=switch-thumb]]:!shadow-none [&_[data-slot=switch-thumb][data-checked]]:!bg-white [&_[data-slot=switch-thumb][data-unchecked]]:!bg-[#62666D]"
+        checked={editing}
+        onCheckedChange={(checked) => {
+          setEditing(checked);
+          setSelectionState(null);
+          setQuickEdit(null);
+          setAdvancedOpen(false);
+        }}
+        aria-label="Edit"
+      />
+      Edit
+    </Label>
+  );
+  const templateControl = templateCatalog ? (
+    <Button
+      variant="ghost"
+      size="icon-sm"
+      className={cn(DESIGN_ACTION_BUTTON_CLASS, !branding && "order-1")}
+      onClick={() => setTemplateDialogOpen(true)}
+      aria-label={templateCatalog.title}
+      title={templateCatalog.title}
+      data-testid="design-template-market-button"
+    >
+      <Plus />
+    </Button>
+  ) : null;
 
   return (
     <div ref={panelRef} className="flex h-full min-h-0 flex-col bg-background" data-testid="design-panel">
@@ -2030,9 +2069,30 @@ export function DesignPanel({
       ) : (
         <>
           <div className={cn(
-            "flex min-w-0 shrink-0 flex-wrap items-center border-b border-border px-3 py-2 [border-bottom-width:0.5px]",
+            "flex min-w-0 shrink-0 items-center border-b border-border px-3 py-2 [border-bottom-width:0.5px]",
+            branding
+              ? "relative z-30 h-14 flex-nowrap overflow-hidden border-white/60 bg-background/80 shadow-[0_10px_30px_-22px_rgba(15,23,42,0.55),inset_0_1px_0_rgba(255,255,255,0.72)] backdrop-blur-xl backdrop-saturate-150 before:pointer-events-none before:absolute before:inset-x-0 before:top-0 before:h-px before:bg-gradient-to-r before:from-transparent before:via-white/90 before:to-transparent dark:border-white/10 dark:bg-background/72 dark:shadow-[0_10px_30px_-22px_rgba(0,0,0,0.9),inset_0_1px_0_rgba(255,255,255,0.12)] dark:before:via-white/20"
+              : "flex-wrap",
             compactToolbar ? "gap-1" : "gap-2",
           )}>
+            {branding ? (
+              <div className="order-0 flex min-w-0 shrink-0 items-center gap-2.5 border-r border-border/70 pr-3">
+                <span className="grid size-8 shrink-0 place-items-center rounded-xl border border-white/70 bg-white/70 text-foreground shadow-[0_6px_18px_-12px_rgba(15,23,42,0.8),inset_0_1px_0_rgba(255,255,255,0.9)] dark:border-white/10 dark:bg-white/8 dark:shadow-none" aria-hidden="true">
+                  {branding.kind === "slides" ? <Presentation className="size-4" /> : <Layers3 className="size-4" />}
+                </span>
+                <div className="flex min-w-0 flex-col justify-center leading-none">
+                  <strong className="truncate text-sm font-semibold tracking-[-0.02em]">{branding.title}</strong>
+                  <a
+                    href={branding.bylineUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="mt-1 w-fit truncate text-[10px] font-medium text-muted-foreground transition-colors hover:text-foreground focus-visible:rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  >
+                    {branding.byline}
+                  </a>
+                </div>
+              </div>
+            ) : null}
             {hasSiteVersioning ? (
               <div className={cn("order-0 flex min-w-0 flex-1 items-center gap-2", veryCompactToolbar && "hidden")}>
                 <p className="min-w-0 truncate text-sm font-medium">{fileName(activePagePath)}</p>
@@ -2047,34 +2107,7 @@ export function DesignPanel({
                 ) : null}
               </div>
             ) : null}
-            <Label className="order-1 flex shrink-0 items-center gap-2 text-xs">
-              <Switch
-                size="sm"
-                className="border-[#AEB2B9] bg-transparent shadow-none data-checked:!border-[#0A84FF] data-checked:!bg-[#0A84FF] data-unchecked:!border-[#AEB2B9] data-unchecked:!bg-transparent [&_[data-slot=switch-thumb]]:!shadow-none [&_[data-slot=switch-thumb][data-checked]]:!bg-white [&_[data-slot=switch-thumb][data-unchecked]]:!bg-[#62666D]"
-                checked={editing}
-                onCheckedChange={(checked) => {
-                  setEditing(checked);
-                  setSelectionState(null);
-                  setQuickEdit(null);
-                  setAdvancedOpen(false);
-                }}
-                aria-label="Edit"
-              />
-              Edit
-            </Label>
-            {templateCatalog ? (
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                className={cn("order-1", DESIGN_ACTION_BUTTON_CLASS)}
-                onClick={() => setTemplateDialogOpen(true)}
-                aria-label={templateCatalog.title}
-                title={templateCatalog.title}
-                data-testid="design-template-market-button"
-              >
-                <Plus />
-              </Button>
-            ) : null}
+            {!branding ? <>{editControl}{templateControl}</> : null}
             {deck ? (
               <div className="order-2 flex h-8 min-w-0 items-center rounded-lg border border-border bg-transparent p-0.5 shadow-none" data-testid="design-deck-navigation">
                 <Button variant="ghost" size="icon-sm" className="size-7 rounded-md text-foreground hover:bg-muted" onClick={() => navigateDeck("previous")} disabled={deck.index <= 0} aria-label="Previous slide" title="Previous slide">
@@ -2115,6 +2148,23 @@ export function DesignPanel({
               )
             ) : null}
             <div className={cn("ml-auto flex shrink-0 items-center", isPresentationTemplate ? "order-3" : "order-2", compactToolbar ? "gap-1" : "gap-2")}>
+              {branding ? (
+                <>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    className="h-8 shrink-0 gap-1.5 rounded-lg bg-foreground px-2.5 text-xs font-semibold text-background shadow-none hover:bg-foreground/90 hover:text-background"
+                    onClick={branding.onAskAi}
+                    aria-label="Ask AI about this document"
+                    title="Ask AI"
+                  >
+                    <Sparkles className="size-4" />
+                    <span className={cn(compactToolbar && "sr-only")}>Ask AI</span>
+                  </Button>
+                  {templateControl}
+                  {editControl}
+                </>
+              ) : null}
               {editing ? <Button
                 variant="ghost"
                 size="icon-sm"
@@ -2199,6 +2249,18 @@ export function DesignPanel({
                   onExportPptx={() => setPptxConfirmationOpen(true)}
                   onSaveAsTemplate={onSaveAsTemplate}
                 />
+              ) : null}
+              {branding ? (
+                <a
+                  href={branding.repositoryUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className={cn(DESIGN_ACTION_BUTTON_CLASS, "inline-flex items-center justify-center border border-border/70 bg-background/65 shadow-sm hover:border-foreground/20 hover:bg-background")}
+                  aria-label="View DeepSeek Design on GitHub"
+                  title="DeepSeek Design on GitHub"
+                >
+                  <Github className="size-[18px]" />
+                </a>
               ) : null}
             </div>
           </div>

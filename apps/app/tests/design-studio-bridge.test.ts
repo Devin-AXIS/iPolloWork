@@ -45,6 +45,10 @@ describe("Design Studio host bridge", () => {
       type: "ask-ai",
       request: designStudioAskAiRequest(context),
     })).toBe(true);
+    expect(isDesignStudioHostMessage({
+      channel: DESIGN_STUDIO_HOST_CHANNEL,
+      type: "ask-document-ai",
+    })).toBe(true);
     expect(isDesignStudioHostMessage({ channel: "other", type: "ask-ai", request: {} })).toBe(false);
   });
 
