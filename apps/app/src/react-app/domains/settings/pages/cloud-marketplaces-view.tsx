@@ -1,6 +1,6 @@
 /** @jsxImportSource react */
 import * as React from "react";
-import { ChevronLeft, Cloud, Loader2, Package, RefreshCw, ShieldCheck } from "lucide-react";
+import { Cloud, Loader2, RefreshCw, ShieldCheck } from "lucide-react";
 
 import type { DenMarketplacePlugin } from "@/app/lib/den";
 import type { iPolloWorkPluginPackageItem, iPolloWorkServerClient } from "@/app/lib/ipollowork-server";
@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { currentLocale, t } from "@/i18n";
 import { resolveExtensionIconUrl } from "@/react-app/design-system/extension-icon-src";
 import { useCloudSession } from "@/react-app/domains/settings/cloud/cloud-session-provider";
+import { PluginPackageDetail } from "@/react-app/domains/settings/plugin-package-detail";
 import { PluginPackageListItem } from "@/react-app/domains/settings/plugin-package-list-item";
 import { readPluginPackageArchive } from "@/react-app/domains/settings/plugin-package-archive";
 import { formatPluginPlatformError, localizePluginPackageManifest } from "@/react-app/domains/settings/plugin-platform-state";
@@ -50,6 +51,7 @@ export type CloudMarketplacesViewProps = {
   workspaceId: string | null;
   onOpenAccount: () => void;
   onInstalled?: (pluginId: string) => void | Promise<void>;
+  onOpenInstalled?: (pluginId: string) => void;
   embedded?: boolean;
   search?: string;
 };
@@ -106,6 +108,7 @@ export function CloudMarketplacesView({
   workspaceId,
   onOpenAccount,
   onInstalled,
+  onOpenInstalled,
   embedded = false,
   search: controlledSearch,
 }: CloudMarketplacesViewProps) {
@@ -208,33 +211,22 @@ export function CloudMarketplacesView({
       return groups;
     }, {}));
     return (
-      <section className="space-y-7">
-        <button
-          type="button"
-          className="inline-flex items-center gap-1 rounded-md text-xs text-dls-secondary hover:text-dls-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
-          onClick={() => setSelectedId(null)}
-        >
-          <ChevronLeft size={15} />{t("settings.marketplace.back")}
-        </button>
-        <div className="flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between">
-          <div className="flex min-w-0 items-start gap-4">
-            <span className="flex size-14 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-dls-border bg-dls-surface text-dls-secondary">
-              {iconUrl ? <img src={iconUrl} alt="" className="size-8 object-contain" /> : <Package size={24} />}
-            </span>
-            <div>
-              <h2 className="text-xl font-semibold text-dls-text">{manifest.name}</h2>
-              <p className="mt-1 max-w-[64ch] text-sm leading-6 text-dls-secondary">{manifest.description}</p>
-              <div className="mt-3 flex flex-wrap gap-2">
-                <SettingsPill>v{selected.version}</SettingsPill>
-                <SettingsPill>{selected.publisher}</SettingsPill>
-                <SettingsPill>{selected.pointsCost === 0 ? t("settings.marketplace.free") : `${selected.pointsCost} iPoints`}</SettingsPill>
-              </div>
-            </div>
-          </div>
+      <PluginPackageDetail
+        name={manifest.name}
+        description={manifest.description}
+        iconUrl={iconUrl}
+        onBack={() => setSelectedId(null)}
+        action={(
           <Button disabled={!client || !workspaceId || busyId !== null || localPackage?.version === selected.version} onClick={() => void install(selected)}>
             {busyId === selected.pluginId ? <Loader2 size={14} className="animate-spin" /> : null}
             {actionLabel(selected, localPackage)}
           </Button>
+        )}
+      >
+        <div className="mb-6 flex flex-wrap gap-2">
+          <SettingsPill>v{selected.version}</SettingsPill>
+          <SettingsPill>{selected.publisher}</SettingsPill>
+          <SettingsPill>{selected.pointsCost === 0 ? t("settings.marketplace.free") : `${selected.pointsCost} iPoints`}</SettingsPill>
         </div>
         <div className="grid gap-5 border-t border-dls-border pt-6 lg:grid-cols-[minmax(0,1fr)_220px]">
           <div>
@@ -258,7 +250,7 @@ export function CloudMarketplacesView({
           </div>
         </div>
         {error ? <div role="alert" className="rounded-xl border border-red-6 bg-red-2 px-5 py-3 text-xs text-red-11">{error}</div> : null}
-      </section>
+      </PluginPackageDetail>
     );
   }
 
@@ -291,6 +283,7 @@ export function CloudMarketplacesView({
           client={client}
           workspaceId={workspaceId}
           onOpen={setSelectedId}
+          onOpenInstalled={onOpenInstalled}
           onInstall={install}
         />
       ) : null}
@@ -305,6 +298,7 @@ export function CloudMarketplacesView({
           client={client}
           workspaceId={workspaceId}
           onOpen={setSelectedId}
+          onOpenInstalled={onOpenInstalled}
           onInstall={install}
         />
       ))}
@@ -322,6 +316,7 @@ type MarketplaceSectionProps = {
   client: iPolloWorkServerClient | null;
   workspaceId: string | null;
   onOpen: (pluginId: string) => void;
+  onOpenInstalled?: (pluginId: string) => void;
   onInstall: (item: DenMarketplacePlugin) => Promise<void>;
 };
 
@@ -346,7 +341,9 @@ function MarketplaceSection(props: MarketplaceSectionProps) {
               actionBusy={props.busyId === item.pluginId}
               actionDisabled={!props.client || !props.workspaceId || props.busyId !== null || localPackage?.version === item.version}
               actionLabel={<>{props.busyId === item.pluginId ? <Loader2 size={14} className="animate-spin" /> : null}{actionLabel(item, localPackage)}</>}
-              onOpen={() => props.onOpen(item.pluginId)}
+              onOpen={() => localPackage && props.onOpenInstalled
+                ? props.onOpenInstalled(item.pluginId)
+                : props.onOpen(item.pluginId)}
               onAction={() => void props.onInstall(item)}
             />
           );

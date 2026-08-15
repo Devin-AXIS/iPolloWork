@@ -87,10 +87,47 @@ export default {
       },
     },
     {
+      name: "Open an installed marketplace plugin",
+      run: async (ctx) => {
+        await ctx.prove("Installed marketplace entries open the canonical installed plugin detail", {
+          action: async () => {
+            const opened = await ctx.eval(`(() => {
+              const installedLabels = ['已安装', 'Installed'];
+              const rows = [...document.querySelectorAll('main div')]
+                .filter((entry) => installedLabels.some((label) => entry.innerText?.includes(label)))
+                .sort((left, right) => left.querySelectorAll('button').length - right.querySelectorAll('button').length);
+              const openButton = rows.find((entry) => entry.querySelectorAll('button').length >= 2)?.querySelector('button');
+              openButton?.click();
+              return Boolean(openButton);
+            })()`);
+            ctx.assert(opened, "No installed marketplace plugin could be opened.");
+            await ctx.waitFor(`location.hash.includes('/settings/extensions/plugin/')`, {
+              timeoutMs: 30_000,
+              label: "canonical installed detail from marketplace",
+            });
+            await ctx.waitFor(`document.body.innerText.includes('启用') || document.body.innerText.includes('Enable')`, {
+              timeoutMs: 30_000,
+              label: "canonical detail enable control",
+            });
+          },
+          assert: async () => {
+            await ctx.expectText("已安装");
+            await ctx.expectText("启用");
+          },
+        });
+      },
+    },
+    {
       name: "Switch to personal plugin packages",
       run: async (ctx) => {
         await ctx.prove("Personal packages stay in the same library without exposing raw MCP rows", {
           action: async () => {
+            await ctx.navigateHash("/settings/extensions");
+            await ctx.waitFor(`Boolean([...document.querySelectorAll('[role="tab"]')]
+              .find((entry) => ['个人', 'Personal'].includes(entry.textContent?.trim() ?? '')))`, {
+              timeoutMs: 30_000,
+              label: "personal plugin source tab",
+            });
             const clicked = await ctx.eval(`(() => {
               const tab = [...document.querySelectorAll('[role="tab"]')]
                 .find((entry) => ['个人', 'Personal'].includes(entry.textContent?.trim() ?? ''));
@@ -116,17 +153,61 @@ export default {
       },
     },
     {
+      name: "Open the canonical installed plugin detail",
+      run: async (ctx) => {
+        await ctx.prove("Installed plugins share one detail page with enablement and authorization state", {
+          action: async () => {
+            const opened = await ctx.eval(`(() => {
+              const authorizationLabels = ['需要授权', 'Authorization required'];
+              const rows = [...document.querySelectorAll('main div')]
+                .filter((entry) => authorizationLabels.some((label) => entry.innerText?.includes(label)))
+                .sort((left, right) => left.querySelectorAll('button').length - right.querySelectorAll('button').length);
+              const authorizationButton = rows.find((entry) => entry.querySelectorAll('button').length >= 2)?.querySelector('button');
+              const fallbackButton = document.querySelector('button[aria-label^="打开"], button[aria-label^="Open"]');
+              const target = authorizationButton ?? fallbackButton;
+              target?.click();
+              return { clicked: Boolean(target), authorizationExpected: Boolean(authorizationButton) };
+            })()`);
+            ctx.assert(opened.clicked, "No installed plugin could be opened.");
+            await ctx.waitFor(`location.hash.includes('/settings/extensions/plugin/')`, {
+              timeoutMs: 30_000,
+              label: "canonical plugin detail route",
+            });
+            await ctx.waitFor(`(() => {
+              const text = document.body.innerText;
+              return (text.includes('已安装') || text.includes('Installed'))
+                && (text.includes('启用') || text.includes('Enable'))
+                && Boolean(document.querySelector('[role="switch"]'));
+            })()`, {
+              timeoutMs: 30_000,
+              label: "installed status and enable switch",
+            });
+            if (opened.authorizationExpected) {
+              await ctx.waitFor(`document.body.innerText.includes('需要授权') || document.body.innerText.includes('Authorization required')`, {
+                timeoutMs: 30_000,
+                label: "authorization required status",
+              });
+            }
+          },
+          assert: async () => {
+            await ctx.expectText("已安装");
+            await ctx.expectText("启用");
+          },
+          screenshot: {
+            name: "plugin-library-detail",
+            requireText: ["已安装", "启用"],
+            rejectText: ["Something went wrong"],
+            hashIncludes: "/settings/extensions/plugin/",
+          },
+        });
+      },
+    },
+    {
       name: "Switch to the skills index",
       run: async (ctx) => {
         await ctx.prove("Skills remain a first-class index inside the same extension surface", {
           action: async () => {
-            const clicked = await ctx.eval(`(() => {
-              const tab = [...document.querySelectorAll('[role="tab"]')]
-                .find((entry) => ['技能', 'Skills'].includes(entry.textContent?.trim() ?? ''));
-              tab?.click();
-              return Boolean(tab);
-            })()`);
-            ctx.assert(clicked, "Skills tab was not found.");
+            await ctx.navigateHash("/settings/extensions/skills");
             await ctx.waitFor(`Boolean(document.querySelector('input[placeholder="搜索已安装、团队和中心skills"], input[placeholder="Search installed, team, and hub skills"]'))`, {
               timeoutMs: 30_000,
               label: "skills index",

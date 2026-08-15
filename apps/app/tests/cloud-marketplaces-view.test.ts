@@ -21,9 +21,20 @@ describe("Cloud marketplace row visibility", () => {
     expect(source).toContain("validatePluginPackageUpload(workspaceId, upload)");
     expect(source).toContain("importPluginPackage(workspaceId, upload)");
     expect(source).toContain("<PluginPackageListItem");
+    expect(source).toContain("<PluginPackageDetail");
+    expect(source).toContain("onOpenInstalled");
     expect(source).not.toContain("activeOrganization");
     expect(source).not.toContain("DenOrgPlugin");
     expect(source).not.toContain("orgMcpConnections");
+  });
+
+  test("shares one detail page across marketplace and personal plugins", async () => {
+    const marketplaceSource = await Bun.file(new URL("../src/react-app/domains/settings/pages/cloud-marketplaces-view.tsx", import.meta.url)).text();
+    const personalSource = await Bun.file(new URL("../src/react-app/domains/settings/plugin-packages-panel.tsx", import.meta.url)).text();
+    expect(marketplaceSource).toContain("<PluginPackageDetail");
+    expect(personalSource).toContain("<PluginPackageDetail");
+    expect(personalSource).toContain('t("plugin_platform.enable")');
+    expect(personalSource).toContain('t("plugin_platform.status.needs_authorization")');
   });
 
   test("uses the canonical plugin library categories", () => {

@@ -1765,6 +1765,7 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
                 workspaceId={runtimeWorkspaceId}
                 onOpenAccount={openCloudAccountSettings}
                 onInstalled={(pluginId) => navigateSettingsPath(`extensions/plugin/${encodeURIComponent(pluginId)}`)}
+                onOpenInstalled={(pluginId) => navigateSettingsPath(`extensions/plugin/${encodeURIComponent(pluginId)}`)}
               />
             )}
           />
@@ -1810,6 +1811,7 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
             workspaceId={runtimeWorkspaceId}
             onOpenAccount={openCloudAccountSettings}
             onInstalled={(pluginId) => navigateSettingsPath(`extensions/plugin/${encodeURIComponent(pluginId)}`)}
+            onOpenInstalled={(pluginId) => navigateSettingsPath(`extensions/plugin/${encodeURIComponent(pluginId)}`)}
           />
         );
       case "memory":

@@ -32,6 +32,7 @@ import type { iPolloWorkPluginAuthorizationMethod } from "@/app/extensions";
 import type { McpStatus, McpStatusMap } from "@/app/types";
 import { resolveExtensionIconUrl } from "@/react-app/design-system/extension-icon-src";
 import { AuthorizationFormDialog } from "@/react-app/domains/settings/authorization-form-dialog";
+import { PluginPackageDetail } from "@/react-app/domains/settings/plugin-package-detail";
 import { SettingsListSearchInput } from "@/react-app/domains/settings/settings-list";
 import { SettingsSegmentedTabs } from "@/react-app/domains/settings/settings-segmented-tabs";
 import { PluginPackageImportModal } from "./plugin-package-import-modal";
@@ -335,48 +336,46 @@ export function PluginPackagesPanel(props: PluginPackagesPanelProps) {
     const category = item.manifest.category?.trim()
       || (item.pluginId === "figma" ? t("plugin_platform.category_design_development") : t("plugin_platform.default_category"));
 
+    const toggleKey = `${item.pluginId}:toggle`;
+
     return (
-      <section className="w-full max-w-4xl">
-        <div className="pb-7 sm:pb-9">
-          <nav className="mb-10 flex items-center gap-2 text-sm" aria-label={t("plugin_platform.breadcrumb_plugins")}>
-            <button
-              type="button"
-              className="rounded-md px-1 py-0.5 text-dls-secondary transition-colors hover:bg-dls-hover hover:text-dls-text"
-              onClick={() => props.onSelectPlugin(null)}
-            >
-              {t("plugin_platform.breadcrumb_plugins")}
-            </button>
-            <ChevronRight size={15} className="text-dls-secondary/70" />
-            <span className="font-medium text-dls-text">{item.name}</span>
-          </nav>
-
-          <div className="mb-8">
-            <div className="relative mb-5 flex size-16 items-center justify-center overflow-hidden rounded-2xl border border-dls-border bg-dls-surface shadow-sm">
-              {iconUrl ? <img src={iconUrl} alt="" className="size-9 object-contain" /> : <Package size={28} className="text-dls-secondary" />}
-            </div>
-            <div className="flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between">
-              <div className="min-w-0">
-                <h2 className="text-2xl font-semibold tracking-tight text-dls-text">{item.name}</h2>
-                <p className="mt-2 max-w-3xl text-sm leading-6 text-dls-secondary">{item.manifest.description}</p>
+      <PluginPackageDetail
+        name={item.name}
+        description={item.manifest.description}
+        iconUrl={iconUrl}
+        onBack={() => props.onSelectPlugin(null)}
+        action={(
+          <div className="flex flex-col items-start gap-2 sm:items-end">
+            <div className="flex items-center gap-3">
+              <div className="flex items-center gap-2 rounded-full border border-green-6 bg-green-2 px-3 py-1.5 text-xs font-medium text-green-11">
+                <CheckCircle2 size={15} />
+                {t("plugin_platform.status.installed")}
               </div>
-              {item.enabled ? (
-                <div className="flex shrink-0 items-center gap-2 rounded-full border border-green-6 bg-green-2 px-3 py-1.5 text-xs font-medium text-green-11">
-                  <CheckCircle2 size={15} />
-                  {t("plugin_platform.status.installed")}
-                </div>
-              ) : (
-                <Button size="sm" disabled={busyKey !== null} onClick={() => void run(`${item.pluginId}:enable`, async () => {
-                  await props.client?.setPluginPackageEnabled(props.workspaceId ?? "", item.pluginId, true);
-                  await refresh();
-                })}>
-                  {busyKey === `${item.pluginId}:enable` ? <Loader2 size={14} className="animate-spin" /> : null}
-                  {t("plugin_platform.action.repair")}
-                </Button>
-              )}
+              <label className="flex items-center gap-2 text-xs font-medium text-dls-secondary">
+                {busyKey === toggleKey ? <Loader2 size={14} className="animate-spin" /> : null}
+                <span>{t("plugin_platform.enable")}</span>
+                <Switch
+                  size="sm"
+                  checked={item.enabled}
+                  disabled={busyKey !== null}
+                  aria-label={t("plugin_platform.enable")}
+                  onCheckedChange={(checked) => void run(toggleKey, async () => {
+                    await props.client?.setPluginPackageEnabled(props.workspaceId ?? "", item.pluginId, checked);
+                    await refresh();
+                  })}
+                />
+              </label>
             </div>
+            {authorization.required && !connected ? (
+              <div className="flex items-center gap-1.5 rounded-lg border border-amber-6 bg-amber-2 px-2.5 py-1.5 text-xs font-medium text-amber-11">
+                <KeyRound size={13} />
+                {t("plugin_platform.status.needs_authorization")}
+              </div>
+            ) : null}
           </div>
-
-          {item.manifest.composer?.prompt ? (
+        )}
+      >
+        {item.manifest.composer?.prompt ? (
             <div className="mt-8 rounded-2xl border border-violet-6/40 bg-gradient-to-r from-blue-3/70 via-violet-3/45 to-dls-hover p-6 sm:p-8">
               <div className="mx-auto flex max-w-3xl items-center gap-3 rounded-2xl border border-dls-border/70 bg-dls-surface/85 px-4 py-3 shadow-sm backdrop-blur">
                 <WandSparkles size={18} className="shrink-0 text-violet-11" />
@@ -386,7 +385,7 @@ export function PluginPackagesPanel(props: PluginPackagesPanelProps) {
             </div>
           ) : null}
 
-          {appResources.length > 0 ? (
+        {appResources.length > 0 ? (
             <div className="mt-8">
               <h3 className="text-sm font-semibold text-dls-text">
                 {t("plugin_platform.apps")} <span className="ml-1 font-normal text-dls-secondary">{appResources.length}</span>
@@ -671,17 +670,12 @@ export function PluginPackagesPanel(props: PluginPackagesPanelProps) {
             ) : null}
             <div className="mt-3 flex flex-wrap gap-2">
               <span className="w-full break-all font-mono text-[10px] text-dls-secondary">SHA-256 {item.integrity.sha256}</span>
-              <Button size="sm" variant="outline" onClick={() => void run(`${item.pluginId}:toggle`, async () => {
-                await props.client?.setPluginPackageEnabled(props.workspaceId ?? "", item.pluginId, !item.enabled);
-                await refresh();
-              })}>{item.enabled ? t("plugin_platform.disable") : t("plugin_platform.enable")}</Button>
               {item.previousVersion ? <Button size="sm" variant="outline" onClick={() => void run(`${item.pluginId}:rollback`, async () => {
                 await props.client?.rollbackPluginPackage(props.workspaceId ?? "", item.pluginId);
                 await refresh();
               })}>{t("plugin_platform.rollback")}</Button> : null}
             </div>
           </details>
-        </div>
         {error ? <div role="alert" className="mt-4 rounded-xl border border-red-6 bg-red-2 px-4 py-3 text-xs text-red-11">{error}</div> : null}
         {secretEditor ? (
           <AuthorizationFormDialog
@@ -710,7 +704,7 @@ export function PluginPackagesPanel(props: PluginPackagesPanelProps) {
             })()}
           />
         ) : null}
-      </section>
+      </PluginPackageDetail>
     );
   }
 
