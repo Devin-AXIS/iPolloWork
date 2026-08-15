@@ -25,6 +25,12 @@ iPolloWork gives agents one workspace for repositories, local files, browser tas
 
 Codex-style coding is only the starting point. When the output is a deck, web page, visual design, or video, iPolloWork keeps it editable instead of handing you a finished file or a chat transcript.
 
+<div align="center">
+  <h3>Join the official iPolloWork WeChat community</h3>
+  <p>Scan with WeChat to join the official group for product updates and community discussions.</p>
+  <img src="./docs/assets/ipollowork-official-wechat-group.jpg" alt="QR code for the official iPolloWork WeChat community" width="220" />
+</div>
+
 ## What makes it different
 
 - **Agent-first execution** — plan work, use tools, read and modify files, run commands, and continue from the current state.

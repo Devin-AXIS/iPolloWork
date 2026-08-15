@@ -25,6 +25,12 @@ iPolloWork 让 AI 智能体在一个工作空间里处理代码仓库、本地�
 
 Codex 式编码只是起点。当结果变成演示稿、网页、视觉设计或视频时，iPolloWork 仍然让它保持可编辑，而不是只交付一个成品文件或一段聊天记录。
 
+<div align="center">
+  <h3>加入 iPolloWork 官方微信群</h3>
+  <p>使用微信扫描下方二维码，加入官方社区，获取产品动态并交流使用经验。</p>
+  <img src="../docs/assets/ipollowork-official-wechat-group.jpg" alt="iPolloWork 官方微信群二维码" width="220" />
+</div>
+
 ## 它真正解决的三件事
 
 - **智能体执行** — 规划工作、调用工具、读写文件、运行命令，并从当前状态继续推进。
