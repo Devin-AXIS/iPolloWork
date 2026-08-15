@@ -9,7 +9,7 @@ on:
       - "apps/app/src/react-app/domains/session/design/**"
       - ".github/workflows/ci-dsh-design-studio.yml"
     tags:
-      - "ipollowork-dsh-design-studio-v*"
+      - "deepseek-idesign-v*"
   pull_request:
     branches: [main, dev]
     paths:
@@ -61,7 +61,7 @@ jobs:
   publish:
     name: Publish to npm
     needs: check
-    if: startsWith(github.ref, 'refs/tags/ipollowork-dsh-design-studio-v')
+    if: startsWith(github.ref, 'refs/tags/deepseek-idesign-v')
     runs-on: ubuntu-latest
 
     permissions:

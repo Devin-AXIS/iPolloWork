@@ -1,4 +1,4 @@
-# iPolloWork Design Studio for DeepSeek Harness
+# DeepSeek iDesign
 
 This bundle adds the existing iPolloWork Design Studio as a native `Design`
 conversation view in the DeepSeek Harness web app. Design files stay in the
@@ -10,7 +10,7 @@ sent into the current conversation draft without automatically submitting it.
 Install the published package into the web profile and start Harness normally:
 
 ```sh
-dsh plugin --profile web add ipollowork-dsh-design-studio
+dsh plugin --profile web add deepseek-idesign
 dsh --profile web
 ```
 
@@ -18,7 +18,7 @@ For a local release artifact:
 
 ```sh
 pnpm pack
-dsh plugin --profile web add ./ipollowork-dsh-design-studio-0.1.0.tgz
+dsh plugin --profile web add ./deepseek-idesign-0.1.0.tgz
 ```
 
 The plugin contains its own browser assets. It does not install or start the

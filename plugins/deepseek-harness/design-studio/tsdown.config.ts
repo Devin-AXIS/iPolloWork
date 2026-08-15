@@ -1,6 +1,6 @@
 import { defineConfig } from "tsdown";
 
-const CLIENT_ID = "ipollowork-dsh-design-studio";
+const CLIENT_ID = "deepseek-idesign";
 const CLIENT_EXTERNALS = [
   "react",
   "react/jsx-runtime",
