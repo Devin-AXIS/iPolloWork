@@ -1,6 +1,6 @@
 {
   "name": "deepseek-idesign",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "iPolloWork Design Studio and its curated design templates as a native DeepSeek Harness conversation view.",
   "type": "module",
   "main": "lib/index.js",
@@ -13,7 +13,8 @@
     "lib",
     "studio/dist",
     "cordis.patch.yml",
-    "README.md"
+    "README.md",
+    "LICENSE"
   ],
   "scripts": {
     "build": "pnpm run build:plugin && pnpm run build:studio",
@@ -40,7 +41,7 @@
     "design-studio",
     "ipollowork"
   ],
-  "license": "MIT",
+  "license": "SEE LICENSE IN LICENSE",
   "packageManager": "pnpm@11.4.0",
   "publishConfig": {
     "access": "public"
@@ -53,7 +54,7 @@
   "bugs": {
     "url": "https://github.com/Devin-AXIS/iPolloWork/issues"
   },
-  "homepage": "https://github.com/Devin-AXIS/iPolloWork/tree/main/external-plugins/deepseek-harness/design-studio#readme",
+  "homepage": "https://github.com/Devin-AXIS/deepseek-design#deepseek-idesign",
   "peerDependencies": {
     "@deepseek-ai/cordis": "^4.0.1",
     "@deepseek-ai/dsh-client-runtime": ">=0.0.1-rc.1 <0.2.0-0",
