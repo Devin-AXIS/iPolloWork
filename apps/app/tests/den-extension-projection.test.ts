@@ -40,7 +40,7 @@ describe("Den extension projections", () => {
               description: "Adds an image command.",
               sourceFormat: "claude-plugin",
               manifest: {
-                schemaVersion: 1,
+                schemaVersion: 2,
                 id: "plugin_test",
                 name: "Image Tools",
                 description: "Adds an image command.",

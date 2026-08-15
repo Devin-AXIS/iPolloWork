@@ -7,7 +7,7 @@ import type { iPolloWorkExtensionManifest } from "../src/app/extensions";
 import { createiPolloWorkServerClient } from "../src/app/lib/ipollowork-server";
 
 const manifest = {
-  schemaVersion: 1,
+  schemaVersion: 2,
   id: "acme-research",
   name: "Acme Research",
   description: "Self-contained research plugin.",
@@ -16,9 +16,12 @@ const manifest = {
   package: {
     version: "1.2.3",
     publisher: { id: "acme", name: "Acme" },
+    engines: ["opencode"],
     updateId: "acme/research",
-    entrypoints: { opencode: ".opencode/plugins/acme-research.ts" },
   },
+  engineBindings: [{ engine: "opencode", capabilities: [
+    { id: "acme-runtime", kind: "plugin", label: "Acme runtime", path: "engines/opencode/plugins/acme-research.ts", required: true },
+  ] }],
   permissions: [{ id: "network", reason: "Connect to Acme." }],
   authorization: {
     required: true,
@@ -28,8 +31,7 @@ const manifest = {
     ],
   },
   resources: [
-    { type: "opencode-plugin", id: "acme-runtime", label: "Acme runtime", path: ".opencode/plugins/acme-research.ts", required: true },
-    { type: "skill", id: "acme-search", label: "Acme Search", path: ".opencode/skills/acme-search/SKILL.md", required: true },
+    { type: "skill", id: "acme-search", label: "Acme Search", path: "skills/acme-search/SKILL.md", required: true },
   ],
 };
 
@@ -37,7 +39,7 @@ describe("plugin developer and user flow", () => {
   test("localizes plugin display metadata without changing runtime identity", async () => {
     const { localizePluginPackageManifest } = await import("../src/react-app/domains/settings/plugin-platform-state.js");
     const localizedManifest: iPolloWorkExtensionManifest = {
-      schemaVersion: 1,
+      schemaVersion: 2,
       id: "localized-plugin",
       name: "本地化插件",
       description: "中文描述",
@@ -45,7 +47,7 @@ describe("plugin developer and user flow", () => {
       source: { format: "ipollowork-extension-manifest", origin: "builtin", trusted: true },
       composer: { prompt: "使用插件" },
       setup: { instructions: "连接插件", primaryCta: "连接", secondaryCta: "帮助" },
-      resources: [{ type: "skill", id: "localized-skill", label: "本地化技能", description: "技能描述", path: ".opencode/skills/localized-skill/SKILL.md" }],
+      resources: [{ type: "skill", id: "localized-skill", label: "本地化技能", description: "技能描述", path: "skills/localized-skill/SKILL.md" }],
       permissions: [{ id: "network", reason: "访问网络" }],
       authorization: {
         required: true,
@@ -93,7 +95,7 @@ describe("plugin developer and user flow", () => {
       category: "Developer Tools",
       composer: { prompt: "Use the plugin" },
       setup: { instructions: "Connect the plugin", primaryCta: "Connect", secondaryCta: "Help" },
-      resources: [{ id: "localized-skill", label: "Localized Skill", description: "Skill description", path: ".opencode/skills/localized-skill/SKILL.md" }],
+      resources: [{ id: "localized-skill", label: "Localized Skill", description: "Skill description", path: "skills/localized-skill/SKILL.md" }],
       permissions: [{ id: "network", reason: "Access the network" }],
       authorization: { methods: [{ id: "api-key", label: "Connect plugin", fields: [{ id: "apiKey", label: "Key", placeholder: "Enter a key" }] }] },
     });
@@ -109,7 +111,7 @@ describe("plugin developer and user flow", () => {
     const installedOlderManifest: iPolloWorkExtensionManifest = { ...localizedManifest, localization: undefined };
     const catalogBacked = localizePluginPackageManifest(installedOlderManifest, "en", localizedManifest.localization);
     expect(catalogBacked.description).toBe("English description");
-    expect(catalogBacked.resources[0]?.path).toBe(".opencode/skills/localized-skill/SKILL.md");
+    expect(catalogBacked.resources[0]?.path).toBe("skills/localized-skill/SKILL.md");
   });
 
   test("derives exactly one simple primary action from package state", async () => {
@@ -135,8 +137,8 @@ describe("plugin developer and user flow", () => {
       authorizationRequired: true,
     });
     expect(details.resources.map((resource) => ({ type: resource.type, label: resource.label }))).toEqual([
-      { type: "opencode-plugin", label: "Acme runtime" },
       { type: "skill", label: "Acme Search" },
+      { type: "opencode/plugin", label: "Acme runtime" },
     ]);
     expect(details.authorizationMethods.map((method) => ({ id: method.id, kind: method.kind, label: method.label }))).toEqual([
       { id: "api-key", kind: "secret-form", label: "API key" },
@@ -226,7 +228,7 @@ describe("plugin developer and user flow", () => {
     const { readPluginPackageArchive } = await import("../src/react-app/domains/settings/plugin-package-archive");
     const zip = new JSZip();
     zip.file("acme-research/ipollowork.plugin.json", JSON.stringify({ schemaVersion: 1 }));
-    zip.file("acme-research/.opencode/skills/acme-research/SKILL.md", "# Acme Research\n");
+    zip.file("acme-research/skills/acme-research/SKILL.md", "# Acme Research\n");
     zip.file("__MACOSX/acme-research/._SKILL.md", "ignored");
     const archive = await zip.generateAsync({ type: "uint8array" });
 
@@ -234,8 +236,8 @@ describe("plugin developer and user flow", () => {
 
     expect(upload.archiveName).toBe("acme-research.zip");
     expect(upload.files.map((file) => file.path)).toEqual([
-      ".opencode/skills/acme-research/SKILL.md",
       "ipollowork.plugin.json",
+      "skills/acme-research/SKILL.md",
     ]);
     expect(upload.files.every((file) => !file.path.startsWith("acme-research/"))).toBe(true);
   });

@@ -2,6 +2,7 @@ import {
   normalizeDesktopConfig,
   type DesktopConfig as SharedDesktopConfig,
 } from "@ipollowork/types/den/desktop-policies";
+import { validatePluginPackageManifest } from "@ipollowork/types/plugins";
 
 // Re-export the shared schema under the local alias so React consumers
 // (e.g. the cloud domain's desktop-config provider) can import it alongside
@@ -23,16 +24,9 @@ import {
   type DesktopBootstrapConfig as ShellDesktopBootstrapConfig,
 } from "./desktop";
 import { isDesktopRuntime } from "./runtime-env";
-import type { DenOrgSkillCard, ReloadReason } from "../types";
+import type { DenOrgSkillCard } from "../types";
 import type {
-  iPolloWorkExtensionContribution,
-  iPolloWorkExtensionContributionType,
-  iPolloWorkExtensionLifecycle,
   iPolloWorkExtensionManifest,
-  iPolloWorkExtensionResource,
-  iPolloWorkExtensionResourceType,
-  iPolloWorkExtensionSetup,
-  iPolloWorkExtensionSource,
   iPolloWorkExtensionSourceFormat,
 } from "../extensions";
 
@@ -1280,246 +1274,9 @@ function parseExtensionSourceFormat(value: unknown): iPolloWorkExtensionSourceFo
   }
 }
 
-function parseExtensionSourceOrigin(value: unknown): iPolloWorkExtensionSource["origin"] | undefined {
-  switch (value) {
-    case "builtin":
-    case "den":
-    case "workspace":
-    case "local":
-      return value;
-    default:
-      return undefined;
-  }
-}
-
-function parseExtensionSource(value: unknown): iPolloWorkExtensionSource | null {
-  if (!isRecord(value) || typeof value.trusted !== "boolean") return null;
-  const format = parseExtensionSourceFormat(value.format);
-  if (!format) return null;
-  const origin = parseExtensionSourceOrigin(value.origin);
-  return {
-    format,
-    trusted: value.trusted,
-    ...(origin ? { origin } : {}),
-    ...(typeof value.reference === "string" ? { reference: value.reference } : {}),
-  };
-}
-
-function parseStringList(value: unknown): string[] | undefined {
-  if (!Array.isArray(value) || value.some((item) => typeof item !== "string")) return undefined;
-  return value;
-}
-
-function parseExtensionResourceType(value: unknown): iPolloWorkExtensionResourceType | null {
-  switch (value) {
-    case "skill":
-    case "agent":
-    case "command":
-    case "tool":
-    case "mcp":
-    case "opencode-plugin":
-    case "provider":
-    case "hook":
-    case "context":
-    case "secret":
-    case "file":
-    case "local-service":
-    case "native-binary":
-      return value;
-    default:
-      return null;
-  }
-}
-
-function parseExtensionLocalCommandRef(value: unknown): iPolloWorkExtensionResource["localCommandRef"] | undefined {
-  switch (value) {
-    case "ipollowork.computerUseMcp":
-    case "ipollowork.uiMcp":
-      return value;
-    default:
-      return undefined;
-  }
-}
-
-function parseExtensionResource(value: unknown): iPolloWorkExtensionResource | null {
-  if (!isRecord(value) || typeof value.id !== "string") return null;
-  const type = parseExtensionResourceType(value.type);
-  if (!type) return null;
-  const command = parseStringList(value.command);
-  const localCommandRef = parseExtensionLocalCommandRef(value.localCommandRef);
-  return {
-    type,
-    id: value.id,
-    ...(typeof value.label === "string" ? { label: value.label } : {}),
-    ...(typeof value.description === "string" ? { description: value.description } : {}),
-    ...(typeof value.path === "string" ? { path: value.path } : {}),
-    ...(command ? { command } : {}),
-    ...(typeof value.envKey === "string" ? { envKey: value.envKey } : {}),
-    ...(typeof value.packageName === "string" ? { packageName: value.packageName } : {}),
-    ...(typeof value.providerId === "string" ? { providerId: value.providerId } : {}),
-    ...(typeof value.mcpServerName === "string" ? { mcpServerName: value.mcpServerName } : {}),
-    ...(localCommandRef ? { localCommandRef } : {}),
-    ...(typeof value.required === "boolean" ? { required: value.required } : {}),
-  };
-}
-
-function parseExtensionContributionType(value: unknown): iPolloWorkExtensionContributionType | null {
-  switch (value) {
-    case "settings-panel":
-    case "setup-instructions":
-    case "composer-prompt":
-    case "session-side-panel":
-    case "session-rail-item":
-    case "control-actions":
-    case "server-route":
-    case "native-capability":
-    case "test-action":
-      return value;
-    default:
-      return null;
-  }
-}
-
-function parseExtensionContributionLocation(value: unknown): iPolloWorkExtensionContribution["location"] | undefined {
-  switch (value) {
-    case "settings-detail":
-    case "composer":
-    case "session-right-pane":
-    case "session-rail":
-    case "server":
-    case "native":
-      return value;
-    default:
-      return undefined;
-  }
-}
-
-function parseExtensionContribution(value: unknown): iPolloWorkExtensionContribution | null {
-  if (!isRecord(value)) return null;
-  const type = parseExtensionContributionType(value.type);
-  if (!type) return null;
-  const location = parseExtensionContributionLocation(value.location);
-  return {
-    type,
-    ...(typeof value.ref === "string" ? { ref: value.ref } : {}),
-    ...(typeof value.label === "string" ? { label: value.label } : {}),
-    ...(typeof value.description === "string" ? { description: value.description } : {}),
-    ...(typeof value.prompt === "string" ? { prompt: value.prompt } : {}),
-    ...(location ? { location } : {}),
-  };
-}
-
-function parseExtensionSetup(value: unknown): iPolloWorkExtensionSetup | undefined {
-  if (!isRecord(value)) return undefined;
-  const requiredEnv = parseStringList(value.requiredEnv);
-  return {
-    ...(typeof value.instructions === "string" ? { instructions: value.instructions } : {}),
-    ...(typeof value.primaryCta === "string" ? { primaryCta: value.primaryCta } : {}),
-    ...(typeof value.secondaryCta === "string" ? { secondaryCta: value.secondaryCta } : {}),
-    ...(requiredEnv ? { requiredEnv } : {}),
-    ...(typeof value.testActionRef === "string" ? { testActionRef: value.testActionRef } : {}),
-  };
-}
-
-function parseReloadReason(value: unknown): ReloadReason | null {
-  switch (value) {
-    case "plugins":
-    case "skills":
-    case "mcp":
-    case "config":
-    case "agents":
-    case "commands":
-      return value;
-    default:
-      return null;
-  }
-}
-
-function parseReloadReasons(value: unknown): ReloadReason[] | undefined {
-  if (!Array.isArray(value)) return undefined;
-  const reasons = value.flatMap((item) => {
-    const reason = parseReloadReason(item);
-    return reason ? [reason] : [];
-  });
-  return reasons.length === value.length ? reasons : undefined;
-}
-
-function parseExtensionLifecycle(value: unknown): iPolloWorkExtensionLifecycle | undefined {
-  if (!isRecord(value)) return undefined;
-  const reload = parseReloadReasons(value.reload);
-  const detection = parseStringList(value.detection);
-  return {
-    ...(reload ? { reload } : {}),
-    ...(detection ? { detection } : {}),
-  };
-}
-
-function parseExtensionPlatform(value: unknown): iPolloWorkExtensionManifest["platform"] | undefined {
-  if (!Array.isArray(value)) return undefined;
-  const platforms = value.flatMap((item) => {
-    switch (item) {
-      case "darwin":
-      case "linux":
-      case "windows":
-      case "web":
-        return [item];
-      default:
-        return [];
-    }
-  });
-  return platforms.length === value.length ? platforms : undefined;
-}
-
 function parseiPolloWorkExtensionManifest(value: unknown): iPolloWorkExtensionManifest | null {
-  if (
-    !isRecord(value) ||
-    value.schemaVersion !== 1 ||
-    typeof value.id !== "string" ||
-    typeof value.name !== "string" ||
-    typeof value.description !== "string" ||
-    !Array.isArray(value.resources)
-  ) {
-    return null;
-  }
-  const source = parseExtensionSource(value.source);
-  if (!source) return null;
-  const resources = value.resources.flatMap((entry) => {
-    const resource = parseExtensionResource(entry);
-    return resource ? [resource] : [];
-  });
-  if (resources.length !== value.resources.length) return null;
-  const contributions = Array.isArray(value.contributions)
-    ? value.contributions.flatMap((entry) => {
-        const contribution = parseExtensionContribution(entry);
-        return contribution ? [contribution] : [];
-      })
-    : undefined;
-  if (Array.isArray(value.contributions) && contributions?.length !== value.contributions.length) return null;
-  const setup = parseExtensionSetup(value.setup);
-  const lifecycle = parseExtensionLifecycle(value.lifecycle);
-  const platform = parseExtensionPlatform(value.platform);
-  if (Array.isArray(value.platform) && !platform) return null;
-  return {
-    schemaVersion: 1,
-    id: value.id,
-    name: value.name,
-    description: value.description,
-    source,
-    ...(isRecord(value.icon)
-      ? { icon: {
-          ...(typeof value.icon.src === "string" ? { src: value.icon.src } : {}),
-          ...(typeof value.icon.simpleIconSlug === "string" ? { simpleIconSlug: value.icon.simpleIconSlug } : {}),
-        } }
-      : {}),
-    ...(isRecord(value.composer) && typeof value.composer.prompt === "string" ? { composer: { prompt: value.composer.prompt } } : {}),
-    ...(setup ? { setup } : {}),
-    resources,
-    ...(contributions ? { contributions } : {}),
-    ...(lifecycle ? { lifecycle } : {}),
-    ...(typeof value.defaultEnabled === "boolean" ? { defaultEnabled: value.defaultEnabled } : {}),
-    ...(typeof value.defaultHidden === "boolean" ? { defaultHidden: value.defaultHidden } : {}),
-    ...(platform ? { platform } : {}),
-  };
+  const result = validatePluginPackageManifest(value);
+  return result.success ? result.manifest : null;
 }
 
 function parseDenExtensionProjection(value: unknown): DenOrgExtensionProjection | null {

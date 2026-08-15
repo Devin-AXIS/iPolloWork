@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "id": "acme-research",
   "name": "Acme Research",
   "description": "Minimal independent plugin package for local development.",
@@ -9,21 +9,28 @@
     "trusted": false
   },
   "package": {
-    "version": "1.0.0",
+    "version": "1.0.1",
     "publisher": {
       "id": "acme",
       "name": "Acme"
     },
     "compatibility": {
-      "ipollowork": ">=0.17.0",
-      "opencode": ">=1.18.0"
+      "ipollowork": ">=0.17.0"
     },
-    "updateId": "acme/research",
-    "entrypoints": {
-      "opencode": ".opencode/plugins/acme-research.ts",
-      "service": "service/acme-research.ts"
-    }
+    "engines": ["opencode"],
+    "updateId": "acme/research"
   },
+  "engineBindings": [{
+    "engine": "opencode",
+    "compatibility": ">=1.18.0",
+    "capabilities": [{
+      "id": "acme-runtime",
+      "kind": "plugin",
+      "label": "Acme OpenCode integration",
+      "path": "engines/opencode/plugins/acme-research.ts",
+      "required": true
+    }]
+  }],
   "permissions": [
     {
       "id": "network",
@@ -52,17 +59,10 @@
   },
   "resources": [
     {
-      "type": "opencode-plugin",
-      "id": "acme-runtime",
-      "label": "Acme OpenCode integration",
-      "path": ".opencode/plugins/acme-research.ts",
-      "required": true
-    },
-    {
       "type": "skill",
       "id": "acme-search",
       "label": "Acme research workflow",
-      "path": ".opencode/skills/acme-research/SKILL.md",
+      "path": "skills/acme-research/SKILL.md",
       "requires": [
         "service:acme-service",
         "authorization:api-key"

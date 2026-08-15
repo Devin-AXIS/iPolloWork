@@ -13,7 +13,7 @@ const connectedBuiltIn: McpDirectoryInfo = {
   oauth: false,
   kind: "extension",
   extensionManifest: {
-    schemaVersion: 1,
+    schemaVersion: 2,
     id: "ipollowork-browser",
     name: "iPolloWork Browser",
     description: "Connected by default.",
@@ -30,7 +30,7 @@ const availableBuiltIn: McpDirectoryInfo = {
   oauth: false,
   kind: "extension",
   extensionManifest: {
-    schemaVersion: 1,
+    schemaVersion: 2,
     id: "computer-use",
     name: "Computer Use",
     description: "Marketplace-only until installed.",

@@ -16,7 +16,7 @@
 
 1. **不强制使用 React、Next.js 或某个专用 SDK。** iPolloWork 插件首先是一份目录约定和 `ipollowork.plugin.json` 清单协议。
 2. **推荐使用 TypeScript，但开发者可以在外部使用任何构建工具。** 当前插件管理器不会替开发者执行 `npm install`、`pnpm install`、编译或构建脚本。
-3. **发布物必须是自包含产物。** 运行所需的每个文件都必须在 `resources` 中声明。最好把第三方依赖预先 bundle 到单文件中。
+3. **发布物必须是自包含产物。** 运行所需的每个文件都必须通过 `resources` 或 `engineBindings` 声明。最好把第三方依赖预先 bundle 到单文件中。
 4. **一个插件可以组合多个能力。** Skill 负责告诉 AI 何时使用；MCP 或本地服务负责实际能力；授权由插件自己的加密授权存储负责；OpenCode 插件负责需要运行时钩子的高级扩展。
 5. **普通用户不需要理解这些组件。** 用户只看到安装、连接、使用、更新和卸载。Skill 不应要求用户在聊天中粘贴 Key。
 6. **当前可用的安装格式是“工作区内的解压目录”。** 当前版本尚未实现商城 ZIP 上传接口。未来上传格式应以本文定义的同一目录为 ZIP 根目录，不引入第二套插件格式。
@@ -44,8 +44,8 @@ OpenCode plugin：可选的运行时钩子和更底层扩展
 
 | 需求 | 推荐组成 | 说明 |
 |---|---|---|
-| 只想教 AI 一套固定流程 | Skill + 最小 OpenCode 入口 | 当前安装包至少要有一个 `opencode` 或 `service` 入口 |
-| 接入已有 MCP 服务 | Skill + MCP + 最小 OpenCode 入口 | MCP 配置由安装器注册，Skill 负责让 AI 正确使用 |
+| 只想教 AI 一套固定流程 | Skill | 通用能力不需要引擎原生入口 |
+| 接入已有 MCP 服务 | Skill + MCP | MCP 配置由适配器注册，Skill 负责让 AI 正确使用 |
 | 调用带 API Key 的 REST 服务 | Skill + local-service + `secret-form` | Key 只进入本地服务，不进入聊天和 Skill |
 | 接入 OAuth SaaS | Skill + local-service + `oauth-pkce` 或 `hosted-browser` | 登录一次后持久化；支持自动刷新令牌 |
 | 需要扫码或电视设备码 | Skill + local-service + `device-code` | 平台负责显示验证码、轮询和保存令牌 |
@@ -57,8 +57,8 @@ OpenCode plugin：可选的运行时钩子和更底层扩展
 ### Functional Requirements
 
 - FR-1: 每个可安装插件目录必须在根目录包含 `ipollowork.plugin.json`。
-- FR-2: 每个安装包必须声明稳定插件 ID、语义版本、更新 ID 和至少一个运行入口。
-- FR-3: 所有会被安装、加载或校验的文件必须通过 `resources[].path` 显式声明。
+- FR-2: 每个安装包必须声明稳定插件 ID、语义版本和更新 ID。
+- FR-3: 所有会被安装、加载或校验的文件必须通过 `resources[].path` 或 `engineBindings[].capabilities[].path` 显式声明。
 - FR-4: Skill、服务、动作和授权之间的依赖必须通过 `requires` 与 `provides` 声明，不能只写在自然语言说明里。
 - FR-5: 插件凭据必须使用插件独立授权能力，不得依赖 Authorization Center 或全局环境变量 Key。
 - FR-6: 本地服务必须只返回业务结果，不得返回、记录或拼接原始凭据。
@@ -85,7 +85,7 @@ OpenCode plugin：可选的运行时钩子和更底层扩展
 不需要专用 UI 框架，也不需要从某个 iPolloWork SDK 项目开始。插件的“框架”就是以下三个稳定契约：
 
 - 根目录清单：`ipollowork.plugin.json`
-- OpenCode 兼容资源：Skill、MCP、OpenCode plugin 等
+- 通用能力资源：Skill、MCP、本地服务，以及可选的引擎原生增强
 - iPolloWork 本地服务接口：默认导出一个服务工厂，并声明可调用动作
 
 如果插件没有界面，完全不需要 React 或 Next.js。如果供应商本身有 OAuth 网页、管理后台或托管授权页，可以继续使用供应商自己的 Next.js、Vue、Go 或其他服务；它位于供应商服务器，不需要塞进插件包。
@@ -110,7 +110,7 @@ OpenCode plugin：可选的运行时钩子和更底层扩展
 - 自动创建供应商 OAuth Client
 - 自动上传插件到云端商城
 
-因此，开发时可以使用任意框架，发布时必须输出可直接运行的自包含文件。最稳妥的方式是把 service 和 OpenCode plugin 分别打成单文件；如确实要保留多个文件，每个文件都要在 `resources` 中声明。
+因此，开发时可以使用任意框架，发布时必须输出可直接运行的自包含文件。最稳妥的方式是把 service 和引擎原生扩展分别打成单文件；如确实要保留多个文件，需要通过 `resources` 或 `engineBindings` 中的目录资源完整声明。
 
 ## 2. 包格式与目录结构
 
@@ -133,15 +133,16 @@ plugins/acme-research
 
 绝对路径、`../` 穿越路径以及工作区外目录会被拒绝。
 
-### 2.2 未来商城上传格式
+### 2.2 压缩包上传格式
 
-当前没有已经上线的 ZIP 上传接口。未来开发者平台应接受 ZIP，并遵守以下契约：
+设置页可导入 ZIP 插件包；未来开发者平台继续复用同一契约：
 
 ```text
 acme-research-1.0.0.zip
 ├── ipollowork.plugin.json   ← 必须直接位于压缩包根目录
 ├── service/
-└── .opencode/
+├── skills/
+└── engines/
 ```
 
 不要在 ZIP 里再包一层无意义目录，例如下面这种结构不应作为标准上传物：
@@ -152,7 +153,7 @@ acme-research-1.0.0.zip
     └── ipollowork.plugin.json
 ```
 
-未来平台可以在接收 ZIP 后解压到临时目录，再调用现有的校验和安装生命周期。ZIP 只是传输容器，内部仍是本文定义的插件包。
+平台接收 ZIP 后会在受限临时目录中校验，再调用同一安装生命周期。ZIP 只是传输容器，内部仍是本文定义的插件包。
 
 ### 2.3 推荐完整目录
 
@@ -165,34 +166,24 @@ acme-research/
 │   └── icon.svg                      # 如清单声明了它，才会进入安装资源
 ├── service/
 │   └── acme-research.ts              # 本地业务服务，可选
-└── .opencode/
-    ├── plugins/
-    │   └── acme-research.ts          # OpenCode 插件入口，可选
-    ├── skills/
-    │   └── acme-research/
-    │       └── SKILL.md               # AI 使用说明，可选但强烈推荐
-    └── mcps/
-        └── acme-research.json         # MCP 配置，可选
+├── skills/
+│   └── acme-research/
+│       └── SKILL.md                   # AI 使用说明，可选但强烈推荐
+├── mcp/
+│   └── acme-research.json             # MCP 配置，可选
+└── engines/
+    └── opencode/plugins/
+        └── acme-research.ts           # OpenCode 原生扩展，可选
 ```
 
 ### 2.4 最小可安装目录
 
-由于当前 `package.entrypoints` 至少要求 `opencode` 或 `service` 之一，纯 Skill 插件也需要一个最小 OpenCode 入口：
+纯 Skill 插件不需要伪造运行时入口，最小目录就是清单和 Skill：
 
 ```text
 hello-plugin/
 ├── ipollowork.plugin.json
-└── .opencode/
-    ├── plugins/hello-plugin.ts
-    └── skills/hello-plugin/SKILL.md
-```
-
-最小入口可以是：
-
-```ts
-export default async function helloPlugin() {
-  return {};
-}
+└── skills/hello-plugin/SKILL.md
 ```
 
 ## 3. 命名规则
@@ -250,7 +241,7 @@ acme/acme-research
 
 ```json
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "id": "acme-research",
   "name": "Acme Research",
   "description": "Search Acme private research.",
@@ -266,15 +257,22 @@ acme/acme-research
       "name": "Acme"
     },
     "compatibility": {
-      "ipollowork": ">=0.17.0",
-      "opencode": ">=1.18.0"
+      "ipollowork": ">=0.17.0"
     },
-    "updateId": "acme/acme-research",
-    "entrypoints": {
-      "opencode": ".opencode/plugins/acme-research.ts",
-      "service": "service/acme-research.ts"
-    }
+    "engines": ["opencode"],
+    "updateId": "acme/acme-research"
   },
+  "engineBindings": [{
+    "engine": "opencode",
+    "compatibility": ">=1.18.0",
+    "capabilities": [{
+      "id": "acme-runtime",
+      "kind": "plugin",
+      "label": "Acme OpenCode integration",
+      "path": "engines/opencode/plugins/acme-research.ts",
+      "required": true
+    }]
+  }],
   "permissions": [
     {
       "id": "network",
@@ -303,17 +301,10 @@ acme/acme-research
   },
   "resources": [
     {
-      "type": "opencode-plugin",
-      "id": "acme-runtime",
-      "label": "Acme OpenCode integration",
-      "path": ".opencode/plugins/acme-research.ts",
-      "required": true
-    },
-    {
       "type": "skill",
       "id": "research-workflow",
       "label": "Acme research workflow",
-      "path": ".opencode/skills/acme-research/SKILL.md",
+      "path": "skills/acme-research/SKILL.md",
       "requires": [
         "service:acme-service",
         "authorization:api-key"
@@ -364,20 +355,21 @@ acme/acme-research
 
 | 字段 | 必填 | 类型 | 说明 |
 |---|---:|---|---|
-| `schemaVersion` | 是 | `1` | 当前固定为 1 |
+| `schemaVersion` | 是 | `2` | 唯一接受的插件清单版本 |
 | `id` | 是 | string | 稳定插件 ID |
 | `name` | 是 | string | 用户看到的名称 |
 | `description` | 是 | string | 用户和审核者看到的说明，可为空字符串但不推荐 |
 | `source` | 是 | object | 来源和信任信息 |
-| `package` | 安装时是 | object | 版本、兼容性、入口和完整性 |
+| `package` | 安装时是 | object | 版本、兼容性、引擎范围和完整性 |
+| `engineBindings` | 否 | array | 引擎原生增强能力；由对应适配器解释 |
 | `permissions` | 否 | array | 权限用途声明 |
 | `authorization` | 否 | object | 插件独立授权方法 |
 | `resources` | 是 | array | 插件拥有的组件和文件 |
 | `icon` | 否 | object | 图标元数据 |
 | `platform` | 否 | array | `darwin`、`linux`、`windows`、`web` |
-| `composer` | 否 | object | 现有扩展兼容字段 |
-| `setup`、`contributions`、`lifecycle`、`enablement` | 否 | object/array | 现有扩展兼容字段；第三方开发者不应依赖未文档化行为 |
-| `defaultEnabled`、`defaultHidden`、`preview` | 否 | boolean | 现有扩展兼容元数据 |
+| `composer` | 否 | object | 输入框能力入口 |
+| `setup`、`contributions`、`lifecycle`、`enablement` | 否 | object/array | 宿主界面、生命周期和启用条件 |
+| `defaultEnabled`、`defaultHidden`、`preview` | 否 | boolean | 宿主展示元数据 |
 
 ### 5.2 `source`
 
@@ -412,13 +404,13 @@ acme/acme-research
 | `publisher.id` | 否但推荐 | 稳定发布者 ID |
 | `publisher.name` | 与 publisher 同时 | 用户看到的发布者名 |
 | `compatibility.ipollowork` | 否但推荐 | iPolloWork 版本范围 |
-| `compatibility.opencode` | 否但推荐 | OpenCode 版本范围 |
+| `engines` | 否 | 插件必须运行在哪些引擎之一；省略表示通用 |
 | `updateId` | 是 | 同一插件跨版本的更新标识 |
-| `entrypoints.opencode` | 二选一 | 必须对应一个 `opencode-plugin` 资源路径 |
-| `entrypoints.service` | 二选一 | 必须对应一个含动作声明的 `local-service` 资源路径 |
 | `checksum` | 否 | `{ "algorithm": "sha256", "value": "64位十六进制" }` |
 
-`entrypoints` 至少需要一个入口。可以同时声明两个。
+服务入口直接使用唯一 `local-service` 资源的 `path`。原生引擎版本范围与能力放在对应 `engineBindings` 中。
+
+通用 `skill`、`agent`、`command`、`mcp`、`local-service` 路径必须分别位于 `skills/`、`agents/`、`commands/`、`mcp/`、`service/`。引擎原生能力必须位于 `engines/<engine>/`。清单不接受 `.opencode/` 等引擎运行目录；目录投影完全由适配器负责。
 
 当前兼容范围支持：
 
@@ -475,15 +467,16 @@ acme/acme-research
 
 | 类型 | 用途 | 安装行为 |
 |---|---|---|
-| `skill` | AI 使用规则 | 文件复制到声明路径，通常放在 `.opencode/skills/` |
-| `opencode-plugin` | OpenCode 运行时入口 | 入口被注册为 `file://` 插件 |
+| `skill` | AI 使用规则 | 由当前引擎适配器投影，包内通常放在 `skills/` |
+| `agent` | 专项 Agent | 由当前引擎适配器投影，包内通常放在 `agents/` |
+| `command` | 快捷命令 | 由当前引擎适配器投影，包内通常放在 `commands/` |
 | `mcp` | MCP 配置 | 解析 JSON 并注册/停用/卸载 |
 | `local-service` | 凭据感知的本地动作 | 从不可变版本快照动态加载 |
 | `file` | 额外运行文件或资源 | 复制并纳入所有权与校验 |
 
-清单还接受 `agent`、`command`、`tool`、`provider`、`hook`、`context`、`secret` 和 `native-binary` 等现有扩展资源类型。除非对应加载行为已经在目标版本中明确验证，否则第三方开发者应把它们视为高级兼容类型，不应假设清单会自动执行或注册任意文件。
+清单还接受 `tool`、`provider`、`hook`、`context`、`secret` 和 `native-binary` 等现有扩展资源类型。除非对应加载行为已经在目标版本中明确验证，否则第三方开发者不应假设清单会自动执行任意文件。
 
-只有 `resources[].path` 指向的文件会被资源校验、哈希、快照和复制。声明目录不会自动递归包含内部文件。
+只有 `resources[].path` 和 `engineBindings[].capabilities[].path` 指向的文件会被校验、哈希和快照；声明目录会递归包含普通文件，符号链接和特殊文件会被拒绝。
 
 ### 5.6 关系声明
 
@@ -580,7 +573,7 @@ Use this plugin when the user asks to search the Acme private research library.
 Skill 路径推荐为：
 
 ```text
-.opencode/skills/<skill-name>/SKILL.md
+skills/<skill-name>/SKILL.md
 ```
 
 ## 7. local-service 开发
@@ -758,10 +751,20 @@ export default async function acmeResearchPlugin() {
 }
 ```
 
-入口必须同时满足：
+入口通过 `engineBindings` 声明：
 
-1. `package.entrypoints.opencode` 指向该文件。
-2. `resources` 中存在 `type: "opencode-plugin"` 且 `path` 完全相同的资源。
+```json
+{
+  "engine": "opencode",
+  "compatibility": ">=1.18.0",
+  "capabilities": [{
+    "id": "acme-runtime",
+    "kind": "plugin",
+    "path": "engines/opencode/plugins/acme-research.ts",
+    "required": true
+  }]
+}
+```
 
 OpenCode plugin 与其他原生插件共享本机运行环境。第三方插件必须被视为可执行代码进行审核。
 
@@ -769,7 +772,7 @@ OpenCode plugin 与其他原生插件共享本机运行环境。第三方插件�
 
 ### 9.1 单 MCP 配置
 
-文件 `.opencode/mcps/acme-research.json`：
+文件 `mcp/acme-research.json`：
 
 ```json
 {
@@ -786,7 +789,7 @@ OpenCode plugin 与其他原生插件共享本机运行环境。第三方插件�
   "id": "acme-mcp",
   "label": "Acme MCP",
   "mcpServerName": "acme-research",
-  "path": ".opencode/mcps/acme-research.json",
+  "path": "mcp/acme-research.json",
   "required": true
 }
 ```
@@ -1047,7 +1050,7 @@ src/
 
 ```text
 service/acme-research.js
-.opencode/plugins/acme-research.js
+engines/opencode/plugins/acme-research.js
 ```
 
 第三方 npm 依赖应被 bundle 进去。不要假设用户机器已经安装你的包。
@@ -1176,7 +1179,7 @@ DELETE /workspace/:id/plugin-packages/:pluginId/authorization/:accountId
 
 ### 14.2 不可变版本
 
-同一插件 ID 的同一版本内容不可变化。安装器会保存每个资源的 SHA-256。相同版本但文件不同会被拒绝。
+同一插件 ID 的同一版本内容不可变化。安装器会保存每个归属文件的 SHA-256。相同版本但文件不同会被拒绝。
 
 ### 14.3 更新时授权处理
 
@@ -1212,7 +1215,7 @@ DELETE /workspace/:id/plugin-packages/:pluginId/authorization/:accountId
 ipollowork.plugin.json + NUL + manifestSha256 + LF
 ```
 
-6. 按资源相对路径排序，对每个声明文件写入：
+6. 按归属文件的相对路径排序，对每个文件写入：
 
 ```text
 relativePath + NUL + fileSha256 + LF
@@ -1236,7 +1239,7 @@ relativePath + NUL + fileSha256 + LF
 | 错误码/现象 | 常见原因 | 处理方式 |
 |---|---|---|
 | `plugin_package_manifest_missing` | 根目录没有清单 | 把 `ipollowork.plugin.json` 放在包根目录 |
-| `plugin_package_metadata_required` | 没有 `package` | 增加版本、updateId 和 entrypoints |
+| `plugin_package_metadata_required` | 没有 `package` | 增加版本和 updateId |
 | `plugin_package_resource_missing` | 声明文件不存在 | 修正 path 或加入文件 |
 | `plugin_package_path_invalid` | 绝对路径或 `..` | 全部改成安全相对路径 |
 | `plugin_package_incompatible` | 运行时不满足兼容范围 | 调整版本范围或升级运行时 |
@@ -1268,7 +1271,7 @@ resources.2.requires.0: references an unknown authorization method
 - [ ] Skill 不要求用户在聊天中粘贴 Key。
 - [ ] 服务返回值和日志不包含凭据。
 - [ ] 服务对网络超时、响应大小和错误做限制。
-- [ ] 所有相对导入文件都在 resources 中声明。
+- [ ] 所有相对导入文件都在 resources 或 engineBindings 中声明。
 - [ ] 动作输入 Schema 设置 `additionalProperties: false`。
 - [ ] 写文件动作限制在当前工作区。
 - [ ] `dispose()` 能关闭长连接、计时器和后台资源。
@@ -1324,8 +1327,8 @@ resources.2.requires.0: references an unknown authorization method
 ```text
 examples/plugin-packages/acme-research/ipollowork.plugin.json
 examples/plugin-packages/acme-research/service/acme-research.ts
-examples/plugin-packages/acme-research/.opencode/plugins/acme-research.ts
-examples/plugin-packages/acme-research/.opencode/skills/acme-research/SKILL.md
+examples/plugin-packages/acme-research/engines/opencode/plugins/acme-research.ts
+examples/plugin-packages/acme-research/skills/acme-research/SKILL.md
 ```
 
 ## Test Steps
@@ -1335,7 +1338,7 @@ examples/plugin-packages/acme-research/.opencode/skills/acme-research/SKILL.md
 1. 创建包含根清单的最小插件目录。
 2. 使用安全相对路径声明每个资源。
 3. 验证缺少清单、缺少资源、重复 ID、未知依赖和路径逃逸都会失败。
-4. 验证包预览只列出 resources 中声明的文件。
+4. 验证包预览只列出 resources 和 engineBindings 中声明的文件。
 
 ### B. 安装与组合
 

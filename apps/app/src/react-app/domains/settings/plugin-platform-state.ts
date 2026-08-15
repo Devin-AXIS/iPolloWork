@@ -220,6 +220,23 @@ export function projectPluginPackageDetails(manifest: unknown): PluginPackageDet
     if (!id || !type) return [];
     return [{ id, type, label: text(resource.label) ?? id, required: resource.required === true }];
   }) : [];
+  if (Array.isArray(manifest.engineBindings)) {
+    manifest.engineBindings.forEach((binding) => {
+      if (!isRecord(binding) || !text(binding.engine) || !Array.isArray(binding.capabilities)) return;
+      binding.capabilities.forEach((capability) => {
+        if (!isRecord(capability)) return;
+        const id = text(capability.id);
+        const kind = text(capability.kind);
+        if (!id || !kind) return;
+        resources.push({
+          id,
+          type: `${text(binding.engine)}/${kind}`,
+          label: text(capability.label) ?? id,
+          required: capability.required === true,
+        });
+      });
+    });
+  }
   const authorizationMethods = authorization && Array.isArray(authorization.methods)
     ? authorization.methods.flatMap((method): ProjectedAuthorizationMethod[] => {
         if (!isRecord(method)) return [];

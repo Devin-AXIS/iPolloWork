@@ -287,13 +287,19 @@ export function PluginPackagesPanel(props: PluginPackagesPanelProps) {
       iconSrc: item.manifest.icon?.src,
       iconSlug: item.manifest.icon?.simpleIconSlug,
     });
-    const appResources = item.manifest.resources.filter((resource) =>
-      ["mcp", "opencode-plugin", "provider", "local-service", "native-binary"].includes(resource.type)
-    );
+    const appResources = [
+      ...item.manifest.resources.filter((resource) =>
+        ["mcp", "provider", "local-service", "native-binary"].includes(resource.type)
+      ),
+      ...item.manifest.engineBindings?.flatMap((binding) => binding.capabilities.map((capability) => ({
+        ...capability,
+        type: `${binding.engine}/${capability.kind}`,
+      }))) ?? [],
+    ];
     const skillResources = item.manifest.resources.filter((resource) => resource.type === "skill");
     const relatedSkillNames = item.manifest.relatedSkills ?? [];
     const otherResources = item.manifest.resources.filter((resource) =>
-      !["mcp", "opencode-plugin", "provider", "local-service", "native-binary", "skill"].includes(resource.type)
+      !["mcp", "provider", "local-service", "native-binary", "skill"].includes(resource.type)
     );
     const publisher = item.manifest.package?.publisher?.name
       ?? item.manifest.source.reference

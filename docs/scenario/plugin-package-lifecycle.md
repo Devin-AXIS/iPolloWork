@@ -1,7 +1,7 @@
-# Scenario: Lightweight lifecycle over existing loaders
-- Given: A validated package contains resources supported by the current extension installer and a native OpenCode plugin entry point.
+# Scenario: Lightweight lifecycle over an engine adapter
+- Given: A validated package contains portable resources and optional native engine capabilities.
 - When: The user previews, installs, disables, enables, updates, rolls back, or uninstalls the package.
-- Then: iPolloWork reuses existing resource and plugin configuration seams, records file ownership and versions, and preserves unrelated workspace content.
+- Then: iPolloWork records file ownership and versions while the active engine adapter projects runtime files and configuration without leaking engine details into the lifecycle.
 
 ## Test Steps
 

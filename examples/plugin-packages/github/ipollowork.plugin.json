@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "id": "github",
   "name": "GitHub",
   "description": "检查仓库、处理 PR 与 Issue、诊断 Actions，并把本地修改安全发布为 Draft PR。",
@@ -46,19 +46,15 @@
     }
   },
   "package": {
-    "version": "0.1.1",
+    "version": "0.1.2",
     "publisher": {
       "id": "ipollowork",
       "name": "iPolloWork"
     },
     "compatibility": {
-      "ipollowork": ">=0.17.28",
-      "opencode": ">=1.18.0"
+      "ipollowork": ">=0.17.28"
     },
-    "updateId": "ipollowork/github",
-    "entrypoints": {
-      "service": "service/github.ts"
-    }
+    "updateId": "ipollowork/github"
   },
   "permissions": [
     {
@@ -305,7 +301,7 @@
       "id": "github",
       "label": "GitHub",
       "description": "检查仓库、Pull Request、Issue 和协作状态。",
-      "path": ".opencode/skills/github/SKILL.md",
+      "path": "skills/github/SKILL.md",
       "requires": ["service:github-service", "authorization:github-token"],
       "provides": ["workflow:github"],
       "required": true
@@ -315,7 +311,7 @@
       "id": "github-review-follow-up",
       "label": "Review Follow-up",
       "description": "整理并处理 Pull Request 中尚未解决的 Review 意见。",
-      "path": ".opencode/skills/github-review-follow-up/SKILL.md",
+      "path": "skills/github-review-follow-up/SKILL.md",
       "requires": ["service:github-service", "authorization:github-token"],
       "provides": ["workflow:github-review-follow-up"],
       "required": true
@@ -325,7 +321,7 @@
       "id": "github-ci-debug",
       "label": "CI Debug",
       "description": "诊断 GitHub Actions 失败并制定最小修复方案。",
-      "path": ".opencode/skills/github-ci-debug/SKILL.md",
+      "path": "skills/github-ci-debug/SKILL.md",
       "requires": ["service:github-service", "authorization:github-token"],
       "provides": ["workflow:github-ci-debug"],
       "required": true
@@ -335,7 +331,7 @@
       "id": "github-publish-changes",
       "label": "Publish Changes",
       "description": "确认变更范围，提交、推送并创建 Draft Pull Request。",
-      "path": ".opencode/skills/github-publish-changes/SKILL.md",
+      "path": "skills/github-publish-changes/SKILL.md",
       "requires": ["service:github-service", "authorization:github-token"],
       "provides": ["workflow:github-publish-changes"],
       "required": true

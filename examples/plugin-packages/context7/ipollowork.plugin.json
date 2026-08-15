@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "id": "context7",
   "name": "Context7",
   "description": "通过版本感知的官方文档检索，为实现、升级和技术决策提供可追溯的上下文。",
@@ -41,11 +41,10 @@
     }
   },
   "package": {
-    "version": "1.0.1",
+    "version": "1.0.2",
     "publisher": { "id": "ipollowork", "name": "iPolloWork" },
-    "compatibility": { "ipollowork": ">=0.18.0", "opencode": ">=1.18.0" },
-    "updateId": "ipollowork/context7",
-    "entrypoints": {}
+    "compatibility": { "ipollowork": ">=0.18.0" },
+    "updateId": "ipollowork/context7"
   },
   "permissions": [
     { "id": "network", "reason": "连接 Context7 远程 MCP，并检索用户请求的产品和开发库文档。" },
@@ -57,7 +56,7 @@
       "id": "context7-mcp",
       "label": "Context7 远程 MCP",
       "description": "检索版本感知的产品和开发库文档，无需 OAuth。",
-      "path": ".opencode/mcps/context7.json",
+      "path": "mcp/context7.json",
       "mcpServerName": "context7",
       "oauth": false,
       "required": true
@@ -67,7 +66,7 @@
       "id": "context7-docs-research",
       "label": "官方文档研究",
       "description": "解析目标库并用少量相关文档回答具体技术问题。",
-      "path": ".opencode/skills/context7-docs-research/SKILL.md",
+      "path": "skills/context7-docs-research/SKILL.md",
       "requires": ["resource:context7-mcp"],
       "provides": ["workflow:context7-docs-research"],
       "required": true
@@ -77,7 +76,7 @@
       "id": "context7-version-aware-implementation",
       "label": "版本感知实现",
       "description": "将当前依赖版本与官方 API、迁移说明和示例对齐。",
-      "path": ".opencode/skills/context7-version-aware-implementation/SKILL.md",
+      "path": "skills/context7-version-aware-implementation/SKILL.md",
       "requires": ["resource:context7-mcp"],
       "provides": ["workflow:context7-version-aware-implementation"],
       "required": true
