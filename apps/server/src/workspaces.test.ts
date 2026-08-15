@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
-import { findManagedEngineWorkspace } from "./workspaces.js";
-import type { WorkspaceInfo } from "./types.js";
+import { buildWorkspaceInfos, findManagedEngineWorkspace } from "./workspaces.js";
+import { DEFAULT_ENGINE_ID, type WorkspaceInfo } from "./types.js";
 
 function ws(fields: {
   id?: string;
@@ -18,6 +18,18 @@ function ws(fields: {
     workspaceType: fields.workspaceType,
   };
 }
+
+describe("workspace engine selection", () => {
+  test("defaults existing workspace configs to OpenCode", () => {
+    const [workspace] = buildWorkspaceInfos([{ path: "./workspace" }], "/tmp");
+    expect(workspace?.engineId).toBe(DEFAULT_ENGINE_ID);
+  });
+
+  test("preserves an explicitly selected engine", () => {
+    const [workspace] = buildWorkspaceInfos([{ path: "./workspace", engineId: "deepseek-harness" }], "/tmp");
+    expect(workspace?.engineId).toBe("deepseek-harness");
+  });
+});
 
 describe("findManagedEngineWorkspace", () => {
   test("selects the local workspace in a typical local + remote config", () => {

@@ -14,6 +14,8 @@ export type ProviderPlacement = "in-sandbox" | "host-machine" | "client-machine"
 
 export type LogFormat = "pretty" | "json";
 
+export const DEFAULT_ENGINE_ID = "opencode";
+
 export interface WorkspaceConfig {
   id?: string;
   path: string;
@@ -21,6 +23,7 @@ export interface WorkspaceConfig {
   preset?: string;
   workContextId?: `enterprise:${string}`;
   workspaceType?: WorkspaceType;
+  engineId?: string;
   remoteType?: RemoteType;
   baseUrl?: string;
   directory?: string;
@@ -43,6 +46,7 @@ export interface WorkspaceInfo {
   preset: string;
   workContextId?: `enterprise:${string}`;
   workspaceType: WorkspaceType;
+  engineId?: string;
   remoteType?: RemoteType;
   baseUrl?: string;
   directory?: string;

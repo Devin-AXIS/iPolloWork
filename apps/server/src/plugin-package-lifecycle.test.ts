@@ -4,12 +4,18 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import {
+  openCodePluginEngineAdapter,
+  PluginEngineAdapterRegistry,
+  type PluginEngineAdapter,
+} from "./plugin-engine-adapter.js";
 import { readRuntimeOpencodeConfig } from "./runtime-opencode-config-store.js";
 import { pluginServiceDataDirectory } from "./plugin-service-runtime.js";
 import { startServer } from "./server.js";
 import type { ServerConfig } from "./types.js";
 
 const WORKSPACE_ID = "ws_plugin_package";
+const ENGINE_ID = "opencode";
 const roots: string[] = [];
 const previousRuntimeDb = process.env.IPOLLOWORK_RUNTIME_DB;
 
@@ -22,7 +28,7 @@ function serverConfig(root: string): ServerConfig {
     configPath: join(root, "server.json"),
     approval: { mode: "auto", timeoutMs: 0 },
     corsOrigins: [],
-    workspaces: [{ id: WORKSPACE_ID, name: "Test", path: root, preset: "starter", workspaceType: "local" }],
+    workspaces: [{ id: WORKSPACE_ID, name: "Test", path: root, preset: "starter", workspaceType: "local", engineId: ENGINE_ID }],
     authorizedRoots: [root],
     readOnly: false,
     startedAt: Date.now(),
@@ -158,12 +164,31 @@ afterEach(async () => {
 });
 
 describe("plugin package lifecycle", () => {
+  test("registers unique engine adapters and rejects duplicate IDs", () => {
+    const alternateAdapter: PluginEngineAdapter = {
+      id: "deepseek-harness",
+      compatibility: () => [],
+      workspaceFiles: () => [],
+      skillTargetPath: () => null,
+      syncRuntime: async () => undefined,
+    };
+    const registry = new PluginEngineAdapterRegistry([openCodePluginEngineAdapter, alternateAdapter]);
+
+    expect(registry.ids()).toEqual([ENGINE_ID, "deepseek-harness"]);
+    expect(registry.get(ENGINE_ID)).toBe(openCodePluginEngineAdapter);
+    expect(registry.get("deepseek-harness")).toBe(alternateAdapter);
+    expect(() => new PluginEngineAdapterRegistry([
+      openCodePluginEngineAdapter,
+      openCodePluginEngineAdapter,
+    ])).toThrow("Duplicate plugin engine adapter: opencode");
+  });
+
   test("previews the complete Figma package and every bundled workflow file", async () => {
     const lifecycle = await import("./plugin-package-lifecycle.js");
     const workspaceRoot = await createRoot("ipollowork-figma-preview-workspace-");
     const packageRoot = fileURLToPath(new URL("../../../examples/plugin-packages/figma", import.meta.url));
 
-    const preview = await lifecycle.previewPluginPackage({ packageRoot, workspaceRoot });
+    const preview = await lifecycle.previewPluginPackage({ packageRoot, workspaceRoot, engineId: ENGINE_ID });
 
     expect(preview.manifest.id).toBe("figma");
     expect(preview.files.length).toBeGreaterThan(100);
@@ -194,7 +219,7 @@ describe("plugin package lifecycle", () => {
       ],
     }), "utf8");
 
-    const preview = await lifecycle.previewPluginPackage({ packageRoot, workspaceRoot });
+    const preview = await lifecycle.previewPluginPackage({ packageRoot, workspaceRoot, engineId: ENGINE_ID });
 
     expect(preview.writes.map((entry) => entry.path)).toEqual([
       ".opencode/skills/figma/SKILL.md",
@@ -211,7 +236,7 @@ describe("plugin package lifecycle", () => {
     await writeFile(join(workspaceRoot, "unrelated.txt"), "keep me", "utf8");
     const config = serverConfig(workspaceRoot);
 
-    const preview = await lifecycle.previewPluginPackage({ packageRoot, workspaceRoot });
+    const preview = await lifecycle.previewPluginPackage({ packageRoot, workspaceRoot, engineId: ENGINE_ID });
     expect(preview.writes.map((entry) => entry.path).sort()).toEqual([
       ".opencode/skills/acme-research/SKILL.md",
     ]);
@@ -341,7 +366,7 @@ describe("plugin package lifecycle", () => {
     const packageRoot = await createRoot("ipollowork-plugin-integrity-package-");
     await writePackage(packageRoot, "1.0.0", "export default async () => ({})\n", "# Acme Research\n");
 
-    const unsigned = await lifecycle.previewPluginPackage({ packageRoot, workspaceRoot });
+    const unsigned = await lifecycle.previewPluginPackage({ packageRoot, workspaceRoot, engineId: ENGINE_ID });
     expect(unsigned.integrity.status).toBe("unsigned");
     expect(unsigned.integrity.sha256).toMatch(/^[a-f0-9]{64}$/);
 
@@ -349,20 +374,20 @@ describe("plugin package lifecycle", () => {
     const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
     manifest.description = "Changed package metadata";
     await writeFile(manifestPath, JSON.stringify(manifest, null, 2), "utf8");
-    const changed = await lifecycle.previewPluginPackage({ packageRoot, workspaceRoot });
+    const changed = await lifecycle.previewPluginPackage({ packageRoot, workspaceRoot, engineId: ENGINE_ID });
     expect(changed.integrity.sha256).not.toBe(unsigned.integrity.sha256);
 
     manifest.package.checksum = { algorithm: "sha256", value: "0".repeat(64) };
     await writeFile(manifestPath, JSON.stringify(manifest, null, 2), "utf8");
 
-    await expect(lifecycle.previewPluginPackage({ packageRoot, workspaceRoot })).rejects.toMatchObject({
+    await expect(lifecycle.previewPluginPackage({ packageRoot, workspaceRoot, engineId: ENGINE_ID })).rejects.toMatchObject({
       code: "plugin_package_checksum_mismatch",
     });
 
     delete manifest.package.checksum;
     manifest.package.compatibility = { ipollowork: ">=99.0.0" };
     await writeFile(manifestPath, JSON.stringify(manifest, null, 2), "utf8");
-    await expect(lifecycle.previewPluginPackage({ packageRoot, workspaceRoot })).rejects.toMatchObject({
+    await expect(lifecycle.previewPluginPackage({ packageRoot, workspaceRoot, engineId: ENGINE_ID })).rejects.toMatchObject({
       code: "plugin_package_incompatible",
     });
   });
@@ -377,9 +402,30 @@ describe("plugin package lifecycle", () => {
     manifest.package.engines = ["deepseek-harness"];
     await writeFile(manifestPath, JSON.stringify(manifest, null, 2), "utf8");
 
-    await expect(lifecycle.previewPluginPackage({ packageRoot, workspaceRoot })).rejects.toMatchObject({
+    await expect(lifecycle.previewPluginPackage({ packageRoot, workspaceRoot, engineId: ENGINE_ID })).rejects.toMatchObject({
       code: "plugin_package_incompatible",
       details: { engine: "opencode", supportedEngines: ["deepseek-harness"] },
+    });
+  });
+
+  test("selects the workspace engine and rejects an unregistered adapter", async () => {
+    const lifecycle = await import("./plugin-package-lifecycle.js");
+    const workspaceRoot = await createRoot("ipollowork-plugin-engine-selection-workspace-");
+    const packageRoot = await createRoot("ipollowork-plugin-engine-selection-package-");
+    await writeDeclarativePackage(packageRoot);
+    const config = serverConfig(workspaceRoot);
+    const workspace = config.workspaces[0];
+    if (!workspace) throw new Error("Test workspace is missing");
+    workspace.engineId = "deepseek-harness";
+
+    await expect(lifecycle.installPluginPackage({
+      serverConfig: config,
+      workspaceId: WORKSPACE_ID,
+      packageRoot,
+      workspaceRoot,
+    })).rejects.toMatchObject({
+      code: "plugin_engine_not_registered",
+      details: { engine: "deepseek-harness", registeredEngines: [ENGINE_ID] },
     });
   });
 
@@ -395,7 +441,7 @@ describe("plugin package lifecycle", () => {
     delete manifest.authorization;
     await writeFile(manifestPath, JSON.stringify(manifest, null, 2), "utf8");
 
-    const remotePreview = await lifecycle.previewPluginPackage({ packageRoot, workspaceRoot });
+    const remotePreview = await lifecycle.previewPluginPackage({ packageRoot, workspaceRoot, engineId: ENGINE_ID });
     expect(await lifecycle.assertPluginPackageSafeForImport({ packageRoot, preview: remotePreview }))
       .toMatchObject({ level: "declarative", localCode: false });
 
@@ -404,7 +450,7 @@ describe("plugin package lifecycle", () => {
       JSON.stringify({ type: "local", command: ["node", "malicious.mjs"] }),
       "utf8",
     );
-    const localPreview = await lifecycle.previewPluginPackage({ packageRoot, workspaceRoot });
+    const localPreview = await lifecycle.previewPluginPackage({ packageRoot, workspaceRoot, engineId: ENGINE_ID });
     await expect(lifecycle.assertPluginPackageSafeForImport({ packageRoot, preview: localPreview })).rejects.toMatchObject({
       code: "plugin_package_import_unsafe",
     });

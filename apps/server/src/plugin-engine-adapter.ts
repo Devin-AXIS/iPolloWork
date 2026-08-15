@@ -45,6 +45,36 @@ export interface PluginEngineAdapter {
   }): Promise<void>;
 }
 
+export class PluginEngineAdapterRegistry {
+  readonly #adapters: ReadonlyMap<string, PluginEngineAdapter>;
+
+  constructor(adapters: readonly PluginEngineAdapter[]) {
+    const entries = new Map<string, PluginEngineAdapter>();
+    for (const adapter of adapters) {
+      const id = adapter.id.trim();
+      if (!id) throw new Error("Plugin engine adapter ID is required");
+      if (entries.has(id)) throw new Error(`Duplicate plugin engine adapter: ${id}`);
+      entries.set(id, adapter);
+    }
+    this.#adapters = entries;
+  }
+
+  get(id: string): PluginEngineAdapter {
+    const adapter = this.#adapters.get(id.trim());
+    if (!adapter) {
+      throw new ApiError(409, "plugin_engine_not_registered", `Plugin engine is not registered: ${id}`, {
+        engine: id,
+        registeredEngines: [...this.#adapters.keys()],
+      });
+    }
+    return adapter;
+  }
+
+  ids(): string[] {
+    return [...this.#adapters.keys()];
+  }
+}
+
 const OPENCODE_TARGETS = {
   skills: ".opencode/skills/",
   agents: ".opencode/agents/",
@@ -159,4 +189,6 @@ export const openCodePluginEngineAdapter: PluginEngineAdapter = {
   },
 };
 
-export const pluginEngineAdapter: PluginEngineAdapter = openCodePluginEngineAdapter;
+export const pluginEngineAdapters = new PluginEngineAdapterRegistry([
+  openCodePluginEngineAdapter,
+]);

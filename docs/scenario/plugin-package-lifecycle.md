@@ -1,7 +1,7 @@
 # Scenario: Lightweight lifecycle over an engine adapter
 - Given: A validated package contains portable resources and optional native engine capabilities.
 - When: The user previews, installs, disables, enables, updates, rolls back, or uninstalls the package.
-- Then: iPolloWork records file ownership and versions while the active engine adapter projects runtime files and configuration without leaking engine details into the lifecycle.
+- Then: iPolloWork selects the workspace engine from the adapter registry, records file ownership and versions, and projects runtime files and configuration without leaking engine details into the lifecycle.
 
 ## Test Steps
 
@@ -12,6 +12,7 @@
 - Case 5 (rollback): Restore the prior immutable version and its owned files after an update.
 - Case 6 (uninstall): Remove only owned files, plugin configuration, package state, and authorization records.
 - Case 7 (runtime lifecycle): Reuse one lazy service instance during normal calls and dispose it on update, disable, authorization changes, uninstall, and server shutdown.
+- Case 8 (engine selection): Resolve the workspace engine through the registry, reject unknown engines, and keep OpenCode as the unchanged default.
 
 ## Status
 - [x] Write scenario document
