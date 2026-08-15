@@ -1,6 +1,6 @@
 {
   "name": "deepseek-idesign",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "iPolloWork Design Studio and its curated design templates as a native DeepSeek Harness conversation view.",
   "type": "module",
   "main": "lib/index.js",
