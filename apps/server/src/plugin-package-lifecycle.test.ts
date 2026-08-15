@@ -40,33 +40,36 @@ async function createRoot(prefix: string) {
 }
 
 async function writePackage(packageRoot: string, version: string, runtimeText: string, skillText: string, options: { mcp?: boolean } = {}) {
-  const pluginPath = ".opencode/plugins/acme-research.ts";
-  const skillPath = ".opencode/skills/acme-research/SKILL.md";
-  const mcpPath = ".opencode/mcps/acme-research.json";
-  await mkdir(join(packageRoot, ".opencode", "plugins"), { recursive: true });
-  await mkdir(join(packageRoot, ".opencode", "skills", "acme-research"), { recursive: true });
+  const pluginPath = "engines/opencode/plugins/acme-research.ts";
+  const skillPath = "skills/acme-research/SKILL.md";
+  const mcpPath = "mcp/acme-research.json";
+  await mkdir(join(packageRoot, dirname(pluginPath)), { recursive: true });
+  await mkdir(join(packageRoot, dirname(skillPath)), { recursive: true });
   await writeFile(join(packageRoot, pluginPath), runtimeText, "utf8");
   await writeFile(join(packageRoot, skillPath), skillText, "utf8");
   if (options.mcp) {
-    await mkdir(join(packageRoot, ".opencode", "mcps"), { recursive: true });
+    await mkdir(join(packageRoot, dirname(mcpPath)), { recursive: true });
     await writeFile(join(packageRoot, mcpPath), JSON.stringify({ type: "remote", url: "https://mcp.acme.example/mcp" }), "utf8");
   }
   const resources: Array<Record<string, unknown>> = [
-    { type: "opencode-plugin", id: "acme-runtime", path: pluginPath, required: true },
     { type: "skill", id: "acme-skill", path: skillPath, required: true },
   ];
   if (options.mcp) resources.push({ type: "mcp", id: "acme-mcp", mcpServerName: "acme-research", path: mcpPath, required: true });
   await writeFile(join(packageRoot, "ipollowork.plugin.json"), JSON.stringify({
-    schemaVersion: 1,
+    schemaVersion: 2,
     id: "acme-research",
     name: "Acme Research",
     description: "Self-contained research plugin.",
     source: { format: "ipollowork-extension-manifest", origin: "local", trusted: false },
     package: {
       version,
+      engines: ["opencode"],
       updateId: "acme/research",
-      entrypoints: { opencode: pluginPath },
     },
+    engineBindings: [{
+      engine: "opencode",
+      capabilities: [{ id: "acme-runtime", kind: "plugin", path: pluginPath, required: true }],
+    }],
     authorization: {
       required: true,
       methods: [{
@@ -84,19 +87,22 @@ async function writeDeclarativePackage(packageRoot: string, version = "1.0.0") {
   await writePackage(packageRoot, version, "export default async () => ({})\n", "# Acme Research\n");
   const manifestPath = join(packageRoot, "ipollowork.plugin.json");
   const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
-  manifest.package.entrypoints = {};
+  delete manifest.engineBindings;
+  delete manifest.package.engines;
   delete manifest.authorization;
   manifest.resources = manifest.resources.filter((resource: { type?: string }) => resource.type === "skill");
   await writeFile(manifestPath, JSON.stringify(manifest, null, 2), "utf8");
 }
 
 async function writeSignedExecutablePackage(packageRoot: string) {
-  const skillPath = ".opencode/skills/signed-research/SKILL.md";
+  const skillPath = "skills/signed-research/SKILL.md";
+  const servicePath = "service/signed-research.mjs";
   await mkdir(join(packageRoot, dirname(skillPath)), { recursive: true });
-  await writeFile(join(packageRoot, "service.mjs"), "export default async () => ({ actions: { ping: async () => ({ pong: true }) } });\n", "utf8");
+  await mkdir(join(packageRoot, dirname(servicePath)), { recursive: true });
+  await writeFile(join(packageRoot, servicePath), "export default async () => ({ actions: { ping: async () => ({ pong: true }) } });\n", "utf8");
   await writeFile(join(packageRoot, skillPath), "# Signed Research\n", "utf8");
   await writeFile(join(packageRoot, "ipollowork.plugin.json"), JSON.stringify({
-    schemaVersion: 1,
+    schemaVersion: 2,
     id: "signed-research",
     name: "Signed Research",
     description: "Signed executable test package.",
@@ -105,12 +111,11 @@ async function writeSignedExecutablePackage(packageRoot: string) {
       version: "1.0.0",
       publisher: { id: "smart-future-school", name: "智慧未来学校" },
       updateId: "smart-future-school/signed-research",
-      entrypoints: { service: "service.mjs" },
-      checksum: { algorithm: "sha256", value: "e1f0989fd33e680640c020a16309a1ac88b01412b837181aacdc1f059e257346" },
+      checksum: { algorithm: "sha256", value: "96043f0fff207f9cb89dc07efe09ddb66f40a0f37f78138d37852e7263cf98aa" },
       signature: {
         algorithm: "ed25519",
         keyId: "smart-future-school-2026",
-        value: "zz4FD0ePLKBuyasb69aanwG5GemRzLF6uZCQ23Zg4Pc+H3QxWpANef5RGfGoIMNriqbW2e96X7vRSmBrvIy7Dw==",
+        value: "8ovn8bYOQwHeLdo/lrx/rIYZnw7fJCxVQ4IKKA6WDCFsnsX8mvQ9XMtjnYydnSlML+5dalES/p0iqDV9jGyOCQ==",
       },
     },
     permissions: [{ id: "network", reason: "Run the signed local service." }],
@@ -118,7 +123,7 @@ async function writeSignedExecutablePackage(packageRoot: string) {
       {
         type: "local-service",
         id: "signed-research-service",
-        path: "service.mjs",
+        path: servicePath,
         actions: [{
           id: "ping",
           title: "Ping",
@@ -162,7 +167,7 @@ describe("plugin package lifecycle", () => {
 
     expect(preview.manifest.id).toBe("figma");
     expect(preview.files.length).toBeGreaterThan(100);
-    expect(preview.files.some((entry) => entry.path === ".opencode/mcps/figma.json")).toBe(true);
+    expect(preview.files.some((entry) => entry.path === "mcp/figma.json")).toBe(true);
     expect(preview.writes.some((entry) => entry.path === ".opencode/skills/figma-use/references/plugin-api-standalone.d.ts")).toBe(true);
     expect(preview.writes.some((entry) => entry.path === "README.md")).toBe(false);
     expect(preview.writes.some((entry) => entry.path === ".opencode/mcps/figma.json")).toBe(false);
@@ -172,20 +177,20 @@ describe("plugin package lifecycle", () => {
     const lifecycle = await import("./plugin-package-lifecycle.js");
     const workspaceRoot = await createRoot("ipollowork-plugin-directory-workspace-");
     const packageRoot = await createRoot("ipollowork-plugin-directory-package-");
-    const skillRoot = join(packageRoot, ".opencode", "skills", "figma");
+    const skillRoot = join(packageRoot, "skills", "figma");
     await mkdir(join(skillRoot, "references"), { recursive: true });
     await writeFile(join(skillRoot, "SKILL.md"), "# Figma\n", "utf8");
     await writeFile(join(skillRoot, "references", "api.md"), "# API\n", "utf8");
     await writeFile(join(packageRoot, "ipollowork.plugin.json"), JSON.stringify({
-      schemaVersion: 1,
+      schemaVersion: 2,
       id: "figma",
       name: "Figma",
       description: "Figma workflows.",
       source: { format: "ipollowork-extension-manifest", origin: "local", trusted: false },
-      package: { version: "1.0.0", updateId: "figma/workflows", entrypoints: {} },
+      package: { version: "1.0.0", updateId: "figma/workflows" },
       resources: [
-        { type: "skill", id: "figma-skill", path: ".opencode/skills/figma/SKILL.md", required: true },
-        { type: "file", id: "figma-skill-files", path: ".opencode/skills/figma", required: true },
+        { type: "skill", id: "figma-skill", path: "skills/figma/SKILL.md", required: true },
+        { type: "file", id: "figma-skill-files", path: "skills/figma", required: true },
       ],
     }), "utf8");
 
@@ -211,8 +216,8 @@ describe("plugin package lifecycle", () => {
       ".opencode/skills/acme-research/SKILL.md",
     ]);
     expect(preview.files.map((entry) => entry.path).sort()).toEqual([
-      ".opencode/plugins/acme-research.ts",
-      ".opencode/skills/acme-research/SKILL.md",
+      "engines/opencode/plugins/acme-research.ts",
+      "skills/acme-research/SKILL.md",
     ]);
 
     const installed = await lifecycle.installPluginPackage({ serverConfig: config, workspaceId: WORKSPACE_ID, packageRoot, workspaceRoot });
@@ -362,6 +367,22 @@ describe("plugin package lifecycle", () => {
     });
   });
 
+  test("rejects packages that do not support the active engine", async () => {
+    const lifecycle = await import("./plugin-package-lifecycle.js");
+    const workspaceRoot = await createRoot("ipollowork-plugin-engine-workspace-");
+    const packageRoot = await createRoot("ipollowork-plugin-engine-package-");
+    await writeDeclarativePackage(packageRoot);
+    const manifestPath = join(packageRoot, "ipollowork.plugin.json");
+    const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
+    manifest.package.engines = ["deepseek-harness"];
+    await writeFile(manifestPath, JSON.stringify(manifest, null, 2), "utf8");
+
+    await expect(lifecycle.previewPluginPackage({ packageRoot, workspaceRoot })).rejects.toMatchObject({
+      code: "plugin_package_incompatible",
+      details: { engine: "opencode", supportedEngines: ["deepseek-harness"] },
+    });
+  });
+
   test("allows remote HTTPS MCP imports but blocks local MCP commands", async () => {
     const lifecycle = await import("./plugin-package-lifecycle.js");
     const workspaceRoot = await createRoot("ipollowork-plugin-safe-mcp-workspace-");
@@ -369,9 +390,9 @@ describe("plugin package lifecycle", () => {
     await writePackage(packageRoot, "1.0.0", "export default async () => ({})\n", "# Acme Research\n", { mcp: true });
     const manifestPath = join(packageRoot, "ipollowork.plugin.json");
     const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
-    manifest.package.entrypoints = {};
+    delete manifest.engineBindings;
+    delete manifest.package.engines;
     delete manifest.authorization;
-    manifest.resources = manifest.resources.filter((resource: { type?: string }) => resource.type !== "opencode-plugin");
     await writeFile(manifestPath, JSON.stringify(manifest, null, 2), "utf8");
 
     const remotePreview = await lifecycle.previewPluginPackage({ packageRoot, workspaceRoot });
@@ -379,7 +400,7 @@ describe("plugin package lifecycle", () => {
       .toMatchObject({ level: "declarative", localCode: false });
 
     await writeFile(
-      join(packageRoot, ".opencode", "mcps", "acme-research.json"),
+      join(packageRoot, "mcp", "acme-research.json"),
       JSON.stringify({ type: "local", command: ["node", "malicious.mjs"] }),
       "utf8",
     );
@@ -407,7 +428,7 @@ describe("plugin package lifecycle", () => {
       expect(validation.status).toBe(400);
       expect(await validation.json()).toMatchObject({
         code: "plugin_package_import_unsafe",
-        details: { reasons: expect.arrayContaining([expect.stringContaining("executable entrypoints")]) },
+        details: { reasons: expect.arrayContaining([expect.stringContaining("executable capabilities")]) },
       });
     } finally {
       await server.stop();
@@ -420,12 +441,12 @@ describe("plugin package lifecycle", () => {
     process.env.IPOLLOWORK_RUNTIME_DB = join(workspaceRoot, "runtime.sqlite");
     await writeDeclarativePackage(packageRoot);
     const manifest = await readFile(join(packageRoot, "ipollowork.plugin.json"));
-    const skill = await readFile(join(packageRoot, ".opencode", "skills", "acme-research", "SKILL.md"));
+    const skill = await readFile(join(packageRoot, "skills", "acme-research", "SKILL.md"));
     const upload = {
       archiveName: "acme-research.zip",
       files: [
         { path: "ipollowork.plugin.json", contentBase64: manifest.toString("base64") },
-        { path: ".opencode/skills/acme-research/SKILL.md", contentBase64: skill.toString("base64") },
+        { path: "skills/acme-research/SKILL.md", contentBase64: skill.toString("base64") },
       ],
     };
     const config = serverConfig(workspaceRoot);
@@ -478,8 +499,8 @@ describe("plugin package lifecycle", () => {
       archiveName: "signed-research.ipollowork-plugin",
       files: await Promise.all([
         "ipollowork.plugin.json",
-        "service.mjs",
-        ".opencode/skills/signed-research/SKILL.md",
+        "service/signed-research.mjs",
+        "skills/signed-research/SKILL.md",
       ].map(async (path) => ({ path, contentBase64: (await readFile(join(packageRoot, path))).toString("base64") }))),
     };
     const config = serverConfig(workspaceRoot);
@@ -561,8 +582,9 @@ describe("plugin package lifecycle", () => {
     process.env.IPOLLOWORK_RUNTIME_DB = join(workspaceRoot, "runtime.sqlite");
     const figmaPackageRoot = fileURLToPath(new URL("../../../examples/plugin-packages/figma", import.meta.url));
     const existingFigmaAgent = ".opencode/agents/design-parity-review-agent.md";
+    const packagedFigmaAgent = "agents/design-parity-review-agent.md";
     await mkdir(join(workspaceRoot, ".opencode", "agents"), { recursive: true });
-    await copyFile(join(figmaPackageRoot, existingFigmaAgent), join(workspaceRoot, existingFigmaAgent));
+    await copyFile(join(figmaPackageRoot, packagedFigmaAgent), join(workspaceRoot, existingFigmaAgent));
     const config = serverConfig(workspaceRoot);
     const server = await startServer(config);
     const base = `http://127.0.0.1:${server.port}`;
@@ -572,17 +594,17 @@ describe("plugin package lifecycle", () => {
       expect(catalog.status).toBe(200);
       expect(await catalog.json()).toMatchObject({
         items: [
-          { pluginId: "figma", version: "2.0.17", installedVersion: null, updateAvailable: false },
-          { pluginId: "notion", version: "1.0.1", installedVersion: null, updateAvailable: false },
-          { pluginId: "linear", version: "1.0.1", installedVersion: null, updateAvailable: false },
-          { pluginId: "sentry", version: "1.0.1", installedVersion: null, updateAvailable: false },
-          { pluginId: "stripe", version: "1.0.1", installedVersion: null, updateAvailable: false },
-          { pluginId: "context7", version: "1.0.1", installedVersion: null, updateAvailable: false },
-          { pluginId: "github", version: "0.1.1", installedVersion: null, updateAvailable: false },
-          { pluginId: "wechat-official", version: "0.1.1", installedVersion: null, updateAvailable: false },
-          { pluginId: "design-agent", version: "0.1.1", installedVersion: null, updateAvailable: false },
-          { pluginId: "video-agent", version: "0.1.2", installedVersion: null, updateAvailable: false },
-          { pluginId: "deepseek-harness", version: "0.3.4", installedVersion: null, updateAvailable: false },
+          { pluginId: "figma", version: "2.0.18", installedVersion: null, updateAvailable: false },
+          { pluginId: "notion", version: "1.0.2", installedVersion: null, updateAvailable: false },
+          { pluginId: "linear", version: "1.0.2", installedVersion: null, updateAvailable: false },
+          { pluginId: "sentry", version: "1.0.2", installedVersion: null, updateAvailable: false },
+          { pluginId: "stripe", version: "1.0.2", installedVersion: null, updateAvailable: false },
+          { pluginId: "context7", version: "1.0.2", installedVersion: null, updateAvailable: false },
+          { pluginId: "github", version: "0.1.2", installedVersion: null, updateAvailable: false },
+          { pluginId: "wechat-official", version: "0.1.2", installedVersion: null, updateAvailable: false },
+          { pluginId: "design-agent", version: "0.1.2", installedVersion: null, updateAvailable: false },
+          { pluginId: "video-agent", version: "0.1.3", installedVersion: null, updateAvailable: false },
+          { pluginId: "deepseek-harness", version: "0.3.5", installedVersion: null, updateAvailable: false },
         ],
       });
 
@@ -592,7 +614,7 @@ describe("plugin package lifecycle", () => {
       });
       expect(dshInstallation.status).toBe(200);
       expect(await dshInstallation.json()).toMatchObject({
-        result: { status: "installed", pluginId: "deepseek-harness", version: "0.3.4" },
+        result: { status: "installed", pluginId: "deepseek-harness", version: "0.3.5" },
       });
       const dshCapabilities = await fetch(`${base}/experimental/extensions/call`, {
         method: "POST",
@@ -620,7 +642,7 @@ describe("plugin package lifecycle", () => {
         headers,
       });
       expect(installation.status).toBe(200);
-      expect(await installation.json()).toMatchObject({ result: { status: "installed", pluginId: "figma", version: "2.0.17" } });
+      expect(await installation.json()).toMatchObject({ result: { status: "installed", pluginId: "figma", version: "2.0.18" } });
       expect((await readRuntimeOpencodeConfig(config, WORKSPACE_ID)).mcp?.figma).toEqual({
         type: "remote",
         url: "http://127.0.0.1:3845/mcp",
@@ -647,7 +669,7 @@ describe("plugin package lifecycle", () => {
         });
         expect(serviceInstallation.status).toBe(200);
         expect(await serviceInstallation.json()).toMatchObject({
-          result: { status: "installed", pluginId: service.id, version: "1.0.1" },
+          result: { status: "installed", pluginId: service.id, version: "1.0.2" },
           item: { pluginId: service.id, manifest: { source: { trusted: true } } },
         });
         expect((await readRuntimeOpencodeConfig(config, WORKSPACE_ID)).mcp?.[service.id]).toEqual({
@@ -667,7 +689,7 @@ describe("plugin package lifecycle", () => {
       });
       expect(githubInstallation.status).toBe(200);
       expect(await githubInstallation.json()).toMatchObject({
-        result: { status: "installed", pluginId: "github", version: "0.1.1" },
+        result: { status: "installed", pluginId: "github", version: "0.1.2" },
         item: {
           pluginId: "github",
           manifest: {
@@ -697,7 +719,7 @@ describe("plugin package lifecycle", () => {
       });
       expect(wechatInstallation.status).toBe(200);
       expect(await wechatInstallation.json()).toMatchObject({
-        result: { status: "installed", pluginId: "wechat-official", version: "0.1.1" },
+        result: { status: "installed", pluginId: "wechat-official", version: "0.1.2" },
         item: {
           pluginId: "wechat-official",
           manifest: {
@@ -765,13 +787,13 @@ describe("plugin package lifecycle", () => {
     const packages = [
       {
         pluginId: "design-agent",
-        version: "0.1.1",
+        version: "0.1.2",
         skillPath: join(workspaceRoot, ".opencode", "skills", "ipollowork-design-studio", "SKILL.md"),
         heading: "# iPolloWork Design Studio",
       },
       {
         pluginId: "video-agent",
-        version: "0.1.2",
+        version: "0.1.3",
         skillPath: join(workspaceRoot, ".opencode", "skills", "ipollowork-video-studio", "SKILL.md"),
         heading: "# iPolloWork Video Studio",
       },

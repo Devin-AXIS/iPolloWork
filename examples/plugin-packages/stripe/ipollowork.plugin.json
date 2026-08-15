@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "id": "stripe",
   "name": "Stripe",
   "description": "把支付调查、订阅与账单、对账和高风险操作审查组合成安全的 Stripe 工作流。",
@@ -49,11 +49,10 @@
     }
   },
   "package": {
-    "version": "1.0.1",
+    "version": "1.0.2",
     "publisher": { "id": "ipollowork", "name": "iPolloWork" },
-    "compatibility": { "ipollowork": ">=0.18.0", "opencode": ">=1.18.0" },
-    "updateId": "ipollowork/stripe",
-    "entrypoints": {}
+    "compatibility": { "ipollowork": ">=0.18.0" },
+    "updateId": "ipollowork/stripe"
   },
   "permissions": [
     { "id": "network", "reason": "连接 Stripe 官方远程 MCP，并访问用户通过 OAuth 授权的支付和账单数据。" },
@@ -65,7 +64,7 @@
       "id": "stripe-mcp",
       "label": "Stripe 官方远程 MCP",
       "description": "通过持久化 OAuth 访问用户授权的 Stripe 账户和工具。",
-      "path": ".opencode/mcps/stripe.json",
+      "path": "mcp/stripe.json",
       "mcpServerName": "stripe",
       "oauth": true,
       "required": true
@@ -75,7 +74,7 @@
       "id": "stripe-payment-investigation",
       "label": "支付调查",
       "description": "从 PaymentIntent、Charge、退款和事件证据调查支付问题。",
-      "path": ".opencode/skills/stripe-payment-investigation/SKILL.md",
+      "path": "skills/stripe-payment-investigation/SKILL.md",
       "requires": ["resource:stripe-mcp"],
       "provides": ["workflow:stripe-payment-investigation"],
       "required": true
@@ -85,7 +84,7 @@
       "id": "stripe-billing-subscriptions",
       "label": "订阅与账单",
       "description": "核对客户、订阅、Invoice、价格和生命周期状态。",
-      "path": ".opencode/skills/stripe-billing-subscriptions/SKILL.md",
+      "path": "skills/stripe-billing-subscriptions/SKILL.md",
       "requires": ["resource:stripe-mcp"],
       "provides": ["workflow:stripe-billing-subscriptions"],
       "required": true
@@ -95,7 +94,7 @@
       "id": "stripe-reconciliation",
       "label": "支付对账",
       "description": "按币种和时间范围核对 Stripe 对象与业务记录。",
-      "path": ".opencode/skills/stripe-reconciliation/SKILL.md",
+      "path": "skills/stripe-reconciliation/SKILL.md",
       "requires": ["resource:stripe-mcp"],
       "provides": ["workflow:stripe-reconciliation"],
       "required": true
@@ -105,7 +104,7 @@
       "id": "stripe-safe-operations",
       "label": "安全操作",
       "description": "在退款、取消和其他高风险写入前进行对象、金额与环境确认。",
-      "path": ".opencode/skills/stripe-safe-operations/SKILL.md",
+      "path": "skills/stripe-safe-operations/SKILL.md",
       "requires": ["resource:stripe-mcp"],
       "provides": ["workflow:stripe-safe-operations"],
       "required": true

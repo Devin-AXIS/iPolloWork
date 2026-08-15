@@ -57,8 +57,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function serviceResource(manifest: PluginPackageManifest) {
-  const path = manifest.package?.entrypoints.service;
-  return path ? manifest.resources.find((resource) => resource.type === "local-service" && resource.path === path) : undefined;
+  return manifest.resources.find((resource) => resource.type === "local-service" && resource.path);
 }
 
 function safeSegment(value: string): string {

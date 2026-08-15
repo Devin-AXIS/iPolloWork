@@ -85,7 +85,7 @@ export default async function createService(runtime) {
 }
 `, "utf8");
   await writeFile(join(root, "ipollowork.plugin.json"), JSON.stringify({
-    schemaVersion: 1,
+    schemaVersion: 2,
     id,
     name: id,
     description: "Runtime isolation fixture",
@@ -93,7 +93,6 @@ export default async function createService(runtime) {
     package: {
       version: "1.0.0",
       updateId: `fixture/${id}`,
-      entrypoints: { service: servicePath },
     },
     authorization: {
       required: true,
@@ -154,7 +153,7 @@ export default async function createService(runtime) {
 }
 `, "utf8");
   await writeFile(join(root, "ipollowork.plugin.json"), JSON.stringify({
-    schemaVersion: 1,
+    schemaVersion: 2,
     id: "runtime-capability",
     name: "Runtime Capability",
     description: "Runtime capability fixture.",
@@ -162,7 +161,6 @@ export default async function createService(runtime) {
     package: {
       version: "1.0.0",
       updateId: "fixture/runtime-capability",
-      entrypoints: { service: "service/capability.ts" },
     },
     resources: [{
       type: "local-service",
