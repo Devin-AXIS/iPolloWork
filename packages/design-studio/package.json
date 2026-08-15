@@ -1,0 +1,19 @@
+{
+  "name": "@ipollowork/design-studio",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": "./src/index.ts",
+    "./ai-selection": "./src/ai-selection.ts",
+    "./bridge": "./src/bridge.ts",
+    "./host": "./src/host.ts"
+  },
+  "files": [
+    "src"
+  ],
+  "dependencies": {
+    "@ipollowork/types": "workspace:*"
+  }
+}

@@ -68,7 +68,7 @@ describe("Design deck navigation", () => {
     expect(source).toContain("panelWidth < 480");
     expect(source).toContain("compact={compactToolbar}");
     expect(source).toContain("showExports={Boolean(deck)}");
-    expect(source).toContain("onPublish={() => publishMutation.mutate()}");
+    expect(source).toContain("onPublish={features.publish ? () => publishMutation.mutate() : undefined}");
   });
 
   test("orders editing actions before sharing and export", async () => {

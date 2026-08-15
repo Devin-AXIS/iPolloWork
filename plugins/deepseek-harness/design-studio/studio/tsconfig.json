@@ -1,0 +1,29 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "useDefineForClassFields": true,
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["../../../../apps/app/src/*"],
+      "@ipollowork/design-studio": ["../../../../packages/design-studio/src/index.ts"],
+      "@ipollowork/types/templates": ["../../../../packages/types/src/templates.ts"],
+      "@tanstack/react-query": ["../../../../apps/app/node_modules/@tanstack/react-query"]
+    },
+    "typeRoots": [
+      "../../../../apps/app/node_modules/@types",
+      "../node_modules/@types"
+    ],
+    "types": ["node", "react", "react-dom"],
+    "allowImportingTsExtensions": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "noEmit": true,
+    "jsx": "react-jsx",
+    "strict": true,
+    "skipLibCheck": true
+  },
+  "include": ["src", "vite.config.ts", "../../../../apps/app/globals.d.ts"]
+}

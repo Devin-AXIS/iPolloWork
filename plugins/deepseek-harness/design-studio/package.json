@@ -1,0 +1,89 @@
+{
+  "name": "ipollowork-dsh-design-studio",
+  "version": "0.1.0",
+  "description": "iPolloWork Design Studio as a native DeepSeek Harness conversation view.",
+  "type": "module",
+  "main": "lib/index.js",
+  "exports": {
+    ".": "./lib/index.js",
+    "./client": "./lib/client.js",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib",
+    "studio/dist",
+    "cordis.patch.yml",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "pnpm run build:plugin && pnpm run build:studio",
+    "build:plugin": "tsdown",
+    "build:studio": "vite build --config studio/vite.config.ts",
+    "check": "tsc -p tsconfig.json --noEmit && tsc -p studio/tsconfig.json --noEmit",
+    "prepack": "pnpm run build"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "inject": [
+        "@deepseek-ai/dsh-client-runtime",
+        "@deepseek-ai/dsh-client-ui-conversation"
+      ]
+    }
+  },
+  "keywords": [
+    "deepseek-harness",
+    "dsh-plugin",
+    "design-studio",
+    "ipollowork"
+  ],
+  "license": "MIT",
+  "packageManager": "pnpm@11.4.0",
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Devin-AXIS/iPolloWork.git",
+    "directory": "plugins/deepseek-harness/design-studio"
+  },
+  "bugs": {
+    "url": "https://github.com/Devin-AXIS/iPolloWork/issues"
+  },
+  "homepage": "https://github.com/Devin-AXIS/iPolloWork/tree/main/plugins/deepseek-harness/design-studio#readme",
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "^4.0.1",
+    "@deepseek-ai/dsh-client-runtime": ">=0.0.1-rc.1 <0.2.0-0",
+    "@deepseek-ai/dsh-client-ui-conversation": ">=0.0.1-rc.1 <0.2.0-0",
+    "@deepseek-ai/dsh-host-webserver": ">=0.0.1-rc.1 <0.2.0-0",
+    "@deepseek-ai/dsh-workspace": ">=0.0.1-rc.1 <0.2.0-0",
+    "react": "^18.2.0"
+  },
+  "peerDependenciesMeta": {
+    "@deepseek-ai/cordis": { "optional": true },
+    "@deepseek-ai/dsh-client-runtime": { "optional": true },
+    "@deepseek-ai/dsh-client-ui-conversation": { "optional": true },
+    "@deepseek-ai/dsh-host-webserver": { "optional": true },
+    "@deepseek-ai/dsh-workspace": { "optional": true },
+    "react": { "optional": true }
+  },
+  "devDependencies": {
+    "@deepseek-ai/cordis": "4.0.1",
+    "@deepseek-ai/dsh-client-runtime": "0.1.0-rc.6",
+    "@deepseek-ai/dsh-client-ui-conversation": "0.1.0-rc.6",
+    "@deepseek-ai/dsh-host-webserver": "0.1.0-rc.6",
+    "@deepseek-ai/dsh-workspace": "0.1.0-rc.6",
+    "@tailwindcss/vite": "4.1.18",
+    "@types/node": "25.6.0",
+    "@types/react": "18.3.1",
+    "@types/react-dom": "18.3.0",
+    "@vitejs/plugin-react": "5.0.4",
+    "react": "18.2.0",
+    "tsdown": "0.22.2",
+    "typescript": "5.9.3",
+    "vite": "6.0.1"
+  }
+}

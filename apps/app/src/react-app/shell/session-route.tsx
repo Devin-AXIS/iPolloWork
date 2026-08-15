@@ -71,7 +71,7 @@ import {
 import {
   designHtmlThemeSystemContext,
   type DesignAiSelectionContext,
-} from "@/react-app/domains/session/design/design-ai-selection";
+} from "@ipollowork/design-studio";
 import { useDesignAiSelectionStore } from "@/react-app/domains/session/design/design-ai-selection-store";
 import { readAppliedDesignSystemId } from "@/react-app/domains/session/design/design-system-theme-contract";
 import { templateAuthoringKickoff, templateAuthoringSystemContext } from "@/react-app/domains/session/templates/template-authoring";
