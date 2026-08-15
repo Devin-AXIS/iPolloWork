@@ -25,6 +25,12 @@ iPolloWork は、リポジトリ、ローカルファイル、ブラウザ操作
 
 Codex のようなコーディングは出発点にすぎません。成果物がスライド、Web ページ、ビジュアルデザイン、動画になっても、完成ファイルやチャットの回答で終わらず、そのまま編集できます。
 
+<div align="center">
+  <h3>iPolloWork 公式 WeChat コミュニティに参加</h3>
+  <p>WeChat で下の QR コードをスキャンすると、製品情報やコミュニティでの交流を目的とした公式グループに参加できます。</p>
+  <img src="../docs/assets/ipollowork-official-wechat-group.jpg" alt="iPolloWork 公式 WeChat コミュニティの QR コード" width="220" />
+</div>
+
 ## iPolloWork の違い
 
 - **エージェント中心の実行** — 作業を計画し、ツールを使い、ファイルを読み書きし、コマンドを実行し、現在の状態から作業を続けます。
