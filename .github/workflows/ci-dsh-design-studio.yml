@@ -6,6 +6,7 @@ on:
     paths:
       - "external-plugins/deepseek-harness/**"
       - "packages/design-studio/**"
+      - "packages/video-studio/**"
       - "packages/types/**"
       - "apps/app/src/**"
       - "apps/server/bundled-templates/**"
@@ -14,11 +15,13 @@ on:
     tags:
       - "deepseek-idesign-v*"
       - "deepseek-ippt-v*"
+      - "deepseek-ivideo-v*"
   pull_request:
     branches: [main, dev]
     paths:
       - "external-plugins/deepseek-harness/**"
       - "packages/design-studio/**"
+      - "packages/video-studio/**"
       - "packages/types/**"
       - "apps/app/src/**"
       - "apps/server/bundled-templates/**"
@@ -35,7 +38,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        package: [design-studio, ppt-studio]
+        package: [design-studio, ppt-studio, video-studio]
 
     steps:
       - name: Checkout
@@ -59,17 +62,21 @@ jobs:
         run: |
           pnpm --dir external-plugins/deepseek-harness/design-studio install --frozen-lockfile
           pnpm --dir external-plugins/deepseek-harness/ppt-studio install --frozen-lockfile
+          pnpm --dir external-plugins/deepseek-harness/video-studio install --frozen-lockfile
 
       - name: Typecheck and package
         run: |
           mkdir -p "${RUNNER_TEMP}/packages"
           pnpm --dir external-plugins/deepseek-harness/${{ matrix.package }} run check
+          if [[ "${{ matrix.package }}" == "video-studio" ]]; then
+            pnpm --dir external-plugins/deepseek-harness/video-studio run test
+          fi
           pnpm --dir external-plugins/deepseek-harness/${{ matrix.package }} pack --pack-destination "${RUNNER_TEMP}/packages"
 
   publish:
     name: Publish tagged package to npm
     needs: check
-    if: startsWith(github.ref, 'refs/tags/deepseek-idesign-v') || startsWith(github.ref, 'refs/tags/deepseek-ippt-v')
+    if: startsWith(github.ref, 'refs/tags/deepseek-idesign-v') || startsWith(github.ref, 'refs/tags/deepseek-ippt-v') || startsWith(github.ref, 'refs/tags/deepseek-ivideo-v')
     runs-on: ubuntu-latest
 
     permissions:
@@ -100,9 +107,12 @@ jobs:
           if [[ "${RELEASE_TAG}" == deepseek-idesign-v* ]]; then
             package_directory="external-plugins/deepseek-harness/design-studio"
             tag_version="${RELEASE_TAG#deepseek-idesign-v}"
-          else
+          elif [[ "${RELEASE_TAG}" == deepseek-ippt-v* ]]; then
             package_directory="external-plugins/deepseek-harness/ppt-studio"
             tag_version="${RELEASE_TAG#deepseek-ippt-v}"
+          else
+            package_directory="external-plugins/deepseek-harness/video-studio"
+            tag_version="${RELEASE_TAG#deepseek-ivideo-v}"
           fi
           package_version="$(node -p "require('./${package_directory}/package.json').version")"
           test "${package_version}" = "${tag_version}"
