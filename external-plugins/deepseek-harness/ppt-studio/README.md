@@ -20,5 +20,5 @@ For a local release artifact:
 
 ```sh
 pnpm pack
-dsh plugin --profile web add ./deepseek-ippt-0.1.0.tgz
+dsh plugin --profile web add ./deepseek-ippt-0.1.1.tgz
 ```

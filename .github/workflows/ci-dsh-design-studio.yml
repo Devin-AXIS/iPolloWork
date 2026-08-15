@@ -1,34 +1,41 @@
-name: DeepSeek Harness iDesign external plugin
+name: DeepSeek Harness Studio plugins
 
 on:
   push:
     branches: [main, dev]
     paths:
-      - "external-plugins/deepseek-harness/design-studio/**"
+      - "external-plugins/deepseek-harness/**"
       - "packages/design-studio/**"
-      - "apps/app/src/react-app/domains/session/design/**"
+      - "packages/types/**"
+      - "apps/app/src/**"
+      - "apps/server/bundled-templates/**"
+      - "scripts/export-deepseek-design-repository.mjs"
       - ".github/workflows/ci-dsh-design-studio.yml"
     tags:
       - "deepseek-idesign-v*"
+      - "deepseek-ippt-v*"
   pull_request:
     branches: [main, dev]
     paths:
-      - "external-plugins/deepseek-harness/design-studio/**"
+      - "external-plugins/deepseek-harness/**"
       - "packages/design-studio/**"
-      - "apps/app/src/react-app/domains/session/design/**"
+      - "packages/types/**"
+      - "apps/app/src/**"
+      - "apps/server/bundled-templates/**"
+      - "scripts/export-deepseek-design-repository.mjs"
       - ".github/workflows/ci-dsh-design-studio.yml"
 
 permissions:
   contents: read
 
-defaults:
-  run:
-    working-directory: external-plugins/deepseek-harness/design-studio
-
 jobs:
   check:
-    name: Build and inspect package
+    name: Build ${{ matrix.package }}
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        package: [design-studio, ppt-studio]
 
     steps:
       - name: Checkout
@@ -43,25 +50,24 @@ jobs:
         uses: actions/setup-node@v6
         with:
           node-version: 24
-          registry-url: https://registry.npmjs.org
           cache: pnpm
 
       - name: Install iPolloWork workspace
-        run: pnpm --dir ../../.. install --frozen-lockfile
-
-      - name: Install plugin workspace
         run: pnpm install --frozen-lockfile
 
-      - name: Typecheck and build
-        run: pnpm run check && pnpm run build
+      - name: Install plugin workspace
+        run: pnpm --dir external-plugins/deepseek-harness/${{ matrix.package }} install --frozen-lockfile
 
-      - name: Dry-run publish
-        run: npm publish --dry-run --access public
+      - name: Typecheck and package
+        run: |
+          mkdir -p "${RUNNER_TEMP}/packages"
+          pnpm --dir external-plugins/deepseek-harness/${{ matrix.package }} run check
+          pnpm --dir external-plugins/deepseek-harness/${{ matrix.package }} pack --pack-destination "${RUNNER_TEMP}/packages"
 
   publish:
-    name: Publish to npm
+    name: Publish tagged package to npm
     needs: check
-    if: startsWith(github.ref, 'refs/tags/deepseek-idesign-v')
+    if: startsWith(github.ref, 'refs/tags/deepseek-idesign-v') || startsWith(github.ref, 'refs/tags/deepseek-ippt-v')
     runs-on: ubuntu-latest
 
     permissions:
@@ -84,13 +90,29 @@ jobs:
           registry-url: https://registry.npmjs.org
           cache: pnpm
 
-      - name: Install iPolloWork workspace
-        run: pnpm --dir ../../.. install --frozen-lockfile
+      - name: Resolve tagged package
+        id: package
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          if [[ "${RELEASE_TAG}" == deepseek-idesign-v* ]]; then
+            package_directory="external-plugins/deepseek-harness/design-studio"
+            tag_version="${RELEASE_TAG#deepseek-idesign-v}"
+          else
+            package_directory="external-plugins/deepseek-harness/ppt-studio"
+            tag_version="${RELEASE_TAG#deepseek-ippt-v}"
+          fi
+          package_version="$(node -p "require('./${package_directory}/package.json').version")"
+          test "${package_version}" = "${tag_version}"
+          echo "directory=${package_directory}" >> "${GITHUB_OUTPUT}"
 
-      - name: Install plugin workspace
+      - name: Install iPolloWork workspace
         run: pnpm install --frozen-lockfile
 
+      - name: Install plugin workspace
+        run: pnpm --dir "${{ steps.package.outputs.directory }}" install --frozen-lockfile
+
       - name: Publish
-        run: npm publish --access public --provenance
+        run: pnpm --dir "${{ steps.package.outputs.directory }}" publish --access public --provenance --no-git-checks
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

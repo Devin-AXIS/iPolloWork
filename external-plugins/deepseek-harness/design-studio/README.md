@@ -23,7 +23,7 @@ For a local release artifact:
 
 ```sh
 pnpm pack
-dsh plugin --profile web add ./deepseek-idesign-0.2.0.tgz
+dsh plugin --profile web add ./deepseek-idesign-0.2.1.tgz
 ```
 
 The plugin contains its own browser assets. It does not install or start the

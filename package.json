@@ -38,6 +38,7 @@
     "test:fs-engine": "pnpm --filter @ipollowork/app test:fs-engine",
     "test:e2e": "pnpm --filter @ipollowork/app test:e2e",
     "audit:template-fidelity": "node scripts/audit-template-preview-fidelity.mjs",
+    "export:deepseek-design": "node scripts/export-deepseek-design-repository.mjs",
     "evals": "node evals/runner/run.mjs",
     "fraimz": "node evals/runner/run.mjs",
     "gsap:generate": "bun vendor/hyperframes/scripts/gsap-catalog.ts generate",

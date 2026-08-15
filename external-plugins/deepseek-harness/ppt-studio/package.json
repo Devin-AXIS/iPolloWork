@@ -1,6 +1,6 @@
 {
   "name": "deepseek-ippt",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "iPolloWork PPT Studio and its curated slide templates as a native DeepSeek Harness conversation view.",
   "type": "module",
   "main": "lib/index.js",
@@ -9,7 +9,7 @@
     "./client": "./lib/client.js",
     "./package.json": "./package.json"
   },
-  "files": ["lib", "studio/dist", "cordis.patch.yml", "README.md"],
+  "files": ["lib", "studio/dist", "cordis.patch.yml", "README.md", "LICENSE"],
   "scripts": {
     "build": "pnpm run build:plugin && pnpm run build:studio",
     "build:plugin": "tsdown",
@@ -25,7 +25,7 @@
     }
   },
   "keywords": ["deepseek-harness", "dsh-plugin", "ppt", "slides", "ipollowork"],
-  "license": "MIT",
+  "license": "SEE LICENSE IN LICENSE",
   "packageManager": "pnpm@11.4.0",
   "publishConfig": { "access": "public" },
   "repository": {
@@ -34,7 +34,7 @@
     "directory": "external-plugins/deepseek-harness/ppt-studio"
   },
   "bugs": { "url": "https://github.com/Devin-AXIS/iPolloWork/issues" },
-  "homepage": "https://github.com/Devin-AXIS/iPolloWork/tree/main/external-plugins/deepseek-harness/ppt-studio#readme",
+  "homepage": "https://github.com/Devin-AXIS/deepseek-design#deepseek-ippt",
   "peerDependencies": {
     "@deepseek-ai/cordis": "^4.0.1",
     "@deepseek-ai/dsh-client-runtime": ">=0.0.1-rc.1 <0.2.0-0",
