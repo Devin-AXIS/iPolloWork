@@ -739,7 +739,7 @@ describe("plugin package lifecycle", () => {
         item: {
           pluginId: "github",
           manifest: {
-            category: "开发者工具",
+            category: "开发与运维",
             authorization: { required: true },
           },
         },
