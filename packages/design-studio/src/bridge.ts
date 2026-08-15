@@ -4,11 +4,16 @@ export const DESIGN_STUDIO_HOST_CHANNEL = "ipollowork-design-studio-host-v1";
 
 export type DesignStudioAskAiRequest = Omit<DesignAiSelectionContext, "beforeHtml">;
 
-export type DesignStudioHostMessage = {
-  channel: typeof DESIGN_STUDIO_HOST_CHANNEL;
-  type: "ask-ai";
-  request: DesignStudioAskAiRequest;
-};
+export type DesignStudioHostMessage =
+  | {
+    channel: typeof DESIGN_STUDIO_HOST_CHANNEL;
+    type: "ask-ai";
+    request: DesignStudioAskAiRequest;
+  }
+  | {
+    channel: typeof DESIGN_STUDIO_HOST_CHANNEL;
+    type: "ask-document-ai";
+  };
 
 export function designStudioAskAiRequest(
   context: DesignAiSelectionContext,
@@ -20,7 +25,9 @@ export function designStudioAskAiRequest(
 export function isDesignStudioHostMessage(value: unknown): value is DesignStudioHostMessage {
   if (!value || typeof value !== "object") return false;
   if (Reflect.get(value, "channel") !== DESIGN_STUDIO_HOST_CHANNEL) return false;
-  if (Reflect.get(value, "type") !== "ask-ai") return false;
+  const type = Reflect.get(value, "type");
+  if (type === "ask-document-ai") return true;
+  if (type !== "ask-ai") return false;
   const request = Reflect.get(value, "request");
   if (!request || typeof request !== "object") return false;
   const target = Reflect.get(request, "target");

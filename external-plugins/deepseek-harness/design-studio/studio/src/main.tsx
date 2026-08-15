@@ -41,6 +41,17 @@ function Studio() {
             description: t(__DEEPSEEK_STUDIO_MODE__ === "slides" ? "design_templates.slides_description" : "design_templates.design_description"),
           },
         }}
+        branding={{
+          kind: __DEEPSEEK_STUDIO_MODE__ === "slides" ? "slides" : "design",
+          title: __DEEPSEEK_STUDIO_MODE__ === "slides" ? "iPPT" : "iDesign",
+          byline: "by iPolloWork",
+          bylineUrl: "https://github.com/Devin-AXIS/iPolloWork",
+          repositoryUrl: "https://github.com/Devin-AXIS/deepseek-design",
+          onAskAi: () => window.parent.postMessage({
+            channel: DESIGN_STUDIO_HOST_CHANNEL,
+            type: "ask-document-ai",
+          }, window.location.origin),
+        }}
         onAskAi={(context) => window.parent.postMessage({
           channel: DESIGN_STUDIO_HOST_CHANNEL,
           type: "ask-ai",
