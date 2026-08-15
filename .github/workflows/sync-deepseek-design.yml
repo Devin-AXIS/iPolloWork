@@ -6,6 +6,7 @@ on:
     paths:
       - "external-plugins/deepseek-harness/**"
       - "packages/design-studio/**"
+      - "packages/video-studio/**"
       - "packages/types/**"
       - "apps/app/src/**"
       - "apps/server/bundled-templates/**"
