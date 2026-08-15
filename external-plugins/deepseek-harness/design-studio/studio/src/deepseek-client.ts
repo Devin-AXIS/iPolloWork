@@ -9,7 +9,8 @@ declare global {
   }
 }
 
-const API_ROOT = "/ipollowork-design/api";
+const studioBoundary = window.location.pathname.indexOf("/studio/");
+const API_ROOT = `${window.location.pathname.slice(0, studioBoundary)}/api`;
 
 function token() {
   const value = window.__IPOLLOWORK_DESIGN_STUDIO_TOKEN__;
@@ -29,10 +30,11 @@ async function api<T>(path: string, init?: RequestInit): Promise<T> {
     },
   });
   if (!response.ok) {
-    const detail = await response.json().catch(() => null) as { message?: unknown } | null;
-    throw new Error(typeof detail?.message === "string" ? detail.message : `Design Studio request failed (${response.status}).`);
+    const detail: unknown = await response.json().catch(() => null);
+    const message = detail && typeof detail === "object" ? Reflect.get(detail, "message") : null;
+    throw new Error(typeof message === "string" ? message : `Design Studio request failed (${response.status}).`);
   }
-  return response.json() as Promise<T>;
+  return response.json();
 }
 
 function query(values: Record<string, string | undefined>) {
@@ -60,8 +62,9 @@ export const deepSeekDesignStudioClient: DesignStudioClient = {
       headers: { "x-ipollowork-design-token": token() },
     });
     if (!response.ok) {
-      const detail = await response.json().catch(() => null) as { message?: unknown } | null;
-      throw new Error(typeof detail?.message === "string" ? detail.message : `Could not read ${path}.`);
+      const detail: unknown = await response.json().catch(() => null);
+      const message = detail && typeof detail === "object" ? Reflect.get(detail, "message") : null;
+      throw new Error(typeof message === "string" ? message : `Could not read ${path}.`);
     }
     const disposition = response.headers.get("content-disposition");
     return {
@@ -74,5 +77,17 @@ export const deepSeekDesignStudioClient: DesignStudioClient = {
     ok: false,
     error: "unsupported",
     message: "Publishing is owned by iPolloWork and is disabled in the DeepSeek Harness host.",
+  }),
+  listDesignStudioTemplates: (workspaceId) => api(`/templates${query({ workspaceId })}`),
+  getDesignStudioTemplateCover: async (workspaceId, templateId) => {
+    const response = await fetch(`${API_ROOT}/template-cover${query({ workspaceId, templateId })}`, {
+      headers: { "x-ipollowork-design-token": token() },
+    });
+    if (!response.ok) throw new Error(`Could not load template cover (${response.status}).`);
+    return { data: await response.arrayBuffer(), contentType: response.headers.get("content-type"), filename: null };
+  },
+  applyDesignStudioTemplate: (workspaceId, sessionId, templateId) => api("/template", {
+    method: "POST",
+    body: JSON.stringify({ workspaceId, sessionId, templateId }),
   }),
 };

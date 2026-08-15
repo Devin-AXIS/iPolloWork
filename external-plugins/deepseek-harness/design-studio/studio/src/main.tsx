@@ -5,7 +5,7 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import { bootstrapTheme } from "@/app/theme";
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { initLocale } from "@/i18n";
+import { initLocale, t } from "@/i18n";
 import { getReactQueryClient } from "@/react-app/infra/query-client";
 import { DesignPanel } from "@/react-app/domains/session/design/public";
 import {
@@ -34,7 +34,13 @@ function Studio() {
         client={deepSeekDesignStudioClient}
         workspaceId={scope.workspaceId}
         expanded
-        features={{ publish: false }}
+        features={{
+          publish: false,
+          templates: {
+            title: t(__DEEPSEEK_STUDIO_MODE__ === "slides" ? "design_templates.slides_title" : "design_templates.design_title"),
+            description: t(__DEEPSEEK_STUDIO_MODE__ === "slides" ? "design_templates.slides_description" : "design_templates.design_description"),
+          },
+        }}
         onAskAi={(context) => window.parent.postMessage({
           channel: DESIGN_STUDIO_HOST_CHANNEL,
           type: "ask-ai",

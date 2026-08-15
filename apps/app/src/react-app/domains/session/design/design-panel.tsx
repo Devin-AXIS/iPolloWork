@@ -25,7 +25,7 @@ import { Switch } from "@/components/ui/switch";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { toast } from "@/components/ui/sonner";
 import { cn } from "@/lib/utils";
-import { isPptxCompatibleTemplate } from "@ipollowork/types/templates";
+import { isPptxCompatibleTemplate, type TemplateSessionSnapshot } from "@ipollowork/types/templates";
 import { ConfirmModal } from "@/react-app/design-system/modals/confirm-modal";
 import { useDesignAiSelectionStore } from "./design-ai-selection-store";
 import {
@@ -60,6 +60,7 @@ import {
 import { DesignExportMenu } from "./design-export-menu";
 import { DesignPropertiesInspector } from "./design-properties-inspector";
 import { DesignSystemDrawer } from "./design-system-drawer";
+import { DesignTemplateDialog } from "./design-template-dialog";
 import floatingToolbarAiIcon from "./assets/floating-toolbar-ai.svg";
 import floatingToolbarDivider from "./assets/floating-toolbar-divider.svg";
 import floatingToolbarEditText from "./assets/floating-toolbar-edit-text.svg";
@@ -649,12 +650,40 @@ export function DesignPanel({
   const [exportingPptx, setExportingPptx] = React.useState(false);
   const [pptxConfirmationOpen, setPptxConfirmationOpen] = React.useState(false);
   const [deleteConfirmationOpen, setDeleteConfirmationOpen] = React.useState(false);
+  const [templateDialogOpen, setTemplateDialogOpen] = React.useState(false);
+  const templateCatalog = features.templates
+    && client?.listDesignStudioTemplates
+    && client.getDesignStudioTemplateCover
+    && client.applyDesignStudioTemplate
+    && workspaceId
+    ? features.templates
+    : null;
   const aiUndoCheckpoint = useDesignAiSelectionStore((state) => {
     const checkpoint = state.undoCheckpoints[sessionId]?.[activePagePath]?.at(-1);
     const context = checkpoint ? state.contexts[checkpoint.contextId] : undefined;
     return context?.workspaceId === workspaceId ? checkpoint : undefined;
   });
   const appliedAiCheckpointRef = React.useRef<string | null>(null);
+
+  const applyTemplateSnapshot = React.useCallback((snapshot: TemplateSessionSnapshot) => {
+    queryClient.setQueryData(["design-session-template", workspaceId, sessionId] as const, snapshot);
+    queryClient.removeQueries({ queryKey: ["design-html", workspaceId] });
+    setSelectedPath("");
+    setActivePagePath("");
+    setActivePageHash("");
+    setViewedVersionPath("current");
+    setViewedVersionUpdatedAt(null);
+    setHistory([]);
+    setDraft("");
+    draftRef.current = "";
+    setSavedSource("");
+    setPreviewSource("");
+    setHydratedPreviewSource("");
+    setSelectionState(null);
+    setQuickEdit(null);
+    setAdvancedOpen(false);
+    setPreviewLoaded(false);
+  }, [queryClient, sessionId, setHistory, workspaceId]);
 
   React.useEffect(() => {
     if (!lockedPath) {
@@ -2033,6 +2062,19 @@ export function DesignPanel({
               />
               Edit
             </Label>
+            {templateCatalog ? (
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                className={cn("order-1", DESIGN_ACTION_BUTTON_CLASS)}
+                onClick={() => setTemplateDialogOpen(true)}
+                aria-label={templateCatalog.title}
+                title={templateCatalog.title}
+                data-testid="design-template-market-button"
+              >
+                <Plus />
+              </Button>
+            ) : null}
             {deck ? (
               <div className="order-2 flex h-8 min-w-0 items-center rounded-lg border border-border bg-transparent p-0.5 shadow-none" data-testid="design-deck-navigation">
                 <Button variant="ghost" size="icon-sm" className="size-7 rounded-md text-foreground hover:bg-muted" onClick={() => navigateDeck("previous")} disabled={deck.index <= 0} aria-label="Previous slide" title="Previous slide">
@@ -2462,6 +2504,17 @@ export function DesignPanel({
           void exportDeckToPptx();
         }}
       />
+      {templateCatalog && client && workspaceId ? (
+        <DesignTemplateDialog
+          open={templateDialogOpen}
+          onOpenChange={setTemplateDialogOpen}
+          client={client}
+          workspaceId={workspaceId}
+          sessionId={sessionId}
+          copy={templateCatalog}
+          onApplied={applyTemplateSnapshot}
+        />
+      ) : null}
     </div>
   );
 }

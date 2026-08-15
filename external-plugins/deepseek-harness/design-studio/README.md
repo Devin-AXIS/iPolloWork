@@ -5,6 +5,11 @@ conversation view in the DeepSeek Harness web app. Design files stay in the
 active Harness workspace under `design/<sessionId>/`; selected elements can be
 sent into the current conversation draft without automatically submitting it.
 
+The `+` beside Edit opens the curated iPolloWork catalog for websites, app
+prototypes, posters, cards, reports, articles, and other non-slide designs.
+Video and slide templates are intentionally excluded; slides are provided by
+the separate `deepseek-ippt` package.
+
 ## Install
 
 Install the published package into the web profile and start Harness normally:
@@ -18,7 +23,7 @@ For a local release artifact:
 
 ```sh
 pnpm pack
-dsh plugin --profile web add ./deepseek-idesign-0.1.0.tgz
+dsh plugin --profile web add ./deepseek-idesign-0.2.0.tgz
 ```
 
 The plugin contains its own browser assets. It does not install or start the
