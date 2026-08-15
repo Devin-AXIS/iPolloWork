@@ -1,7 +1,7 @@
 # iPolloWork
 
 <p align="center">
-  English · <a href="./translated_readmes/README_ZH.md">简体中文</a> · <a href="./translated_readmes/README_ZH_hk.md">繁體中文</a> · <a href="./translated_readmes/README_JA.md">日本語</a>
+  English · <a href="./docs/translations/README_ZH.md">简体中文</a> · <a href="./docs/translations/README_ZH_hk.md">繁體中文</a> · <a href="./docs/translations/README_JA.md">日本語</a>
 </p>
 
 <p align="center">
@@ -191,10 +191,10 @@ iPolloWork desktop/UI ── local API ──> iPolloWork server ──> OpenCod
 - `docs` — maintained engineering notes, platform guides, and generated reports
 - `evals` — executable product flows and validation tooling
 - `examples` — complete example plugin packages
+- `external-plugins` — independently released plugins for external agent hosts
 - `packaging` — release and installer metadata
 - `scripts` — development, build, audit, and release automation
 - `specs` — product and architecture specifications
-- `translated_readmes` — maintained README translations
 - `vendor` — pinned third-party source that is built as part of iPolloWork
 
 ## Contributing

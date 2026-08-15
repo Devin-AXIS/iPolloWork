@@ -1,10 +1,10 @@
-name: DeepSeek Harness Design Studio plugin
+name: DeepSeek Harness iDesign external plugin
 
 on:
   push:
     branches: [main, dev]
     paths:
-      - "plugins/deepseek-harness/design-studio/**"
+      - "external-plugins/deepseek-harness/design-studio/**"
       - "packages/design-studio/**"
       - "apps/app/src/react-app/domains/session/design/**"
       - ".github/workflows/ci-dsh-design-studio.yml"
@@ -13,7 +13,7 @@ on:
   pull_request:
     branches: [main, dev]
     paths:
-      - "plugins/deepseek-harness/design-studio/**"
+      - "external-plugins/deepseek-harness/design-studio/**"
       - "packages/design-studio/**"
       - "apps/app/src/react-app/domains/session/design/**"
       - ".github/workflows/ci-dsh-design-studio.yml"
@@ -23,7 +23,7 @@ permissions:
 
 defaults:
   run:
-    working-directory: plugins/deepseek-harness/design-studio
+    working-directory: external-plugins/deepseek-harness/design-studio
 
 jobs:
   check:

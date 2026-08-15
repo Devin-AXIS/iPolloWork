@@ -4,7 +4,7 @@ setlocal
 rem Switch the current user's ipollowork:// handler to this source checkout.
 rem The same file is also the registered callback entrypoint. Windows calls
 rem the --dispatch branch with the deep-link URL after browser authentication.
-set "REPO=%~dp0"
+for %%I in ("%~dp0..\..") do set "REPO=%%~fI\"
 if /i "%~1"=="--dispatch" goto dispatch
 
 rem Allow tests and unusual installations to provide a known Electron binary.

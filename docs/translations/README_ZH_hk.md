@@ -3,7 +3,7 @@
 # iPolloWork
 
 <p align="center">
-  <a href="../README.md">English</a> · <a href="./README_ZH.md">简体中文</a> · 繁體中文 · <a href="./README_JA.md">日本語</a>
+  <a href="../../README.md">English</a> · <a href="./README_ZH.md">简体中文</a> · 繁體中文 · <a href="./README_JA.md">日本語</a>
 </p>
 
 <p align="center">
@@ -180,4 +180,4 @@ iPolloWork 桌面/UI ──> iPolloWork Server ──> OpenCode
 - 前台用户界面中必須保留 iPolloWork 名稱、Logo 和產品歸屬展示，除非書面授權明確允許更換品牌。
 - 第三方代碼和歷史上已經按 MIT 發佈的部分繼續保留原許可證和既有權利。
 
-完整條款見 [`LICENSE`](../LICENSE)。該協議屬於源碼可用協議，不是 OSI 認可的開源協議。完整工程結構和貢獻方式請查看[英文主文檔](../README.md)。
+完整條款見 [`LICENSE`](../../LICENSE)。該協議屬於源碼可用協議，不是 OSI 認可的開源協議。完整工程結構和貢獻方式請查看[英文主文檔](../../README.md)。

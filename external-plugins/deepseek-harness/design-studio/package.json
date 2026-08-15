@@ -48,12 +48,12 @@
   "repository": {
     "type": "git",
     "url": "git+https://github.com/Devin-AXIS/iPolloWork.git",
-    "directory": "plugins/deepseek-harness/design-studio"
+    "directory": "external-plugins/deepseek-harness/design-studio"
   },
   "bugs": {
     "url": "https://github.com/Devin-AXIS/iPolloWork/issues"
   },
-  "homepage": "https://github.com/Devin-AXIS/iPolloWork/tree/main/plugins/deepseek-harness/design-studio#readme",
+  "homepage": "https://github.com/Devin-AXIS/iPolloWork/tree/main/external-plugins/deepseek-harness/design-studio#readme",
   "peerDependencies": {
     "@deepseek-ai/cordis": "^4.0.1",
     "@deepseek-ai/dsh-client-runtime": ">=0.0.1-rc.1 <0.2.0-0",
