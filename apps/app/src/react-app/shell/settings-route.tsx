@@ -67,7 +67,7 @@ import "@/react-app/domains/settings/ipollowork-voice-config";
 import "@/react-app/domains/settings/google-workspace-config";
 import { useSettingsExtensionController } from "@/react-app/domains/settings/settings-extension-controller";
 import { buildExtensionItems } from "@/react-app/domains/settings/extension-items";
-import { isiPolloWorkExtensionEnabled, IPOLLOWORK_EXTENSION_STATE_CHANGED, setiPolloWorkExtensionEnabled } from "@/react-app/domains/settings/extension-state";
+import { isiPolloWorkExtensionEnabled, IPOLLOWORK_EXTENSION_STATE_CHANGED } from "@/react-app/domains/settings/extension-state";
 import { PreferencesView } from "@/react-app/domains/settings/pages/preferences-view";
 import { ShellCustomizationView } from "@/react-app/domains/settings/pages/shell-view";
 import { GeneralSettingsView } from "@/react-app/domains/settings/pages/general-view";
@@ -85,10 +85,10 @@ import { useFeatureFlagsPreferences } from "@/react-app/domains/settings/state/f
 import { DebugView } from "@/react-app/domains/settings/pages/debug-view";
 import { EnvironmentView } from "@/react-app/domains/settings/pages/environment-view";
 import { AuthorizationCenterView } from "@/react-app/domains/settings/pages/authorization-center-view";
-import { ExtensionsView } from "@/react-app/domains/settings/pages/extensions-view";
+import { ExtensionsView, type ExtensionsSection } from "@/react-app/domains/settings/pages/extensions-view";
 import { PluginPackagesPanel } from "@/react-app/domains/settings/plugin-packages-panel";
 import type { PluginPackageRelationships } from "@/react-app/domains/settings/plugin-platform-state";
-import { McpView } from "@/react-app/domains/settings/pages/mcp-view";
+import { SettingsSegmentedTabs } from "@/react-app/domains/settings/settings-segmented-tabs";
 import { RecoveryView } from "@/react-app/domains/settings/pages/recovery-view";
 import { SkillsView } from "@/react-app/domains/settings/pages/skills-view";
 import { UpdatesView } from "@/react-app/domains/settings/pages/updates-view";
@@ -226,7 +226,7 @@ const SETTINGS_UPDATE_AUTO_DOWNLOAD_KEY = "ipollowork.react.settings.update-auto
 export function parseSettingsPath(pathname: string): {
   tab: SettingsTab;
   redirectPath: string | null;
-  extensionsSection?: "all" | "mcp" | "plugins";
+  extensionsSection?: ExtensionsSection;
   pluginPackageId?: string;
 } {
   const trimmed = pathname
@@ -272,7 +272,7 @@ export function parseSettingsPath(pathname: string): {
         };
       }
       if (tail === "mcp") return { tab: "extensions", redirectPath: null, extensionsSection: "mcp" };
-      if (tail === "skills") return { tab: "extensions", redirectPath: null, extensionsSection: "all" };
+      if (tail === "skills") return { tab: "extensions", redirectPath: null, extensionsSection: "skills" };
       if (tail === "plugins") return { tab: "extensions", redirectPath: null, extensionsSection: "plugins" };
       return { tab: "extensions", redirectPath: null, extensionsSection: "all" };
     default:
@@ -417,7 +417,7 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
   const [extensionStateVersion, setExtensionStateVersion] = useState(0);
   const [pluginPackageRelationships, setPluginPackageRelationships] = useState<PluginPackageRelationships>({
     skillNames: [],
-    installedMcpServerNames: [],
+    mcpServerNames: [],
   });
   const [imageGenerationBusy, setImageGenerationBusy] = useState(false);
   const [imageGenerationStatus, setImageGenerationStatus] = useState<string | null>(null);
@@ -1354,13 +1354,13 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
   const refreshMarketplaceAction = useMemo<iPolloWorkControlAction>(() => ({
     id: "extensions.refresh-marketplace",
     label: "Refresh marketplace extensions",
-    description: "Force a fresh sync of organization marketplace plugins from the cloud.",
-    sideEffect: "mutation",
+    description: "Load the latest public plugin packages from iPolloWork Cloud.",
+    sideEffect: "none",
     execute: async () => {
-      await extensionsStore.refreshCloudOrgMarketplaces({ force: true });
-      return { marketplaceCount: extensionsStore.cloudOrgMarketplaces().length };
+      const items = await cloudSession.client.listMarketplacePlugins();
+      return { marketplaceCount: items.length };
     },
-  }), [extensionsStore]);
+  }), [cloudSession.client]);
   useControlAction(refreshMarketplaceAction);
 
   // Periodically reconcile workspace-imported cloud providers from Den while
@@ -1434,7 +1434,6 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
         }]
       : [],
   );
-  const mcpConnectedAppsCount = connectionsSnapshot.mcpServers.length;
   const ipolloworkCloudMcpUrl = connectionsSnapshot.mcpServers.find(
     (server) => server.name === "ipollowork-cloud",
   )?.config.url ?? null;
@@ -1468,7 +1467,6 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
       },
     };
   }, [computerUsePermissions, connectionsSnapshot, extensionStateVersion, providerConnectedIds, userEnvKeys]);
-  const builtInExtensionsDisabled = checkDesktopRestriction({ restriction: "allowBuiltInExtensions" });
   const restartExtensionLocalServer = useCallback(async () => {
     if (!isDesktopRuntime()) return false;
     try {
@@ -1527,7 +1525,7 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
       mcpServers: connectionsSnapshot.mcpServers,
       installedSkills: extensionsStore.skills(),
       pluginPackageSkillNames: pluginPackageRelationships.skillNames,
-      installedPluginPackageMcpServerNames: pluginPackageRelationships.installedMcpServerNames,
+      pluginPackageMcpServerNames: pluginPackageRelationships.mcpServerNames,
       importedCloudPlugins: extensionsStore.importedCloudPlugins(),
       pendingCloudPluginChanges: extensionsStore.pendingCloudPluginChanges(),
       cloudMarketplaces: extensionsStore.cloudOrgMarketplaces(),
@@ -1536,14 +1534,6 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
       isBuiltInConnected: extensionController.isConnected,
     }),
     [connectionsSnapshot.mcpServers, connectionsStore.quickConnect, enablementContext, extensionController, extensionsStore, orgMcpConnections.connections, pluginPackageRelationships],
-  );
-  const extensionItemsForExtensions = useMemo(
-    () => extensionItems.items.filter((item) => item.source !== "org-connection"),
-    [extensionItems.items],
-  );
-  const installedOrgMcpConnectionItems = useMemo(
-    () => extensionItems.orgMcpConnectionItems.filter((item) => item.installState === "installed"),
-    [extensionItems.orgMcpConnectionItems],
   );
   const routeiPolloWorkStatus = ipolloworkClient ? "connected" : "disconnected";
   const routeiPolloWorkCapabilities: iPolloWorkServerCapabilities | null = ipolloworkClient
@@ -1725,6 +1715,23 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
           />
         );
       case "extensions": {
+        const skillsView = (
+          <SkillsView
+            workspaceName={selectedWorkspaceName}
+            busy={busy}
+            showHeader={false}
+            canInstallSkillCreator={canWriteWorkspaceSkills}
+            canUseDesktopTools={!isRemoteWorkspace}
+            accessHint={skillsAccessHint}
+            extensions={extensionsStore}
+            onOpenLink={(url) => platform.openLink(url)}
+            createSessionAndOpen={async (_command?: string): Promise<string | undefined> => {
+              props.onClose?.();
+              navigate(selectedWorkspaceId ? workspaceSessionRoute(selectedWorkspaceId) : "/session");
+              return undefined;
+            }}
+          />
+        );
         const pluginPackagesView = (
           <PluginPackagesPanel
             client={selectedWorkspaceEndpoint?.client ?? ipolloworkClient}
@@ -1752,6 +1759,17 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
               void connectionsStore.logoutMcpAuth(serverName);
             }}
             onRelationshipsChange={setPluginPackageRelationships}
+            marketplaceView={(search) => (
+              <CloudMarketplacesView
+                embedded
+                search={search}
+                client={selectedWorkspaceEndpoint?.client ?? ipolloworkClient}
+                workspaceId={runtimeWorkspaceId}
+                onOpenAccount={openCloudAccountSettings}
+                onInstalled={(pluginId) => navigateSettingsPath(`extensions/plugin/${encodeURIComponent(pluginId)}`)}
+                onOpenInstalled={(pluginId) => navigateSettingsPath(`extensions/plugin/${encodeURIComponent(pluginId)}`)}
+              />
+            )}
           />
         );
         if (route.pluginPackageId) return pluginPackagesView;
@@ -1759,7 +1777,6 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
           <ExtensionsView
             busy={busy}
             selectedWorkspaceRoot={selectedWorkspaceRoot}
-            isRemoteWorkspace={isRemoteWorkspace}
             canEditPlugins={canWriteWorkspacePlugins}
             canUseGlobalScope={!isRemoteWorkspace && activeWorkContextId === PERSONAL_WORK_CONTEXT_ID}
             accessHint={pluginsAccessHint}
@@ -1767,98 +1784,9 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
             extensions={extensionsStore}
             client={selectedWorkspaceEndpoint?.client ?? ipolloworkClient}
             workspaceId={runtimeWorkspaceId}
-            mcpConnectedAppsCount={mcpConnectedAppsCount}
-            initialSection={route.extensionsSection}
-            setSectionRoute={(section) => {
-              const path = `extensions/${section}`;
-              navigateSettingsPath(path);
-            }}
-            onOpenConnect={() => navigateSettingsPath("connect")}
-            onRefresh={() => {
-              // Force-sync the cloud MCP first (re-mint token + rewrite
-              // config, bypassing the freshness marker) so Refresh really
-              // means "make everything current now", then refresh the rest.
-              void connectionsStore.syncCloudControlMcp({ force: true }).then(() => {
-                void connectionsStore.refreshMcpServers();
-              });
-              void extensionsStore.refreshPlugins();
-              void extensionsStore.refreshCloudOrgMarketplaces({ force: true });
-              void orgMcpConnections.refresh();
-            }}
+            activeTab={route.extensionsSection === "skills" ? "skills" : "plugins"}
             pluginPackagesView={pluginPackagesView}
-            mcpView={
-              <McpView
-                busy={busy}
-                selectedWorkspaceRoot={selectedWorkspaceRoot}
-                isRemoteWorkspace={isRemoteWorkspace}
-                mcpServers={connectionsSnapshot.mcpServers}
-                mcpStatus={connectionsSnapshot.mcpStatus}
-                mcpLastUpdatedAt={connectionsSnapshot.mcpLastUpdatedAt}
-                mcpStatuses={connectionsSnapshot.mcpStatuses}
-                mcpConnectingName={connectionsSnapshot.mcpConnectingName}
-                selectedMcp={connectionsSnapshot.selectedMcp}
-                setSelectedMcp={(name) => connectionsStore.setSelectedMcp(name)}
-                quickConnect={extensionItems.quickConnectEntries}
-                enablementContext={enablementContext}
-                builtInExtensionsDisabled={builtInExtensionsDisabled}
-                connectMcp={(entry) => {
-                  return connectionsStore.connectMcp(entry);
-                }}
-                configSlotForEntry={extensionController.configSlotForEntry}
-                isExtensionConnected={extensionController.isConnected}
-                authorizeMcp={(entry) => {
-                  void connectionsStore.authorizeMcp(entry);
-                }}
-                logoutMcpAuth={(name) => connectionsStore.logoutMcpAuth(name)}
-                removeMcp={(name) => {
-                  void connectionsStore.removeMcp(name);
-                }}
-                setMcpEnabled={
-                  routeiPolloWorkStatus === "connected" && routeiPolloWorkCapabilities?.mcp?.write
-                    ? (name, enabled) => connectionsStore.setMcpEnabled(name, enabled)
-                    : undefined
-                }
-                readConfigFile={(scope) => connectionsStore.readMcpConfigFile(scope)}
-                installedSkills={extensionItems.installedSkills}
-                installedPlugins={extensionItems.installedCloudPlugins}
-                installedOrgMcpItems={installedOrgMcpConnectionItems}
-                uninstallSkill={(name) => { void extensionsStore.uninstallSkill(name); }}
-                removeCloudPlugin={(pluginId) => { void extensionsStore.removeCloudOrgPlugin(pluginId); }}
-                orgMcpDisconnectingId={orgMcpConnections.disconnectingId}
-                disconnectOrgMcp={(connectionId) => { void orgMcpConnections.disconnect(connectionId); }}
-                readSkill={(name) => extensionsStore.readSkill(name)}
-                previewClaudePlugin={(url) => extensionsStore.previewClaudePlugin(url)}
-                installClaudePlugin={(url) => extensionsStore.installClaudePlugin(url)}
-                showHeader={false}
-              />
-            }
-
-            cloudMarketplaceView={
-              <CloudMarketplacesView
-                embedded
-                extensions={extensionsStore}
-                session={denSession}
-                onOpenAccount={openCloudAccountSettings}
-                enablementContext={enablementContext}
-                builtInExtensionsDisabled={builtInExtensionsDisabled}
-                builtInConnectingName={connectionsSnapshot.mcpConnectingName}
-                builtInEntries={extensionItems.builtInItems.flatMap((item) => item.builtInEntry ? [item.builtInEntry] : [])}
-                configSlotForBuiltIn={extensionController.configSlotForEntry}
-                isBuiltInConnected={extensionController.isConnected}
-                extensionItems={extensionItemsForExtensions}
-                orgMcpConnections={orgMcpConnections.connections}
-                orgMcpConnectingId={orgMcpConnections.connectingId}
-                orgMcpDisconnectingId={orgMcpConnections.disconnectingId}
-                onConnectOrgMcp={(connectionId) => {
-                  void orgMcpConnections.connect(connectionId);
-                }}
-                onDisconnectOrgMcp={(connectionId) => {
-                  void orgMcpConnections.disconnect(connectionId);
-                }}
-                refreshOrgMcpConnections={orgMcpConnections.refresh}
-                setBuiltInEnabled={setiPolloWorkExtensionEnabled}
-              />
-            }
+            skillsView={skillsView}
           />
         );
       }
@@ -1881,27 +1809,11 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
       case "cloud-marketplaces":
         return (
           <CloudMarketplacesView
-            extensions={extensionsStore}
-            session={denSession}
+            client={selectedWorkspaceEndpoint?.client ?? ipolloworkClient}
+            workspaceId={runtimeWorkspaceId}
             onOpenAccount={openCloudAccountSettings}
-            enablementContext={enablementContext}
-            builtInExtensionsDisabled={builtInExtensionsDisabled}
-            builtInConnectingName={connectionsSnapshot.mcpConnectingName}
-            builtInEntries={extensionItems.builtInItems.flatMap((item) => item.builtInEntry ? [item.builtInEntry] : [])}
-            configSlotForBuiltIn={extensionController.configSlotForEntry}
-            isBuiltInConnected={extensionController.isConnected}
-            extensionItems={extensionItemsForExtensions}
-            orgMcpConnections={orgMcpConnections.connections}
-            orgMcpConnectingId={orgMcpConnections.connectingId}
-            orgMcpDisconnectingId={orgMcpConnections.disconnectingId}
-            onConnectOrgMcp={(connectionId) => {
-              void orgMcpConnections.connect(connectionId);
-            }}
-            onDisconnectOrgMcp={(connectionId) => {
-              void orgMcpConnections.disconnect(connectionId);
-            }}
-            refreshOrgMcpConnections={orgMcpConnections.refresh}
-            setBuiltInEnabled={setiPolloWorkExtensionEnabled}
+            onInstalled={(pluginId) => navigateSettingsPath(`extensions/plugin/${encodeURIComponent(pluginId)}`)}
+            onOpenInstalled={(pluginId) => navigateSettingsPath(`extensions/plugin/${encodeURIComponent(pluginId)}`)}
           />
         );
       case "memory":
@@ -2051,7 +1963,18 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
         busyHint={loading ? t("session.loading_detail") : busyLabel}
         onClose={props.onClose ?? (() => navigate(selectedWorkspaceId ? workspaceSessionRoute(selectedWorkspaceId, navigationSessionId) : "/session"))}
         compact={props.embedded}
-        hidePageHeader={Boolean(route.pluginPackageId)}
+        headerTitle={route.tab === "extensions" && !route.pluginPackageId ? (
+          <SettingsSegmentedTabs
+            value={route.extensionsSection === "skills" ? "skills" : "plugins"}
+            ariaLabel={t("plugin_library.navigation_label")}
+            items={[
+              { value: "plugins", label: t("plugin_library.plugins_tab") },
+              { value: "skills", label: t("plugin_library.skills_tab") },
+            ]}
+            onValueChange={(value) => navigateSettingsPath(value === "skills" ? "extensions/skills" : "extensions")}
+          />
+        ) : undefined}
+        hidePageHeader={route.tab === "extensions" || Boolean(route.pluginPackageId)}
         hideShellHeader={Boolean(route.pluginPackageId)}
       >
         {settingsView}

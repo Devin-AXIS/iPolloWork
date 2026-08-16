@@ -1,5 +1,5 @@
 /** @jsxImportSource react */
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import {
   AppWindow,
   Bot,
@@ -32,7 +32,11 @@ import type { iPolloWorkPluginAuthorizationMethod } from "@/app/extensions";
 import type { McpStatus, McpStatusMap } from "@/app/types";
 import { resolveExtensionIconUrl } from "@/react-app/design-system/extension-icon-src";
 import { AuthorizationFormDialog } from "@/react-app/domains/settings/authorization-form-dialog";
+import { PluginPackageDetail } from "@/react-app/domains/settings/plugin-package-detail";
+import { SettingsListSearchInput } from "@/react-app/domains/settings/settings-list";
+import { SettingsSegmentedTabs } from "@/react-app/domains/settings/settings-segmented-tabs";
 import { PluginPackageImportModal } from "./plugin-package-import-modal";
+import { PluginPackageListItem } from "./plugin-package-list-item";
 import {
   collectPluginPackageRelationships,
   derivePluginPrimaryAction,
@@ -51,6 +55,7 @@ type PluginPackagesPanelProps = {
   onConnectMcp: (serverName: string) => Promise<McpStatus | null>;
   onLogoutMcpAuth: (serverName: string) => void;
   onRelationshipsChange: (relationships: PluginPackageRelationships) => void;
+  marketplaceView: (search: string) => ReactNode;
 };
 
 type SecretAuthorizationEditor = {
@@ -104,6 +109,8 @@ export function PluginPackagesPanel(props: PluginPackagesPanelProps) {
   const [secretEditor, setSecretEditor] = useState<SecretAuthorizationEditor | null>(null);
   const [mcpConnectionFeedbacks, setMcpConnectionFeedbacks] = useState<Record<string, McpConnectionFeedback>>({});
   const [loaded, setLoaded] = useState(false);
+  const [source, setSource] = useState<"marketplace" | "personal">("personal");
+  const [search, setSearch] = useState("");
 
   const refresh = useCallback(async () => {
     if (!props.client || !props.workspaceId) {
@@ -145,16 +152,37 @@ export function PluginPackagesPanel(props: PluginPackagesPanelProps) {
     return () => window.clearInterval(timer);
   }, [flows, refresh]);
 
-  const installedCount = items.length;
-  const availableCatalogItems = catalogItems.filter((item) => item.installedVersion === null || item.updateAvailable);
-  const connectedCount = useMemo(
-    () => items.filter((item) => packageAuthorization(item, authorizations[item.pluginId], props.mcpStatuses).connected).length,
-    [authorizations, items, props.mcpStatuses],
+  const availableCatalogItems = useMemo(
+    () => catalogItems.filter((item) => item.installedVersion === null || item.updateAvailable),
+    [catalogItems],
   );
   const relationships = useMemo(
     () => collectPluginPackageRelationships(items, catalogItems),
     [catalogItems, items],
   );
+  const localizedItems = useMemo(() => items.map((sourceItem) => {
+    const manifest = localizePluginPackageManifest(
+      sourceItem.manifest,
+      locale,
+      catalogItems.find((catalogItem) => catalogItem.pluginId === sourceItem.pluginId)?.manifest.localization,
+    );
+    return { ...sourceItem, name: manifest.name, manifest };
+  }), [catalogItems, items, locale]);
+  const filteredItems = useMemo(() => {
+    const query = search.trim().toLocaleLowerCase();
+    if (!query) return localizedItems;
+    return localizedItems.filter((item) => [item.name, item.manifest.description, item.manifest.category ?? ""]
+      .some((value) => value.toLocaleLowerCase().includes(query)));
+  }, [localizedItems, search]);
+  const filteredCatalogItems = useMemo(() => {
+    const query = search.trim().toLocaleLowerCase();
+    return availableCatalogItems.flatMap((item) => {
+      const manifest = localizePluginPackageManifest(item.manifest, locale);
+      if (query && ![manifest.name, manifest.description, manifest.category ?? ""]
+        .some((value) => value.toLocaleLowerCase().includes(query))) return [];
+      return [{ ...item, manifest }];
+    });
+  }, [availableCatalogItems, locale, search]);
 
   useEffect(() => {
     props.onRelationshipsChange(relationships);
@@ -287,13 +315,19 @@ export function PluginPackagesPanel(props: PluginPackagesPanelProps) {
       iconSrc: item.manifest.icon?.src,
       iconSlug: item.manifest.icon?.simpleIconSlug,
     });
-    const appResources = item.manifest.resources.filter((resource) =>
-      ["mcp", "opencode-plugin", "provider", "local-service", "native-binary"].includes(resource.type)
-    );
+    const appResources = [
+      ...item.manifest.resources.filter((resource) =>
+        ["mcp", "provider", "local-service", "native-binary"].includes(resource.type)
+      ),
+      ...item.manifest.engineBindings?.flatMap((binding) => binding.capabilities.map((capability) => ({
+        ...capability,
+        type: `${binding.engine}/${capability.kind}`,
+      }))) ?? [],
+    ];
     const skillResources = item.manifest.resources.filter((resource) => resource.type === "skill");
     const relatedSkillNames = item.manifest.relatedSkills ?? [];
     const otherResources = item.manifest.resources.filter((resource) =>
-      !["mcp", "opencode-plugin", "provider", "local-service", "native-binary", "skill"].includes(resource.type)
+      !["mcp", "provider", "local-service", "native-binary", "skill"].includes(resource.type)
     );
     const publisher = item.manifest.package?.publisher?.name
       ?? item.manifest.source.reference
@@ -302,48 +336,46 @@ export function PluginPackagesPanel(props: PluginPackagesPanelProps) {
     const category = item.manifest.category?.trim()
       || (item.pluginId === "figma" ? t("plugin_platform.category_design_development") : t("plugin_platform.default_category"));
 
+    const toggleKey = `${item.pluginId}:toggle`;
+
     return (
-      <section className="w-full max-w-4xl">
-        <div className="pb-7 sm:pb-9">
-          <nav className="mb-10 flex items-center gap-2 text-sm" aria-label={t("plugin_platform.breadcrumb_plugins")}>
-            <button
-              type="button"
-              className="rounded-md px-1 py-0.5 text-dls-secondary transition-colors hover:bg-dls-hover hover:text-dls-text"
-              onClick={() => props.onSelectPlugin(null)}
-            >
-              {t("plugin_platform.breadcrumb_plugins")}
-            </button>
-            <ChevronRight size={15} className="text-dls-secondary/70" />
-            <span className="font-medium text-dls-text">{item.name}</span>
-          </nav>
-
-          <div className="mb-8">
-            <div className="relative mb-5 flex size-16 items-center justify-center overflow-hidden rounded-2xl border border-dls-border bg-dls-surface shadow-sm">
-              {iconUrl ? <img src={iconUrl} alt="" className="size-9 object-contain" /> : <Package size={28} className="text-dls-secondary" />}
-            </div>
-            <div className="flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between">
-              <div className="min-w-0">
-                <h2 className="text-2xl font-semibold tracking-tight text-dls-text">{item.name}</h2>
-                <p className="mt-2 max-w-3xl text-sm leading-6 text-dls-secondary">{item.manifest.description}</p>
+      <PluginPackageDetail
+        name={item.name}
+        description={item.manifest.description}
+        iconUrl={iconUrl}
+        onBack={() => props.onSelectPlugin(null)}
+        action={(
+          <div className="flex flex-col items-start gap-2 sm:items-end">
+            <div className="flex items-center gap-3">
+              <div className="flex items-center gap-2 rounded-full border border-green-6 bg-green-2 px-3 py-1.5 text-xs font-medium text-green-11">
+                <CheckCircle2 size={15} />
+                {t("plugin_platform.status.installed")}
               </div>
-              {item.enabled ? (
-                <div className="flex shrink-0 items-center gap-2 rounded-full border border-green-6 bg-green-2 px-3 py-1.5 text-xs font-medium text-green-11">
-                  <CheckCircle2 size={15} />
-                  {t("plugin_platform.status.installed")}
-                </div>
-              ) : (
-                <Button size="sm" disabled={busyKey !== null} onClick={() => void run(`${item.pluginId}:enable`, async () => {
-                  await props.client?.setPluginPackageEnabled(props.workspaceId ?? "", item.pluginId, true);
-                  await refresh();
-                })}>
-                  {busyKey === `${item.pluginId}:enable` ? <Loader2 size={14} className="animate-spin" /> : null}
-                  {t("plugin_platform.action.repair")}
-                </Button>
-              )}
+              <label className="flex items-center gap-2 text-xs font-medium text-dls-secondary">
+                {busyKey === toggleKey ? <Loader2 size={14} className="animate-spin" /> : null}
+                <span>{t("plugin_platform.enable")}</span>
+                <Switch
+                  size="sm"
+                  checked={item.enabled}
+                  disabled={busyKey !== null}
+                  aria-label={t("plugin_platform.enable")}
+                  onCheckedChange={(checked) => void run(toggleKey, async () => {
+                    await props.client?.setPluginPackageEnabled(props.workspaceId ?? "", item.pluginId, checked);
+                    await refresh();
+                  })}
+                />
+              </label>
             </div>
+            {authorization.required && !connected ? (
+              <div className="flex items-center gap-1.5 rounded-lg border border-amber-6 bg-amber-2 px-2.5 py-1.5 text-xs font-medium text-amber-11">
+                <KeyRound size={13} />
+                {t("plugin_platform.status.needs_authorization")}
+              </div>
+            ) : null}
           </div>
-
-          {item.manifest.composer?.prompt ? (
+        )}
+      >
+        {item.manifest.composer?.prompt ? (
             <div className="mt-8 rounded-2xl border border-violet-6/40 bg-gradient-to-r from-blue-3/70 via-violet-3/45 to-dls-hover p-6 sm:p-8">
               <div className="mx-auto flex max-w-3xl items-center gap-3 rounded-2xl border border-dls-border/70 bg-dls-surface/85 px-4 py-3 shadow-sm backdrop-blur">
                 <WandSparkles size={18} className="shrink-0 text-violet-11" />
@@ -353,7 +385,7 @@ export function PluginPackagesPanel(props: PluginPackagesPanelProps) {
             </div>
           ) : null}
 
-          {appResources.length > 0 ? (
+        {appResources.length > 0 ? (
             <div className="mt-8">
               <h3 className="text-sm font-semibold text-dls-text">
                 {t("plugin_platform.apps")} <span className="ml-1 font-normal text-dls-secondary">{appResources.length}</span>
@@ -638,17 +670,12 @@ export function PluginPackagesPanel(props: PluginPackagesPanelProps) {
             ) : null}
             <div className="mt-3 flex flex-wrap gap-2">
               <span className="w-full break-all font-mono text-[10px] text-dls-secondary">SHA-256 {item.integrity.sha256}</span>
-              <Button size="sm" variant="outline" onClick={() => void run(`${item.pluginId}:toggle`, async () => {
-                await props.client?.setPluginPackageEnabled(props.workspaceId ?? "", item.pluginId, !item.enabled);
-                await refresh();
-              })}>{item.enabled ? t("plugin_platform.disable") : t("plugin_platform.enable")}</Button>
               {item.previousVersion ? <Button size="sm" variant="outline" onClick={() => void run(`${item.pluginId}:rollback`, async () => {
                 await props.client?.rollbackPluginPackage(props.workspaceId ?? "", item.pluginId);
                 await refresh();
               })}>{t("plugin_platform.rollback")}</Button> : null}
             </div>
           </details>
-        </div>
         {error ? <div role="alert" className="mt-4 rounded-xl border border-red-6 bg-red-2 px-4 py-3 text-xs text-red-11">{error}</div> : null}
         {secretEditor ? (
           <AuthorizationFormDialog
@@ -677,144 +704,154 @@ export function PluginPackagesPanel(props: PluginPackagesPanelProps) {
             })()}
           />
         ) : null}
-      </section>
+      </PluginPackageDetail>
     );
   }
 
   return (
-    <section className="overflow-hidden rounded-2xl border border-dls-border bg-dls-surface shadow-sm">
-      <div className="flex flex-col gap-3 border-b border-dls-border bg-dls-hover/40 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex items-center gap-3">
-          <div className="flex size-10 items-center justify-center rounded-xl border border-dls-border bg-dls-surface text-dls-text">
-            <Package size={19} />
-          </div>
-          <div>
-            <h2 className="text-sm font-semibold text-dls-text">{t("plugin_platform.title")}</h2>
-            <p className="mt-0.5 text-xs text-dls-secondary">
-              {t("plugin_platform.summary", { installed: installedCount, connected: connectedCount })}
-            </p>
-          </div>
+    <section className="space-y-7">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight text-dls-text">{t("plugin_library.title")}</h1>
+          <p className="mt-1 text-sm text-dls-secondary">{t("plugin_library.description")}</p>
         </div>
         <div className="flex items-center gap-2">
-          <Button size="sm" variant="outline" disabled={busyKey !== null} onClick={() => void refresh()}>
-            <RefreshCw size={14} />
-            {t("common.refresh")}
+          <Button
+            size="icon-sm"
+            variant="ghost"
+            disabled={busyKey !== null}
+            aria-label={t("common.refresh")}
+            title={t("common.refresh")}
+            onClick={() => void refresh()}
+          >
+            <RefreshCw size={15} />
           </Button>
           <Button size="sm" disabled={busyKey !== null} onClick={() => setImportOpen(true)}>
             <Upload size={14} />
-            {t("plugin_platform.import_button")}
+            {t("plugin_library.add")}
           </Button>
         </div>
       </div>
 
-      <div className="divide-y divide-dls-border">
-        {availableCatalogItems.map((item) => {
-          const manifest = localizePluginPackageManifest(item.manifest, locale);
-          const iconUrl = resolveExtensionIconUrl({
-            iconSrc: manifest.icon?.src,
-            iconSlug: manifest.icon?.simpleIconSlug,
-          });
-          return <div key={`catalog:${item.pluginId}`} className="flex flex-col gap-4 bg-blue-2/40 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
-            <div className="flex min-w-0 items-start gap-3">
-              <div className="flex size-10 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-blue-6 bg-dls-surface text-blue-11">
-                {iconUrl ? <img src={iconUrl} alt="" className="size-5 object-contain" /> : <Sparkles size={18} />}
-              </div>
-              <div className="min-w-0">
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="text-sm font-semibold text-dls-text">{manifest.name}</span>
-                  <span className="rounded-full border border-dls-border px-2 py-0.5 font-mono text-[10px] text-dls-secondary">v{item.version}</span>
-                  <span className="rounded-full bg-blue-3 px-2 py-0.5 text-[10px] text-blue-11">{t("plugin_platform.official_bundle")}</span>
-                </div>
-                <p className="mt-1 text-xs text-dls-secondary">{manifest.description}</p>
-                <p className="mt-1 text-[11px] text-dls-secondary">
-                  {t("plugin_platform.bundle_contents", {
-                    skills: manifest.resources.filter((resource) => resource.type === "skill").length,
-                    mcps: manifest.resources.filter((resource) => resource.type === "mcp").length,
-                  })}
-                </p>
-              </div>
-            </div>
-            <Button
-              size="sm"
-              disabled={busyKey !== null}
-              onClick={() => void installBundledPackage(item)}
-            >
-              {busyKey === `catalog:${item.pluginId}` ? <Loader2 size={14} className="animate-spin" /> : null}
-              {item.updateAvailable ? t("plugin_platform.action.update") : t("plugin_platform.action.install")}
-            </Button>
-          </div>;
-        })}
-        {items.map((sourceItem) => {
-          const localizedManifest = localizePluginPackageManifest(
-            sourceItem.manifest,
-            locale,
-            catalogItems.find((catalogItem) => catalogItem.pluginId === sourceItem.pluginId)?.manifest.localization,
-          );
-          const item = { ...sourceItem, name: localizedManifest.name, manifest: localizedManifest };
-          const auth = authorizations[item.pluginId];
-          const authorization = packageAuthorization(item, auth, props.mcpStatuses);
-          const connected = authorization.connected;
-          const primaryAction = derivePluginPrimaryAction({
-            installed: true,
-            authorizationRequired: authorization.required,
-            connected,
-            updateAvailable: false,
-            broken: !item.enabled,
-          });
-          const iconUrl = resolveExtensionIconUrl({
-            iconSrc: item.manifest.icon?.src,
-            iconSlug: item.manifest.icon?.simpleIconSlug,
-          });
-          return (
-            <div key={item.pluginId} className="flex flex-col gap-4 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
-              <div className="flex min-w-0 items-start gap-3">
-                <div className="flex size-11 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-dls-border bg-dls-surface">
-                  {iconUrl ? <img src={iconUrl} alt="" className="size-6 object-contain" /> : <Package size={19} className="text-dls-secondary" />}
-                </div>
-                <div className="min-w-0">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="truncate text-sm font-semibold text-dls-text">{item.name}</span>
-                    <span className="text-[11px] text-dls-secondary">v{item.version}</span>
-                    {!item.enabled ? <span className="rounded-full bg-amber-3 px-2 py-0.5 text-[10px] text-amber-11">{t("plugin_platform.status.disabled")}</span> : null}
-                  </div>
-                  <p className="mt-1 line-clamp-1 text-xs text-dls-secondary">{item.manifest.description}</p>
-                  <div className="mt-1 flex items-center gap-1.5 text-[11px] text-dls-secondary">
-                    {connected || !authorization.required ? <CheckCircle2 size={13} className="text-green-9" /> : <KeyRound size={13} className="text-amber-9" />}
-                    <span>{statusText(auth, authorization.required, connected)}</span>
-                  </div>
-                </div>
-              </div>
-              <Button
-                size="sm"
-                className="shrink-0"
-                disabled={busyKey !== null}
-                onClick={() => {
-                  if (primaryAction.kind === "repair") {
-                    void run(`${item.pluginId}:enable`, async () => {
-                      await props.client?.setPluginPackageEnabled(props.workspaceId ?? "", item.pluginId, true);
-                      await refresh();
-                    });
-                    return;
-                  }
-                  props.onSelectPlugin(item.pluginId);
-                }}
-              >
-                {t(primaryAction.labelKey)}
-              </Button>
-            </div>
-          );
-        })}
+      <SettingsListSearchInput
+        value={search}
+        onChange={(event) => setSearch(event.currentTarget.value)}
+        placeholder={t("plugin_library.search")}
+        aria-label={t("plugin_library.search")}
+      />
 
-        {items.length === 0 ? (
-          <div className="px-5 py-8 text-center">
-            <Package size={24} className="mx-auto text-dls-secondary/60" />
-            <p className="mt-2 text-sm font-medium text-dls-text">{t("plugin_platform.empty_title")}</p>
-            <p className="mt-1 text-xs text-dls-secondary">{t("plugin_platform.empty_description")}</p>
+      <div>
+        <div className="border-b border-dls-border pb-2">
+          <h2 className="text-sm font-semibold text-dls-text">{t("plugin_library.installed")}</h2>
+        </div>
+        {localizedItems.length > 0 ? (
+          <div className="flex flex-wrap gap-2 pt-3">
+            {localizedItems.map((item) => {
+              const iconUrl = resolveExtensionIconUrl({
+                iconSrc: item.manifest.icon?.src,
+                iconSlug: item.manifest.icon?.simpleIconSlug,
+              });
+              return (
+                <button
+                  key={item.pluginId}
+                  type="button"
+                  className="group flex size-9 items-center justify-center overflow-hidden rounded-lg border border-dls-border bg-dls-surface text-dls-secondary shadow-sm transition hover:-translate-y-0.5 hover:border-dls-secondary/40 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
+                  title={item.name}
+                  aria-label={t("plugin_library.open_plugin", { name: item.name })}
+                  onClick={() => props.onSelectPlugin(item.pluginId)}
+                >
+                  {iconUrl ? <img src={iconUrl} alt="" className="size-5 object-contain" /> : <Package size={16} />}
+                </button>
+              );
+            })}
           </div>
-        ) : null}
+        ) : (
+          <p className="pt-4 text-sm text-dls-secondary">{t("plugin_platform.empty_title")}</p>
+        )}
       </div>
 
-      {error ? <div role="alert" className="border-t border-red-6 bg-red-2 px-5 py-3 text-xs text-red-11">{error}</div> : null}
+      <div>
+        <div className="border-b border-dls-border pb-2">
+          <SettingsSegmentedTabs
+            value={source}
+            ariaLabel={t("plugin_library.source_label")}
+            items={[
+              { value: "personal", label: t("plugin_library.personal") },
+              { value: "marketplace", label: t("plugin_library.marketplace") },
+            ]}
+            onValueChange={setSource}
+          />
+        </div>
+
+        {source === "marketplace" ? (
+          <div className="pt-5">{props.marketplaceView(search)}</div>
+        ) : (
+          <div className="pt-5">
+            <div className="mb-2">
+              <h2 className="text-sm font-semibold text-dls-text">{t("plugin_library.personal_title")}</h2>
+              <p className="mt-1 text-xs text-dls-secondary">{t("plugin_library.personal_description")}</p>
+            </div>
+            {(filteredCatalogItems.length > 0 || filteredItems.length > 0) ? (
+              <div className="grid gap-x-8 lg:grid-cols-2">
+                {filteredCatalogItems.map((item) => (
+                  <PluginPackageListItem
+                    key={`catalog:${item.pluginId}`}
+                    manifest={item.manifest}
+                    version={item.version}
+                    compact
+                    featured
+                    badge={<span className="rounded-full bg-blue-3 px-2 py-0.5 text-[10px] text-blue-11">{t("plugin_platform.official_bundle")}</span>}
+                    actionBusy={busyKey !== null}
+                    actionLabel={<>{busyKey === `catalog:${item.pluginId}` ? <Loader2 size={14} className="animate-spin" /> : null}{item.updateAvailable ? t("plugin_platform.action.update") : t("plugin_platform.action.install")}</>}
+                    onAction={() => void installBundledPackage(item)}
+                  />
+                ))}
+                {filteredItems.map((item) => {
+                  const auth = authorizations[item.pluginId];
+                  const authorization = packageAuthorization(item, auth, props.mcpStatuses);
+                  const connected = authorization.connected;
+                  const primaryAction = derivePluginPrimaryAction({
+                    installed: true,
+                    authorizationRequired: authorization.required,
+                    connected,
+                    updateAvailable: false,
+                    broken: !item.enabled,
+                  });
+                  return (
+                    <PluginPackageListItem
+                      key={item.pluginId}
+                      manifest={item.manifest}
+                      version={item.version}
+                      compact
+                      badge={!item.enabled ? <span className="rounded-full bg-amber-3 px-2 py-0.5 text-[10px] text-amber-11">{t("plugin_platform.status.disabled")}</span> : null}
+                      status={<span className="inline-flex items-center gap-1.5">{connected || !authorization.required ? <CheckCircle2 size={13} className="text-green-9" /> : <KeyRound size={13} className="text-amber-9" />}{statusText(auth, authorization.required, connected)}</span>}
+                      actionBusy={busyKey !== null}
+                      actionLabel={t(primaryAction.labelKey)}
+                      onOpen={() => props.onSelectPlugin(item.pluginId)}
+                      onAction={() => {
+                        if (primaryAction.kind === "repair") {
+                          void run(`${item.pluginId}:enable`, async () => {
+                            await props.client?.setPluginPackageEnabled(props.workspaceId ?? "", item.pluginId, true);
+                            await refresh();
+                          });
+                          return;
+                        }
+                        props.onSelectPlugin(item.pluginId);
+                      }}
+                    />
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="rounded-2xl border border-dashed border-dls-border px-6 py-10 text-center text-sm text-dls-secondary">
+                {search ? t("settings.marketplace.no_match") : t("plugin_library.personal_empty")}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {error ? <div role="alert" className="rounded-xl border border-red-6 bg-red-2 px-5 py-3 text-xs text-red-11">{error}</div> : null}
       <PluginPackageImportModal
         open={importOpen}
         client={props.client}

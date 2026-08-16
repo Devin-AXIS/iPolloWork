@@ -59,12 +59,18 @@ importers:
       '@heroicons/react':
         specifier: ^2.2.0
         version: 2.2.0(react@19.2.4)
+      '@ipollowork/design-studio':
+        specifier: workspace:*
+        version: link:../../packages/design-studio
       '@ipollowork/types':
         specifier: workspace:*
         version: link:../../packages/types
       '@ipollowork/ui':
         specifier: workspace:*
         version: link:../../packages/ui
+      '@ipollowork/video-studio':
+        specifier: workspace:*
+        version: link:../../packages/video-studio
       '@lexical/react':
         specifier: ^0.35.0
         version: 0.35.0(react-dom@19.2.4(react@19.2.4))(react@19.2.4)(yjs@13.6.30)
@@ -389,6 +395,12 @@ importers:
         specifier: ^7.1.12
         version: 7.3.1(@types/node@25.6.0)(jiti@2.7.0)(lightningcss@1.30.2)(yaml@2.9.0)
 
+  packages/design-studio:
+    dependencies:
+      '@ipollowork/types':
+        specifier: workspace:*
+        version: link:../types
+
   packages/email:
     dependencies:
       '@react-email/components':
@@ -491,6 +503,12 @@ importers:
       typescript:
         specifier: ^5.6.3
         version: 5.9.3
+
+  packages/video-studio:
+    dependencies:
+      '@ipollowork/types':
+        specifier: workspace:*
+        version: link:../types
 
 packages:
 
@@ -3040,6 +3058,7 @@ packages:
   '@xmldom/xmldom@0.8.13':
     resolution: {integrity: sha512-KRYzxepc14G/CEpEGc3Yn+JKaAeT63smlDr+vjB8jRfgTBBI9wRj/nkQEO+ucV8p8I9bfKLWp37uHgFrbntPvw==}
     engines: {node: '>=10.0.0'}
+    deprecated: this version has critical issues, please update to the latest version
 
   '@xterm/addon-fit@0.11.0':
     resolution: {integrity: sha512-jYcgT6xtVYhnhgxh3QgYDnnNMYTcf8ElbxxFzX0IZo+vabQqSPAjC3c1wJrKB5E19VwQei89QCiZZP86DCPF7g==}

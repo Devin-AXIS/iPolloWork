@@ -89,7 +89,7 @@ import { isCollectibleArtifactTarget, isLocalhostBrowserTarget, isOpenableFileTa
 import type { OpenTargetOptions } from "@/lib/target-provider";
 import { VoicePanel } from "../voice/voice-panel";
 import { DesignPanel } from "../design/design-panel";
-import { designAiSelectionToken, type DesignAiSelectionContext } from "../design/design-ai-selection";
+import { designAiSelectionToken, type DesignAiSelectionContext } from "@ipollowork/design-studio";
 import { useDesignAiSelectionStore } from "../design/design-ai-selection-store";
 import { waitForTemplateEntrySurface } from "../templates/template-entry-route";
 import { loadTemplateSession } from "../templates/template-session-probe";

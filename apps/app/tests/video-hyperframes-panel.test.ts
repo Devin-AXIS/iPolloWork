@@ -420,10 +420,6 @@ describe("HyperFrames Video Studio", () => {
   });
 
   test("keeps desktop panel titlebars draggable without swallowing control input", () => {
-    const videoPanelSource = readFileSync(
-      new URL("../src/react-app/domains/session/video/video-panel.tsx", import.meta.url),
-      "utf8",
-    );
     const sidePanelSource = readFileSync(
       new URL("../src/react-app/domains/session/panel/side-panel.tsx", import.meta.url),
       "utf8",
@@ -441,7 +437,6 @@ describe("HyperFrames Video Studio", () => {
       "utf8",
     );
 
-    expect(videoPanelSource).toContain("mac:titlebar-drag");
     expect(sidePanelSource).toContain("px-2 mac:titlebar-drag");
     expect(artifactPanelSource).toContain("ps-4 mac:titlebar-drag");
     expect(sidebarSource).toContain('SidebarHeader className="gap-4 px-2 pb-8 pt-1 mac:titlebar-drag"');

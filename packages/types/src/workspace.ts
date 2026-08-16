@@ -24,6 +24,7 @@ export type WorkspaceWire = {
   /** The owning application context. Missing/null records belong to Personal. */
   workContextId?: `enterprise:${string}` | null;
   workspaceType: WorkspaceKind;
+  engineId?: string | null;
   remoteType?: WorkspaceRemoteKind | null;
   baseUrl?: string | null;
   directory?: string | null;

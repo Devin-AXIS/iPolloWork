@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { basename, resolve } from "node:path";
-import type { WorkspaceConfig, WorkspaceInfo } from "./types.js";
+import { DEFAULT_ENGINE_ID, type WorkspaceConfig, type WorkspaceInfo } from "./types.js";
 
 function workspaceIdForKey(key: string): string {
   const hash = createHash("sha256").update(key).digest("hex");
@@ -55,6 +55,7 @@ export function buildWorkspaceInfos(
       preset: workspace.preset?.trim() || (workspaceType === "remote" ? "remote" : "starter"),
       workContextId: workspace.workContextId,
       workspaceType,
+      engineId: workspace.engineId?.trim() || DEFAULT_ENGINE_ID,
       remoteType,
       baseUrl: workspace.baseUrl,
       directory: workspace.directory,

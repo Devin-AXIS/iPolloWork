@@ -12,7 +12,7 @@ type PluginPackageRelationshipSource = { manifest: iPolloWorkExtensionManifest }
 
 export type PluginPackageRelationships = {
   skillNames: string[];
-  installedMcpServerNames: string[];
+  mcpServerNames: string[];
 };
 
 type PluginTranslationLayers = {
@@ -113,21 +113,19 @@ export function collectPluginPackageRelationships(
   catalog: PluginPackageRelationshipSource[],
 ): PluginPackageRelationships {
   const skillNames = new Set<string>();
-  const installedMcpServerNames = new Set<string>();
+  const mcpServerNames = new Set<string>();
   for (const item of [...installed, ...catalog]) {
     item.manifest.resources.forEach((resource) => {
       if (resource.type === "skill") skillNames.add(resource.id);
+      if (resource.type === "mcp" && resource.mcpServerName) mcpServerNames.add(resource.mcpServerName);
     });
   }
   installed.forEach((item) => {
     item.manifest.relatedSkills?.forEach((skillName) => skillNames.add(skillName));
-    item.manifest.resources.forEach((resource) => {
-      if (resource.type === "mcp" && resource.mcpServerName) installedMcpServerNames.add(resource.mcpServerName);
-    });
   });
   return {
     skillNames: [...skillNames].sort(),
-    installedMcpServerNames: [...installedMcpServerNames].sort(),
+    mcpServerNames: [...mcpServerNames].sort(),
   };
 }
 
@@ -220,6 +218,23 @@ export function projectPluginPackageDetails(manifest: unknown): PluginPackageDet
     if (!id || !type) return [];
     return [{ id, type, label: text(resource.label) ?? id, required: resource.required === true }];
   }) : [];
+  if (Array.isArray(manifest.engineBindings)) {
+    manifest.engineBindings.forEach((binding) => {
+      if (!isRecord(binding) || !text(binding.engine) || !Array.isArray(binding.capabilities)) return;
+      binding.capabilities.forEach((capability) => {
+        if (!isRecord(capability)) return;
+        const id = text(capability.id);
+        const kind = text(capability.kind);
+        if (!id || !kind) return;
+        resources.push({
+          id,
+          type: `${text(binding.engine)}/${kind}`,
+          label: text(capability.label) ?? id,
+          required: capability.required === true,
+        });
+      });
+    });
+  }
   const authorizationMethods = authorization && Array.isArray(authorization.methods)
     ? authorization.methods.flatMap((method): ProjectedAuthorizationMethod[] => {
         if (!isRecord(method)) return [];

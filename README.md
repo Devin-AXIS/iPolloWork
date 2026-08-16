@@ -1,7 +1,7 @@
 # iPolloWork
 
 <p align="center">
-  English · <a href="./translated_readmes/README_ZH.md">简体中文</a> · <a href="./translated_readmes/README_ZH_hk.md">繁體中文</a> · <a href="./translated_readmes/README_JA.md">日本語</a>
+  English · <a href="./docs/translations/README_ZH.md">简体中文</a> · <a href="./docs/translations/README_ZH_hk.md">繁體中文</a> · <a href="./docs/translations/README_JA.md">日本語</a>
 </p>
 
 <p align="center">
@@ -24,6 +24,12 @@ https://github.com/user-attachments/assets/201b561a-22ec-4c8e-a4e8-f34172cf0aa3
 iPolloWork gives agents one workspace for repositories, local files, browser tasks, documents, presentations, websites, design, and video. Describe the outcome; the agent plans and executes; you inspect the work, approve actions, and keep editing the result in the same place.
 
 Codex-style coding is only the starting point. When the output is a deck, web page, visual design, or video, iPolloWork keeps it editable instead of handing you a finished file or a chat transcript.
+
+<div align="center">
+  <h3>Join the official iPolloWork WeChat community</h3>
+  <p>Scan with WeChat to join the official group for product updates and community discussions.</p>
+  <img src="./docs/assets/ipollowork-official-wechat-group.jpg" alt="QR code for the official iPolloWork WeChat community" width="220" />
+</div>
 
 ## What makes it different
 
@@ -185,10 +191,10 @@ iPolloWork desktop/UI ── local API ──> iPolloWork server ──> OpenCod
 - `docs` — maintained engineering notes, platform guides, and generated reports
 - `evals` — executable product flows and validation tooling
 - `examples` — complete example plugin packages
+- `external-plugins` — independently released plugins for external agent hosts
 - `packaging` — release and installer metadata
 - `scripts` — development, build, audit, and release automation
 - `specs` — product and architecture specifications
-- `translated_readmes` — maintained README translations
 - `vendor` — pinned third-party source that is built as part of iPolloWork
 
 ## Contributing

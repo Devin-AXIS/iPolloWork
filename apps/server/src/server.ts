@@ -4,7 +4,7 @@ import { homedir, hostname } from "node:os";
 import { dirname, join, relative, resolve, sep } from "node:path";
 import { createOpencodeClient } from "@opencode-ai/sdk/v2/client";
 import { IPOLLOWORK_PACKAGE_EXTENSION, IPOLLOWORK_PACKAGE_MEDIA_TYPE, templateCategorySchema } from "@ipollowork/types/templates";
-import type { ApprovalRequest, Capabilities, ServerConfig, WorkspaceInfo, Actor, ReloadReason, ReloadTrigger, TokenScope } from "./types.js";
+import { DEFAULT_ENGINE_ID, type ApprovalRequest, type Capabilities, type ServerConfig, type WorkspaceInfo, type Actor, type ReloadReason, type ReloadTrigger, type TokenScope } from "./types.js";
 import { ApprovalService } from "./approvals.js";
 import { addPlugin, listPlugins, normalizePluginSpec, removePlugin } from "./plugins.js";
 import { sanitizePortableOpencodeConfig } from "./portable-opencode.js";
@@ -1843,7 +1843,7 @@ function createRoutes(
     const installedById = new Map(installed.map((item) => [item.pluginId, item]));
     const items = await Promise.all(bundledPluginPackageIds.map(async (pluginId) => {
       const packageRoot = await resolveBundledPluginPackageRoot(pluginId);
-      const preview = await previewPluginPackage({ packageRoot, workspaceRoot: workspace.path });
+      const preview = await previewPluginPackage({ packageRoot, workspaceRoot: workspace.path, engineId: workspace.engineId ?? DEFAULT_ENGINE_ID });
       const current = installedById.get(pluginId);
       return {
         pluginId,
@@ -1864,7 +1864,7 @@ function createRoutes(
     const workspace = await resolveWorkspace(config, ctx.params.id);
     const pluginId = ctx.params.pluginId ?? "";
     const packageRoot = await resolveBundledPluginPackageRoot(pluginId);
-    const preview = await previewPluginPackage({ packageRoot, workspaceRoot: workspace.path });
+    const preview = await previewPluginPackage({ packageRoot, workspaceRoot: workspace.path, engineId: workspace.engineId ?? DEFAULT_ENGINE_ID });
     await requireApproval(ctx, {
       workspaceId: workspace.id,
       action: "plugin_packages.install",
@@ -1902,7 +1902,7 @@ function createRoutes(
     const workspace = await resolveWorkspace(config, ctx.params.id);
     const body = await readPluginPackageUploadBody(ctx.request);
     return withMaterializedPluginPackageUpload(body, async ({ packageRoot }) => {
-      const preview = await previewPluginPackage({ packageRoot, workspaceRoot: workspace.path });
+      const preview = await previewPluginPackage({ packageRoot, workspaceRoot: workspace.path, engineId: workspace.engineId ?? DEFAULT_ENGINE_ID });
       const safety = await assertPluginPackageSafeForImport({ packageRoot, preview });
       return jsonResponse({ preview: { ...preview, safety } });
     });
@@ -1914,7 +1914,7 @@ function createRoutes(
     const workspace = await resolveWorkspace(config, ctx.params.id);
     const body = await readPluginPackageUploadBody(ctx.request);
     return withMaterializedPluginPackageUpload(body, async ({ archiveName, packageRoot }) => {
-      const preview = await previewPluginPackage({ packageRoot, workspaceRoot: workspace.path });
+      const preview = await previewPluginPackage({ packageRoot, workspaceRoot: workspace.path, engineId: workspace.engineId ?? DEFAULT_ENGINE_ID });
       const safety = await assertPluginPackageSafeForImport({ packageRoot, preview });
       await requireApproval(ctx, {
         workspaceId: workspace.id,
@@ -1951,7 +1951,7 @@ function createRoutes(
     const workspace = await resolveWorkspace(config, ctx.params.id);
     const body = await readJsonBody(ctx.request);
     const packageRoot = resolveLocalPluginPackageRoot(workspace.path, body.packageRoot);
-    const preview = await previewPluginPackage({ packageRoot, workspaceRoot: workspace.path });
+    const preview = await previewPluginPackage({ packageRoot, workspaceRoot: workspace.path, engineId: workspace.engineId ?? DEFAULT_ENGINE_ID });
     const safety = await assertPluginPackageSafeForImport({ packageRoot, preview });
     return jsonResponse({ preview: { ...preview, safety } });
   });
@@ -1962,7 +1962,7 @@ function createRoutes(
     const workspace = await resolveWorkspace(config, ctx.params.id);
     const body = await readJsonBody(ctx.request);
     const packageRoot = resolveLocalPluginPackageRoot(workspace.path, body.packageRoot);
-    const preview = await previewPluginPackage({ packageRoot, workspaceRoot: workspace.path });
+    const preview = await previewPluginPackage({ packageRoot, workspaceRoot: workspace.path, engineId: workspace.engineId ?? DEFAULT_ENGINE_ID });
     await assertPluginPackageSafeForImport({ packageRoot, preview });
     await requireApproval(ctx, {
       workspaceId: workspace.id,
@@ -1991,7 +1991,7 @@ function createRoutes(
     const workspace = await resolveWorkspace(config, ctx.params.id);
     const body = await readJsonBody(ctx.request);
     const packageRoot = resolveLocalPluginPackageRoot(workspace.path, body.packageRoot);
-    const preview = await previewPluginPackage({ packageRoot, workspaceRoot: workspace.path });
+    const preview = await previewPluginPackage({ packageRoot, workspaceRoot: workspace.path, engineId: workspace.engineId ?? DEFAULT_ENGINE_ID });
     await assertPluginPackageSafeForImport({ packageRoot, preview });
     if (preview.manifest.id !== ctx.params.pluginId) throw new ApiError(400, "plugin_package_id_mismatch", "Update package ID does not match the installed plugin");
     await requireApproval(ctx, {

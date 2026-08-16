@@ -47,17 +47,8 @@ function expectCompleteEnglishLocalization(manifest: PluginPackageManifest): voi
   });
 }
 
-const legacyManifest = {
-  schemaVersion: 1,
-  id: "legacy-extension",
-  name: "Legacy Extension",
-  description: "An existing extension without package metadata.",
-  source: { format: "ipollowork-builtin", origin: "builtin", trusted: true },
-  resources: [],
-};
-
 const packageManifest = {
-  schemaVersion: 1,
+  schemaVersion: 2,
   id: "acme-research",
   name: "Acme Research",
   description: "Research with Acme's independent service.",
@@ -65,10 +56,15 @@ const packageManifest = {
   package: {
     version: "1.2.3",
     publisher: { id: "acme", name: "Acme" },
-    compatibility: { ipollowork: ">=0.17.0", opencode: ">=1.18.0" },
+    compatibility: { ipollowork: ">=0.17.0" },
+    engines: ["opencode"],
     updateId: "acme/research",
-    entrypoints: { opencode: ".opencode/plugins/acme-research.ts" },
   },
+  engineBindings: [{
+    engine: "opencode",
+    compatibility: ">=1.18.0",
+    capabilities: [{ id: "acme-runtime", kind: "plugin", path: "engines/opencode/plugins/acme-research.ts", required: true }],
+  }],
   permissions: [
     { id: "network", reason: "Connect to the Acme research API." },
     { id: "workspace-read", reason: "Read selected workspace files." },
@@ -83,10 +79,18 @@ const packageManifest = {
     }],
   },
   resources: [
-    { type: "opencode-plugin", id: "acme-runtime", path: ".opencode/plugins/acme-research.ts", required: true },
-    { type: "skill", id: "acme-search", path: ".opencode/skills/acme-search/SKILL.md", required: true },
-    { type: "mcp", id: "acme-mcp", path: ".opencode/mcps/acme.json", required: false },
+    { type: "skill", id: "acme-search", path: "skills/acme-search/SKILL.md", required: true },
+    { type: "mcp", id: "acme-mcp", path: "mcp/acme.json", required: false },
   ],
+};
+
+const minimalManifest = {
+  schemaVersion: 2,
+  id: "minimal-plugin",
+  name: "Minimal Plugin",
+  description: "A minimal plugin package.",
+  source: { format: "ipollowork-extension-manifest", origin: "local", trusted: false },
+  resources: [],
 };
 
 describe("plugin package manifest", () => {
@@ -256,23 +260,47 @@ describe("plugin package manifest", () => {
     expect(video.manifest.source).toMatchObject({ origin: "builtin", trusted: true });
   });
 
-  test("accepts current extension manifests and additive self-contained packages", async () => {
+  test("accepts version 2 packages and rejects obsolete manifests", async () => {
     const { validatePluginPackageManifest } = await import("./plugin-package-manifest.js");
 
-    const legacy = validatePluginPackageManifest(legacyManifest);
     const packaged = validatePluginPackageManifest(packageManifest);
+    const obsolete = validatePluginPackageManifest({
+      ...packageManifest,
+      schemaVersion: 1,
+    });
 
-    expect(legacy.success).toBe(true);
-    if (!legacy.success) throw new Error("Expected the legacy manifest to stay valid");
-    expect(legacy.manifest.id).toBe(legacyManifest.id);
-    expect(legacy.manifest.source.format).toBe("ipollowork-builtin");
-    expect(legacy.manifest.resources).toEqual([]);
-    expect(legacy.manifest.package).toBeUndefined();
     expect(packaged.success).toBe(true);
     if (!packaged.success) throw new Error("Expected the package manifest to be valid");
     expect(packaged.manifest.package?.version).toBe("1.2.3");
-    expect(packaged.manifest.resources.map((resource) => resource.type)).toEqual(["opencode-plugin", "skill", "mcp"]);
+    expect(packaged.manifest.resources.map((resource) => resource.type)).toEqual(["skill", "mcp"]);
+    expect(packaged.manifest.engineBindings?.[0]?.capabilities.map((capability) => capability.kind)).toEqual(["plugin"]);
     expect(packaged.manifest.authorization?.methods.map((method) => method.kind)).toEqual(["secret-form"]);
+    expect(obsolete.success).toBe(false);
+    if (obsolete.success) throw new Error("Expected the obsolete manifest to be rejected");
+    expect(obsolete.issues).toContainEqual({ path: "schemaVersion", message: "Invalid input: expected 2" });
+  });
+
+  test("rejects engine-owned paths from portable resources", async () => {
+    const { validatePluginPackageManifest } = await import("./plugin-package-manifest.js");
+    const invalid = validatePluginPackageManifest({
+      ...packageManifest,
+      resources: [
+        { type: "skill", id: "legacy-skill", path: ".opencode/skills/legacy/SKILL.md" },
+        { type: "mcp", id: "legacy-mcp", path: ".opencode/mcps/legacy.json" },
+      ],
+      engineBindings: [{
+        engine: "opencode",
+        capabilities: [{ id: "legacy-runtime", kind: "plugin", path: ".opencode/plugins/legacy.ts" }],
+      }],
+    });
+
+    expect(invalid.success).toBe(false);
+    if (invalid.success) throw new Error("Expected engine-owned paths to be rejected");
+    expect(invalid.issues.map((issue) => issue.path)).toEqual([
+      "resources.0.path",
+      "resources.1.path",
+      "engineBindings.0.capabilities.0.path",
+    ]);
   });
 
   test("returns actionable issue paths for unsafe or malformed package metadata", async () => {
@@ -283,8 +311,8 @@ describe("plugin package manifest", () => {
         ...packageManifest.package,
         version: "latest",
         compatibility: { ipollowork: "eventually" },
-        entrypoints: { opencode: "../outside.ts" },
       },
+      engineBindings: [{ engine: "opencode", capabilities: [{ id: "runtime", kind: "plugin", path: "../outside.ts" }] }],
       permissions: [{ id: "read-everything", reason: "Too broad" }],
       authorization: {
         required: true,
@@ -298,7 +326,7 @@ describe("plugin package manifest", () => {
       },
       resources: [
         packageManifest.resources[0],
-        { ...packageManifest.resources[0], path: ".opencode/plugins/duplicate.ts" },
+        { ...packageManifest.resources[0], path: "skills/duplicate/SKILL.md" },
       ],
     };
 
@@ -309,7 +337,7 @@ describe("plugin package manifest", () => {
     expect(result.issues.map((issue) => issue.path)).toEqual(expect.arrayContaining([
       "package.version",
       "package.compatibility.ipollowork",
-      "package.entrypoints.opencode",
+      "engineBindings.0.capabilities.0.path",
       "permissions.0.id",
       "authorization.methods.0.envKey",
       "authorization.methods.0.fields",
@@ -320,15 +348,14 @@ describe("plugin package manifest", () => {
   test("accepts a minimal package with no authorization", async () => {
     const { validatePluginPackageManifest } = await import("./plugin-package-manifest.js");
     const minimal = {
-      ...legacyManifest,
-      id: "minimal-plugin",
+      ...minimalManifest,
       source: { format: "opencode-plugin", origin: "local", trusted: false },
       package: {
         version: "0.1.0",
         updateId: "local/minimal-plugin",
-        entrypoints: { opencode: ".opencode/plugins/minimal.ts" },
       },
-      resources: [{ type: "opencode-plugin", id: "minimal-runtime", path: ".opencode/plugins/minimal.ts", required: true }],
+      engineBindings: [{ engine: "opencode", capabilities: [{ id: "minimal-runtime", kind: "plugin", path: "engines/opencode/plugins/minimal.ts", required: true }] }],
+      resources: [],
     };
 
     const result = validatePluginPackageManifest(minimal);
@@ -339,20 +366,19 @@ describe("plugin package manifest", () => {
   test("accepts a declarative package made only of MCP and skill resources", async () => {
     const { validatePluginPackageManifest } = await import("./plugin-package-manifest.js");
     const declarative = {
-      ...legacyManifest,
+      ...minimalManifest,
       id: "figma",
       source: { format: "ipollowork-extension-manifest", origin: "local", trusted: false },
       package: {
         version: "2.0.16",
         updateId: "figma/official-workflows",
-        entrypoints: {},
       },
       resources: [
-        { type: "mcp", id: "figma-mcp", path: ".opencode/mcps/figma.json", required: true },
+        { type: "mcp", id: "figma-mcp", path: "mcp/figma.json", required: true },
         {
           type: "skill",
           id: "figma-design-to-code",
-          path: ".opencode/skills/figma-design-to-code/SKILL.md",
+          path: "skills/figma-design-to-code/SKILL.md",
           requires: ["resource:figma-mcp"],
           required: true,
         },
@@ -378,7 +404,6 @@ describe("plugin package manifest", () => {
       ...packageManifest,
       package: {
         ...packageManifest.package,
-        entrypoints: { service: "service/research.ts" },
       },
       resources: [
         {
