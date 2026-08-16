@@ -29,6 +29,18 @@ const LEGACY_COSYVOICE_V3_PRESET_MIGRATIONS: Record<string, string> = {
   longlaotie: "longanlang_v3",
   longfei: "longanlang_v3",
 };
+export const MINIMAX_VIDEO_MODEL_REGISTRY = {
+  defaultModel: "MiniMax-H3",
+  models: ["MiniMax-H3"],
+};
+export const MINIMAX_VIDEO_ENDPOINT_REGISTRY = [
+  { region: "global_en", url: "https://api.minimax.io/v2/video_generation" },
+  { region: "cn_zh", url: "https://api.minimaxi.com/v2/video_generation" },
+];
+const MINIMAX_VIDEO_RATIOS = ["adaptive", "21:9", "16:9", "4:3", "1:1", "3:4", "9:16"];
+const MINIMAX_VIDEO_RESOLUTION = "2K";
+const MINIMAX_VIDEO_MIN_DURATION_SECONDS = 4;
+const MINIMAX_VIDEO_MAX_DURATION_SECONDS = 15;
 
 type JsonRecord = Record<string, unknown>;
 
@@ -902,8 +914,14 @@ export const MEDIA_EXTENSION_ACTIONS = [
     inputSchema: {
       type: "object",
       properties: {
+        provider: { type: "string", enum: ["minimax"], description: "Set to minimax to use MiniMax video generation." },
+        region: { type: "string", enum: MINIMAX_VIDEO_ENDPOINT_REGISTRY.map((entry) => entry.region), description: "Optional MiniMax regional endpoint. Defaults to global_en." },
         prompt: { type: "string", description: "Video prompt." },
-        model: { type: "string", description: "Optional Wan model. Defaults to wan2.6-t2v." },
+        model: { type: "string", description: "Optional provider model. MiniMax defaults to MiniMax-H3." },
+        resolution: { type: "string", enum: [MINIMAX_VIDEO_RESOLUTION], description: "MiniMax output resolution. Defaults to 2K." },
+        duration: { type: "integer", minimum: MINIMAX_VIDEO_MIN_DURATION_SECONDS, maximum: MINIMAX_VIDEO_MAX_DURATION_SECONDS, description: "MiniMax output duration in whole seconds." },
+        ratio: { type: "string", enum: MINIMAX_VIDEO_RATIOS, description: "Optional MiniMax output aspect ratio." },
+        callbackUrl: { type: "string", description: "Optional MiniMax callback URL." },
         imageUrl: { type: "string", description: "Optional public image URL for models that support image guidance." },
         audioUrl: { type: "string", description: "Optional public audio URL for models that support audio guidance." },
         parameters: { type: "object", description: "Optional documented Wan parameters such as size, duration, or prompt_extend." },
@@ -952,6 +970,8 @@ export const MEDIA_EXTENSION_ACTIONS = [
     inputSchema: {
       type: "object",
       properties: {
+        provider: { type: "string", enum: ["minimax"], description: "Set to minimax to query a MiniMax video task." },
+        region: { type: "string", enum: MINIMAX_VIDEO_ENDPOINT_REGISTRY.map((entry) => entry.region), description: "Optional MiniMax regional endpoint. Defaults to global_en." },
         taskId: { type: "string", description: "Task id returned by a media generation or transcription action." },
       },
       required: ["taskId"],
@@ -1026,9 +1046,13 @@ function compatibleCosyVoiceVoice(model: string, voice: string) {
 }
 
 function taskIdFromPayload(payload: unknown): string | null {
-  if (!isRecord(payload) || !isRecord(payload.output)) return null;
-  const taskId = payload.output.task_id;
-  return typeof taskId === "string" && taskId.trim() ? taskId.trim() : null;
+  if (!isRecord(payload)) return null;
+  const output = readRecord(payload, "output");
+  const task = readRecord(payload, "task");
+  return readStringField(payload, "task_id")
+    || readStringField(task, "id")
+    || readStringField(output, "task_id")
+    || null;
 }
 
 function voiceIdFromPayload(payload: unknown): string {
@@ -1365,6 +1389,109 @@ async function resolveBailianCredentials(env: EnvService): Promise<{ apiKey: str
   return { apiKey, baseUrl: safeProviderBaseUrl(configuredBaseUrl) };
 }
 
+function miniMaxVideoEndpoint(region: string) {
+  const endpoint = MINIMAX_VIDEO_ENDPOINT_REGISTRY.find((entry) => entry.region === region);
+  if (!endpoint) {
+    throw new ApiError(
+      400,
+      "invalid_minimax_region",
+      `MiniMax video region must be one of: ${MINIMAX_VIDEO_ENDPOINT_REGISTRY.map((entry) => entry.region).join(", ")}`,
+    );
+  }
+  return endpoint;
+}
+
+async function resolveMiniMaxVideoCredentials(env: EnvService, region: string) {
+  const records = await env.list();
+  const values = new Map(records.map((item) => [item.key, item.value.trim()]));
+  const apiKey = values.get("MINIMAX_API_KEY") || process.env.MINIMAX_API_KEY?.trim() || "";
+  if (!apiKey) {
+    throw new ApiError(400, "minimax_api_key_missing", "MiniMax API key missing. Configure MINIMAX_API_KEY before generating video.");
+  }
+  return { apiKey, endpoint: miniMaxVideoEndpoint(region) };
+}
+
+function miniMaxVideoErrorMessage(payload: unknown): string {
+  const baseResponse = readRecord(payload, "base_resp");
+  return readStringField(baseResponse, "status_msg") || providerMessage(payload) || "";
+}
+
+async function requestMiniMaxVideo(input: {
+  apiKey: string;
+  url: string;
+  method?: "GET" | "POST";
+  body?: JsonRecord;
+}) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), BAILIAN_REQUEST_TIMEOUT_MS);
+  let response: Response;
+  try {
+    response = await mediaProviderFetch(input.url, {
+      method: input.method ?? "POST",
+      headers: {
+        Authorization: `Bearer ${input.apiKey}`,
+        ...(input.body ? { "Content-Type": "application/json" } : {}),
+      },
+      ...(input.body ? { body: JSON.stringify(input.body) } : {}),
+      signal: controller.signal,
+    });
+  } catch (error) {
+    if (error instanceof Error && error.name === "AbortError") {
+      throw new ApiError(504, "minimax_video_timeout", "MiniMax video generation did not respond before the request timed out.");
+    }
+    throw new ApiError(502, "minimax_video_unreachable", "Could not reach MiniMax video generation. Check the network and try again.");
+  } finally {
+    clearTimeout(timeout);
+  }
+
+  const payload: unknown = await response.json().catch(() => null);
+  const statusCode = readOptionalNumber(readRecord(payload, "base_resp"), "status_code");
+  if (!response.ok || (statusCode !== undefined && statusCode !== 0)) {
+    const fallback = response.ok
+      ? `MiniMax video generation failed (status_code ${statusCode}).`
+      : `MiniMax video generation failed (HTTP ${response.status}).`;
+    throw new ApiError(response.ok ? 502 : response.status, "minimax_video_request_failed", miniMaxVideoErrorMessage(payload) || fallback);
+  }
+  return payload;
+}
+
+function miniMaxVideoCreateBody(args: JsonRecord) {
+  const model = readStringField(args, "model") || MINIMAX_VIDEO_MODEL_REGISTRY.defaultModel;
+  if (!MINIMAX_VIDEO_MODEL_REGISTRY.models.includes(model)) {
+    throw new ApiError(400, "invalid_minimax_video_model", `MiniMax video model must be one of: ${MINIMAX_VIDEO_MODEL_REGISTRY.models.join(", ")}`);
+  }
+  const duration = readOptionalNumber(args, "duration");
+  if (
+    duration === undefined
+    || !Number.isInteger(duration)
+    || duration < MINIMAX_VIDEO_MIN_DURATION_SECONDS
+    || duration > MINIMAX_VIDEO_MAX_DURATION_SECONDS
+  ) {
+    throw new ApiError(
+      400,
+      "invalid_minimax_video_duration",
+      `MiniMax video duration must be a whole number between ${MINIMAX_VIDEO_MIN_DURATION_SECONDS} and ${MINIMAX_VIDEO_MAX_DURATION_SECONDS}.`,
+    );
+  }
+  const resolution = readStringField(args, "resolution") || MINIMAX_VIDEO_RESOLUTION;
+  if (resolution !== MINIMAX_VIDEO_RESOLUTION) {
+    throw new ApiError(400, "invalid_minimax_video_resolution", `MiniMax video resolution must be ${MINIMAX_VIDEO_RESOLUTION}.`);
+  }
+  const ratio = readStringField(args, "ratio");
+  if (ratio && !MINIMAX_VIDEO_RATIOS.includes(ratio)) {
+    throw new ApiError(400, "invalid_minimax_video_ratio", `MiniMax video ratio must be one of: ${MINIMAX_VIDEO_RATIOS.join(", ")}`);
+  }
+  const callbackUrl = readStringField(args, "callbackUrl");
+  return {
+    model,
+    content: [{ type: "text", text: requireString(args, "prompt") }],
+    resolution,
+    duration,
+    ...(ratio ? { ratio } : {}),
+    ...(callbackUrl ? { callback_url: callbackUrl } : {}),
+  };
+}
+
 function endpoint(baseUrl: string, path: string): string {
   return `${baseUrl}${path}`;
 }
@@ -1667,6 +1794,44 @@ export async function callMediaExtensionAction(
         provider: "local",
         operation: action,
         output: { sourcePath: source.relativePath, ...output },
+      },
+      context,
+    };
+  }
+
+  if (readStringField(args, "provider") === "minimax") {
+    if (action !== "video_generate" && action !== "task_get") {
+      throw new ApiError(400, "unsupported_minimax_media_action", "MiniMax is not configured for this Media Center action.");
+    }
+    const region = readStringField(args, "region") || "global_en";
+    const credentials = await resolveMiniMaxVideoCredentials(env, region);
+    let result: JsonRecord;
+    if (action === "video_generate") {
+      const payload = await requestMiniMaxVideo({
+        apiKey: credentials.apiKey,
+        url: credentials.endpoint.url,
+        body: miniMaxVideoCreateBody(args),
+      });
+      result = asMediaTask(action, payload);
+    } else {
+      const taskId = requireString(args, "taskId");
+      if (!/^[A-Za-z0-9_-]+$/.test(taskId)) {
+        throw new ApiError(400, "invalid_payload", "taskId contains unsupported characters");
+      }
+      const url = new URL(credentials.endpoint.url);
+      url.pathname = `/v2/query/video_generation/${encodeURIComponent(taskId)}`;
+      const payload = await requestMiniMaxVideo({ apiKey: credentials.apiKey, url: url.toString(), method: "GET" });
+      result = asMediaTask(action, payload);
+    }
+    return {
+      ok: true,
+      extensionId: MEDIA_EXTENSION_ID,
+      action,
+      result: {
+        provider: "minimax",
+        operation: action,
+        ...(typeof result.taskId === "string" ? { taskId: result.taskId } : {}),
+        output: result,
       },
       context,
     };
