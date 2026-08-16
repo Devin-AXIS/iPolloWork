@@ -390,6 +390,7 @@ export default {
   "template_market.search_placeholder": "Search templates",
   "ops.title": "Ops",
   "git.title": "Git",
+  "scheduled_tasks.title": "Scheduled Tasks",
   "settings.tab_remote_preview": "Remote Preview",
   "settings.tab_description_remote_preview": "Allow LAN devices to view this workbench (read-only).",
   "settings.remote_preview_alert_title": "Remote preview (LAN read-only)",

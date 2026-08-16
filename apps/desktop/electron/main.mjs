@@ -32,6 +32,7 @@ import { createUiControlServer } from "./ui-control-server.mjs";
 import { createLanPreviewServer, lanPreviewPagePath } from "./lan-preview-server.mjs";
 import { createSshOps } from "./ssh-ops.mjs";
 import { createGitGraph } from "./git-graph.mjs";
+import { createScheduledTasks } from "./scheduled-tasks.mjs";
 import { createPreviewCore } from "./preview-core.mjs";
 import { createImBot } from "./im-bot.mjs";
 import { createApplicationMenu } from "./app-menu.mjs";
@@ -128,6 +129,15 @@ const lanPreviewServer = createLanPreviewServer({
 const sshOps = createSshOps({ pty });
 const gitGraph = createGitGraph();
 const imBot = createImBot({ previewCore });
+
+function broadcastScheduledTasks(payload) {
+  for (const win of BrowserWindow.getAllWindows()) {
+    if (!win.isDestroyed()) {
+      win.webContents.send("ipollowork:scheduled-tasks:changed", payload);
+    }
+  }
+}
+const scheduledTasks = createScheduledTasks({ broadcast: broadcastScheduledTasks });
 
 const terminalProcesses = new Map();
 const hyperframesProcesses = new Map();
@@ -3079,6 +3089,16 @@ ipcMain.handle("ipollowork:git:graph", (event, options = {}) => {
   }
 });
 
+// ── Scheduled tasks IPC ────────────────────────────────────────────────
+ipcMain.handle("ipollowork:scheduled-tasks:list", () => scheduledTasks.list());
+ipcMain.handle("ipollowork:scheduled-tasks:create", (_event, input) => scheduledTasks.create(input ?? {}));
+ipcMain.handle("ipollowork:scheduled-tasks:update", (_event, id, patch) => scheduledTasks.update(String(id ?? ""), patch ?? {}));
+ipcMain.handle("ipollowork:scheduled-tasks:set-enabled", (_event, id, enabled) => scheduledTasks.setEnabled(String(id ?? ""), Boolean(enabled)));
+ipcMain.handle("ipollowork:scheduled-tasks:remove", (_event, id) => scheduledTasks.remove(String(id ?? "")));
+ipcMain.handle("ipollowork:scheduled-tasks:run-now", (_event, id) => scheduledTasks.runNow(String(id ?? "")));
+ipcMain.handle("ipollowork:scheduled-tasks:logs", (_event, id) => scheduledTasks.logs(String(id ?? "")));
+ipcMain.handle("ipollowork:scheduled-tasks:preview", (_event, cron) => scheduledTasks.preview(String(cron ?? "")));
+
 // ── LAN preview IPC ────────────────────────────────────────────────────
 function lanPreviewStatePayload() {
   return lanPreviewServer.getState();
@@ -4191,6 +4211,7 @@ if (!app.requestSingleInstanceLock()) {
     if (runtimeDisposedForQuit) return;
     event.preventDefault();
     if (runtimeDisposeInProgress) return;
+    scheduledTasks.stop();
     showShutdownScreen();
     void Promise.all([disposeRuntimeBeforeQuit(), uiControlServer.stop(), lanPreviewServer.stop()]).finally(() => app.quit());
   });
@@ -4214,6 +4235,7 @@ if (!app.requestSingleInstanceLock()) {
   app.whenReady().then(async () => {
     const startupStartedAt = Date.now();
     console.info("[startup] Electron ready");
+    scheduledTasks.start();
     installDesktopPowerRecovery();
     installMediaPermissionHandlers(session, () => mainWindow);
     await workspaceStore.importBundledDesktopBootstrapConfigIfPreferred();

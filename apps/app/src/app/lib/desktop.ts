@@ -40,6 +40,12 @@ import type {
   WorkspaceList,
 } from "./desktop-types";
 import type { BrowserPanelTab } from "./desktop-types";
+import type {
+  ScheduledTask,
+  ScheduledTaskCreateInput,
+  ScheduledTaskLogEntry,
+  ScheduledTaskUpdatePatch,
+} from "@/react-app/domains/session/scheduled-tasks/scheduled-task";
 
 export const LOCAL_IMAGE_FILE_EXTENSIONS = ["avif", "bmp", "gif", "ico", "jpeg", "jpg", "png", "svg", "webp"];
 export const LOCAL_IMAGE_FILE_FILTERS = [{ name: "图片文件", extensions: LOCAL_IMAGE_FILE_EXTENSIONS }];
@@ -190,6 +196,17 @@ declare global {
           | { ok: true; repoRoot: string; count: number; totalCount: number | null; truncated: boolean; isRepo: true; commits: { sha: string; parents: string[] }[]; refs: { sha: string; refname: string; head: boolean }[]; headShas: string[] }
           | { ok: false; isRepo: boolean; error: string }
         >;
+      };
+      scheduledTasks?: {
+        list?: () => Promise<ScheduledTask[]>;
+        create?: (input: ScheduledTaskCreateInput) => Promise<ScheduledTask>;
+        update?: (id: string, patch: ScheduledTaskUpdatePatch) => Promise<ScheduledTask | null>;
+        setEnabled?: (id: string, enabled: boolean) => Promise<ScheduledTask | null>;
+        remove?: (id: string) => Promise<boolean>;
+        runNow?: (id: string) => Promise<ScheduledTask | null>;
+        logs?: (id: string) => Promise<ScheduledTaskLogEntry[]>;
+        preview?: (cron: string) => Promise<{ valid: boolean; nextRunAt: number | null }>;
+        onChanged?: (callback: (payload: { type: string; taskId?: string }) => void) => () => void;
       };
       lanPreview?: {
         getState?: () => Promise<LanPreviewState>;

@@ -176,6 +176,21 @@ contextBridge.exposeInMainWorld("__IPOLLOWORK_ELECTRON__", {
   git: {
     graph(options) { return ipcRenderer.invoke("ipollowork:git:graph", options); },
   },
+  scheduledTasks: {
+    list() { return ipcRenderer.invoke("ipollowork:scheduled-tasks:list"); },
+    create(input) { return ipcRenderer.invoke("ipollowork:scheduled-tasks:create", input); },
+    update(id, patch) { return ipcRenderer.invoke("ipollowork:scheduled-tasks:update", id, patch); },
+    setEnabled(id, enabled) { return ipcRenderer.invoke("ipollowork:scheduled-tasks:set-enabled", id, Boolean(enabled)); },
+    remove(id) { return ipcRenderer.invoke("ipollowork:scheduled-tasks:remove", id); },
+    runNow(id) { return ipcRenderer.invoke("ipollowork:scheduled-tasks:run-now", id); },
+    logs(id) { return ipcRenderer.invoke("ipollowork:scheduled-tasks:logs", id); },
+    preview(cron) { return ipcRenderer.invoke("ipollowork:scheduled-tasks:preview", cron); },
+    onChanged(callback) {
+      const handler = (_event, payload) => callback(payload);
+      ipcRenderer.on("ipollowork:scheduled-tasks:changed", handler);
+      return () => ipcRenderer.removeListener("ipollowork:scheduled-tasks:changed", handler);
+    },
+  },
   lanPreview: {
     getState() { return ipcRenderer.invoke("ipollowork:lan-preview:get-state"); },
     setEnabled(enabled) { return ipcRenderer.invoke("ipollowork:lan-preview:set-enabled", Boolean(enabled)); },

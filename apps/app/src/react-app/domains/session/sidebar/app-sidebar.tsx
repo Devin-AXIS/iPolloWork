@@ -4,6 +4,7 @@ import {
   AlertCircle,
   Archive,
   ArchiveRestore,
+  CalendarClock,
   ChevronRight,
   FolderPlus,
   Loader2,
@@ -513,7 +514,7 @@ export type AppSidebarProps = {
     name: string | null;
     email: string | null;
   };
-  activePrimaryItem?: "template-market" | "extensions" | "ops" | "git" | null;
+  activePrimaryItem?: "template-market" | "extensions" | "ops" | "git" | "scheduled-tasks" | null;
   onOpenAccount: () => void;
   onOpenSettings: (route?: string) => void;
   onOpenHelp: () => void;
@@ -521,6 +522,7 @@ export type AppSidebarProps = {
   onOpenExtensions: () => void;
   onOpenOps: () => void;
   onOpenGit: () => void;
+  onOpenScheduledTasks: () => void;
   onSignIn: () => void;
   /** Opens the cross-session message search dialog (Cmd/Ctrl+Shift+F). */
   onOpenSessionSearch?: () => void;
@@ -747,6 +749,18 @@ export function AppSidebar(props: AppSidebarProps) {
                   <GitBranch className="size-3.5" />
                 </span>
                 <span className="flex-1 truncate">{t("git.title")}</span>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+            <SidebarMenuItem>
+              <SidebarMenuButton
+                onClick={props.onOpenScheduledTasks}
+                isActive={props.activePrimaryItem === "scheduled-tasks"}
+                className={primarySidebarActionClass}
+              >
+                <span className="flex size-4 shrink-0 items-center justify-center" aria-hidden="true">
+                  <CalendarClock className="size-3.5" />
+                </span>
+                <span className="flex-1 truncate">{t("scheduled_tasks.title")}</span>
               </SidebarMenuButton>
             </SidebarMenuItem>
           </SidebarMenu>

@@ -391,6 +391,7 @@ export default {
   "template_market.description": "浏览设计和视频任务可用的内置、已安装和本地模板。",
   "ops.title": "运维",
   "git.title": "Git",
+  "scheduled_tasks.title": "定时任务",
   "settings.tab_remote_preview": "远程预览",
   "settings.tab_description_remote_preview": "允许局域网设备查看此工作台（只读）。",
   "settings.remote_preview_alert_title": "远程预览（局域网只读）",

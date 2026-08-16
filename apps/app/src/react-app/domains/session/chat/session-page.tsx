@@ -124,6 +124,7 @@ import { SidePanel, type SidePanelLauncherItem } from "../panel/side-panel";
 import { TerminalDock } from "../terminal/terminal-dock";
 import { OpsPanel } from "../ops/ops-panel";
 import { GitPanel } from "../git/git-panel";
+import { ScheduledTasksPanel } from "../scheduled-tasks/scheduled-tasks-panel";
 import { useActivePanelTab, usePanelTabStore, useSessionPanelState } from "../panel/panel-tab-store";
 import { useWorkspaceShellLayout } from "../../../shell/workspace-shell-layout";
 import { useControlAction, type iPolloWorkControlAction } from "../../../shell/control/control-provider";
@@ -1237,7 +1238,7 @@ export function SessionPage(props: SessionPageProps) {
   const [renameGroupTarget, setRenameGroupTarget] = useState<{ workspaceId: string; groupId: string } | null>(null);
   const [removeGroupOpen, setRemoveGroupOpen] = useState(false);
   const [removeGroupTarget, setRemoveGroupTarget] = useState<{ workspaceId: string; groupId: string; label: string } | null>(null);
-  const [mainWorkspaceView, setMainWorkspaceView] = useState<"extensions" | "ops" | "git" | null>(null);
+  const [mainWorkspaceView, setMainWorkspaceView] = useState<"extensions" | "ops" | "git" | "scheduled-tasks" | null>(null);
   const preserveSidePanelOnPanelOpenRef = useRef(false);
 
   const setCurrentSidePanel = useCallback((panel: SidePanelItem | null) => {
@@ -2090,6 +2091,10 @@ export function SessionPage(props: SessionPageProps) {
     setCurrentSidePanel(null);
     setMainWorkspaceView("git");
   }, [setCurrentSidePanel]);
+  const openScheduledTasksRailPane = useCallback(() => {
+    setCurrentSidePanel(null);
+    setMainWorkspaceView("scheduled-tasks");
+  }, [setCurrentSidePanel]);
   const openVoiceRailPane = useCallback(() => {
     toggleCurrentSidePanel("voice");
   }, [toggleCurrentSidePanel]);
@@ -2315,7 +2320,7 @@ export function SessionPage(props: SessionPageProps) {
       (showWorkspaceSetupEmptyState || (props.selectedSessionId && !selectedSessionIsDefaultTitle)),
   );
   const showMainHeaderMenu = showHeaderMenu && showMainHeaderTitle;
-  const mainHeaderHidden = mainWorkspaceView === "extensions" || mainWorkspaceView === "ops" || mainWorkspaceView === "git" || (showNewConversationChrome && !sidebarVisuallyCollapsed);
+  const mainHeaderHidden = mainWorkspaceView === "extensions" || mainWorkspaceView === "ops" || mainWorkspaceView === "git" || mainWorkspaceView === "scheduled-tasks" || (showNewConversationChrome && !sidebarVisuallyCollapsed);
   const visibleWorkspaceWidth = viewportWidth - (shellConfig.sidebar && sidebarOpen ? effectiveLeftSidebarWidth : 0);
   const floatingRightPanelToggleOffset = sidePanelOpen
     ? Math.min(effectiveBrowserPanelWidth, Math.max(0, visibleWorkspaceWidth - 40)) + 8
@@ -2432,7 +2437,7 @@ export function SessionPage(props: SessionPageProps) {
             name: denAuth.user?.name ?? null,
             email: denAuth.user?.email ?? null,
           }}
-          activePrimaryItem={templateMarketOpen ? "template-market" : mainWorkspaceView === "extensions" ? "extensions" : mainWorkspaceView === "ops" ? "ops" : mainWorkspaceView === "git" ? "git" : null}
+          activePrimaryItem={templateMarketOpen ? "template-market" : mainWorkspaceView === "extensions" ? "extensions" : mainWorkspaceView === "ops" ? "ops" : mainWorkspaceView === "git" ? "git" : mainWorkspaceView === "scheduled-tasks" ? "scheduled-tasks" : null}
           onOpenAccount={openCloudAccount}
           onOpenSettings={props.onOpenSettings}
           onOpenHelp={props.onOpenHelp}
@@ -2440,6 +2445,7 @@ export function SessionPage(props: SessionPageProps) {
           onOpenExtensions={openExtensionsRailPane}
           onOpenOps={openOpsRailPane}
           onOpenGit={openGitRailPane}
+          onOpenScheduledTasks={openScheduledTasksRailPane}
           onSignIn={openCloudSignIn}
           onOpenSessionSearch={props.sidebar.onOpenSessionSearch ? handleSidebarOpenSessionSearch : undefined}
           onStartResize={startLeftSidebarResize}
@@ -2639,6 +2645,10 @@ export function SessionPage(props: SessionPageProps) {
               ) : mainWorkspaceView === "git" ? (
                 <div className="flex h-full min-h-0 flex-col bg-background">
                   <GitPanel workspaceRoot={props.selectedWorkspaceRoot} onClose={() => setMainWorkspaceView(null)} />
+                </div>
+              ) : mainWorkspaceView === "scheduled-tasks" ? (
+                <div className="flex h-full min-h-0 flex-col bg-background">
+                  <ScheduledTasksPanel workspaceRoot={props.selectedWorkspaceRoot} onClose={() => setMainWorkspaceView(null)} />
                 </div>
               ) : showStartupSkeleton ? (
                 <div className="px-6 py-14" role="status" aria-live="polite">
