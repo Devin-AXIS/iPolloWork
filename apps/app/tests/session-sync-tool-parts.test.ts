@@ -10,11 +10,20 @@ import {
   trackWorkspaceSessionSync,
   transcriptKey,
 } from "../src/react-app/domains/session/sync/session-sync";
-import { describeOpencodeSessionError } from "../src/react-app/domains/session/sync/usechat-adapter";
+import { mapOpenCodeConversationEvent } from "../src/react-app/domains/session/engine/opencode-conversation-mapper";
+
+function applyOpenCodeEvent(
+  input: { workspaceId: string; connectionKey: string },
+  event: unknown,
+) {
+  const mapped = mapOpenCodeConversationEvent(event);
+  if (mapped) __applySessionSyncEventForTest(input, mapped);
+}
+import { describeOpencodeSessionError } from "../src/react-app/domains/session/engine/opencode-message-adapter";
 import {
   parseDynamicToolUIPart,
   parseStructuredOutputUIPart,
-} from "../src/react-app/domains/session/sync/parse-tool-parts";
+} from "../src/react-app/domains/session/engine/opencode-tool-parts";
 import { videoVoiceDisplayMetadata } from "../src/react-app/domains/session/video/video-voice";
 
 afterEach(() => {
@@ -146,16 +155,16 @@ describe("tool part mapper", () => {
   });
 
   test("session sync defers empty in-progress write tools until input arrives", () => {
-    const syncInput = { workspaceId: "workspace-a", baseUrl: "http://127.0.0.1:1234", ipolloworkToken: "token" };
+    const syncInput = { workspaceId: "workspace-a", connectionKey: "test" };
     const cleanup = __createWorkspaceSessionSyncForTest(syncInput);
     const release = trackWorkspaceSessionSync(syncInput, "session-a");
 
     try {
-      __applySessionSyncEventForTest(syncInput, {
+      applyOpenCodeEvent(syncInput, {
         type: "message.updated",
         properties: { info: { id: "msg-a", role: "assistant", sessionID: "session-a" } },
       } as any);
-      __applySessionSyncEventForTest(syncInput, {
+      applyOpenCodeEvent(syncInput, {
         type: "message.part.updated",
         properties: { part: writeToolPart("pending", {}) },
       } as any);
@@ -163,7 +172,7 @@ describe("tool part mapper", () => {
       let transcript = getReactQueryClient().getQueryData<UIMessage[]>(transcriptKey("workspace-a", "session-a"));
       expect(transcript?.[0]?.parts ?? []).toEqual([]);
 
-      __applySessionSyncEventForTest(syncInput, {
+      applyOpenCodeEvent(syncInput, {
         type: "message.part.updated",
         properties: {
           part: writeToolPart("running", { content: "hello", filePath: "src/main.ts" }),
@@ -184,16 +193,16 @@ describe("tool part mapper", () => {
   });
 
   test("session sync preserves every reference tag from one synthetic part", () => {
-    const syncInput = { workspaceId: "workspace-a", baseUrl: "http://127.0.0.1:1234", ipolloworkToken: "token" };
+    const syncInput = { workspaceId: "workspace-a", connectionKey: "test" };
     const cleanup = __createWorkspaceSessionSyncForTest(syncInput);
     const release = trackWorkspaceSessionSync(syncInput, "session-a");
 
     try {
-      __applySessionSyncEventForTest(syncInput, {
+      applyOpenCodeEvent(syncInput, {
         type: "message.updated",
         properties: { info: { id: "msg-a", role: "user", sessionID: "session-a" } },
       } as any);
-      __applySessionSyncEventForTest(syncInput, {
+      applyOpenCodeEvent(syncInput, {
         type: "message.part.updated",
         properties: {
           part: {

@@ -6,9 +6,9 @@ import {
   type KeyboardEvent as ReactKeyboardEvent,
   type ReactNode,
 } from "react";
-import type { Agent } from "@opencode-ai/sdk/v2/client";
 
 import { t } from "@/i18n";
+import type { ConversationAgent } from "@/react-app/domains/session/engine/conversation-engine";
 import {
   Command,
   CommandDialog,
@@ -99,7 +99,7 @@ export type CommandPaletteProps = {
   sessions: SessionOption[];
   extraItems?: PaletteItem[];
   /** Optional: agent picker submode (Switch agent). */
-  listAgents?: () => Promise<Agent[]>;
+  listAgents?: () => Promise<ConversationAgent[]>;
   selectedAgent?: string | null;
   onSelectAgent?: (agent: string | null) => void;
 };
@@ -112,7 +112,7 @@ export type CommandPaletteProps = {
  */
 export function CommandPalette(props: CommandPaletteProps) {
   const [mode, setMode] = useState<PaletteMode>("root");
-  const [agents, setAgents] = useState<Agent[]>([]);
+  const [agents, setAgents] = useState<ConversationAgent[]>([]);
 
   useEffect(() => {
     if (!props.open) {

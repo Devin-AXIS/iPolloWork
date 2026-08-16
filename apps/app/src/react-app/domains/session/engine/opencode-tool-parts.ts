@@ -1,5 +1,5 @@
-import type { DynamicToolUIPart, TextUIPart } from "ai";
 import type { ToolPart } from "@opencode-ai/sdk/v2/client";
+import type { DynamicToolUIPart, TextUIPart } from "ai";
 
 import { safeStringify } from "@/app/utils";
 
@@ -28,7 +28,7 @@ export function parseStructuredOutputUIPart(part: ToolPart): TextUIPart | null {
     type: "text",
     text,
     state: part.state.status === "completed" ? "done" : "streaming",
-    providerMetadata: { opencode: { partId: `structured-output-${part.callID}`, toolPartId: part.id } },
+    providerMetadata: { ipollowork: { partId: `structured-output-${part.callID}`, toolPartId: part.id } },
   };
 }
 
@@ -45,7 +45,7 @@ export function parseDynamicToolUIPart(part: ToolPart): DynamicToolUIPart | null
       state: "output-error",
       input: part.state.input,
       errorText: part.state.error,
-      callProviderMetadata: { opencode: { partId: part.id } },
+      callProviderMetadata: { ipollowork: { partId: part.id } },
     };
   }
 
@@ -57,7 +57,7 @@ export function parseDynamicToolUIPart(part: ToolPart): DynamicToolUIPart | null
       state: "output-available",
       input: part.state.input,
       output: part.state.output,
-      callProviderMetadata: { opencode: { partId: part.id } },
+      callProviderMetadata: { ipollowork: { partId: part.id } },
     };
   }
 
@@ -73,6 +73,6 @@ export function parseDynamicToolUIPart(part: ToolPart): DynamicToolUIPart | null
     toolCallId: part.callID,
     state: "input-streaming",
     input: part.state.input,
-    callProviderMetadata: { opencode: { partId: part.id } },
+    callProviderMetadata: { ipollowork: { partId: part.id } },
   };
 }

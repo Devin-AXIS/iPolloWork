@@ -13,7 +13,7 @@ import {
   parseDynamicToolUIPart,
   parseStructuredOutputUIPart,
   STRUCTURED_OUTPUT_TOOL,
-} from "./parse-tool-parts";
+} from "./opencode-tool-parts";
 
 function recordValue(value: unknown, key: string) {
   if (!value || typeof value !== "object") return undefined;
@@ -107,21 +107,21 @@ export function createSessionErrorUIMessage(turnKey: string, text: string, optio
   return {
     id,
     role: "assistant",
-    ...(typeof created === "number" ? { metadata: { opencode: { created } } } : {}),
+    ...(typeof created === "number" ? { metadata: { ipollowork: { created } } } : {}),
     parts: [{
       type: "text",
       text,
       state: "done",
-      providerMetadata: { opencode: { partId: `${id}:text` } },
+      providerMetadata: { ipollowork: { partId: `${id}:text` } },
     }],
   };
 }
 
 function fileProviderMetadata(part: FilePart) {
   if (part.source) {
-    return { opencode: { partId: part.id, source: part.source } };
+    return { ipollowork: { partId: part.id, source: part.source } };
   }
-  return { opencode: { partId: part.id } };
+  return { ipollowork: { partId: part.id } };
 }
 
 function getTextPartValue(part: Part) {
@@ -149,7 +149,7 @@ function mapFileSourcePart(part: FilePart): UIMessage["parts"][number] | null {
   if (!source) return null;
 
   const sourceId = `${part.id}:source`;
-  const providerMetadata = { opencode: { partId: sourceId, sourcePartId: part.id, source } };
+  const providerMetadata = { ipollowork: { partId: sourceId, sourcePartId: part.id, source } };
 
   if (source.type === "resource") {
     if (source.uri.startsWith("http://")) {
@@ -172,6 +172,72 @@ function mapFileParts(part: FilePart): UIMessage["parts"] {
   const sourcePart = mapFileSourcePart(part);
   if (sourcePart) return [mapFilePart(part), sourcePart];
   return [mapFilePart(part)];
+}
+
+export function opencodePartHasVisibleAssistantOutput(part: Part) {
+  if (part.type === "text" && part.synthetic) return false;
+  if (part.type === "text" && part.ignored) return false;
+  const partType = String(part.type);
+  if ("text" in part && typeof part.text === "string" && part.text.trim().length > 0) return true;
+  return partType === "tool" || partType === "file" || partType === "agent";
+}
+
+export function mapOpencodePartToUIParts(part: Part): UIMessage["parts"] {
+  if (part.type === "text") {
+    if (part.synthetic) {
+      const metadataParts: UIMessage["parts"] = [];
+      const selection = parseDesignAiSelectionDisplayMetadata(part.text);
+      if (selection) metadataParts.push({
+        type: "data-design-selection" as const,
+        data: { ...selection, partId: `${part.id}:design-selection` },
+      });
+      const animations = parseHyperframesAnimationDisplayMetadata(part.text);
+      if (animations) metadataParts.push({
+        type: "data-animation-references" as const,
+        data: { items: animations, partId: `${part.id}:animation-references` },
+      });
+      const voice = parseVideoVoiceDisplayMetadata(part.text);
+      if (voice) metadataParts.push({
+        type: "data-voice-reference" as const,
+        data: { ...voice, partId: `${part.id}:voice-reference` },
+      });
+      const illustration = parseVideoIllustrationDisplayMetadata(part.text);
+      if (illustration) metadataParts.push({
+        type: "data-illustration-reference" as const,
+        data: { ...illustration, partId: `${part.id}:illustration-reference` },
+      });
+      return metadataParts;
+    }
+    if (part.ignored) return [];
+    return [{
+      type: "text",
+      text: getTextPartValue(part),
+      state: "done",
+      providerMetadata: { ipollowork: { partId: part.id } },
+    }];
+  }
+  if (part.type === "reasoning") {
+    return [{
+      type: "reasoning",
+      text: getTextPartValue(part),
+      state: "done",
+      providerMetadata: { ipollowork: { partId: part.id } },
+    }];
+  }
+  if (part.type === "file") return mapFileParts(part);
+  if (part.type === "tool") return mapSnapshotToolParts(part);
+  if (part.type === "agent") {
+    return [{
+      type: "text",
+      text: part.name ? `@${part.name}` : "@agent",
+      state: "done",
+      providerMetadata: { ipollowork: { partId: part.id } },
+    }];
+  }
+  if (part.type === "step-start") {
+    return [{ type: "step-start" }];
+  }
+  return [];
 }
 
 function mapSnapshotToolParts(part: ToolPart): UIMessage["parts"] {
@@ -200,72 +266,12 @@ export function snapshotToUIMessages(snapshot: iPolloWorkSessionSnapshot): UIMes
       id: message.info.id,
       role: message.info.role,
       ...(typeof created === "number" || typeof completed === "number"
-        ? { metadata: { opencode: {
+        ? { metadata: { ipollowork: {
             ...(typeof created === "number" ? { created } : {}),
             ...(typeof completed === "number" ? { completed } : {}),
           } } }
         : {}),
-      parts: message.parts.flatMap<UIMessage["parts"][number]>((part) => {
-        if (part.type === "text") {
-          if (part.synthetic) {
-            const metadataParts: UIMessage["parts"] = [];
-            const selection = parseDesignAiSelectionDisplayMetadata(part.text);
-            if (selection) metadataParts.push({
-              type: "data-design-selection" as const,
-              data: { ...selection, partId: `${part.id}:design-selection` },
-            });
-            const animations = parseHyperframesAnimationDisplayMetadata(part.text);
-            if (animations) metadataParts.push({
-              type: "data-animation-references" as const,
-              data: { items: animations, partId: `${part.id}:animation-references` },
-            });
-            const voice = parseVideoVoiceDisplayMetadata(part.text);
-            if (voice) metadataParts.push({
-              type: "data-voice-reference" as const,
-              data: { ...voice, partId: `${part.id}:voice-reference` },
-            });
-            const illustration = parseVideoIllustrationDisplayMetadata(part.text);
-            if (illustration) metadataParts.push({
-              type: "data-illustration-reference" as const,
-              data: { ...illustration, partId: `${part.id}:illustration-reference` },
-            });
-            return metadataParts;
-          }
-          if (part.ignored) return [];
-          return [{
-            type: "text",
-            text: getTextPartValue(part),
-            state: "done" as const,
-            providerMetadata: { opencode: { partId: part.id } },
-          }];
-        }
-        if (part.type === "reasoning") {
-          return [{
-            type: "reasoning",
-            text: getTextPartValue(part),
-            state: "done" as const,
-            providerMetadata: { opencode: { partId: part.id } },
-          }];
-        }
-        if (part.type === "file") {
-          return mapFileParts(part);
-        }
-        if (part.type === "tool") {
-          return mapSnapshotToolParts(part);
-        }
-        if (part.type === "agent") {
-          return [{
-            type: "text",
-            text: part.name ? `@${part.name}` : "@agent",
-            state: "done",
-            providerMetadata: { opencode: { partId: part.id } },
-          }];
-        }
-        if (part.type === "step-start") {
-          return [{ type: "step-start", providerMetadata: { opencode: { partId: part.id } } }];
-        }
-        return [];
-      }),
+      parts: message.parts.flatMap(mapOpencodePartToUIParts),
     };
 
     // Surface a failed turn as its own synthetic error message keyed by the

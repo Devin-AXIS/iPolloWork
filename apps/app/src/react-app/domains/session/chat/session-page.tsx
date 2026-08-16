@@ -26,13 +26,12 @@ import type { BootPhase } from "../../../../app/lib/startup-boot";
 import { openDesktopPath, pickDirectory, revealDesktopItemInDir, saveFile, type WorkspaceInfo } from "../../../../app/lib/desktop";
 import type {
   ComposerDraft,
-  PendingPermission,
-  PendingQuestion,
   ProviderListItem,
   TodoItem,
   WorkspaceConnectionState,
   ProjectSessionList,
 } from "../../../../app/types";
+import type { ConversationPermission, ConversationQuestion } from "../engine/conversation-engine";
 import { ConversationOutputPanel, ConversationOutputTrigger } from "@/components/chat/artifact";
 import { buildSessionMarkdown, sessionMarkdownFilename } from "@/components/chat/utils";
 import {
@@ -243,11 +242,11 @@ export type SessionPageProps = {
   todos: TodoItem[];
   sessionLoadingById: (sessionId: string | null) => boolean;
   providerAuthModal?: ProviderAuthModalProps | null;
-  activePermission?: PendingPermission | null;
+  activePermission?: ConversationPermission | null;
   permissionReplyBusy?: boolean;
   respondPermission?: (requestID: string, reply: "once" | "always" | "reject") => void;
   safeStringify?: (value: unknown) => string;
-  activeQuestion?: PendingQuestion | null;
+  activeQuestion?: ConversationQuestion | null;
   questionReplyBusy?: boolean;
   respondQuestion?: (requestID: string, answers: string[][]) => void;
   notFoundMessage?: string | null;

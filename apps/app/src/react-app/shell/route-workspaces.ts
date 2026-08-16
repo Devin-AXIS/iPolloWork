@@ -3,8 +3,6 @@
 // settings-route was missing the remote-workspace clobber fix in
 // mergeRouteWorkspaces and used older session-status logic. One copy now.
 
-import type { Session } from "@opencode-ai/sdk/v2/client";
-
 import type { iPolloWorkWorkspaceInfo } from "@/app/lib/ipollowork-server";
 import type { WorkspaceInfo } from "@/app/lib/desktop-types";
 import type { ProjectSessionList } from "@/app/types";
@@ -19,6 +17,7 @@ import {
   isGeneratedSessionTitle,
 } from "@/app/lib/session-title";
 import { t } from "@/i18n";
+import type { ConversationSession } from "@/react-app/domains/session/engine/conversation-engine";
 
 export type RouteWorkspace = iPolloWorkWorkspaceInfo & {
   displayNameResolved: string;
@@ -29,7 +28,7 @@ export type RouteWorkspace = iPolloWorkWorkspaceInfo & {
  * ipollowork-server's listSessions, optionally enriched with run-status
  * fields that the sidebar probes defensively via getSessionStatus.
  */
-export type RouteSession = Session & {
+export type RouteSession = ConversationSession & {
   agent?: string;
   status?: unknown;
   state?: unknown;
