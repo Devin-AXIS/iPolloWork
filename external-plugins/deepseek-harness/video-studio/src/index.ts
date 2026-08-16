@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import { readFile, realpath, writeFile } from "node:fs/promises";
+import { readFile, writeFile } from "node:fs/promises";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -72,23 +72,12 @@ function bundledTemplates(runtime: Runtime) {
   return runtime.templatesPromise;
 }
 
-async function readInstalledManifest(projectPath: string) {
-  const source = await readFile(resolve(projectPath, "manifest.json"), "utf8").catch(() => null);
-  if (!source) return null;
-  const parsed = templateManifestV1Schema.safeParse(JSON.parse(source));
-  return parsed.success && allowsVideoTemplate(parsed.data) ? parsed.data : null;
-}
-
 async function session(runtime: Runtime, root: string, rawSessionId: string, viewId?: string) {
-  const active = await runtime.manager.start({
+  return runtime.manager.start({
     workspaceRoot: root,
     sessionId: sessionId(rawSessionId),
     viewId,
   });
-  return {
-    ...active,
-    templateId: (await readInstalledManifest(active.projectPath))?.id ?? null,
-  };
 }
 
 async function applyTemplate(input: {
@@ -125,7 +114,7 @@ async function applyTemplate(input: {
           return input.runtime.manager.start({ workspaceRoot: input.workspaceRoot, sessionId: id, viewId: input.viewId });
         },
       });
-      return { ...active, templateId: template.manifest.id };
+      return active;
     } catch (error) {
       await input.runtime.manager.start({ workspaceRoot: input.workspaceRoot, sessionId: id, viewId: input.viewId }).catch(() => undefined);
       throw error;

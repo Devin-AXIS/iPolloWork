@@ -1,37 +1,16 @@
 import type { TemplateCatalogItem } from "@ipollowork/types/templates";
 
-export type VideoStudioFileContent = {
-  path: string;
-  content: string;
-  bytes: number;
-  updatedAt: number;
-};
-
-export type VideoStudioFileWriteResult = {
-  ok: boolean;
-  path: string;
-  bytes: number;
-  updatedAt: number;
-  revision?: string;
-};
-
 export type VideoStudioTemplateApplyResult = {
-  projectId: string;
-  projectDirectory: string;
   port: number;
-  studioUrl: string;
-  hyperframesVersion: string;
-  reused: boolean;
-  templateId?: string | null;
 };
 
 /** Stable host surface consumed by the shared iPolloWork Video Studio UI. */
 export interface VideoStudioClient {
-  readWorkspaceFile(workspaceId: string, path: string): Promise<VideoStudioFileContent>;
+  readWorkspaceFile(workspaceId: string, path: string): Promise<{ content: string; updatedAt: number }>;
   writeWorkspaceFile(
     workspaceId: string,
     payload: { path: string; content: string; baseUpdatedAt?: number | null; force?: boolean },
-  ): Promise<VideoStudioFileWriteResult>;
+  ): Promise<unknown>;
   listVideoStudioTemplates?(workspaceId: string): Promise<TemplateCatalogItem[]>;
   getVideoStudioTemplateCover?(
     workspaceId: string,

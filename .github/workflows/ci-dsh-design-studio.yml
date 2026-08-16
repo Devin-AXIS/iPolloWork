@@ -60,6 +60,7 @@ jobs:
           cache: pnpm
 
       - name: Setup Bun
+        if: matrix.package == 'video-studio'
         uses: oven-sh/setup-bun@v2
         with:
           bun-version: latest
@@ -109,6 +110,7 @@ jobs:
           cache: pnpm
 
       - name: Setup Bun
+        if: startsWith(github.ref, 'refs/tags/deepseek-ivideo-v')
         uses: oven-sh/setup-bun@v2
         with:
           bun-version: latest

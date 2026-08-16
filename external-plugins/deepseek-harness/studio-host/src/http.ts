@@ -150,6 +150,7 @@ export async function writeStudioText(input: {
   maxBytes: number;
   baseUpdatedAt?: number | null;
   force?: boolean;
+  conflictMessage?: string;
 }) {
   if (Buffer.byteLength(input.content) > input.maxBytes) throw new StudioHttpError(413, `${input.studioTitle} file is too large.`);
   const path = await verifiedWritePath(input.root, input.requested, input.prefix, input.studioTitle);
@@ -158,7 +159,7 @@ export async function writeStudioText(input: {
     throw error;
   });
   if (!input.force && input.baseUpdatedAt != null && current && Math.abs(current.mtimeMs - input.baseUpdatedAt) > 0.5) {
-    throw new StudioHttpError(409, `${input.studioTitle} changed since it was loaded. Reload before saving.`);
+    throw new StudioHttpError(409, input.conflictMessage ?? `${input.studioTitle} changed since it was loaded. Reload before saving.`);
   }
   const temporary = resolve(dirname(path), `.${basename(path)}.${randomUUID()}.tmp`);
   try {

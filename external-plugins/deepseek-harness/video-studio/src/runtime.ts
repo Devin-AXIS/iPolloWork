@@ -8,7 +8,6 @@ import { fileURLToPath } from "node:url";
 import {
   HYPERFRAMES_VERSION,
   hyperframesStudioPort,
-  hyperframesStudioUrl,
   videoProjectDirectory,
   videoProjectId,
 } from "../../../../packages/video-studio/src/project";
@@ -51,12 +50,9 @@ type ManagedPreview = {
 };
 
 export type VideoStudioRuntimeSession = {
-  projectId: string;
   projectDirectory: string;
   projectPath: string;
   port: number;
-  studioUrl: string;
-  hyperframesVersion: typeof HYPERFRAMES_VERSION;
   reused: boolean;
 };
 
@@ -394,12 +390,9 @@ export class VideoRuntimeManager {
 
   private session(identity: ProjectIdentity, port: number, reused: boolean): VideoStudioRuntimeSession {
     return {
-      projectId: identity.projectId,
       projectDirectory: identity.projectDirectory,
       projectPath: identity.projectPath,
       port,
-      studioUrl: hyperframesStudioUrl(port, identity.projectId),
-      hyperframesVersion: HYPERFRAMES_VERSION,
       reused,
     };
   }

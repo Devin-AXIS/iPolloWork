@@ -49,24 +49,24 @@ export function createDeepSeekVideoStudioHost(scope: {
   sessionId: string;
   viewId: string;
 }): { client: VideoStudioClient; runtime: VideoStudioRuntime } {
-  const session = () => api<VideoStudioTemplateApplyResult>(`/session${query(scope)}`);
+  const session = () => api<VideoStudioTemplateApplyResult & { reused: boolean }>(`/session${query(scope)}`);
   const client: VideoStudioClient = {
-    readWorkspaceFile: (workspaceId, path) => api(`/file${query({ workspaceId, sessionId: scope.sessionId, path })}`),
-    writeWorkspaceFile: (workspaceId, payload) => api("/file", {
+    readWorkspaceFile: (_workspaceId, path) => api(`/file${query({ workspaceId: scope.workspaceId, sessionId: scope.sessionId, path })}`),
+    writeWorkspaceFile: (_workspaceId, payload) => api("/file", {
       method: "POST",
-      body: JSON.stringify({ workspaceId, sessionId: scope.sessionId, ...payload }),
+      body: JSON.stringify({ workspaceId: scope.workspaceId, sessionId: scope.sessionId, ...payload }),
     }),
-    listVideoStudioTemplates: (workspaceId) => api(`/templates${query({ workspaceId })}`),
-    getVideoStudioTemplateCover: async (workspaceId, templateId) => {
-      const response = await fetch(`${API_ROOT}/template-cover${query({ workspaceId, templateId })}`, {
+    listVideoStudioTemplates: () => api(`/templates${query({ workspaceId: scope.workspaceId })}`),
+    getVideoStudioTemplateCover: async (_workspaceId, templateId) => {
+      const response = await fetch(`${API_ROOT}/template-cover${query({ workspaceId: scope.workspaceId, templateId })}`, {
         headers: { "x-ipollowork-video-token": token() },
       });
       if (!response.ok) throw new Error(`Could not load the iVideo template cover (${response.status}).`);
       return { data: await response.arrayBuffer(), contentType: response.headers.get("content-type") };
     },
-    applyVideoStudioTemplate: (workspaceId, sessionId, templateId) => api("/template", {
+    applyVideoStudioTemplate: (_workspaceId, _sessionId, templateId) => api("/template", {
       method: "POST",
-      body: JSON.stringify({ workspaceId, sessionId, viewId: scope.viewId, templateId }),
+      body: JSON.stringify({ ...scope, templateId }),
     }),
   };
   const runtime: VideoStudioRuntime = {

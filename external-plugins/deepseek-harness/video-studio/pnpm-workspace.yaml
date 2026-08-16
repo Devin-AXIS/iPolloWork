@@ -1,17 +1,12 @@
 minimumReleaseAge: 4320
 minimumReleaseAgeExclude:
   - "@deepseek-ai/*"
-  - "hyperframes"
 
 packages:
   - "."
 
 allowBuilds:
-  # @google/genai only declares a no-op preinstall hook.
-  '@google/genai': false
   esbuild: true
   # HyperFrames may load the bundled ONNX runtime for media analysis.
   onnxruntime-node: true
-  # protobufjs uses postinstall only for dependency version diagnostics.
-  protobufjs: false
   sharp: true
