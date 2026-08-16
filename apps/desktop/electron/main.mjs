@@ -119,10 +119,12 @@ const uiControlServer = createUiControlServer({
   getWindow: () => createMainWindow(),
 });
 
+const previewCore = createPreviewCore({ getWindow: () => createMainWindow() });
+
 const lanPreviewServer = createLanPreviewServer({
   appName: APP_NAME,
   getWindow: () => createMainWindow(),
-  previewCore: createPreviewCore({ getWindow: () => createMainWindow() }),
+  previewCore,
   pageHtmlPath: lanPreviewPagePath(path.resolve(__dirname, "..")),
 });
 
