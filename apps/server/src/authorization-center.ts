@@ -4,6 +4,7 @@ import { createAliyunOssV4Request, createS3V4Request } from "./object-storage-si
 export const AUTHORIZATION_SERVICE_IDS = [
   "openai-images",
   "aliyun-bailian",
+  "minimax-media",
   "volcengine-video",
   "aliyun-oss",
   "wasabi",
@@ -62,6 +63,17 @@ const AUTHORIZATION_SERVICES: readonly AuthorizationServiceDefinition[] = [
       useWhen: "Use when the user asks for speech, voice cloning, transcription, translation, video generation, video editing, or a digital human.",
       instruction:
         "Use the iPolloWork media extension actions from trusted runtime code. They keep DASHSCOPE_API_KEY on this device and provide the supported media operations without modifying OpenCode.",
+    },
+  },
+  {
+    id: "minimax-media",
+    keys: ["MINIMAX_API_KEY"],
+    category: "media",
+    agent: {
+      capability: "MiniMax speech TTS",
+      useWhen: "Use when the user asks to synthesize speech or create narration audio with a MiniMax account.",
+      instruction:
+        "Use the iPolloWork media extension speech_synthesize action from trusted runtime code. It keeps MINIMAX_API_KEY on this device and calls the MiniMax Text to Audio v2 endpoint without modifying OpenCode.",
     },
   },
   {
@@ -218,6 +230,8 @@ export async function testAuthorizationService(
       return fetchAuthorizationTest("https://dashscope.aliyuncs.com/compatible-mode/v1/models", {
         headers: { Authorization: `Bearer ${resolved.values.DASHSCOPE_API_KEY}` },
       });
+    case "minimax-media":
+      return { ok: true, detail: "MiniMax API key saved. Speech synthesis verifies it when used." };
     case "volcengine-video":
       return fetchAuthorizationTest(
         "https://ark.cn-beijing.volces.com/api/v3/contents/generations/tasks?page_num=1&page_size=1",

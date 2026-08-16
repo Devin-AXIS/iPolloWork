@@ -30,6 +30,29 @@ const LEGACY_COSYVOICE_V3_PRESET_MIGRATIONS: Record<string, string> = {
   longfei: "longanlang_v3",
 };
 
+// MiniMax speech TTS (Text to Audio v2) uses one regional endpoint per
+// marketplace. The global endpoint serves MiniMax international accounts and
+// the China endpoint serves accounts provisioned on the MiniMax China platform.
+const MINIMAX_SPEECH_ENDPOINTS: Record<string, string> = {
+  global_en: "https://api.minimax.io",
+  cn_zh: "https://api.minimaxi.com",
+};
+const DEFAULT_MINIMAX_SPEECH_REGION = "global_en";
+const DEFAULT_MINIMAX_SPEECH_MODEL = "speech-2.8-hd";
+const MINIMAX_T2A_PATH = "/v1/t2a_v2";
+const MINIMAX_SPEECH_MODELS = [
+  "speech-2.8-hd",
+  "speech-2.8-turbo",
+  "speech-2.6-hd",
+  "speech-2.6-turbo",
+  "speech-02-hd",
+  "speech-02-turbo",
+  "speech-01-hd",
+  "speech-01-turbo",
+];
+const MINIMAX_SPEECH_AUDIO_FORMATS = ["mp3", "wav", "flac", "pcm"];
+const MINIMAX_OUTPUT_FORMATS = ["hex", "url"];
+
 type JsonRecord = Record<string, unknown>;
 
 const voiceoverAudioCache = new Map<string, Buffer>();
@@ -696,15 +719,24 @@ export const MEDIA_EXTENSION_ACTIONS = [
     extensionId: MEDIA_EXTENSION_ID,
     action: "speech_synthesize",
     title: "Synthesize speech",
-    description: "Built-in iPolloWork CosyVoice action. Create speech without installing or authenticating an external CLI; the result contains a temporary audio URL from Model Studio.",
+    description: "Built-in iPolloWork speech synthesis action. Create speech with the configured media provider without installing or authenticating an external CLI; the result contains provider-specific audio data.",
     inputSchema: {
       type: "object",
       properties: {
+        provider: { type: "string", enum: ["aliyun-bailian", "minimax"], description: "Optional media provider. Defaults to aliyun-bailian." },
         text: { type: "string", description: "Text to synthesize." },
-        voice: { type: "string", description: "Optional Model Studio voice name or cloned voice id." },
-        model: { type: "string", description: "Optional speech model. Defaults to cosyvoice-v3-flash." },
-        format: { type: "string", description: "Optional audio format, for example wav or mp3." },
+        voice: { type: "string", description: "Optional provider voice name, cloned voice id, or MiniMax voice_id." },
+        model: { type: "string", description: `Optional speech model. Defaults to cosyvoice-v3-flash for Alibaba and speech-2.8-hd for MiniMax. MiniMax models: ${MINIMAX_SPEECH_MODELS.join(", ")}.` },
+        format: { type: "string", description: `Optional encoded audio format. MiniMax supports ${MINIMAX_SPEECH_AUDIO_FORMATS.join(", ")}.` },
         sampleRate: { type: "number", description: "Optional output sample rate in Hz." },
+        region: { type: "string", enum: ["global_en", "cn_zh"], description: "Optional MiniMax regional endpoint. Defaults to global_en." },
+        outputFormat: { type: "string", enum: ["hex", "url"], description: "Optional MiniMax response representation. Defaults to hex." },
+        languageBoost: { type: "string", description: "Optional MiniMax language_boost value, for example auto or English." },
+        voiceSetting: { type: "object", description: "Optional MiniMax voice_setting overrides, including voice_id, speed, vol, pitch, or emotion." },
+        audioSetting: { type: "object", description: "Optional MiniMax audio_setting overrides, for example sample_rate, bitrate, format, or channel." },
+        pronunciationDict: { type: "object", description: "Optional MiniMax pronunciation_dict custom pronunciation overrides." },
+        voiceModify: { type: "object", description: "Optional MiniMax voice_modify effect settings." },
+        subtitleEnable: { type: "boolean", description: "Optional MiniMax subtitle_enable flag." },
       },
       required: ["text"],
       additionalProperties: false,
@@ -1365,6 +1397,114 @@ async function resolveBailianCredentials(env: EnvService): Promise<{ apiKey: str
   return { apiKey, baseUrl: safeProviderBaseUrl(configuredBaseUrl) };
 }
 
+function minimaxErrorMessage(payload: unknown): string {
+  if (!isRecord(payload)) return "";
+  const baseResp = isRecord(payload.base_resp) ? payload.base_resp : null;
+  return readStringField(baseResp, "status_msg") || providerMessage(payload) || "";
+}
+
+async function resolveMiniMaxCredentials(
+  env: EnvService,
+  region = DEFAULT_MINIMAX_SPEECH_REGION,
+): Promise<{ apiKey: string; baseUrl: string }> {
+  const records = await env.list();
+  const values = new Map(records.map((item) => [item.key, item.value.trim()] as const));
+  const apiKey = values.get("MINIMAX_API_KEY") || process.env.MINIMAX_API_KEY?.trim() || "";
+  if (!apiKey) {
+    throw new ApiError(400, "minimax_api_key_missing", "MiniMax API key missing. Configure MiniMax media in Authorization Center.");
+  }
+  const defaultBaseUrl = MINIMAX_SPEECH_ENDPOINTS[region];
+  if (!defaultBaseUrl) {
+    throw new ApiError(400, "invalid_minimax_region", `MiniMax region must be one of: ${Object.keys(MINIMAX_SPEECH_ENDPOINTS).join(", ")}`);
+  }
+  return { apiKey, baseUrl: defaultBaseUrl };
+}
+
+async function requestMiniMaxTextToSpeech(input: {
+  apiKey: string;
+  baseUrl: string;
+  model: string;
+  text: string;
+  voice?: string;
+  format?: string;
+  outputFormat?: string;
+  languageBoost?: string;
+  voiceSetting?: JsonRecord;
+  audioSetting?: JsonRecord;
+  pronunciationDict?: JsonRecord;
+  voiceModify?: JsonRecord;
+  subtitleEnable?: boolean;
+}): Promise<unknown> {
+  if (!MINIMAX_SPEECH_MODELS.includes(input.model)) {
+    throw new ApiError(400, "invalid_minimax_model", `MiniMax speech model must be one of: ${MINIMAX_SPEECH_MODELS.join(", ")}`);
+  }
+  if (input.format && !MINIMAX_SPEECH_AUDIO_FORMATS.includes(input.format)) {
+    throw new ApiError(400, "invalid_minimax_audio_format", `MiniMax audio format must be one of: ${MINIMAX_SPEECH_AUDIO_FORMATS.join(", ")}`);
+  }
+  const outputFormat = input.outputFormat || "hex";
+  if (!MINIMAX_OUTPUT_FORMATS.includes(outputFormat)) {
+    throw new ApiError(400, "invalid_minimax_output_format", `MiniMax output format must be one of: ${MINIMAX_OUTPUT_FORMATS.join(", ")}`);
+  }
+  const voiceSetting = {
+    ...(input.voiceSetting || {}),
+    ...(input.voice ? { voice_id: input.voice } : {}),
+  };
+  const audioSetting = {
+    ...(input.audioSetting || {}),
+    ...(input.format ? { format: input.format } : {}),
+  };
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), BAILIAN_REQUEST_TIMEOUT_MS);
+  let response: Response;
+  try {
+    response = await mediaProviderFetch(endpoint(input.baseUrl, MINIMAX_T2A_PATH), {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${input.apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: input.model,
+        text: input.text,
+        stream: false,
+        output_format: outputFormat,
+        ...(input.languageBoost ? { language_boost: input.languageBoost } : {}),
+        ...(Object.keys(voiceSetting).length ? { voice_setting: voiceSetting } : {}),
+        ...(Object.keys(audioSetting).length ? { audio_setting: audioSetting } : {}),
+        ...(input.pronunciationDict && Object.keys(input.pronunciationDict).length ? { pronunciation_dict: input.pronunciationDict } : {}),
+        ...(input.voiceModify && Object.keys(input.voiceModify).length ? { voice_modify: input.voiceModify } : {}),
+        ...(input.subtitleEnable === undefined ? {} : { subtitle_enable: input.subtitleEnable }),
+      }),
+      signal: controller.signal,
+    });
+  } catch (error) {
+    if (error instanceof Error && error.name === "AbortError") {
+      throw new ApiError(504, "minimax_timeout", "MiniMax TTS did not respond before the request timed out.");
+    }
+    throw new ApiError(502, "minimax_unreachable", "Could not reach MiniMax. Check the network and try again.");
+  } finally {
+    clearTimeout(timeout);
+  }
+
+  const payload: unknown = await response.json().catch(() => null);
+  const baseResp = isRecord(payload) && isRecord(payload.base_resp) ? payload.base_resp : null;
+  const statusCode = readOptionalNumber(baseResp, "status_code");
+  if (!response.ok) {
+    throw new ApiError(response.status, "minimax_request_failed", minimaxErrorMessage(payload) || `MiniMax TTS request failed (HTTP ${response.status}).`);
+  }
+  if (statusCode === undefined) {
+    throw new ApiError(502, "minimax_response_invalid", "MiniMax TTS did not return base_resp.status_code.");
+  }
+  if (statusCode !== 0) {
+    throw new ApiError(502, "minimax_request_failed", minimaxErrorMessage(payload) || `MiniMax TTS request failed (status_code ${statusCode}).`);
+  }
+  const data = isRecord(payload) ? readRecord(payload, "data") : {};
+  if (!readStringField(data, "audio")) {
+    throw new ApiError(502, "minimax_response_invalid", "MiniMax TTS did not return audio data.");
+  }
+  return payload;
+}
+
 function endpoint(baseUrl: string, path: string): string {
   return `${baseUrl}${path}`;
 }
@@ -1672,11 +1812,40 @@ export async function callMediaExtensionAction(
     };
   }
 
-  const { apiKey, baseUrl } = await resolveBailianCredentials(env);
+  const provider = readStringField(args, "provider") || "aliyun-bailian";
+  let apiKey: string;
+  let baseUrl: string;
+  if (provider === "minimax") {
+    ({ apiKey, baseUrl } = await resolveMiniMaxCredentials(env, readStringField(args, "region") || DEFAULT_MINIMAX_SPEECH_REGION));
+  } else {
+    ({ apiKey, baseUrl } = await resolveBailianCredentials(env));
+  }
   let result: unknown;
   switch (action) {
     case "speech_synthesize": {
       const text = requireString(args, "text");
+      if (provider === "minimax") {
+        const sampleRate = readOptionalNumber(args, "sampleRate");
+        result = await requestMiniMaxTextToSpeech({
+          apiKey,
+          baseUrl,
+          text,
+          model: readStringField(args, "model") || DEFAULT_MINIMAX_SPEECH_MODEL,
+          voice: readStringField(args, "voice"),
+          format: readStringField(args, "format"),
+          outputFormat: readStringField(args, "outputFormat"),
+          languageBoost: readStringField(args, "languageBoost"),
+          voiceSetting: readRecord(args, "voiceSetting"),
+          audioSetting: {
+            ...(sampleRate === undefined ? {} : { sample_rate: sampleRate }),
+            ...readRecord(args, "audioSetting"),
+          },
+          pronunciationDict: readRecord(args, "pronunciationDict"),
+          voiceModify: readRecord(args, "voiceModify"),
+          subtitleEnable: readOptionalBoolean(args, "subtitleEnable"),
+        });
+        break;
+      }
       const model = readStringField(args, "model") || COSYVOICE_V3_FLASH;
       const voice = readStringField(args, "voice");
       const input: JsonRecord = {
@@ -2023,7 +2192,7 @@ export async function callMediaExtensionAction(
     extensionId: MEDIA_EXTENSION_ID,
     action,
     result: {
-      provider: "aliyun-bailian",
+      provider,
       operation: action,
       ...(isRecord(result) && typeof result.taskId === "string" ? { taskId: result.taskId } : {}),
       output: result,
