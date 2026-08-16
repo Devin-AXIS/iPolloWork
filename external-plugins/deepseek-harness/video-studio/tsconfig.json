@@ -8,7 +8,6 @@
     "paths": {
       "@deepseek-ai/*": ["node_modules/@deepseek-ai/*"],
       "@ipollowork/types/hyperframes-project": ["../../../packages/types/src/hyperframes-project.ts"],
-      "tsdown": ["node_modules/tsdown"],
       "zod": ["node_modules/zod"]
     },
     "strict": true,

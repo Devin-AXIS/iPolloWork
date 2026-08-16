@@ -1,7 +1,8 @@
 import { createReadStream } from "node:fs";
-import { lstat, mkdir, readFile, realpath, stat } from "node:fs/promises";
+import { lstat, mkdir, readFile, realpath, rename, stat, unlink, writeFile } from "node:fs/promises";
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { basename, extname, isAbsolute, relative, resolve, sep } from "node:path";
+import { basename, dirname, extname, isAbsolute, relative, resolve, sep } from "node:path";
+import { randomUUID } from "node:crypto";
 import type { Context } from "@deepseek-ai/cordis";
 import type {} from "@deepseek-ai/dsh-workspace";
 import type { WorkspaceId } from "@deepseek-ai/dsh-workspace";
@@ -124,6 +125,51 @@ export async function verifiedWritePath(
     }
   }
   return resolve(canonicalParent, basename(target));
+}
+
+export async function readStudioText(input: {
+  root: string;
+  requested: string;
+  prefix: string;
+  studioTitle: string;
+  maxBytes: number;
+}) {
+  const path = await verifiedExistingPath(input.root, input.requested, input.prefix, input.studioTitle);
+  const info = await stat(path);
+  if (!info.isFile()) throw new StudioHttpError(400, `${input.studioTitle} path is not a file.`);
+  if (info.size > input.maxBytes) throw new StudioHttpError(413, `${input.studioTitle} file is too large.`);
+  return { path: input.requested, content: await readFile(path, "utf8"), bytes: info.size, updatedAt: info.mtimeMs };
+}
+
+export async function writeStudioText(input: {
+  root: string;
+  requested: string;
+  prefix: string;
+  studioTitle: string;
+  content: string;
+  maxBytes: number;
+  baseUpdatedAt?: number | null;
+  force?: boolean;
+  conflictMessage?: string;
+}) {
+  if (Buffer.byteLength(input.content) > input.maxBytes) throw new StudioHttpError(413, `${input.studioTitle} file is too large.`);
+  const path = await verifiedWritePath(input.root, input.requested, input.prefix, input.studioTitle);
+  const current = await stat(path).catch((error: unknown) => {
+    if (errorCode(error) === "ENOENT") return null;
+    throw error;
+  });
+  if (!input.force && input.baseUpdatedAt != null && current && Math.abs(current.mtimeMs - input.baseUpdatedAt) > 0.5) {
+    throw new StudioHttpError(409, input.conflictMessage ?? `${input.studioTitle} changed since it was loaded. Reload before saving.`);
+  }
+  const temporary = resolve(dirname(path), `.${basename(path)}.${randomUUID()}.tmp`);
+  try {
+    await writeFile(temporary, input.content, { encoding: "utf8", flag: "wx" });
+    await rename(temporary, path);
+  } finally {
+    await unlink(temporary).catch(() => undefined);
+  }
+  const info = await stat(path);
+  return { ok: true, path: input.requested, bytes: info.size, updatedAt: info.mtimeMs, revision: `${info.mtimeMs}-${info.size}` };
 }
 
 export function workspaceRoot(ctx: Context, workspaceId: string) {

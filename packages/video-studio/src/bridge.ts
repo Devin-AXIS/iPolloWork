@@ -95,30 +95,6 @@ export function parseHyperframesAskAiMessage(value: unknown): VideoStudioSelecti
   };
 }
 
-/** Converts HyperFrames' server-owned selection snapshot into the host bridge contract. */
-export function parseHyperframesSelectionSnapshot(value: unknown): VideoStudioSelection | null {
-  if (!isRecord(value) || !isRecord(value.target)) return null;
-  const target = resolveVideoAiSelectionTarget({
-    file: value.sourceFile || value.compositionPath,
-    hfId: value.target.hfId,
-    id: value.target.id,
-    selector: value.target.selector,
-  });
-  if (!target) return null;
-  const attributes = isRecord(value.dataAttributes) ? value.dataAttributes : {};
-  return {
-    ...target,
-    tag: optionalString(value.tagName).toLowerCase() || "element",
-    text: optionalString(value.textContent).slice(0, 2_000),
-    src: optionalString(attributes.src).slice(0, 1_000),
-    alt: optionalString(attributes.alt).slice(0, 1_000),
-    styles: {
-      ...normalizedStyles(value.computedStyles),
-      ...normalizedStyles(value.inlineStyles),
-    },
-  };
-}
-
 export function isVideoStudioHostMessage(value: unknown): value is VideoStudioHostMessage {
   if (!isRecord(value) || value.channel !== VIDEO_STUDIO_HOST_CHANNEL) return false;
   if (value.type === "ask-video-ai") return true;

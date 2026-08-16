@@ -1,6 +1,6 @@
 {
   "name": "deepseek-ivideo",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "iPolloWork HyperFrames Video Studio and 27 editable video templates as a native DeepSeek Harness conversation view.",
   "type": "module",
   "main": "lib/index.js",
@@ -18,8 +18,9 @@
     "LICENSE"
   ],
   "scripts": {
-    "build": "pnpm run build:plugin && pnpm run build:studio",
+    "build": "pnpm run build:plugin && pnpm run build:studio && pnpm run build:runtime",
     "build:plugin": "tsdown",
+    "build:runtime": "node stage-hyperframes-runtime.mjs",
     "build:studio": "vite build --config studio/vite.config.ts",
     "check": "tsc -p tsconfig.json --noEmit && tsc -p studio/tsconfig.json --noEmit",
     "test": "pnpm run build && node --test test/*.test.mjs",
@@ -61,8 +62,22 @@
     "url": "https://github.com/Devin-AXIS/deepseek-design/issues"
   },
   "homepage": "https://github.com/Devin-AXIS/deepseek-design#deepseek-ivideo",
+  "ipollowork": {
+    "hyperframesVersion": "0.7.60"
+  },
   "dependencies": {
-    "hyperframes": "0.7.60"
+    "@hono/node-server": "^1.8.0",
+    "@puppeteer/browsers": "^3.0.6",
+    "adm-zip": "^0.5.16",
+    "compare-versions": "^6.1.1",
+    "esbuild": "^0.25.12",
+    "fontkit": "^2.0.4",
+    "hono": "^4.0.0",
+    "onnxruntime-node": "1.23.2",
+    "open": "^10.0.0",
+    "postcss": "^8.5.8",
+    "puppeteer-core": "^25.2.1",
+    "sharp": "^0.34.5"
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": "^4.0.1",
@@ -89,6 +104,7 @@
     "@deepseek-ai/dsh-host-webserver": "0.1.0-rc.6",
     "@deepseek-ai/dsh-tools": "0.1.0-rc.6",
     "@deepseek-ai/dsh-workspace": "0.1.0-rc.6",
+    "@tailwindcss/vite": "4.1.18",
     "@types/node": "25.6.0",
     "@types/react": "18.3.1",
     "@types/react-dom": "18.3.0",

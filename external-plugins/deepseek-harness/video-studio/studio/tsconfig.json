@@ -9,17 +9,25 @@
     "moduleResolution": "Bundler",
     "baseUrl": ".",
     "paths": {
+      "@/*": ["../../../../apps/app/src/*"],
       "@ipollowork/video-studio": ["../../../../packages/video-studio/src/index.ts"],
       "@ipollowork/types/templates": ["../../../../packages/types/src/templates.ts"],
       "@ipollowork/types/hyperframes-project": ["../../../../packages/types/src/hyperframes-project.ts"],
+      "@tanstack/react-query": ["../../../../apps/app/node_modules/@tanstack/react-query"],
+      "vite": ["../node_modules/vite"],
       "zod": ["../node_modules/zod"]
     },
+    "allowImportingTsExtensions": true,
     "resolveJsonModule": true,
     "isolatedModules": true,
     "noEmit": true,
     "strict": true,
     "skipLibCheck": true,
-    "types": ["vite/client"]
+    "typeRoots": [
+      "../../../../apps/app/node_modules/@types",
+      "../node_modules/@types"
+    ],
+    "types": ["node", "react", "react-dom"]
   },
-  "include": ["src"]
+  "include": ["src", "vite.config.ts", "../../../../apps/app/globals.d.ts"]
 }

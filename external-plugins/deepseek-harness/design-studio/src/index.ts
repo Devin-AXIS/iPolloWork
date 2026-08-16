@@ -1,6 +1,6 @@
-import { randomBytes, randomUUID } from "node:crypto";
+import { randomBytes } from "node:crypto";
 import { createReadStream } from "node:fs";
-import { readFile, readdir, rename, stat, unlink, writeFile } from "node:fs/promises";
+import { readFile, readdir, stat, writeFile } from "node:fs/promises";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { basename, dirname, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -18,6 +18,7 @@ import {
   errorCode,
   field,
   handleStudioStatic,
+  readStudioText,
   requireStudioToken,
   requestObject as requestJson,
   safeAssetPath as safeTemplatePath,
@@ -27,6 +28,7 @@ import {
   StudioHttpError as HttpError,
   verifiedExistingPath as sharedVerifiedExistingPath,
   verifiedWritePath as sharedVerifiedWritePath,
+  writeStudioText,
   workspaceRoot,
 } from "../../studio-host/src/http";
 import {
@@ -59,6 +61,12 @@ const MAX_TEXT_BYTES = 20 * 1024 * 1024;
 const MAX_CATALOG_ENTRIES = 1_000;
 const SESSION_ID = /^[A-Za-z0-9_-]{1,128}$/;
 const packageRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+const DESIGN_STUDIO_FILES = {
+  prefix: "design",
+  studioTitle: "Design Studio",
+  maxBytes: MAX_TEXT_BYTES,
+  conflictMessage: "The design changed since it was loaded. Reload before saving.",
+};
 
 function requireToken(req: IncomingMessage, runtime: Runtime) {
   requireStudioToken(req, "x-ipollowork-design-token", runtime.token, runtime.studioTitle);
@@ -164,23 +172,13 @@ async function templateSession(root: string, sessionId: string, runtime: Runtime
 }
 
 async function readText(root: string, requested: string) {
-  const path = await verifiedExistingPath(root, requested);
-  const info = await stat(path);
-  if (!info.isFile()) throw new HttpError(400, "Design Studio path is not a file.");
-  if (info.size > MAX_TEXT_BYTES) throw new HttpError(413, "Design Studio file is too large.");
-  return { path: requested, content: await readFile(path, "utf8"), bytes: info.size, updatedAt: info.mtimeMs };
+  return readStudioText({ root, requested, ...DESIGN_STUDIO_FILES });
 }
 
 async function writeText(root: string, requested: string, content: string, baseUpdatedAt?: number | null, force = false) {
-  if (Buffer.byteLength(content) > MAX_TEXT_BYTES) throw new HttpError(413, "Design Studio file is too large.");
-  const path = await verifiedWritePath(root, requested);
-  const current = await stat(path).catch((error: unknown) => { if (errorCode(error) === "ENOENT") return null; throw error; });
-  if (!force && baseUpdatedAt != null && current && Math.abs(current.mtimeMs - baseUpdatedAt) > 0.5) throw new HttpError(409, "The design changed since it was loaded. Reload before saving.");
-  const temporary = resolve(dirname(path), `.${basename(path)}.${randomUUID()}.tmp`);
-  try { await writeFile(temporary, content, { encoding: "utf8", flag: "wx" }); await rename(temporary, path); }
-  finally { await unlink(temporary).catch(() => undefined); }
-  const info = await stat(path);
-  return { ok: true, path: requested, bytes: info.size, updatedAt: info.mtimeMs, revision: `${info.mtimeMs}-${info.size}` };
+  return writeStudioText({
+    root, requested, content, baseUpdatedAt, force, ...DESIGN_STUDIO_FILES,
+  });
 }
 
 async function listFiles(root: string, requestedPrefix: string) {

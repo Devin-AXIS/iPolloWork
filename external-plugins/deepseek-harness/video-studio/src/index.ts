@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import { readFile, realpath, writeFile } from "node:fs/promises";
+import { readFile, writeFile } from "node:fs/promises";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -8,10 +8,6 @@ import type {} from "@deepseek-ai/dsh-host-webserver";
 import { defineTool } from "@deepseek-ai/dsh-tools";
 import type {} from "@deepseek-ai/dsh-workspace";
 import {
-  parseHyperframesSelectionSnapshot,
-  type VideoStudioSelection,
-} from "../../../../packages/video-studio/src/bridge";
-import {
   templateManifestV1Schema,
   type TemplateManifestV1,
 } from "../../../../packages/types/src/templates";
@@ -19,11 +15,13 @@ import { videoProjectDirectory, videoProjectId } from "../../../../packages/vide
 import {
   field,
   handleStudioStatic,
+  readStudioText,
   requireStudioToken,
   requestObject,
   sendJson,
   stringField,
   StudioHttpError,
+  writeStudioText,
   workspaceRoot,
 } from "../../studio-host/src/http";
 import {
@@ -42,6 +40,7 @@ const STUDIO_TITLE = "iVideo";
 const TOKEN_HEADER = "x-ipollowork-video-token";
 const TOKEN_PLACEHOLDER = "__IPOLLOWORK_VIDEO_STUDIO_TOKEN_VALUE__";
 const SESSION_ID = /^[A-Za-z0-9_-]{1,128}$/;
+const MAX_TEXT_BYTES = 4 * 1024 * 1024;
 const packageRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
 type Runtime = {
@@ -73,44 +72,12 @@ function bundledTemplates(runtime: Runtime) {
   return runtime.templatesPromise;
 }
 
-async function readInstalledManifest(projectPath: string) {
-  const source = await readFile(resolve(projectPath, "manifest.json"), "utf8").catch(() => null);
-  if (!source) return null;
-  const parsed = templateManifestV1Schema.safeParse(JSON.parse(source));
-  return parsed.success && allowsVideoTemplate(parsed.data) ? parsed.data : null;
-}
-
 async function session(runtime: Runtime, root: string, rawSessionId: string, viewId?: string) {
-  const active = await runtime.manager.start({
+  return runtime.manager.start({
     workspaceRoot: root,
     sessionId: sessionId(rawSessionId),
     viewId,
   });
-  return {
-    ...active,
-    templateId: (await readInstalledManifest(active.projectPath))?.id ?? null,
-  };
-}
-
-async function currentSelection(runtime: Runtime, root: string, rawSessionId: string, viewId?: string) {
-  const id = sessionId(rawSessionId);
-  if (runtime.switches.has(`${root}:${videoProjectId(id)}`)) return { selection: null };
-  const active = await runtime.manager.start({
-    workspaceRoot: root,
-    sessionId: id,
-    viewId,
-  });
-  const response = await fetch(
-    `http://127.0.0.1:${active.port}/api/projects/${encodeURIComponent(active.projectId)}/selection`,
-    { signal: AbortSignal.timeout(2_000) },
-  );
-  if (!response.ok) throw new StudioHttpError(502, "HyperFrames selection is unavailable.");
-  const payload: unknown = await response.json();
-  const rawSelection = payload && typeof payload === "object" ? Reflect.get(payload, "selection") : null;
-  const selection: VideoStudioSelection | null = rawSelection == null
-    ? null
-    : parseHyperframesSelectionSnapshot(rawSelection);
-  return { selection };
 }
 
 async function applyTemplate(input: {
@@ -147,7 +114,7 @@ async function applyTemplate(input: {
           return input.runtime.manager.start({ workspaceRoot: input.workspaceRoot, sessionId: id, viewId: input.viewId });
         },
       });
-      return { ...active, templateId: template.manifest.id };
+      return active;
     } catch (error) {
       await input.runtime.manager.start({ workspaceRoot: input.workspaceRoot, sessionId: id, viewId: input.viewId }).catch(() => undefined);
       throw error;
@@ -165,16 +132,37 @@ async function handleApi(runtime: Runtime, ctx: Context, req: IncomingMessage, r
     sendJson(res, 200, await session(runtime, workspaceRoot(ctx, workspaceId), rawSessionId, url.searchParams.get("viewId")?.trim()));
     return;
   }
-  if (req.method === "GET" && action === "/selection") {
+  if (req.method === "GET" && action === "/file") {
     const workspaceId = url.searchParams.get("workspaceId")?.trim();
     const rawSessionId = url.searchParams.get("sessionId")?.trim();
-    if (!workspaceId || !rawSessionId) throw new StudioHttpError(400, "Missing workspaceId or sessionId.");
-    sendJson(res, 200, await currentSelection(
-      runtime,
-      workspaceRoot(ctx, workspaceId),
-      rawSessionId,
-      url.searchParams.get("viewId")?.trim(),
-    ));
+    const path = url.searchParams.get("path")?.trim();
+    if (!workspaceId || !rawSessionId || !path) throw new StudioHttpError(400, "Missing workspaceId, sessionId, or path.");
+    const id = sessionId(rawSessionId);
+    sendJson(res, 200, await readStudioText({
+      root: workspaceRoot(ctx, workspaceId),
+      requested: path,
+      prefix: videoProjectDirectory(id),
+      studioTitle: STUDIO_TITLE,
+      maxBytes: MAX_TEXT_BYTES,
+    }));
+    return;
+  }
+  if (req.method === "POST" && action === "/file") {
+    const body = await requestObject(req);
+    const bodyWorkspaceId = stringField(field(body, "workspaceId"), "workspaceId");
+    const id = sessionId(stringField(field(body, "sessionId"), "sessionId"));
+    const content = field(body, "content");
+    if (typeof content !== "string") throw new StudioHttpError(400, "Missing content.");
+    sendJson(res, 200, await writeStudioText({
+      root: workspaceRoot(ctx, bodyWorkspaceId),
+      requested: stringField(field(body, "path"), "path"),
+      prefix: videoProjectDirectory(id),
+      studioTitle: STUDIO_TITLE,
+      content,
+      maxBytes: MAX_TEXT_BYTES,
+      baseUpdatedAt: typeof field(body, "baseUpdatedAt") === "number" ? Number(field(body, "baseUpdatedAt")) : undefined,
+      force: field(body, "force") === true,
+    }));
     return;
   }
   if (req.method === "GET" && action === "/templates") {

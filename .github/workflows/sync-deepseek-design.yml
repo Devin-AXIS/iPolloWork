@@ -10,6 +10,8 @@ on:
       - "packages/types/**"
       - "apps/app/src/**"
       - "apps/server/bundled-templates/**"
+      - "vendor/hyperframes/packages/studio/src/**"
+      - "vendor/hyperframes/packages/cli/**"
       - "LICENSE"
       - "LICENSES/**"
       - "CONTRIBUTING.md"
@@ -46,6 +48,11 @@ jobs:
         with:
           node-version: 24
           cache: pnpm
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
 
       - name: Install iPolloWork workspace
         run: pnpm install --frozen-lockfile

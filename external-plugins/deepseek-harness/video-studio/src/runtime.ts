@@ -2,14 +2,12 @@ import { spawn, type ChildProcess } from "node:child_process";
 import { existsSync } from "node:fs";
 import { readFile, realpath, writeFile } from "node:fs/promises";
 import { request as httpRequest } from "node:http";
-import { createRequire } from "node:module";
 import { basename, delimiter, dirname, resolve } from "node:path";
 import type { Readable } from "node:stream";
 import { fileURLToPath } from "node:url";
 import {
   HYPERFRAMES_VERSION,
   hyperframesStudioPort,
-  hyperframesStudioUrl,
   videoProjectDirectory,
   videoProjectId,
 } from "../../../../packages/video-studio/src/project";
@@ -52,12 +50,9 @@ type ManagedPreview = {
 };
 
 export type VideoStudioRuntimeSession = {
-  projectId: string;
   projectDirectory: string;
   projectPath: string;
   port: number;
-  studioUrl: string;
-  hyperframesVersion: typeof HYPERFRAMES_VERSION;
   reused: boolean;
 };
 
@@ -80,9 +75,7 @@ function appendBounded(current: string, chunk: string) {
 }
 
 function resolveHyperframesCli() {
-  const require = createRequire(import.meta.url);
-  const packageJson = require.resolve("hyperframes/package.json");
-  return resolve(dirname(packageJson), "dist/cli.js");
+  return fileURLToPath(new URL("./hyperframes/cli.js", import.meta.url));
 }
 
 function inheritedPath() {
@@ -397,12 +390,9 @@ export class VideoRuntimeManager {
 
   private session(identity: ProjectIdentity, port: number, reused: boolean): VideoStudioRuntimeSession {
     return {
-      projectId: identity.projectId,
       projectDirectory: identity.projectDirectory,
       projectPath: identity.projectPath,
       port,
-      studioUrl: hyperframesStudioUrl(port, identity.projectId),
-      hyperframesVersion: HYPERFRAMES_VERSION,
       reused,
     };
   }

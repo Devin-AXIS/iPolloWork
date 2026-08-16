@@ -1,21 +1,14 @@
-import type { TemplateCatalogItem } from "@ipollowork/types/templates";
-import type { VideoStudioSelection } from "@ipollowork/video-studio";
+import type {
+  VideoStudioClient,
+  VideoStudioRuntime,
+  VideoStudioTemplateApplyResult,
+} from "@ipollowork/video-studio";
 
 declare global {
   interface Window {
     __IPOLLOWORK_VIDEO_STUDIO_TOKEN__?: string;
   }
 }
-
-export type VideoRuntimeSession = {
-  projectId: string;
-  projectDirectory: string;
-  port: number;
-  studioUrl: string;
-  hyperframesVersion: string;
-  reused: boolean;
-  templateId: string | null;
-};
 
 const studioBoundary = window.location.pathname.indexOf("/studio/");
 const API_ROOT = `${window.location.pathname.slice(0, studioBoundary)}/api`;
@@ -51,29 +44,44 @@ async function api<T>(path: string, init?: RequestInit): Promise<T> {
   return response.json();
 }
 
-export const deepSeekVideoApi = {
-  session: (workspaceId: string, sessionId: string, viewId: string) =>
-    api<VideoRuntimeSession>(`/session${query({ workspaceId, sessionId, viewId })}`),
-  selection: (workspaceId: string, sessionId: string, viewId: string) =>
-    api<{ selection: VideoStudioSelection | null }>(`/selection${query({ workspaceId, sessionId, viewId })}`),
-  templates: (workspaceId: string) =>
-    api<TemplateCatalogItem[]>(`/templates${query({ workspaceId })}`),
-  templateCover: async (workspaceId: string, templateId: string) => {
-    const response = await fetch(`${API_ROOT}/template-cover${query({ workspaceId, templateId })}`, {
-      headers: { "x-ipollowork-video-token": token() },
-    });
-    if (!response.ok) throw new Error(`Could not load the iVideo template cover (${response.status}).`);
-    return { data: await response.arrayBuffer(), contentType: response.headers.get("content-type") };
-  },
-  applyTemplate: (workspaceId: string, sessionId: string, viewId: string, templateId: string) =>
-    api<VideoRuntimeSession>("/template", {
+export function createDeepSeekVideoStudioHost(scope: {
+  workspaceId: string;
+  sessionId: string;
+  viewId: string;
+}): { client: VideoStudioClient; runtime: VideoStudioRuntime } {
+  const session = () => api<VideoStudioTemplateApplyResult & { reused: boolean }>(`/session${query(scope)}`);
+  const client: VideoStudioClient = {
+    readWorkspaceFile: (_workspaceId, path) => api(`/file${query({ workspaceId: scope.workspaceId, sessionId: scope.sessionId, path })}`),
+    writeWorkspaceFile: (_workspaceId, payload) => api("/file", {
       method: "POST",
-      body: JSON.stringify({ workspaceId, sessionId, viewId, templateId }),
+      body: JSON.stringify({ workspaceId: scope.workspaceId, sessionId: scope.sessionId, ...payload }),
     }),
-  release: (workspaceId: string, sessionId: string, viewId: string) =>
-    api<{ ok: true }>("/release", {
+    listVideoStudioTemplates: () => api(`/templates${query({ workspaceId: scope.workspaceId })}`),
+    getVideoStudioTemplateCover: async (_workspaceId, templateId) => {
+      const response = await fetch(`${API_ROOT}/template-cover${query({ workspaceId: scope.workspaceId, templateId })}`, {
+        headers: { "x-ipollowork-video-token": token() },
+      });
+      if (!response.ok) throw new Error(`Could not load the iVideo template cover (${response.status}).`);
+      return { data: await response.arrayBuffer(), contentType: response.headers.get("content-type") };
+    },
+    applyVideoStudioTemplate: (_workspaceId, _sessionId, templateId) => api("/template", {
       method: "POST",
-      keepalive: true,
-      body: JSON.stringify({ workspaceId, sessionId, viewId }),
+      body: JSON.stringify({ ...scope, templateId }),
     }),
-};
+  };
+  const runtime: VideoStudioRuntime = {
+    start: async () => {
+      const active = await session();
+      return { ok: true, port: active.port, reused: active.reused };
+    },
+    stop: async () => {
+      await api("/release", {
+        method: "POST",
+        keepalive: true,
+        body: JSON.stringify(scope),
+      });
+      return { ok: true };
+    },
+  };
+  return { client, runtime };
+}
