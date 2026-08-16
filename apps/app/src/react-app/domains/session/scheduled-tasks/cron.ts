@@ -39,6 +39,7 @@ function parseFieldPart(part: string, min: number, max: number, allowSeven: bool
   for (const raw of part.split(",")) {
     const trimmed = raw.trim();
     if (!trimmed) return null;
+    if (!/^(?:\*|\d+)(?:-\d+)?(?:\/\d+)?$/.test(trimmed)) return null;
 
     if (trimmed === "*") {
       for (let i = min; i <= max; i++) values.add(i);

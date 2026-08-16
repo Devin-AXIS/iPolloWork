@@ -29,6 +29,8 @@ function parseFieldPart(part, min, max, allowSeven) {
   for (const raw of part.split(",")) {
     const trimmed = raw.trim();
     if (!trimmed) return null;
+    if (!/^(?:\*|\d+)(?:-\d+)?(?:\/\d+)?$/.test(trimmed)) return null;
+
     if (trimmed === "*") {
       for (let i = min; i <= max; i++) values.add(i);
       continue;
@@ -71,7 +73,7 @@ function parseFieldPart(part, min, max, allowSeven) {
   return values;
 }
 
-function parseCron(expression) {
+export function parseCron(expression) {
   const parts = expression.trim().split(/\s+/);
   if (parts.length !== 5) return null;
   const fields = {};
@@ -106,13 +108,13 @@ function matchesParsed(parsed, date) {
   return minute && hour && month && dayMatch;
 }
 
-function cronMatches(expression, date) {
+export function cronMatches(expression, date) {
   const parsed = parseCron(expression);
   if (!parsed) return false;
   return matchesParsed(parsed, date);
 }
 
-function nextRunAfter(expression, after) {
+export function nextRunAfter(expression, after) {
   const parsed = parseCron(expression);
   if (!parsed) return null;
   const cursor = new Date(after.getTime());
@@ -165,13 +167,15 @@ export function createScheduledTasks({
   }
 
   function create(input) {
+    const cron = String(input.cron ?? "").trim();
+    if (cron && !parseCron(cron)) return null;
     const tasks = readTasks();
     const id = randomUUID();
     const task = {
       id,
       name: String(input.name ?? "").trim() || "未命名任务",
       description: String(input.description ?? "").trim(),
-      cron: String(input.cron ?? "").trim(),
+      cron,
       workspaceId: String(input.workspaceId ?? ""),
       prompt: String(input.prompt ?? "").trim(),
       enabled: input.enabled !== false,
@@ -187,6 +191,10 @@ export function createScheduledTasks({
   }
 
   function update(id, patch) {
+    if (patch.cron !== undefined) {
+      const cron = String(patch.cron ?? "").trim();
+      if (cron && !parseCron(cron)) return null;
+    }
     const tasks = readTasks();
     const index = tasks.findIndex((task) => task.id === id);
     if (index < 0) return null;
@@ -240,12 +248,17 @@ export function createScheduledTasks({
     }
   }
 
-  function fire(task) {
-    const entry = appendLog(task.id, "ok", "定时触发，开始执行");
-    const updated = update(task.id, { lastRunAt: entry.at, lastRunStatus: "ok" });
+  async function fire(task) {
+    const entry = appendLog(task.id, "ok", "定时触发");
+    let updated = update(task.id, { lastRunAt: entry.at, lastRunStatus: "ok" });
     broadcast({ type: "fired", taskId: task.id });
-    onFire(updated ?? task);
-    return updated ?? task;
+    try {
+      await onFire(task);
+    } catch (error) {
+      appendLog(task.id, "error", error instanceof Error ? error.message : String(error));
+      updated = update(task.id, { lastRunStatus: "error" });
+    }
+    return updated;
   }
 
   function runNow(id) {
@@ -266,7 +279,7 @@ export function createScheduledTasks({
       if (!task.enabled || !task.cron || !cronMatches(task.cron, current)) continue;
       const lastMinute = task.lastRunAt ? Math.floor(task.lastRunAt / 60_000) : null;
       if (lastMinute === minuteStamp) continue;
-      fire(task);
+      void fire(task);
     }
   }
 
