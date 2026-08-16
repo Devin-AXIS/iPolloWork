@@ -23,7 +23,7 @@
     "check:electron": "node ./scripts/check-electron-bridge.mjs",
     "typecheck:electron": "pnpm --dir ../server exec tsc -p ../desktop/tsconfig.electron.json --noEmit",
     "prepare:sidecar": "node ./scripts/prepare-sidecar.mjs",
-    "test": "node --test electron/brand-icon-windows.test.mjs electron/desktop-auth-window.test.mjs electron/desktop-protocol.test.mjs electron/dev-cloud-default.test.mjs electron/hyperframes-runtime-packaging.test.mjs electron/open-external.test.mjs electron/relaunch-policy.test.mjs electron/runtime.test.mjs electron/runtime-ca.test.mjs electron/stdio-safety.test.mjs electron/system-font-catalog.test.mjs electron/updater.test.mjs electron/remote-workspace.test.mjs electron/workspace-store.test.mjs electron/sidecar-packaging.test.mjs electron/ssh-ops.test.mjs electron/git-graph.test.mjs electron/preview-core.test.mjs electron/im-bot.test.mjs"
+    "test": "node --test electron/brand-icon-windows.test.mjs electron/desktop-auth-window.test.mjs electron/desktop-protocol.test.mjs electron/dev-cloud-default.test.mjs electron/hyperframes-runtime-packaging.test.mjs electron/open-external.test.mjs electron/relaunch-policy.test.mjs electron/runtime.test.mjs electron/runtime-ca.test.mjs electron/stdio-safety.test.mjs electron/system-font-catalog.test.mjs electron/updater.test.mjs electron/remote-workspace.test.mjs electron/workspace-store.test.mjs electron/sidecar-packaging.test.mjs electron/ssh-ops.test.mjs electron/git-graph.test.mjs electron/preview-core.test.mjs electron/im-bot.test.mjs electron/scheduled-tasks.test.mjs"
   },
   "dependencies": {
     "@ffmpeg-installer/ffmpeg": "^1.1.0",
