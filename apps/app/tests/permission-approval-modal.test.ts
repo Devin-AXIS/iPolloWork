@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import type { PendingPermission } from "../src/app/types";
+import type { ConversationPermission } from "../src/react-app/domains/session/engine/conversation-engine";
 
 import {
   PermissionApprovalPanel,
@@ -13,19 +13,16 @@ const permissionPanelUrl = new URL(
   import.meta.url,
 );
 
-function pendingPermission(overrides: Partial<PendingPermission> = {}): PendingPermission {
+function pendingPermission(overrides: Partial<ConversationPermission> = {}): ConversationPermission {
   return {
     id: "permission-1",
-    sessionID: "session-1",
-    permission: "bash",
-    patterns: ["rm -rf dist"],
+    sessionId: "session-1",
+    kind: "bash",
+    resources: ["rm -rf dist"],
+    remember: [],
     metadata: {},
-    always: {
-      session: false,
-      project: false,
-    },
     receivedAt: 1,
-    protocol: "legacy",
+    native: null,
     ...overrides,
   };
 }
@@ -95,7 +92,7 @@ describe("permission approval modal helpers", () => {
   test("uses readable labels for generic permission titles", () => {
     const html = renderToStaticMarkup(
       React.createElement(PermissionApprovalPanel, {
-        permission: pendingPermission({ permission: "todowrite" }),
+        permission: pendingPermission({ kind: "todowrite" }),
         respondPermission: () => {},
       }),
     );

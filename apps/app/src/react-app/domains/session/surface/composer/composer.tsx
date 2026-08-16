@@ -1,6 +1,5 @@
 /** @jsxImportSource react */
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import type { Agent } from "@opencode-ai/sdk/v2/client";
 import { AppWindowMac, ArrowUp, Check, ChevronDown, ChevronRight, FileText, ListTodo, Plus, Plug, Settings, Square, Terminal, X, Zap } from "lucide-react";
 import fuzzysort from "fuzzysort";
 import { toast } from "@/components/ui/sonner";
@@ -9,6 +8,7 @@ import { IPOLLOWORK_EXTENSION_CATALOG, type McpDirectoryInfo } from "@/app/const
 import type { CloudImportedPlugin, CloudImportedPluginFile } from "@/app/cloud/import-state";
 import type { iPolloWorkPluginPackageItem } from "@/app/lib/ipollowork-server";
 import type { ComposerAttachment, McpServerEntry, McpStatusMap, ModelRef, SkillCard, SlashCommandOption } from "@/app/types";
+import type { ConversationAgent } from "../../engine/conversation-engine";
 import { formatBytes } from "@/app/utils";
 import { t } from "@/i18n";
 import { isiPolloWorkExtensionEnabled, isiPolloWorkExtensionHidden, IPOLLOWORK_EXTENSION_STATE_CHANGED } from "@/react-app/domains/settings/extension-state";
@@ -73,7 +73,7 @@ type ComposerProps = {
   modelBehaviorOptions?: { value: string | null; label: string }[];
   onModelVariantChange: (value: string | null) => void;
   selectedAgent: string | null;
-  listAgents: () => Promise<Agent[]>;
+  listAgents: () => Promise<ConversationAgent[]>;
   onSelectAgent: (agent: string | null) => void;
   listCommands: () => Promise<SlashCommandOption[]>;
   listSkills?: () => Promise<SkillCard[]>;

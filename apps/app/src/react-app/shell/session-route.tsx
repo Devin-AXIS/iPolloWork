@@ -7,9 +7,10 @@ import {
   useState,
 } from "react";
 import { useNavigate } from "react-router-dom";
+import type { UIMessage } from "ai";
 import { toast } from "@/components/ui/sonner";
-import type { SessionStatus } from "@opencode-ai/sdk/v2/client";
 import type { PptxCompatibility, TemplateCategory } from "@ipollowork/types/templates";
+import { DEFAULT_ENGINE_ID } from "@ipollowork/types/workspace";
 
 import { captureAnalyticsEvent, markTaskRunStart } from "@/app/lib/analytics";
 import {
@@ -22,8 +23,6 @@ import {
 import { trackSessionActive, trackTaskStarted } from "@/app/lib/den-telemetry";
 import { buildDiagnosticsBundleJson } from "@/app/lib/diagnostics-bundle";
 import { downloadTextAsFile } from "@/app/lib/download";
-import { createClient, unwrap } from "@/app/lib/opencode";
-import { abortSessionSafe, forkSession, listCommands, revertSession, setSessionArchived, shellInSession } from "@/app/lib/opencode-session";
 import {
   resolveWorkspaceEndpoint,
   workspaceServerId,
@@ -135,6 +134,8 @@ import { useEngineReload } from "./use-engine-reload";
 import { useWorkspaceRouteState } from "./use-workspace-route-state";
 import { getReactQueryClient } from "@/react-app/infra/query-client";
 import { useSessionControlActions } from "@/react-app/domains/session/control/session-control-actions";
+import type { ConversationStatus } from "@/react-app/domains/session/engine/conversation-engine";
+import { conversationEngineAdapters } from "@/react-app/domains/session/engine/opencode-conversation-engine";
 import { workspaceSessionRoute, workspaceSettingsRoute } from "./workspace-routes";
 import { WorkspaceProvider } from "./workspace-provider";
 import type { OpenTarget } from "@/react-app/domains/session/artifacts/open-target";
@@ -246,6 +247,17 @@ export function SessionRoute() {
     onServerSettingsChanged: () => setiPolloWorkServerSettingsVersion((value) => value + 1),
     onHostInfo: setiPolloWorkServerHostInfoState,
   });
+  const conversation = useMemo(
+    () => opencodeBaseUrl && selectedWorkspaceServerToken && !selectedWorkspaceError
+      ? conversationEngineAdapters.get(selectedWorkspace?.engineId).connect({
+          baseUrl: opencodeBaseUrl,
+          token: selectedWorkspaceServerToken,
+          directory: selectedWorkspaceRoot || undefined,
+        })
+      : null,
+    [opencodeBaseUrl, selectedWorkspace?.engineId, selectedWorkspaceError, selectedWorkspaceRoot, selectedWorkspaceServerToken],
+  );
+  const conversationConnectionKey = `${selectedWorkspace?.engineId?.trim() || DEFAULT_ENGINE_ID}:${opencodeBaseUrl}:${selectedWorkspaceServerToken}`;
   useSessionMcpMaintenance({
     cloudSignedIn: denAuth.isSignedIn && activeWorkContextId === PERSONAL_WORK_CONTEXT_ID,
     client: selectedWorkspaceEndpoint?.client ?? null,
@@ -635,7 +647,7 @@ export function SessionRoute() {
     respondQuestion,
     todos,
   } = useSessionInteractions({
-    client: opencodeClient,
+    connection: conversation,
     workspaceId: selectedWorkspaceId,
     sessionId: selectedSessionId,
     workspaceRoot: selectedWorkspaceRoot,
@@ -718,9 +730,9 @@ export function SessionRoute() {
     // an engine reload, which invalidates the composer's command list cache
     // and causes it to re-fetch (picking up newly created skills).
     void engineReloadVersion;
-    if (!opencodeClient) return [];
-    return listCommands(opencodeClient, selectedWorkspaceRoot || undefined);
-  }, [engineReloadVersion, opencodeClient, selectedWorkspaceRoot]);
+    if (!conversation) return [];
+    return conversation.listCommands(selectedWorkspaceRoot || undefined);
+  }, [conversation, engineReloadVersion, selectedWorkspaceRoot]);
 
   // Shared by @ mentions and the command palette. Plan and build are product
   // modes controlled beside the model; hidden and subagent-only entries are
@@ -729,15 +741,15 @@ export function SessionRoute() {
     // Include engineReloadVersion so the composer refetches after newly added
     // agent files become available, even when the inline picker is hidden.
     void engineReloadVersion;
-    if (!opencodeClient) return [];
-    const list = unwrap(await opencodeClient.app.agents());
+    if (!conversation) return [];
+    const list = await conversation.listAgents();
     return list.filter((agent) =>
       !agent.hidden
       && agent.mode !== "subagent"
       && agent.name !== "build"
       && agent.name !== "plan"
     );
-  }, [engineReloadVersion, opencodeClient]);
+  }, [conversation, engineReloadVersion]);
 
   const handleOpenSettings = useCallback((route = "/settings/preferences", workspaceId = sidebarActiveWorkspaceId) => {
     const sessionId = workspaceId === sidebarActiveWorkspaceId ? selectedSessionId : null;
@@ -754,7 +766,7 @@ export function SessionRoute() {
     navigate("/help", { state: { returnTo } });
   }, [navigate, selectedSessionId, sidebarActiveWorkspaceId]);
 
-  const handleSessionStatus = useCallback((update: { sessionId: string; status: SessionStatus }) => {
+  const handleSessionStatus = useCallback((update: { sessionId: string; status: ConversationStatus }) => {
     if (update.status.type !== "idle" || !selectedWorkspaceEndpoint) return;
     const { contexts, complete, completeWithoutChange, fail } = useDesignAiSelectionStore.getState();
     const runningContexts = Object.values(contexts).filter((context) => (
@@ -784,7 +796,7 @@ export function SessionRoute() {
   }, [selectedWorkspaceEndpoint]);
 
   const surfaceProps = useMemo(() => {
-    if (!client || !selectedWorkspaceId || !selectedSessionId || !opencodeBaseUrl || !token || !opencodeClient) {
+    if (!client || !selectedWorkspaceId || !selectedSessionId || !opencodeBaseUrl || !token || !conversation) {
       return null;
     }
     // Transient-safety: when the user switches workspaces the URL-driven
@@ -813,6 +825,7 @@ export function SessionRoute() {
     // local server's, and remote workspaces silently end up calling the
     // local server with the local `rem_*` id.
     return {
+      conversation,
       workspaceRoot: selectedWorkspaceRoot,
       developerMode: false,
       modelLabel,
@@ -903,19 +916,16 @@ export function SessionRoute() {
         trackTaskStarted(targetSessionId, telemetryDimensions);
 
         if (draft.mode === "shell") {
-          await shellInSession(opencodeClient, targetSessionId, text);
+          await conversation.shell(targetSessionId, text);
           return true;
         }
 
         if (draft.command) {
-          const result = await opencodeClient.session.command({
-            sessionID: targetSessionId,
+          await conversation.runCommand({
+            sessionId: targetSessionId,
             command: draft.command.name,
             arguments: draft.command.arguments,
           });
-          if (result.error) {
-            throw new Error(serializeSDKError(result.error));
-          }
           return true;
         }
 
@@ -1063,17 +1073,18 @@ export function SessionRoute() {
             readWorkspaceFile: async () => { throw new Error("The selected Design element is no longer available in this workspace."); },
             writeWorkspaceFile: async () => { throw new Error("The selected Design element is no longer available in this workspace."); },
           },
-          prompt: () => opencodeClient.session.promptAsync({
-            sessionID: targetSessionId,
+          prompt: () => conversation.sendPrompt({
+            sessionId: targetSessionId,
             parts: promptParts,
             model: local.prefs.defaultModel ?? undefined,
             agent: selectedAgent ?? undefined,
-            ...(local.prefs.defaultModel?.providerID === "tokenstar" && modelVariantValue && tokenStarModelSupportsEffort(local.prefs.defaultModel.modelID)
-              ? { reasoning_effort: modelVariantValue }
-              : modelVariantValue
-                ? { variant: modelVariantValue }
-                : {}),
-            ...(systemContext ? { system: systemContext } : {}),
+            reasoningEffort: local.prefs.defaultModel?.providerID === "tokenstar" && modelVariantValue && tokenStarModelSupportsEffort(local.prefs.defaultModel.modelID)
+              ? modelVariantValue
+              : undefined,
+            variant: local.prefs.defaultModel?.providerID === "tokenstar" && tokenStarModelSupportsEffort(local.prefs.defaultModel.modelID)
+              ? undefined
+              : modelVariantValue ?? undefined,
+            system: systemContext || undefined,
           }),
         });
         return true;
@@ -1096,15 +1107,7 @@ export function SessionRoute() {
       searchFiles: async (query: string) => {
         const trimmed = query.trim();
         if (!trimmed) return [];
-        const result = unwrap(
-          await opencodeClient.find.files({
-            query: trimmed,
-            dirs: "true",
-            limit: 50,
-            directory: selectedWorkspaceRoot || undefined,
-          }),
-        );
-        return result;
+        return conversation.searchFiles(trimmed, selectedWorkspaceRoot || undefined);
       },
       isRemoteWorkspace: selectedWorkspace?.workspaceType === "remote",
       isSandboxWorkspace: selectedWorkspace ? isSandboxWorkspace(selectedWorkspace) : false,
@@ -1112,9 +1115,8 @@ export function SessionRoute() {
         const targetSessionId = sessionId.trim() || selectedSessionId;
         if (!targetSessionId) return false;
         try {
-          // Abort any running generation first; OpenCode rejects revert on busy sessions.
-          await abortSessionSafe(opencodeClient, targetSessionId, selectedWorkspaceRoot || undefined);
-          const reverted = await revertSession(opencodeClient, targetSessionId, messageId);
+          await conversation.abort(targetSessionId, selectedWorkspaceRoot || undefined).catch(() => false);
+          const reverted = await conversation.revert(targetSessionId, messageId);
           // Stamp the revert cursor into the local caches so the transcript
           // rewinds immediately instead of waiting for a full reload.
           applySessionRevert(selectedWorkspaceId, reverted);
@@ -1125,12 +1127,12 @@ export function SessionRoute() {
           return false;
         }
       },
-      onForkAtMessage: (messageId: string | null, sessionId: string) => {
+      onForkAtMessage: (messageId: string, sessionId: string, messages: UIMessage[]) => {
         void (async () => {
           const targetSessionId = sessionId.trim() || selectedSessionId;
           if (!targetSessionId) return;
           try {
-            const forked = await forkSession(opencodeClient, targetSessionId, messageId ?? undefined);
+            const forked = await conversation.fork({ sessionId: targetSessionId, messageId, messages });
             writeLastSessionFor(selectedWorkspaceId, forked.id);
             rememberPendingCreatedSession(selectedWorkspaceId, forked.id);
             setSessionsByWorkspaceId((current) => ({
@@ -1161,6 +1163,7 @@ export function SessionRoute() {
     };
   }, [
     client,
+    conversation,
     modelPicker.compactOpen,
     handleOpenSettings,
     hasUsableModel,
@@ -1175,7 +1178,6 @@ export function SessionRoute() {
     modelVariantValue,
     navigate,
     opencodeBaseUrl,
-    opencodeClient,
     providerConnectedIds,
     selectedAgent,
     selectedSessionId,
@@ -1198,8 +1200,7 @@ export function SessionRoute() {
   const previousSessionScopeRef = useRef<{
     workspaceId: string;
     sessionId: string;
-    baseUrl: string;
-    ipolloworkToken: string;
+    connectionKey: string;
   } | null>(null);
   useEffect(() => {
     const previous = previousSessionScopeRef.current;
@@ -1207,8 +1208,7 @@ export function SessionRoute() {
       ? {
           workspaceId: selectedWorkspaceEndpoint.workspaceId,
           sessionId: selectedSessionId,
-          baseUrl: opencodeBaseUrl,
-          ipolloworkToken: selectedWorkspaceServerToken,
+          connectionKey: conversationConnectionKey,
         }
       : null;
 
@@ -1217,14 +1217,14 @@ export function SessionRoute() {
       (!current ||
         previous.workspaceId !== current.workspaceId ||
         previous.sessionId !== current.sessionId ||
-        previous.baseUrl !== current.baseUrl ||
-        previous.ipolloworkToken !== current.ipolloworkToken)
+        previous.connectionKey !== current.connectionKey)
     ) {
       destroyWorkspaceSessionResources(previous, previous.sessionId);
     }
     previousSessionScopeRef.current = current;
   }, [
     opencodeBaseUrl,
+    conversationConnectionKey,
     selectedSessionId,
     selectedWorkspaceEndpoint,
     selectedWorkspaceServerToken,
@@ -1248,19 +1248,19 @@ export function SessionRoute() {
     if (!endpoint || !endpoint.token) {
       return null;
     }
-    const workspaceClient = createClient(
-      endpoint.opencodeBaseUrl,
-      workspace.path?.trim() || undefined,
-      { token: endpoint.token, mode: "ipollowork" },
-    );
+    const workspaceConversation = conversationEngineAdapters
+      .get(workspace.engineId)
+      .connect({
+        baseUrl: endpoint.opencodeBaseUrl,
+        token: endpoint.token,
+        directory: workspace.path?.trim() || undefined,
+      });
     let createdSessionId: string | null = null;
     let projectInitializationFailed = false;
     try {
       setErrorsByWorkspaceId((current) => ({ ...current, [workspaceId]: null }));
       setRouteError(null);
-      const session = unwrap(
-        await workspaceClient.session.create({ directory: workspace.path?.trim() || undefined }),
-      );
+      const session = await workspaceConversation.create(workspace.path?.trim() || undefined);
       createdSessionId = session.id;
       let sessionType = type;
       if (templateId) {
@@ -1482,7 +1482,7 @@ export function SessionRoute() {
     selectedSessionId,
     canCreateTask,
     ipolloworkClient: client,
-    opencodeClient,
+    conversation,
     navigateToSession: navigateToSessionForControl,
     navigateToSessionRoot: navigateToSessionRootForControl,
     createTaskInWorkspace: handleCreateTaskInWorkspace,
@@ -1670,10 +1670,9 @@ export function SessionRoute() {
 
   const handleArchiveSession = useCallback(
     async (sessionId: string, archived: boolean) => {
-      if (!opencodeClient) return;
+      if (!conversation) return;
       try {
-        await setSessionArchived(
-          opencodeClient,
+        await conversation.setArchived(
           sessionId,
           archived,
           selectedWorkspaceRoot || undefined,
@@ -1689,7 +1688,7 @@ export function SessionRoute() {
         );
       }
     },
-    [opencodeClient, refreshRouteState, selectedWorkspaceRoot],
+    [conversation, refreshRouteState, selectedWorkspaceRoot],
   );
 
   return (
@@ -1699,7 +1698,7 @@ export function SessionRoute() {
       opencodeBaseUrl={opencodeBaseUrl}
       selectedWorkspaceRoot={selectedWorkspaceRoot}
     >
-    {opencodeClient && selectedWorkspaceEndpoint && opencodeBaseUrl && selectedWorkspaceServerToken ? (
+    {conversation && selectedWorkspaceEndpoint && opencodeBaseUrl && selectedWorkspaceServerToken ? (
       <ReactSessionRuntime
         // Use the server-side workspace id (the one without the `rem_`
         // prefix) so the React Query cache keys session-sync writes match
@@ -1707,8 +1706,8 @@ export function SessionRoute() {
         // the UI never sees them and gets stuck on "thinking".
         workspaceId={selectedWorkspaceEndpoint.workspaceId}
         sessionId={selectedSessionId}
-        opencodeBaseUrl={opencodeBaseUrl}
-        ipolloworkToken={selectedWorkspaceServerToken}
+        connection={conversation}
+        connectionKey={conversationConnectionKey}
         onSessionUpdated={handleRuntimeSessionUpdated}
         onSessionStatus={handleSessionStatus}
       />
@@ -1828,15 +1827,15 @@ export function SessionRoute() {
             if (!workspace) return;
             const endpoint = resolveWorkspaceEndpoint(workspace, { baseUrl, token });
             if (!endpoint?.token) return;
-            const workspaceClient = createClient(
-              endpoint.opencodeBaseUrl,
-              workspace.path?.trim() || undefined,
-              { token: endpoint.token, mode: "ipollowork" },
-            );
+            const workspaceConversation = conversationEngineAdapters
+              .get(workspace.engineId)
+              .connect({
+                baseUrl: endpoint.opencodeBaseUrl,
+                token: endpoint.token,
+                directory: workspace.path?.trim() || undefined,
+              });
             try {
-              const session = unwrap(
-                await workspaceClient.session.create({ directory: workspace.path?.trim() || undefined }),
-              );
+              const session = await workspaceConversation.create(workspace.path?.trim() || undefined);
               saveSessionDraft(workspaceId, session.id, { text: prompt, mode: "prompt" });
               writeActiveWorkspaceId(workspaceId || null);
               writeLastSessionFor(workspaceId, session.id);
@@ -1876,15 +1875,11 @@ export function SessionRoute() {
       respondQuestion={respondQuestion}
       safeStringify={safeStringify}
       onRenameSession={
-        opencodeClient
+        conversation
           ? async (sessionId, nextTitle) => {
               const trimmed = nextTitle.trim();
               if (!trimmed) return;
-              await opencodeClient.session.update({
-                sessionID: sessionId,
-                title: trimmed,
-                directory: selectedWorkspaceRoot || undefined,
-              });
+              await conversation.rename(sessionId, trimmed, selectedWorkspaceRoot || undefined);
               await refreshRouteState();
             }
           : undefined
@@ -1904,7 +1899,7 @@ export function SessionRoute() {
             }
           : undefined
       }
-      onArchiveSession={opencodeClient ? handleArchiveSession : undefined}
+      onArchiveSession={conversation ? handleArchiveSession : undefined}
       notFoundMessage={routeNotFoundMessage}
       onAccessibleTargetsChange={setPaletteAccessibleTargets}
     />

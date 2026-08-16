@@ -35,12 +35,12 @@ function mergeSnapshotMessageWithCached(snapshotMessage: UIMessage, cachedMessag
 
 function messageCreated(message: UIMessage) {
   const metadata = message.metadata;
-  if (!metadata || typeof metadata !== "object" || !("opencode" in metadata)) return null;
+  if (!metadata || typeof metadata !== "object" || !("ipollowork" in metadata)) return null;
 
-  const opencode = metadata.opencode;
-  if (!opencode || typeof opencode !== "object" || !("created" in opencode)) return null;
+  const ipollowork = metadata.ipollowork;
+  if (!ipollowork || typeof ipollowork !== "object" || !("created" in ipollowork)) return null;
 
-  const created = opencode.created;
+  const created = ipollowork.created;
   return typeof created === "number" ? created : null;
 }
 

@@ -1,10 +1,15 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import type { UIMessage } from "ai";
-import type { PermissionRequest, PermissionV2Request, QuestionRequest } from "@opencode-ai/sdk/v2/client";
+import type { PermissionV2Request, QuestionRequest } from "@opencode-ai/sdk/v2/client";
 
-import type { iPolloWorkSessionSnapshot } from "../src/app/lib/ipollowork-server";
-import type { PendingPermission } from "../src/app/types";
 import { getReactQueryClient } from "../src/react-app/infra/query-client";
+import type {
+  ConversationEngineConnection,
+  ConversationPermission,
+  ConversationQuestion,
+  ConversationSnapshot,
+} from "../src/react-app/domains/session/engine/conversation-engine";
+import { mapOpenCodeConversationEvent } from "../src/react-app/domains/session/engine/opencode-conversation-mapper";
 import { persistentPermissionPatterns } from "../src/react-app/domains/session/sync/use-session-interactions";
 import {
   __applySessionSyncEventForTest,
@@ -26,18 +31,7 @@ import {
   transcriptKey,
 } from "../src/react-app/domains/session/sync/session-sync";
 
-function permission(id: string, sessionID: string): PermissionRequest {
-  return {
-    id,
-    sessionID,
-    permission: "bash",
-    patterns: ["echo ok"],
-    metadata: {},
-    always: [],
-  };
-}
-
-function v2Permission(id: string, sessionID: string): PermissionV2Request {
+function nativeV2Permission(id: string, sessionID: string): PermissionV2Request {
   return {
     id,
     sessionID,
@@ -48,7 +42,7 @@ function v2Permission(id: string, sessionID: string): PermissionV2Request {
   };
 }
 
-function question(id: string, sessionID: string): QuestionRequest {
+function nativeQuestion(id: string, sessionID: string): QuestionRequest {
   return {
     id,
     sessionID,
@@ -59,6 +53,38 @@ function question(id: string, sessionID: string): QuestionRequest {
         options: [{ label: "Yes", description: "Proceed" }],
       },
     ],
+  };
+}
+
+function permission(
+  id: string,
+  sessionId: string,
+  overrides: Partial<ConversationPermission> = {},
+): ConversationPermission {
+  return {
+    id,
+    sessionId,
+    kind: "bash",
+    resources: ["echo ok"],
+    remember: [],
+    metadata: {},
+    receivedAt: 1,
+    native: null,
+    ...overrides,
+  };
+}
+
+function question(id: string, sessionId: string): ConversationQuestion {
+  return {
+    id,
+    sessionId,
+    questions: [{
+      header: "Choice",
+      question: "Pick one",
+      options: [{ label: "Yes", description: "Proceed" }],
+    }],
+    receivedAt: 1,
+    native: null,
   };
 }
 
@@ -73,36 +99,29 @@ function uiMessage(id: string, role: "user" | "assistant", text: string): UIMess
 function snapshotWithMessages(
   messages: Array<{ id: string; role: "user" | "assistant"; text: string }>,
   sessionId = "session-a",
-): iPolloWorkSessionSnapshot {
+): ConversationSnapshot {
   return {
     session: {
       id: sessionId,
-      parentID: undefined,
       title: "Test session",
       time: { created: 1, updated: 2 },
-      share: undefined,
-      version: "0",
     },
-    messages: messages.map((message, index) => ({
-      info: {
-        id: message.id,
-        role: message.role,
-        sessionID: sessionId,
-        time: { created: index + 1 },
-      },
-      parts: [
-        {
-          id: `part_${message.id}`,
-          type: "text",
-          text: message.text,
-          sessionID: sessionId,
-          messageID: message.id,
-        },
-      ],
-    })),
+    messages: messages.map((message) => uiMessage(message.id, message.role, message.text)),
     todos: [],
     status: { type: "idle" },
-  } as unknown as iPolloWorkSessionSnapshot;
+  };
+}
+
+const syncInput = { workspaceId: "workspace-a", connectionKey: "test" };
+const testConnection = {
+  subscribe: ({ signal }: { signal: AbortSignal }) => new Promise<void>((resolve) => {
+    signal.addEventListener("abort", () => resolve(), { once: true });
+  }),
+} as ConversationEngineConnection;
+
+function applyOpenCodeEvent(input: typeof syncInput, event: unknown) {
+  const mapped = mapOpenCodeConversationEvent(event);
+  if (mapped) __applySessionSyncEventForTest(input, mapped);
 }
 
 afterEach(() => {
@@ -113,36 +132,23 @@ describe("session permission sync", () => {
   test("persists the broader legacy always scope instead of the current resource", () => {
     expect(persistentPermissionPatterns({
       ...permission("perm-legacy", "session-a"),
-      permission: "external_directory",
-      patterns: ["C:\\Users\\demo\\.agents\\skills\\hyperframes-core\\references\\*"],
-      always: ["C:\\Users\\demo\\.agents\\skills\\hyperframes-core\\*"],
-      receivedAt: 1,
-      protocol: "legacy",
+      kind: "external_directory",
+      resources: ["C:\\Users\\demo\\.agents\\skills\\hyperframes-core\\references\\*"],
+      remember: ["C:\\Users\\demo\\.agents\\skills\\hyperframes-core\\*"],
     })).toEqual(["C:\\Users\\demo\\.agents\\skills\\hyperframes-core\\*"]);
   });
 
   test("persists the v2 save scope and falls back for older requests", () => {
-    const normalized = {
-      id: "perm-v2",
-      sessionID: "session-a",
-      permission: "external_directory",
-      patterns: ["C:/Users/demo/outside/current.txt"],
-      metadata: {},
-      always: ["C:/Users/demo/outside/*"],
-      receivedAt: 1,
-      protocol: "v2" as const,
-      v2: {
-        action: "external_directory",
-        resources: ["C:/Users/demo/outside/current.txt"],
-        save: ["C:/Users/demo/outside/*", "C:/Users/demo/outside/*"],
-      },
-    } satisfies PendingPermission;
+    const normalized = permission("perm-v2", "session-a", {
+      kind: "external_directory",
+      resources: ["C:/Users/demo/outside/current.txt"],
+      remember: ["C:/Users/demo/outside/*", "C:/Users/demo/outside/*"],
+    });
 
     expect(persistentPermissionPatterns(normalized)).toEqual(["C:/Users/demo/outside/*"]);
     expect(persistentPermissionPatterns({
       ...normalized,
-      always: [],
-      v2: { ...normalized.v2, save: undefined },
+      remember: [],
     })).toEqual(["C:/Users/demo/outside/current.txt"]);
   });
 
@@ -153,7 +159,7 @@ describe("session permission sync", () => {
     ]);
 
     expect(getReactQueryClient().getQueryData(permissionKey("workspace-a", "session-a"))).toMatchObject([
-      { id: "perm-a", sessionID: "session-a", permission: "bash" },
+      { id: "perm-a", sessionId: "session-a", kind: "bash" },
     ]);
   });
 
@@ -182,7 +188,7 @@ describe("session permission sync", () => {
     seedPermissionState("workspace-a", "session-a", [], { snapshotStartedAt: 100 });
 
     expect(getReactQueryClient().getQueryData(permissionKey("workspace-a", "session-a"))).toMatchObject([
-      { id: "perm-live", sessionID: "session-a", permission: "bash" },
+      { id: "perm-live", sessionId: "session-a", kind: "bash" },
     ]);
   });
 
@@ -201,37 +207,43 @@ describe("session permission sync", () => {
 
   test("seeds v2 permissions for the selected session", () => {
     seedPermissionState("workspace-a", "session-a", [
-      v2Permission("perm-v2-a", "session-a"),
-      v2Permission("perm-v2-b", "session-b"),
+      permission("perm-v2-a", "session-a", {
+        kind: "read",
+        resources: ["/outside/project/secrets.txt"],
+        remember: ["/outside/project/*"],
+      }),
+      permission("perm-v2-b", "session-b", {
+        kind: "read",
+        resources: ["/outside/project/secrets.txt"],
+        remember: ["/outside/project/*"],
+      }),
     ]);
 
     expect(getReactQueryClient().getQueryData(permissionKey("workspace-a", "session-a"))).toMatchObject([
       {
         id: "perm-v2-a",
-        sessionID: "session-a",
-        permission: "read",
-        patterns: ["/outside/project/secrets.txt"],
-        protocol: "v2",
+        sessionId: "session-a",
+        kind: "read",
+        resources: ["/outside/project/secrets.txt"],
       },
     ]);
   });
 
   test("adds and removes live v2 permission events", () => {
-    const syncInput = { workspaceId: "workspace-a", baseUrl: "http://127.0.0.1:1234", ipolloworkToken: "token" };
     const cleanup = __createWorkspaceSessionSyncForTest(syncInput);
     const releaseSession = trackWorkspaceSessionSync(syncInput, "session-a");
 
     try {
-      __applySessionSyncEventForTest(syncInput, {
+      applyOpenCodeEvent(syncInput, {
         type: "permission.v2.asked",
-        properties: v2Permission("perm-v2-live", "session-a"),
+        properties: nativeV2Permission("perm-v2-live", "session-a"),
       });
 
       expect(getReactQueryClient().getQueryData(permissionKey("workspace-a", "session-a"))).toMatchObject([
-        { id: "perm-v2-live", sessionID: "session-a", permission: "read", protocol: "v2" },
+        { id: "perm-v2-live", sessionId: "session-a", kind: "read" },
       ]);
 
-      __applySessionSyncEventForTest(syncInput, {
+      applyOpenCodeEvent(syncInput, {
         type: "permission.v2.replied",
         properties: { sessionID: "session-a", requestID: "perm-v2-live", reply: "once" },
       });
@@ -252,26 +264,25 @@ describe("session question sync", () => {
     ]);
 
     expect(getReactQueryClient().getQueryData(questionKey("workspace-a", "session-a"))).toMatchObject([
-      { id: "question-a", sessionID: "session-a" },
+      { id: "question-a", sessionId: "session-a" },
     ]);
   });
 
   test("adds and removes live question events", () => {
-    const syncInput = { workspaceId: "workspace-a", baseUrl: "http://127.0.0.1:1234", ipolloworkToken: "token" };
     const cleanup = __createWorkspaceSessionSyncForTest(syncInput);
     const releaseSession = trackWorkspaceSessionSync(syncInput, "session-a");
 
     try {
-      __applySessionSyncEventForTest(syncInput, {
+      applyOpenCodeEvent(syncInput, {
         type: "question.asked",
-        properties: question("question-live", "session-a"),
+        properties: nativeQuestion("question-live", "session-a"),
       } as any);
 
       expect(getReactQueryClient().getQueryData(questionKey("workspace-a", "session-a"))).toMatchObject([
-        { id: "question-live", sessionID: "session-a" },
+        { id: "question-live", sessionId: "session-a" },
       ]);
 
-      __applySessionSyncEventForTest(syncInput, {
+      applyOpenCodeEvent(syncInput, {
         type: "question.replied",
         properties: { sessionID: "session-a", requestID: "question-live", answers: [["Yes"]] },
       } as any);
@@ -330,7 +341,6 @@ describe("session transcript sync", () => {
   });
 
   test("continues accepting stream deltas for a recently unselected session", async () => {
-    const syncInput = { workspaceId: "workspace-a", baseUrl: "http://127.0.0.1:1234", ipolloworkToken: "token" };
     const cleanup = __createWorkspaceSessionSyncForTest(syncInput);
 
     try {
@@ -338,11 +348,11 @@ describe("session transcript sync", () => {
       releaseSessionA();
       const releaseSessionB = trackWorkspaceSessionSync(syncInput, "session-b");
 
-      __applySessionSyncEventForTest(syncInput, {
+      applyOpenCodeEvent(syncInput, {
         type: "message.updated",
         properties: { info: { id: "msg-assistant", role: "assistant", sessionID: "session-a" } },
       } as any);
-      __applySessionSyncEventForTest(syncInput, {
+      applyOpenCodeEvent(syncInput, {
         type: "message.part.updated",
         properties: {
           part: {
@@ -354,7 +364,7 @@ describe("session transcript sync", () => {
           },
         },
       } as any);
-      __applySessionSyncEventForTest(syncInput, {
+      applyOpenCodeEvent(syncInput, {
         type: "message.part.delta",
         properties: {
           sessionID: "session-a",
@@ -376,7 +386,6 @@ describe("session transcript sync", () => {
   });
 
   test("destroys an explicitly switched-away session and ignores later events", () => {
-    const syncInput = { workspaceId: "workspace-a", baseUrl: "http://127.0.0.1:1234", ipolloworkToken: "token" };
     const cleanup = __createWorkspaceSessionSyncForTest(syncInput);
 
     try {
@@ -399,7 +408,7 @@ describe("session transcript sync", () => {
         expect(getReactQueryClient().getQueryData(queryKey)).toBeUndefined();
       }
 
-      __applySessionSyncEventForTest(syncInput, {
+      applyOpenCodeEvent(syncInput, {
         type: "message.updated",
         properties: { info: { id: "msg-late", role: "assistant", sessionID: "session-a" } },
       } as any);
@@ -410,21 +419,21 @@ describe("session transcript sync", () => {
   });
 
   test("keeps workspace stream alive while retained sessions remain after route unmount", async () => {
-    const syncInput = { workspaceId: "workspace-a", baseUrl: "http://127.0.0.1:1234", ipolloworkToken: "token" };
-    const releaseWorkspace = ensureWorkspaceSessionSync(syncInput);
-    const releaseSessionA = trackWorkspaceSessionSync(syncInput, "session-a");
+    const liveSyncInput = { ...syncInput, connection: testConnection };
+    const releaseWorkspace = ensureWorkspaceSessionSync(liveSyncInput);
+    const releaseSessionA = trackWorkspaceSessionSync(liveSyncInput, "session-a");
 
     releaseSessionA();
     releaseWorkspace();
 
     try {
-      expect(__hasWorkspaceSessionSyncForTest(syncInput)).toBe(true);
+      expect(__hasWorkspaceSessionSyncForTest(liveSyncInput)).toBe(true);
 
-      __applySessionSyncEventForTest(syncInput, {
+      applyOpenCodeEvent(liveSyncInput, {
         type: "message.updated",
         properties: { info: { id: "msg-route-leave", role: "assistant", sessionID: "session-a" } },
       } as any);
-      __applySessionSyncEventForTest(syncInput, {
+      applyOpenCodeEvent(liveSyncInput, {
         type: "message.part.updated",
         properties: {
           part: {
@@ -436,7 +445,7 @@ describe("session transcript sync", () => {
           },
         },
       } as any);
-      __applySessionSyncEventForTest(syncInput, {
+      applyOpenCodeEvent(liveSyncInput, {
         type: "message.part.delta",
         properties: {
           sessionID: "session-a",
@@ -451,7 +460,7 @@ describe("session transcript sync", () => {
       const transcript = getReactQueryClient().getQueryData<UIMessage[]>(transcriptKey("workspace-a", "session-a"));
       expect(transcript?.[0]?.parts[0]).toMatchObject({ text: "stream survived settings route" });
     } finally {
-      __disposeWorkspaceSessionSyncForTest(syncInput);
+      __disposeWorkspaceSessionSyncForTest(liveSyncInput);
     }
   });
 });

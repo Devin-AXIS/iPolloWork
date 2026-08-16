@@ -130,7 +130,7 @@ import type { ModelRef } from "@/app/types";
 import { recordInspectorEvent } from "../../app/lib/app-inspector";
 import { ensureDesktopLocaliPolloWorkConnection } from "./desktop-local-ipollowork";
 import { resolveiPolloWorkConnection } from "./ipollowork-connection";
-import { abortSessionSafe } from "@/app/lib/opencode-session";
+import { conversationEngineAdapters } from "@/react-app/domains/session/engine/opencode-conversation-engine";
 import { notifyAlert } from "./notifications";
 import { useReloadCoordinator } from "./reload-coordinator";
 import { buildFeedbackUrl } from "@/app/lib/feedback";
@@ -762,6 +762,16 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
       },
     );
   }, [selectedWorkspaceEndpoint, selectedWorkspaceRoot]);
+  const conversation = useMemo(
+    () => opencodeBaseUrl && selectedWorkspaceEndpoint?.token
+      ? conversationEngineAdapters.get(selectedWorkspace?.engineId).connect({
+          baseUrl: opencodeBaseUrl,
+          token: selectedWorkspaceEndpoint.token,
+          directory: selectedWorkspaceRoot || undefined,
+        })
+      : null,
+    [opencodeBaseUrl, selectedWorkspace?.engineId, selectedWorkspaceEndpoint?.token, selectedWorkspaceRoot],
+  );
 
   useEffect(() => {
     setActiveClient(opencodeClient);
@@ -1206,13 +1216,13 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
       reloadWorkspaceEngine: reloadWorkspaceEngineFromUi,
       activeSessions: () => activeReloadBlockingSessions,
       stopSession: async (sessionId) => {
-        if (!activeClient) return;
-        await abortSessionSafe(activeClient, sessionId);
+        if (!conversation) return;
+        await conversation.abort(sessionId).catch(() => false);
       },
     });
   }, [
-    activeClient,
     activeReloadBlockingSessions,
+    conversation,
     ipolloworkClient,
     reloadCoordinator,
     reloadWorkspaceEngineFromUi,
@@ -2011,8 +2021,8 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
         activeSessions={activeReloadBlockingSessions}
         isRemoteWorkspace={selectedWorkspace?.workspaceType === "remote"}
         onForceStopSession={async (sessionId) => {
-          if (!activeClient) return;
-          await abortSessionSafe(activeClient, sessionId);
+          if (!conversation) return;
+          await conversation.abort(sessionId).catch(() => false);
         }}
         onReloadEngine={reloadCoordinator.reloadWorkspaceEngine}
         modalState={{

@@ -1,10 +1,5 @@
-import type {
-  AgentPartInput,
-  FilePartInput,
-  TextPartInput,
-} from "@opencode-ai/sdk/v2/client";
-
 import type { ComposerAttachment, ComposerDraft } from "@/app/types";
+import type { ConversationPromptPart } from "@/react-app/domains/session/engine/conversation-engine";
 import {
   designAiSelectionInstruction,
   type DesignAiSelectionContext,
@@ -93,7 +88,7 @@ export function designSelectionContextsForDraft(
 export async function promptDesignSelectionContexts(input: {
   contexts: DesignAiSelectionContext[];
   workspaceClient: DesignSelectionWorkspaceClient;
-  prompt: () => Promise<{ error?: unknown }>;
+  prompt: () => Promise<void | { error?: unknown }>;
   designSelectionStore?: DesignSelectionStore;
 }) {
   const designSelectionStore = input.designSelectionStore ?? useDesignAiSelectionStore;
@@ -113,7 +108,7 @@ export async function promptDesignSelectionContexts(input: {
       designSelectionStore.getState().markRunning(context.id);
     }
     const result = await input.prompt();
-    if (result.error) throw new Error(serializeSDKError(result.error));
+    if (result?.error) throw new Error(serializeSDKError(result.error));
     return result;
   } catch (error) {
     for (const context of input.contexts) designSelectionStore.getState().fail(context.id);
@@ -128,7 +123,7 @@ export async function draftToParts(
   scope?: DesignSelectionScope,
   options: DraftToPartsOptions = {},
 ) {
-  const parts: Array<TextPartInput | FilePartInput | AgentPartInput> = [];
+  const parts: ConversationPromptPart[] = [];
   const root = workspaceRoot.trim();
 
   const toAbsolutePath = (path: string) => {

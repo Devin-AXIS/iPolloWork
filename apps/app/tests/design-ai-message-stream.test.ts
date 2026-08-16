@@ -4,7 +4,7 @@ import type { iPolloWorkSessionSnapshot } from "../src/app/lib/ipollowork-server
 import { designAiSelectionInstruction, type DesignAiSelectionContext } from "@ipollowork/design-studio";
 import { hyperframesAnimationDisplayMetadata } from "../src/app/lib/hyperframes-effect-params";
 import { videoVoiceDisplayMetadata } from "../src/react-app/domains/session/video/video-voice";
-import { snapshotToUIMessages } from "../src/react-app/domains/session/sync/usechat-adapter";
+import { snapshotToUIMessages } from "../src/react-app/domains/session/engine/opencode-message-adapter";
 
 const context: DesignAiSelectionContext = {
   id: "design-ai-message",

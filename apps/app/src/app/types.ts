@@ -1,9 +1,6 @@
 import type {
   Message,
   Part,
-  PermissionRequest as ApiPermissionRequest,
-  PermissionV2Request,
-  QuestionRequest,
   Session,
 } from "@opencode-ai/sdk/v2/client";
 import type { createClient } from "./lib/opencode";
@@ -402,17 +399,6 @@ export type ReloadTrigger = {
   name?: string;
   action?: "added" | "removed" | "updated";
   path?: string;
-};
-
-export type PendingPermission = Omit<ApiPermissionRequest, "always"> & {
-  always: unknown;
-  receivedAt: number;
-  protocol: "legacy" | "v2";
-  v2?: Pick<PermissionV2Request, "action" | "resources" | "save">;
-};
-
-export type PendingQuestion = QuestionRequest & {
-  receivedAt: number;
 };
 
 export type TodoItem = {

@@ -1,19 +1,18 @@
 /** @jsxImportSource react */
 import { useMemo } from "react";
 
-import type { createClient } from "../../../../app/lib/opencode";
 import type { iPolloWorkServerClient, iPolloWorkWorkspaceInfo } from "../../../../app/lib/ipollowork-server";
-import { setSessionArchived } from "../../../../app/lib/opencode-session";
 import { getDisplaySessionTitle } from "../../../../app/lib/session-title";
 import { useControlAction, type iPolloWorkControlAction } from "../../../shell/control/control-provider";
 import { useSessionPinStore } from "../sidebar/session-pin-store";
+import type { ConversationEngineConnection } from "../engine/conversation-engine";
 
 type SessionLike = {
   id?: string;
-  title?: string;
+  title?: string | null;
   time?: {
-    updated?: number;
-    created?: number;
+    updated?: number | null;
+    created?: number | null;
   };
 };
 
@@ -29,7 +28,7 @@ type UseSessionControlActionsInput = {
   selectedSessionId: string | null;
   canCreateTask: boolean;
   ipolloworkClient: iPolloWorkServerClient | null;
-  opencodeClient: ReturnType<typeof createClient> | null;
+  conversation: ConversationEngineConnection | null;
   navigateToSession: (sessionId: string) => void;
   navigateToSessionRoot: () => void;
   createTaskInWorkspace: (workspaceId: string) => Promise<unknown> | unknown;
@@ -72,7 +71,7 @@ export function useSessionControlActions(input: UseSessionControlActionsInput) {
     navigateToSessionRoot,
     openModelPicker,
     ipolloworkClient,
-    opencodeClient,
+    conversation,
     refreshRouteState,
     selectedSessionId,
     selectedWorkspaceId,
@@ -144,24 +143,20 @@ export function useSessionControlActions(input: UseSessionControlActionsInput) {
       { name: "sessionId", type: "string", required: true, description: "Session ID from session.list_sessions." },
       { name: "title", type: "string", required: true, description: "New session title." },
     ],
-    disabled: !opencodeClient,
+    disabled: !conversation,
     execute: async (args) => {
       const sessionId = stringArg(args, "sessionId");
       const title = stringArg(args, "title");
       if (!sessionId) return { ok: false, error: "sessionId is required" };
       if (!title) return { ok: false, error: "title is required" };
-      if (!opencodeClient) return { ok: false, error: "OpenCode client is not connected" };
+      if (!conversation) return { ok: false, error: "Conversation engine is not connected" };
 
       const targetWorkspace = findSessionWorkspace(workspaces, sessionsByWorkspaceId, sessionId);
-      await opencodeClient.session.update({
-        sessionID: sessionId,
-        title,
-        directory: targetWorkspace?.path || selectedWorkspaceRoot || undefined,
-      });
+      await conversation.rename(sessionId, title, targetWorkspace?.path || selectedWorkspaceRoot || undefined);
       await refreshRouteState();
       return { ok: true, sessionId, title };
     },
-  }), [opencodeClient, refreshRouteState, selectedWorkspaceRoot, sessionsByWorkspaceId, workspaces]);
+  }), [conversation, refreshRouteState, selectedWorkspaceRoot, sessionsByWorkspaceId, workspaces]);
   useControlAction(renameSessionControlAction);
 
   const deleteSessionControlAction = useMemo<iPolloWorkControlAction>(() => ({
@@ -238,18 +233,18 @@ export function useSessionControlActions(input: UseSessionControlActionsInput) {
       { name: "sessionId", type: "string", required: true, description: "Session ID." },
       { name: "archived", type: "boolean", required: true, description: "true to archive, false to unarchive." },
     ],
-    disabled: !opencodeClient,
+    disabled: !conversation,
     execute: async (args) => {
       const sessionId = stringArg(args, "sessionId");
       const archived = booleanArg(args, "archived");
       if (!sessionId) return { ok: false, error: "sessionId is required" };
-      if (!opencodeClient) return { ok: false, error: "OpenCode client is not connected" };
+      if (!conversation) return { ok: false, error: "Conversation engine is not connected" };
       const targetWorkspace = findSessionWorkspace(workspaces, sessionsByWorkspaceId, sessionId);
-      await setSessionArchived(opencodeClient, sessionId, archived, targetWorkspace?.path || selectedWorkspaceRoot || undefined);
+      await conversation.setArchived(sessionId, archived, targetWorkspace?.path || selectedWorkspaceRoot || undefined);
       await refreshRouteState();
       return { ok: true, sessionId, archived };
     },
-  }), [opencodeClient, refreshRouteState, selectedWorkspaceRoot, sessionsByWorkspaceId, workspaces]);
+  }), [conversation, refreshRouteState, selectedWorkspaceRoot, sessionsByWorkspaceId, workspaces]);
   useControlAction(archiveControlAction);
 
 }
