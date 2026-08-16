@@ -11,7 +11,7 @@
 //   │ │ │ │ │
 //   * * * * *
 
-const MAX_SCAN_MINUTES = 366 * 24 * 60 * 5; // ~5 years, safety bound
+const MAX_SCAN_MINUTES = 366 * 24 * 60 * 4; // 4 years covers the leap-year cycle
 
 export const CRON_FIELDS = ["minute", "hour", "day", "month", "weekday"] as const;
 export type CronFieldName = (typeof CRON_FIELDS)[number];
@@ -130,9 +130,7 @@ function weekdayMatches(field: CronField, date: Date): boolean {
   return field.values.has(7) && dow === 0;
 }
 
-export function cronMatches(expression: string, date: Date): boolean {
-  const parsed = parseCron(expression);
-  if (!parsed) return false;
+function matchesParsed(parsed: CronParse, date: Date): boolean {
   const { fields } = parsed;
 
   const minute = fieldByName(fields, "minute").values.has(date.getMinutes());
@@ -146,6 +144,12 @@ export function cronMatches(expression: string, date: Date): boolean {
 
   const dayMatch = dayRestricted && dowRestricted ? day || dow : day && dow;
   return minute && hour && month && dayMatch;
+}
+
+export function cronMatches(expression: string, date: Date): boolean {
+  const parsed = parseCron(expression);
+  if (!parsed) return false;
+  return matchesParsed(parsed, date);
 }
 
 export function isValidCron(expression: string): boolean {
@@ -162,7 +166,7 @@ export function nextRunAfter(expression: string, after: Date): Date | null {
   cursor.setMinutes(cursor.getMinutes() + 1);
 
   for (let i = 0; i < MAX_SCAN_MINUTES; i++) {
-    if (cronMatches(expression, cursor)) return new Date(cursor.getTime());
+    if (matchesParsed(parsed, cursor)) return new Date(cursor.getTime());
     cursor.setMinutes(cursor.getMinutes() + 1);
   }
   return null;

@@ -8,7 +8,7 @@ import os from "node:os";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 
-const MAX_SCAN_MINUTES = 366 * 24 * 60 * 5;
+const MAX_SCAN_MINUTES = 366 * 24 * 60 * 4; // 4 years covers the leap-year cycle
 const FIELD_NAMES = ["minute", "hour", "day", "month", "weekday"];
 const FIELD_META = {
   minute: { min: 0, max: 59 },
@@ -93,9 +93,7 @@ function weekdayMatches(field, date) {
   return field.has(7) && dow === 0;
 }
 
-function cronMatches(expression, date) {
-  const parsed = parseCron(expression);
-  if (!parsed) return false;
+function matchesParsed(parsed, date) {
   const { fields, raw } = parsed;
   const minute = fields.minute.has(date.getMinutes());
   const hour = fields.hour.has(date.getHours());
@@ -108,13 +106,20 @@ function cronMatches(expression, date) {
   return minute && hour && month && dayMatch;
 }
 
+function cronMatches(expression, date) {
+  const parsed = parseCron(expression);
+  if (!parsed) return false;
+  return matchesParsed(parsed, date);
+}
+
 function nextRunAfter(expression, after) {
-  if (!parseCron(expression)) return null;
+  const parsed = parseCron(expression);
+  if (!parsed) return null;
   const cursor = new Date(after.getTime());
   cursor.setSeconds(0, 0);
   cursor.setMinutes(cursor.getMinutes() + 1);
   for (let i = 0; i < MAX_SCAN_MINUTES; i++) {
-    if (cronMatches(expression, cursor)) return cursor.getTime();
+    if (matchesParsed(parsed, cursor)) return cursor.getTime();
     cursor.setMinutes(cursor.getMinutes() + 1);
   }
   return null;
@@ -192,6 +197,8 @@ export function createScheduledTasks({
     if (patch.workspaceId !== undefined) task.workspaceId = String(patch.workspaceId ?? "");
     if (patch.prompt !== undefined) task.prompt = String(patch.prompt ?? "").trim();
     if (patch.enabled !== undefined) task.enabled = Boolean(patch.enabled);
+    if (patch.lastRunAt !== undefined) task.lastRunAt = patch.lastRunAt;
+    if (patch.lastRunStatus !== undefined) task.lastRunStatus = patch.lastRunStatus;
     tasks[index] = task;
     writeTasks(tasks);
     broadcast({ type: "changed" });
