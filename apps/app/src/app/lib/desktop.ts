@@ -187,7 +187,7 @@ declare global {
       };
       git?: {
         graph?: (options: { cwd: string; maxCommits?: number }) => Promise<
-          | { ok: true; repoRoot: string; count: number; isRepo: true; commits: { sha: string; parents: string[] }[]; refs: { sha: string; refname: string; head: boolean }[]; headShas: string[] }
+          | { ok: true; repoRoot: string; count: number; totalCount: number | null; truncated: boolean; isRepo: true; commits: { sha: string; parents: string[] }[]; refs: { sha: string; refname: string; head: boolean }[]; headShas: string[] }
           | { ok: false; isRepo: boolean; error: string }
         >;
       };

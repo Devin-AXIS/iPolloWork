@@ -11,7 +11,7 @@
 //   - Per-IP fail lockout + sliding-window rate limit on /pair.
 //   - Only snapshot()/listActions() are ever bridged to the renderer; the
 //     /api/execute route is hard-rejected with 403 (read-only mode).
-import { randomBytes, randomInt } from "node:crypto";
+import { randomBytes } from "node:crypto";
 import { createServer } from "node:http";
 import os from "node:os";
 import path from "node:path";
@@ -21,9 +21,20 @@ const CHALLENGE_TTL_MS = 60 * 1000;
 const SESSION_TTL_MS = 12 * 60 * 60 * 1000;
 const MAX_FAILS = 5;
 const LOCK_MS = 30 * 1000;
+// Global (all-IP) fail lockout with exponential backoff, so distributed
+// attackers cannot amortize per-IP limits behind NAT.
+const MAX_GLOBAL_FAILS = 15;
+const GLOBAL_LOCK_BASE_MS = 60 * 1000;
+const GLOBAL_LOCK_MAX_MS = 15 * 60 * 1000;
 const RATE_WINDOW_MS = 60_000;
 const RATE_MAX = 20;
 const DEFAULT_PORT = 39485;
+// Pair code alphabet: uppercase letters + digits (avoiding ambiguous
+// 0/O/1/I) → 31 chars ≈ 4.95 bits each, 8 chars ≈ 39.6 bits, far stronger
+// than 6 numeric digits (~19.9 bits) while staying human-typable on mobile.
+// Uppercase-only so the mobile page can normalize input with toUpperCase().
+const CODE_ALPHABET = "23456789ABCDEFGHJKMNPQRSTUVWXYZ";
+const CODE_LENGTH = 8;
 
 function sendJson(response, statusCode, payload) {
   response.writeHead(statusCode, {
@@ -82,7 +93,7 @@ function lanAddresses() {
   return out;
 }
 
-export function createLanPreviewServer({ appName, getWindow, pageHtmlPath, log = () => {} }) {
+export function createLanPreviewServer({ appName, getWindow, previewCore, pageHtmlPath, log = () => {} }) {
   let server = null;
   let port = 0;
   let code = null;
@@ -91,11 +102,20 @@ export function createLanPreviewServer({ appName, getWindow, pageHtmlPath, log =
   const sessions = new Map();
   const fails = new Map();
   const hits = new Map();
+  let globalFailCount = 0;
+  let globalLockedUntil = 0;
 
   const randHex = (n) => randomBytes(n).toString("hex");
 
   function generateCode() {
-    code = String(randomInt(0, 1_000_000)).padStart(6, "0");
+    // Uniform sampling from the alphabet using rejection-free byte mapping;
+    // 8 chars from a 56-char alphabet ≈ 46.7 bits of entropy.
+    const bytes = randomBytes(CODE_LENGTH);
+    const chars = [];
+    for (let i = 0; i < CODE_LENGTH; i++) {
+      chars.push(CODE_ALPHABET[bytes[i] % CODE_ALPHABET.length]);
+    }
+    code = chars.join("");
     codeExpiresAt = Date.now() + CODE_TTL_MS;
     return { code, expiresAt: codeExpiresAt };
   }
@@ -142,31 +162,32 @@ export function createLanPreviewServer({ appName, getWindow, pageHtmlPath, log =
       current.lockedUntil = Date.now() + LOCK_MS;
     }
     fails.set(ip, current);
+
+    // Global backoff: failures from any source advance a shared counter.
+    // The lock duration grows exponentially so a sustained brute-force is
+    // throttled regardless of how many source IPs participate.
+    globalFailCount += 1;
+    if (globalFailCount >= MAX_GLOBAL_FAILS) {
+      const step = Math.floor(globalFailCount / MAX_GLOBAL_FAILS) - 1;
+      const backoff = Math.min(GLOBAL_LOCK_BASE_MS * 2 ** Math.max(0, step), GLOBAL_LOCK_MAX_MS);
+      globalLockedUntil = Date.now() + backoff;
+    }
   }
 
   function lockRemainingFor(ip) {
     const current = fails.get(ip);
-    if (!current) return 0;
-    const remaining = current.lockedUntil - Date.now();
-    return remaining > 0 ? remaining : 0;
+    const perIpRemaining = current ? current.lockedUntil - Date.now() : 0;
+    const globalRemaining = globalLockedUntil - Date.now();
+    return Math.max(perIpRemaining, globalRemaining, 0);
   }
 
   async function invokeRenderer(method) {
-    const win = await getWindow();
-    if (!win || win.isDestroyed()) {
-      throw new Error("renderer-unavailable");
+    if (!previewCore) {
+      throw new Error("preview-core-unavailable");
     }
-    return win.webContents.executeJavaScript(
-      `(async () => {
-        const control = window.__ipolloworkControl;
-        if (!control) return { ok: false, error: "control-surface-unavailable" };
-        control.setEnabled?.(true);
-        if (${JSON.stringify(method)} === "snapshot") return { ok: true, ...control.snapshot() };
-        if (${JSON.stringify(method)} === "actions") return { ok: true, actions: control.listActions() };
-        return { ok: false, error: "unknown-method" };
-      })()`,
-      true,
-    );
+    if (method === "snapshot") return previewCore.getSnapshot();
+    if (method === "actions") return previewCore.getActions();
+    throw new Error("unknown-method");
   }
 
   async function handle(request, response) {
@@ -274,6 +295,8 @@ export function createLanPreviewServer({ appName, getWindow, pageHtmlPath, log =
       sessions.clear();
       fails.clear();
       hits.clear();
+      globalFailCount = 0;
+      globalLockedUntil = 0;
     },
     regenerateCode() {
       if (!server) return null;

@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { isElectronRuntime } from "../../../../app/utils";
+import { normalizeSshTarget } from "./ops-utils";
 
 type OpsSession = {
   id: string;
@@ -192,7 +193,7 @@ export function OpsPanel({ onClose }: OpsPanelProps) {
   }, []);
 
   const addSession = (target: string) => {
-    const clean = target.trim().replace(/^ssh\s+/, "").replace(/^-t\s+/, "");
+    const clean = normalizeSshTarget(target);
     if (!clean) return;
     const id = `ops_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`;
     setSessions((prev) => [

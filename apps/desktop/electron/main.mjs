@@ -1,7 +1,7 @@
-import { execFileSync, spawn, spawnSync } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import { createServer } from "node:http";
 import net from "node:net";
-import { existsSync, readFileSync, readdirSync } from "node:fs";
+import { existsSync, readdirSync } from "node:fs";
 import {
   cp,
   mkdir,
@@ -30,6 +30,9 @@ import {
 } from "./computer-use.mjs";
 import { createUiControlServer } from "./ui-control-server.mjs";
 import { createLanPreviewServer, lanPreviewPagePath } from "./lan-preview-server.mjs";
+import { createSshOps } from "./ssh-ops.mjs";
+import { createGitGraph } from "./git-graph.mjs";
+import { createPreviewCore } from "./preview-core.mjs";
 import { createApplicationMenu } from "./app-menu.mjs";
 import { createBrowserPanel } from "./browser-panel.mjs";
 import { createWorkspaceStore } from "./workspace-store.mjs";
@@ -117,8 +120,12 @@ const uiControlServer = createUiControlServer({
 const lanPreviewServer = createLanPreviewServer({
   appName: APP_NAME,
   getWindow: () => createMainWindow(),
+  previewCore: createPreviewCore({ getWindow: () => createMainWindow() }),
   pageHtmlPath: lanPreviewPagePath(path.resolve(__dirname, "..")),
 });
+
+const sshOps = createSshOps({ pty });
+const gitGraph = createGitGraph();
 
 const terminalProcesses = new Map();
 const hyperframesProcesses = new Map();
@@ -139,11 +146,6 @@ function isHyperframesStudioUrl(url) {
   } catch {
     return false;
   }
-}
-
-function defaultTerminalShell() {
-  if (process.platform === "win32") return process.env.COMSPEC || "powershell.exe";
-  return process.env.SHELL || (process.platform === "darwin" ? "/bin/zsh" : "/bin/bash");
 }
 
 async function resolveTerminalCwd(cwd) {
@@ -3011,57 +3013,9 @@ ipcMain.handle("ipollowork:system:askMicrophoneAccess", async () => {
 });
 
 // ── Terminal IPC ────────────────────────────────────────────────────────
-// Shared terminal spawn used by both the in-session dock and the SSH ops
-// panel. When `command` is provided it runs the executable directly instead of
-// dropping into an interactive shell — e.g. ["ssh", "user@host"] for remote
-// sessions. Spawning the command itself (not `shell -c ...`) keeps the pty on
-// the executable so interactive prompts, host-key checks and passphrase
-// dialogs behave exactly like a real ssh client.
-function spawnTerminalProcess({ cwd, cols, rows, command, shellPath }) {
-  const program = Array.isArray(command) && command.length > 0
-    ? command[0]
-    : (shellPath ?? defaultTerminalShell());
-  const args = Array.isArray(command) && command.length > 1 ? command.slice(1) : [];
-  return pty.spawn(program, args, {
-    name: "xterm-256color",
-    cols,
-    rows,
-    cwd,
-    env: {
-      ...process.env,
-      TERM: "xterm-256color",
-      COLORTERM: "truecolor",
-      IPOLLOWORK_TERMINAL: "1",
-    },
-  });
-}
-
-// Parse ~/.ssh/config into a lightweight host list for the ops panel.
-// Mirrors OpenSSH semantics for the Host directive without shelling out to
-// `ssh -G`, keeping the operation local and dependency-free.
-function readSshConfigHosts() {
-  const configPath = path.join(os.homedir(), ".ssh", "config");
-  let raw;
-  try {
-    raw = readFileSync(configPath, "utf8");
-  } catch {
-    return { hosts: [], configPath };
-  }
-  const hosts = [];
-  const lines = raw.split(/\r?\n/);
-  for (const line of lines) {
-    const trimmed = line.trim();
-    if (!trimmed || trimmed.startsWith("#")) continue;
-    const match = /^Host\s+(.+)$/.exec(trimmed);
-    if (!match) continue;
-    const entries = match[1].split(/\s+/).filter(Boolean);
-    for (const entry of entries) {
-      if (entry.includes("*") || entry.includes("?")) continue;
-      hosts.push(entry);
-    }
-  }
-  return { hosts: [...new Set(hosts)], configPath };
-}
+// Shared terminal spawn (spawnTerminalProcess) and ~/.ssh/config host
+// discovery (readSshConfigHosts) live in ssh-ops.mjs and are injected as
+// `sshOps`.
 
 ipcMain.handle("ipollowork:terminal:create", async (event, options = {}) => {
   const cwd = await resolveTerminalCwd(options?.cwd);
@@ -3069,7 +3023,7 @@ ipcMain.handle("ipollowork:terminal:create", async (event, options = {}) => {
   const rows = Number.isFinite(options?.rows) ? Math.max(5, Math.floor(options.rows)) : 24;
   const terminalId = `term_${nextTerminalId++}`;
   const shellPath = typeof options?.shell === "string" && options.shell.trim() ? options.shell.trim() : undefined;
-  const child = spawnTerminalProcess({ cwd, cols, rows, command: options?.command, shellPath });
+  const child = sshOps.spawnTerminalProcess({ cwd, cols, rows, command: options?.command, shellPath });
 
   terminalProcesses.set(terminalId, { process: child, webContentsId: event.sender.id });
   event.sender.once("destroyed", () => killTerminalsForWebContents(event.sender.id));
@@ -3101,83 +3055,17 @@ ipcMain.handle("ipollowork:terminal:kill", (event, terminalId) => {
   killTerminal(String(terminalId));
 });
 
-ipcMain.handle("ipollowork:ssh:list-hosts", (event) => {
-  if (!event.sender) return readSshConfigHosts();
-  return readSshConfigHosts();
-});
+ipcMain.handle("ipollowork:ssh:list-hosts", () => sshOps.readSshConfigHosts());
 
 // ── Git graph IPC ──────────────────────────────────────────────────────
-const GIT_GRAPH_TIMEOUT_MS = 30_000;
-
-function runGitInWorkspace(cwd, args) {
-  const result = spawnSync("git", args, {
-    cwd,
-    encoding: "utf8",
-    timeout: GIT_GRAPH_TIMEOUT_MS,
-    env: { ...process.env, LC_ALL: "C", GIT_TERMINAL_PROMPT: "0", GIT_PAGER: "" },
-  });
-  if (result.error) {
-    if (result.error.code === "ENOENT") throw new Error("git executable not found");
-    throw result.error;
-  }
-  if (result.status !== 0) {
-    throw new Error(`git ${args[0]} failed: ${String(result.stderr ?? "").trim().slice(0, 400)}`);
-  }
-  return String(result.stdout ?? "");
-}
-
-// Build a lightweight commit DAG for the workspace repo: commit hashes with
-// their parents plus branch/tag refs. Uses `rev-list --parents` for exact
-// edges (not `git log --graph` text parsing, which is locale/encoding
-// fragile) and `for-each-ref` for ref → commit mapping. Bounded by an
-// optional maxCommits to keep huge repos renderable.
-function buildGitGraph(cwd, maxCommits = 2000) {
-  const revListOutput = runGitInWorkspace(cwd, [
-    "rev-list", "--parents", "--all", "--max-count", String(maxCommits),
-  ]);
-  const commits = [];
-  const commitBySha = new Map();
-  for (const line of revListOutput.split("\n")) {
-    if (!line.trim()) continue;
-    const parts = line.trim().split(/\s+/);
-    const sha = parts[0];
-    const parents = parts.slice(1);
-    commits.push({ sha, parents });
-    commitBySha.set(sha, { sha, parents });
-  }
-
-  const refsOutput = runGitInWorkspace(cwd, [
-    "for-each-ref", "refs/heads", "refs/remotes",
-    "--format=%(objectname)%00%(refname)%00%(HEAD)", "--merged", "HEAD",
-  ]);
-  const refs = [];
-  for (const line of refsOutput.split("\n")) {
-    if (!line.trim()) continue;
-    const [sha, refname, headFlag] = line.trim().split("\0");
-    if (!sha || !refname) continue;
-    const head = headFlag === "*";
-    refs.push({ sha, refname, head });
-  }
-
-  const count = commits.length;
-  // Resolve tips reachable from HEAD refs so we can draw ref badges.
-  const headShas = new Set(refs.filter((ref) => ref.head).map((ref) => ref.sha));
-
-  return {
-    ok: true,
-    repoRoot: cwd,
-    count,
-    commits,
-    refs,
-    headShas: [...headShas],
-  };
-}
+// Commit DAG + ref mapping builder (buildGitGraph) lives in git-graph.mjs
+// and is injected as `gitGraph`.
 
 ipcMain.handle("ipollowork:git:graph", (event, options = {}) => {
   const cwd = typeof options?.cwd === "string" && options.cwd.trim() ? options.cwd.trim() : undefined;
   if (!cwd) return { ok: false, error: "missing cwd" };
   try {
-    const result = buildGitGraph(cwd, Number.isFinite(options?.maxCommits) ? options.maxCommits : 2000);
+    const result = gitGraph.buildGitGraph(cwd, Number.isFinite(options?.maxCommits) ? options.maxCommits : 2000);
     result.isRepo = true;
     return result;
   } catch (error) {

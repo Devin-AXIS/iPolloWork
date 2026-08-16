@@ -122,8 +122,8 @@ import { shouldRefreshTemplateCatalogOnOpen } from "../templates/template-market
 import { savePromptTemplate } from "@/react-app/domains/session/templates/prompt-template-store";
 import { SidePanel, type SidePanelLauncherItem } from "../panel/side-panel";
 import { TerminalDock } from "../terminal/terminal-dock";
-import { OpsPanel } from "../terminal/ops-panel";
-import { GitPanel } from "../terminal/git-panel";
+import { OpsPanel } from "../ops/ops-panel";
+import { GitPanel } from "../git/git-panel";
 import { useActivePanelTab, usePanelTabStore, useSessionPanelState } from "../panel/panel-tab-store";
 import { useWorkspaceShellLayout } from "../../../shell/workspace-shell-layout";
 import { useControlAction, type iPolloWorkControlAction } from "../../../shell/control/control-provider";

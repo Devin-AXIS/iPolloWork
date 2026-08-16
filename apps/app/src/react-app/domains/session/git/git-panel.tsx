@@ -5,90 +5,31 @@ import { GitBranch, GitCommitHorizontal, Loader2, RefreshCw, X } from "lucide-re
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { isElectronRuntime } from "../../../../app/utils";
+import {
+  layoutGraph,
+  shortSha,
+  shortRef,
+  type GraphCommit,
+  type GraphRef,
+  type LayoutCommit,
+} from "./graph-layout";
 
 const LANE_WIDTH = 26;
 const ROW_HEIGHT = 26;
 const RADIUS = 7;
 const MAX_COMMITS = 1200;
 
-type GraphCommit = { sha: string; parents: string[] };
-type GraphRef = { sha: string; refname: string; head: boolean };
-
 type GraphData = {
   ok: boolean;
   isRepo: boolean;
   error?: string;
   count?: number;
+  totalCount?: number | null;
+  truncated?: boolean;
   commits?: GraphCommit[];
   refs?: GraphRef[];
   headShas?: string[];
 };
-
-type LayoutCommit = GraphCommit & {
-  row: number;
-  lane: number;
-  refs: GraphRef[];
-};
-
-// Greedy lane assignment: place each commit into the lowest lane whose
-// current owner has been fully placed, otherwise open a new lane. Parents are
-// reserved as soon as their child is placed so branches hold stable lanes.
-function layoutGraph(commits: GraphCommit[], refs: GraphRef[]): { rows: LayoutCommit[]; laneCount: number } {
-  const refsBySha = new Map<string, GraphRef[]>();
-  for (const ref of refs) {
-    const list = refsBySha.get(ref.sha) ?? [];
-    list.push(ref);
-    refsBySha.set(ref.sha, list);
-  }
-
-  const laneOf = new Map<string, number>();
-  const laneOwner: (string | undefined)[] = [];
-  const placed = new Set<string>();
-  let laneCount = 0;
-
-  const reserveLane = (sha: string) => {
-    const existing = laneOf.get(sha);
-    if (existing !== undefined) return existing;
-    let lane = -1;
-    for (let i = 0; i < laneCount; i++) {
-      const owner = laneOwner[i];
-      if (owner === undefined || placed.has(owner)) {
-        lane = i;
-        break;
-      }
-    }
-    if (lane === -1) {
-      lane = laneCount++;
-    }
-    laneOf.set(sha, lane);
-    laneOwner[lane] = sha;
-    return lane;
-  };
-
-  const rows: LayoutCommit[] = [];
-  commits.forEach((commit, row) => {
-    const lane = reserveLane(commit.sha);
-    placed.add(commit.sha);
-    rows.push({
-      ...commit,
-      row,
-      lane,
-      refs: refsBySha.get(commit.sha) ?? [],
-    });
-    for (const parent of commit.parents) reserveLane(parent);
-  });
-
-  return { rows, laneCount };
-}
-
-function shortSha(sha: string) {
-  return sha.slice(0, 7);
-}
-
-function shortRef(refname: string) {
-  const cleaned = refname.replace(/^refs\/heads\//, "").replace(/^refs\/remotes\//, "");
-  return cleaned;
-}
 
 function commitMessage(sha: string): string {
   return shortSha(sha);
@@ -142,18 +83,28 @@ export function GitPanel({ workspaceRoot, onClose }: GitPanelProps) {
 
   const edgeLines = useMemo(() => {
     if (!rows.length) return [];
-    const lines: { key: string; d: string }[] = [];
+    const lines: { key: string; d: string; stub?: boolean }[] = [];
     const rowBySha = new Map(rows.map((r) => [r.sha, r.row]));
     const laneBySha = new Map(rows.map((r) => [r.sha, r.lane]));
     for (const commit of rows) {
       for (const parent of commit.parents) {
-        const parentRow = rowBySha.get(parent);
-        if (parentRow === undefined) continue;
         const childX = commit.lane * LANE_WIDTH + LANE_WIDTH / 2;
+        const childY = commit.row * ROW_HEIGHT + ROW_HEIGHT / 2;
+        const parentRow = rowBySha.get(parent);
+        if (parentRow === undefined) {
+          // Parent lies outside the fetched window (truncated history).
+          // Draw a short dangling stub downward to signal the cut.
+          const stubEnd = childY + 12;
+          lines.push({
+            key: `${commit.sha}-${parent}`,
+            d: `M ${childX} ${childY} L ${childX} ${stubEnd}`,
+            stub: true,
+          });
+          continue;
+        }
         const parentLane = laneBySha.get(parent);
         if (parentLane === undefined) continue;
         const parentX = parentLane * LANE_WIDTH + LANE_WIDTH / 2;
-        const childY = commit.row * ROW_HEIGHT + ROW_HEIGHT / 2;
         const parentY = parentRow * ROW_HEIGHT + ROW_HEIGHT / 2;
         if (commit.lane === parentLane) {
           lines.push({ key: `${commit.sha}-${parent}`, d: `M ${childX} ${childY} L ${parentX} ${parentY}` });
@@ -191,6 +142,15 @@ export function GitPanel({ workspaceRoot, onClose }: GitPanelProps) {
         </div>
       </header>
 
+      {data?.ok && data.truncated && data.totalCount !== undefined && data.totalCount !== null ? (
+        <div className="flex items-center gap-2 border-b border-border bg-amber-500/10 px-4 py-2 text-xs text-amber-600" data-testid="git-truncated-banner">
+          <GitBranch className="size-3.5 shrink-0" />
+          <span>
+            历史已截断：显示前 {data.count} 条，仓库共有 {data.totalCount} 条提交。虚线表示截断边界。
+          </span>
+        </div>
+      ) : null}
+
       <div className="flex min-h-0 flex-1">
         <div className="min-h-0 flex-1 overflow-auto">
           {loading ? (
@@ -215,9 +175,10 @@ export function GitPanel({ workspaceRoot, onClose }: GitPanelProps) {
                     key={line.key}
                     d={line.d}
                     fill="none"
-                    stroke="var(--color-border)"
-                    strokeWidth={1.5}
-                    opacity={0.8}
+                    stroke={line.stub ? "var(--color-muted-foreground)" : "var(--color-border)"}
+                    strokeWidth={line.stub ? 1 : 1.5}
+                    strokeDasharray={line.stub ? "3 3" : undefined}
+                    opacity={line.stub ? 0.7 : 0.8}
                   />
                 ))}
                 {rows.map((commit) => {

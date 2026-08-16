@@ -45,8 +45,8 @@
   <section id="pairView" class="card">
     <h2>连接到工作台</h2>
     <p class="muted">在桌面端「设置 → 远程预览」中查看配对码（10 分钟有效）。</p>
-    <input id="code" class="code-input" inputmode="numeric" maxlength="6"
-           placeholder="000000" autocomplete="one-time-code">
+    <input id="code" class="code-input" inputmode="text" autocomplete="one-time-code"
+           placeholder="••••••••" maxlength="8" autocapitalize="characters" spellcheck="false">
     <p id="pairError"></p>
     <button id="pairBtn" onclick="pair()">连接</button>
   </section>
@@ -107,7 +107,7 @@
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          code: $("code").value.trim(),
+          code: $("code").value.trim().toUpperCase(),
           challenge: document.body.dataset.challenge,
         }),
         signal: AbortSignal.timeout(8000),
