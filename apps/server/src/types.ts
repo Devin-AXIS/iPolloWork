@@ -1,4 +1,6 @@
-import type { WorkspaceWire } from "@ipollowork/types/workspace";
+import { DEFAULT_ENGINE_ID, type WorkspaceWire } from "@ipollowork/types/workspace";
+
+export { DEFAULT_ENGINE_ID };
 
 export type WorkspaceType = "local" | "remote";
 
@@ -13,8 +15,6 @@ export type SandboxBackend = "none" | "docker" | "container";
 export type ProviderPlacement = "in-sandbox" | "host-machine" | "client-machine" | "external";
 
 export type LogFormat = "pretty" | "json";
-
-export const DEFAULT_ENGINE_ID = "opencode";
 
 export interface WorkspaceConfig {
   id?: string;

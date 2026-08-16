@@ -1,10 +1,6 @@
 import { useSyncExternalStore } from "react";
 
-import { applyEdits, modify, parse } from "jsonc-parser";
-import type {
-  ProviderAuthAuthorization,
-  ProviderListResponse,
-} from "@opencode-ai/sdk/v2/client";
+import { parse } from "jsonc-parser";
 
 import { t } from "../../../../i18n";
 import {
@@ -13,18 +9,15 @@ import {
   type DenOrgLlmProvider,
   type DenOrgLlmProviderConnection,
 } from "../../../../app/lib/den";
-import { unwrap, waitForHealthy } from "../../../../app/lib/opencode";
 import {
-  readOpencodeConfig,
-  writeOpencodeConfig,
   engineRestart,
   workspaceiPolloWorkRead,
   workspaceiPolloWorkWrite,
 } from "../../../../app/lib/desktop";
 import { iPolloWorkServerError } from "../../../../app/lib/ipollowork-server";
 import type {
-  Client,
   ProviderListItem,
+  ProviderListResponse,
   WorkspaceDisplay,
 } from "../../../../app/types";
 import { isDesktopRuntime, safeStringify } from "../../../../app/utils";
@@ -59,8 +52,6 @@ import {
   type CloudImportedProvider,
 } from "../../../../app/cloud/import-state";
 import {
-  buildRuntimeProviderPatch,
-  formatConfigWithoutCloudProvider,
   getCloudManagedProviderId,
   getCloudProviderEnv,
   getProviderModelIds,
@@ -75,6 +66,12 @@ import {
   type DesktopAppRestrictionChecker,
 } from "../../../../app/cloud/desktop-app-restrictions";
 import { TOKENSTAR_PROVIDER, tokenStarRuntimeModels } from "./tokenstar-provider";
+import {
+  providerEngineAdapters,
+  type ProviderEngineAuthAuthorization,
+  type ProviderEngineAuthMethod,
+  type ProviderEngineConfigTarget,
+} from "./provider-engine-adapter";
 
 type ProviderReturnFocusTarget = "none" | "composer";
 type CloudProviderSyncReason = "sign_in" | "app_launch" | "interval" | "settings_cloud_opened";
@@ -128,7 +125,7 @@ export type ProviderAuthProvider = {
 
 export type ProviderOAuthStartResult = {
   methodIndex: number;
-  authorization: ProviderAuthAuthorization;
+  authorization: ProviderEngineAuthAuthorization;
 };
 
 export type ProviderAuthStoreSnapshot = {
@@ -144,7 +141,7 @@ export type ProviderAuthStoreSnapshot = {
 };
 
 type CreateProviderAuthStoreOptions = {
-  client: () => Client | null;
+  client: () => unknown | null;
   providers: () => ProviderListItem[];
   providerDefaults: () => Record<string, string>;
   providerConnectedIds: () => string[];
@@ -160,7 +157,7 @@ type CreateProviderAuthStoreOptions = {
   setProviderDefaults: (value: Record<string, string>) => void;
   setProviderConnectedIds: (value: string[]) => void;
   setDisabledProviders: (value: string[]) => void;
-  markOpencodeConfigReloadRequired: () => void;
+  markEngineConfigReloadRequired: (configFileName: string) => void;
   focusPromptSoon?: () => void;
 };
 
@@ -218,6 +215,21 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
 
   const getProviderAuthWorkerType = (): "local" | "remote" =>
     options.selectedWorkspaceDisplay().workspaceType === "remote" ? "remote" : "local";
+
+  const getProviderEngineAdapter = () =>
+    providerEngineAdapters.get(options.selectedWorkspaceDisplay().engineId);
+
+  const getProviderEngineConnection = () => {
+    const client = options.client();
+    if (!client) {
+      throw new Error(t("providers.not_connected"));
+    }
+    return getProviderEngineAdapter().connect(client);
+  };
+
+  const markProviderEngineConfigReloadRequired = () => {
+    options.markEngineConfigReloadRequired(getProviderEngineAdapter().configFileName);
+  };
 
   const getProviderAuthProviders = (): ProviderAuthProvider[] => {
     const merged = new Map<string, ProviderAuthProvider>();
@@ -293,6 +305,18 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
       ipolloworkWorkspaceId,
       hasiPolloWorkTarget,
       canUseiPolloWorkServer,
+    };
+  };
+
+  const resolveProviderEngineConfigTarget = async (
+    mode: "read" | "write",
+  ): Promise<ProviderEngineConfigTarget> => {
+    const target = await resolveiPolloWorkConfigTarget(mode);
+    return {
+      ...target,
+      workspaceId: target.ipolloworkWorkspaceId,
+      isLocalWorkspace: options.selectedWorkspaceDisplay().workspaceType === "local",
+      root: options.selectedWorkspaceRoot().trim(),
     };
   };
 
@@ -477,82 +501,28 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
   };
 
   const readProjectConfigFile = async () => {
-    const root = options.selectedWorkspaceRoot().trim();
-    const isLocalWorkspace =
-      options.selectedWorkspaceDisplay().workspaceType === "local";
-    const { ipolloworkClient, ipolloworkWorkspaceId, hasiPolloWorkTarget, canUseiPolloWorkServer } =
-      await resolveiPolloWorkConfigTarget("read");
-
-    if (canUseiPolloWorkServer && ipolloworkClient && ipolloworkWorkspaceId) {
-      return await ipolloworkClient.readOpencodeConfigFile(ipolloworkWorkspaceId, "project");
-    }
-
-    if (hasiPolloWorkTarget) {
-      throw new Error("iPolloWork server config API is unavailable for this workspace.");
-    }
-
-    if (isLocalWorkspace && isDesktopRuntime() && root) {
-      return await readOpencodeConfig("project", root);
-    }
-
-    return null;
+    const target = await resolveProviderEngineConfigTarget("read");
+    return getProviderEngineAdapter().readProjectConfig(target);
   };
 
   const writeProjectConfigFile = async (content: string) => {
-    const root = options.selectedWorkspaceRoot().trim();
-    const isLocalWorkspace =
-      options.selectedWorkspaceDisplay().workspaceType === "local";
-    const { ipolloworkClient, ipolloworkWorkspaceId, hasiPolloWorkTarget, canUseiPolloWorkServer } =
-      await resolveiPolloWorkConfigTarget("write");
-
-    if (canUseiPolloWorkServer && ipolloworkClient && ipolloworkWorkspaceId) {
-      const result = await ipolloworkClient.writeOpencodeConfigFile(
-        ipolloworkWorkspaceId,
-        "project",
-        content,
-      ) as { ok: boolean; stderr?: string; stdout?: string };
-      if (!result.ok) {
-        throw new Error(result.stderr || result.stdout || "Failed to write opencode.jsonc");
-      }
-      return true;
-    }
-
-    if (hasiPolloWorkTarget) {
-      throw new Error("iPolloWork server config API is unavailable for this workspace.");
-    }
-
-    if (isLocalWorkspace && isDesktopRuntime() && root) {
-      const result = await writeOpencodeConfig("project", root, content) as { ok: boolean; stderr?: string; stdout?: string };
-      if (!result.ok) {
-        throw new Error(result.stderr || result.stdout || "Failed to write opencode.jsonc");
-      }
-      return true;
-    }
-
-    return false;
+    const target = await resolveProviderEngineConfigTarget("write");
+    return getProviderEngineAdapter().writeProjectConfig(target, content);
   };
 
   /**
    * Upsert/delete cloud-managed provider entries in the workspace's runtime
-   * opencode config (server-side SQLite merged into OPENCODE_CONFIG). Record
-   * values upsert, explicit `null` deletes — per-key on the server, so there
-   * is no read-modify-write race and no edit of the user's opencode.jsonc.
+   * engine config. Record values upsert and explicit `null` deletes per key,
+   * so there is no read-modify-write race or edit of user-owned config.
    */
   const patchRuntimeProviders = async (update: Record<string, unknown>) => {
-    const { ipolloworkClient, ipolloworkWorkspaceId, canUseiPolloWorkServer } =
-      await resolveiPolloWorkConfigTarget("write");
-    if (!canUseiPolloWorkServer || !ipolloworkClient || !ipolloworkWorkspaceId) {
-      throw new Error("iPolloWork server unavailable. Connect to manage cloud providers.");
-    }
-    await ipolloworkClient.patchConfig(ipolloworkWorkspaceId, {
-      opencode: { provider: update },
-    });
+    const target = await resolveProviderEngineConfigTarget("write");
+    await getProviderEngineAdapter().patchRuntimeProviders(target, update);
   };
 
   /**
-   * Best-effort migration: pre-runtime builds wrote cloud provider blocks
-   * into the project opencode.jsonc. Strip them so the runtime entry is the
-   * single owner (and stale blocks from older builds stop shadowing state).
+   * Best-effort migration: pre-runtime builds wrote cloud provider blocks into
+   * project config. Strip them so the runtime entry remains the single owner.
    */
   const stripLegacyCloudProviderBlocks = async (providerIds: Array<string | null | undefined>) => {
     const ids = [...new Set(providerIds.flatMap((id) => (id?.trim() ? [id.trim()] : [])))];
@@ -561,7 +531,11 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
       await updateProjectConfigFile((raw) => {
         let next = raw;
         for (const id of ids) {
-          next = formatConfigWithoutCloudProvider(next, id, options.disabledProviders());
+          next = getProviderEngineAdapter().formatProjectWithoutProvider(
+            next,
+            id,
+            options.disabledProviders(),
+          );
         }
         return next;
       });
@@ -572,13 +546,12 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
 
   const updateProjectConfigFile = async (
     updater: (raw: string) => string,
-    fallbackUpdate?: (config: Record<string, unknown>) => Record<string, unknown>,
   ) => {
     const configFile = await readProjectConfigFile() as { content?: string } | null;
     if (configFile) {
       const raw = configFile.content?.trim()
         ? configFile.content
-        : '{\n  "$schema": "https://opencode.ai/config.json"\n}\n';
+        : getProviderEngineAdapter().emptyProjectConfig();
       const next = updater(raw);
       if (configsAreSemanticallyEqual(raw, next)) {
         return false;
@@ -586,56 +559,7 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
       await writeProjectConfigFile(next);
       return true;
     }
-
-    if (!fallbackUpdate) {
-      return false;
-    }
-
-    const c = options.client();
-    if (!c) {
-      throw new Error(t("providers.not_connected"));
-    }
-    const config = unwrap(await c.config.get());
-    const next = fallbackUpdate(config);
-    await c.config.update({ config: next });
-    return true;
-  };
-
-  const normalizeDisabledProviders = (value: unknown) =>
-    Array.isArray(value)
-      ? [
-          ...new Set(
-            value
-              .filter((entry): entry is string => typeof entry === "string")
-              .map((entry) => entry.trim())
-              .filter(Boolean),
-          ),
-        ]
-      : [];
-
-  const formatConfigWithProviderDisabledState = (
-    raw: string,
-    providerId: string,
-    disabled: boolean,
-  ) => {
-    const resolvedProviderId = providerId.trim();
-    let updated = raw.trim()
-      ? raw
-      : '{\n  "$schema": "https://opencode.ai/config.json"\n}\n';
-    const parsed = parse(updated) as Record<string, unknown> | undefined;
-    const currentDisabled = normalizeDisabledProviders(parsed?.disabled_providers);
-    const nextDisabled = disabled
-      ? [...currentDisabled.filter((entry) => entry !== resolvedProviderId), resolvedProviderId]
-      : currentDisabled.filter((entry) => entry !== resolvedProviderId);
-
-    const disabledEdits = modify(
-      updated,
-      ["disabled_providers"],
-      nextDisabled.length ? nextDisabled : undefined,
-      { formattingOptions: { insertSpaces: true, tabSize: 2 } },
-    );
-    updated = applyEdits(updated, disabledEdits);
-    return updated.endsWith("\n") ? updated : `${updated}\n`;
+    return false;
   };
 
   const ensureProjectProviderDisabledState = async (
@@ -647,7 +571,9 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
       throw new Error(t("providers.provider_id_required"));
     }
 
-    const currentDisabled = normalizeDisabledProviders(options.disabledProviders());
+    const currentDisabled = [
+      ...new Set(options.disabledProviders().map((entry) => entry.trim()).filter(Boolean)),
+    ];
     const nextDisabled = disabled
       ? [...currentDisabled.filter((entry) => entry !== resolvedProviderId), resolvedProviderId]
       : currentDisabled.filter((entry) => entry !== resolvedProviderId);
@@ -659,25 +585,20 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
       return false;
     }
 
-    const updatedConfig = await updateProjectConfigFile(
-      (raw) => formatConfigWithProviderDisabledState(raw, resolvedProviderId, disabled),
-      (config) => {
-        const nextConfig = { ...config };
-        if (nextDisabled.length) {
-          nextConfig.disabled_providers = nextDisabled;
-        } else {
-          delete nextConfig.disabled_providers;
-        }
-        return nextConfig;
-      },
+    const updatedProjectConfig = await updateProjectConfigFile((raw) =>
+      getProviderEngineAdapter().formatProjectProviderDisabledState(
+        raw,
+        resolvedProviderId,
+        disabled,
+      ),
     );
 
-    if (!updatedConfig) {
-      throw new Error("Could not update opencode.jsonc for this workspace.");
+    if (!updatedProjectConfig) {
+      await getProviderEngineConnection().writeDisabledProviders(nextDisabled);
     }
 
     options.setDisabledProviders(nextDisabled);
-    options.markOpencodeConfigReloadRequired();
+    markProviderEngineConfigReloadRequired();
     refreshSnapshot();
     emitChange();
     return true;
@@ -695,7 +616,7 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
   };
 
   // Sweep all cloud-managed provider entries (keys matching /^lpr_/) from
-  // both the runtime config and opencode.jsonc, regardless of
+  // both runtime and project engine config, regardless of
   // importedCloudProviders state. Returns the list of provider IDs that were
   // removed so callers can also clear their auth credentials.
   const sweepOrphanCloudProvidersFromConfig = async (): Promise<string[]> => {
@@ -703,42 +624,34 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
 
     // Runtime-managed orphans (`lpr_*` keys in the workspace runtime config).
     try {
-      const { ipolloworkClient, ipolloworkWorkspaceId, canUseiPolloWorkServer } =
-        await resolveiPolloWorkConfigTarget("write");
-      if (canUseiPolloWorkServer && ipolloworkClient && ipolloworkWorkspaceId) {
-        const merged = await ipolloworkClient.getConfig(ipolloworkWorkspaceId);
-        const runtimeProvider = isRecord(merged.opencode) ? merged.opencode.provider : null;
-        const runtimeOrphans = isRecord(runtimeProvider)
-          ? Object.keys(runtimeProvider).filter((key) => /^lpr_/i.test(key))
-          : [];
-        if (runtimeOrphans.length > 0) {
-          await patchRuntimeProviders(
-            Object.fromEntries(runtimeOrphans.map((id) => [id, null])),
-          );
-          for (const id of runtimeOrphans) orphanIds.add(id);
-        }
+      const target = await resolveProviderEngineConfigTarget("write");
+      const runtimeOrphans = (await getProviderEngineAdapter().runtimeProviderIds(target))
+        .filter((key) => /^lpr_/i.test(key));
+      if (runtimeOrphans.length > 0) {
+        await patchRuntimeProviders(
+          Object.fromEntries(runtimeOrphans.map((id) => [id, null])),
+        );
+        for (const id of runtimeOrphans) orphanIds.add(id);
       }
     } catch {
       // Best-effort; the legacy file sweep below still runs.
     }
 
-    // Legacy `opencode.jsonc` blocks written by pre-runtime builds.
+    // Legacy project-config blocks written by pre-runtime builds.
     const configFile = await readProjectConfigFile().catch(() => null) as { content?: string } | null;
     if (configFile?.content?.trim()) {
-      const parsed = parse(configFile.content);
-      const providerSection =
-        parsed && typeof parsed === "object" && !Array.isArray(parsed)
-          ? (parsed as Record<string, unknown>).provider
-          : null;
-      const fileOrphans =
-        providerSection && typeof providerSection === "object" && !Array.isArray(providerSection)
-          ? Object.keys(providerSection as Record<string, unknown>).filter((key) => /^lpr_/i.test(key))
-          : [];
+      const fileOrphans = getProviderEngineAdapter()
+        .projectProviderIds(configFile.content)
+        .filter((key) => /^lpr_/i.test(key));
       if (fileOrphans.length > 0) {
         await updateProjectConfigFile((raw) => {
           let next = raw;
           for (const id of fileOrphans) {
-            next = formatConfigWithoutCloudProvider(next, id, options.disabledProviders());
+            next = getProviderEngineAdapter().formatProjectWithoutProvider(
+              next,
+              id,
+              options.disabledProviders(),
+            );
           }
           return next;
         });
@@ -787,19 +700,9 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
       return;
     }
 
-    const parsed = parse(configFile.content);
-    const providerSection =
-      parsed && typeof parsed === "object" && !Array.isArray(parsed)
-        ? (parsed as Record<string, unknown>).provider
-        : null;
-    if (
-      providerSection &&
-      typeof providerSection === "object" &&
-      !Array.isArray(providerSection) &&
-      localProviderId in (providerSection as Record<string, unknown>)
-    ) {
+    if (getProviderEngineAdapter().projectProviderIds(configFile.content).includes(localProviderId)) {
       throw new Error(
-        `${localProviderId} already has a provider block in opencode.jsonc. Remove it before importing the cloud-managed version.`,
+        `${localProviderId} already has a provider block in ${getProviderEngineAdapter().configFileName}. Remove it before importing the cloud-managed version.`,
       );
     }
   };
@@ -923,43 +826,8 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
     emitChange();
   };
 
-  const assertNoClientError = (result: unknown) => {
-    const maybe = result as { error?: unknown } | null | undefined;
-    if (!maybe || maybe.error === undefined) return;
-    throw new Error(describeProviderError(maybe.error, t("providers.request_failed")));
-  };
-
   const removeProviderAuthCredentials = async (providerId: string) => {
-    const c = options.client();
-    if (!c) {
-      throw new Error(t("providers.not_connected"));
-    }
-
-    const authClient = c.auth as unknown as {
-      remove?: (options: { providerID: string }) => Promise<unknown>;
-      set?: (options: { providerID: string; auth: unknown }) => Promise<unknown>;
-    };
-    if (typeof authClient.remove === "function") {
-      const result = await authClient.remove({ providerID: providerId });
-      assertNoClientError(result);
-      return;
-    }
-
-    const rawClient = (c as unknown as {
-      client?: { delete?: (options: { url: string }) => Promise<unknown> };
-    }).client;
-    if (rawClient?.delete) {
-      await rawClient.delete({ url: `/auth/${encodeURIComponent(providerId)}` });
-      return;
-    }
-
-    if (typeof authClient.set === "function") {
-      const result = await authClient.set({ providerID: providerId, auth: null });
-      assertNoClientError(result);
-      return;
-    }
-
-    throw new Error(t("providers.removal_unsupported"));
+    await getProviderEngineConnection().removeCredentials(providerId);
   };
 
   const describeProviderError = (error: unknown, fallback: string) => {
@@ -1041,7 +909,7 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
   };
 
   const buildProviderAuthMethods = (
-    methods: Record<string, ProviderAuthMethod[]>,
+    methods: Record<string, ProviderEngineAuthMethod[]>,
     availableProviders: ProviderAuthProvider[],
     workerType: "local" | "remote",
     cloudProviders: DenOrgLlmProvider[],
@@ -1139,16 +1007,12 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
   };
 
   const loadProviderAuthMethods = async (workerType: "local" | "remote") => {
-    const c = options.client();
-    if (!c) {
-      throw new Error(t("providers.not_connected"));
-    }
-    const methods = unwrap(await c.provider.auth());
+    const methods = await getProviderEngineConnection().listAuthMethods();
     const cloudProviders = await refreshCloudOrgProviders().catch(
       () => [] as DenOrgLlmProvider[],
     );
     return buildProviderAuthMethods(
-      methods as Record<string, ProviderAuthMethod[]>,
+      methods,
       getProviderAuthProviders(),
       workerType,
       cloudProviders,
@@ -1160,10 +1024,7 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
     methodIndex?: number,
   ): Promise<ProviderOAuthStartResult> {
     setStateField("providerAuthError", null);
-    const c = options.client();
-    if (!c) {
-      throw new Error(t("providers.not_connected"));
-    }
+    const connection = getProviderEngineConnection();
     try {
       const cachedMethods = state.providerAuthMethods;
       const authMethods = Object.keys(cachedMethods).length
@@ -1200,9 +1061,7 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
         throw new Error(`${t("providers.not_oauth_flow_prefix")} ${resolved}.`);
       }
 
-      const auth = unwrap(
-        await c.provider.oauth.authorize({ providerID: resolved, method: oauthIndex }),
-      );
+      const auth = await connection.authorizeOAuth(resolved, oauthIndex);
       return { methodIndex: oauthIndex, authorization: auth };
     } catch (error) {
       const message = describeProviderError(error, t("providers.connect_failed"));
@@ -1212,8 +1071,9 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
   }
 
   async function refreshProviders(optionsArg?: { dispose?: boolean }) {
-    const c = options.client();
-    if (!c) return null;
+    const client = options.client();
+    if (!client) return null;
+    const connection = getProviderEngineAdapter().connect(client);
 
     if (optionsArg?.dispose) {
       // Prefer the iPolloWork server engine reload: it disposes the engine AND
@@ -1249,26 +1109,25 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
 
       if (!reloaded) {
         try {
-          unwrap(await c.instance.dispose());
+          await connection.dispose();
         } catch {
           // ignore dispose failures and try reading current state anyway
         }
       }
 
       try {
-        await waitForHealthy(options.client() ?? c, { timeoutMs: 8000, pollMs: 250 });
+        const activeClient = options.client() ?? client;
+        await getProviderEngineAdapter().connect(activeClient).waitUntilHealthy();
       } catch {
         // ignore health wait failures and still attempt provider reads
       }
     }
 
-    const activeClient = options.client() ?? c;
+    const activeClient = options.client() ?? client;
+    const activeConnection = getProviderEngineAdapter().connect(activeClient);
     let disabledProviders = options.disabledProviders() ?? [];
     try {
-      const config = unwrap(await activeClient.config.get());
-      disabledProviders = Array.isArray(config.disabled_providers)
-        ? config.disabled_providers
-        : [];
+      disabledProviders = await activeConnection.readDisabledProviders();
       options.setDisabledProviders(disabledProviders);
       refreshSnapshot();
       emitChange();
@@ -1280,6 +1139,7 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
       const updated = filterProviderList(
         await ensureProviderListQuery(getReactQueryClient(), {
           client: activeClient,
+          engineId: getProviderEngineAdapter().id,
           directory: options.selectedWorkspaceRoot(),
           force: Boolean(optionsArg?.dispose),
         }),
@@ -1298,10 +1158,7 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
     code?: string,
   ) {
     setStateField("providerAuthError", null);
-    const c = options.client();
-    if (!c) {
-      throw new Error(t("providers.not_connected"));
-    }
+    const connection = getProviderEngineConnection();
 
     const resolved = providerId?.trim();
     if (!resolved) {
@@ -1337,12 +1194,7 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
 
     try {
       const trimmedCode = code?.trim();
-      const result = await c.provider.oauth.callback({
-        providerID: resolved,
-        method: methodIndex,
-        code: trimmedCode || undefined,
-      });
-      assertNoClientError(result);
+      await connection.completeOAuth(resolved, methodIndex, trimmedCode || undefined);
       const updated = await refreshProviders({ dispose: true });
       const connectedNow = Array.isArray(updated?.connected) && updated.connected.includes(resolved);
       if (connectedNow) {
@@ -1377,12 +1229,6 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
       providerAuthBusy: true,
       providerAuthError: null,
     }));
-    const c = options.client();
-    if (!c) {
-      setStateField("providerAuthBusy", false);
-      throw new Error(t("providers.not_connected"));
-    }
-
     const trimmed = apiKey.trim();
     if (!trimmed) {
       setStateField("providerAuthBusy", false);
@@ -1394,22 +1240,23 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
     const isTokenStar = resolvedProviderId === TOKENSTAR_PROVIDER.providerId;
 
     try {
+      const connection = getProviderEngineConnection();
       if (isQwen3Coder) {
-        await patchRuntimeProviders({
-          [QWEN3_CODER_PROVIDER.providerId]: {
-            npm: "@ai-sdk/openai-compatible",
+        await patchRuntimeProviders(
+          getProviderEngineAdapter().buildCompatibleProviderPatch({
+            id: QWEN3_CODER_PROVIDER.providerId,
             name: QWEN3_CODER_PROVIDER.name,
-            options: { baseURL: QWEN3_CODER_PROVIDER.baseURL },
+            baseURL: QWEN3_CODER_PROVIDER.baseURL,
             models: {
               [QWEN3_CODER_PROVIDER.modelId]: {
                 name: QWEN3_CODER_PROVIDER.modelName,
               },
             },
-          },
-        });
+          }),
+        );
         try {
           await updateProjectConfigFile((raw) =>
-            formatConfigWithoutCloudProvider(
+            getProviderEngineAdapter().formatProjectWithoutProvider(
               raw,
               QWEN3_CODER_PROVIDER.providerId,
               options.disabledProviders(),
@@ -1427,17 +1274,17 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
               .filter(Boolean),
           ),
         ];
-        await patchRuntimeProviders({
-          [TOKENSTAR_PROVIDER.providerId]: {
-            npm: "@ai-sdk/openai-compatible",
+        await patchRuntimeProviders(
+          getProviderEngineAdapter().buildCompatibleProviderPatch({
+            id: TOKENSTAR_PROVIDER.providerId,
             name: TOKENSTAR_PROVIDER.name,
-            options: { baseURL: TOKENSTAR_PROVIDER.baseURL },
+            baseURL: TOKENSTAR_PROVIDER.baseURL,
             models: tokenStarRuntimeModels(selectedModelIds),
-          },
-        });
+          }),
+        );
         try {
           await updateProjectConfigFile((raw) =>
-            formatConfigWithoutCloudProvider(
+            getProviderEngineAdapter().formatProjectWithoutProvider(
               raw,
               TOKENSTAR_PROVIDER.providerId,
               options.disabledProviders(),
@@ -1447,7 +1294,7 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
           // Runtime config owns this provider; legacy file cleanup is best-effort.
         }
       }
-      await c.auth.set({ providerID: providerId, auth: { type: "api", key: trimmed } });
+      await connection.setApiKey(providerId, trimmed);
       if (isQwen3Coder || isTokenStar) {
         const syntheticProviderId = isTokenStar
           ? TOKENSTAR_PROVIDER.providerId
@@ -1480,10 +1327,7 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
     if (!optionsArg?.silent) {
       setStateField("providerAuthError", null);
     }
-    const c = options.client();
-    if (!c) {
-      throw new Error(t("providers.not_connected"));
-    }
+    const connection = getProviderEngineConnection();
 
     const settings = readDenSettings();
     const token = settings.authToken?.trim() ?? "";
@@ -1521,10 +1365,7 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
         await ipolloworkClient.upsertUserEnv(envEntries);
       }
       if (primaryApiKey) {
-        await c.auth.set({
-          providerID: localProviderId,
-          auth: { type: "api", key: primaryApiKey },
-        });
+        await connection.setApiKey(localProviderId, primaryApiKey);
         await mirroriPolloWorkModelsVoiceEnv(provider, primaryApiKey);
       }
       if (existingImported?.providerId && existingImported.providerId !== localProviderId) {
@@ -1539,9 +1380,13 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
       }
       // Cloud providers are runtime-managed: upsert (and delete a renamed
       // predecessor) via the server's per-key provider merge instead of
-      // editing the user's opencode.jsonc.
+      // editing the user's engine config file.
       await patchRuntimeProviders(
-        buildRuntimeProviderPatch(provider, localProviderId, existingImported?.providerId ?? null),
+        getProviderEngineAdapter().buildCloudProviderPatch(
+          provider,
+          localProviderId,
+          existingImported?.providerId ?? null,
+        ),
       );
       await stripLegacyCloudProviderBlocks([localProviderId, existingImported?.providerId]);
 
@@ -1567,7 +1412,7 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
         .disabledProviders()
         .filter((id) => id !== localProviderId && id !== existingImported?.providerId);
       options.setDisabledProviders(nextDisabledProviders);
-      options.markOpencodeConfigReloadRequired();
+      markProviderEngineConfigReloadRequired();
       await refreshProviders({ dispose: true });
       refreshSnapshot();
       emitChange();
@@ -1607,7 +1452,7 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
         }
       }
       // Runtime-managed: delete the provider entry via the server's per-key
-      // merge (`null` deletes), then strip any legacy opencode.jsonc block
+      // merge (`null` deletes), then strip any legacy project-config block
       // left by pre-runtime builds. Both are idempotent.
       await patchRuntimeProviders({ [imported.providerId]: null });
       await stripLegacyCloudProviderBlocks([imported.providerId]);
@@ -1619,7 +1464,7 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
       options.setDisabledProviders(
         options.disabledProviders().filter((id) => id !== imported.providerId),
       );
-      options.markOpencodeConfigReloadRequired();
+      markProviderEngineConfigReloadRequired();
       refreshSnapshot();
       emitChange();
       return `${t("providers.disconnected_prefix")} ${imported.name}`;
@@ -1800,10 +1645,7 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
 
   async function disconnectProvider(providerId: string) {
     setStateField("providerAuthError", null);
-    const c = options.client();
-    if (!c) {
-      throw new Error(t("providers.not_connected"));
-    }
+    getProviderEngineConnection();
 
     const resolved = providerId.trim();
     if (!resolved) {
@@ -1822,7 +1664,7 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
         await patchRuntimeProviders({ [TOKENSTAR_PROVIDER.providerId]: null });
         try {
           await updateProjectConfigFile((raw) =>
-            formatConfigWithoutCloudProvider(
+            getProviderEngineAdapter().formatProjectWithoutProvider(
               raw,
               TOKENSTAR_PROVIDER.providerId,
               options.disabledProviders(),
@@ -1955,7 +1797,7 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
           const importedProviders = { ...state.importedCloudProviders };
           const importedIds = Object.keys(importedProviders);
 
-          // Best-effort cleanup: remove each cloud provider from opencode.jsonc
+          // Best-effort cleanup: remove each cloud provider from project config
           // BEFORE clearing state so removeCloudProviderInternal can find the records
           void (async () => {
             for (const cloudId of importedIds) {
@@ -1966,7 +1808,7 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
               }
             }
             // Final sweep: remove any orphan `lpr_*` provider keys that remain
-            // in opencode.jsonc but weren't tracked in importedCloudProviders
+            // in project config but weren't tracked in importedCloudProviders
             // (e.g. from a previous failed cleanup or external edit).
             try {
               const orphans = await sweepOrphanCloudProvidersFromConfig();
@@ -1978,7 +1820,7 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
                 }
               }
               if (orphans.length > 0) {
-                options.markOpencodeConfigReloadRequired();
+                markProviderEngineConfigReloadRequired();
               }
             } catch {
               // Ignore sweep failures during sign-out cleanup
@@ -2020,7 +1862,7 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
               } catch {}
             }
           }
-          // Then: sweep any `lpr_*` keys that remain in opencode.jsonc
+          // Then: sweep any `lpr_*` keys that remain in project config
           try {
             const orphans = await sweepOrphanCloudProvidersFromConfig();
             for (const providerId of orphans) {
@@ -2029,7 +1871,7 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
               } catch {}
             }
             if (orphans.length > 0) {
-              options.markOpencodeConfigReloadRequired();
+              markProviderEngineConfigReloadRequired();
             }
           } catch {}
           mutateState((current) => ({

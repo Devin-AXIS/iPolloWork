@@ -114,7 +114,6 @@ export default {
   "composer.agent_label": "Agente",
   "composer.any_file_type_supported": "Qualquer tipo de arquivo é aceito.",
   "composer.attach_files": "Anexar arquivos",
-  "composer.attachments_unavailable": "Anexos não estão disponíveis.",
   "composer.behavior_label": "Comportamento",
   "composer.configure": "Configurar",
   "composer.default_agent": "Agente padrão",

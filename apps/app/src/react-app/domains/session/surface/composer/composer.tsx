@@ -68,8 +68,6 @@ type ComposerProps = {
   hasPromptContext?: boolean;
   onAttachFiles: (files: File[]) => void;
   onRemoveAttachment: (id: string) => void;
-  attachmentsEnabled: boolean;
-  attachmentsDisabledReason: string | null;
   modelVariantLabel: string;
   modelVariant: string | null;
   modelBehaviorOptions?: { value: string | null; label: string }[];
@@ -1027,10 +1025,6 @@ export function ReactSessionComposer(props: ComposerProps) {
 
   const addAttachments = async (inputFiles: File[]) => {
     if (!inputFiles.length) return;
-    if (!props.attachmentsEnabled) {
-      toast.warning(props.attachmentsDisabledReason ?? t("composer.attachments_unavailable"));
-      return;
-    }
 
     const accepted: File[] = [];
     const oversize: string[] = [];
@@ -1380,15 +1374,12 @@ export function ReactSessionComposer(props: ComposerProps) {
                       <div className="w-52 shrink-0 rounded-[16px] border border-dls-border bg-dls-surface p-1.5 shadow-[var(--dls-shell-shadow)]">
                       <button
                         type="button"
-                        className={`flex w-full items-center rounded-[12px] px-3 py-2.5 text-left text-sm ${props.attachmentsEnabled ? "text-gray-11 hover:bg-gray-2" : "cursor-not-allowed text-gray-9 opacity-60"}`}
+                        className="flex w-full items-center rounded-[12px] px-3 py-2.5 text-left text-sm text-gray-11 hover:bg-gray-2"
                         onClick={() => {
-                          if (!props.attachmentsEnabled) return;
                           setPlusMenuOpen(false);
                           setPlusMenuSection(null);
                           fileInput?.click();
                         }}
-                        disabled={!props.attachmentsEnabled}
-                        title={!props.attachmentsEnabled ? props.attachmentsDisabledReason ?? undefined : undefined}
                       >
                         {t("composer.plus_attach_files")}
                       </button>

@@ -10,6 +10,7 @@ export default defineConfig({
     "hyperframes-project": "src/hyperframes-project.ts",
     plugins: "src/plugins.ts",
     templates: "src/templates.ts",
+    workspace: "src/workspace.ts",
   },
   tsconfig: "./tsconfig.json",
   format: ["esm"],

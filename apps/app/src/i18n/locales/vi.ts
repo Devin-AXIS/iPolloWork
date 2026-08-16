@@ -114,7 +114,6 @@ export default {
   "composer.agent_label": "Agent",
   "composer.any_file_type_supported": "Hỗ trợ mọi loại tệp.",
   "composer.attach_files": "Đính kèm tệp",
-  "composer.attachments_unavailable": "Đính kèm không khả dụng.",
   "composer.behavior_label": "Hành vi",
   "composer.configure": "Cấu hình",
   "composer.default_agent": "Agent mặc định",

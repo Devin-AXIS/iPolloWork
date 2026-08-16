@@ -3,7 +3,7 @@ import type { CSSProperties } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { UIMessage } from "ai";
 import { useNavigate } from "react-router-dom";
-import { Code2, Ellipsis, Eye, FileText, Film, Globe, Image, LoaderCircle, Mic2, Palette, PanelRightClose, PanelRightOpen, Pencil, Presentation, Search, Settings2, Trash2, Upload, X, Zap } from "lucide-react";
+import { Code2, Ellipsis, Eye, FileText, Film, FolderOpen, Globe, Image, LoaderCircle, Mic2, Palette, PanelRightClose, PanelRightOpen, Pencil, Presentation, Search, Settings2, Trash2, Upload, X, Zap } from "lucide-react";
 import { MAX_TEMPLATE_PACKAGE_BYTES, TEMPLATE_PACKAGE_FILE_ACCEPT, isPptxCompatibleTemplate, type PptxCompatibility, type TemplateCatalogItem, type TemplateCategory, type TemplateManifestV1, type TemplateSessionSnapshot, type TemplateSessionState, type TemplateValidationReport } from "@ipollowork/types/templates";
 
 import { currentLocale, t } from "../../../../i18n";
@@ -23,7 +23,7 @@ import {
 } from "@/app/lib/enterprise-connections";
 import { getDisplaySessionTitle } from "../../../../app/lib/session-title";
 import type { BootPhase } from "../../../../app/lib/startup-boot";
-import { openDesktopPath, revealDesktopItemInDir, saveFile, type WorkspaceInfo } from "../../../../app/lib/desktop";
+import { openDesktopPath, pickDirectory, revealDesktopItemInDir, saveFile, type WorkspaceInfo } from "../../../../app/lib/desktop";
 import type {
   ComposerDraft,
   PendingPermission,
@@ -31,7 +31,7 @@ import type {
   ProviderListItem,
   TodoItem,
   WorkspaceConnectionState,
-  WorkspaceSessionGroup,
+  ProjectSessionList,
 } from "../../../../app/types";
 import { ConversationOutputPanel, ConversationOutputTrigger } from "@/components/chat/artifact";
 import { buildSessionMarkdown, sessionMarkdownFilename } from "@/components/chat/utils";
@@ -64,7 +64,6 @@ import { RenameSessionModal } from "../modals/rename-session-modal";
 import { AppSidebar } from "../sidebar/app-sidebar";
 import type { iPolloWorkSessionType, iPolloWorkTemplateId } from "../sidebar/app-sidebar-provider";
 import { readSessionType, sessionTypeForTemplate, setSessionType } from "../sidebar/session-type";
-import { useSessionManagementStore, useActiveWorkspaceGroupId } from "../sidebar/session-management-store";
 import { SessionSurface, type SessionSurfaceProps } from "../surface/session-surface";
 import { replaceDesignSelectionToken } from "../surface/composer/composer-draft";
 import { getComposerDraft, useComposerStateStore } from "../surface/composer-state-store";
@@ -164,7 +163,7 @@ export type SessionPageHistoryControls = {
 };
 
 export type SessionPageSidebarProps = {
-  workspaceSessionGroups: WorkspaceSessionGroup[];
+  projectSessionLists: ProjectSessionList[];
   selectedWorkspaceId: string;
   selectedSessionId: string | null;
   developerMode: boolean;
@@ -175,19 +174,22 @@ export type SessionPageSidebarProps = {
   sidebarHydratedFromCache: boolean;
   startupPhase: BootPhase;
   onOpenSession: (workspaceId: string, sessionId: string) => void;
+  onSelectProject: (workspaceId: string) => Promise<boolean> | boolean | void;
+  onCreateProject: (input: { name: string; folderPath: string }) => Promise<void> | void;
+  onRenameProject: (workspaceId: string, name: string) => Promise<void> | void;
+  onRevealProject: (workspaceId: string) => Promise<void> | void;
+  onDeleteProject: (workspaceId: string) => Promise<void> | void;
   onPrefetchSession?: (workspaceId: string, sessionId: string) => void;
   onCreateTaskInWorkspace: (
     workspaceId: string,
     type?: iPolloWorkSessionType,
     templateId?: iPolloWorkTemplateId,
     templateScope?: WorkContextId,
-    groupId?: string | null,
   ) => Promise<string | null> | string | null | void;
   onCreateTaskWithPrompt?: (workspaceId: string, prompt: string) => void;
   onCreateTemplateAuthoring: (
     workspaceId: string,
     input: { category: TemplateCategory; pptxCompatibility?: PptxCompatibility },
-    groupId?: string | null,
   ) => Promise<string | null> | string | null | void;
   onRecoverWorkspace: (workspaceId: string) => Promise<boolean> | boolean | void;
   onTestWorkspaceConnection: (workspaceId: string) => Promise<boolean> | boolean | void;
@@ -261,7 +263,7 @@ export type SessionPageProps = {
 };
 
 function getSidebarInitialLoading(props: SessionPageSidebarProps) {
-  if (props.workspaceSessionGroups.some((group) => group.sessions.length > 0)) {
+  if (props.projectSessionLists.some((project) => project.sessions.length > 0)) {
     return false;
   }
   if (props.sidebarHydratedFromCache) return false;
@@ -272,14 +274,14 @@ function getSidebarInitialLoading(props: SessionPageSidebarProps) {
   ) {
     return true;
   }
-  return props.workspaceSessionGroups.some(
-    (group) => group.status === "loading" || group.status === "idle",
+  return props.projectSessionLists.some(
+    (project) => project.status === "loading" || project.status === "idle",
   );
 }
 
-function sessionTitleForId(groups: WorkspaceSessionGroup[], id: string | null | undefined) {
+function sessionTitleForId(projects: ProjectSessionList[], id: string | null | undefined) {
   if (!id) return "";
-  const sessionsById = new Map(groups.flatMap((group) => group.sessions.map((session) => [session.id, session] as const)));
+  const sessionsById = new Map(projects.flatMap((project) => project.sessions.map((session) => [session.id, session] as const)));
   const match = sessionsById.get(id);
   return match ? getDisplaySessionTitle(match.title) : "";
 }
@@ -590,8 +592,8 @@ export function SessionPage(props: SessionPageProps) {
   const hasArtifactTargets = artifactTargetCount > 0;
   const activeSidePanel = voiceSidePanelOpen ? "voice" : sessionSidePanel;
   const selectedSessionTitle = useMemo(
-    () => sessionTitleForId(props.sidebar.workspaceSessionGroups, props.selectedSessionId),
-    [props.selectedSessionId, props.sidebar.workspaceSessionGroups],
+    () => sessionTitleForId(props.sidebar.projectSessionLists, props.selectedSessionId),
+    [props.selectedSessionId, props.sidebar.projectSessionLists],
   );
   const [templateSessionRevision, setTemplateSessionRevision] = useState(0);
   const [templateCatalog, setTemplateCatalog] = useState<TemplateCatalogItem[]>([]);
@@ -631,7 +633,6 @@ export function SessionPage(props: SessionPageProps) {
       ? readSessionType(props.selectedSessionId)
       : null
   ), [props.selectedSessionId, sessionTypeRevision]);
-  const activeSessionGroupId = useActiveWorkspaceGroupId(props.selectedWorkspaceId);
   const isDesignSession = selectedSessionType === "design";
   const isVideoSession = selectedSessionType === "video";
   const currentVideoEntryPath = props.selectedSessionId && isVideoSession
@@ -1226,15 +1227,16 @@ export function SessionPage(props: SessionPageProps) {
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleteBusy, setDeleteBusy] = useState(false);
   const [sessionActionId, setSessionActionId] = useState<string | null>(null);
-  const [createGroupOpen, setCreateGroupOpen] = useState(false);
-  const [createGroupLabel, setCreateGroupLabel] = useState("");
-  const [createGroupWorkspaceId, setCreateGroupWorkspaceId] = useState<string | null>(null);
-  const [renameGroupOpen, setRenameGroupOpen] = useState(false);
-  const [renameGroupLabel, setRenameGroupLabel] = useState("");
-  const [renameGroupOriginalLabel, setRenameGroupOriginalLabel] = useState("");
-  const [renameGroupTarget, setRenameGroupTarget] = useState<{ workspaceId: string; groupId: string } | null>(null);
-  const [removeGroupOpen, setRemoveGroupOpen] = useState(false);
-  const [removeGroupTarget, setRemoveGroupTarget] = useState<{ workspaceId: string; groupId: string; label: string } | null>(null);
+  const [createProjectOpen, setCreateProjectOpen] = useState(false);
+  const [createProjectName, setCreateProjectName] = useState("");
+  const [createProjectFolder, setCreateProjectFolder] = useState("");
+  const [createProjectBusy, setCreateProjectBusy] = useState(false);
+  const [createProjectError, setCreateProjectError] = useState<string | null>(null);
+  const [renameProjectId, setRenameProjectId] = useState<string | null>(null);
+  const [renameProjectName, setRenameProjectName] = useState("");
+  const [renameProjectBusy, setRenameProjectBusy] = useState(false);
+  const [deleteProjectId, setDeleteProjectId] = useState<string | null>(null);
+  const [deleteProjectBusy, setDeleteProjectBusy] = useState(false);
   const [mainWorkspaceView, setMainWorkspaceView] = useState<"extensions" | null>(null);
   const preserveSidePanelOnPanelOpenRef = useRef(false);
 
@@ -2230,8 +2232,8 @@ export function SessionPage(props: SessionPageProps) {
     }
   }, [canSavePromptTemplate, conversationMessages, props.selectedSessionId, selectedSessionTitle]);
   const sessionActionTitle = useMemo(
-    () => sessionTitleForId(props.sidebar.workspaceSessionGroups, sessionActionId),
-    [props.sidebar.workspaceSessionGroups, sessionActionId],
+    () => sessionTitleForId(props.sidebar.projectSessionLists, sessionActionId),
+    [props.sidebar.projectSessionLists, sessionActionId],
   );
   const showWorkspaceSetupEmptyState = props.workspaces.length === 0 && !props.selectedSessionId;
   const showNewConversationChrome = !props.selectedSessionId && !showWorkspaceSetupEmptyState;
@@ -2248,22 +2250,22 @@ export function SessionPage(props: SessionPageProps) {
   // panes can never disagree. We check (in priority order):
   // 1. selectedWorkspaceError (errorsByWorkspaceId[selectedWorkspaceId])
   // 2. workspaceConnectionStateById[selectedWorkspaceId].message (covers test/recover paths)
-  // 3. group.error from workspaceSessionGroups (the same source the sidebar reads)
+  // 3. Project load errors from the same source the sidebar reads.
   const selectedWorkspaceConnectionMessage = (() => {
     const state = props.sidebar.workspaceConnectionStateById[props.selectedWorkspaceId];
     if (state?.status === "error") return state.message?.trim() ?? "";
     return "";
   })();
-  const selectedWorkspaceGroupError = (() => {
-    const group = props.sidebar.workspaceSessionGroups.find(
+  const selectedWorkspaceProjectError = (() => {
+    const project = props.sidebar.projectSessionLists.find(
       (item) => item.workspace.id === props.selectedWorkspaceId,
     );
-    return group?.error?.trim() ?? "";
+    return project?.error?.trim() ?? "";
   })();
   const selectedWorkspaceErrorMessage =
     props.selectedWorkspaceError?.trim() ||
     selectedWorkspaceConnectionMessage ||
-    selectedWorkspaceGroupError ||
+    selectedWorkspaceProjectError ||
     "";
   const showSelectedWorkspaceError = Boolean(selectedWorkspaceErrorMessage);
   const selectedWorkspaceErrorTitle =
@@ -2334,7 +2336,7 @@ export function SessionPage(props: SessionPageProps) {
   const openRenameModal = (sessionId: string) => {
     if (!props.onRenameSession) return;
     setSessionActionId(sessionId);
-    setRenameTitle(sessionTitleForId(props.sidebar.workspaceSessionGroups, sessionId));
+    setRenameTitle(sessionTitleForId(props.sidebar.projectSessionLists, sessionId));
     setRenameOpen(true);
   };
 
@@ -2363,6 +2365,65 @@ export function SessionPage(props: SessionPageProps) {
     }
   };
 
+  const openRenameProject = (workspaceId: string) => {
+    const project = props.workspaces.find((workspace) => workspace.id === workspaceId);
+    if (!project) return;
+    setRenameProjectId(workspaceId);
+    setRenameProjectName(project.displayName?.trim() || project.name?.trim() || "");
+  };
+
+  const pickProjectFolder = async () => {
+    const selected = await pickDirectory({ title: t("projects.choose_folder") });
+    if (typeof selected !== "string" || !selected.trim()) return;
+    const folderPath = selected.trim();
+    setCreateProjectFolder(folderPath);
+    if (!createProjectName.trim()) {
+      const folderName = folderPath.replaceAll("\\", "/").split("/").filter(Boolean).pop() ?? "";
+      setCreateProjectName(folderName);
+    }
+  };
+
+  const submitCreateProject = async () => {
+    const name = createProjectName.trim();
+    const folderPath = createProjectFolder.trim();
+    if (!name || !folderPath) return;
+    setCreateProjectBusy(true);
+    setCreateProjectError(null);
+    try {
+      await props.sidebar.onCreateProject({ name, folderPath });
+      setCreateProjectOpen(false);
+    } catch (error) {
+      setCreateProjectError(error instanceof Error ? error.message : t("app.unknown_error"));
+    } finally {
+      setCreateProjectBusy(false);
+    }
+  };
+
+  const submitRenameProject = async () => {
+    const workspaceId = renameProjectId;
+    const name = renameProjectName.trim();
+    if (!workspaceId || !name) return;
+    setRenameProjectBusy(true);
+    try {
+      await props.sidebar.onRenameProject(workspaceId, name);
+      setRenameProjectId(null);
+    } finally {
+      setRenameProjectBusy(false);
+    }
+  };
+
+  const confirmDeleteProject = async () => {
+    const workspaceId = deleteProjectId;
+    if (!workspaceId) return;
+    setDeleteProjectBusy(true);
+    try {
+      await props.sidebar.onDeleteProject(workspaceId);
+      setDeleteProjectId(null);
+    } finally {
+      setDeleteProjectBusy(false);
+    }
+  };
+
   return (
     <div className="flex h-full min-h-0 flex-col bg-[radial-gradient(circle_at_top,rgba(74,111,255,0.12),transparent_42%),var(--app-bg,#0b1020)] text-dls-text mac:bg-transparent">
       <SidebarProvider
@@ -2377,7 +2438,7 @@ export function SessionPage(props: SessionPageProps) {
         style={sidebarProviderStyle}
       >
         <AppSidebar
-          workspaceSessionGroups={props.sidebar.workspaceSessionGroups}
+          projectSessionLists={props.sidebar.projectSessionLists}
           selectedWorkspaceId={props.sidebar.selectedWorkspaceId}
           developerMode={props.sidebar.developerMode}
           selectedSessionId={props.sidebar.selectedSessionId}
@@ -2388,6 +2449,16 @@ export function SessionPage(props: SessionPageProps) {
           workspaceConnectionStateById={props.sidebar.workspaceConnectionStateById}
           newTaskDisabled={props.sidebar.newTaskDisabled}
           onOpenSession={handleSidebarOpenSession}
+          onSelectProject={props.sidebar.onSelectProject}
+          onOpenCreateProject={isElectronRuntime() ? () => {
+            setCreateProjectName("");
+            setCreateProjectFolder("");
+            setCreateProjectError(null);
+            setCreateProjectOpen(true);
+          } : undefined}
+          onOpenRenameProject={openRenameProject}
+          onRevealProject={(workspaceId) => void props.sidebar.onRevealProject(workspaceId)}
+          onOpenDeleteProject={setDeleteProjectId}
           onPrefetchSession={props.sidebar.onPrefetchSession}
           onCreateTaskInWorkspace={props.sidebar.onCreateTaskInWorkspace}
           onOpenRenameSession={props.onRenameSession ? openRenameModal : undefined}
@@ -2398,21 +2469,6 @@ export function SessionPage(props: SessionPageProps) {
           onArchiveSession={props.onArchiveSession ? (sessionId, archived) => {
             void props.onArchiveSession?.(sessionId, archived);
           } : undefined}
-          onOpenCreateGroupModal={(workspaceId) => {
-            setCreateGroupWorkspaceId(workspaceId);
-            setCreateGroupLabel("");
-            setCreateGroupOpen(true);
-          }}
-          onOpenRenameGroupModal={(workspaceId, groupId, label) => {
-            setRenameGroupTarget({ workspaceId, groupId });
-            setRenameGroupLabel(label);
-            setRenameGroupOriginalLabel(label);
-            setRenameGroupOpen(true);
-          }}
-          onOpenRemoveGroupModal={(workspaceId, groupId, label) => {
-            setRemoveGroupTarget({ workspaceId, groupId, label });
-            setRemoveGroupOpen(true);
-          }}
           onRecoverWorkspace={props.sidebar.onRecoverWorkspace}
           onTestWorkspaceConnection={props.sidebar.onTestWorkspaceConnection}
           onEditWorkspaceConnection={props.sidebar.onEditWorkspaceConnection}
@@ -2720,7 +2776,6 @@ export function SessionPage(props: SessionPageProps) {
                           type,
                           templateId,
                           PERSONAL_WORK_CONTEXT_ID,
-                          activeSessionGroupId,
                         )}
                         onMaterializeTemplate={async (templateId, surface) => {
                           if (!props.ipolloworkServerClient || !props.runtimeWorkspaceId || !props.selectedSessionId) return;
@@ -2982,7 +3037,7 @@ export function SessionPage(props: SessionPageProps) {
         onExport={(template) => void exportPersonalTemplate(template)}
         onImport={importDesignTemplate}
         canCreate={props.selectedWorkspaceDisplay.workspaceType === "local"}
-        onCreate={(input) => props.sidebar.onCreateTemplateAuthoring(props.selectedWorkspaceId, input, activeSessionGroupId)}
+        onCreate={(input) => props.sidebar.onCreateTemplateAuthoring(props.selectedWorkspaceId, input)}
         onUse={(template) => {
           if (template.manifest.surface === "video" && props.selectedWorkspaceDisplay.workspaceType === "remote") {
             toast.error(t("templates.video_local_only"));
@@ -2994,7 +3049,6 @@ export function SessionPage(props: SessionPageProps) {
             sessionTypeForTemplate(template.manifest),
             template.manifest.id,
             templateResourceScope,
-            activeSessionGroupId,
           );
         }}
       /> : null}
@@ -3034,68 +3088,58 @@ export function SessionPage(props: SessionPageProps) {
         />
       ) : null}
 
-      <Dialog open={createGroupOpen} onOpenChange={(open) => { if (!open) setCreateGroupOpen(false); }}>
+      <Dialog open={createProjectOpen} onOpenChange={(open) => { if (!open && !createProjectBusy) setCreateProjectOpen(false); }}>
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
-            <DialogTitle>{t("session_management.new_group")}</DialogTitle>
+            <DialogTitle>{t("projects.create")}</DialogTitle>
+            <DialogDescription>{t("projects.create_description")}</DialogDescription>
           </DialogHeader>
-          <Input
-            type="text"
-            value={createGroupLabel}
-            onChange={(e) => setCreateGroupLabel(e.currentTarget.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && createGroupLabel.trim()) {
-                if (createGroupWorkspaceId) useSessionManagementStore.getState().createGroup(createGroupWorkspaceId, createGroupLabel.trim());
-                setCreateGroupOpen(false);
-              }
-            }}
-            placeholder={t("session_management.new_group_prompt")}
-          />
-          <DialogFooter>
-            <DialogClose render={<Button variant="outline" type="button" />}>{t("common.cancel")}</DialogClose>
-            <Button
+          <div className="space-y-3">
+            <Input
+              value={createProjectName}
+              onChange={(event) => setCreateProjectName(event.currentTarget.value)}
+              placeholder={t("projects.name_placeholder")}
+              disabled={createProjectBusy}
+            />
+            <button
               type="button"
-              disabled={!createGroupLabel.trim()}
-              onClick={() => {
-                if (createGroupWorkspaceId) useSessionManagementStore.getState().createGroup(createGroupWorkspaceId, createGroupLabel.trim());
-                setCreateGroupOpen(false);
-              }}
+              className="flex h-10 w-full items-center gap-2 rounded-lg border border-input bg-background px-3 text-left text-sm transition-colors hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-hidden disabled:opacity-50"
+              onClick={() => void pickProjectFolder()}
+              disabled={createProjectBusy}
             >
-              {t("common.save")}
+              <FolderOpen className="size-4 shrink-0 text-muted-foreground" />
+              <span className={cn("min-w-0 flex-1 truncate", !createProjectFolder && "text-muted-foreground")}>
+                {createProjectFolder || t("projects.choose_folder")}
+              </span>
+            </button>
+            {createProjectError ? <p role="alert" className="text-xs text-destructive">{createProjectError}</p> : null}
+          </div>
+          <DialogFooter>
+            <DialogClose render={<Button variant="outline" type="button" disabled={createProjectBusy} />}>{t("common.cancel")}</DialogClose>
+            <Button type="button" disabled={createProjectBusy || !createProjectName.trim() || !createProjectFolder.trim()} onClick={() => void submitCreateProject()}>
+              {createProjectBusy ? <LoaderCircle className="size-4 animate-spin" /> : null}
+              {t("projects.create")}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      <Dialog open={renameGroupOpen} onOpenChange={(open) => { if (!open) setRenameGroupOpen(false); }}>
+      <Dialog open={renameProjectId !== null} onOpenChange={(open) => { if (!open && !renameProjectBusy) setRenameProjectId(null); }}>
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
-            <DialogTitle>{t("session_management.rename_group")}</DialogTitle>
+            <DialogTitle>{t("projects.rename")}</DialogTitle>
           </DialogHeader>
           <Input
-            type="text"
-            value={renameGroupLabel}
-            onChange={(event) => setRenameGroupLabel(event.currentTarget.value)}
-            onKeyDown={(event) => {
-              const label = renameGroupLabel.trim();
-              if (event.key !== "Enter" || !label || label === renameGroupOriginalLabel.trim() || !renameGroupTarget) return;
-              useSessionManagementStore.getState().renameGroup(renameGroupTarget.workspaceId, renameGroupTarget.groupId, label);
-              setRenameGroupOpen(false);
-            }}
-            placeholder={t("session_management.new_group_prompt")}
+            value={renameProjectName}
+            onChange={(event) => setRenameProjectName(event.currentTarget.value)}
+            onKeyDown={(event) => { if (event.key === "Enter") void submitRenameProject(); }}
+            placeholder={t("projects.name_placeholder")}
+            disabled={renameProjectBusy}
           />
           <DialogFooter>
-            <DialogClose render={<Button variant="outline" type="button" />}>{t("common.cancel")}</DialogClose>
-            <Button
-              type="button"
-              disabled={!renameGroupLabel.trim() || renameGroupLabel.trim() === renameGroupOriginalLabel.trim() || !renameGroupTarget}
-              onClick={() => {
-                const label = renameGroupLabel.trim();
-                if (!renameGroupTarget || !label) return;
-                useSessionManagementStore.getState().renameGroup(renameGroupTarget.workspaceId, renameGroupTarget.groupId, label);
-                setRenameGroupOpen(false);
-              }}
-            >
+            <DialogClose render={<Button variant="outline" type="button" disabled={renameProjectBusy} />}>{t("common.cancel")}</DialogClose>
+            <Button type="button" disabled={renameProjectBusy || !renameProjectName.trim()} onClick={() => void submitRenameProject()}>
+              {renameProjectBusy ? <LoaderCircle className="size-4 animate-spin" /> : null}
               {t("common.save")}
             </Button>
           </DialogFooter>
@@ -3103,19 +3147,14 @@ export function SessionPage(props: SessionPageProps) {
       </Dialog>
 
       <ConfirmModal
-        open={removeGroupOpen}
-        title={t("session_management.remove_group_title")}
-        message={t("session_management.remove_group_message", { group: removeGroupTarget?.label ?? "" })}
-        confirmLabel={t("session_management.remove_group")}
+        open={deleteProjectId !== null}
+        title={t("projects.remove_title")}
+        message={t("projects.remove_description")}
+        confirmLabel={deleteProjectBusy ? t("projects.removing") : t("projects.remove")}
         cancelLabel={t("common.cancel")}
         variant="danger"
-        onConfirm={() => {
-          if (removeGroupTarget) {
-            useSessionManagementStore.getState().removeGroup(removeGroupTarget.workspaceId, removeGroupTarget.groupId);
-          }
-          setRemoveGroupOpen(false);
-        }}
-        onCancel={() => setRemoveGroupOpen(false)}
+        onConfirm={() => void confirmDeleteProject()}
+        onCancel={() => { if (!deleteProjectBusy) setDeleteProjectId(null); }}
       />
 
       <CloudSignInComingSoonDialog

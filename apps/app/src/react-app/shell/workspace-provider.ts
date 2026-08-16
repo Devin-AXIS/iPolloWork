@@ -4,6 +4,7 @@ import type { Client } from "@/app/types";
 
 type WorkspaceContextValue = {
   client: Client | null;
+  engineId?: string | null;
   opencodeBaseUrl: string;
   selectedWorkspaceRoot: string;
 };
@@ -12,6 +13,7 @@ const WorkspaceContext = React.createContext<WorkspaceContextValue | null>(null)
 
 type WorkspaceProviderProps = {
   client: Client | null;
+  engineId?: string | null;
   opencodeBaseUrl?: string;
   selectedWorkspaceRoot: string;
   children: React.ReactNode;
@@ -19,13 +21,14 @@ type WorkspaceProviderProps = {
 
 export function WorkspaceProvider({
   client,
+  engineId,
   opencodeBaseUrl = "",
   selectedWorkspaceRoot,
   children,
 }: WorkspaceProviderProps) {
   const value = React.useMemo(
-    () => ({ client, opencodeBaseUrl, selectedWorkspaceRoot }),
-    [client, opencodeBaseUrl, selectedWorkspaceRoot],
+    () => ({ client, engineId, opencodeBaseUrl, selectedWorkspaceRoot }),
+    [client, engineId, opencodeBaseUrl, selectedWorkspaceRoot],
   );
 
   return React.createElement(WorkspaceContext.Provider, { value }, children);

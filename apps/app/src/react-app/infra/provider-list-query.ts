@@ -1,13 +1,17 @@
 import { useQuery, type QueryClient } from "@tanstack/react-query";
 
-import type { Client, ModelRef, ProviderListItem } from "../../app/types";
-import { unwrap } from "../../app/lib/opencode";
+import type {
+  ModelRef,
+  ProviderListItem,
+  ProviderListResponse,
+} from "../../app/types";
 import { dispatchNewProviders } from "../../app/lib/provider-events";
-import type { ProviderListResponse } from "@opencode-ai/sdk/v2/client";
+import { DEFAULT_ENGINE_ID } from "@ipollowork/types/workspace";
+import { providerEngineAdapters } from "../domains/connections/provider-auth/provider-engine-adapter";
 import type { SelectableChatModelSnapshot } from "./preferred-chat-model";
 
 export const PROVIDER_LIST_CACHE_MS = 5 * 60 * 1000;
-const PROVIDER_LIST_QUERY_ROOT = ["opencode-provider-list"] as const;
+const PROVIDER_LIST_QUERY_ROOT = ["provider-list"] as const;
 
 export type ConnectedProviderSnapshot = Array<{
   id: string;
@@ -26,11 +30,13 @@ const connectedProviderSnapshots = new Map<string, ConnectedProviderSnapshot>();
 const connectedProviderSnapshotChanges = new Map<string, ConnectedProviderSnapshotChange>();
 
 export function providerListQueryKey(input: {
+  engineId?: string | null;
   baseUrl?: string | null;
   directory?: string | null;
 }) {
   return [
     ...PROVIDER_LIST_QUERY_ROOT,
+    input.engineId?.trim() || DEFAULT_ENGINE_ID,
     input.baseUrl?.trim() ?? "",
     input.directory?.trim() ?? "",
   ] as const;
@@ -42,15 +48,15 @@ export async function refreshProviderListQueries(queryClient: QueryClient) {
 }
 
 export async function fetchProviderList(input: {
-  client: Client;
+  client: unknown;
+  engineId?: string | null;
   baseUrl?: string | null;
   directory?: string | null;
 }): Promise<ProviderListResponse> {
-  const value = unwrap(
-    await input.client.provider.list({
-      directory: input.directory?.trim() || undefined,
-    }),
-  );
+  const value = await providerEngineAdapters
+    .get(input.engineId)
+    .connect(input.client)
+    .listProviders(input.directory?.trim() || undefined);
   recordConnectedProviderSnapshot(input, value);
   return value;
 }
@@ -121,6 +127,7 @@ export function isModelAvailableInSelectableChatProviders(
 }
 
 export function getConnectedProviderSnapshotChange(input: {
+  engineId?: string | null;
   baseUrl?: string | null;
   directory?: string | null;
 }) {
@@ -129,6 +136,7 @@ export function getConnectedProviderSnapshotChange(input: {
 
 function recordConnectedProviderSnapshot(
   input: {
+    engineId?: string | null;
     baseUrl?: string | null;
     directory?: string | null;
   },
@@ -146,6 +154,7 @@ function recordConnectedProviderSnapshot(
 }
 
 function connectedProviderSnapshotKey(input: {
+  engineId?: string | null;
   baseUrl?: string | null;
   directory?: string | null;
 }) {
@@ -201,7 +210,8 @@ function dispatchConnectedProviderChanges(
 export function ensureProviderListQuery(
   queryClient: QueryClient,
   input: {
-    client: Client;
+    client: unknown;
+    engineId?: string | null;
     baseUrl?: string | null;
     directory?: string | null;
     force?: boolean;
@@ -225,7 +235,8 @@ export function ensureProviderListQuery(
 }
 
 export function useProviderListQuery(input: {
-  client: Client | null;
+  client: unknown | null;
+  engineId?: string | null;
   baseUrl?: string | null;
   directory?: string | null;
   enabled?: boolean;
@@ -245,6 +256,7 @@ export function useProviderListQuery(input: {
       }
       return fetchProviderList({
         client: input.client,
+        engineId: input.engineId,
         baseUrl: input.baseUrl,
         directory: input.directory,
       });

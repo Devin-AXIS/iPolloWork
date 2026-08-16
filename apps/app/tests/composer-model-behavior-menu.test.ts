@@ -6,6 +6,9 @@ import {
   modelSupportsAttachments,
   type ProviderCatalog,
 } from "../src/react-app/domains/session/surface/use-model-behavior";
+import { attachmentRequiresNativeModelSupport } from "../src/react-app/domains/session/sync/attachment-support";
+import { draftToParts } from "../src/react-app/shell/session-prompt";
+import type { ComposerDraft } from "../src/app/types";
 
 const modelSelectPath = resolve(import.meta.dir, "../src/components/model-select.tsx");
 const composerPath = resolve(import.meta.dir, "../src/react-app/domains/session/surface/composer/composer.tsx");
@@ -27,12 +30,50 @@ describe("Composer model and reasoning menu", () => {
     expect(modelSupportsAttachments(catalog, null)).toBe(false);
   });
 
-  test("uses the selected model capability for both the attachment entry and send boundary", () => {
+  test("keeps file attachment available while guarding native media at the send boundary", () => {
     const route = readFileSync(sessionRoutePath, "utf8");
+    const composer = readFileSync(composerPath, "utf8");
 
-    expect(route).toContain("attachmentsEnabled: selectedModelSupportsAttachments");
-    expect(route).toContain("draft.attachments.length > 0 && !selectedModelSupportsAttachments");
+    expect(route).toContain("supportsNativeAttachments: selectedModelSupportsAttachments");
+    expect(route).toContain("attachmentRequiresNativeModelSupport(attachment.mimeType)");
+    expect(route).toContain("{ supportsNativeAttachments: selectedModelSupportsAttachments }");
     expect(route).toContain('t("composer.attachments_require_multimodal")');
+    expect(composer).not.toContain("attachmentsEnabled");
+  });
+
+  test("uses text fallback for ordinary files on text-only models", async () => {
+    const attachment = new File(["export const answer = 42;"], "answer.ts", { type: "text/plain" });
+    const draft: ComposerDraft = {
+      mode: "prompt",
+      text: "Review this file",
+      parts: [{ type: "text", text: "Review this file" }],
+      attachments: [{
+        id: "attachment-1",
+        name: attachment.name,
+        mimeType: attachment.type,
+        size: attachment.size,
+        kind: "file",
+        file: attachment,
+      }],
+    };
+
+    const parts = await draftToParts(draft, "", undefined, undefined, { supportsNativeAttachments: false });
+
+    expect(parts).toEqual([
+      { type: "text", text: "Review this file" },
+      {
+        type: "text",
+        text: "Attached file: answer.ts\n\nexport const answer = 42;",
+        synthetic: true,
+      },
+    ]);
+  });
+
+  test("requires native model support only for images and PDFs", () => {
+    expect(attachmentRequiresNativeModelSupport("image/png")).toBe(true);
+    expect(attachmentRequiresNativeModelSupport("application/pdf")).toBe(true);
+    expect(attachmentRequiresNativeModelSupport("text/plain")).toBe(false);
+    expect(attachmentRequiresNativeModelSupport("application/json")).toBe(false);
   });
 
   test("exports reusable Composer model-list content", () => {

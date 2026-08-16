@@ -114,7 +114,6 @@ export default {
   "composer.agent_label": "Agent",
   "composer.any_file_type_supported": "Tous les types de fichiers sont pris en charge.",
   "composer.attach_files": "Joindre des fichiers",
-  "composer.attachments_unavailable": "Les pièces jointes ne sont pas disponibles.",
   "composer.behavior_label": "Comportement",
   "composer.configure": "Configurer",
   "composer.default_agent": "Agent par défaut",

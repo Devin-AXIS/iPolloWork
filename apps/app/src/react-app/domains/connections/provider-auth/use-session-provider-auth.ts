@@ -115,10 +115,10 @@ export function useSessionProviderAuth(input: UseSessionProviderAuthInput) {
         setProviderDefaults,
         setProviderConnectedIds,
         setDisabledProviders: setDisabledProviderIds,
-        markOpencodeConfigReloadRequired: () => {
+        markEngineConfigReloadRequired: (configFileName) => {
           markReloadRequired("config", {
             type: "config",
-            name: "opencode.json",
+            name: configFileName,
             action: "updated",
           });
         },
@@ -175,7 +175,7 @@ export function useSessionProviderAuth(input: UseSessionProviderAuthInput) {
   }, [selectedWorkspaceEndpoint, store]);
 
   // Session is where forced sign-in lands. Keep org-managed cloud providers in
-  // sync here so sign-in applies opencode.json changes before Settings opens.
+  // sync here so sign-in applies engine-provider changes before Settings opens.
   useCloudProviderAutoSync(store.runCloudProviderSync);
   const snapshot = useProviderAuthStoreSnapshot(store);
 

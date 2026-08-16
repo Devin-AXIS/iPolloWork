@@ -4,7 +4,6 @@ import type {
   PermissionRequest as ApiPermissionRequest,
   PermissionV2Request,
   QuestionRequest,
-  ProviderListResponse,
   Session,
 } from "@opencode-ai/sdk/v2/client";
 import type { createClient } from "./lib/opencode";
@@ -12,7 +11,32 @@ import type { OpencodeConfigFile, WorkspaceInfo } from "./lib/desktop-types";
 
 export type Client = ReturnType<typeof createClient>;
 
-export type ProviderListItem = ProviderListResponse["all"][number];
+export type ProviderModel = {
+  id: string;
+  name: string;
+  capabilities: {
+    attachment?: boolean;
+    reasoning?: boolean;
+    input?: {
+      image?: boolean;
+    };
+  };
+  variants?: Record<string, Record<string, unknown>>;
+};
+
+export type ProviderListItem = {
+  id: string;
+  name: string;
+  source: "env" | "config" | "custom" | "api";
+  env: string[];
+  models: Record<string, ProviderModel>;
+};
+
+export type ProviderListResponse = {
+  all: ProviderListItem[];
+  connected: string[];
+  default: Record<string, string>;
+};
 
 export type SidebarSessionItem = {
   id: string;
@@ -30,7 +54,7 @@ export type SidebarSessionItem = {
   directory?: string | null;
 };
 
-export type WorkspaceSessionGroup = {
+export type ProjectSessionList = {
   workspace: WorkspaceInfo;
   sessions: SidebarSessionItem[];
   status: "idle" | "loading" | "ready" | "error";

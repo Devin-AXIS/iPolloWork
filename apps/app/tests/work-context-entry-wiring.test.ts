@@ -55,15 +55,16 @@ describe("personal and Enterprise chat entry wiring", () => {
     expect(cloudAccount).toContain('`#/workspace/${encodeURIComponent(personalWorkspaceId)}/session`');
   });
 
-  test("scopes workspaces and therefore all sessions to the active work context", () => {
-    expect(routeState).toContain("canonicalWorkspacesForWorkContext(");
-    expect(routeState).toContain("pruneServerWorkspacesForWorkContext(");
+  test("keeps all projects and sessions scoped to the active work context", () => {
+    expect(routeState).toContain("filterWorkspacesForWorkContext(");
+    expect(routeState).not.toContain("canonicalWorkspacesForWorkContext(");
+    expect(routeState).not.toContain("pruneServerWorkspacesForWorkContext(");
     expect(routeState).toContain("workContextRef.current === requestedContextId");
     expect(sessionRoute).toContain("workContextId: activeWorkContextId");
     expect(sessionRoute).toContain("sessionsByWorkspaceId,");
     expect(sessionRoute).not.toContain("ChatSpace");
     expect(workContext).toContain('joinDesktopPath(homeDir, ".ipollowork", "work-contexts", connection.id)');
-    expect(workContext).not.toContain("rememberWorkspaceForWorkContext");
+    expect(workContext).toContain("rememberProjectForWorkContext");
   });
 
   test("keeps market launches scoped while the starter catalog stays personal", () => {
@@ -75,7 +76,13 @@ describe("personal and Enterprise chat entry wiring", () => {
     expect(sessionRoute).toContain("deleteSession(endpoint.workspaceId, createdSessionId)");
   });
 
-  test("removes the legacy workstation switch and cloud organization mapping", () => {
+  test("restores lightweight project management without the legacy workspace UI", () => {
+    expect(sidebar).not.toContain("function ProjectSwitcher");
+    expect(sidebar).toContain('data-testid="project-row"');
+    expect(sidebar).toContain('data-testid="new-project-button"');
+    expect(sidebar).toContain("onSelectProject");
+    expect(sessionRoute).toContain("createLocalWorkspace");
+    expect(sessionRoute).toContain("deleteWorkspace");
     expect(sidebar).not.toContain("WorkspaceHeader");
     expect(sidebar).not.toContain("WorkspaceActionsMenu");
     expect(sidebar).not.toContain("onReorderWorkspaces");

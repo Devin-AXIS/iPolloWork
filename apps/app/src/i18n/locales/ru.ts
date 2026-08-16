@@ -115,7 +115,6 @@ export default {
   "composer.agent_label": "Агент",
   "composer.any_file_type_supported": "Поддерживаются файлы любого типа.",
   "composer.attach_files": "Прикрепить файлы",
-  "composer.attachments_unavailable": "Вложения недоступны.",
   "composer.behavior_label": "Поведение",
   "composer.configure": "Настроить",
   "composer.default_agent": "Агент по умолчанию",
