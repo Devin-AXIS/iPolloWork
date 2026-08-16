@@ -2,7 +2,6 @@ import { spawn, type ChildProcess } from "node:child_process";
 import { existsSync } from "node:fs";
 import { readFile, realpath, writeFile } from "node:fs/promises";
 import { request as httpRequest } from "node:http";
-import { createRequire } from "node:module";
 import { basename, delimiter, dirname, resolve } from "node:path";
 import type { Readable } from "node:stream";
 import { fileURLToPath } from "node:url";
@@ -80,9 +79,7 @@ function appendBounded(current: string, chunk: string) {
 }
 
 function resolveHyperframesCli() {
-  const require = createRequire(import.meta.url);
-  const packageJson = require.resolve("hyperframes/package.json");
-  return resolve(dirname(packageJson), "dist/cli.js");
+  return fileURLToPath(new URL("./hyperframes/cli.js", import.meta.url));
 }
 
 function inheritedPath() {

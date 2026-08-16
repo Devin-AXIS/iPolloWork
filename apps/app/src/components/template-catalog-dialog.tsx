@@ -16,6 +16,8 @@ import { ConfirmModal } from "@/react-app/design-system/modals/confirm-modal";
 export type TemplateCatalogDialogCopy = {
   title: string;
   description: string;
+  confirmTitle?: string;
+  confirmDescription?: (title: string) => string;
 };
 
 export type TemplateCatalogDialogProps<Applied> = {
@@ -72,7 +74,7 @@ function TemplateCover(props: {
   }, [props.load, props.template.manifest.id, visible]);
 
   return (
-    <div ref={placeholderRef} className="aspect-[16/10] overflow-hidden bg-muted">
+    <div ref={placeholderRef} className="aspect-[16/10] overflow-hidden bg-muted" data-testid="template-catalog-cover">
       {source ? (
         <img
           src={source}
@@ -131,7 +133,7 @@ export function TemplateCatalogDialog<Applied>(props: TemplateCatalogDialogProps
   return (
     <>
       <Dialog open={props.open} onOpenChange={props.onOpenChange}>
-        <DialogContent className="grid h-[min(760px,calc(100dvh-48px))] grid-rows-[auto_auto_minmax(0,1fr)] gap-4 p-5 sm:p-6">
+        <DialogContent className="grid h-[min(760px,calc(100dvh-48px))] grid-rows-[auto_auto_minmax(0,1fr)] gap-4 p-5 sm:p-6" data-testid="template-catalog-dialog">
           <DialogHeader className="pr-12">
             <DialogTitle>{props.copy.title}</DialogTitle>
             <DialogDescription>{props.copy.description}</DialogDescription>
@@ -172,6 +174,7 @@ export function TemplateCatalogDialog<Applied>(props: TemplateCatalogDialogProps
                   <button
                     key={template.manifest.id}
                     type="button"
+                    data-testid="template-catalog-item"
                     className={cn(
                       "group overflow-hidden rounded-2xl border border-border bg-card text-left transition",
                       "hover:-translate-y-0.5 hover:border-foreground/20 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
@@ -196,8 +199,9 @@ export function TemplateCatalogDialog<Applied>(props: TemplateCatalogDialogProps
       </Dialog>
       <ConfirmModal
         open={Boolean(pending)}
-        title={t("design_templates.confirm_title")}
-        message={t("design_templates.confirm_description", { title: pending?.manifest.title ?? "" })}
+        title={props.copy.confirmTitle ?? t("design_templates.confirm_title")}
+        message={props.copy.confirmDescription?.(pending?.manifest.title ?? "")
+          ?? t("design_templates.confirm_description", { title: pending?.manifest.title ?? "" })}
         confirmLabel={t("template_market.use_template")}
         cancelLabel={t("common.cancel")}
         onCancel={() => setPending(null)}

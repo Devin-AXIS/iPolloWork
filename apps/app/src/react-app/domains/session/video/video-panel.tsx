@@ -11,6 +11,13 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { cn } from "@/lib/utils";
 import { currentLocale, localeChangedEvent, t } from "@/i18n";
 import type { DesignAiSelectionContext } from "@ipollowork/design-studio";
+import {
+  IPOLLOWORK_VIDEO_STUDIO_FEATURES,
+  type VideoStudioBranding,
+  type VideoStudioClient,
+  type VideoStudioFeatures,
+  type VideoStudioRuntime,
+} from "@ipollowork/video-studio";
 import { parseVideoIllustrationReference } from "./video-illustration";
 import { DesignSystemDrawer } from "../design/design-system-drawer";
 import { mergeTemplateTokenCss, parseDesignTokenValues, refreshTemplateTokenCss, replaceDesignTokenValue, type DesignTokenValues } from "../design/design-system-files";
@@ -24,6 +31,7 @@ import {
   videoProjectId,
 } from "./video-project";
 import { resolveVideoAiSelectionTarget } from "./video-ai-selection";
+import { VideoTemplateDialog } from "./video-template-dialog";
 import { VideoVoicePanel } from "./video-voice-panel";
 
 export {
@@ -37,8 +45,11 @@ type VideoPanelProps = {
   title: string;
   sessionId: string;
   workspaceRoot: string;
-  client: iPolloWorkServerClient | null;
+  client: VideoStudioClient | null;
   workspaceId: string | null;
+  runtime?: VideoStudioRuntime;
+  features?: VideoStudioFeatures;
+  branding?: VideoStudioBranding;
   isRemoteWorkspace?: boolean;
   aiEditing?: boolean;
   expanded?: boolean;
@@ -82,7 +93,11 @@ function normalizeVideoThemeTypeScale(source: string) {
   return replaceDesignTokenValue(source, "--ipw-type-scale", "1");
 }
 
-export function VideoPanel({ title, sessionId, workspaceRoot, client, workspaceId, isRemoteWorkspace = false, aiEditing = false, expanded = false, onExpandedChange, onAskAi, onSaveAsTemplate }: VideoPanelProps) {
+function isIPolloWorkServerClient(client: VideoStudioClient | null): client is iPolloWorkServerClient {
+  return Boolean(client && "createVoiceRealtimeSession" in client);
+}
+
+export function VideoPanel({ title, sessionId, workspaceRoot, client, workspaceId, runtime, features = IPOLLOWORK_VIDEO_STUDIO_FEATURES, branding, isRemoteWorkspace = false, aiEditing = false, expanded = false, onExpandedChange, onAskAi, onSaveAsTemplate }: VideoPanelProps) {
   const terminalIdRef = React.useRef<string | null>(null);
   const studioFrameRef = React.useRef<HTMLIFrameElement | null>(null);
   const studioChromeReadyRef = React.useRef(false);
@@ -96,6 +111,7 @@ export function VideoPanel({ title, sessionId, workspaceRoot, client, workspaceI
   const [studioChromeReady, setStudioChromeReady] = React.useState(false);
   const [studioHistoryReady, setStudioHistoryReady] = React.useState(false);
   const [studioHostPanel, setStudioHostPanel] = React.useState<StudioHostPanel>(null);
+  const [templateDialogOpen, setTemplateDialogOpen] = React.useState(false);
   const [studioPanelWidth, setStudioPanelWidth] = React.useState(DEFAULT_STUDIO_PANEL_WIDTH);
   const [designTokenSource, setDesignTokenSource] = React.useState("");
   const designTokenSourceRef = React.useRef("");
@@ -135,6 +151,13 @@ export function VideoPanel({ title, sessionId, workspaceRoot, client, workspaceI
     [appliedDesignSystemId],
   );
   const showStudioStartupOverlay = status === "starting" || (status === "ready" && !studioChromeReady);
+  const studioRuntime = runtime ?? window.__IPOLLOWORK_ELECTRON__?.hyperframes;
+  const templatesAvailable = Boolean(
+    features.templates
+    && client?.listVideoStudioTemplates
+    && client.getVideoStudioTemplateCover
+    && client.applyVideoStudioTemplate,
+  );
 
   const syncStudioDesignTokens = React.useCallback((tokens: Record<string, string>, cssSource?: string) => {
     pendingStudioDesignTokensRef.current = { tokens, cssSource };
@@ -216,16 +239,16 @@ export function VideoPanel({ title, sessionId, workspaceRoot, client, workspaceI
         setStudioPanelWidth(Math.max(MIN_STUDIO_PANEL_WIDTH, Math.min(MAX_STUDIO_PANEL_WIDTH, event.data.width)));
       }
       if (event.data.panel === "voice") {
-        setStudioHostPanel("voice");
+        if (features.voice) setStudioHostPanel("voice");
       } else if (event.data.panel === "style") {
-        setStudioHostPanel("style");
+        if (features.designSystem) setStudioHostPanel("style");
       } else if (event.data.panel === null) {
         setStudioHostPanel(null);
       }
     };
     window.addEventListener("message", handlePanelRequest);
     return () => window.removeEventListener("message", handlePanelRequest);
-  }, [sessionId, studioUrl]);
+  }, [features.designSystem, features.voice, sessionId, studioUrl]);
 
   React.useEffect(() => {
     setStudioHistoryReady(false);
@@ -488,14 +511,22 @@ export function VideoPanel({ title, sessionId, workspaceRoot, client, workspaceI
         type: "ipollowork:studio-host-context",
         projectId: videoProjectId(sessionId),
         title,
+        branding: branding ? {
+          title: branding.title,
+          byline: branding.byline,
+          bylineUrl: branding.bylineUrl,
+          repositoryUrl: branding.repositoryUrl,
+        } : null,
         actions: {
           reload: true,
           saveAsTemplate: Boolean(onSaveAsTemplate),
+          openTemplates: templatesAvailable,
+          askAi: Boolean(branding?.onAskAi),
         },
       },
       new URL(studioUrl).origin,
     );
-  }, [onSaveAsTemplate, sessionId, studioUrl, title]);
+  }, [branding, onSaveAsTemplate, sessionId, studioUrl, templatesAvailable, title]);
 
   React.useEffect(() => {
     if (!studioFrameLoaded) return;
@@ -689,14 +720,13 @@ export function VideoPanel({ title, sessionId, workspaceRoot, client, workspaceI
       setDetail(t("video.starting_workspace"));
       return;
     }
-    const bridge = window.__IPOLLOWORK_ELECTRON__?.hyperframes;
-    if (!bridge?.start || !bridge.stop) {
+    if (!studioRuntime?.start || !studioRuntime.stop) {
       setStatus("failed");
       setDetail(t("video.requires_desktop"));
       return;
     }
-    const startHyperframes = bridge.start;
-    const stopHyperframes = bridge.stop;
+    const startHyperframes = studioRuntime.start;
+    const stopHyperframes = studioRuntime.stop;
 
     let disposed = false;
     const waitingTimer = window.setTimeout(() => {
@@ -738,7 +768,7 @@ export function VideoPanel({ title, sessionId, workspaceRoot, client, workspaceI
       }
       void stopHyperframes(sessionId, { keepWarm: false });
     };
-  }, [isRemoteWorkspace, projectDirectory, sessionId, startAttempt, studioPort, workspaceRoot]);
+  }, [isRemoteWorkspace, projectDirectory, sessionId, startAttempt, studioPort, studioRuntime, workspaceRoot]);
 
   React.useEffect(() => {
     window.addEventListener(localeChangedEvent, scheduleStudioLocaleSync);
@@ -777,10 +807,12 @@ export function VideoPanel({ title, sessionId, workspaceRoot, client, workspaceI
         return;
       }
       if (event.data.action === "save-as-template") onSaveAsTemplate?.();
+      if (event.data.action === "open-templates" && templatesAvailable) setTemplateDialogOpen(true);
+      if (event.data.action === "ask-ai") branding?.onAskAi();
     };
     window.addEventListener("message", handleStudioHostAction);
     return () => window.removeEventListener("message", handleStudioHostAction);
-  }, [onSaveAsTemplate, reloadStudio, sessionId, studioUrl]);
+  }, [branding, onSaveAsTemplate, reloadStudio, sessionId, studioUrl, templatesAvailable]);
 
   React.useEffect(() => {
     setStudioHostPanel(null);
@@ -833,7 +865,7 @@ export function VideoPanel({ title, sessionId, workspaceRoot, client, workspaceI
             setStatus("failed");
             setDetail(t("video.could_not_load", { url: studioUrl }));
           }} /> : null}
-          {studioHostPanel === "voice" ? <VideoVoicePanel
+          {features.voice && studioHostPanel === "voice" && isIPolloWorkServerClient(client) ? <VideoVoicePanel
             sessionId={sessionId}
             workspaceRoot={workspaceRoot}
             client={client}
@@ -843,7 +875,7 @@ export function VideoPanel({ title, sessionId, workspaceRoot, client, workspaceI
             embeddedWidth={studioPanelWidth}
             embedded
           /> : null}
-          {studioHostPanel === "style" ? <div className="absolute bottom-0 right-0 top-[90px] z-20 flex min-w-0 max-w-full overflow-hidden border-l border-border bg-background" style={{ width: studioPanelWidth }} data-testid="video-style-tab-content">
+          {features.designSystem && studioHostPanel === "style" ? <div className="absolute bottom-0 right-0 top-[90px] z-20 flex min-w-0 max-w-full overflow-hidden border-l border-border bg-background" style={{ width: studioPanelWidth }} data-testid="video-style-tab-content">
             <DesignSystemDrawer
               embedded
               open
@@ -858,6 +890,20 @@ export function VideoPanel({ title, sessionId, workspaceRoot, client, workspaceI
             />
           </div> : null}
           </div>
+          {features.templates && templatesAvailable && client && workspaceId ? (
+            <VideoTemplateDialog
+              open={templateDialogOpen}
+              onOpenChange={setTemplateDialogOpen}
+              client={client}
+              workspaceId={workspaceId}
+              sessionId={sessionId}
+              copy={features.templates}
+              onApplied={(nextRuntime) => {
+                if (Number.isInteger(nextRuntime.port) && nextRuntime.port > 0) setActiveStudioPort(nextRuntime.port);
+                reloadStudio();
+              }}
+            />
+          ) : null}
         </div>
       )}
     </div>

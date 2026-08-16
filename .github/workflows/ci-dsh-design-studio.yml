@@ -10,6 +10,8 @@ on:
       - "packages/types/**"
       - "apps/app/src/**"
       - "apps/server/bundled-templates/**"
+      - "vendor/hyperframes/packages/studio/src/**"
+      - "vendor/hyperframes/packages/cli/**"
       - "scripts/export-deepseek-design-repository.mjs"
       - ".github/workflows/ci-dsh-design-studio.yml"
     tags:
@@ -25,6 +27,8 @@ on:
       - "packages/types/**"
       - "apps/app/src/**"
       - "apps/server/bundled-templates/**"
+      - "vendor/hyperframes/packages/studio/src/**"
+      - "vendor/hyperframes/packages/cli/**"
       - "scripts/export-deepseek-design-repository.mjs"
       - ".github/workflows/ci-dsh-design-studio.yml"
 
@@ -54,6 +58,11 @@ jobs:
         with:
           node-version: 24
           cache: pnpm
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
 
       - name: Install iPolloWork workspace
         run: pnpm install --frozen-lockfile
@@ -98,6 +107,11 @@ jobs:
           node-version: 24
           registry-url: https://registry.npmjs.org
           cache: pnpm
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
 
       - name: Resolve tagged package
         id: package

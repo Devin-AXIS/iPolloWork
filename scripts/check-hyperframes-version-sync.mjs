@@ -7,7 +7,7 @@ const plugin = JSON.parse(await readFile(resolve(root, "external-plugins/deepsee
 const upstream = JSON.parse(await readFile(resolve(root, "vendor/hyperframes/packages/cli/package.json"), "utf8"));
 const contract = await readFile(resolve(root, "packages/video-studio/src/project.ts"), "utf8");
 const contractVersion = /HYPERFRAMES_VERSION\s*=\s*"([^"]+)"/.exec(contract)?.[1];
-const pluginVersion = plugin.dependencies?.hyperframes;
+const pluginVersion = plugin.ipollowork?.hyperframesVersion;
 const upstreamVersion = upstream.version;
 
 if (!contractVersion || pluginVersion !== contractVersion || upstreamVersion !== contractVersion) {

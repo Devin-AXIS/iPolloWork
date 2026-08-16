@@ -12,7 +12,7 @@
 
 ## 让 DeepSeek Harness 真正拥有视频创作能力
 
-`deepseek-ivideo` 将 iPolloWork Video Studio 作为原生 **Video** 视图加入 DeepSeek Harness。它直接运行 HyperFrames 时间线、可视化编辑器、动画系统、预览和视频导出能力，不复制编辑器或渲染链路。
+`deepseek-ivideo` 将 iPolloWork 的同一个 Video Studio 作为原生 **Video** 视图加入 DeepSeek Harness。它直接复用 iPolloWork 的 `VideoPanel` 和定制 HyperFrames 时间线、可视化编辑器、动画系统、预览及视频导出能力，不维护第二套编辑器、顶部栏或渲染链路。
 
 你可以让 Harness 从对话生成或修改整段视频，也可以在画面中选中标题、图片、素材或其他元素，通过 **Ask AI** 只修改当前对象。所有操作仍落在当前工作区的真实 HTML、CSS、素材和项目文件中，可继续手动精调、预览和导出。
 
@@ -31,7 +31,7 @@
 
 ## 安装并启动
 
-要求 Node.js 22 或更高版本。插件固定使用 `hyperframes@0.7.60`。
+要求 Node.js 22 或更高版本。发布包内置从 iPolloWork 主仓库构建的定制 HyperFrames 运行时，当前源版本为 `0.7.60`；不会在安装时另外下载同名公共 npm 版本。
 
 ```sh
 npx @deepseek-ai/dsh plugin --profile web add deepseek-ivideo
@@ -51,7 +51,7 @@ DeepSeek Harness Web 界面默认运行在 [http://127.0.0.1:3080](http://127.0.
 
 ```sh
 pnpm pack
-dsh plugin --profile web add ./deepseek-ivideo-0.1.0.tgz
+dsh plugin --profile web add ./deepseek-ivideo-0.1.1.tgz
 dsh web
 ```
 
@@ -84,7 +84,7 @@ dsh web
 
 ## Give DeepSeek Harness a native video capability
 
-`deepseek-ivideo` adds iPolloWork Video Studio to DeepSeek Harness as a native **Video** conversation view. It runs the existing HyperFrames timeline, visual editor, animation system, preview, and export pipeline directly—there is no second editor or renderer.
+`deepseek-ivideo` adds the same Video Studio used by iPolloWork to DeepSeek Harness as a native **Video** conversation view. It directly reuses iPolloWork's `VideoPanel` and customized HyperFrames timeline, visual editor, animation system, preview, and export pipeline—there is no second editor, top bar, or renderer to maintain.
 
 Ask Harness to generate or revise the whole video, or select a heading, image, media item, or other visual element and use **Ask AI** for a focused change. The result remains real HTML, CSS, assets, and project files inside the active workspace, ready for visual refinement, preview, and export.
 
@@ -103,7 +103,7 @@ The first release intentionally excludes voice cloning, voice settings, and the 
 
 ## Install and run
 
-Node.js 22 or newer is required. The plugin pins `hyperframes@0.7.60`.
+Node.js 22 or newer is required. The release artifact embeds the customized HyperFrames runtime built from the iPolloWork source repository, currently at source version `0.7.60`; installation does not fetch the public npm package with the same name.
 
 ```sh
 npx @deepseek-ai/dsh plugin --profile web add deepseek-ivideo
@@ -123,7 +123,7 @@ The Web UI is served at [http://127.0.0.1:3080](http://127.0.0.1:3080) by defaul
 
 ```sh
 pnpm pack
-dsh plugin --profile web add ./deepseek-ivideo-0.1.0.tgz
+dsh plugin --profile web add ./deepseek-ivideo-0.1.1.tgz
 dsh web
 ```
 

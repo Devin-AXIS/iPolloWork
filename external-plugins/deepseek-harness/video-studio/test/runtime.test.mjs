@@ -14,7 +14,6 @@ import {
 import {
   isVideoStudioHostMessage,
   parseHyperframesAskAiMessage,
-  parseHyperframesSelectionSnapshot,
   videoStudioDocumentPrompt,
   videoStudioSelectionPrompt,
 } from "../lib/contract.js";
@@ -204,32 +203,18 @@ test("AI bridge accepts only validated selections and builds draft-only prompts"
   assert.match(videoStudioSelectionPrompt("video/session", selection), /Change only this element/);
 });
 
-test("HyperFrames selection snapshots are reduced to the safe element AI contract", () => {
-  const selection = parseHyperframesSelectionSnapshot({
-    sourceFile: "index.html",
-    target: { hfId: "headline", selector: ".headline" },
-    tagName: "DIV",
-    textContent: "Launch faster",
-    dataAttributes: { alt: "Hero artwork" },
-    computedStyles: { color: "rgb(255, 255, 255)", transform: "none" },
-    inlineStyles: { color: "#fff" },
-  });
-  assert.deepEqual(selection, {
-    file: "index.html",
-    locator: '[data-hf-id="headline"]',
-    tag: "div",
-    text: "Launch faster",
-    src: "",
-    alt: "Hero artwork",
-    styles: { color: "#fff", transform: "none" },
-  });
-  assert.equal(parseHyperframesSelectionSnapshot({ sourceFile: "../secret", target: { hfId: "x" } }), null);
-});
-
 test("Harness client validates message source and fills a draft without sending it", async () => {
   const source = await readFile(resolve(dirname(new URL(import.meta.url).pathname), "../src/client.tsx"), "utf8");
   assert.match(source, /event\.origin !== window\.location\.origin/);
   assert.match(source, /event\.source !== iframeRef\.current\?\.contentWindow/);
   assert.match(source, /inputActions\.setDraft/);
   assert.doesNotMatch(source, /inputActions\.(send|submit)|sendMessage\(/);
+});
+
+test("Studio reuses the iPolloWork VideoPanel without a parallel editor shell", async () => {
+  const studioRoot = resolve(dirname(new URL(import.meta.url).pathname), "../studio/src");
+  const source = await readFile(resolve(studioRoot, "main.tsx"), "utf8");
+  assert.match(source, /VideoPanel/);
+  assert.doesNotMatch(source, /setInterval|ivideo-native-row|VideoTemplateDialog/);
+  await assert.rejects(() => readFile(resolve(studioRoot, "video-studio.css"), "utf8"));
 });

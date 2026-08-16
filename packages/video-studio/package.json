@@ -7,6 +7,7 @@
   "exports": {
     ".": "./src/index.ts",
     "./bridge": "./src/bridge.ts",
+    "./host": "./src/host.ts",
     "./project": "./src/project.ts"
   },
   "files": [
