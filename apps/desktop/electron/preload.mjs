@@ -170,6 +170,9 @@ contextBridge.exposeInMainWorld("__IPOLLOWORK_ELECTRON__", {
       return () => ipcRenderer.removeListener("ipollowork:terminal:exit", handler);
     },
   },
+  ssh: {
+    listHosts() { return ipcRenderer.invoke("ipollowork:ssh:list-hosts"); },
+  },
   hyperframes: {
     start(options) { return ipcRenderer.invoke("ipollowork:hyperframes:start", options); },
     stop(sessionId, options) { return ipcRenderer.invoke("ipollowork:hyperframes:stop", sessionId, options); },

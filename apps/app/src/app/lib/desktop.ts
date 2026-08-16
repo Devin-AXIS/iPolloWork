@@ -154,12 +154,25 @@ declare global {
         onPanelClosed?: (callback: () => void) => () => void;
       };
       terminal?: {
-        create?: (options: { cwd: string; cols: number; rows: number }) => Promise<{ terminalId: string }>;
+        create?: (options: {
+          cwd: string;
+          cols: number;
+          rows: number;
+          /** Optional argv for the shell. When present the shell runs this
+              command instead of opening an interactive prompt, e.g.
+              `["ssh", "user@host"]` for the ops panel. */
+          command?: string[];
+          /** Optional explicit shell/executable path. */
+          shell?: string;
+        }) => Promise<{ terminalId: string }>;
         write?: (terminalId: string, data: string) => Promise<void>;
         resize?: (terminalId: string, cols: number, rows: number) => Promise<void>;
         kill?: (terminalId: string) => Promise<void>;
         onData?: (callback: (payload: { terminalId: string; data: string }) => void) => () => void;
         onExit?: (callback: (payload: { terminalId: string; exitCode: number | null; signal?: number }) => void) => () => void;
+      };
+      ssh?: {
+        listHosts?: () => Promise<{ hosts: string[]; configPath: string }>;
       };
       hyperframes?: {
         start?: (options: { workspaceRoot: string; sessionId: string; projectDirectory: string; port: number }) => Promise<{ ok: boolean; port?: number; reused?: boolean }>;

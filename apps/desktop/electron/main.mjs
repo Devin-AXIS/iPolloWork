@@ -1,7 +1,7 @@
 import { execFileSync, spawn } from "node:child_process";
 import { createServer } from "node:http";
 import net from "node:net";
-import { existsSync, readdirSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 import {
   cp,
   mkdir,
@@ -3004,13 +3004,18 @@ ipcMain.handle("ipollowork:system:askMicrophoneAccess", async () => {
 });
 
 // ── Terminal IPC ────────────────────────────────────────────────────────
-ipcMain.handle("ipollowork:terminal:create", async (event, options = {}) => {
-  const cwd = await resolveTerminalCwd(options?.cwd);
-  const cols = Number.isFinite(options?.cols) ? Math.max(20, Math.floor(options.cols)) : 80;
-  const rows = Number.isFinite(options?.rows) ? Math.max(5, Math.floor(options.rows)) : 24;
-  const terminalId = `term_${nextTerminalId++}`;
-  const shellPath = defaultTerminalShell();
-  const child = pty.spawn(shellPath, [], {
+// Shared terminal spawn used by both the in-session dock and the SSH ops
+// panel. When `command` is provided it runs the executable directly instead of
+// dropping into an interactive shell — e.g. ["ssh", "user@host"] for remote
+// sessions. Spawning the command itself (not `shell -c ...`) keeps the pty on
+// the executable so interactive prompts, host-key checks and passphrase
+// dialogs behave exactly like a real ssh client.
+function spawnTerminalProcess({ cwd, cols, rows, command, shellPath }) {
+  const program = Array.isArray(command) && command.length > 0
+    ? command[0]
+    : (shellPath ?? defaultTerminalShell());
+  const args = Array.isArray(command) && command.length > 1 ? command.slice(1) : [];
+  return pty.spawn(program, args, {
     name: "xterm-256color",
     cols,
     rows,
@@ -3022,6 +3027,42 @@ ipcMain.handle("ipollowork:terminal:create", async (event, options = {}) => {
       IPOLLOWORK_TERMINAL: "1",
     },
   });
+}
+
+// Parse ~/.ssh/config into a lightweight host list for the ops panel.
+// Mirrors OpenSSH semantics for the Host directive without shelling out to
+// `ssh -G`, keeping the operation local and dependency-free.
+function readSshConfigHosts() {
+  const configPath = path.join(os.homedir(), ".ssh", "config");
+  let raw;
+  try {
+    raw = readFileSync(configPath, "utf8");
+  } catch {
+    return { hosts: [], configPath };
+  }
+  const hosts = [];
+  const lines = raw.split(/\r?\n/);
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#")) continue;
+    const match = /^Host\s+(.+)$/.exec(trimmed);
+    if (!match) continue;
+    const entries = match[1].split(/\s+/).filter(Boolean);
+    for (const entry of entries) {
+      if (entry.includes("*") || entry.includes("?")) continue;
+      hosts.push(entry);
+    }
+  }
+  return { hosts: [...new Set(hosts)], configPath };
+}
+
+ipcMain.handle("ipollowork:terminal:create", async (event, options = {}) => {
+  const cwd = await resolveTerminalCwd(options?.cwd);
+  const cols = Number.isFinite(options?.cols) ? Math.max(20, Math.floor(options.cols)) : 80;
+  const rows = Number.isFinite(options?.rows) ? Math.max(5, Math.floor(options.rows)) : 24;
+  const terminalId = `term_${nextTerminalId++}`;
+  const shellPath = typeof options?.shell === "string" && options.shell.trim() ? options.shell.trim() : undefined;
+  const child = spawnTerminalProcess({ cwd, cols, rows, command: options?.command, shellPath });
 
   terminalProcesses.set(terminalId, { process: child, webContentsId: event.sender.id });
   event.sender.once("destroyed", () => killTerminalsForWebContents(event.sender.id));
@@ -3051,6 +3092,11 @@ ipcMain.handle("ipollowork:terminal:kill", (event, terminalId) => {
   const terminal = terminalForSender(event, terminalId);
   if (!terminal) return;
   killTerminal(String(terminalId));
+});
+
+ipcMain.handle("ipollowork:ssh:list-hosts", (event) => {
+  if (!event.sender) return readSshConfigHosts();
+  return readSshConfigHosts();
 });
 
 ipcMain.handle("ipollowork:hyperframes:start", (event, options = {}) => startHyperframesPreview(event, options));

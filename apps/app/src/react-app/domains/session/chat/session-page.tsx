@@ -122,6 +122,7 @@ import { shouldRefreshTemplateCatalogOnOpen } from "../templates/template-market
 import { savePromptTemplate } from "@/react-app/domains/session/templates/prompt-template-store";
 import { SidePanel, type SidePanelLauncherItem } from "../panel/side-panel";
 import { TerminalDock } from "../terminal/terminal-dock";
+import { OpsPanel } from "../terminal/ops-panel";
 import { useActivePanelTab, usePanelTabStore, useSessionPanelState } from "../panel/panel-tab-store";
 import { useWorkspaceShellLayout } from "../../../shell/workspace-shell-layout";
 import { useControlAction, type iPolloWorkControlAction } from "../../../shell/control/control-provider";
@@ -1235,7 +1236,7 @@ export function SessionPage(props: SessionPageProps) {
   const [renameGroupTarget, setRenameGroupTarget] = useState<{ workspaceId: string; groupId: string } | null>(null);
   const [removeGroupOpen, setRemoveGroupOpen] = useState(false);
   const [removeGroupTarget, setRemoveGroupTarget] = useState<{ workspaceId: string; groupId: string; label: string } | null>(null);
-  const [mainWorkspaceView, setMainWorkspaceView] = useState<"extensions" | null>(null);
+  const [mainWorkspaceView, setMainWorkspaceView] = useState<"extensions" | "ops" | null>(null);
   const preserveSidePanelOnPanelOpenRef = useRef(false);
 
   const setCurrentSidePanel = useCallback((panel: SidePanelItem | null) => {
@@ -2080,6 +2081,10 @@ export function SessionPage(props: SessionPageProps) {
     setCurrentSidePanel(null);
     setMainWorkspaceView("extensions");
   }, [setCurrentSidePanel]);
+  const openOpsRailPane = useCallback(() => {
+    setCurrentSidePanel(null);
+    setMainWorkspaceView("ops");
+  }, [setCurrentSidePanel]);
   const openVoiceRailPane = useCallback(() => {
     toggleCurrentSidePanel("voice");
   }, [toggleCurrentSidePanel]);
@@ -2305,7 +2310,7 @@ export function SessionPage(props: SessionPageProps) {
       (showWorkspaceSetupEmptyState || (props.selectedSessionId && !selectedSessionIsDefaultTitle)),
   );
   const showMainHeaderMenu = showHeaderMenu && showMainHeaderTitle;
-  const mainHeaderHidden = mainWorkspaceView === "extensions" || (showNewConversationChrome && !sidebarVisuallyCollapsed);
+  const mainHeaderHidden = mainWorkspaceView === "extensions" || mainWorkspaceView === "ops" || (showNewConversationChrome && !sidebarVisuallyCollapsed);
   const visibleWorkspaceWidth = viewportWidth - (shellConfig.sidebar && sidebarOpen ? effectiveLeftSidebarWidth : 0);
   const floatingRightPanelToggleOffset = sidePanelOpen
     ? Math.min(effectiveBrowserPanelWidth, Math.max(0, visibleWorkspaceWidth - 40)) + 8
@@ -2422,12 +2427,13 @@ export function SessionPage(props: SessionPageProps) {
             name: denAuth.user?.name ?? null,
             email: denAuth.user?.email ?? null,
           }}
-          activePrimaryItem={templateMarketOpen ? "template-market" : mainWorkspaceView === "extensions" ? "extensions" : null}
+          activePrimaryItem={templateMarketOpen ? "template-market" : mainWorkspaceView === "extensions" ? "extensions" : mainWorkspaceView === "ops" ? "ops" : null}
           onOpenAccount={openCloudAccount}
           onOpenSettings={props.onOpenSettings}
           onOpenHelp={props.onOpenHelp}
           onOpenTemplateMarket={() => setTemplateMarketOpen(true)}
           onOpenExtensions={openExtensionsRailPane}
+          onOpenOps={openOpsRailPane}
           onSignIn={openCloudSignIn}
           onOpenSessionSearch={props.sidebar.onOpenSessionSearch ? handleSidebarOpenSessionSearch : undefined}
           onStartResize={startLeftSidebarResize}
@@ -2619,6 +2625,10 @@ export function SessionPage(props: SessionPageProps) {
               {mainWorkspaceView === "extensions" && props.settingsSlot ? (
                 <div className="flex h-full min-h-0 flex-col overflow-y-auto bg-background">
                   {props.settingsSlot}
+                </div>
+              ) : mainWorkspaceView === "ops" ? (
+                <div className="flex h-full min-h-0 flex-col bg-background">
+                  <OpsPanel onClose={() => setMainWorkspaceView(null)} />
                 </div>
               ) : showStartupSkeleton ? (
                 <div className="px-6 py-14" role="status" aria-live="polite">

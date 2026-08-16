@@ -388,6 +388,7 @@ export default {
   "template_market.title": "Templates",
   "template_market.description": "Browse installed and bundled templates for design and video tasks.",
   "template_market.search_placeholder": "Search templates",
+  "ops.title": "Ops",
   "template_market.my_templates": "My templates",
   "template_market.import_package": "Import .ipwp or .ipwt",
   "template_market.all_templates": "All templates",

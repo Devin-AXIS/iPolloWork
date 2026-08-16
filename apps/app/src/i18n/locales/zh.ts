@@ -389,6 +389,7 @@ export default {
   "design_system.embedded.font_ibm_plex_sans": "IBM Plex Sans",
   "template_market.title": "模版",
   "template_market.description": "浏览设计和视频任务可用的内置、已安装和本地模板。",
+  "ops.title": "运维",
   "template_market.search_placeholder": "搜索模板",
   "template_market.my_templates": "我的模板",
   "template_market.import_package": "导入 .ipwp 或 .ipwt",
