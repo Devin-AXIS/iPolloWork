@@ -17,14 +17,13 @@ export const CRON_FIELDS = ["minute", "hour", "day", "month", "weekday"] as cons
 export type CronFieldName = (typeof CRON_FIELDS)[number];
 
 export type CronField = {
-  name: CronFieldName;
   min: number;
   max: number;
   values: Set<number>;
 };
 
 type CronParse = {
-  fields: CronField[];
+  fields: Record<CronFieldName, CronField>;
   raw: Record<CronFieldName, string>;
 };
 
@@ -96,7 +95,7 @@ function buildField(name: CronFieldName, raw: string): CronField | null {
   const allowSeven = name === "weekday";
   const values = parseFieldPart(raw, min, max, allowSeven);
   if (!values || values.size === 0) return null;
-  return { name, min, max, values };
+  return { min, max, values };
 }
 
 export function parseCron(expression: string): CronParse | null {
@@ -104,20 +103,17 @@ export function parseCron(expression: string): CronParse | null {
   const parts = trimmed.split(/\s+/);
   if (parts.length !== 5) return null;
 
-  const fields: CronField[] = [];
-  const raw = {} as Record<CronFieldName, string>;
-  for (let i = 0; i < CRON_FIELDS.length; i++) {
-    const name = CRON_FIELDS[i];
-    const field = buildField(name, parts[i]);
-    if (!field) return null;
-    fields.push(field);
-    raw[name] = parts[i];
-  }
-  return { fields, raw };
-}
+  const minute = buildField("minute", parts[0]);
+  const hour = buildField("hour", parts[1]);
+  const day = buildField("day", parts[2]);
+  const month = buildField("month", parts[3]);
+  const weekday = buildField("weekday", parts[4]);
+  if (!minute || !hour || !day || !month || !weekday) return null;
 
-function fieldByName(fields: CronField[], name: CronFieldName): CronField {
-  return fields.find((f) => f.name === name)!;
+  return {
+    fields: { minute, hour, day, month, weekday },
+    raw: { minute: parts[0], hour: parts[1], day: parts[2], month: parts[3], weekday: parts[4] },
+  };
 }
 
 function normalizeWeekday(weekday: number): number {
@@ -131,16 +127,16 @@ function weekdayMatches(field: CronField, date: Date): boolean {
 }
 
 function matchesParsed(parsed: CronParse, date: Date): boolean {
-  const { fields } = parsed;
+  const { fields, raw } = parsed;
 
-  const minute = fieldByName(fields, "minute").values.has(date.getMinutes());
-  const hour = fieldByName(fields, "hour").values.has(date.getHours());
-  const month = fieldByName(fields, "month").values.has(date.getMonth() + 1);
-  const day = fieldByName(fields, "day").values.has(date.getDate());
-  const dow = weekdayMatches(fieldByName(fields, "weekday"), date);
+  const minute = fields.minute.values.has(date.getMinutes());
+  const hour = fields.hour.values.has(date.getHours());
+  const month = fields.month.values.has(date.getMonth() + 1);
+  const day = fields.day.values.has(date.getDate());
+  const dow = weekdayMatches(fields.weekday, date);
 
-  const dayRestricted = !parsed.raw.day.includes("*");
-  const dowRestricted = !parsed.raw.weekday.includes("*");
+  const dayRestricted = !raw.day.includes("*");
+  const dowRestricted = !raw.weekday.includes("*");
 
   const dayMatch = dayRestricted && dowRestricted ? day || dow : day && dow;
   return minute && hour && month && dayMatch;
