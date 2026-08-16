@@ -18,3 +18,8 @@ export function isModelReadableAttachment(mimeType: string) {
   if (mime === "application/pdf" || mime === "application/json") return true;
   return mime.endsWith("+json") || mime.endsWith("+xml") || mime === "application/xml" || mime === "application/javascript";
 }
+
+export function attachmentRequiresNativeModelSupport(mimeType: string) {
+  const mime = mimeType.toLowerCase();
+  return mime.startsWith("image/") || mime === "application/pdf";
+}

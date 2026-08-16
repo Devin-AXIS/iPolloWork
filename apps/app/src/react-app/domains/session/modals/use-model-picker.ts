@@ -22,6 +22,7 @@ import { t } from "@/i18n";
 
 export type UseModelPickerInput = {
   client: Client | null;
+  engineId?: string | null;
   baseUrl: string;
   workspaceRoot: string;
   /** Optional: surface option-load failures (settings shows a toast; the session route stays silent). */
@@ -29,7 +30,7 @@ export type UseModelPickerInput = {
 };
 
 export function useModelPicker(input: UseModelPickerInput) {
-  const { client, baseUrl, workspaceRoot, onLoadError } = input;
+  const { client, engineId, baseUrl, workspaceRoot, onLoadError } = input;
   const checkDesktopRestriction = useCheckDesktopRestriction();
 
   const [open, setOpen] = useState(false);
@@ -83,6 +84,7 @@ export function useModelPicker(input: UseModelPickerInput) {
       try {
         const data = await ensureProviderListQuery(getReactQueryClient(), {
           client,
+          engineId,
           baseUrl,
           directory: workspaceRoot || undefined,
         });
@@ -131,7 +133,7 @@ export function useModelPicker(input: UseModelPickerInput) {
     return () => {
       cancelled = true;
     };
-  }, [open, baseUrl, client, recentProviderIds, workspaceRoot]);
+  }, [open, baseUrl, client, engineId, recentProviderIds, workspaceRoot]);
 
   // Apply org-level restrictions (dev #1505) on top of the raw model list
   // so the picker never surfaces blocked options:

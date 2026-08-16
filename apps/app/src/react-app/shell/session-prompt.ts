@@ -11,6 +11,7 @@ import {
 } from "@ipollowork/design-studio";
 import { useDesignAiSelectionStore } from "@/react-app/domains/session/design/design-ai-selection-store";
 import { firstLineLocalFileParts } from "@/react-app/domains/session/sync/prompt-file-parts";
+import { attachmentRequiresNativeModelSupport } from "@/react-app/domains/session/sync/attachment-support";
 import { appMentionInstruction } from "@/react-app/domains/session/surface/composer/app-mentions";
 
 type DesignSelectionScope = {
@@ -24,6 +25,10 @@ type DesignSelectionWorkspaceClient = {
 };
 
 type DesignSelectionStore = Pick<typeof useDesignAiSelectionStore, "getState">;
+
+type DraftToPartsOptions = {
+  supportsNativeAttachments?: boolean;
+};
 
 export function serializeSDKError(error: unknown): string {
   if (error instanceof Error) return error.message;
@@ -121,6 +126,7 @@ export async function draftToParts(
   workspaceRoot: string,
   designSelectionStore: DesignSelectionStore = useDesignAiSelectionStore,
   scope?: DesignSelectionScope,
+  options: DraftToPartsOptions = {},
 ) {
   const parts: Array<TextPartInput | FilePartInput | AgentPartInput> = [];
   const root = workspaceRoot.trim();
@@ -197,6 +203,16 @@ export async function draftToParts(
   parts.push(
     ...(await Promise.all(
       draft.attachments.map(async (attachment) => {
+        if (options.supportsNativeAttachments === false) {
+          if (attachmentRequiresNativeModelSupport(attachment.mimeType)) {
+            throw new Error("The selected model cannot read image or PDF attachments.");
+          }
+          return {
+            type: "text" as const,
+            text: `Attached file: ${attachment.name}\n\n${await attachment.file.text()}`,
+            synthetic: true,
+          };
+        }
         const mime = attachmentMime(attachment);
         return {
           type: "file" as const,

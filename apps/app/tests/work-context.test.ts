@@ -1,7 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
 import {
-  canonicalWorkspaceForWorkContext,
   enterpriseWorkContextId,
   filterWorkspacesForWorkContext,
   normalizeWorkContextId,
@@ -12,40 +11,24 @@ import {
 describe("work context identity", () => {
   const workspaces = [
     { id: "personal-a", path: "/Users/test/iPolloWork", workspaceType: "local" as const, workContextId: null },
-    { id: "legacy-personal", path: "/Users/test/iPolloWork/.ipollowork/workstations/old", workspaceType: "local" as const },
-    { id: "enterprise-a", path: "/Users/test/.ipollowork/work-contexts/ent_alpha", workspaceType: "local" as const, workContextId: "enterprise:ent_alpha" as const },
-    { id: "enterprise-a-old", path: "/Users/test/iPolloWork/.ipollowork/workstations/enterprise-old", workspaceType: "local" as const, workContextId: "enterprise:ent_alpha" as const },
+    { id: "personal-b", path: "/Users/test/ClientWork", workspaceType: "local" as const },
+    { id: "enterprise-a", path: "/Users/test/MedicalOne", workspaceType: "local" as const, workContextId: "enterprise:ent_alpha" as const },
+    { id: "enterprise-a-two", path: "/Users/test/MedicalTwo", workspaceType: "local" as const, workContextId: "enterprise:ent_alpha" as const },
     { id: "enterprise-b", path: "/Users/test/.ipollowork/work-contexts/ent_beta", workspaceType: "local" as const, workContextId: "enterprise:ent_beta" as const },
   ];
 
-  test("treats unmarked legacy workspaces as Personal", () => {
+  test("keeps every Personal project", () => {
     expect(filterWorkspacesForWorkContext(workspaces, PERSONAL_WORK_CONTEXT_ID).map((item) => item.id)).toEqual([
       "personal-a",
-      "legacy-personal",
+      "personal-b",
     ]);
   });
 
-  test("returns only the exact enterprise workspace", () => {
+  test("keeps every project in the exact Enterprise space", () => {
     expect(filterWorkspacesForWorkContext(workspaces, enterpriseWorkContextId("ent_alpha")).map((item) => item.id)).toEqual([
       "enterprise-a",
-      "enterprise-a-old",
+      "enterprise-a-two",
     ]);
-  });
-
-  test("keeps one canonical Personal space instead of a historical workstation", () => {
-    expect(canonicalWorkspaceForWorkContext(
-      workspaces,
-      PERSONAL_WORK_CONTEXT_ID,
-      ["legacy-personal"],
-    )?.id).toBe("personal-a");
-  });
-
-  test("keeps the dedicated Enterprise context path instead of an older workstation", () => {
-    expect(canonicalWorkspaceForWorkContext(
-      workspaces,
-      enterpriseWorkContextId("ent_alpha"),
-      ["enterprise-a-old"],
-    )?.id).toBe("enterprise-a");
   });
 
   test("rejects malformed or obsolete context values", () => {

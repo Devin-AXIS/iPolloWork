@@ -1460,7 +1460,6 @@ function createRoutes(
     parseOptionalBoolean,
     parseOptionalPositiveInteger,
     parseOptionalNonNegativeInteger,
-    readJsonBody,
     ensureWritable,
     requireClientScope,
     resolveWorkspace,

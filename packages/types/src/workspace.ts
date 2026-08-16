@@ -16,6 +16,8 @@ export type WorkspaceKind = "local" | "remote";
 
 export type WorkspaceRemoteKind = "opencode" | "ipollowork";
 
+export const DEFAULT_ENGINE_ID = "opencode";
+
 export type WorkspaceWire = {
   id: string;
   name: string;

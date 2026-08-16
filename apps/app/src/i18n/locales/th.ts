@@ -114,7 +114,6 @@ export default {
   "composer.agent_label": "Agent",
   "composer.any_file_type_supported": "รองรับไฟล์ทุกประเภท",
   "composer.attach_files": "แนบไฟล์",
-  "composer.attachments_unavailable": "ไฟล์แนบไม่พร้อมใช้งาน",
   "composer.behavior_label": "พฤติกรรม",
   "composer.configure": "ตั้งค่า",
   "composer.default_agent": "Agent เริ่มต้น",

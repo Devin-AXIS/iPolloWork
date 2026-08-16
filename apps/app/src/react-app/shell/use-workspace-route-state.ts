@@ -20,9 +20,8 @@ import { createClient } from "@/app/lib/opencode";
 import { createiPolloWorkServerClient, type iPolloWorkServerClient } from "@/app/lib/ipollowork-server";
 import { isDesktopRuntime } from "@/app/lib/runtime-env";
 import {
-  canonicalWorkspacesForWorkContext,
+  filterWorkspacesForWorkContext,
   finishWorkContextSwitch,
-  pruneServerWorkspacesForWorkContext,
   type WorkContextId,
 } from "@/app/lib/work-context";
 import {
@@ -46,6 +45,7 @@ import {
   isTransientStartupError,
   mapDesktopWorkspace,
   mergeRouteWorkspaces,
+  orderRouteWorkspaces,
   partitionInitialWorkspaceLoads,
   resolveKnownWorkspaceId,
   type RouteSession,
@@ -364,10 +364,9 @@ export function useWorkspaceRouteState(input: UseWorkspaceRouteStateInput) {
         const workspaceBootstrapStartedAt = Date.now();
         try {
           desktopList = await workspaceBootstrap() as WorkspaceList;
-          desktopWorkspaces = canonicalWorkspacesForWorkContext(
+          desktopWorkspaces = filterWorkspacesForWorkContext(
             (desktopList.workspaces ?? []).map(mapDesktopWorkspace),
             requestedContextId,
-            [resolveWorkspaceListSelectedId(desktopList)],
           );
         } catch (error) {
           const message = describeRouteError(error);
@@ -425,15 +424,12 @@ export function useWorkspaceRouteState(input: UseWorkspaceRouteStateInput) {
       const list = await ipolloworkClient.listWorkspaces();
       logStartupTiming(`[startup] server workspaces loaded in ${Date.now() - serverWorkspacesStartedAt}ms`);
       const persistedActiveId = readActiveWorkspaceId();
-      const nextWorkspaces = canonicalWorkspacesForWorkContext(
-        mergeRouteWorkspaces(list.items, desktopWorkspaces),
-        requestedContextId,
-        [
-          routeWorkspaceId,
-          persistedActiveId,
-          resolveWorkspaceListSelectedId(desktopList),
-          list.activeId,
-        ],
+      const nextWorkspaces = orderRouteWorkspaces(
+        filterWorkspacesForWorkContext(
+          mergeRouteWorkspaces(list.items, desktopWorkspaces),
+          requestedContextId,
+        ),
+        workspacesRef.current.map((workspace) => workspace.id),
       );
 
       if (!isCurrentRefresh()) return;
@@ -489,19 +485,6 @@ export function useWorkspaceRouteState(input: UseWorkspaceRouteStateInput) {
       );
       setLegacySelectedWorkspaceId(nextWorkspaceId);
       writeActiveWorkspaceId(nextWorkspaceId || null);
-      const canonicalServerWorkspaceId = nextWorkspaces.find((workspace) =>
-        list.items.some((serverWorkspace) => serverWorkspace.id === workspace.id)
-      )?.id ?? "";
-      if (canonicalServerWorkspaceId) {
-        void pruneServerWorkspacesForWorkContext(
-          ipolloworkClient,
-          list.items,
-          requestedContextId,
-          canonicalServerWorkspaceId,
-        ).catch((error) => {
-          console.warn("[session-route] failed to prune legacy workspace identities", error);
-        });
-      }
       // Session surface is canonical server metadata. Populate the small
       // in-memory icon cache from that one source; no browser persistence or
       // legacy path probing is involved.
@@ -534,12 +517,8 @@ export function useWorkspaceRouteState(input: UseWorkspaceRouteStateInput) {
         errors: {},
       });
 
-      // A context switch is not complete until the new context's chat list is
-      // ready. Finishing the branded transition before this request resolved
-      // briefly exposed the previous context's cached chats during fast,
-      // repeated Personal/Enterprise switches. There is exactly one
-      // canonical workspace per context now, so wait for that workspace's
-      // sessions before dismissing the transition.
+      // Wait for the selected project's sessions before completing a context
+      // switch. Other projects continue loading in the background.
       const initialLoads = partitionInitialWorkspaceLoads(
         nextWorkspaces,
         nextWorkspaceId,

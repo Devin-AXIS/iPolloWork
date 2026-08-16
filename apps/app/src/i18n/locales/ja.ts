@@ -113,7 +113,6 @@ export default {
   "composer.agent_label": "エージェント",
   "composer.any_file_type_supported": "すべてのファイル形式に対応しています。",
   "composer.attach_files": "ファイルを添付",
-  "composer.attachments_unavailable": "添付ファイルは利用できません。",
   "composer.behavior_label": "動作",
   "composer.configure": "設定",
   "composer.default_agent": "デフォルトエージェント",

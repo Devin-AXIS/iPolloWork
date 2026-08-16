@@ -1,11 +1,11 @@
 import type { WorkspaceInfo } from "../../../../app/lib/desktop";
-import type { WorkspaceSessionGroup } from "../../../../app/types";
+import type { ProjectSessionList } from "../../../../app/types";
 import { isSandboxWorkspace } from "../../../../app/utils";
 import { t } from "../../../../i18n";
 
 export const MAX_SESSIONS_PREVIEW = 6;
 
-export type SessionListItem = WorkspaceSessionGroup["sessions"][number];
+export type SessionListItem = ProjectSessionList["sessions"][number];
 export type FlattenedSessionRow = { session: SessionListItem; depth: number };
 export type SessionTreeState = {
   childrenByParent: Map<string, SessionListItem[]>;
@@ -32,7 +32,7 @@ const normalizeSessionParentID = (session: SessionListItem) => {
   return parentID || "";
 };
 
-export const getRootSessions = (sessions: WorkspaceSessionGroup["sessions"]) => {
+export const getRootSessions = (sessions: ProjectSessionList["sessions"]) => {
   const byID = new Set(sessions.map((session) => session.id));
   return sessions.filter((session) => {
     const parentID = normalizeSessionParentID(session);
@@ -41,7 +41,7 @@ export const getRootSessions = (sessions: WorkspaceSessionGroup["sessions"]) => 
 };
 
 /** Split sessions into active vs. archived. Archived sessions live in their own section. */
-export const partitionArchivedSessions = (sessions: WorkspaceSessionGroup["sessions"]) => {
+export const partitionArchivedSessions = (sessions: ProjectSessionList["sessions"]) => {
   const active: SessionListItem[] = [];
   const archived: SessionListItem[] = [];
   for (const session of sessions) {
@@ -81,7 +81,7 @@ export const orderRootSessions = (
 };
 
 export const buildSessionTreeState = (
-  sessions: WorkspaceSessionGroup["sessions"],
+  sessions: ProjectSessionList["sessions"],
   sessionStatusById: Record<string, string> | undefined,
 ): SessionTreeState => {
   const childrenByParent = new Map<string, SessionListItem[]>();
@@ -137,7 +137,7 @@ export const buildSessionTreeState = (
 };
 
 export const flattenSessionRows = (
-  sessions: WorkspaceSessionGroup["sessions"],
+  sessions: ProjectSessionList["sessions"],
   rootLimit: number,
   tree: SessionTreeState,
   expandedSessionIds: Set<string>,
