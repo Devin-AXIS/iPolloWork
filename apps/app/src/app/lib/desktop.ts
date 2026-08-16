@@ -53,6 +53,17 @@ export type BrowserProxyState = {
   proxy: { rules: string; authenticated: boolean } | null;
 };
 
+export type LanPreviewState = {
+  enabled: boolean;
+  port: number;
+  addresses: string[];
+  code: string | null;
+  codeExpiresAt: number;
+  sessionCount: number;
+  pendingChallengeCount?: number;
+  error?: string;
+};
+
 // ---------------------------------------------------------------------------
 // Electron bridge surface
 // ---------------------------------------------------------------------------
@@ -179,6 +190,13 @@ declare global {
           | { ok: true; repoRoot: string; count: number; isRepo: true; commits: { sha: string; parents: string[] }[]; refs: { sha: string; refname: string; head: boolean }[]; headShas: string[] }
           | { ok: false; isRepo: boolean; error: string }
         >;
+      };
+      lanPreview?: {
+        getState?: () => Promise<LanPreviewState>;
+        setEnabled?: (enabled: boolean) => Promise<LanPreviewState>;
+        regenerateCode?: () => Promise<LanPreviewState>;
+        disconnectAll?: () => Promise<LanPreviewState>;
+        onStateChanged?: (callback: (state: LanPreviewState) => void) => () => void;
       };
       hyperframes?: {
         start?: (options: { workspaceRoot: string; sessionId: string; projectDirectory: string; port: number }) => Promise<{ ok: boolean; port?: number; reused?: boolean }>;

@@ -176,6 +176,17 @@ contextBridge.exposeInMainWorld("__IPOLLOWORK_ELECTRON__", {
   git: {
     graph(options) { return ipcRenderer.invoke("ipollowork:git:graph", options); },
   },
+  lanPreview: {
+    getState() { return ipcRenderer.invoke("ipollowork:lan-preview:get-state"); },
+    setEnabled(enabled) { return ipcRenderer.invoke("ipollowork:lan-preview:set-enabled", Boolean(enabled)); },
+    regenerateCode() { return ipcRenderer.invoke("ipollowork:lan-preview:regenerate-code"); },
+    disconnectAll() { return ipcRenderer.invoke("ipollowork:lan-preview:disconnect-all"); },
+    onStateChanged(callback) {
+      const handler = (_event, state) => callback(state);
+      ipcRenderer.on("ipollowork:lan-preview:state", handler);
+      return () => ipcRenderer.removeListener("ipollowork:lan-preview:state", handler);
+    },
+  },
   hyperframes: {
     start(options) { return ipcRenderer.invoke("ipollowork:hyperframes:start", options); },
     stop(sessionId, options) { return ipcRenderer.invoke("ipollowork:hyperframes:stop", sessionId, options); },

@@ -74,6 +74,7 @@ import { GeneralSettingsView } from "@/react-app/domains/settings/pages/general-
 import { AuthorizedFoldersPanel } from "@/react-app/domains/settings/panels/authorized-folders-panel";
 import { SettingsStack } from "@/react-app/domains/settings/settings-section";
 import { AdvancedView } from "@/react-app/domains/settings/pages/advanced-view";
+import { RemotePreviewView } from "@/react-app/domains/settings/pages/remote-preview-view";
 import { AppearanceView } from "@/react-app/domains/settings/pages/appearance-view";
 import { CloudAccountView } from "@/react-app/domains/settings/pages/cloud-account-view";
 import { ConnectView } from "@/react-app/domains/settings/pages/connect-view";
@@ -250,6 +251,7 @@ export function parseSettingsPath(pathname: string): {
     case "updates":
     case "recovery":
     case "debug":
+    case "remote-preview":
       return { tab: head, redirectPath: null };
     case "cloud-account":
     case "connect":
@@ -2000,6 +2002,8 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
             onCleanupiPolloWorkDockerContainers={() => {}}
           />
         );
+      case "remote-preview":
+        return <RemotePreviewView />;
       case "environment":
         return (
           <EnvironmentView

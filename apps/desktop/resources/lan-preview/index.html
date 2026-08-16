@@ -1,0 +1,203 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0f172a">
+<title>iPolloWork 远程预览</title>
+<style>
+  * { box-sizing: border-box; }
+  body { margin:0; font:15px/1.5 system-ui, -apple-system, sans-serif;
+         background:#0f172a; color:#e2e8f0; -webkit-font-smoothing:antialiased; }
+  .wrap { max-width:480px; margin:0 auto; padding:16px; }
+  .card { background:#1e293b; border-radius:12px; padding:16px; margin-bottom:12px; }
+  h1 { font-size:17px; margin:4px 0 16px; }
+  h2 { font-size:14px; margin:0 0 8px; }
+  .muted { color:#94a3b8; font-size:13px; margin:4px 0; }
+  .code-input { font-size:28px; letter-spacing:.5em; text-align:center; width:100%;
+                padding:12px 0; border-radius:10px; border:1px solid #475569;
+                background:#0f172a; color:#fbbf24; outline:none; }
+  .code-input:focus { border-color:#fbbf24; }
+  button { width:100%; padding:14px; border-radius:10px; border:0; margin-top:12px;
+           background:#fbbf24; color:#111827; font-weight:700; font-size:16px; cursor:pointer; }
+  button:disabled { opacity:.5; }
+  #pairError { color:#f87171; font-size:13px; margin:10px 0 0; display:none; }
+  header.bar { display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; }
+  #statusDot { width:10px; height:10px; border-radius:50%; background:#64748b; }
+  .action-row { padding:10px 0; border-bottom:1px solid #334155; }
+  .action-row:last-child { border-bottom:0; }
+  .action-label { font-weight:600; }
+  .action-desc { color:#94a3b8; font-size:12px; margin-top:2px; }
+  .kv { display:flex; justify-content:space-between; padding:6px 0; border-bottom:1px solid #1e293b; font-size:13px; }
+  .kv:last-child { border-bottom:0; }
+  .kv b { color:#cbd5e1; }
+  .kv span { color:#94a3b8; max-width:60%; text-align:right; word-break:break-all; }
+  .snapshot-grid { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+  .snap-cell { background:#0f172a; border-radius:8px; padding:10px; }
+  .snap-cell .k { color:#64748b; font-size:11px; text-transform:uppercase; letter-spacing:.04em; }
+  .snap-cell .v { font-size:15px; font-weight:600; margin-top:2px; word-break:break-all; }
+</style>
+</head>
+<body data-challenge="__CHALLENGE__">
+<div class="wrap">
+  <h1>iPolloWork 远程预览</h1>
+
+  <section id="pairView" class="card">
+    <h2>连接到工作台</h2>
+    <p class="muted">在桌面端「设置 → 远程预览」中查看配对码（10 分钟有效）。</p>
+    <input id="code" class="code-input" inputmode="numeric" maxlength="6"
+           placeholder="000000" autocomplete="one-time-code">
+    <p id="pairError"></p>
+    <button id="pairBtn" onclick="pair()">连接</button>
+  </section>
+
+  <section id="mainView" hidden>
+    <div class="card">
+      <header class="bar">
+        <b>工作台状态</b>
+        <span id="statusDot" title="连接状态"></span>
+      </header>
+      <div id="snapshot"><p class="muted">加载中…</p></div>
+    </div>
+    <div class="card">
+      <h2>可用动作（只读）</h2>
+      <div id="actions"><p class="muted">加载中…</p></div>
+    </div>
+  </section>
+</div>
+
+<script>
+  const $ = (id) => document.getElementById(id);
+  const TOKEN_KEY = "ipw-lan-preview-token";
+  let token = sessionStorage.getItem(TOKEN_KEY);
+  let timer = null;
+
+  function show(view) {
+    $("pairView").hidden = view !== "pair";
+    $("mainView").hidden = view !== "main";
+  }
+
+  function esc(value) {
+    return String(value ?? "")
+      .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+  }
+
+  async function api(path) {
+    const response = await fetch(path, {
+      headers: { Authorization: "Bearer " + token },
+      signal: AbortSignal.timeout(8000),
+    });
+    if (response.status === 401) {
+      token = null;
+      sessionStorage.removeItem(TOKEN_KEY);
+      stopPoll();
+      show("pair");
+      throw new Error("expired");
+    }
+    return response.json();
+  }
+
+  async function pair() {
+    const btn = $("pairBtn");
+    btn.disabled = true;
+    $("pairError").style.display = "none";
+    try {
+      const response = await fetch("/pair", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          code: $("code").value.trim(),
+          challenge: document.body.dataset.challenge,
+        }),
+        signal: AbortSignal.timeout(8000),
+      });
+      if (!response.ok) {
+        $("pairError").textContent = "配对失败，请检查配对码（连续失败会暂时锁定）。";
+        $("pairError").style.display = "block";
+        return;
+      }
+      const data = await response.json();
+      token = data.token;
+      sessionStorage.setItem(TOKEN_KEY, token);
+      show("main");
+      startPoll();
+      refresh();
+    } catch (error) {
+      $("pairError").textContent = "连接失败，请确认手机与电脑在同一网络。";
+      $("pairError").style.display = "block";
+    } finally {
+      btn.disabled = false;
+    }
+  }
+
+  function renderSnapshot(snap) {
+    if (!snap || snap.ok === false) {
+      return '<p class="muted">工作台暂不可用。</p>';
+    }
+    const cells = [];
+    const add = (key, value) => {
+      const label = key.replace(/[_-]/g, " ");
+      if (value === null || value === undefined || value === "") return;
+      cells.push(
+        '<div class="snap-cell"><div class="k">' + esc(label) + '</div>' +
+        '<div class="v">' + esc(value) + '</div></div>'
+      );
+    };
+    add("status", snap.status);
+    add("session", snap.sessionId || snap.sessionTitle);
+    add("workspace", snap.workspaceId);
+    if (snap.activeSessionId) add("active", snap.activeSessionId);
+    return cells.length
+      ? '<div class="snapshot-grid">' + cells.join("") + '</div>'
+      : '<pre class="muted">' + esc(JSON.stringify(snap, null, 2)) + '</pre>';
+  }
+
+  async function refresh() {
+    try {
+      const snap = await api("/api/snapshot");
+      $("snapshot").innerHTML = renderSnapshot(snap);
+      const acts = await api("/api/actions");
+      const list = Array.isArray(acts?.actions) ? acts.actions : [];
+      $("actions").innerHTML = list.length
+        ? list.map((a) =>
+            '<div class="action-row"><div class="action-label">' + esc(a.label || a.id) + '</div>' +
+            (a.description ? '<div class="action-desc">' + esc(a.description) + '</div>' : '') +
+            '</div>'
+          ).join("")
+        : '<p class="muted">暂无可用动作。</p>';
+      $("statusDot").style.background = "#22c55e";
+    } catch (error) {
+      if (error.message === "expired") return;
+      $("statusDot").style.background = "#ef4444";
+    }
+  }
+
+  function startPoll() {
+    stopPoll();
+    timer = setInterval(refresh, 3000);
+  }
+  function stopPoll() {
+    if (timer) { clearInterval(timer); timer = null; }
+  }
+
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden) {
+      stopPoll();
+    } else {
+      refresh();
+      startPoll();
+    }
+  });
+
+  if (token) {
+    show("main");
+    startPoll();
+    refresh();
+  } else {
+    show("pair");
+    $("code").focus();
+  }
+</script>
+</body>
+</html>

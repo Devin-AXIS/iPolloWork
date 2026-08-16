@@ -192,6 +192,7 @@ export const SETTINGS_TAB_VALUES = [
   "updates",
   "recovery",
   "debug",
+  "remote-preview",
 ] as const;
 
 export type SettingsTab = (typeof SETTINGS_TAB_VALUES)[number];

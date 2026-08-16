@@ -10,6 +10,7 @@ import {
   FolderLock,
   Info,
   Layout,
+  MonitorSmartphone,
   Paintbrush,
   Puzzle,
   RefreshCcw,
@@ -90,6 +91,8 @@ export function getSettingsTabIcon(tab: SettingsTab) {
       return ShieldCheck;
     case "debug":
       return Bug;
+    case "remote-preview":
+      return MonitorSmartphone;
     default:
       return Cog;
   }
@@ -133,6 +136,8 @@ export function getSettingsTabLabel(tab: SettingsTab) {
       return t("settings.tab_recovery");
     case "debug":
       return t("settings.tab_debug");
+    case "remote-preview":
+      return t("settings.tab_remote_preview");
     case "general":
       return t("settings.tab_general");
     default:
@@ -178,6 +183,8 @@ export function getSettingsTabDescription(tab: SettingsTab) {
       return t("settings.tab_description_recovery");
     case "debug":
       return t("settings.tab_description_debug");
+    case "remote-preview":
+      return t("settings.tab_description_remote_preview");
     case "general":
       return t("settings.tab_description_general_overview");
     default:
@@ -190,7 +197,7 @@ export function getWorkspaceSettingsTabs(): SettingsTab[] {
 }
 
 export function getGlobalSettingsTabs(developerMode: boolean): SettingsTab[] {
-  const tabs: SettingsTab[] = ["ai", "authorizations", "shell", "appearance", "environment", "updates", "recovery"];
+  const tabs: SettingsTab[] = ["ai", "authorizations", "shell", "appearance", "environment", "updates", "recovery", "remote-preview"];
   if (developerMode) tabs.push("debug");
   return tabs;
 }

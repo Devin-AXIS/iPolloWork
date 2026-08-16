@@ -29,6 +29,7 @@ import {
   openComputerUseSetupApp,
 } from "./computer-use.mjs";
 import { createUiControlServer } from "./ui-control-server.mjs";
+import { createLanPreviewServer, lanPreviewPagePath } from "./lan-preview-server.mjs";
 import { createApplicationMenu } from "./app-menu.mjs";
 import { createBrowserPanel } from "./browser-panel.mjs";
 import { createWorkspaceStore } from "./workspace-store.mjs";
@@ -111,6 +112,12 @@ const uiControlServer = createUiControlServer({
   appName: APP_NAME,
   appIdentifier: APP_IDENTIFIER,
   getWindow: () => createMainWindow(),
+});
+
+const lanPreviewServer = createLanPreviewServer({
+  appName: APP_NAME,
+  getWindow: () => createMainWindow(),
+  pageHtmlPath: lanPreviewPagePath(path.resolve(__dirname, "..")),
 });
 
 const terminalProcesses = new Map();
@@ -3182,6 +3189,50 @@ ipcMain.handle("ipollowork:git:graph", (event, options = {}) => {
   }
 });
 
+// ── LAN preview IPC ────────────────────────────────────────────────────
+function lanPreviewStatePayload() {
+  return lanPreviewServer.getState();
+}
+
+function broadcastLanPreviewState() {
+  for (const win of BrowserWindow.getAllWindows()) {
+    if (!win.isDestroyed()) {
+      win.webContents.send("ipollowork:lan-preview:state", lanPreviewStatePayload());
+    }
+  }
+}
+
+ipcMain.handle("ipollowork:lan-preview:get-state", () => lanPreviewStatePayload());
+
+ipcMain.handle("ipollowork:lan-preview:set-enabled", async (event, enabled) => {
+  const target = enabled === true;
+  const current = lanPreviewServer.getState().enabled;
+  if (target === current) return lanPreviewStatePayload();
+  if (target) {
+    try {
+      await lanPreviewServer.start();
+    } catch (error) {
+      return { ...lanPreviewStatePayload(), error: error instanceof Error ? error.message : "start-failed" };
+    }
+  } else {
+    await lanPreviewServer.stop();
+  }
+  broadcastLanPreviewState();
+  return lanPreviewStatePayload();
+});
+
+ipcMain.handle("ipollowork:lan-preview:regenerate-code", () => {
+  const generated = lanPreviewServer.regenerateCode();
+  broadcastLanPreviewState();
+  return lanPreviewStatePayload();
+});
+
+ipcMain.handle("ipollowork:lan-preview:disconnect-all", () => {
+  lanPreviewServer.disconnectAll();
+  broadcastLanPreviewState();
+  return lanPreviewStatePayload();
+});
+
 ipcMain.handle("ipollowork:hyperframes:start", (event, options = {}) => startHyperframesPreview(event, options));
 ipcMain.handle("ipollowork:hyperframes:stop", (event, sessionId, options = {}) => {
   const key = hyperframesKey(event.sender.id, sessionId);
@@ -4241,7 +4292,7 @@ if (!app.requestSingleInstanceLock()) {
     event.preventDefault();
     if (runtimeDisposeInProgress) return;
     showShutdownScreen();
-    void Promise.all([disposeRuntimeBeforeQuit(), uiControlServer.stop()]).finally(() => app.quit());
+    void Promise.all([disposeRuntimeBeforeQuit(), uiControlServer.stop(), lanPreviewServer.stop()]).finally(() => app.quit());
   });
 
   app.on("second-instance", async (_event, argv) => {
