@@ -33,6 +33,7 @@ import { createLanPreviewServer, lanPreviewPagePath } from "./lan-preview-server
 import { createSshOps } from "./ssh-ops.mjs";
 import { createGitGraph } from "./git-graph.mjs";
 import { createPreviewCore } from "./preview-core.mjs";
+import { createImBot } from "./im-bot.mjs";
 import { createApplicationMenu } from "./app-menu.mjs";
 import { createBrowserPanel } from "./browser-panel.mjs";
 import { createWorkspaceStore } from "./workspace-store.mjs";
@@ -126,6 +127,7 @@ const lanPreviewServer = createLanPreviewServer({
 
 const sshOps = createSshOps({ pty });
 const gitGraph = createGitGraph();
+const imBot = createImBot({ previewCore });
 
 const terminalProcesses = new Map();
 const hyperframesProcesses = new Map();
@@ -3119,6 +3121,16 @@ ipcMain.handle("ipollowork:lan-preview:disconnect-all", () => {
   lanPreviewServer.disconnectAll();
   broadcastLanPreviewState();
   return lanPreviewStatePayload();
+});
+
+ipcMain.handle("ipollowork:lan-preview:push-to-im", async (event, options = {}) => {
+  const mcpUrl = typeof options?.mcpUrl === "string" ? options.mcpUrl : "";
+  try {
+    const result = await imBot.pushSummary({ mcpUrl });
+    return { ok: true, tool: result.tool };
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : "im-push-failed" };
+  }
 });
 
 ipcMain.handle("ipollowork:hyperframes:start", (event, options = {}) => startHyperframesPreview(event, options));

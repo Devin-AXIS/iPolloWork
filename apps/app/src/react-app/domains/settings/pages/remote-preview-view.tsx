@@ -1,9 +1,10 @@
 /** @jsxImportSource react */
 import { useCallback, useEffect, useState } from "react";
-import { Copy, Loader2, MonitorSmartphone, RefreshCw, ShieldAlert } from "lucide-react";
+import { Copy, Loader2, MessageSquare, MonitorSmartphone, RefreshCw, Send, ShieldAlert } from "lucide-react";
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
 import type { LanPreviewState } from "@/app/lib/desktop";
@@ -31,6 +32,27 @@ export function RemotePreviewView() {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [copied, setCopied] = useState<string | null>(null);
+  const [imMcpUrl, setImMcpUrl] = useState("");
+  const [pushBusy, setPushBusy] = useState(false);
+  const [pushResult, setPushResult] = useState<string | null>(null);
+
+  // Persist the DingTalk MCP endpoint for IM push.
+  const STORAGE_KEY = "ipollowork.im-mcp-url";
+  useEffect(() => {
+    try {
+      const stored = window.localStorage.getItem(STORAGE_KEY);
+      if (stored) setImMcpUrl(stored);
+    } catch {
+      // ignore
+    }
+  }, []);
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(STORAGE_KEY, imMcpUrl);
+    } catch {
+      // ignore
+    }
+  }, [imMcpUrl]);
 
   const readState = useCallback(async () => {
     const bridge = window.__IPOLLOWORK_ELECTRON__?.lanPreview;
@@ -95,6 +117,29 @@ export function RemotePreviewView() {
       window.setTimeout(() => setCopied(null), 1500);
     });
   }, []);
+
+  const pushToIm = useCallback(async () => {
+    const url = imMcpUrl.trim();
+    if (!url) {
+      setPushResult(t("settings.remote_preview_im_need_endpoint"));
+      return;
+    }
+    const push = window.__IPOLLOWORK_ELECTRON__?.lanPreview?.pushToIm;
+    if (!push) {
+      setPushResult(t("settings.remote_preview_im_unavailable"));
+      return;
+    }
+    setPushBusy(true);
+    setPushResult(null);
+    try {
+      const result = await push({ mcpUrl: url });
+      setPushResult(result?.ok ? t("settings.remote_preview_im_sent") : result?.error ?? t("settings.remote_preview_im_failed"));
+    } catch (error) {
+      setPushResult(error instanceof Error ? error.message : t("settings.remote_preview_im_failed"));
+    } finally {
+      setPushBusy(false);
+    }
+  }, [imMcpUrl]);
 
   const countdown = state?.codeExpiresAt ? formatCountdown(state.codeExpiresAt) : "–";
 
@@ -197,6 +242,26 @@ export function RemotePreviewView() {
               <Button variant="destructive" size="sm" onClick={disconnectAll} disabled={busy || state.sessionCount === 0}>
                 {t("settings.remote_preview_disconnect_all")}
               </Button>
+            </div>
+          </LayoutSectionItem>
+          <LayoutSectionItem>
+            <LayoutSectionItemHeader>
+              <LayoutSectionItemTitle>{t("settings.remote_preview_im_title")}</LayoutSectionItemTitle>
+              <LayoutSectionItemDescription>{t("settings.remote_preview_im_desc")}</LayoutSectionItemDescription>
+            </LayoutSectionItemHeader>
+            <div className="mt-3 space-y-2">
+              <Input
+                value={imMcpUrl}
+                onChange={(event) => setImMcpUrl(event.target.value)}
+                placeholder={t("settings.remote_preview_im_endpoint_placeholder")}
+                aria-label={t("settings.remote_preview_im_endpoint_label")}
+              />
+              <p className="text-xs text-muted-foreground">{t("settings.remote_preview_im_hint")}</p>
+              <Button variant="default" size="sm" onClick={() => void pushToIm()} disabled={pushBusy || !isDesktopRuntime()}>
+                {pushBusy ? <Loader2 className="size-3.5 animate-spin" /> : <Send className="size-3.5" />}
+                <span>{t("settings.remote_preview_im_push")}</span>
+              </Button>
+              {pushResult ? <p className="text-xs text-muted-foreground">{pushResult}</p> : null}
             </div>
           </LayoutSectionItem>
         </>

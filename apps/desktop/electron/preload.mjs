@@ -181,6 +181,7 @@ contextBridge.exposeInMainWorld("__IPOLLOWORK_ELECTRON__", {
     setEnabled(enabled) { return ipcRenderer.invoke("ipollowork:lan-preview:set-enabled", Boolean(enabled)); },
     regenerateCode() { return ipcRenderer.invoke("ipollowork:lan-preview:regenerate-code"); },
     disconnectAll() { return ipcRenderer.invoke("ipollowork:lan-preview:disconnect-all"); },
+    pushToIm(options) { return ipcRenderer.invoke("ipollowork:lan-preview:push-to-im", options); },
     onStateChanged(callback) {
       const handler = (_event, state) => callback(state);
       ipcRenderer.on("ipollowork:lan-preview:state", handler);

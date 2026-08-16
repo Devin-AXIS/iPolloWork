@@ -196,6 +196,7 @@ declare global {
         setEnabled?: (enabled: boolean) => Promise<LanPreviewState>;
         regenerateCode?: () => Promise<LanPreviewState>;
         disconnectAll?: () => Promise<LanPreviewState>;
+        pushToIm?: (options: { mcpUrl: string }) => Promise<{ ok: boolean; tool?: string; error?: string }>;
         onStateChanged?: (callback: (state: LanPreviewState) => void) => () => void;
       };
       hyperframes?: {
