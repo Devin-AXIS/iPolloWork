@@ -9,6 +9,8 @@ import type { ServerConfig } from "../types.js";
 import {
   MEDIA_EXTENSION_ACTIONS,
   MEDIA_EXTENSION_ID,
+  MINIMAX_IMAGE_TO_VIDEO_ENDPOINTS,
+  MINIMAX_IMAGE_TO_VIDEO_MODELS,
   callMediaExtensionAction,
   estimateVoiceoverDurationSeconds,
   planSceneVoiceoverTiming,
@@ -63,6 +65,160 @@ async function workspaceConfig() {
 }
 
 describe("Media Center extension", () => {
+  test("registers MiniMax image-to-video models and regional endpoints", () => {
+    expect(MINIMAX_IMAGE_TO_VIDEO_MODELS).toEqual({
+      defaultModel: "MiniMax-H3",
+      v2: ["MiniMax-H3"],
+      v1: [
+        "MiniMax-Hailuo-2.3",
+        "MiniMax-Hailuo-2.3-Fast",
+        "MiniMax-Hailuo-02",
+        "I2V-01-Director",
+        "I2V-01-live",
+        "I2V-01",
+      ],
+    });
+    expect(MINIMAX_IMAGE_TO_VIDEO_ENDPOINTS).toHaveLength(4);
+  });
+
+  test("creates a MiniMax H3 image-to-video task", async () => {
+    globalThis.fetch = ((input, init) => {
+      expect(init?.headers).toMatchObject({ Authorization: "Bearer test-key" });
+      if (init?.method === "GET") {
+        expect(String(input)).toBe("https://api.minimax.io/v2/query/video_generation/video-task-123");
+        return Promise.resolve(Response.json({
+          task: {
+            id: "video-task-123",
+            model: "MiniMax-H3",
+            status: "succeeded",
+            content: { url: "https://cdn.example.test/video.mp4" },
+          },
+        }));
+      }
+      expect(String(input)).toBe("https://api.minimax.io/v2/video_generation");
+      expect(JSON.parse(String(init?.body))).toEqual({
+        model: "MiniMax-H3",
+        content: [
+          { type: "text", text: "A paper boat crossing a moonlit lake" },
+          {
+            type: "image_url",
+            image_url: { url: "https://assets.example.test/boat.png" },
+            role: "first_frame",
+          },
+        ],
+        resolution: "2K",
+        duration: 6,
+        ratio: "adaptive",
+      });
+      return Promise.resolve(new Response(JSON.stringify({ task_id: "video-task-123" }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }));
+    }) as typeof fetch;
+
+    const result = await callMediaExtensionAction(config, env({ MINIMAX_API_KEY: "test-key" }), "video_generate", {
+      provider: "minimax",
+      prompt: "A paper boat crossing a moonlit lake",
+      imageUrl: "https://assets.example.test/boat.png",
+      duration: 6,
+    }, {});
+    const queried = await callMediaExtensionAction(config, env({ MINIMAX_API_KEY: "test-key" }), "task_get", {
+      provider: "minimax",
+      taskId: "video-task-123",
+    }, {});
+
+    expect(result).toMatchObject({
+      ok: true,
+      result: {
+        provider: "minimax",
+        apiVersion: "v2",
+        taskId: "video-task-123",
+      },
+    });
+    expect(queried).toMatchObject({
+      result: {
+        provider: "minimax",
+        apiVersion: "v2",
+        taskId: "video-task-123",
+        output: {
+          providerResponse: {
+            task: {
+              status: "succeeded",
+              content: { url: "https://cdn.example.test/video.mp4" },
+            },
+          },
+        },
+      },
+    });
+    expect(JSON.stringify(result)).not.toContain("test-key");
+  });
+
+  test("creates and queries a MiniMax Hailuo image-to-video task in China", async () => {
+    const urls: string[] = [];
+    globalThis.fetch = ((input, init) => {
+      urls.push(String(input));
+      if (init?.method !== "GET") {
+        expect(JSON.parse(String(init?.body))).toMatchObject({
+          model: "MiniMax-Hailuo-2.3",
+          first_frame_image: "https://assets.example.test/boat.png",
+          prompt: "A paper boat moving through mist",
+          duration: 10,
+          resolution: "768P",
+        });
+        return Promise.resolve(Response.json({ task_id: "hailuo-task-456", base_resp: { status_code: 0 } }));
+      }
+      return Promise.resolve(Response.json({
+        task_id: "hailuo-task-456",
+        status: "success",
+        file_id: "video-file-789",
+        base_resp: { status_code: 0 },
+      }));
+    }) as typeof fetch;
+
+    const created = await callMediaExtensionAction(config, env({ MINIMAX_API_KEY: "test-key" }), "video_generate", {
+      provider: "minimax",
+      region: "cn_zh",
+      model: "MiniMax-Hailuo-2.3",
+      prompt: "A paper boat moving through mist",
+      imageUrl: "https://assets.example.test/boat.png",
+      duration: 10,
+      resolution: "768P",
+    }, {});
+    const queried = await callMediaExtensionAction(config, env({ MINIMAX_API_KEY: "test-key" }), "task_get", {
+      provider: "minimax",
+      region: "cn_zh",
+      apiVersion: "v1",
+      taskId: "hailuo-task-456",
+    }, {});
+
+    expect(urls).toEqual([
+      "https://api.minimaxi.com/v1/video_generation",
+      "https://api.minimaxi.com/v1/query/video_generation?task_id=hailuo-task-456",
+    ]);
+    expect(created).toMatchObject({ result: { apiVersion: "v1", taskId: "hailuo-task-456" } });
+    expect(queried).toMatchObject({
+      result: {
+        apiVersion: "v1",
+        taskId: "hailuo-task-456",
+        output: { providerResponse: { status: "success", file_id: "video-file-789" } },
+      },
+    });
+  });
+
+  test("rejects MiniMax image-to-video requests without an image", async () => {
+    let requested = false;
+    globalThis.fetch = (() => {
+      requested = true;
+      return Promise.reject(new Error("MiniMax must not be called"));
+    }) as unknown as typeof fetch;
+
+    await expect(callMediaExtensionAction(config, env({ MINIMAX_API_KEY: "test-key" }), "video_generate", {
+      provider: "minimax",
+      prompt: "A paper boat",
+    }, {})).rejects.toMatchObject({ code: "invalid_payload" });
+    expect(requested).toBe(false);
+  });
+
   test("estimates multilingual narration duration before provider synthesis", () => {
     expect(estimateVoiceoverDurationSeconds("这是八个汉字的旁白。")).toBeGreaterThan(2);
     expect(estimateVoiceoverDurationSeconds("Five clear words for this scene.")).toBeGreaterThan(2);
