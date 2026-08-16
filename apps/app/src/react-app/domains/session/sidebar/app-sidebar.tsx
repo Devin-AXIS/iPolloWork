@@ -18,6 +18,7 @@ import {
   Settings,
   HelpCircle,
   Server,
+  GitBranch,
   Tag,
   UserRound,
 } from "lucide-react";
@@ -512,13 +513,14 @@ export type AppSidebarProps = {
     name: string | null;
     email: string | null;
   };
-  activePrimaryItem?: "template-market" | "extensions" | "ops" | null;
+  activePrimaryItem?: "template-market" | "extensions" | "ops" | "git" | null;
   onOpenAccount: () => void;
   onOpenSettings: (route?: string) => void;
   onOpenHelp: () => void;
   onOpenTemplateMarket: () => void;
   onOpenExtensions: () => void;
   onOpenOps: () => void;
+  onOpenGit: () => void;
   onSignIn: () => void;
   /** Opens the cross-session message search dialog (Cmd/Ctrl+Shift+F). */
   onOpenSessionSearch?: () => void;
@@ -733,6 +735,18 @@ export function AppSidebar(props: AppSidebarProps) {
                   <Server className="size-3.5" />
                 </span>
                 <span className="flex-1 truncate">{t("ops.title")}</span>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+            <SidebarMenuItem>
+              <SidebarMenuButton
+                onClick={props.onOpenGit}
+                isActive={props.activePrimaryItem === "git"}
+                className={primarySidebarActionClass}
+              >
+                <span className="flex size-4 shrink-0 items-center justify-center" aria-hidden="true">
+                  <GitBranch className="size-3.5" />
+                </span>
+                <span className="flex-1 truncate">{t("git.title")}</span>
               </SidebarMenuButton>
             </SidebarMenuItem>
           </SidebarMenu>

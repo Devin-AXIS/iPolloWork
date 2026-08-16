@@ -174,6 +174,12 @@ declare global {
       ssh?: {
         listHosts?: () => Promise<{ hosts: string[]; configPath: string }>;
       };
+      git?: {
+        graph?: (options: { cwd: string; maxCommits?: number }) => Promise<
+          | { ok: true; repoRoot: string; count: number; isRepo: true; commits: { sha: string; parents: string[] }[]; refs: { sha: string; refname: string; head: boolean }[]; headShas: string[] }
+          | { ok: false; isRepo: boolean; error: string }
+        >;
+      };
       hyperframes?: {
         start?: (options: { workspaceRoot: string; sessionId: string; projectDirectory: string; port: number }) => Promise<{ ok: boolean; port?: number; reused?: boolean }>;
         stop?: (sessionId: string, options?: { keepWarm?: boolean }) => Promise<{ ok: boolean }>;
