@@ -1,4 +1,5 @@
 import { useSyncExternalStore } from "react";
+import { sharedProviderCredentialEnvKey } from "@ipollowork/types/provider-credentials";
 
 import { parse } from "jsonc-parser";
 
@@ -148,11 +149,13 @@ type CreateProviderAuthStoreOptions = {
   disabledProviders: () => string[];
   checkDesktopAppRestriction: DesktopAppRestrictionChecker;
   selectedWorkspaceDisplay: () => WorkspaceDisplay;
+  providerBaseUrl: () => string;
   selectedWorkspaceRoot: () => string;
   allowCloudImports?: () => boolean;
   runtimeWorkspaceId: () => string | null;
   ensureRuntimeWorkspaceId?: () => Promise<string | null | undefined>;
   ipolloworkServer: ProviderAuthiPolloWorkServer;
+  providerServer?: ProviderAuthiPolloWorkServer;
   setProviders: (value: ProviderListItem[]) => void;
   setProviderDefaults: (value: Record<string, string>) => void;
   setProviderConnectedIds: (value: string[]) => void;
@@ -180,9 +183,21 @@ const QWEN3_CODER_PROVIDER = {
   modelName: "Qwen3-Coder Plus",
 };
 
+const DEEPSEEK_OFFICIAL_PROVIDER = {
+  providerId: "deepseek-official",
+  name: "DeepSeek",
+  baseURL: "https://api.deepseek.com",
+  models: {
+    "deepseek-v4-flash": { name: "DeepSeek-V4-Flash" },
+    "deepseek-v4-pro": { name: "DeepSeek-V4-Pro" },
+  },
+} as const;
+
 export type ProviderAuthStore = ReturnType<typeof createProviderAuthStore>;
 
 export function createProviderAuthStore(options: CreateProviderAuthStoreOptions) {
+  const getProviderServerSnapshot = () =>
+    (options.providerServer ?? options.ipolloworkServer).getSnapshot();
   const listeners = new Set<() => void>();
 
   let snapshot: ProviderAuthStoreSnapshot;
@@ -260,6 +275,21 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
 
     if (
       getProviderEngineAdapter().capabilities.customProviders &&
+      !merged.has(DEEPSEEK_OFFICIAL_PROVIDER.providerId) &&
+      !isDesktopProviderBlocked({
+        providerId: DEEPSEEK_OFFICIAL_PROVIDER.providerId,
+        checkRestriction: options.checkDesktopAppRestriction,
+      })
+    ) {
+      merged.set(DEEPSEEK_OFFICIAL_PROVIDER.providerId, {
+        id: DEEPSEEK_OFFICIAL_PROVIDER.providerId,
+        name: DEEPSEEK_OFFICIAL_PROVIDER.name,
+        env: [],
+      });
+    }
+
+    if (
+      getProviderEngineAdapter().capabilities.customProviders &&
       !merged.has(QWEN3_CODER_PROVIDER.providerId) &&
       !isDesktopProviderBlocked({
         providerId: QWEN3_CODER_PROVIDER.providerId,
@@ -292,7 +322,7 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
   };
 
   const resolveiPolloWorkConfigTarget = async (mode: "read" | "write") => {
-    const ipolloworkSnapshot = options.ipolloworkServer.getSnapshot();
+    const ipolloworkSnapshot = getProviderServerSnapshot();
     const ipolloworkClient = ipolloworkSnapshot.ipolloworkServerClient;
     let ipolloworkWorkspaceId = options.runtimeWorkspaceId()?.trim() || null;
     if (!ipolloworkWorkspaceId && ipolloworkSnapshot.ipolloworkServerStatus === "connected" && ipolloworkClient) {
@@ -385,7 +415,7 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
 
   const mirroriPolloWorkModelsVoiceEnv = async (provider: DenOrgLlmProviderConnection, apiKey: string) => {
     if (provider.source !== "ipollowork" || !apiKey.trim()) return;
-    const ipolloworkClient = options.ipolloworkServer.getSnapshot().ipolloworkServerClient;
+    const ipolloworkClient = getProviderServerSnapshot().ipolloworkServerClient;
     if (!ipolloworkClient) return;
     const baseUrl = readCloudProviderBaseUrl(provider);
     const entries = [{ key: "IPOLLOWORK_API_KEY", value: apiKey.trim() }];
@@ -832,6 +862,19 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
 
   const removeProviderAuthCredentials = async (providerId: string) => {
     await getProviderEngineConnection().removeCredentials(providerId);
+    const ipolloworkClient = getProviderServerSnapshot().ipolloworkServerClient;
+    if (ipolloworkClient) {
+      await ipolloworkClient.deleteUserEnv(sharedProviderCredentialEnvKey(providerId));
+    }
+  };
+
+  const mirrorSharedProviderApiKey = async (providerId: string, apiKey: string) => {
+    const ipolloworkClient = getProviderServerSnapshot().ipolloworkServerClient;
+    if (!ipolloworkClient) return;
+    await ipolloworkClient.upsertUserEnv([{
+      key: sharedProviderCredentialEnvKey(providerId),
+      value: apiKey,
+    }]);
   };
 
   const describeProviderError = (error: unknown, fallback: string) => {
@@ -936,6 +979,26 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
       const existing = merged[id] ?? [];
       if (existing.some((method) => method.type === "api")) continue;
       merged[id] = [...existing, { type: "api", label: t("providers.api_key_label") }];
+    }
+
+    if (
+      getProviderEngineAdapter().capabilities.customProviders &&
+      !isDesktopProviderBlocked({
+        providerId: DEEPSEEK_OFFICIAL_PROVIDER.providerId,
+        checkRestriction: options.checkDesktopAppRestriction,
+      })
+    ) {
+      const existing = merged[DEEPSEEK_OFFICIAL_PROVIDER.providerId] ?? [];
+      if (!existing.some((method) => method.type === "api")) {
+        merged[DEEPSEEK_OFFICIAL_PROVIDER.providerId] = [
+          ...existing,
+          {
+            type: "api",
+            label: t("providers.api_key_label"),
+            description: "Connect DeepSeek once and use it from every supported agent engine.",
+          },
+        ];
+      }
     }
 
     if (
@@ -1090,7 +1153,7 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
       // off").
       let reloaded = false;
       try {
-        const ipolloworkSnapshot = options.ipolloworkServer.getSnapshot();
+        const ipolloworkSnapshot = getProviderServerSnapshot();
         const ipolloworkClient = ipolloworkSnapshot.ipolloworkServerClient;
         if (ipolloworkSnapshot.ipolloworkServerStatus === "connected" && ipolloworkClient) {
           const workspaceId =
@@ -1148,6 +1211,7 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
         await ensureProviderListQuery(getReactQueryClient(), {
           client: activeClient,
           engineId: getProviderEngineAdapter().id,
+          baseUrl: options.providerBaseUrl(),
           directory: options.selectedWorkspaceRoot(),
           force: Boolean(optionsArg?.dispose),
         }),
@@ -1244,11 +1308,24 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
     }
     assertProviderAllowedByDesktopPolicy(providerId);
     const resolvedProviderId = providerId.trim().toLowerCase();
+    const isDeepSeekOfficial = resolvedProviderId === DEEPSEEK_OFFICIAL_PROVIDER.providerId;
+    const materializesDeepSeekProvider =
+      isDeepSeekOfficial && getProviderEngineAdapter().capabilities.customProviders;
     const isQwen3Coder = resolvedProviderId === QWEN3_CODER_PROVIDER.providerId;
     const isTokenStar = resolvedProviderId === TOKENSTAR_PROVIDER.providerId;
 
     try {
       const connection = getProviderEngineConnection();
+      if (materializesDeepSeekProvider) {
+        await patchRuntimeProviders(
+          getProviderEngineAdapter().buildCompatibleProviderPatch({
+            id: DEEPSEEK_OFFICIAL_PROVIDER.providerId,
+            name: DEEPSEEK_OFFICIAL_PROVIDER.name,
+            baseURL: DEEPSEEK_OFFICIAL_PROVIDER.baseURL,
+            models: DEEPSEEK_OFFICIAL_PROVIDER.models,
+          }),
+        );
+      }
       if (isQwen3Coder) {
         await patchRuntimeProviders(
           getProviderEngineAdapter().buildCompatibleProviderPatch({
@@ -1303,10 +1380,13 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
         }
       }
       await connection.setApiKey(providerId, trimmed);
-      if (isQwen3Coder || isTokenStar) {
+      await mirrorSharedProviderApiKey(providerId, trimmed);
+      if (materializesDeepSeekProvider || isQwen3Coder || isTokenStar) {
         const syntheticProviderId = isTokenStar
           ? TOKENSTAR_PROVIDER.providerId
-          : QWEN3_CODER_PROVIDER.providerId;
+          : isQwen3Coder
+            ? QWEN3_CODER_PROVIDER.providerId
+            : DEEPSEEK_OFFICIAL_PROVIDER.providerId;
         const nextConnected = [
           ...options.providerConnectedIds().filter((id) => id !== syntheticProviderId),
           syntheticProviderId,
@@ -1362,7 +1442,7 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
       await assertCloudProviderImportSafe(provider);
 
       if (envEntries.length > 0) {
-        const ipolloworkClient = options.ipolloworkServer.getSnapshot().ipolloworkServerClient;
+        const ipolloworkClient = getProviderServerSnapshot().ipolloworkServerClient;
         if (!ipolloworkClient) {
           throw new Error(
             `${provider.name} needs environment variables (${envEntries
@@ -1374,6 +1454,7 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
       }
       if (primaryApiKey) {
         await connection.setApiKey(localProviderId, primaryApiKey);
+        await mirrorSharedProviderApiKey(localProviderId, primaryApiKey);
         await mirroriPolloWorkModelsVoiceEnv(provider, primaryApiKey);
       }
       if (existingImported?.providerId && existingImported.providerId !== localProviderId) {
@@ -1669,13 +1750,17 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
     }
 
     try {
-      if (resolved.toLowerCase() === TOKENSTAR_PROVIDER.providerId) {
-        await patchRuntimeProviders({ [TOKENSTAR_PROVIDER.providerId]: null });
+      const removableRuntimeProviderId = [
+        TOKENSTAR_PROVIDER.providerId,
+        DEEPSEEK_OFFICIAL_PROVIDER.providerId,
+      ].find((providerId) => resolved.toLowerCase() === providerId);
+      if (removableRuntimeProviderId) {
+        await patchRuntimeProviders({ [removableRuntimeProviderId]: null });
         try {
           await updateProjectConfigFile((raw) =>
             getProviderEngineAdapter().formatProjectWithoutProvider(
               raw,
-              TOKENSTAR_PROVIDER.providerId,
+              removableRuntimeProviderId,
               options.disabledProviders(),
             ),
           );

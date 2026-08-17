@@ -154,6 +154,38 @@ test("persists the selected conversation engine on a local workspace", async () 
   });
 });
 
+test("selects an existing local workspace without overwriting its metadata", async () => {
+  await withIsolatedBootstrapStore(async ({ store, root }) => {
+    const folderPath = path.join(root, "existing-workspace");
+    const created = await store.createWorkspace({
+      folderPath,
+      name: "Original Project",
+      preset: "starter",
+      workContextId: "enterprise:ent_original",
+      engineId: "deepseek-harness",
+    });
+    const existingWorkspace = created.workspaces[0];
+
+    const selected = await store.createWorkspace({
+      folderPath,
+      name: "Replacement Project",
+      preset: "minimal",
+      workContextId: "enterprise:ent_replacement",
+      engineId: "opencode",
+    });
+
+    assert.equal(selected.workspaces.length, 1);
+    assert.equal(selected.selectedId, existingWorkspace.id);
+    assert.equal(selected.activeId, existingWorkspace.id);
+    assert.equal(selected.watchedId, existingWorkspace.id);
+    assert.equal(selected.workspaces[0].displayName, "Original Project");
+    assert.equal(selected.workspaces[0].preset, "starter");
+    assert.equal(selected.workspaces[0].workContextId, "enterprise:ent_original");
+    assert.equal(selected.workspaces[0].engineId, "deepseek-harness");
+    await assert.rejects(access(path.join(folderPath, ".opencode")));
+  });
+});
+
 test("migrates an older enterprise workspace from its dedicated context path", async () => {
   await withIsolatedBootstrapStore(async ({ createStore, root, userDataPath }) => {
     const folderPath = path.join(root, ".ipollowork", "work-contexts", "ent_medical");

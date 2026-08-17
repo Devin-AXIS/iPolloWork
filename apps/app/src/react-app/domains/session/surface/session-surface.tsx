@@ -61,8 +61,10 @@ import {
 } from "../video/video-voice";
 import {
   hasVideoDeliveryRequirements,
+  unchangedVideoArtifactIssue,
   videoDeliveryRequirementsForPrompt,
   videoProjectEntryPath,
+  type VideoArtifactCompletionRequirement,
   type VideoDeliveryRequirements,
 } from "../video/video-project";
 import {
@@ -143,6 +145,8 @@ type SessionError = {
 type PendingVideoDeliveryValidation = {
   sourcePath: string;
   requirements: VideoDeliveryRequirements;
+  baselineFingerprint: string | null;
+  mustChange: boolean;
   recoveryAttempted: boolean;
 };
 
@@ -235,6 +239,8 @@ export type SessionSurfaceProps = {
   templateEntryPath?: string;
   artifactFiles?: readonly string[];
   artifactContext?: ArtifactInteractionContext;
+  artifactCompletionRequirement?: VideoArtifactCompletionRequirement;
+  onArtifactCompletionRequirementConsumed?: () => void;
   environmentRuntimeKey?: string | null;
   onApplyEnvironmentChanges?: () => Promise<ApplyEnvironmentChangesResult>;
 };
@@ -647,6 +653,7 @@ export function SessionSurface(props: SessionSurfaceProps) {
   const stalledAtProgressRef = useRef<string | null>(null);
   const pendingVideoDeliveryRef = useRef<PendingVideoDeliveryValidation | null>(null);
   const videoDeliveryValidationInFlightRef = useRef(false);
+  const artifactCompletionRequirementKeyRef = useRef<string | null>(null);
 
   useEffect(() => {
     const addAnimationReference = (event: Event) => {
@@ -663,6 +670,27 @@ export function SessionSurface(props: SessionSurfaceProps) {
     window.addEventListener("ipollowork:add-animation-reference", addAnimationReference);
     return () => window.removeEventListener("ipollowork:add-animation-reference", addAnimationReference);
   }, [props.sessionId]);
+
+  useEffect(() => {
+    const requirement = props.artifactCompletionRequirement;
+    if (!requirement) {
+      artifactCompletionRequirementKeyRef.current = null;
+      return;
+    }
+    const key = `${requirement.sourcePath}:${requirement.baselineFingerprint}:${requirement.assistantMessageBaseline}`;
+    if (artifactCompletionRequirementKeyRef.current === key) return;
+    artifactCompletionRequirementKeyRef.current = key;
+    pendingVideoDeliveryRef.current = {
+      sourcePath: requirement.sourcePath,
+      requirements: videoDeliveryRequirementsForPrompt({}),
+      baselineFingerprint: requirement.baselineFingerprint,
+      mustChange: true,
+      recoveryAttempted: false,
+    };
+    runActivityObservedRef.current = false;
+    setAwaitingAssistantBaseline(requirement.assistantMessageBaseline);
+    setSending(true);
+  }, [props.artifactCompletionRequirement]);
 
   useEffect(() => {
     const addIllustrationReference = (event: Event) => {
@@ -855,16 +883,16 @@ export function SessionSurface(props: SessionSurfaceProps) {
       return "submitted";
     }
 
-    if (liveStatus.type === "busy") {
-      return "streaming";
-    }
-
     if (liveStatus.type === "retry") {
       return "retrying";
     }
 
+    if (liveStatus.type === "busy" || activityRunActive) {
+      return "streaming";
+    }
+
     return "ready";
-  }, [liveStatus, sending]);
+  }, [activityRunActive, liveStatus, sending]);
   const renderedMessages = useMemo(
     () => deriveRenderedSessionMessages({ transcriptState, snapshot }),
     [snapshot, transcriptState],
@@ -1081,22 +1109,32 @@ export function SessionSurface(props: SessionSurfaceProps) {
     setAwaitingAssistantBaseline(renderedMessages.length);
     const recoveryDraft = nextDraft.capability?.instruction.includes("authoritative delivery validation") === true;
     const templateEntryPath = props.templateEntryPath?.replace(/\\/g, "/") ?? "";
-    const videoTask = newConversationMode === "video" || /^video\/[^/]+\/index\.html$/i.test(templateEntryPath);
-    if (videoTask && !recoveryDraft) {
-      const requirements = videoDeliveryRequirementsForPrompt({
-        capabilityId: nextDraft.capability?.id,
-        promptText: nextDraft.resolvedText ?? nextDraft.text,
-        animationReferences: selectedAnimations.map((selection) => selection.item.name),
-      });
-      if (hasVideoDeliveryRequirements(requirements)) {
-        pendingVideoDeliveryRef.current = {
-          sourcePath: templateEntryPath || videoProjectEntryPath(props.sessionId),
-          requirements,
-          recoveryAttempted: false,
-        };
-      }
-    }
+    const videoTask = newConversationMode === "video"
+      || props.artifactContext?.kind === "video"
+      || /^video\/[^/]+\/index\.html$/i.test(templateEntryPath);
+    let pendingDelivery: PendingVideoDeliveryValidation | null = null;
     try {
+      if (videoTask && !recoveryDraft) {
+        const requirements = videoDeliveryRequirementsForPrompt({
+          capabilityId: nextDraft.capability?.id,
+          promptText: nextDraft.resolvedText ?? nextDraft.text,
+          animationReferences: selectedAnimations.map((selection) => selection.item.name),
+        });
+        const mustChange = false;
+        if (hasVideoDeliveryRequirements(requirements)) {
+          const sourcePath = props.artifactContext?.kind === "video"
+            ? props.artifactContext.entryPath
+            : templateEntryPath || videoProjectEntryPath(props.sessionId);
+          pendingDelivery = {
+            sourcePath,
+            requirements,
+            baselineFingerprint: null,
+            mustChange,
+            recoveryAttempted: false,
+          };
+          pendingVideoDeliveryRef.current = pendingDelivery;
+        }
+      }
       const dispatched = await props.onSendDraft(nextDraft, props.sessionId);
       if (selectedAnimations.length) {
         recordInspectorEvent("composer.hyperframes_sent", {
@@ -1118,6 +1156,7 @@ export function SessionSurface(props: SessionSurfaceProps) {
         setSending(false);
       }
     } catch (nextError) {
+      if (pendingVideoDeliveryRef.current === pendingDelivery) pendingVideoDeliveryRef.current = null;
       const parsed = parseSessionError(nextError);
       captureAnalyticsEvent("task_send_failed", {});
       setError(parsed);
@@ -1128,36 +1167,48 @@ export function SessionSurface(props: SessionSurfaceProps) {
       setSending(false);
       throw nextError;
     }
-  }, [appendComposerHistory, newConversationMode, props.onSendDraft, props.sessionId, props.templateEntryPath, props.workspaceId, renderedMessages.length, selectedAnimations, setComposerDraft]);
+  }, [appendComposerHistory, newConversationMode, props.artifactContext, props.onSendDraft, props.sessionId, props.templateEntryPath, props.workspaceId, renderedMessages.length, selectedAnimations, setComposerDraft]);
 
   const validatePendingVideoDelivery = useCallback(async () => {
     const pending = pendingVideoDeliveryRef.current;
     if (!pending || videoDeliveryValidationInFlightRef.current) return;
     videoDeliveryValidationInFlightRef.current = true;
     try {
-      const response = await props.client.callExtensionAction({
-        extensionId: "media",
-        action: "voiceover_timeline_validate",
-        args: {
-          sourcePath: pending.sourcePath,
-          requirements: {
-            ...pending.requirements,
-            ...(pending.requirements.captions ? { captionStyle: "transparent-bottom" } : {}),
-          },
-        },
-        context: { directory: props.workspaceRoot || undefined },
-      });
+      const currentContent = pending.mustChange
+        ? (await props.client.readWorkspaceFile(props.workspaceId, pending.sourcePath)).content
+        : "";
       if (pendingVideoDeliveryRef.current !== pending) return;
-      if (!response.ok) throw new Error(response.message);
-      const output = videoDeliveryValidationOutput(response);
-      if (!output) throw new Error("Video delivery validation returned an unreadable result.");
-      if (output.valid) {
-        pendingVideoDeliveryRef.current = null;
-        toast.success(t("session.video_delivery_validated"));
-        return;
+      const mutationIssue = pending.mustChange
+        ? unchangedVideoArtifactIssue(pending.baselineFingerprint, currentContent)
+        : null;
+      let issues: VideoDeliveryValidationOutput["issues"] = mutationIssue ? [mutationIssue] : [];
+      if (!mutationIssue) {
+        const response = await props.client.callExtensionAction({
+          extensionId: "media",
+          action: "voiceover_timeline_validate",
+          args: {
+            sourcePath: pending.sourcePath,
+            requirements: {
+              ...pending.requirements,
+              ...(pending.requirements.captions ? { captionStyle: "transparent-bottom" } : {}),
+            },
+          },
+          context: { directory: props.workspaceRoot || undefined },
+        });
+        if (pendingVideoDeliveryRef.current !== pending) return;
+        if (!response.ok) throw new Error(response.message);
+        const output = videoDeliveryValidationOutput(response);
+        if (!output) throw new Error("Video delivery validation returned an unreadable result.");
+        issues = output.issues;
+        if (output.valid) {
+          pendingVideoDeliveryRef.current = null;
+          props.onArtifactCompletionRequirementConsumed?.();
+          setSending(false);
+          toast.success(t("session.video_delivery_validated"));
+          return;
+        }
       }
-
-      const issues = output.issues
+      const issueMessages = issues
         .map((issue) => [issue.code, issue.message].filter(Boolean).join(": "))
         .filter(Boolean);
       if (!pending.recoveryAttempted) {
@@ -1169,7 +1220,7 @@ export function SessionSurface(props: SessionSurfaceProps) {
           `Required deliverables: ${JSON.stringify(pending.requirements)}.`,
           "Fix every issue below in one complete pass. For narration, use the saved voiceover.json and the built-in media workspace batch synthesis action; patch the returned audio, captions, scene timing, and root duration into index.html.",
           "Run media/voiceover_timeline_validate with the exact same requirements after the edit, and finish only when it returns valid.",
-          ...issues.map((issue) => `- ${issue}`),
+          ...issueMessages.map((issue) => `- ${issue}`),
         ].join("\n");
         await sendDraft({
           mode: "prompt",
@@ -1184,8 +1235,9 @@ export function SessionSurface(props: SessionSurfaceProps) {
 
       setError({
         kind: "generic",
-        message: `${t("session.video_delivery_failed")} ${issues.slice(0, 3).join(" ")}`.trim(),
+        message: `${t("session.video_delivery_failed")} ${issueMessages.slice(0, 3).join(" ")}`.trim(),
       });
+      setSending(false);
     } catch (validationError) {
       if (pendingVideoDeliveryRef.current === pending) {
         setError({
@@ -1193,10 +1245,11 @@ export function SessionSurface(props: SessionSurfaceProps) {
           message: validationError instanceof Error ? validationError.message : t("session.video_delivery_failed"),
         });
       }
+      setSending(false);
     } finally {
       videoDeliveryValidationInFlightRef.current = false;
     }
-  }, [props.client, props.workspaceRoot, sendDraft]);
+  }, [props.client, props.onArtifactCompletionRequirementConsumed, props.workspaceId, props.workspaceRoot, sendDraft]);
 
   const clearComposer = useCallback(() => {
     clearComposerSession(props.sessionId);
@@ -1301,14 +1354,17 @@ export function SessionSurface(props: SessionSurfaceProps) {
     // though a reasoning-only/tool-only turn were a finished task.
     const timeout = window.setTimeout(() => {
       runActivityObservedRef.current = false;
-      setSending(false);
       if (assistantOutputAfterAwaitStart && !latestAssistantCompleted) {
+        setSending(false);
         setError((current) => current ?? {
           kind: "stalled",
           message: t("session.run_ended_incomplete"),
         });
       } else if (latestAssistantCompleted) {
-        void validatePendingVideoDelivery();
+        if (pendingVideoDeliveryRef.current) void validatePendingVideoDelivery();
+        else setSending(false);
+      } else {
+        setSending(false);
       }
     }, 1_200);
     return () => window.clearTimeout(timeout);

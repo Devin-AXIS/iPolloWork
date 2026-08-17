@@ -20,6 +20,7 @@ import type {
   ConversationSnapshot,
   ConversationStatus,
 } from "./conversation-engine";
+import { conversationMessageMetadata } from "./conversation-engine";
 import {
   describeOpencodeSessionError,
   mapOpencodePartToUIParts,
@@ -148,15 +149,11 @@ function messageFromInfo(info: {
 }): UIMessage {
   const created = info.time?.created;
   const completed = info.time?.completed;
+  const metadata = conversationMessageMetadata({ created, completed });
   return {
     id: info.id,
     role: info.role,
-    ...(typeof created === "number" || typeof completed === "number"
-      ? { metadata: { ipollowork: {
-          ...(typeof created === "number" ? { created } : {}),
-          ...(typeof completed === "number" ? { completed } : {}),
-        } } }
-      : {}),
+    ...(metadata ? { metadata } : {}),
     parts: [],
   };
 }

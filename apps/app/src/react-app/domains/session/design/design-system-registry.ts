@@ -31,17 +31,8 @@ export type DesignSystemTheme = {
   name: string;
   category: string;
   description: string;
-  previewHtml: string;
   tokensCss: string;
   tokens: DesignSystemToken[];
-};
-
-export type DesignThemeTokenHints = {
-  colors: string[];
-  fonts: string[];
-  lengths: string[];
-  shadows: string[];
-  byToken: Record<string, string[]>;
 };
 
 export type DesignSystemTokenControl = {
@@ -57,54 +48,10 @@ const TOKEN_GROUP_ORDER = [
   "间距", "圆角", "层级阴影", "聚焦", "动效", "布局", "其他",
 ] as const;
 
-const THEME_TOKEN_SOURCES: Record<string, readonly string[]> = {
-  "--ipw-color-bg": ["--bg", "--page-bg", "--canvas"],
-  "--ipw-color-surface": ["--surface", "--surface-1", "--panel"],
-  "--ipw-color-text": ["--fg", "--text", "--text-1", "--on-surface"],
-  "--ipw-color-muted": ["--muted", "--fg-2", "--text-muted", "--text-2"],
-  "--ipw-color-border": ["--border", "--border-soft"],
-  "--ipw-color-primary": ["--accent", "--primary", "--brand"],
-  "--ipw-color-secondary": ["--secondary", "--accent-hover", "--accent"],
-  "--ipw-color-accent": ["--meta", "--accent", "--highlight"],
-  "--ipw-color-success": ["--success", "--good"],
-  "--ipw-color-warning": ["--warn", "--warning"],
-  "--ipw-color-danger": ["--danger", "--bad"],
-  "--ipw-color-on-primary": ["--accent-on", "--on-accent", "--on-primary"],
-  "--ipw-font-display": ["--font-display"],
-  "--ipw-font-body": ["--font-body"],
-  "--ipw-body-line-height": ["--leading-body"],
-  "--ipw-content-width": ["--container-max"],
-  "--ipw-page-padding": ["--container-gutter-desktop", "--container-gutter-tablet", "--container-gutter-phone"],
-  "--ipw-section-space": ["--section-y-desktop", "--section-y-tablet", "--section-y-phone"],
-  "--ipw-button-radius": ["--radius-pill", "--radius-md", "--radius-sm"],
-  "--ipw-card-bg": ["--surface", "--surface-1", "--bg"],
-  "--ipw-card-border": ["--border", "--border-soft"],
-  "--ipw-card-radius": ["--radius-lg", "--radius-md", "--radius-sm"],
-  "--ipw-card-shadow": ["--elev-raised", "--elev-ring", "--elev-flat"],
-};
-
 const manifestModules = import.meta.glob("./design-systems/design-systems/*/manifest.json", {
   eager: true,
   import: "default",
 }) as Record<string, DesignSystemManifest>;
-
-const kitPreviewModules = import.meta.glob("./design-systems/design-systems/*/system/kit.html", {
-  eager: true,
-  query: "?raw",
-  import: "default",
-}) as Record<string, string>;
-
-const systemIndexModules = import.meta.glob("./design-systems/design-systems/*/system/index.html", {
-  eager: true,
-  query: "?raw",
-  import: "default",
-}) as Record<string, string>;
-
-const previewModules = import.meta.glob("./design-systems/design-systems/*/preview/colors.html", {
-  eager: true,
-  query: "?raw",
-  import: "default",
-}) as Record<string, string>;
 
 const tokenModules = import.meta.glob("./design-systems/design-systems/*/tokens.css", {
   eager: true,
@@ -136,23 +83,16 @@ function sortThemeItems(left: DesignSystemTheme, right: DesignSystemTheme) {
 export const DESIGN_SYSTEM_THEMES: DesignSystemTheme[] = Object.entries(manifestModules)
   .flatMap(([manifestPath, manifest]) => {
     const root = manifestPath.replace(/\/manifest\.json$/, "");
-    const previewPath = `${root}/system/kit.html`;
-    const previewFallbackPath = `${root}/system/index.html`;
-    const legacyPreviewPath = `${root}/preview/colors.html`;
     const tokensPath = `${root}/tokens.css`;
     const designTokensPath = `${root}/design-tokens.json`;
-    const previewHtml = kitPreviewModules[previewPath]
-      ?? systemIndexModules[previewFallbackPath]
-      ?? previewModules[legacyPreviewPath];
     const tokensCss = tokenModules[tokensPath];
     const tokenDocument = designTokenModules[designTokensPath];
-    if (!previewHtml || !tokensCss) return [];
+    if (!tokensCss) return [];
     return [{
       id: manifest.id,
       name: manifest.name,
       category: manifest.category,
       description: manifest.description ?? "",
-      previewHtml,
       tokensCss,
       tokens: tokenDocument?.format === "od-design-tokens/v1" ? tokenDocument.tokens : [],
     }];
@@ -377,17 +317,8 @@ function isColorTokenValue(value: string) {
     || value.includes("color-mix(");
 }
 
-function isFontTokenValue(value: string) {
-  return /,/.test(value) && /(?:sans|serif|mono|display|ui-|system-ui|apple-system|inter|georgia|helvetica|arial)/i.test(value);
-}
-
 function isLengthTokenValue(value: string) {
   return /^-?\d+(?:\.\d+)?(?:px|rem|em|vh|vw|%)?$/.test(value.trim());
-}
-
-function isShadowTokenValue(value: string) {
-  const trimmed = value.trim();
-  return trimmed !== "none" && /(?:rgba?\(|hsla?\(|color-mix\(|\b\d+px\b)/i.test(trimmed) && /\b(?:inset|px)\b/i.test(trimmed);
 }
 
 function escapeHtml(value: string) {
@@ -396,50 +327,6 @@ function escapeHtml(value: string) {
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;");
-}
-
-function inlineTokensIntoPreview(previewHtml: string, tokensCss: string) {
-  const escapedCss = escapeHtml(tokensCss);
-  return previewHtml.replace(
-    /<link\b[^>]*href=["'][^"']*tokens\.css["'][^>]*>/i,
-    `<style id="design-system-preview-tokens">${escapedCss}</style>`,
-  );
-}
-
-export function buildDesignSystemPreviewDoc(theme: DesignSystemTheme) {
-  return inlineTokensIntoPreview(theme.previewHtml, theme.tokensCss);
-}
-
-export function buildThemeTokenHints(theme: DesignSystemTheme): DesignThemeTokenHints {
-  const tokens = themeTokenValues(theme);
-  const colors = new Set<string>();
-  const fonts = new Set<string>();
-  const lengths = new Set<string>();
-  const shadows = new Set<string>();
-  for (const [name, value] of Object.entries(tokens)) {
-    if (isColorTokenValue(value)) colors.add(value);
-    if (isFontTokenValue(value)) fonts.add(value);
-    if (isLengthTokenValue(value)) lengths.add(value);
-    if (isShadowTokenValue(value) || name.includes("shadow") || name.includes("elev")) shadows.add(value);
-  }
-  const byToken = Object.fromEntries(Object.entries(THEME_TOKEN_SOURCES).map(([target, sources]) => {
-    const exact = sources.map((source) => tokens[source]).filter((value): value is string => Boolean(value));
-    const family = target.includes("color") || target.endsWith("-bg") || target.endsWith("-border")
-      ? [...colors]
-      : target.includes("font")
-        ? [...fonts]
-        : target.includes("shadow")
-          ? [...shadows]
-          : [...lengths];
-    return [target, [...new Set([...exact, ...family])]];
-  }));
-  return {
-    colors: [...colors],
-    fonts: [...fonts],
-    lengths: [...lengths],
-    shadows: [...shadows],
-    byToken,
-  };
 }
 
 export function buildDesignSystemCardPreviewDoc(theme: DesignSystemTheme) {

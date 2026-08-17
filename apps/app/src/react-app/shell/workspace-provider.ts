@@ -1,10 +1,13 @@
 import * as React from "react";
 
+import type { ProviderListQueryInput } from "@/react-app/infra/provider-list-query";
+
 type WorkspaceContextValue = {
   client: unknown | null;
   engineId?: string | null;
   opencodeBaseUrl: string;
   selectedWorkspaceRoot: string;
+  modelCatalogSources: readonly ProviderListQueryInput[];
 };
 
 const WorkspaceContext = React.createContext<WorkspaceContextValue | null>(null);
@@ -14,6 +17,7 @@ type WorkspaceProviderProps = {
   engineId?: string | null;
   opencodeBaseUrl?: string;
   selectedWorkspaceRoot: string;
+  modelCatalogSources?: readonly ProviderListQueryInput[];
   children: React.ReactNode;
 };
 
@@ -22,11 +26,12 @@ export function WorkspaceProvider({
   engineId,
   opencodeBaseUrl = "",
   selectedWorkspaceRoot,
+  modelCatalogSources = [],
   children,
 }: WorkspaceProviderProps) {
   const value = React.useMemo(
-    () => ({ client, engineId, opencodeBaseUrl, selectedWorkspaceRoot }),
-    [client, engineId, opencodeBaseUrl, selectedWorkspaceRoot],
+    () => ({ client, engineId, opencodeBaseUrl, selectedWorkspaceRoot, modelCatalogSources }),
+    [client, engineId, modelCatalogSources, opencodeBaseUrl, selectedWorkspaceRoot],
   );
 
   return React.createElement(WorkspaceContext.Provider, { value }, children);

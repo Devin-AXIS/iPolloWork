@@ -1040,28 +1040,36 @@ export function createWorkspaceStore({ app, defaultDenBaseUrl, defaultRequireSig
     const rawFolderPath = String(input.folderPath ?? "").trim();
     if (!rawFolderPath) throw new Error("folderPath is required");
     const folderPath = await normalizeLocalWorkspacePath(rawFolderPath);
-    await mkdir(folderPath, { recursive: true });
-    const preset = String(input.preset ?? "starter");
-    const workspace = normalizeWorkspaceEntry({
-      id: localWorkspaceId(folderPath),
-      name: String(input.name ?? (path.basename(folderPath) || "Workspace")),
-      displayName: String(input.name ?? (path.basename(folderPath) || "Workspace")),
-      path: folderPath,
-      preset,
-      workContextId: input.workContextId,
-      workspaceType: "local",
-      engineId: input.engineId,
-    });
-    if (workspace.engineId === "opencode") {
-      await mkdir(path.join(folderPath, ".opencode"), { recursive: true });
-      await writeWorkspaceiPolloWorkConfig(folderPath, defaultWorkspaceiPolloWorkConfig(folderPath, preset));
-    }
+    const folderPathKey = normalizeWorkspacePathKey(folderPath);
 
-    return mutateWorkspaceState((state) => {
-      const key = workspacePathKey(workspace);
-      state.workspaces = state.workspaces.filter(
-        (entry) => entry.id !== workspace.id && normalizeWorkspacePathKey(entry.path) !== key,
+    return mutateWorkspaceState(async (state) => {
+      const existingWorkspace = state.workspaces.find(
+        (entry) => entry?.workspaceType !== "remote" && workspacePathKey(entry) === folderPathKey,
       );
+      if (existingWorkspace) {
+        state.selectedId = existingWorkspace.id;
+        state.activeId = existingWorkspace.id;
+        state.watchedId = existingWorkspace.id;
+        return state;
+      }
+
+      await mkdir(folderPath, { recursive: true });
+      const preset = String(input.preset ?? "starter");
+      const workspace = normalizeWorkspaceEntry({
+        id: localWorkspaceId(folderPath),
+        name: String(input.name ?? (path.basename(folderPath) || "Workspace")),
+        displayName: String(input.name ?? (path.basename(folderPath) || "Workspace")),
+        path: folderPath,
+        preset,
+        workContextId: input.workContextId,
+        workspaceType: "local",
+        engineId: input.engineId,
+      });
+      if (workspace.engineId === "opencode") {
+        await mkdir(path.join(folderPath, ".opencode"), { recursive: true });
+        await writeWorkspaceiPolloWorkConfig(folderPath, defaultWorkspaceiPolloWorkConfig(folderPath, preset));
+      }
+
       state.workspaces.push(workspace);
       state.selectedId = workspace.id;
       state.activeId = workspace.id;

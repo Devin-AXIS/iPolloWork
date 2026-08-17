@@ -20,7 +20,13 @@ import {
 } from "@/components/ui/tooltip";
 import { useWorkspace } from "@/react-app/shell/workspace-provider";
 import { useCheckDesktopRestriction } from "@/react-app/domains/cloud/desktop-config-provider";
-import { getSelectableChatProviderItems, useProviderListQuery } from "@/react-app/infra/provider-list-query";
+import {
+  ensureMergedProviderListQuery,
+  getSelectableChatProviderItems,
+  isModelAvailableInConnectedProviders,
+  useProviderListQuery,
+} from "@/react-app/infra/provider-list-query";
+import { getReactQueryClient } from "@/react-app/infra/query-client";
 import {
   Command,
   CommandCollection,
@@ -45,8 +51,15 @@ function getProviderDisplayName(providerId: string) {
 }
 
 function useModelOptions(open: boolean) {
-  const { client, engineId, opencodeBaseUrl, selectedWorkspaceRoot } = useWorkspace();
+  const {
+    client,
+    engineId,
+    modelCatalogSources,
+    opencodeBaseUrl,
+    selectedWorkspaceRoot,
+  } = useWorkspace();
   const checkDesktopRestriction = useCheckDesktopRestriction();
+  const [catalog, setCatalog] = React.useState<Awaited<ReturnType<typeof ensureMergedProviderListQuery>> | null>(null);
 
   const { data, refetch } = useProviderListQuery({
     client,
@@ -56,19 +69,28 @@ function useModelOptions(open: boolean) {
     enabled: Boolean(client),
   });
 
+  const loadCatalog = React.useCallback(async () => {
+    if (!client) return;
+    await refetch();
+    const sources = modelCatalogSources.length
+      ? modelCatalogSources
+      : [{ client, engineId, baseUrl: opencodeBaseUrl, directory: selectedWorkspaceRoot }];
+    setCatalog(await ensureMergedProviderListQuery(getReactQueryClient(), sources));
+  }, [client, engineId, modelCatalogSources, opencodeBaseUrl, refetch, selectedWorkspaceRoot]);
+
   React.useEffect(() => {
-    if (!open || !client) return;
-    void refetch();
-  }, [client, open, refetch]);
+    if (!open) return;
+    void loadCatalog();
+  }, [loadCatalog, open]);
 
   React.useEffect(() => {
     if (!client) return;
     const handler = () => {
-      void refetch();
+      void loadCatalog();
     };
     window.addEventListener(newProvidersEvent, handler);
     return () => window.removeEventListener(newProvidersEvent, handler);
-  }, [client, refetch]);
+  }, [client, loadCatalog]);
 
   // Apply org-level restrictions (dev #1505) on top of the raw model list
   // so the picker never surfaces blocked options:
@@ -80,7 +102,7 @@ function useModelOptions(open: boolean) {
       restriction: "allowCustomProviders",
     });
 
-    const options = getSelectableChatProviderItems(data)
+    const options = getSelectableChatProviderItems(catalog ?? data)
       .flatMap((provider) =>
         Object.entries(provider.models).map(([id, model]) => ({
           providerID: provider.id,
@@ -93,6 +115,11 @@ function useModelOptions(open: boolean) {
           behaviorValue: null,
           isFree: false,
           isConnected: true,
+          disabled: !data || !isModelAvailableInConnectedProviders(data, {
+            providerID: provider.id,
+            modelID: id,
+          }),
+          footer: t("model_picker.engine_unavailable"),
           supportsVision: modelSupportsVision(model),
         })),
       );
@@ -113,7 +140,7 @@ function useModelOptions(open: boolean) {
 
       return true;
     });
-  }, [checkDesktopRestriction, data]);
+  }, [catalog, checkDesktopRestriction, data]);
 
   return {
     options,
@@ -258,10 +285,13 @@ export function ModelListContent({
                 const visionBadgeLabel = option.supportsVision ? t("model_picker.badge_vision") : null;
                 return (
                   <CommandItem
-                    className="gap-2"
+                    className="gap-2 data-disabled:opacity-50"
                     key={item.id}
                     value={`${option.providerID}:${option.modelID} ${option.title} ${option.description ?? ""}`}
-                    onClick={() => handleSelect(option)}
+                    disabled={option.disabled}
+                    onClick={() => {
+                      if (!option.disabled) handleSelect(option);
+                    }}
                     data-checked={isSameModel(value, option)}
                   >
                     <ProviderIcon providerId={option.providerID} providerName={option.description} className="size-3.5 opacity-70" size={14} />
@@ -275,7 +305,9 @@ export function ModelListContent({
                         ) : null}
                       </span>
                       <span className="block truncate text-xs text-muted-foreground">
-                        {option.description ?? getProviderDisplayName(option.providerID)}
+                        {option.disabled
+                          ? option.footer
+                          : option.description ?? getProviderDisplayName(option.providerID)}
                       </span>
                     </span>
                   </CommandItem>

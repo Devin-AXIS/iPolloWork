@@ -18,6 +18,7 @@ import type {
   ConversationSnapshot,
   ConversationStatus,
 } from "../engine/conversation-engine";
+import { completeConversationMessage } from "../engine/conversation-engine";
 
 type SyncScope = {
   workspaceId: string;
@@ -584,6 +585,19 @@ function applyEvent(entry: SyncEntry, workspaceId: string, event: ConversationEv
     return;
   }
 
+  if (event.type === "message.completed") {
+    if (!isTrackedSession(entry, event.sessionId)) return;
+    if (entry.deltaFlushBuffer.length > 0) flushDeltas(entry, workspaceId);
+    queryClient.setQueryData<UIMessage[]>(transcriptKey(workspaceId, event.sessionId), (current = []) =>
+      current.map((message) =>
+        message.id === event.messageId
+          ? completeConversationMessage(message, event.completedAt)
+          : message,
+      ),
+    );
+    return;
+  }
+
   if (event.type === "message.removed") {
     if (!isTrackedSession(entry, event.sessionId)) return;
     queryClient.setQueryData<UIMessage[]>(transcriptKey(workspaceId, event.sessionId), (current = []) =>
@@ -618,7 +632,7 @@ function applyEvent(entry: SyncEntry, workspaceId: string, event: ConversationEv
     }
     queryClient.setQueryData<UIMessage[]>(transcriptKey(workspaceId, event.sessionId), (current = []) => {
       const existing = current.find((message) => message.id === event.messageId);
-      const role = existing?.role ?? inferStubRole(current);
+      const role = event.messageRole ?? existing?.role ?? inferStubRole(current);
       const withMessage = upsertMessage(current, { id: event.messageId, role, parts: [] });
       const seededPartId = getPartMetadataId(seededPart) ?? event.partId;
       let next = upsertPart(withMessage, event.messageId, seededPartId, seededPart);

@@ -1,4 +1,5 @@
 import { DEEPSEEK_HARNESS_ENGINE_ID } from "@ipollowork/types/workspace";
+import { providerApiKeyCredentialRef } from "@ipollowork/types/provider-credentials";
 
 import {
   isDeepSeekHarnessRpcClient,
@@ -28,12 +29,27 @@ type DeepSeekHarnessCredentialDescription = {
   credentials: Record<string, { configured?: boolean; writable?: boolean }>;
 };
 
-const PROVIDER_CREDENTIALS: Record<string, string> = {
-  "deepseek-official": "DEEPSEEK_API_KEY",
+type DeepSeekHarnessProviderDirectory = {
+  providers: Array<{
+    provider: string;
+    displayName: string;
+    settingsNs: string;
+    settingsPath: string[];
+    active: boolean;
+  }>;
 };
 
-function credentialRef(providerId: string) {
-  return PROVIDER_CREDENTIALS[providerId] ?? null;
+type DeepSeekHarnessSettingsDescription = {
+  namespaces: Array<{ ns: string; value?: unknown }>;
+};
+
+function readPath(value: unknown, path: readonly string[]): unknown {
+  let current = value;
+  for (const segment of path) {
+    if (!current || typeof current !== "object" || Array.isArray(current)) return undefined;
+    current = (current as Record<string, unknown>)[segment];
+  }
+  return current;
 }
 
 function connection(client: unknown): ProviderEngineConnection {
@@ -42,17 +58,34 @@ function connection(client: unknown): ProviderEngineConnection {
   }
 
   const listModels = () => client.call<DeepSeekHarnessModelList>("llm.models", {});
+  const listProviderDirectory = () => client.call<DeepSeekHarnessProviderDirectory>("llm.providers", {});
+  const describeSettings = () => client.call<DeepSeekHarnessSettingsDescription>("settings.describe", {});
   const describeCredentials = (refs: string[]): Promise<DeepSeekHarnessCredentialDescription> => refs.length
     ? client.call<DeepSeekHarnessCredentialDescription>("credentials.describe", { refs })
     : Promise.resolve({ credentials: {} });
 
   return {
     async listProviders() {
-      const models = await listModels();
-      const refs = [...new Set(models.groups.flatMap((group) => credentialRef(group.id) ?? []))];
+      const [models, directory, settings] = await Promise.all([
+        listModels(),
+        listProviderDirectory(),
+        describeSettings(),
+      ]);
+      const namespaceValues = new Map(settings.namespaces.map((entry) => [entry.ns, entry.value]));
+      const refsByProvider = new Map(directory.providers.flatMap((entry) => {
+        const profile = readPath(namespaceValues.get(entry.settingsNs), entry.settingsPath);
+        const ref = profile && typeof profile === "object" && !Array.isArray(profile)
+          ? (profile as Record<string, unknown>).apiKeyEnv
+          : undefined;
+        return typeof ref === "string" && ref.trim()
+          ? [[entry.provider, ref.trim()] as const]
+          : [];
+      }));
+      refsByProvider.set("deepseek-official", providerApiKeyCredentialRef("deepseek-official"));
+      const refs = [...new Set(models.groups.flatMap((group) => refsByProvider.get(group.id) ?? []))];
       const credentialState = await describeCredentials(refs);
       const all: ProviderListItem[] = models.groups.map((group) => {
-        const ref = credentialRef(group.id);
+        const ref = refsByProvider.get(group.id) ?? null;
         return {
           id: group.id,
           name: group.name,
@@ -78,7 +111,7 @@ function connection(client: unknown): ProviderEngineConnection {
       return {
         all,
         connected: all.flatMap((provider) => {
-          const ref = credentialRef(provider.id);
+          const ref = refsByProvider.get(provider.id) ?? null;
           return !ref || credentialState.credentials[ref]?.configured ? [provider.id] : [];
         }),
         default: Object.fromEntries(
@@ -89,9 +122,10 @@ function connection(client: unknown): ProviderEngineConnection {
     async listAuthMethods() {
       const models = await listModels();
       return Object.fromEntries(
-        models.groups.flatMap((group) => credentialRef(group.id)
-          ? [[group.id, [{ type: "api" as const, label: "API key" }]]]
-          : []),
+        models.groups.map((group) => [
+          group.id,
+          [{ type: "api" as const, label: "API key" }],
+        ]),
       );
     },
     async authorizeOAuth() {
@@ -101,13 +135,25 @@ function connection(client: unknown): ProviderEngineConnection {
       throw new Error("DeepSeek Harness does not expose OAuth for this provider");
     },
     async setApiKey(providerId, apiKey) {
-      const ref = credentialRef(providerId);
-      if (!ref) throw new Error(`DeepSeek Harness provider credentials are unavailable: ${providerId}`);
+      const resolvedProviderId = providerId.trim().toLowerCase();
+      const directory = await listProviderDirectory();
+      const route = directory.providers.find((entry) => entry.provider === resolvedProviderId);
+      if (!route) {
+        throw new Error(`DeepSeek Harness does not support provider: ${providerId}`);
+      }
+      const ref = providerApiKeyCredentialRef(resolvedProviderId);
+      await client.call("settings.mutate", {
+        ns: route.settingsNs,
+        ops: [{
+          op: "set",
+          path: [...route.settingsPath, "apiKeyEnv"],
+          value: ref,
+        }],
+      });
       await client.call("credentials.set", { ref, value: apiKey });
     },
     async removeCredentials(providerId) {
-      const ref = credentialRef(providerId);
-      if (!ref) throw new Error(`DeepSeek Harness provider credentials are unavailable: ${providerId}`);
+      const ref = providerApiKeyCredentialRef(providerId);
       await client.call("credentials.unset", { ref });
     },
     async readDisabledProviders() {

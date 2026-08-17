@@ -123,6 +123,41 @@ export function hasVideoDeliveryRequirements(requirements: VideoDeliveryRequirem
     || requirements.targetDurationSeconds != null;
 }
 
+export type VideoArtifactCompletionRequirement = {
+  sourcePath: string;
+  baselineFingerprint: string;
+  assistantMessageBaseline: number;
+};
+
+export function videoArtifactFingerprint(content: string) {
+  let hash = 2_166_136_261;
+  for (let index = 0; index < content.length; index += 1) {
+    hash ^= content.charCodeAt(index);
+    hash = Math.imul(hash, 16_777_619);
+  }
+  return `${content.length}:${(hash >>> 0).toString(16)}`;
+}
+
+export function createVideoArtifactCompletionRequirement(
+  sourcePath: string,
+  content: string,
+  assistantMessageBaseline: number,
+): VideoArtifactCompletionRequirement {
+  return {
+    sourcePath,
+    baselineFingerprint: videoArtifactFingerprint(content),
+    assistantMessageBaseline,
+  };
+}
+
+export function unchangedVideoArtifactIssue(beforeFingerprint: string | null, after: string) {
+  if (beforeFingerprint === null || beforeFingerprint !== videoArtifactFingerprint(after)) return null;
+  return {
+    code: "artifact_unchanged",
+    message: "The video source was not modified before the run ended.",
+  };
+}
+
 export function videoCompositionHasVoiceover(content?: string | null) {
   if (!content) return false;
   return /<audio\b[^>]*(?:data-ipw-voiceover\s*=\s*["']true["']|id\s*=\s*["'](?:voiceover|vo-|narration-)|src\s*=\s*["'][^"']*(?:voiceover[-_]|\/audio\/(?:voice|narration)))/i.test(content);

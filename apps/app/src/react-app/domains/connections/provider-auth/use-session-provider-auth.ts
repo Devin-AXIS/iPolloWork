@@ -30,6 +30,7 @@ export type UseSessionProviderAuthInput = {
   disabledProviderIds: string[];
   selectedWorkspace: RouteWorkspace | null | undefined;
   selectedWorkspaceEndpoint: ResolvedWorkspaceEndpoint | null;
+  providerBaseUrl: string;
   selectedWorkspaceRoot: string;
   selectedWorkspaceId: string;
   setProviders: (value: ProviderListItem[]) => void;
@@ -47,6 +48,7 @@ export function useSessionProviderAuth(input: UseSessionProviderAuthInput) {
     disabledProviderIds,
     selectedWorkspace,
     selectedWorkspaceEndpoint,
+    providerBaseUrl,
     selectedWorkspaceRoot,
     selectedWorkspaceId,
     setProviders,
@@ -67,6 +69,7 @@ export function useSessionProviderAuth(input: UseSessionProviderAuthInput) {
     disabledProviderIds,
     selectedWorkspace,
     selectedWorkspaceEndpoint,
+    providerBaseUrl,
     selectedWorkspaceRoot,
   });
   stateRef.current = {
@@ -77,6 +80,7 @@ export function useSessionProviderAuth(input: UseSessionProviderAuthInput) {
     disabledProviderIds,
     selectedWorkspace,
     selectedWorkspaceEndpoint,
+    providerBaseUrl,
     selectedWorkspaceRoot,
   };
 
@@ -100,6 +104,7 @@ export function useSessionProviderAuth(input: UseSessionProviderAuthInput) {
                 name: workspaceLabel(stateRef.current.selectedWorkspace),
               } as WorkspaceDisplay)
             : emptyWorkspaceDisplay,
+        providerBaseUrl: () => stateRef.current.providerBaseUrl,
         selectedWorkspaceRoot: () => stateRef.current.selectedWorkspaceRoot,
         allowCloudImports: () => (stateRef.current.selectedWorkspace?.engineId?.trim() || DEFAULT_ENGINE_ID) === DEFAULT_ENGINE_ID,
         runtimeWorkspaceId: () => stateRef.current.selectedWorkspaceEndpoint?.workspaceId ?? null,

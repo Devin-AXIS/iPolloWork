@@ -294,10 +294,21 @@ export function registerWorkspaceRoutes(options: RegisterWorkspaceRoutesOptions)
     }
 
     const workspacePath = resolve(folderPath);
+    const workspaceId = workspaceIdForPath(workspacePath);
+    const existingWorkspace = config.workspaces.find((entry) =>
+      entry.workspaceType !== "remote" && entry.id === workspaceId
+    );
+    if (existingWorkspace) {
+      return jsonResponse({
+        activeId: existingWorkspace.id,
+        workspaces: config.workspaces.map(serializeWorkspace),
+        persisted: true,
+      });
+    }
+
     await ensureDir(workspacePath);
     await ensureWorkspaceFiles(workspacePath, preset);
 
-    const workspaceId = workspaceIdForPath(workspacePath);
     // Seed the per-workspace ipollowork config in the runtime DB (replaces the
     // legacy `.opencode/ipollowork.json` file). No-op if a row already exists.
     await seediPolloWorkWorkspaceConfigIfEmpty(

@@ -27,6 +27,8 @@ const ALLOWED_METHODS = new Set([
   "credentials.describe",
   "credentials.set",
   "credentials.unset",
+  "settings.describe",
+  "settings.mutate",
   "workspace.list",
   "workspace.archiveSession",
   "agentPreset.list",
@@ -41,6 +43,7 @@ const READ_METHODS = new Set([
   "llm.providers",
   "llm.models",
   "credentials.describe",
+  "settings.describe",
   "workspace.list",
   "agentPreset.list",
 ]);

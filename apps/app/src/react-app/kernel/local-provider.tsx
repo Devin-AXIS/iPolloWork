@@ -95,8 +95,16 @@ export function getEnginePreferences(
   preferences: LocalPreferences,
   engineId?: string | null,
 ): EnginePreferences {
-  return preferences.enginePreferences[engineId?.trim() || DEFAULT_ENGINE_ID]
+  const resolvedEngineId = engineId?.trim() || DEFAULT_ENGINE_ID;
+  const enginePreferences = preferences.enginePreferences[resolvedEngineId]
     ?? EMPTY_ENGINE_PREFERENCES;
+  const sharedModelPreferences = preferences.enginePreferences[DEFAULT_ENGINE_ID]
+    ?? EMPTY_ENGINE_PREFERENCES;
+  return {
+    ...enginePreferences,
+    model: sharedModelPreferences.model,
+    modelVariant: sharedModelPreferences.modelVariant,
+  };
 }
 
 export function updateEnginePreferences(
@@ -105,11 +113,26 @@ export function updateEnginePreferences(
   updater: (previous: EnginePreferences) => EnginePreferences,
 ): LocalPreferences {
   const resolvedEngineId = engineId?.trim() || DEFAULT_ENGINE_ID;
+  const previousEngine = getEnginePreferences(preferences, resolvedEngineId);
+  const next = updater(previousEngine);
+  const previousShared = preferences.enginePreferences[DEFAULT_ENGINE_ID]
+    ?? EMPTY_ENGINE_PREFERENCES;
   return {
     ...preferences,
     enginePreferences: {
       ...preferences.enginePreferences,
-      [resolvedEngineId]: updater(getEnginePreferences(preferences, resolvedEngineId)),
+      [DEFAULT_ENGINE_ID]: {
+        ...previousShared,
+        model: next.model,
+        modelVariant: next.modelVariant,
+      },
+      [resolvedEngineId]: {
+        ...(preferences.enginePreferences[resolvedEngineId] ?? EMPTY_ENGINE_PREFERENCES),
+        ...(resolvedEngineId === DEFAULT_ENGINE_ID
+          ? { model: next.model, modelVariant: next.modelVariant }
+          : {}),
+        mode: next.mode,
+      },
     },
   };
 }
@@ -182,11 +205,18 @@ export function LocalProvider({ children }: LocalProviderProps) {
       : DEFAULT_DESKTOP_NOTIFICATION_PREFERENCE;
     const enginePreferences = normalizeEnginePreferences(persisted.enginePreferences);
     const openCodePreferences = enginePreferences[DEFAULT_ENGINE_ID] ?? EMPTY_ENGINE_PREFERENCES;
+    const firstConfiguredModel = Object.values(enginePreferences).find((selection) => selection.model)?.model
+      ?? null;
+    const firstConfiguredVariant = Object.values(enginePreferences).find(
+      (selection) => selection.modelVariant,
+    )?.modelVariant ?? null;
     enginePreferences[DEFAULT_ENGINE_ID] = {
       model: openCodePreferences.model
+        ?? firstConfiguredModel
         ?? normalizeModelRef(persisted.defaultModel)
         ?? readStoredDefaultModel(),
       modelVariant: openCodePreferences.modelVariant
+        ?? firstConfiguredVariant
         ?? (typeof persisted.modelVariant === "string" ? persisted.modelVariant : null),
       mode: openCodePreferences.mode
         ?? (typeof persisted.selectedAgent === "string" ? persisted.selectedAgent : null),
