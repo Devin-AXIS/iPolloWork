@@ -6,6 +6,7 @@ import {
   artifactDirectoryPath,
   artifactPathMatchesTarget,
   canOpenArtifactInContext,
+  getArtifactsFromMessages,
   selectArtifactContextOutputs,
   selectTemplateEntryArtifacts,
 } from "../src/lib/artifacts";
@@ -147,5 +148,22 @@ describe("video artifact entry routing", () => {
       [entry, slides, supportFile],
       context,
     )).toEqual([entry, slides]);
+  });
+
+  test("ignores malformed engine tool inputs instead of crashing the conversation", () => {
+    const messages = [{
+      id: "assistant-1",
+      role: "assistant" as const,
+      parts: [{
+        type: "dynamic-tool" as const,
+        toolName: "edit",
+        toolCallId: "edit-1",
+        state: "output-available" as const,
+        input: { file_path: "design/session/entry.html" },
+        output: "done",
+      }],
+    }];
+
+    expect(getArtifactsFromMessages(messages)).toEqual([]);
   });
 });

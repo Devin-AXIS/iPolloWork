@@ -24,6 +24,7 @@ import {
   type iPolloWorkServerCapabilities,
   type iPolloWorkServerClient,
 } from "@/app/lib/ipollowork-server";
+import { DeepSeekHarnessClient } from "@/app/lib/deepseek-harness-client";
 import { resolveWorkspaceEndpoint } from "@/app/lib/workspace-endpoint";
 import { buildiPolloWorkEnvRuntimeKey } from "@/app/lib/ipollowork-env-runtime";
 import {
@@ -100,7 +101,11 @@ import { useBootState } from "./boot-state";
 import { SettingsShell } from "@/react-app/domains/settings/shell/settings-shell";
 import { createExtensionsStore, useExtensionsStoreSnapshot } from "@/react-app/domains/settings/state/extensions-store";
 import { usePlatform } from "@/react-app/kernel/platform";
-import { useLocal } from "@/react-app/kernel/local-provider";
+import {
+  getEnginePreferences,
+  updateEnginePreferences,
+  useLocal,
+} from "@/react-app/kernel/local-provider";
 import {
   ipolloworkServerRestart,
   engineStart,
@@ -127,10 +132,11 @@ import {
 } from "@/app/utils";
 import { ModelPickerModal } from "@/react-app/domains/session/modals/model-picker-modal";
 import type { ModelRef } from "@/app/types";
+import { DEEPSEEK_HARNESS_ENGINE_ID, DEFAULT_ENGINE_ID } from "@ipollowork/types/workspace";
 import { recordInspectorEvent } from "../../app/lib/app-inspector";
 import { ensureDesktopLocaliPolloWorkConnection } from "./desktop-local-ipollowork";
 import { resolveiPolloWorkConnection } from "./ipollowork-connection";
-import { conversationEngineAdapters } from "@/react-app/domains/session/engine/opencode-conversation-engine";
+import { conversationEngineAdapters } from "@/react-app/domains/session/engine/conversation-engines";
 import { notifyAlert } from "./notifications";
 import { useReloadCoordinator } from "./reload-coordinator";
 import { buildFeedbackUrl } from "@/app/lib/feedback";
@@ -375,6 +381,7 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
   const [token, setToken] = useState("");
   const [ipolloworkClient, setiPolloWorkClient] = useState<iPolloWorkServerClient | null>(null);
   const [activeClient, setActiveClient] = useState<Client | null>(null);
+  const [activeProviderClient, setActiveProviderClient] = useState<unknown | null>(null);
   const [busy, setBusy] = useState(false);
   const [busyLabel, setBusyLabel] = useState<string | null>(null);
   const workspacesRef = useRef<RouteWorkspace[]>([]);
@@ -437,6 +444,7 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
 
   const routeStateRef = useRef({
     activeClient: null as Client | null,
+    providerClient: null as unknown | null,
     selectedWorkspaceId: "",
     selectedWorkspaceRoot: "",
     selectedWorkspaceType: "local" as "local" | "remote",
@@ -456,6 +464,8 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
     () => workspaces.find((workspace) => workspace.id === selectedWorkspaceId) ?? (selectedWorkspaceId ? null : workspaces[0] ?? null),
     [selectedWorkspaceId, workspaces],
   );
+  const activeEngineId = selectedWorkspace?.engineId?.trim() || DEFAULT_ENGINE_ID;
+  const activeProviderCapabilities = providerEngineAdapters.get(activeEngineId).capabilities;
   const selectedWorkspaceRoot = selectedWorkspace?.path?.trim() || "";
   const selectedWorkspaceDisplay = useMemo<WorkspaceDisplay>(
     () =>
@@ -476,6 +486,7 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
 
   routeStateRef.current = {
     activeClient,
+    providerClient: activeProviderClient,
     selectedWorkspaceId,
     selectedWorkspaceRoot,
     selectedWorkspaceType: selectedWorkspace?.workspaceType ?? "local",
@@ -568,7 +579,7 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
   const providerAuthStore = useMemo(
     () =>
       createProviderAuthStore({
-        client: () => routeStateRef.current.activeClient,
+        client: () => routeStateRef.current.providerClient,
         providers: () => routeStateRef.current.providerItems,
         providerDefaults: () => routeStateRef.current.providerDefaults,
         providerConnectedIds: () => routeStateRef.current.providerConnectedIds,
@@ -576,7 +587,9 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
         checkDesktopAppRestriction: checkDesktopRestriction,
         selectedWorkspaceDisplay: () => routeStateRef.current.selectedWorkspaceDisplay,
         selectedWorkspaceRoot: () => routeStateRef.current.selectedWorkspaceRoot,
-        allowCloudImports: () => readActiveWorkContextId() === PERSONAL_WORK_CONTEXT_ID,
+        allowCloudImports: () =>
+          readActiveWorkContextId() === PERSONAL_WORK_CONTEXT_ID
+          && (routeStateRef.current.selectedWorkspaceDisplay.engineId?.trim() || DEFAULT_ENGINE_ID) === DEFAULT_ENGINE_ID,
         runtimeWorkspaceId: () => routeStateRef.current.runtimeWorkspaceId,
         ensureRuntimeWorkspaceId: async () =>
           routeStateRef.current.runtimeWorkspaceId?.trim() ||
@@ -664,8 +677,10 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
   const iPolloWorkModelsConnected =
     (cloudSession.isSignedIn && hasiPolloWorkCloudProvider) ||
     hasiPolloWorkModelsProvider(providerConnectedIds);
-  const showiPolloWorkModelsSubscribe = !iPolloWorkModelsConnected && !iPolloWorkModelsPromoHidden;
-  const showiPolloWorkModelsConnect = !iPolloWorkModelsConnected && iPolloWorkModelsPromoHidden;
+  const showiPolloWorkModelsSubscribe =
+    activeProviderCapabilities.cloudProviderImports && !iPolloWorkModelsConnected && !iPolloWorkModelsPromoHidden;
+  const showiPolloWorkModelsConnect =
+    activeProviderCapabilities.cloudProviderImports && !iPolloWorkModelsConnected && iPolloWorkModelsPromoHidden;
 
   useEffect(() => {
     const handlePromoChanged = () => setiPolloWorkModelsPromoHidden(isiPolloWorkModelsPromoHidden());
@@ -690,7 +705,10 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
   }, [cloudSession.baseUrl, navigate, platform, providerAuthStore, selectedWorkspaceId]);
 
   const handleOpenProviderAuth = useCallback(() => {
-    if (checkDesktopRestriction({ restriction: "allowCustomProviders" })) {
+    if (
+      activeProviderCapabilities.customProviders
+      && checkDesktopRestriction({ restriction: "allowCustomProviders" })
+    ) {
       restrictionNotice.show({
         title: "Adding custom providers is disabled",
         message: "Your organization administrator has disabled adding custom providers.",
@@ -699,7 +717,7 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
     }
 
     void providerAuthStore.openProviderAuthModal();
-  }, [checkDesktopRestriction, providerAuthStore, restrictionNotice]);
+  }, [activeProviderCapabilities.customProviders, checkDesktopRestriction, providerAuthStore, restrictionNotice]);
 
   useEffect(() => {
     if (!activeClient || !selectedWorkspaceId) return;
@@ -749,9 +767,11 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
   );
   const opencodeBaseUrl = selectedWorkspaceEndpoint?.opencodeBaseUrl ?? "";
   const runtimeWorkspaceId = selectedWorkspaceEndpoint?.workspaceId ?? selectedWorkspace?.id ?? null;
+  const activeEnginePreferences = getEnginePreferences(local.prefs, activeEngineId);
   routeStateRef.current.runtimeWorkspaceId = runtimeWorkspaceId;
 
   const opencodeClient = useMemo(() => {
+    if ((selectedWorkspace?.engineId?.trim() || DEFAULT_ENGINE_ID) !== DEFAULT_ENGINE_ID) return null;
     if (!selectedWorkspaceEndpoint || !selectedWorkspaceEndpoint.token) return null;
     return createClient(
       selectedWorkspaceEndpoint.opencodeBaseUrl,
@@ -761,28 +781,56 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
         mode: "ipollowork",
       },
     );
-  }, [selectedWorkspaceEndpoint, selectedWorkspaceRoot]);
+  }, [selectedWorkspace?.engineId, selectedWorkspaceEndpoint, selectedWorkspaceRoot]);
   const conversation = useMemo(
     () => opencodeBaseUrl && selectedWorkspaceEndpoint?.token
       ? conversationEngineAdapters.get(selectedWorkspace?.engineId).connect({
           baseUrl: opencodeBaseUrl,
           token: selectedWorkspaceEndpoint.token,
           directory: selectedWorkspaceRoot || undefined,
+          serverBaseUrl: selectedWorkspaceEndpoint.baseUrl,
+          workspaceId: selectedWorkspaceEndpoint.workspaceId,
         })
       : null,
-    [opencodeBaseUrl, selectedWorkspace?.engineId, selectedWorkspaceEndpoint?.token, selectedWorkspaceRoot],
+    [opencodeBaseUrl, selectedWorkspace?.engineId, selectedWorkspaceEndpoint?.baseUrl, selectedWorkspaceEndpoint?.token, selectedWorkspaceEndpoint?.workspaceId, selectedWorkspaceRoot],
   );
+  const engineProviderClient = useMemo(() => {
+    if (activeEngineId === DEFAULT_ENGINE_ID) return opencodeClient;
+    if (activeEngineId !== DEEPSEEK_HARNESS_ENGINE_ID || !selectedWorkspaceEndpoint?.token) return null;
+    return new DeepSeekHarnessClient({
+      serverBaseUrl: selectedWorkspaceEndpoint.baseUrl,
+      workspaceId: selectedWorkspaceEndpoint.workspaceId,
+      token: selectedWorkspaceEndpoint.token,
+    });
+  }, [activeEngineId, opencodeClient, selectedWorkspaceEndpoint]);
+  const setActiveModel = useCallback((model: ModelRef) => {
+    local.setPrefs((previous) => updateEnginePreferences(
+      previous,
+      activeEngineId,
+      (selection) => ({
+        ...selection,
+        model,
+        modelVariant: selection.model?.providerID === model.providerID
+          && selection.model.modelID === model.modelID
+          ? selection.modelVariant
+          : null,
+      }),
+    ));
+  }, [activeEngineId, local.setPrefs]);
 
   useEffect(() => {
     setActiveClient(opencodeClient);
   }, [opencodeClient]);
+  useEffect(() => {
+    setActiveProviderClient(engineProviderClient);
+  }, [engineProviderClient]);
 
   const handleModelPickerLoadError = useCallback((error: unknown) => {
     toast.error(error instanceof Error ? error.message : t("app.unknown_error"));
   }, []);
   const modelPicker = useModelPicker({
-    client: opencodeClient,
-    engineId: selectedWorkspace?.engineId,
+    client: engineProviderClient,
+    engineId: activeEngineId,
     baseUrl: opencodeBaseUrl,
     workspaceRoot: selectedWorkspaceRoot,
     onLoadError: handleModelPickerLoadError,
@@ -1015,11 +1063,7 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
         await engineAdapter.connect(opencodeClient).setApiKey(input.providerId, input.apiKey.trim());
       }
       if (input.setDefault) {
-        local.setPrefs((previous) => ({
-          ...previous,
-          defaultModel: { providerID: input.providerId, modelID: modelId },
-          modelVariant: null,
-        }));
+        setActiveModel({ providerID: input.providerId, modelID: modelId });
       }
       reloadCoordinator.markReloadRequired("config", { type: "config", name: "opencode.json", action: "updated" });
       try {
@@ -1039,7 +1083,7 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
     } finally {
       setLocalProviderBusy(false);
     }
-  }, [local, ipolloworkClient, opencodeClient, reloadCoordinator, runtimeWorkspaceId, selectedWorkspace, selectedWorkspaceEndpoint, selectedWorkspaceRoot]);
+  }, [ipolloworkClient, opencodeClient, reloadCoordinator, runtimeWorkspaceId, selectedWorkspace, selectedWorkspaceEndpoint, selectedWorkspaceRoot, setActiveModel]);
 
   useEffect(() => {
     local.setUi((previous) => ({ ...previous, view: "settings", tab: route.tab }));
@@ -1380,6 +1424,7 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
     extensionsStore.syncFromOptions();
   }, [
     activeClient,
+    activeProviderClient,
     connectionsStore,
     extensionsStore,
     ipolloworkServerStore,
@@ -1390,7 +1435,7 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
   ]);
 
   useEffect(() => {
-    if (!activeClient) {
+    if (!activeProviderClient) {
       setProviders([]);
       setProviderDefaults({});
       setProviderConnectedIds([]);
@@ -1398,8 +1443,12 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
       return;
     }
     void providerAuthStore.refreshProviders();
+  }, [activeProviderClient, providerAuthStore, selectedWorkspace?.id]);
+
+  useEffect(() => {
+    if (!activeClient) return;
     void connectionsStore.refreshMcpServers();
-  }, [activeClient, connectionsStore, providerAuthStore, selectedWorkspace?.id]);
+  }, [activeClient, connectionsStore, selectedWorkspace?.id]);
 
   const selectedWorkspaceName = selectedWorkspace?.displayNameResolved ?? t("session.workspace_fallback");
   const workspaceType = selectedWorkspace?.workspaceType ?? "local";
@@ -1653,7 +1702,7 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
             showiPolloWorkModelsConnect={showiPolloWorkModelsConnect}
             onSubscribeiPolloWorkModels={subscribeToiPolloWorkModels}
             onDismissiPolloWorkModels={dismissiPolloWorkModelsPromo}
-            cloudProvidersView={
+            cloudProvidersView={activeProviderCapabilities.cloudProviderImports ? (
               <CloudProvidersView
                 embedded
                 cloudOrgProviders={providerAuthSnapshot.cloudOrgProviders}
@@ -1665,7 +1714,7 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
                 removeCloudProvider={providerAuthStore.removeCloudProvider}
                 session={denSession}
               />
-            }
+            ) : null}
           />
         );
       case "preferences":
@@ -1930,13 +1979,6 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
           <AuthorizationCenterView
             client={ipolloworkServerSnapshot.ipolloworkServerClient}
             isRemoteWorkspace={isRemoteWorkspace}
-            onApplyChanges={isDesktopRuntime() && !isRemoteWorkspace ? handleApplyEnvironmentChanges : undefined}
-            applyBlocked={activeReloadBlockingSessions.length > 0}
-            applyBlockedReason={
-              activeReloadBlockingSessions.length > 0
-                ? t("settings.environment.apply_blocked_active_tasks")
-                : null
-            }
             runtimeKey={environmentRuntimeKey}
           />
         );
@@ -2015,20 +2057,11 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
         onClose={() => providerAuthStore.closeProviderAuthModal()}
       />
       <ConnectionsModals
-        client={activeClient}
-        projectDir={selectedWorkspaceRoot}
-        reloadBlocked={activeReloadBlockingSessions.length > 0}
-        activeSessions={activeReloadBlockingSessions}
-        isRemoteWorkspace={selectedWorkspace?.workspaceType === "remote"}
-        onForceStopSession={async (sessionId) => {
-          if (!conversation) return;
-          await conversation.abort(sessionId).catch(() => false);
-        }}
-        onReloadEngine={reloadCoordinator.reloadWorkspaceEngine}
+        serverClient={selectedWorkspaceEndpoint?.client ?? ipolloworkClient}
+        workspaceId={selectedWorkspace?.id ?? selectedWorkspaceId ?? null}
         modalState={{
           mcpAuthModalOpen: connectionsSnapshot.mcpAuthModalOpen,
           mcpAuthEntry: connectionsSnapshot.mcpAuthEntry,
-          mcpAuthNeedsReload: connectionsSnapshot.mcpAuthNeedsReload,
         }}
         onCloseMcpAuthModal={() => connectionsStore.closeMcpAuthModal()}
         onCompleteMcpAuthModal={() => connectionsStore.completeMcpAuthModal()}
@@ -2040,16 +2073,10 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
         setQuery={modelPicker.setQuery}
         target="default"
         current={
-          local.prefs.defaultModel ?? { providerID: "", modelID: "" }
+          activeEnginePreferences.model ?? { providerID: "", modelID: "" }
         }
         onSelect={(next: ModelRef) => {
-          local.setPrefs((prev) => ({
-            ...prev,
-            defaultModel: next,
-            modelVariant: prev.defaultModel?.providerID === next.providerID && prev.defaultModel.modelID === next.modelID
-              ? prev.modelVariant
-              : null,
-          }));
+          setActiveModel(next);
           modelPicker.setOpen(false);
         }}
         onBehaviorChange={() => {}}

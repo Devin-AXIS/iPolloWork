@@ -1,4 +1,17 @@
 import type { createOpencodeClient } from "@opencode-ai/sdk/v2/client";
+import { DEEPSEEK_HARNESS_ENGINE_ID } from "@ipollowork/types/workspace";
+import {
+  DeepSeekHarnessRpcError,
+  type DeepSeekHarnessRuntime,
+  DeepSeekHarnessUnavailableError,
+} from "../deepseek-harness-runtime.js";
+import {
+  listDeepSeekHarnessSessions,
+  mapDeepSeekHarnessMessages,
+  readDeepSeekHarnessHistory,
+  readDeepSeekHarnessSession,
+  readDeepSeekHarnessSnapshot,
+} from "../deepseek-harness-session-read-model.js";
 import { ApiError } from "../errors.js";
 import { buildSession, buildSessionList, buildSessionMessages, buildSessionSnapshot } from "../session-read-model.js";
 import type { ServerConfig, TokenScope, WorkspaceInfo } from "../types.js";
@@ -26,6 +39,7 @@ interface RegisterSessionRoutesOptions {
   resolveWorkspace: (config: ServerConfig, id: string) => Promise<WorkspaceInfo>;
   createWorkspaceOpencodeClient: (config: ServerConfig, workspace: WorkspaceInfo) => WorkspaceOpencodeClient;
   unwrapOpencodeResult: UnwrapOpencodeResult;
+  deepseekHarness: DeepSeekHarnessRuntime;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -45,9 +59,17 @@ export function registerSessionRoutes(options: RegisterSessionRoutesOptions): vo
     resolveWorkspace,
     createWorkspaceOpencodeClient,
     unwrapOpencodeResult,
+    deepseekHarness,
   } = options;
 
   function remapSessionReadError(error: unknown): never {
+    if (error instanceof DeepSeekHarnessUnavailableError) {
+      throw new ApiError(503, error.code, error.message);
+    }
+    if (error instanceof DeepSeekHarnessRpcError) {
+      const status = error.code === "not-found" || error.code === "session-not-found" ? 404 : 502;
+      throw new ApiError(status, `deepseek_harness_${error.code}`, error.message, error.details);
+    }
     if (error instanceof ApiError && error.code === "opencode_request_failed") {
       const details = error.details;
       const upstreamStatus =
@@ -67,6 +89,9 @@ export function registerSessionRoutes(options: RegisterSessionRoutesOptions): vo
     input: { roots?: boolean; start?: number; search?: string; limit?: number },
   ) {
     try {
+      if (workspace.engineId === DEEPSEEK_HARNESS_ENGINE_ID) {
+        return await listDeepSeekHarnessSessions(deepseekHarness, workspace, input);
+      }
       const opencode = createWorkspaceOpencodeClient(config, workspace);
       return buildSessionList(
         unwrapOpencodeResult(
@@ -86,6 +111,9 @@ export function registerSessionRoutes(options: RegisterSessionRoutesOptions): vo
 
   async function readWorkspaceSession(workspace: WorkspaceInfo, sessionId: string) {
     try {
+      if (workspace.engineId === DEEPSEEK_HARNESS_ENGINE_ID) {
+        return await readDeepSeekHarnessSession(deepseekHarness, workspace, sessionId);
+      }
       const opencode = createWorkspaceOpencodeClient(config, workspace);
       return buildSession(
         unwrapOpencodeResult(
@@ -104,6 +132,10 @@ export function registerSessionRoutes(options: RegisterSessionRoutesOptions): vo
     input: { limit?: number },
   ) {
     try {
+      if (workspace.engineId === DEEPSEEK_HARNESS_ENGINE_ID) {
+        const history = await readDeepSeekHarnessHistory(deepseekHarness, workspace, sessionId, input.limit);
+        return mapDeepSeekHarnessMessages(sessionId, history);
+      }
       const opencode = createWorkspaceOpencodeClient(config, workspace);
       return buildSessionMessages(
         unwrapOpencodeResult(
@@ -122,6 +154,9 @@ export function registerSessionRoutes(options: RegisterSessionRoutesOptions): vo
     input: { limit?: number },
   ) {
     try {
+      if (workspace.engineId === DEEPSEEK_HARNESS_ENGINE_ID) {
+        return await readDeepSeekHarnessSnapshot(deepseekHarness, workspace, sessionId, input.limit);
+      }
       const opencode = createWorkspaceOpencodeClient(config, workspace);
       const [session, messages, todos, statuses] = await Promise.all([
         opencode.session
@@ -196,11 +231,19 @@ export function registerSessionRoutes(options: RegisterSessionRoutesOptions): vo
       throw new ApiError(400, "invalid_payload", "sessionId is required");
     }
 
-    const opencode = createWorkspaceOpencodeClient(config, workspace);
-    unwrapOpencodeResult(
-      await opencode.session.delete({ sessionID: sessionId }),
-      `/session/${encodeURIComponent(sessionId)}`,
-    );
+    if (workspace.engineId === DEEPSEEK_HARNESS_ENGINE_ID) {
+      try {
+        await deepseekHarness.call("workspace.archiveSession", { sessionId });
+      } catch (error) {
+        remapSessionReadError(error);
+      }
+    } else {
+      const opencode = createWorkspaceOpencodeClient(config, workspace);
+      unwrapOpencodeResult(
+        await opencode.session.delete({ sessionID: sessionId }),
+        `/session/${encodeURIComponent(sessionId)}`,
+      );
+    }
 
     return jsonResponse({ ok: true });
   });

@@ -1872,34 +1872,6 @@ export function createRuntimeManager({ app, desktopRoot, listLocalWorkspacePaths
     };
   }
 
-  async function opencodeMcpAuth(projectDir, serverName) {
-    const safeProjectDir = String(projectDir ?? "").trim();
-    const safeServerName = String(serverName ?? "").trim();
-    if (!safeProjectDir) {
-      throw new Error("project_dir is required");
-    }
-    if (!safeServerName) {
-      throw new Error("server_name is required");
-    }
-
-    const program = resolveBinary("opencode");
-    if (!program) {
-      throw new Error("Failed to locate opencode.");
-    }
-
-    const result = await runShellCommand(program, ["mcp", "auth", safeServerName], {
-      cwd: safeProjectDir,
-      env: await buildChildEnv(),
-      timeoutMs: 120_000,
-    });
-    return {
-      ok: result.status === 0,
-      status: result.status,
-      stdout: result.stdout,
-      stderr: result.stderr,
-    };
-  }
-
   async function sandboxDoctor() {
     const candidates = resolveDockerCandidates();
     const debug = {
@@ -2208,7 +2180,6 @@ export function createRuntimeManager({ app, desktopRoot, listLocalWorkspacePaths
     orchestratorWorkspaceActivate,
     orchestratorInstanceDispose,
     orchestratorStartDetached,
-    opencodeMcpAuth,
     sandboxDoctor,
     sandboxStop,
     sandboxCleanupiPolloWorkContainers,

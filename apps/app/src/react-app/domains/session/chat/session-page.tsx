@@ -5,6 +5,11 @@ import type { UIMessage } from "ai";
 import { useNavigate } from "react-router-dom";
 import { Code2, Ellipsis, Eye, FileText, Film, FolderOpen, Globe, Image, LoaderCircle, Mic2, Palette, PanelRightClose, PanelRightOpen, Pencil, Presentation, Search, Settings2, Trash2, Upload, X, Zap } from "lucide-react";
 import { MAX_TEMPLATE_PACKAGE_BYTES, TEMPLATE_PACKAGE_FILE_ACCEPT, isPptxCompatibleTemplate, type PptxCompatibility, type TemplateCatalogItem, type TemplateCategory, type TemplateManifestV1, type TemplateSessionSnapshot, type TemplateSessionState, type TemplateValidationReport } from "@ipollowork/types/templates";
+import {
+  DEEPSEEK_HARNESS_ENGINE_ID,
+  DEFAULT_ENGINE_ID,
+  type BuiltInWorkspaceEngineId,
+} from "@ipollowork/types/workspace";
 
 import { currentLocale, t } from "../../../../i18n";
 import { downloadTextAsFile } from "@/app/lib/download";
@@ -174,7 +179,11 @@ export type SessionPageSidebarProps = {
   startupPhase: BootPhase;
   onOpenSession: (workspaceId: string, sessionId: string) => void;
   onSelectProject: (workspaceId: string) => Promise<boolean> | boolean | void;
-  onCreateProject: (input: { name: string; folderPath: string }) => Promise<void> | void;
+  onCreateProject: (input: {
+    name: string;
+    folderPath: string;
+    engineId: BuiltInWorkspaceEngineId;
+  }) => Promise<void> | void;
   onRenameProject: (workspaceId: string, name: string) => Promise<void> | void;
   onRevealProject: (workspaceId: string) => Promise<void> | void;
   onDeleteProject: (workspaceId: string) => Promise<void> | void;
@@ -1229,6 +1238,7 @@ export function SessionPage(props: SessionPageProps) {
   const [createProjectOpen, setCreateProjectOpen] = useState(false);
   const [createProjectName, setCreateProjectName] = useState("");
   const [createProjectFolder, setCreateProjectFolder] = useState("");
+  const [createProjectEngineId, setCreateProjectEngineId] = useState<BuiltInWorkspaceEngineId>(DEFAULT_ENGINE_ID);
   const [createProjectBusy, setCreateProjectBusy] = useState(false);
   const [createProjectError, setCreateProjectError] = useState<string | null>(null);
   const [renameProjectId, setRenameProjectId] = useState<string | null>(null);
@@ -2389,7 +2399,7 @@ export function SessionPage(props: SessionPageProps) {
     setCreateProjectBusy(true);
     setCreateProjectError(null);
     try {
-      await props.sidebar.onCreateProject({ name, folderPath });
+      await props.sidebar.onCreateProject({ name, folderPath, engineId: createProjectEngineId });
       setCreateProjectOpen(false);
     } catch (error) {
       setCreateProjectError(error instanceof Error ? error.message : t("app.unknown_error"));
@@ -2452,6 +2462,7 @@ export function SessionPage(props: SessionPageProps) {
           onOpenCreateProject={isElectronRuntime() ? () => {
             setCreateProjectName("");
             setCreateProjectFolder("");
+            setCreateProjectEngineId(DEFAULT_ENGINE_ID);
             setCreateProjectError(null);
             setCreateProjectOpen(true);
           } : undefined}
@@ -3111,6 +3122,44 @@ export function SessionPage(props: SessionPageProps) {
                 {createProjectFolder || t("projects.choose_folder")}
               </span>
             </button>
+            <fieldset className="space-y-2">
+              <legend className="text-xs font-medium text-muted-foreground">{t("projects.engine")}</legend>
+              <div className="grid grid-cols-2 gap-2">
+                {([
+                  {
+                    id: DEFAULT_ENGINE_ID,
+                    name: t("projects.engine_opencode"),
+                    description: t("projects.engine_opencode_description"),
+                  },
+                  {
+                    id: DEEPSEEK_HARNESS_ENGINE_ID,
+                    name: t("projects.engine_dsh"),
+                    description: t("projects.engine_dsh_description"),
+                  },
+                ] as const).map((engine) => {
+                  const selected = createProjectEngineId === engine.id;
+                  return (
+                    <button
+                      key={engine.id}
+                      type="button"
+                      role="radio"
+                      aria-checked={selected}
+                      className={cn(
+                        "rounded-lg border px-3 py-2.5 text-left transition-colors focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-hidden",
+                        selected
+                          ? "border-foreground/30 bg-muted text-foreground"
+                          : "border-input bg-background text-muted-foreground hover:bg-muted/60 hover:text-foreground",
+                      )}
+                      disabled={createProjectBusy}
+                      onClick={() => setCreateProjectEngineId(engine.id)}
+                    >
+                      <span className="block text-sm font-medium">{engine.name}</span>
+                      <span className="mt-0.5 block text-xs leading-4">{engine.description}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </fieldset>
             {createProjectError ? <p role="alert" className="text-xs text-destructive">{createProjectError}</p> : null}
           </div>
           <DialogFooter>

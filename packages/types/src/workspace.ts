@@ -17,6 +17,18 @@ export type WorkspaceKind = "local" | "remote";
 export type WorkspaceRemoteKind = "opencode" | "ipollowork";
 
 export const DEFAULT_ENGINE_ID = "opencode";
+export const DEEPSEEK_HARNESS_ENGINE_ID = "deepseek-harness";
+
+export const BUILT_IN_WORKSPACE_ENGINE_IDS = [
+  DEFAULT_ENGINE_ID,
+  DEEPSEEK_HARNESS_ENGINE_ID,
+] as const;
+
+export type BuiltInWorkspaceEngineId = (typeof BUILT_IN_WORKSPACE_ENGINE_IDS)[number];
+
+export function isBuiltInWorkspaceEngineId(value: unknown): value is BuiltInWorkspaceEngineId {
+  return typeof value === "string" && BUILT_IN_WORKSPACE_ENGINE_IDS.includes(value as BuiltInWorkspaceEngineId);
+}
 
 export type WorkspaceWire = {
   id: string;

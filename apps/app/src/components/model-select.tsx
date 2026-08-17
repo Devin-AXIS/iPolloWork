@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import { ChevronDown, Settings2 } from "lucide-react";
+import { DEFAULT_ENGINE_ID } from "@ipollowork/types/workspace";
 
 import type { ModelOption, ModelRef } from "@/app/types";
 import { modelSupportsVision } from "@/app/utils/model-capabilities";
@@ -74,7 +75,7 @@ function useModelOptions(open: boolean) {
   //   - `allowZenModel` hides the built-in OpenCode provider entries when false
   //   - `allowCustomProviders` hides providers that OpenCode does not report
   //     as connected through the provider list endpoint.
-  return React.useMemo(() => {
+  const options = React.useMemo(() => {
     const restrictToCloud = checkDesktopRestriction({
       restriction: "allowCustomProviders",
     });
@@ -113,6 +114,11 @@ function useModelOptions(open: boolean) {
       return true;
     });
   }, [checkDesktopRestriction, data]);
+
+  return {
+    options,
+    includeTokenStar: (engineId?.trim() || DEFAULT_ENGINE_ID) === DEFAULT_ENGINE_ID,
+  };
 }
 
 type ModelSelectModelItem = {
@@ -133,7 +139,7 @@ type ModelSelectGroup = {
   items: ModelSelectItem[];
 };
 
-function groupByProvider(modelOptions: ModelOption[]): ModelSelectGroup[] {
+function groupByProvider(modelOptions: ModelOption[], includeTokenStar: boolean): ModelSelectGroup[] {
   const groups = new Map<string, ModelSelectModelItem[]>();
 
   for (const option of modelOptions) {
@@ -159,7 +165,7 @@ function groupByProvider(modelOptions: ModelOption[]): ModelSelectGroup[] {
       items: [...options].sort((a, b) => a.option.title.localeCompare(b.option.title)),
     }))
     .sort((a, b) => a.value.localeCompare(b.value));
-  if (!modelOptions.some((option) => option.providerID === "tokenstar")) {
+  if (includeTokenStar && !modelOptions.some((option) => option.providerID === "tokenstar")) {
     const tokenStarEntry: TokenStarEntry = { kind: "tokenstar-connect", id: "tokenstar-connect" };
     grouped.push({ value: "TokenStar", items: [tokenStarEntry] });
     grouped.sort((a, b) => a.value.localeCompare(b.value));
@@ -199,7 +205,7 @@ export function ModelListContent({
 }: ModelListContentProps) {
   const [search, setSearch] = React.useState("");
   const searchInputRef = React.useRef<HTMLInputElement>(null);
-  const modelOptions = useModelOptions(true);
+  const { options: modelOptions, includeTokenStar } = useModelOptions(true);
 
   React.useEffect(() => {
     if (!autoFocus) return;
@@ -210,7 +216,10 @@ export function ModelListContent({
     return () => window.cancelAnimationFrame(frame);
   }, [autoFocus]);
 
-  const groups = React.useMemo(() => groupByProvider(modelOptions), [modelOptions]);
+  const groups = React.useMemo(
+    () => groupByProvider(modelOptions, includeTokenStar),
+    [includeTokenStar, modelOptions],
+  );
 
   const handleSelect = (option: ModelOption) => {
     onChange({ providerID: option.providerID, modelID: option.modelID });
@@ -306,7 +315,7 @@ export function ModelSelect({
   onConfigureTokenStar,
   disabled = false,
 }: ModelSelectProps) {
-  const modelOptions = useModelOptions(open);
+  const { options: modelOptions } = useModelOptions(open);
   const selectedOption = modelOptions.find((option) => isSameModel(value, option));
 
   return (

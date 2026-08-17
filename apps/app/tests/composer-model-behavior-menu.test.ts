@@ -97,6 +97,7 @@ describe("Composer model and reasoning menu", () => {
     expect(model).toContain('kind: "tokenstar-connect"');
     expect(model).toContain("Connect TokenStar");
     expect(model).toContain('grouped.push({ value: "TokenStar", items: [tokenStarEntry] })');
+    expect(model).toContain("includeTokenStar &&");
     expect(model).not.toContain('option.providerID === "tokenstar") continue');
     expect(model).not.toContain('option.modelID.startsWith("gpt-")');
     expect(model).not.toContain('option.modelID.startsWith("kimi-")');
@@ -104,7 +105,7 @@ describe("Composer model and reasoning menu", () => {
     expect(menu).toContain("onConfigureTokenStar");
   });
 
-  test("Composer keeps execute and plan in a model-style selector", () => {
+  test("Composer renders engine-native modes beside the model selector", () => {
     const composer = readFileSync(composerPath, "utf8");
     const modelIndex = composer.indexOf("<ModelBehaviorMenu");
     const modeIndex = composer.indexOf("open={workModeOpen}");
@@ -113,13 +114,15 @@ describe("Composer model and reasoning menu", () => {
     expect(modeIndex).toBeGreaterThan(modelIndex);
     expect(composer).toContain("<PopoverTrigger");
     expect(composer).toContain("rounded-full bg-gray-3 px-3 py-1.5 text-sm");
-    expect(composer).toContain('data-work-mode-option="execute"');
-    expect(composer).toContain('data-work-mode-option="plan"');
-    expect(composer).toContain('onClick={() => selectWorkMode("build")}');
-    expect(composer).toContain('onClick={() => selectWorkMode("plan")}');
+    expect(composer).toContain("props.listModes()")
+    expect(composer).toContain("workModes.map((mode)");
+    expect(composer).toContain("data-work-mode-option={mode.id}");
+    expect(composer).toContain("onClick={() => selectWorkMode(mode.id)}");
+    expect(composer).toContain("if (props.busy || props.modeSelectionDisabled) return;");
+    expect(composer).toContain("if (props.busy || props.modeSelectionDisabled) setWorkModeOpen(false);");
+    expect(composer).toContain("disabled={props.busy || props.modeSelectionDisabled}");
     expect(composer).toContain("<ChevronDown");
-    expect(composer).toContain("<ListTodo");
-    expect(composer).toContain('t("composer.work_mode_execute")');
-    expect(composer).toContain('t("composer.work_mode_plan")');
+    expect(composer).toContain("<WorkModeIcon");
+    expect(composer).toContain("mode.description");
   });
 });

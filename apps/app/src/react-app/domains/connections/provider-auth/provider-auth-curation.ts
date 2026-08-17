@@ -34,6 +34,7 @@ export const PROVIDER_LABELS: Record<string, string> = {
   openrouter: "OpenRouter",
   qwen: "Qwen",
   tokenstar: "TokenStar",
+  "deepseek-official": "DeepSeek",
 };
 
 const RECOMMENDED_PROVIDER_IDS = [
@@ -46,6 +47,7 @@ const RECOMMENDED_PROVIDER_IDS = [
   "minimax-cn",
   "stepfun",
   "deepseek",
+  "deepseek-official",
   "zhipuai",
   "mistral",
   "cohere",

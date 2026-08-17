@@ -6,11 +6,12 @@ import { join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 import { EnvService } from "./env-file.js";
+import { authorizationMethodFingerprint } from "./authorization-method.js";
+import { authorizationVault } from "./authorization-runtime.js";
 import { callExperimentalExtensionAction, listExperimentalExtensionActions } from "./extensions/index.js";
 import {
   bindPluginAuthorizationRuntime,
-  pluginAuthorizationStore,
-  pluginInstallationId,
+  pluginAuthorizationConsumerId,
   savePluginSecretAuthorization,
 } from "./plugin-platform-runtime.js";
 import { installPluginPackage } from "./plugin-package-lifecycle.js";
@@ -99,12 +100,14 @@ export default async function createService(runtime) {
       methods: [
         {
           id: "api-key",
+          connectionId: id,
           kind: "secret-form",
           label: "API key",
           fields: [{ id: "apiKey", label: "API key", secret: true, required: true }],
         },
         {
           id: "oauth",
+          connectionId: id,
           kind: "oauth-pkce",
           label: "OAuth",
           clientId: "fixture-client",
@@ -725,19 +728,37 @@ await service.dispose();
       context: { directory: workspaceRoot },
     })).toMatchObject({ ok: true, extensionId: "beta-service", result: { connected: true, keyPrefix: "beta" } });
 
-    const alphaStore = await pluginAuthorizationStore(serverConfig, WORKSPACE_ID);
+    const alphaStore = await authorizationVault(serverConfig);
+    const oauthMethod = {
+      id: "oauth",
+      connectionId: "alpha-service",
+      kind: "oauth-pkce" as const,
+      label: "OAuth",
+      clientId: "fixture-client",
+      authorizationUrl: "https://accounts.fixture.example/authorize",
+      tokenUrl: "https://accounts.fixture.example/token",
+      scopes: [],
+    };
     await alphaStore.saveCredential({
-      installationId: pluginInstallationId(WORKSPACE_ID, "alpha-service"),
+      connectionId: oauthMethod.connectionId,
       accountId: "default",
       methodId: "oauth",
+      methodFingerprint: authorizationMethodFingerprint(oauthMethod),
       values: { accessToken: "expired-token", refreshToken: "refresh-token", expiresAt: String(Date.now() - 1) },
       secretFields: ["accessToken", "refreshToken"],
+    });
+    await alphaStore.setActiveAccount({
+      consumerId: pluginAuthorizationConsumerId("alpha-service"),
+      connectionId: oauthMethod.connectionId,
+      methodId: oauthMethod.id,
+      methodFingerprint: authorizationMethodFingerprint(oauthMethod),
+      accountId: "default",
     });
     let refreshRequests = 0;
     const authorization = await bindPluginAuthorizationRuntime(serverConfig, WORKSPACE_ID, "alpha-service", {
       fetcher: async () => {
         refreshRequests += 1;
-        return new Response(JSON.stringify({ access_token: "fresh-token", expires_in: 3600 }), {
+        return new Response(JSON.stringify({ access_token: "fresh-token", token_type: "Bearer", expires_in: 3600 }), {
           status: 200,
           headers: { "content-type": "application/json" },
         });

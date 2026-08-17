@@ -9,6 +9,7 @@ import {
 import {
   isAuthorizationServiceId,
   listAuthorizationServices,
+  saveAuthorizationService,
   testAuthorizationService,
 } from "../authorization-center.js";
 import { EnvStoreReadError, InvalidEnvKeyError, isValidEnvKey, type EnvService } from "../env-file.js";
@@ -551,12 +552,22 @@ export function registerCoreRoutes(options: RegisterCoreRoutesOptions): void {
     return jsonResponse({ ok: true });
   });
 
-  // Curated service credentials use the same user-scoped local secret store
-  // as the generic Environment settings. This route only
-  // exposes configuration state; raw secrets stay server-side.
   addRoute(routes, "GET", "/authorization-services", "host-token", async () => {
-    const items = await env.list().catch(rethrowEnvStoreReadError);
-    return jsonResponse({ items: listAuthorizationServices(items) });
+    return jsonResponse({ items: await listAuthorizationServices(config) });
+  });
+
+  addRoute(routes, "PUT", "/authorization-services/:serviceId/credentials", "host-token", async (ctx) => {
+    ensureWritable(config);
+    const serviceId = ctx.params.serviceId;
+    if (!isAuthorizationServiceId(serviceId)) {
+      throw new ApiError(404, "authorization_service_not_found", "Authorization service not found");
+    }
+    const body = await readJsonBody(ctx.request);
+    try {
+      return jsonResponse({ status: await saveAuthorizationService(config, serviceId, body.values) });
+    } catch (error) {
+      throw new ApiError(400, "authorization_values_invalid", error instanceof Error ? error.message : "Authorization values are invalid");
+    }
   });
 
   addRoute(routes, "POST", "/authorization-services/:serviceId/test", "host-token", async (ctx) => {
@@ -564,10 +575,7 @@ export function registerCoreRoutes(options: RegisterCoreRoutesOptions): void {
     if (!isAuthorizationServiceId(serviceId)) {
       throw new ApiError(404, "authorization_service_not_found", "Authorization service not found");
     }
-    const result = await testAuthorizationService(env, serviceId).catch(rethrowEnvStoreReadError);
-    // A failed remote credential test is a valid completed test, not a route
-    // failure. Returning it as JSON lets the UI show a useful result instead
-    // of collapsing the provider response into a generic request error.
+    const result = await testAuthorizationService(config, serviceId);
     return jsonResponse(result);
   });
 

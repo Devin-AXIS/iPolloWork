@@ -7,6 +7,7 @@
 // composition, handlers, and JSX.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
+import { DEFAULT_ENGINE_ID } from "@ipollowork/types/workspace";
 
 import { publishInspectorSlice, recordInspectorEvent } from "@/app/lib/app-inspector";
 import {
@@ -806,6 +807,8 @@ export function useWorkspaceRouteState(input: UseWorkspaceRouteStateInput) {
   const opencodeBaseUrl = selectedWorkspaceEndpoint?.opencodeBaseUrl ?? "";
   const selectedWorkspaceIsLoading = retryingWorkspaceIds.includes(selectedWorkspaceId);
   const selectedWorkspaceError = errorsByWorkspaceId[selectedWorkspaceId] ?? null;
+  const selectedWorkspaceUsesOpenCode =
+    (selectedWorkspace?.engineId?.trim() || DEFAULT_ENGINE_ID) === DEFAULT_ENGINE_ID;
   const selectedSessionKnown = Boolean(
     selectedSessionId &&
       (sessionsByWorkspaceId[selectedWorkspaceId] ?? []).some((session) => session?.id === selectedSessionId),
@@ -830,13 +833,13 @@ export function useWorkspaceRouteState(input: UseWorkspaceRouteStateInput) {
 
   const opencodeClient = useMemo(
     () =>
-      opencodeBaseUrl && selectedWorkspaceServerToken && !selectedWorkspaceError
+      selectedWorkspaceUsesOpenCode && opencodeBaseUrl && selectedWorkspaceServerToken && !selectedWorkspaceError
         ? createClient(opencodeBaseUrl, selectedWorkspaceRoot || undefined, {
             token: selectedWorkspaceServerToken,
             mode: "ipollowork",
           })
         : null,
-    [opencodeBaseUrl, selectedWorkspaceError, selectedWorkspaceRoot, selectedWorkspaceServerToken],
+    [opencodeBaseUrl, selectedWorkspaceError, selectedWorkspaceRoot, selectedWorkspaceServerToken, selectedWorkspaceUsesOpenCode],
   );
   const runRemoteWorkspaceConnectionCheck = useCallback(
     async (workspaceId: string, mode: "test" | "recover") => {

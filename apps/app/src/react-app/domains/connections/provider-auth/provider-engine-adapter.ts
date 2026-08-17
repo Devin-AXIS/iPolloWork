@@ -3,9 +3,11 @@ import { DEFAULT_ENGINE_ID } from "@ipollowork/types/workspace";
 import type { iPolloWorkServerClient } from "../../../../app/lib/ipollowork-server";
 import type { DenOrgLlmProviderConnection } from "../../../../app/lib/den";
 import type { ProviderListResponse } from "../../../../app/types";
+import { deepSeekHarnessProviderEngineAdapter } from "./deepseek-harness-provider-engine-adapter";
 import { openCodeProviderEngineAdapter } from "./opencode-provider-engine-adapter";
 
 export { openCodeProviderEngineAdapter } from "./opencode-provider-engine-adapter";
+export { deepSeekHarnessProviderEngineAdapter } from "./deepseek-harness-provider-engine-adapter";
 
 export type ProviderEngineAuthMethod = {
   type: "oauth" | "api";
@@ -52,6 +54,12 @@ export type ProviderEngineConnection = {
 export interface ProviderEngineAdapter {
   readonly id: string;
   readonly configFileName: string;
+  readonly capabilities: {
+    cloudProviderImports: boolean;
+    customProviders: boolean;
+    disabledProviders: boolean;
+    authChangesRequireReload: boolean;
+  };
   connect(client: unknown): ProviderEngineConnection;
   emptyProjectConfig(): string;
   readProjectConfig(target: ProviderEngineConfigTarget): Promise<{ content?: string | null } | null>;
@@ -99,4 +107,5 @@ export class ProviderEngineAdapterRegistry {
 
 export const providerEngineAdapters = new ProviderEngineAdapterRegistry([
   openCodeProviderEngineAdapter,
+  deepSeekHarnessProviderEngineAdapter,
 ]);

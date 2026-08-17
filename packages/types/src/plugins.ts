@@ -133,6 +133,7 @@ const secretFieldSchema = z.object({
 
 const secretFormSchema = z.object({
   id: z.string().regex(SIMPLE_ID_RE),
+  connectionId: z.string().regex(ID_RE),
   kind: z.literal("secret-form"),
   label: z.string().min(1),
   description: z.string().optional(),
@@ -141,6 +142,7 @@ const secretFormSchema = z.object({
 
 const oauthPkceSchema = z.object({
   id: z.string().regex(SIMPLE_ID_RE),
+  connectionId: z.string().regex(ID_RE),
   kind: z.literal("oauth-pkce"),
   label: z.string().min(1),
   description: z.string().optional(),
@@ -153,6 +155,7 @@ const oauthPkceSchema = z.object({
 
 const deviceCodeSchema = z.object({
   id: z.string().regex(SIMPLE_ID_RE),
+  connectionId: z.string().regex(ID_RE),
   kind: z.literal("device-code"),
   label: z.string().min(1),
   description: z.string().optional(),
@@ -165,6 +168,7 @@ const deviceCodeSchema = z.object({
 
 const hostedBrowserSchema = z.object({
   id: z.string().regex(SIMPLE_ID_RE),
+  connectionId: z.string().regex(ID_RE),
   kind: z.literal("hosted-browser"),
   label: z.string().min(1),
   description: z.string().optional(),

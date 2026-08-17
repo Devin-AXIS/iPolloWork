@@ -9,6 +9,7 @@ import { defaultWorkspaceiPolloWorkConfig, ensureWorkspaceFiles } from "../works
 import { seediPolloWorkWorkspaceConfigIfEmpty } from "../ipollowork-workspace-config-store.js";
 import { workspaceIdForPath, workspaceIdForRemote } from "../workspaces.js";
 import { addRoute, type Route } from "./registry.js";
+import { isBuiltInWorkspaceEngineId } from "@ipollowork/types/workspace";
 
 type JsonResponse = (data: unknown, status?: number) => Response;
 type ReadJsonBody = (request: Request) => Promise<Record<string, unknown>>;
@@ -281,9 +282,15 @@ export function registerWorkspaceRoutes(options: RegisterWorkspaceRoutesOptions)
     const name = typeof body.name === "string" && body.name.trim() ? body.name.trim() : basename(folderPath || "Workspace");
     const preset = typeof body.preset === "string" && body.preset.trim() ? body.preset.trim() : "starter";
     const workContextId = readWorkContextId(body);
+    const engineId = typeof body.engineId === "string" && body.engineId.trim()
+      ? body.engineId.trim()
+      : DEFAULT_ENGINE_ID;
 
     if (!folderPath) {
       throw new ApiError(400, "invalid_payload", "folderPath is required");
+    }
+    if (!isBuiltInWorkspaceEngineId(engineId)) {
+      throw new ApiError(400, "invalid_payload", `Unsupported workspace engine: ${engineId}`);
     }
 
     const workspacePath = resolve(folderPath);
@@ -306,8 +313,8 @@ export function registerWorkspaceRoutes(options: RegisterWorkspaceRoutesOptions)
       preset,
       ...(workContextId ? { workContextId } : {}),
       workspaceType: "local",
-      engineId: DEFAULT_ENGINE_ID,
-      ...inheritWorkspaceOpencodeConnection(config),
+      engineId,
+      ...(engineId === DEFAULT_ENGINE_ID ? inheritWorkspaceOpencodeConnection(config) : {}),
     };
 
     config.workspaces = [workspace, ...config.workspaces.filter((entry) => entry.id !== workspace.id)];

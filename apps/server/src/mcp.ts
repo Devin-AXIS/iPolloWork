@@ -6,7 +6,12 @@ import type { McpItem, ServerConfig } from "./types.js";
 import { readJsoncFile } from "./jsonc.js";
 import { opencodeConfigPath } from "./workspace-files.js";
 import { validateMcpConfig, validateMcpName } from "./validators.js";
+import { forgetMcpAuthorizationConsumer, publicMcpConfig, secureMcpAuthorizationConfig } from "./mcp-authorization.js";
 import { readRuntimeOpencodeConfig, runtimeMcpMap, writeRuntimeOpencodeConfig } from "./runtime-opencode-config-store.js";
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
 
 function globalOpenCodeConfigPath(): string {
   const base = join(homedir(), ".config", "opencode");
@@ -51,7 +56,7 @@ export async function listMcp(serverConfig: ServerConfig, workspaceId: string, w
 
   // Global MCPs first; project-level entries override global ones with the same name.
   for (const [name, entry] of Object.entries(globalMcpMap)) {
-    if (Object.prototype.hasOwnProperty.call(projectMcpMap, name)) continue;
+    if (Object.prototype.hasOwnProperty.call(projectMcpMap, name) || Object.prototype.hasOwnProperty.call(runtimeMap, name)) continue;
     items.push({
       name,
       config: entry,
@@ -76,7 +81,7 @@ export async function listMcp(serverConfig: ServerConfig, workspaceId: string, w
   for (const [name, entry] of Object.entries(runtimeMap)) {
     items.push({
       name,
-      config: entry,
+      config: await publicMcpConfig(serverConfig, workspaceId, name, entry),
       source: "config.remote",
       disabledByTools: isMcpDisabledByTools(config, name) || undefined,
     });
@@ -96,7 +101,10 @@ export async function addMcp(
   const runtimeConfig = await readRuntimeOpencodeConfig(serverConfig, workspaceId);
   const mcpMap = { ...runtimeMcpMap(runtimeConfig) };
   const existed = Object.prototype.hasOwnProperty.call(mcpMap, name);
-  mcpMap[name] = config;
+  const usesWorkAuthorization = config.type === "remote" && (config.oauth === true || isRecord(config.oauth)) && !isRecord(config.headers);
+  mcpMap[name] = usesWorkAuthorization
+    ? await secureMcpAuthorizationConfig(serverConfig, workspaceId, name, config)
+    : config;
   await writeRuntimeOpencodeConfig(serverConfig, workspaceId, (current) => ({ ...current, mcp: mcpMap }));
   return { action: existed ? "updated" : "added" };
 }
@@ -107,6 +115,7 @@ export async function removeMcp(serverConfig: ServerConfig, workspaceId: string,
   if (!Object.prototype.hasOwnProperty.call(mcpMap, name)) return false;
   delete mcpMap[name];
   await writeRuntimeOpencodeConfig(serverConfig, workspaceId, (current) => ({ ...current, mcp: mcpMap }));
+  await forgetMcpAuthorizationConsumer(serverConfig, workspaceId, name);
   return true;
 }
 

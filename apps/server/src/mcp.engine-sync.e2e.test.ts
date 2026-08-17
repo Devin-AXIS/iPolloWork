@@ -103,6 +103,21 @@ function requireRecord(value: unknown, label: string): Record<string, unknown> {
   throw new Error(`${label} was not an object`);
 }
 
+function expectWorkOAuthProxy(request: EngineRequest | undefined, base: string, name: string, enabled = true) {
+  const body = requireRecord(request?.body, "engine MCP request");
+  const config = requireRecord(body.config, "engine MCP config");
+  const headers = requireRecord(config.headers, "engine MCP headers");
+  expect(body.name).toBe(name);
+  expect(config).toMatchObject({
+    type: "remote",
+    url: `${base}/mcp-proxy/ws_1/${name}`,
+    enabled,
+    oauth: false,
+  });
+  expect(headers.Authorization).toMatch(/^Bearer [A-Za-z0-9_-]{32,}$/);
+  expect(config.connectionId).toBeUndefined();
+}
+
 const POSTHOG_CONFIG = {
   type: "remote",
   url: "https://mcp.posthog.com/mcp",
@@ -128,7 +143,7 @@ describe("runtime MCP engine sync", () => {
 
       const addRequest = mock.requests.find((entry) => entry.method === "POST" && entry.pathname === "/mcp");
       expect(addRequest).toBeDefined();
-      expect(addRequest?.body).toEqual({ name: "posthog", config: POSTHOG_CONFIG });
+      expectWorkOAuthProxy(addRequest, ipollowork.base, "posthog");
       expect(addRequest?.search).toContain(`directory=${encodeURIComponent(workspaceRoot)}`);
     } finally {
       if (previousDb === undefined) delete process.env.IPOLLOWORK_RUNTIME_DB;
@@ -309,7 +324,7 @@ describe("runtime MCP engine sync", () => {
       const syncIndex = mock.requests.findIndex((entry) => entry.method === "POST" && entry.pathname === "/mcp");
       expect(disposeIndex).toBeGreaterThanOrEqual(0);
       expect(syncIndex).toBeGreaterThan(disposeIndex);
-      expect(mock.requests[syncIndex]?.body).toEqual({ name: "posthog", config: POSTHOG_CONFIG });
+      expectWorkOAuthProxy(mock.requests[syncIndex], ipollowork.base, "posthog");
     } finally {
       if (previousDb === undefined) delete process.env.IPOLLOWORK_RUNTIME_DB;
       else process.env.IPOLLOWORK_RUNTIME_DB = previousDb;
@@ -341,7 +356,7 @@ describe("runtime MCP engine sync", () => {
 
       const syncRequest = mock.requests.find((entry) => entry.method === "POST" && entry.pathname === "/mcp");
       expect(syncRequest).toBeDefined();
-      expect(syncRequest?.body).toEqual({ name: "posthog", config: { ...POSTHOG_CONFIG, enabled: false } });
+      expectWorkOAuthProxy(syncRequest, ipollowork.base, "posthog", false);
     } finally {
       if (previousDb === undefined) delete process.env.IPOLLOWORK_RUNTIME_DB;
       else process.env.IPOLLOWORK_RUNTIME_DB = previousDb;

@@ -385,7 +385,8 @@ function openTargetFromArtifactPath(
   };
 }
 
-function parseApplyPatchPaths(patchText: string) {
+function parseApplyPatchPaths(patchText: unknown) {
+  if (typeof patchText !== "string") return [];
   const paths: string[] = [];
 
   for (const line of patchText.split("\n")) {
@@ -407,7 +408,8 @@ function parseApplyPatchPaths(patchText: string) {
   return paths;
 }
 
-function artifactPathCandidate(path: string, verifiedFromWrite = false): ArtifactPathCandidate | null {
+function artifactPathCandidate(path: unknown, verifiedFromWrite = false): ArtifactPathCandidate | null {
+  if (typeof path !== "string") return null;
   const normalized = path.trim().toLowerCase();
   return normalized ? { path: normalized, verifiedFromWrite } : null;
 }
@@ -415,7 +417,8 @@ function artifactPathCandidate(path: string, verifiedFromWrite = false): Artifac
 const FILE_PATTERN = /(?:^|[\s"'`([{])((?:\.{1,2}[/\\]|~[/\\]|[/\\])?[\w.\-]+(?:[/\\][\w.\-]+)+\.[a-z][a-z0-9]{0,9}|[\w.\-]+\.[a-z][a-z0-9]{0,9})/gi;
 const ASSISTANT_ARTIFACT_MENTION_PATTERN = /\b(?:artifact|created|deck|deliverable|exported|file|generated|opened|presentation|saved|slides?|updated|wrote)\b/i;
 
-function getArtifactPathsFromText(text: string) {
+function getArtifactPathsFromText(text: unknown) {
+  if (typeof text !== "string") return [];
   if (!ASSISTANT_ARTIFACT_MENTION_PATTERN.test(text)) return [];
   const paths: string[] = [];
 

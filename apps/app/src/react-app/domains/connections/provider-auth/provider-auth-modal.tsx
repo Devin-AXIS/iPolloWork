@@ -443,13 +443,16 @@ export default function ProviderAuthModal(props: ProviderAuthModalProps) {
     }
   };
 
-  const handleMethodSelect = async (method: ProviderAuthMethod) => {
-    if (!selectedEntry || actionDisabled) return;
+  const handleMethodSelect = async (
+    method: ProviderAuthMethod,
+    entry: ProviderAuthEntry | null = selectedEntry,
+  ) => {
+    if (!entry || actionDisabled) return;
     setLocalError(null);
     setSelectedCloudMethod(null);
 
     if (method.type === "oauth") {
-      await startOauth(selectedEntry, method.methodIndex);
+      await startOauth(entry, method.methodIndex);
       return;
     }
 
@@ -460,7 +463,7 @@ export default function ProviderAuthModal(props: ProviderAuthModalProps) {
     }
 
     setView("api");
-    if (selectedEntry && isTokenStarProvider(selectedEntry.id)) {
+    if (isTokenStarProvider(entry.id)) {
       resetTokenStarState();
     }
   };
@@ -476,7 +479,7 @@ export default function ProviderAuthModal(props: ProviderAuthModalProps) {
     }
 
     if (entry.methods.length === 1) {
-      void handleMethodSelect(entry.methods[0]);
+      void handleMethodSelect(entry.methods[0], entry);
       return;
     }
 
