@@ -79,7 +79,7 @@ describe("personal and Enterprise chat entry wiring", () => {
   test("restores lightweight project management without the legacy workspace UI", () => {
     expect(sidebar).not.toContain("function ProjectSwitcher");
     expect(sidebar).toContain('data-testid="project-row"');
-    expect(sidebar).toContain('data-testid="new-project-button"');
+    expect(sidebar).toContain('addTestId="new-project-button"');
     expect(sidebar).toContain("onSelectProject");
     expect(sessionRoute).toContain("createLocalWorkspace");
     expect(sessionRoute).toContain("deleteWorkspace");

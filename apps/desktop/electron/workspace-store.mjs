@@ -669,6 +669,7 @@ export function createWorkspaceStore({ app, defaultDenBaseUrl, defaultRequireSig
       displayName: "iPolloWork",
       path: folderPath,
       preset: "starter",
+      isDefault: true,
       workspaceType: "local",
     });
   }
@@ -771,6 +772,11 @@ export function createWorkspaceStore({ app, defaultDenBaseUrl, defaultRequireSig
 
   function normalizeWorkspaceEntry(input) {
     const workspacePath = String(input.path ?? "").replace(/\\/g, "/");
+    const workspaceType = input.workspaceType === "remote" ? "remote" : "local";
+    const isDefault = input.isDefault === true || (
+      workspaceType === "local" &&
+      normalizeWorkspacePathKey(workspacePath) === normalizeWorkspacePathKey(firstRunDefaultWorkspaceDir())
+    );
     const enterprisePathMatch = workspacePath.match(/(?:^|\/)\.ipollowork\/work-contexts\/(ent_[A-Za-z0-9_-]+)(?:\/|$)/);
     const workContextId = typeof input.workContextId === "string" && /^enterprise:ent_[A-Za-z0-9_-]+$/.test(input.workContextId.trim())
       ? input.workContextId.trim()
@@ -782,8 +788,9 @@ export function createWorkspaceStore({ app, defaultDenBaseUrl, defaultRequireSig
       name: String(input.name ?? "Workspace"),
       path: String(input.path ?? ""),
       preset: String(input.preset ?? "starter"),
+      isDefault,
       workContextId,
-      workspaceType: input.workspaceType === "remote" ? "remote" : "local",
+      workspaceType,
       remoteType: input.remoteType ?? null,
       baseUrl: input.baseUrl ?? null,
       directory: input.directory ?? null,
@@ -928,6 +935,7 @@ export function createWorkspaceStore({ app, defaultDenBaseUrl, defaultRequireSig
       const rawWorkspace = entry && typeof entry === "object" ? entry : {};
       const workspace = normalizeWorkspaceEntry(rawWorkspace);
       if (rawWorkspace.workContextId !== workspace.workContextId) changed = true;
+      if (rawWorkspace.isDefault !== workspace.isDefault) changed = true;
       if (workspace.workspaceType !== "remote" || workspace.remoteType !== "ipollowork") return workspace;
 
       const remoteWorkspaceId = String(workspace.ipolloworkWorkspaceId ?? "").trim()

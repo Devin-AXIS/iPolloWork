@@ -21,10 +21,13 @@ const sessionRouteSource = readFileSync(
 );
 
 describe("sidebar projects", () => {
-  test("renders every project as a first-level sidebar folder", () => {
+  test("renders named projects inside an independently collapsible all-projects section", () => {
     expect(sidebarSource).not.toContain("function ProjectSwitcher");
     expect(sidebarSource).not.toContain("selectedProjectSessionLists");
-    expect(sidebarSource).toContain("props.projectSessionLists.map((project)");
+    expect(sidebarSource).toContain("const [projectsExpanded, setProjectsExpanded] = React.useState(true)");
+    expect(sidebarSource).toContain("const namedProjects = props.projectSessionLists.filter((project) => !project.workspace.isDefault)");
+    expect(sidebarSource).toContain("namedProjects.map((project)");
+    expect(sidebarSource).toContain('toggleTestId="projects-section-toggle"');
     expect(sidebarSource).toContain('data-testid="project-row"');
     expect(sidebarSource).toContain('aria-current={isSelectedProject ? "page" : undefined}');
     expect(sidebarSource).toContain('aria-expanded={projectExpanded}');
@@ -33,11 +36,28 @@ describe("sidebar projects", () => {
     expect(sidebarSource).not.toContain("group-data-open/project:rotate-90");
   });
 
-  test("keeps new conversation primary with a compact adjacent project action", () => {
+  test("keeps new conversation primary and moves project creation to the projects header", () => {
     expect(sidebarSource).toContain('data-testid="new-conversation-and-project-actions"');
-    expect(sidebarSource).toContain('data-testid="new-project-button"');
+    expect(sidebarSource).toContain('addTestId="new-project-button"');
     expect(sidebarSource).toContain('t("session.new_task")');
     expect(sidebarSource).toContain('t("projects.create")');
+  });
+
+  test("renders the default workspace as a separate ungrouped conversation section", () => {
+    expect(sidebarSource).toContain("const [ungroupedExpanded, setUngroupedExpanded] = React.useState(true)");
+    expect(sidebarSource).toContain("const ungroupedProject = props.projectSessionLists.find((project) => project.workspace.isDefault)");
+    expect(sidebarSource).toContain('data-testid="ungrouped-section"');
+    expect(sidebarSource).toContain('toggleTestId="ungrouped-section-toggle"');
+    expect(sidebarSource).toContain('label={t("projects.ungrouped")}');
+    expect(sidebarSource).toContain("showProjectRow={false}");
+    expect(sidebarSource).toContain("createUngroupedConversation");
+  });
+
+  test("reveals section toggles on hover and supports title double-click", () => {
+    expect(sidebarSource).toContain("group-hover/section:opacity-100");
+    expect(sidebarSource).toContain("group-focus-within/section:opacity-100");
+    expect(sidebarSource).toContain("onDoubleClick={onToggle}");
+    expect(sidebarSource).toContain("event.stopPropagation()");
   });
 
   test("manages project folders without restoring the legacy workspace UI", () => {

@@ -59,6 +59,16 @@ describe("route workspaces", () => {
     expect(mergeRouteWorkspaces([], desktop).map((workspace) => workspace.id)).toEqual(["ws_local"]);
   });
 
+  test("preserves the desktop default-workspace marker when merging a server project", () => {
+    const server = [localWorkspace("ws_default", "/Users/example/iPolloWork")];
+    const desktop = [mapDesktopWorkspace({
+      ...localWorkspace("ws_default", "/Users/example/iPolloWork"),
+      isDefault: true,
+    })];
+
+    expect(mergeRouteWorkspaces(server, desktop)[0]?.isDefault).toBe(true);
+  });
+
   test("keeps existing project positions stable while placing newly created projects first", () => {
     const workspaces = [
       mapDesktopWorkspace(localWorkspace("selected", "/workspace/selected")),

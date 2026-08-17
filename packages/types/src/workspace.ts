@@ -23,6 +23,8 @@ export type WorkspaceWire = {
   name: string;
   path: string;
   preset: string;
+  /** System workspace that owns conversations not assigned to a named project. */
+  isDefault?: boolean | null;
   /** The owning application context. Missing/null records belong to Personal. */
   workContextId?: `enterprise:${string}` | null;
   workspaceType: WorkspaceKind;
