@@ -439,7 +439,7 @@ describe("HyperFrames Video Studio", () => {
 
     expect(sidePanelSource).toContain("px-2 mac:titlebar-drag");
     expect(artifactPanelSource).toContain("ps-4 mac:titlebar-drag");
-    expect(sidebarSource).toContain('SidebarHeader className="gap-4 px-2 pb-8 pt-1 mac:titlebar-drag"');
+    expect(sidebarSource).toContain('SidebarHeader className="gap-3 px-2 pb-3 pt-1 mac:titlebar-drag"');
     expect(appStyles).toContain('[data-titlebar-no-drag]');
     expect(appStyles).toContain("[role=\"tab\"]");
     expect(appStyles).toContain("-webkit-app-region: no-drag;");

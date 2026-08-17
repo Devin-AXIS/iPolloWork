@@ -784,6 +784,7 @@ export function createWorkspaceStore({ app, defaultDenBaseUrl, defaultRequireSig
       preset: String(input.preset ?? "starter"),
       workContextId,
       workspaceType: input.workspaceType === "remote" ? "remote" : "local",
+      engineId: typeof input.engineId === "string" && input.engineId.trim() ? input.engineId.trim() : "opencode",
       remoteType: input.remoteType ?? null,
       baseUrl: input.baseUrl ?? null,
       directory: input.directory ?? null,
@@ -1049,9 +1050,12 @@ export function createWorkspaceStore({ app, defaultDenBaseUrl, defaultRequireSig
       preset,
       workContextId: input.workContextId,
       workspaceType: "local",
+      engineId: input.engineId,
     });
-    await mkdir(path.join(folderPath, ".opencode"), { recursive: true });
-    await writeWorkspaceiPolloWorkConfig(folderPath, defaultWorkspaceiPolloWorkConfig(folderPath, preset));
+    if (workspace.engineId === "opencode") {
+      await mkdir(path.join(folderPath, ".opencode"), { recursive: true });
+      await writeWorkspaceiPolloWorkConfig(folderPath, defaultWorkspaceiPolloWorkConfig(folderPath, preset));
+    }
 
     return mutateWorkspaceState((state) => {
       const key = workspacePathKey(workspace);

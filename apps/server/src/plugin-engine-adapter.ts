@@ -1,6 +1,8 @@
 import { readFile } from "node:fs/promises";
 import { pathToFileURL } from "node:url";
 
+import { DEEPSEEK_HARNESS_ENGINE_ID } from "@ipollowork/types/workspace";
+
 import type { PluginPackageManifest } from "./plugin-package-manifest.js";
 import { ApiError } from "./errors.js";
 import { addMcp, removeMcp } from "./mcp.js";
@@ -35,6 +37,7 @@ type PluginEngineContext = {
 
 export interface PluginEngineAdapter {
   readonly id: string;
+  validate?(manifest: PluginPackageManifest): void;
   compatibility(manifest: PluginPackageManifest): PluginCompatibilityCheck[];
   workspaceFiles(version: PluginEngineVersion): PluginWorkspaceFile[];
   skillTargetPath(version: PluginEngineVersion, resourceId: string): string | null;
@@ -81,28 +84,39 @@ const OPENCODE_TARGETS = {
   commands: ".opencode/commands/",
 } as const;
 
-function projectedPath(sourcePath: string): string | null {
-  for (const [directory, target] of Object.entries(OPENCODE_TARGETS)) {
+const DEEPSEEK_HARNESS_TARGETS = {
+  skills: ".dsh/skills/",
+} as const;
+
+function projectedPath(sourcePath: string, targets: Readonly<Record<string, string>>): string | null {
+  for (const [directory, target] of Object.entries(targets)) {
     if (sourcePath.startsWith(`${directory}/`)) return `${target}${sourcePath.slice(directory.length + 1)}`;
   }
   return null;
 }
 
-function workspaceFiles(version: PluginEngineVersion): PluginWorkspaceFile[] {
+function workspaceFiles(
+  version: PluginEngineVersion,
+  targets: Readonly<Record<string, string>>,
+): PluginWorkspaceFile[] {
   return version.files.flatMap((file) => {
-    const targetPath = projectedPath(file.path);
+    const targetPath = projectedPath(file.path, targets);
     return targetPath ? [{ ...file, sourcePath: file.path, targetPath }] : [];
   });
 }
 
-function skillTargetPath(version: PluginEngineVersion, resourceId: string): string | null {
+function skillTargetPath(
+  version: PluginEngineVersion,
+  resourceId: string,
+  targets: Readonly<Record<string, string>>,
+): string | null {
   const resource = version.manifest.resources.find((entry) => entry.id === resourceId && entry.type === "skill");
   if (!resource?.path) return null;
   const ownedPaths = new Set(version.files.map((file) => file.path));
   const sourcePath = ownedPaths.has(resource.path) && (resource.path === "SKILL.md" || resource.path.endsWith("/SKILL.md"))
     ? resource.path
     : `${resource.path.replace(/\/$/, "")}/SKILL.md`;
-  return ownedPaths.has(sourcePath) ? projectedPath(sourcePath) : null;
+  return ownedPaths.has(sourcePath) ? projectedPath(sourcePath, targets) : null;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -164,8 +178,12 @@ export const openCodePluginEngineAdapter: PluginEngineAdapter = {
     const binding = manifest.engineBindings?.find((entry) => entry.engine === "opencode");
     return [{ name: "OpenCode", version: constants.opencodeVersion, range: binding?.compatibility }];
   },
-  workspaceFiles,
-  skillTargetPath,
+  workspaceFiles(version) {
+    return workspaceFiles(version, OPENCODE_TARGETS);
+  },
+  skillTargetPath(version, resourceId) {
+    return skillTargetPath(version, resourceId, OPENCODE_TARGETS);
+  },
   async syncRuntime(input) {
     const currentSpecs = pluginSpecs(input.current, input.resolvePath);
     const nextSpecs = pluginSpecs(input.next, input.resolvePath);
@@ -189,6 +207,26 @@ export const openCodePluginEngineAdapter: PluginEngineAdapter = {
   },
 };
 
+export const deepSeekHarnessPluginEngineAdapter: PluginEngineAdapter = {
+  id: DEEPSEEK_HARNESS_ENGINE_ID,
+  compatibility(manifest) {
+    const binding = manifest.engineBindings?.find((entry) => entry.engine === DEEPSEEK_HARNESS_ENGINE_ID);
+    return [{
+      name: "DeepSeek Harness",
+      version: constants.deepseekHarnessVersion,
+      range: binding?.compatibility,
+    }];
+  },
+  workspaceFiles(version) {
+    return workspaceFiles(version, DEEPSEEK_HARNESS_TARGETS);
+  },
+  skillTargetPath(version, resourceId) {
+    return skillTargetPath(version, resourceId, DEEPSEEK_HARNESS_TARGETS);
+  },
+  async syncRuntime() {},
+};
+
 export const pluginEngineAdapters = new PluginEngineAdapterRegistry([
   openCodePluginEngineAdapter,
+  deepSeekHarnessPluginEngineAdapter,
 ]);

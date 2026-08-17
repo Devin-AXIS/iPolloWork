@@ -1253,6 +1253,7 @@ export function createiPolloWorkServerClient(options: { baseUrl: string; token?:
       name: string;
       preset: string;
       workContextId?: `enterprise:${string}` | null;
+      engineId?: string | null;
     }) =>
       requestJson<WorkspaceList>(baseUrl, "/workspaces/local", {
         token,
@@ -1854,6 +1855,20 @@ export function createiPolloWorkServerClient(options: { baseUrl: string; token?:
         method: "DELETE",
       }),
 
+    startMcpAuthorization: (workspaceId: string, name: string) =>
+      requestJson<{ authorizationUrl: string; expiresAt: number }>(
+        baseUrl,
+        `/workspace/${workspaceId}/mcp/${encodeURIComponent(name)}/auth/start`,
+        { token, hostToken, method: "POST", body: {} },
+      ),
+
+    getMcpAuthorizationStatus: (workspaceId: string, name: string) =>
+      requestJson<{ connected: boolean }>(
+        baseUrl,
+        `/workspace/${workspaceId}/mcp/${encodeURIComponent(name)}/auth`,
+        { token, hostToken },
+      ),
+
     listCommands: (workspaceId: string, scope: "workspace" | "global" = "workspace") =>
       requestJson<{ items: iPolloWorkCommandItem[] }>(
         baseUrl,
@@ -2188,6 +2203,19 @@ export function createiPolloWorkServerClient(options: { baseUrl: string; token?:
         hostToken,
         timeoutMs: timeouts.config,
       }),
+
+    saveAuthorizationService: (serviceId: iPolloWorkAuthorizationServiceId, values: Record<string, string>) =>
+      requestJson<{ status: iPolloWorkAuthorizationService }>(
+        baseUrl,
+        `/authorization-services/${encodeURIComponent(serviceId)}/credentials`,
+        {
+          token,
+          hostToken,
+          method: "PUT",
+          body: { values },
+          timeoutMs: timeouts.config,
+        },
+      ),
 
     testAuthorizationService: (serviceId: iPolloWorkAuthorizationServiceId) =>
       requestJson<iPolloWorkAuthorizationServiceTestResult>(

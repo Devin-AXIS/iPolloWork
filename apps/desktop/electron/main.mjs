@@ -2529,9 +2529,6 @@ const desktopCommandHandlers = {
   "resetOpencodeCache": async (event, ...args) => {
       return { removed: [], missing: [], errors: [] };
   },
-  "opencodeMcpAuth": async (event, ...args) => {
-      return runtimeManager.opencodeMcpAuth(String(args[0] ?? "").trim(), String(args[1] ?? "").trim());
-  },
   "setWindowDecorations": async (event, ...args) => {
       return undefined;
   },

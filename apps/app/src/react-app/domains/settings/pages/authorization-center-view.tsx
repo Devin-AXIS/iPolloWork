@@ -11,13 +11,11 @@ import {
   KeyRound,
   Loader2,
   PlugZap,
-  RefreshCw,
   XCircle,
   type LucideIcon,
 } from "lucide-react";
 import { toast } from "@/components/ui/sonner";
 
-import { Alert, AlertAction, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -34,25 +32,12 @@ import type {
   iPolloWorkServerClient,
 } from "@/app/lib/ipollowork-server";
 import { t } from "@/i18n";
-import { ConfirmModal } from "@/react-app/design-system/modals/confirm-modal";
 import { LayoutSection, LayoutSectionDescription, LayoutSectionHeader, LayoutSectionTitle, LayoutStack } from "@/react-app/domains/settings/settings-layout";
 import { SettingsNotice, SettingsStatusBadge, Spinner } from "@/react-app/domains/settings/settings-section";
 import { AuthorizationFormDialog } from "@/react-app/domains/settings/authorization-form-dialog";
-import {
-  EnvironmentVariableProvider,
-  environmentUserEnvQueryKey,
-  type ApplyEnvironmentChangesResult,
-  useEnvironmentVariableApplyChanges,
-  useEnvironmentVariableMarkChangesPending,
-  useIsEnvironmentVariableChangesPending,
-} from "./environment-variable-provider";
-
 type AuthorizationCenterViewProps = {
   client: iPolloWorkServerClient | null;
   isRemoteWorkspace: boolean;
-  onApplyChanges?: () => Promise<ApplyEnvironmentChangesResult>;
-  applyBlocked?: boolean;
-  applyBlockedReason?: string | null;
   runtimeKey?: string | null;
 };
 
@@ -82,7 +67,10 @@ const SERVICES: Record<iPolloWorkAuthorizationServiceId, ServicePresentation> = 
     icon: AudioLines,
     titleKey: "settings.authorization.service.aliyun_bailian.title",
     descriptionKey: "settings.authorization.service.aliyun_bailian.description",
-    fields: [{ key: "DASHSCOPE_API_KEY", label: "DashScope API key", placeholder: "sk-..." }],
+    fields: [
+      { key: "DASHSCOPE_API_KEY", label: "DashScope API key", placeholder: "sk-..." },
+      { key: "DASHSCOPE_BASE_URL", label: "API base URL", placeholder: "https://dashscope.aliyuncs.com", secret: false, required: false },
+    ],
   },
   "volcengine-video": {
     icon: Clapperboard,
@@ -144,25 +132,13 @@ function authorizationQueryKey(runtimeKey?: string | null) {
 }
 
 export function AuthorizationCenterView(props: AuthorizationCenterViewProps) {
-  return (
-    <EnvironmentVariableProvider
-      client={props.client}
-      runtimeKey={props.runtimeKey}
-      onApplyChanges={props.onApplyChanges}
-    >
-      <AuthorizationCenterContent {...props} />
-    </EnvironmentVariableProvider>
-  );
+  return <AuthorizationCenterContent {...props} />;
 }
 
 function AuthorizationCenterContent(props: AuthorizationCenterViewProps) {
   const canEdit = props.client !== null && !props.isRemoteWorkspace;
   const queryClient = useQueryClient();
-  const markChangesPending = useEnvironmentVariableMarkChangesPending();
-  const isPendingChanges = useIsEnvironmentVariableChangesPending();
-  const { applyAsync, isApplying, error: applyError } = useEnvironmentVariableApplyChanges();
   const [editor, setEditor] = useState<EditorState | null>(null);
-  const [applyOpen, setApplyOpen] = useState(false);
   const [testResults, setTestResults] = useState<Record<string, iPolloWorkAuthorizationServiceTestResult>>({});
 
   const servicesQuery = useQuery({
@@ -188,20 +164,16 @@ function AuthorizationCenterContent(props: AuthorizationCenterViewProps) {
       if (missing) {
         throw new Error(t("settings.authorization.validation_required", { field: missing.label }));
       }
-      const entries = fields
-        .map((field) => ({ key: field.key, value: draft.values[field.key]?.trim() ?? "" }))
-        .filter((entry) => entry.value.length > 0);
-      if (entries.length === 0) return;
-      await props.client.upsertUserEnv(entries);
+      const values = Object.fromEntries(fields
+        .map((field) => [field.key, draft.values[field.key]?.trim() ?? ""] as const)
+        .filter(([, value]) => value.length > 0));
+      if (Object.keys(values).length === 0) return;
+      await props.client.saveAuthorizationService(draft.service.id, values);
     },
     onSuccess: async () => {
-      markChangesPending();
       setEditor(null);
       toast.success(t("settings.authorization.saved"));
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: authorizationQueryKey(props.runtimeKey) }),
-        queryClient.invalidateQueries({ queryKey: environmentUserEnvQueryKey(props.runtimeKey) }),
-      ]);
+      await queryClient.invalidateQueries({ queryKey: authorizationQueryKey(props.runtimeKey) });
     },
   });
 
@@ -252,45 +224,6 @@ function AuthorizationCenterContent(props: AuthorizationCenterViewProps) {
           <SettingsNotice>{t("settings.authorization.remote_workspace_hint")}</SettingsNotice>
         ) : null}
         {servicesQuery.error ? <SettingsNotice tone="error">{servicesQuery.error.message}</SettingsNotice> : null}
-
-        {isPendingChanges && !props.isRemoteWorkspace ? (
-          <>
-            <Alert variant="warning">
-              <RefreshCw />
-              <AlertTitle>{t("settings.authorization.apply_pending_title")}</AlertTitle>
-              <AlertDescription>{t("settings.authorization.apply_pending_body")}</AlertDescription>
-              {props.applyBlocked ? <AlertDescription>{props.applyBlockedReason}</AlertDescription> : null}
-              {applyError ? <AlertDescription>{applyError.message}</AlertDescription> : null}
-              {props.onApplyChanges ? (
-                <AlertAction>
-                  <Button
-                    size="sm"
-                    disabled={isApplying || props.applyBlocked}
-                    onClick={() => setApplyOpen(true)}
-                    title={props.applyBlockedReason ?? undefined}
-                  >
-                    <Spinner spinning={isApplying} />
-                    {isApplying ? t("settings.authorization.applying") : t("settings.authorization.apply")}
-                  </Button>
-                </AlertAction>
-              ) : null}
-            </Alert>
-            <ConfirmModal
-              open={applyOpen}
-              title={t("settings.authorization.apply_title")}
-              message={t("settings.authorization.apply_confirm")}
-              confirmLabel={isApplying ? t("settings.authorization.applying") : t("settings.authorization.apply")}
-              cancelLabel={t("settings.authorization.cancel")}
-              variant="warning"
-              onConfirm={() => {
-                void applyAsync(undefined, { onSuccess: () => setApplyOpen(false) });
-              }}
-              onCancel={() => {
-                if (!isApplying) setApplyOpen(false);
-              }}
-            />
-          </>
-        ) : null}
 
         {servicesQuery.isLoading ? (
           <div className="flex min-h-40 items-center justify-center rounded-2xl border border-dls-border bg-dls-hover/40">

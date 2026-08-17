@@ -79,6 +79,7 @@
     "methods": [
       {
         "id": "github-token",
+        "connectionId": "github",
         "kind": "secret-form",
         "label": "连接 GitHub",
         "description": "使用仅限所选仓库和所需权限的 Fine-grained personal access token。令牌只保存在 iPolloWork 的加密授权仓库中。",

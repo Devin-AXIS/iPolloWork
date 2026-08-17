@@ -73,6 +73,7 @@ const packageManifest = {
     required: true,
     methods: [{
       id: "api-key",
+      connectionId: "acme-research",
       kind: "secret-form",
       label: "API key",
       fields: [{ id: "apiKey", label: "API key", secret: true, required: true }],
@@ -318,6 +319,7 @@ describe("plugin package manifest", () => {
         required: true,
         methods: [{
           id: "api-key",
+          connectionId: "acme-research",
           kind: "secret-form",
           label: "API key",
           envKey: "ACME_API_KEY",

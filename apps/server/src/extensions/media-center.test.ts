@@ -4,7 +4,7 @@ import { mkdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import type { EnvService } from "../env-file.js";
+import type { AuthorizationAccess } from "../authorization-center.js";
 import type { ServerConfig } from "../types.js";
 import {
   MEDIA_EXTENSION_ACTIONS,
@@ -24,10 +24,8 @@ const config = {
   workspaces: [],
 } as unknown as ServerConfig;
 
-function env(values: Record<string, string>): EnvService {
-  return {
-    list: async () => Object.entries(values).map(([key, value]) => ({ key, value, updatedAt: 0 })),
-  } as unknown as EnvService;
+function env(values: Record<string, string>): AuthorizationAccess {
+  return { read: async () => values };
 }
 
 afterEach(async () => {

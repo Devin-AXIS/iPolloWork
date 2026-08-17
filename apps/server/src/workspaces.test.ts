@@ -9,6 +9,7 @@ function ws(fields: {
   path: string;
   preset?: string;
   workspaceType: WorkspaceInfo["workspaceType"];
+  engineId?: string;
 }): WorkspaceInfo {
   return {
     id: fields.id ?? "ws_test",
@@ -16,6 +17,7 @@ function ws(fields: {
     path: fields.path,
     preset: fields.preset ?? (fields.workspaceType === "remote" ? "remote" : "starter"),
     workspaceType: fields.workspaceType,
+    engineId: fields.engineId,
   };
 }
 
@@ -54,6 +56,18 @@ describe("findManagedEngineWorkspace", () => {
 
   test("returns undefined for a remote-only config", () => {
     const workspaces = [ws({ id: "rem_ws", path: "", workspaceType: "remote" })];
+    expect(findManagedEngineWorkspace(workspaces)).toBeUndefined();
+  });
+
+  test("does not boot OpenCode inside a DeepSeek Harness project", () => {
+    const workspaces = [
+      ws({
+        id: "ws_dsh",
+        path: "/home/user/harness",
+        workspaceType: "local",
+        engineId: "deepseek-harness",
+      }),
+    ];
     expect(findManagedEngineWorkspace(workspaces)).toBeUndefined();
   });
 

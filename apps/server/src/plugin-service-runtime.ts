@@ -118,7 +118,7 @@ export async function listPluginServiceActions(
   workspaceId: string,
   pluginId = "",
 ): Promise<PluginServiceAction[]> {
-  const installed = await listInstalledPluginPackages({ serverConfig: config, workspaceId });
+  const installed = await listInstalledPluginPackages({ serverConfig: config });
   return installed
     .filter((entry) => entry.enabled && (!pluginId || entry.pluginId === pluginId))
     .flatMap((entry) => actionsForManifest(entry.manifest));
@@ -219,7 +219,6 @@ export async function callPluginServiceAction(input: {
 }) {
   const installed = await resolveInstalledPluginService({
     serverConfig: input.config,
-    workspaceId: input.workspaceId,
     pluginId: input.pluginId,
   });
   const declared = actionsForManifest(installed.manifest).find((entry) => entry.action === input.action);

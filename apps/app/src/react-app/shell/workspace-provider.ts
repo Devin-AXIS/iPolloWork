@@ -1,9 +1,7 @@
 import * as React from "react";
 
-import type { Client } from "@/app/types";
-
 type WorkspaceContextValue = {
-  client: Client | null;
+  client: unknown | null;
   engineId?: string | null;
   opencodeBaseUrl: string;
   selectedWorkspaceRoot: string;
@@ -12,7 +10,7 @@ type WorkspaceContextValue = {
 const WorkspaceContext = React.createContext<WorkspaceContextValue | null>(null);
 
 type WorkspaceProviderProps = {
-  client: Client | null;
+  client: unknown | null;
   engineId?: string | null;
   opencodeBaseUrl?: string;
   selectedWorkspaceRoot: string;

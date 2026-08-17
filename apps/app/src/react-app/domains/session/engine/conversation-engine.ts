@@ -68,6 +68,21 @@ export type ConversationAgent = {
   mode?: string;
 };
 
+export type ConversationModeIcon = "execute" | "plan" | "code" | "minimal" | "create";
+
+export type ConversationMode = {
+  id: string;
+  label: string;
+  description?: string;
+  icon: ConversationModeIcon;
+  isDefault?: boolean;
+};
+
+export type ConversationModeState = {
+  id: string | null;
+  mutable: boolean;
+};
+
 export type ConversationPromptPart =
   | { type: "text"; text: string; synthetic?: boolean }
   | { type: "file"; mime: string; url: string; filename?: string }
@@ -116,7 +131,7 @@ export type ConversationPromptInput = {
   sessionId: string;
   parts: ConversationPromptPart[];
   model?: ModelRef;
-  agent?: string;
+  mode?: string;
   variant?: string;
   reasoningEffort?: string;
   system?: string;
@@ -124,6 +139,7 @@ export type ConversationPromptInput = {
 
 export interface ConversationEngineConnection {
   mapSnapshot(snapshot: unknown): ConversationSnapshot;
+  modeState?(session: ConversationSession): ConversationModeState;
   subscribe(input: ConversationSubscribeInput): Promise<void>;
   listPermissions(input: { sessionId: string; directory?: string }): Promise<ConversationPermission[]>;
   replyPermission(input: {
@@ -158,6 +174,7 @@ export interface ConversationEngineConnection {
   }): Promise<void>;
   sendPrompt(input: ConversationPromptInput): Promise<void>;
   listCommands(directory?: string): Promise<SlashCommandOption[]>;
+  listModes(): Promise<ConversationMode[]>;
   listAgents(): Promise<ConversationAgent[]>;
   searchFiles(query: string, directory?: string): Promise<string[]>;
 }
@@ -168,6 +185,8 @@ export interface ConversationEngineAdapter {
     baseUrl: string;
     token?: string;
     directory?: string;
+    serverBaseUrl?: string;
+    workspaceId?: string;
   }): ConversationEngineConnection;
 }
 

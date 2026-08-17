@@ -10,9 +10,14 @@ import { useNavigate } from "react-router-dom";
 import type { UIMessage } from "ai";
 import { toast } from "@/components/ui/sonner";
 import type { PptxCompatibility, TemplateCategory } from "@ipollowork/types/templates";
-import { DEFAULT_ENGINE_ID } from "@ipollowork/types/workspace";
+import {
+  DEEPSEEK_HARNESS_ENGINE_ID,
+  DEFAULT_ENGINE_ID,
+  type BuiltInWorkspaceEngineId,
+} from "@ipollowork/types/workspace";
 
 import { captureAnalyticsEvent, markTaskRunStart } from "@/app/lib/analytics";
+import { DeepSeekHarnessClient } from "@/app/lib/deepseek-harness-client";
 import {
   PERSONAL_WORK_CONTEXT_ID,
   readActiveWorkContextId,
@@ -62,7 +67,11 @@ import {
   toProjectSessionLists,
   userVisibleSessionsByWorkspaceId,
 } from "@/react-app/shell/route-workspaces";
-import { useLocal } from "@/react-app/kernel/local-provider";
+import {
+  getEnginePreferences,
+  updateEnginePreferences,
+  useLocal,
+} from "@/react-app/kernel/local-provider";
 import { SessionPage } from "@/react-app/domains/session/chat/session-page";
 import { isDesktopProviderBlocked, DESKTOP_RESTRICTION_OPENCODE_PROVIDER_ID } from "@/app/cloud/desktop-app-restrictions";
 import { useCheckDesktopRestriction } from "@/react-app/domains/cloud/desktop-config-provider";
@@ -135,7 +144,7 @@ import { useWorkspaceRouteState } from "./use-workspace-route-state";
 import { getReactQueryClient } from "@/react-app/infra/query-client";
 import { useSessionControlActions } from "@/react-app/domains/session/control/session-control-actions";
 import type { ConversationStatus } from "@/react-app/domains/session/engine/conversation-engine";
-import { conversationEngineAdapters } from "@/react-app/domains/session/engine/opencode-conversation-engine";
+import { conversationEngineAdapters } from "@/react-app/domains/session/engine/conversation-engines";
 import { workspaceSessionRoute, workspaceSettingsRoute } from "./workspace-routes";
 import { WorkspaceProvider } from "./workspace-provider";
 import type { OpenTarget } from "@/react-app/domains/session/artifacts/open-target";
@@ -253,26 +262,50 @@ export function SessionRoute() {
           baseUrl: opencodeBaseUrl,
           token: selectedWorkspaceServerToken,
           directory: selectedWorkspaceRoot || undefined,
+          serverBaseUrl: selectedWorkspaceEndpoint?.baseUrl,
+          workspaceId: selectedWorkspaceEndpoint?.workspaceId,
         })
       : null,
-    [opencodeBaseUrl, selectedWorkspace?.engineId, selectedWorkspaceError, selectedWorkspaceRoot, selectedWorkspaceServerToken],
+    [opencodeBaseUrl, selectedWorkspace?.engineId, selectedWorkspaceEndpoint?.baseUrl, selectedWorkspaceEndpoint?.workspaceId, selectedWorkspaceError, selectedWorkspaceRoot, selectedWorkspaceServerToken],
   );
   const conversationConnectionKey = `${selectedWorkspace?.engineId?.trim() || DEFAULT_ENGINE_ID}:${opencodeBaseUrl}:${selectedWorkspaceServerToken}`;
+  const activeEngineId = selectedWorkspace?.engineId?.trim() || DEFAULT_ENGINE_ID;
+  const activeEnginePreferences = getEnginePreferences(local.prefs, activeEngineId);
+  const selectedModel = activeEnginePreferences.model;
+  const selectedMode = activeEnginePreferences.mode;
+  const [modeSelectionLocked, setModeSelectionLocked] = useState(false);
+  useEffect(() => {
+    setModeSelectionLocked(false);
+  }, [activeEngineId, selectedSessionId]);
+  const engineProviderClient = useMemo(() => {
+    if (activeEngineId === DEFAULT_ENGINE_ID) return opencodeClient;
+    if (
+      activeEngineId !== DEEPSEEK_HARNESS_ENGINE_ID
+      || !selectedWorkspaceEndpoint
+      || !selectedWorkspaceServerToken
+    ) {
+      return null;
+    }
+    return new DeepSeekHarnessClient({
+      serverBaseUrl: selectedWorkspaceEndpoint.baseUrl,
+      workspaceId: selectedWorkspaceEndpoint.workspaceId,
+      token: selectedWorkspaceServerToken,
+    });
+  }, [activeEngineId, opencodeClient, selectedWorkspaceEndpoint, selectedWorkspaceServerToken]);
   useSessionMcpMaintenance({
     cloudSignedIn: denAuth.isSignedIn && activeWorkContextId === PERSONAL_WORK_CONTEXT_ID,
     client: selectedWorkspaceEndpoint?.client ?? null,
     workspaceId: selectedWorkspaceEndpoint?.workspaceId ?? null,
-    opencodeClient,
-    directory: selectedWorkspaceRoot,
   });
-  // Agent selection is persisted in local prefs (like the model variant) so
-  // it survives reloads instead of silently falling back to "build" (#2101).
-  const selectedAgent = local.prefs.selectedAgent;
-  const setSelectedAgent = useCallback(
-    (agent: string | null) => {
-      local.setPrefs((previous) => ({ ...previous, selectedAgent: agent }));
+  const setSelectedMode = useCallback(
+    (mode: string | null) => {
+      local.setPrefs((previous) => updateEnginePreferences(
+        previous,
+        activeEngineId,
+        (selection) => ({ ...selection, mode }),
+      ));
     },
-    [local.setPrefs],
+    [activeEngineId, local.setPrefs],
   );
   // One-way latch for "a refreshRouteState is currently running"; prevents
   // overlapping route refreshes from queueing up when the user clicks fast.
@@ -418,7 +451,11 @@ export function SessionRoute() {
     workspaces,
   ]);
 
-  const createProject = useCallback(async (input: { name: string; folderPath: string }) => {
+  const createProject = useCallback(async (input: {
+    name: string;
+    folderPath: string;
+    engineId: BuiltInWorkspaceEngineId;
+  }) => {
     if (!client) throw new Error(t("projects.server_unavailable"));
     const name = input.name.trim();
     const requestedFolderPath = input.folderPath.trim();
@@ -428,7 +465,13 @@ export function SessionRoute() {
     let desktopProjectId: string | null = null;
 
     if (isDesktopRuntime()) {
-      const desktopState = await workspaceCreate({ folderPath, name, preset: "starter", workContextId });
+      const desktopState = await workspaceCreate({
+        folderPath,
+        name,
+        preset: "starter",
+        workContextId,
+        engineId: input.engineId,
+      });
       const desktopProject = desktopState.workspaces.find((workspace) => workspace.id === desktopState.selectedId)
         ?? desktopState.workspaces.find((workspace) => workspace.path === folderPath)
         ?? null;
@@ -437,7 +480,13 @@ export function SessionRoute() {
       folderPath = desktopProject.path;
     }
 
-    const result = await client.createLocalWorkspace({ folderPath, name, preset: "starter", workContextId });
+    const result = await client.createLocalWorkspace({
+      folderPath,
+      name,
+      preset: "starter",
+      workContextId,
+      engineId: input.engineId,
+    });
     const project = result.workspaces.find((workspace) => workspace.id === desktopProjectId)
       ?? result.workspaces.find((workspace) => workspace.path === folderPath)
       ?? null;
@@ -539,75 +588,96 @@ export function SessionRoute() {
 
   const mcpConnectedCount = useMcpConnectedCount(opencodeClient, selectedWorkspaceRoot);
   const providerListQuery = useProviderListQuery({
-    client: opencodeClient,
-    engineId: selectedWorkspace?.engineId,
+    client: engineProviderClient,
+    engineId: activeEngineId,
     baseUrl: opencodeBaseUrl,
     directory: selectedWorkspaceRoot || undefined,
   });
   const { providerCatalog, modelVariantLabel, modelBehaviorOptions, modelVariantValue } =
     useModelBehavior({
       providerList: providerListQuery.data,
-      defaultModel: local.prefs.defaultModel,
-      modelVariant: local.prefs.modelVariant ?? null,
+      defaultModel: selectedModel,
+      modelVariant: activeEnginePreferences.modelVariant,
     });
-  const selectedModelSupportsAttachments = modelSupportsAttachments(
-    providerCatalog,
-    local.prefs.defaultModel,
-  );
+  const selectedModelSupportsAttachments = modelSupportsAttachments(providerCatalog, selectedModel);
   const modelPicker = useModelPicker({
-    client: opencodeClient,
-    engineId: selectedWorkspace?.engineId,
+    client: engineProviderClient,
+    engineId: activeEngineId,
     baseUrl: opencodeBaseUrl,
     workspaceRoot: selectedWorkspaceRoot,
   });
+  const setSelectedModel = useCallback((model: ModelRef) => {
+    local.setPrefs((previous) => updateEnginePreferences(
+      previous,
+      activeEngineId,
+      (selection) => ({
+        ...selection,
+        model,
+        modelVariant: selection.model?.providerID === model.providerID
+          && selection.model.modelID === model.modelID
+          ? selection.modelVariant
+          : null,
+      }),
+    ));
+  }, [activeEngineId, local.setPrefs]);
+  const setModelVariant = useCallback((modelVariant: string | null) => {
+    local.setPrefs((previous) => updateEnginePreferences(
+      previous,
+      activeEngineId,
+      (selection) => ({ ...selection, modelVariant }),
+    ));
+  }, [activeEngineId, local.setPrefs]);
   useEffect(() => {
     if (!providerListQuery.data) return;
-    const preferredModel = resolvePreferredSelectableChatModel({
+    const preferredSelectableModel = resolvePreferredSelectableChatModel({
       providers: getSelectableChatModelSnapshot(providerListQuery.data),
       defaults: providerListQuery.data.default,
-      current: local.prefs.defaultModel,
+      current: selectedModel,
     });
+    const nativeDefaultModel = activeEngineId === DEEPSEEK_HARNESS_ENGINE_ID
+      ? Object.entries(providerListQuery.data.default).flatMap(([providerID, modelID]) =>
+          modelID ? [{ providerID, modelID }] : [],
+        )[0] ?? null
+      : null;
+    const preferredModel = preferredSelectableModel ?? nativeDefaultModel;
     if (
       !preferredModel ||
       (
-        preferredModel.providerID === local.prefs.defaultModel?.providerID &&
-        preferredModel.modelID === local.prefs.defaultModel.modelID
+        preferredModel.providerID === selectedModel?.providerID &&
+        preferredModel.modelID === selectedModel.modelID
       )
     ) {
       return;
     }
-    local.setPrefs((previous) => ({
-      ...previous,
-      defaultModel: preferredModel,
-      modelVariant: null,
-    }));
-  }, [local.prefs.defaultModel, local.setPrefs, providerListQuery.data]);
+    setSelectedModel(preferredModel);
+  }, [activeEngineId, providerListQuery.data, selectedModel, setSelectedModel]);
+  const selectableModels = getSelectableChatModelSnapshot(providerListQuery.data);
   const selectedModelUnavailable = Boolean(
-    local.prefs.defaultModel &&
+    providerListQuery.data && (
+      !selectedModel ||
       (
         isDesktopProviderBlocked({
-          providerId: local.prefs.defaultModel.providerID,
+          providerId: selectedModel.providerID,
           checkRestriction: checkDesktopRestriction,
         }) ||
         (
           checkDesktopRestriction({ restriction: "allowCustomProviders" }) &&
           !providerConnectedIds.some(
-            (providerId) => providerId.trim() === local.prefs.defaultModel?.providerID.trim(),
+            (providerId) => providerId.trim() === selectedModel.providerID.trim(),
           )
         ) ||
-        (
-          providerListQuery.data &&
-          !isModelAvailableInSelectableChatProviders(providerListQuery.data, local.prefs.defaultModel)
-        )
-      ),
+        !isModelAvailableInSelectableChatProviders(providerListQuery.data, selectedModel)
+      ) ||
+      selectableModels.every((provider) => provider.modelIDs.length === 0)
+    )
   );
-  const hasUsableModel = Boolean(local.prefs.defaultModel && !selectedModelUnavailable);
+  const hasUsableModel = Boolean(selectedModel && !selectedModelUnavailable);
   // Creating and opening a conversation does not require a usable model.
   // Keeping this separate from `canCreateTask` prevents a first-run workspace
   // from landing on an empty pane when its model setup is still incomplete or
   // an old saved model is no longer available.
   const canCreateSession = Boolean(
-    opencodeClient && selectedWorkspaceId && !loading && !selectedWorkspaceError,
+    conversation && selectedWorkspaceId && !loading && !selectedWorkspaceError,
   );
   const canCreateTask = Boolean(
     canCreateSession && !selectedModelUnavailable,
@@ -624,7 +694,7 @@ export function SessionRoute() {
 
   const { store: sessionProviderAuthStore, snapshot: sessionProviderAuthSnapshot } =
     useSessionProviderAuth({
-      opencodeClient,
+      engineClient: engineProviderClient,
       providers,
       providerDefaults,
       providerConnectedIds,
@@ -655,10 +725,11 @@ export function SessionRoute() {
     runtimeWorkspaceId: selectedWorkspaceEndpoint?.workspaceId ?? null,
   });
   useEffect(() => {
-    if (!opencodeClient) {
+    if (!engineProviderClient) {
       setProviders([]);
       setProviderDefaults({});
       setProviderConnectedIds([]);
+      setDisabledProviderIds([]);
       return;
     }
 
@@ -679,6 +750,7 @@ export function SessionRoute() {
         ? (value.connected ?? [])
         : (value.connected ?? []).filter((id) => !isCloudProvider(id));
       setProviders(all);
+      setProviderDefaults(value.default ?? {});
       setProviderConnectedIds(connected);
       // New-provider detection is handled globally by the provider auth
       // store's applyProviderListState, which fires dispatchNewProviders.
@@ -688,8 +760,8 @@ export function SessionRoute() {
       let disabledProviders: string[] = [];
       try {
         disabledProviders = await providerEngineAdapters
-          .get(selectedWorkspace?.engineId)
-          .connect(opencodeClient)
+          .get(activeEngineId)
+          .connect(engineProviderClient)
           .readDisabledProviders();
         if (!cancelled) setDisabledProviderIds(disabledProviders);
       } catch {
@@ -700,8 +772,8 @@ export function SessionRoute() {
         applyProviderState(
           filterProviderList(
             await ensureProviderListQuery(getReactQueryClient(), {
-              client: opencodeClient,
-              engineId: selectedWorkspace?.engineId,
+              client: engineProviderClient,
+              engineId: activeEngineId,
               baseUrl: opencodeBaseUrl,
               directory: selectedWorkspaceRoot || undefined,
             }),
@@ -719,10 +791,10 @@ export function SessionRoute() {
     return () => {
       cancelled = true;
     };
-  }, [denSessionVersion, opencodeBaseUrl, opencodeClient, selectedWorkspace?.engineId, selectedWorkspaceRoot]);
+  }, [activeEngineId, denSessionVersion, engineProviderClient, opencodeBaseUrl, selectedWorkspaceRoot]);
 
-  const modelLabel = local.prefs.defaultModel
-    ? resolveModelDisplayName(local.prefs.defaultModel.modelID)
+  const modelLabel = selectedModel
+    ? resolveModelDisplayName(selectedModel.modelID)
     : t("session.default_model");
 
   const listSlashCommands = useCallback(async (): Promise<SlashCommandOption[]> => {
@@ -733,6 +805,11 @@ export function SessionRoute() {
     if (!conversation) return [];
     return conversation.listCommands(selectedWorkspaceRoot || undefined);
   }, [conversation, engineReloadVersion, selectedWorkspaceRoot]);
+
+  const listModes = useCallback(async () => {
+    void engineReloadVersion;
+    return conversation ? conversation.listModes() : [];
+  }, [conversation, engineReloadVersion]);
 
   // Shared by @ mentions and the command palette. Plan and build are product
   // modes controlled beside the model; hidden and subagent-only entries are
@@ -835,16 +912,16 @@ export function SessionRoute() {
       },
       modelPickerOpen: modelPicker.compactOpen,
       modelUnavailable: selectedModelUnavailable,
-      selectedModel: local.prefs.defaultModel ?? { providerID: "", modelID: "" },
-      onModelPickerOpenChange: modelPicker.setCompactOpen,
+      selectedModel: selectedModel ?? { providerID: "", modelID: "" },
+      onModelPickerOpenChange: (open: boolean) => {
+        if (open && !hasUsableModel) {
+          void sessionProviderAuthStore.openProviderAuthModal({ returnFocusTarget: "composer" });
+          return;
+        }
+        modelPicker.setCompactOpen(open);
+      },
       onModelChange: (model: ModelRef) => {
-        local.setPrefs((previous) => ({
-          ...previous,
-          defaultModel: model,
-          modelVariant: previous.defaultModel?.providerID === model.providerID && previous.defaultModel.modelID === model.modelID
-            ? previous.modelVariant
-            : null,
-        }));
+        setSelectedModel(model);
         modelPicker.setCompactOpen(false);
       },
       onConfigureModels: () => {
@@ -898,8 +975,8 @@ export function SessionRoute() {
           attachment_count: draft.attachments.length,
           text_length: text.length,
           workspace_type: selectedWorkspace?.workspaceType ?? "unknown",
-          provider_id: local.prefs.defaultModel?.providerID ?? null,
-          model_id: local.prefs.defaultModel?.modelID ?? null,
+          provider_id: selectedModel?.providerID ?? null,
+          model_id: selectedModel?.modelID ?? null,
         });
         markTaskRunStart(targetSessionId);
         // Den org adoption signals (auth-gated inside; no-op when signed out).
@@ -1076,12 +1153,12 @@ export function SessionRoute() {
           prompt: () => conversation.sendPrompt({
             sessionId: targetSessionId,
             parts: promptParts,
-            model: local.prefs.defaultModel ?? undefined,
-            agent: selectedAgent ?? undefined,
-            reasoningEffort: local.prefs.defaultModel?.providerID === "tokenstar" && modelVariantValue && tokenStarModelSupportsEffort(local.prefs.defaultModel.modelID)
+            model: selectedModel ?? undefined,
+            mode: selectedMode ?? undefined,
+            reasoningEffort: selectedModel?.providerID === "tokenstar" && modelVariantValue && tokenStarModelSupportsEffort(selectedModel.modelID)
               ? modelVariantValue
               : undefined,
-            variant: local.prefs.defaultModel?.providerID === "tokenstar" && tokenStarModelSupportsEffort(local.prefs.defaultModel.modelID)
+            variant: selectedModel?.providerID === "tokenstar" && tokenStarModelSupportsEffort(selectedModel.modelID)
               ? undefined
               : modelVariantValue ?? undefined,
             system: systemContext || undefined,
@@ -1097,11 +1174,14 @@ export function SessionRoute() {
       modelVariant: modelVariantValue,
       modelBehaviorOptions,
       onModelVariantChange: (value: string | null) => {
-        local.setPrefs((previous) => ({ ...previous, modelVariant: value }));
+        setModelVariant(value);
       },
-      selectedAgent,
+      selectedMode,
+      onModeSelectionLockedChange: setModeSelectionLocked,
+      listModes,
+      onSelectMode: setSelectedMode,
       listAgents,
-      onSelectAgent: (agent: string | null) => setSelectedAgent(agent),
+      onSelectAgent: setSelectedMode,
       listCommands: listSlashCommands,
       recentFiles: [],
       searchFiles: async (query: string) => {
@@ -1148,13 +1228,7 @@ export function SessionRoute() {
         })();
       },
       onChangeModel: (model: { providerID: string; modelID: string }) => {
-        local.setPrefs((previous) => ({
-          ...previous,
-          defaultModel: model,
-          modelVariant: previous.defaultModel?.providerID === model.providerID && previous.defaultModel.modelID === model.modelID
-            ? previous.modelVariant
-            : null,
-        }));
+        setSelectedModel(model);
       },
       environmentRuntimeKey,
       onApplyEnvironmentChanges: isDesktopRuntime() && selectedWorkspace?.workspaceType !== "remote"
@@ -1169,8 +1243,8 @@ export function SessionRoute() {
     hasUsableModel,
     handleApplyEnvironmentChanges,
     environmentRuntimeKey,
-    local,
     listAgents,
+    listModes,
     listSlashCommands,
     modelBehaviorOptions,
     modelLabel,
@@ -1179,7 +1253,8 @@ export function SessionRoute() {
     navigate,
     opencodeBaseUrl,
     providerConnectedIds,
-    selectedAgent,
+    selectedMode,
+    selectedModel,
     selectedSessionId,
     selectedModelSupportsAttachments,
     selectedModelUnavailable,
@@ -1187,6 +1262,9 @@ export function SessionRoute() {
     selectedWorkspaceEndpoint,
     selectedWorkspaceId,
     selectedWorkspaceRoot,
+    setModelVariant,
+    setSelectedMode,
+    setSelectedModel,
     sessionsByWorkspaceId,
     token,
   ]);
@@ -1254,6 +1332,8 @@ export function SessionRoute() {
         baseUrl: endpoint.opencodeBaseUrl,
         token: endpoint.token,
         directory: workspace.path?.trim() || undefined,
+        serverBaseUrl: endpoint.baseUrl,
+        workspaceId: endpoint.workspaceId,
       });
     let createdSessionId: string | null = null;
     let projectInitializationFailed = false;
@@ -1509,7 +1589,10 @@ export function SessionRoute() {
       { name: "providerId", type: "string" as const, required: false, description: "Provider id to pre-select, e.g. 'anthropic', 'openai', 'google'." },
     ],
     execute: async (rawArgs: unknown) => {
-      if (checkDesktopRestriction({ restriction: "allowCustomProviders" })) {
+      if (
+        providerEngineAdapters.get(activeEngineId).capabilities.customProviders
+        && checkDesktopRestriction({ restriction: "allowCustomProviders" })
+      ) {
         return { ok: false, error: "Custom providers are disabled by your organization." };
       }
       const providerId = typeof rawArgs === "object" && rawArgs !== null
@@ -1521,7 +1604,7 @@ export function SessionRoute() {
       );
       return { ok: true, opened: "provider_auth_modal", preferredProviderId: preferred ?? null };
     },
-  }), [checkDesktopRestriction, sessionProviderAuthStore]);
+  }), [activeEngineId, checkDesktopRestriction, sessionProviderAuthStore]);
   useControlAction(addProviderControlAction);
 
   const paletteSessionOptions = useMemo<PaletteSessionOption[]>(() => {
@@ -1693,8 +1776,8 @@ export function SessionRoute() {
 
   return (
     <WorkspaceProvider
-      client={opencodeClient}
-      engineId={selectedWorkspace?.engineId}
+      client={engineProviderClient}
+      engineId={activeEngineId}
       opencodeBaseUrl={opencodeBaseUrl}
       selectedWorkspaceRoot={selectedWorkspaceRoot}
     >
@@ -1833,6 +1916,8 @@ export function SessionRoute() {
                 baseUrl: endpoint.opencodeBaseUrl,
                 token: endpoint.token,
                 directory: workspace.path?.trim() || undefined,
+                serverBaseUrl: endpoint.baseUrl,
+                workspaceId: endpoint.workspaceId,
               });
             try {
               const session = await workspaceConversation.create(workspace.path?.trim() || undefined);
@@ -1960,9 +2045,10 @@ export function SessionRoute() {
       }}
       sessions={paletteSessionOptions}
       extraItems={[...(sessionFindPaletteItem ? [sessionFindPaletteItem] : []), sessionSearchPaletteItem, ...terminalPaletteItems, developerModePaletteItem, diagnosticsCopyPaletteItem, diagnosticsExportPaletteItem, reloadConfigPaletteItem]}
-      listAgents={listAgents}
-      selectedAgent={selectedAgent}
-      onSelectAgent={setSelectedAgent}
+      listModes={listModes}
+      modeSelectionDisabled={modeSelectionLocked}
+      selectedMode={selectedMode}
+      onSelectMode={setSelectedMode}
     />
     <SessionSearchDialog
       open={sessionSearchOpen}
@@ -1982,26 +2068,20 @@ export function SessionRoute() {
       query={modelPicker.query}
       setQuery={modelPicker.setQuery}
       target="default"
-      current={local.prefs.defaultModel ?? ({ providerID: "", modelID: "" } satisfies ModelRef)}
+      current={selectedModel ?? ({ providerID: "", modelID: "" } satisfies ModelRef)}
       onSelect={(next: ModelRef) => {
-        local.setPrefs((previous) => ({
-          ...previous,
-          defaultModel: next,
-          modelVariant: previous.defaultModel?.providerID === next.providerID && previous.defaultModel.modelID === next.modelID
-            ? previous.modelVariant
-            : null,
-        }));
+        setSelectedModel(next);
         modelPicker.setOpen(false);
         focusPromptSoon();
       }}
       disabledProviders={disabledProviderIds}
       onBehaviorChange={() => {}}
       onToggleProvider={async (providerId, enable) => {
-        if (!opencodeClient) return;
+        if (!engineProviderClient) return;
         try {
-          const connection = providerEngineAdapters
-            .get(selectedWorkspace?.engineId)
-            .connect(opencodeClient);
+          const adapter = providerEngineAdapters.get(activeEngineId);
+          if (!adapter.capabilities.disabledProviders) return;
+          const connection = adapter.connect(engineProviderClient);
           const current = await connection.readDisabledProviders();
           const next = enable
             ? current.filter((id: string) => id !== providerId)

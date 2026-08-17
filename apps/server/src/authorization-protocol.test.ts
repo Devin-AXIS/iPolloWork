@@ -2,13 +2,14 @@ import { describe, expect, test } from "bun:test";
 
 describe("plugin authorization methods", () => {
   test("starts a public-client OAuth flow with PKCE and keeps the verifier private", async () => {
-    const { startPluginAuthorizationFlow } = await import("./plugin-authorization.js");
+    const { startPluginAuthorizationFlow } = await import("./authorization-protocol.js");
     const started = await startPluginAuthorizationFlow({
       installationId: "install_acme",
       accountId: "default",
       now: 1_800_000_000_000,
       method: {
         id: "acme-oauth",
+        connectionId: "acme",
         kind: "oauth-pkce",
         label: "Continue with Acme",
         clientId: "desktop-public-client",
@@ -29,7 +30,7 @@ describe("plugin authorization methods", () => {
   });
 
   test("starts device and QR authorization from plugin-owned endpoints", async () => {
-    const { startPluginAuthorizationFlow } = await import("./plugin-authorization.js");
+    const { startPluginAuthorizationFlow } = await import("./authorization-protocol.js");
     const requests: string[] = [];
     const started = await startPluginAuthorizationFlow({
       installationId: "install_tv",
@@ -37,6 +38,7 @@ describe("plugin authorization methods", () => {
       now: 1_800_000_000_000,
       method: {
         id: "tv-device",
+        connectionId: "tv",
         kind: "device-code",
         label: "Scan or enter a code",
         clientId: "ipollowork-tv",
@@ -72,7 +74,7 @@ describe("plugin authorization methods", () => {
   });
 
   test("starts a one-time plugin-hosted browser flow without global keys", async () => {
-    const { startPluginAuthorizationFlow } = await import("./plugin-authorization.js");
+    const { startPluginAuthorizationFlow } = await import("./authorization-protocol.js");
     process.env.PLUGIN_PLATFORM_TEST_GLOBAL_KEY = "must-stay-untouched";
     try {
       const started = await startPluginAuthorizationFlow({
@@ -81,6 +83,7 @@ describe("plugin authorization methods", () => {
         now: 1_800_000_000_000,
         method: {
           id: "vendor-connect",
+          connectionId: "vendor",
           kind: "hosted-browser",
           label: "Connect in browser",
           startUrl: "https://plugins.vendor.example/connect",

@@ -8,7 +8,7 @@ import {
 } from "react";
 
 import { t } from "@/i18n";
-import type { ConversationAgent } from "@/react-app/domains/session/engine/conversation-engine";
+import type { ConversationMode } from "@/react-app/domains/session/engine/conversation-engine";
 import {
   Command,
   CommandDialog,
@@ -44,7 +44,7 @@ export type AccessibleTargetOption = {
   preview: string;
 };
 
-type PaletteMode = "root" | "sessions" | "accessible-items" | "agents";
+type PaletteMode = "root" | "sessions" | "accessible-items" | "modes";
 
 export type SessionOption = {
   workspaceId: string;
@@ -98,10 +98,11 @@ export type CommandPaletteProps = {
   /** Optional: sessions for the second mode. */
   sessions: SessionOption[];
   extraItems?: PaletteItem[];
-  /** Optional: agent picker submode (Switch agent). */
-  listAgents?: () => Promise<ConversationAgent[]>;
-  selectedAgent?: string | null;
-  onSelectAgent?: (agent: string | null) => void;
+  /** Optional: engine-native work mode picker. */
+  listModes?: () => Promise<ConversationMode[]>;
+  modeSelectionDisabled?: boolean;
+  selectedMode?: string | null;
+  onSelectMode?: (mode: string | null) => void;
 };
 
 /**
@@ -112,7 +113,7 @@ export type CommandPaletteProps = {
  */
 export function CommandPalette(props: CommandPaletteProps) {
   const [mode, setMode] = useState<PaletteMode>("root");
-  const [agents, setAgents] = useState<ConversationAgent[]>([]);
+  const [modes, setModes] = useState<ConversationMode[]>([]);
 
   useEffect(() => {
     if (!props.open) {
@@ -120,22 +121,26 @@ export function CommandPalette(props: CommandPaletteProps) {
     }
   }, [props.open]);
 
-  // Fetch agents lazily when the submode opens so the palette stays instant.
-  const listAgents = props.listAgents;
   useEffect(() => {
-    if (mode !== "agents" || !listAgents) return;
+    if (props.modeSelectionDisabled && mode === "modes") setMode("root");
+  }, [mode, props.modeSelectionDisabled]);
+
+  // Fetch modes lazily when the submode opens so the palette stays instant.
+  const listModes = props.listModes;
+  useEffect(() => {
+    if (mode !== "modes" || !listModes) return;
     let cancelled = false;
-    void listAgents()
+    void listModes()
       .then((next) => {
-        if (!cancelled) setAgents(next);
+        if (!cancelled) setModes(next);
       })
       .catch(() => {
-        if (!cancelled) setAgents([]);
+        if (!cancelled) setModes([]);
       });
     return () => {
       cancelled = true;
     };
-  }, [mode, listAgents]);
+  }, [mode, listModes]);
 
   const openUrl = (url: string) => {
     if (props.onOpenUrl) {
@@ -183,17 +188,17 @@ export function CommandPalette(props: CommandPaletteProps) {
           },
         }]
       : []),
-    ...(props.listAgents
+    ...(props.listModes && !props.modeSelectionDisabled
       ? [{
-          id: "agents",
-          title: t("session.cmd_agents_title"),
-          detail: t("session.cmd_agents_detail"),
-          meta: props.selectedAgent
-            ? props.selectedAgent.charAt(0).toUpperCase() + props.selectedAgent.slice(1)
-            : t("session.default_agent"),
-          searchText: "agent agents switch pick select default",
+          id: "modes",
+          title: t("composer.work_mode_label"),
+          detail: t("session.cmd_modes_detail"),
+          meta: props.selectedMode
+            ? props.selectedMode.charAt(0).toUpperCase() + props.selectedMode.slice(1)
+            : t("settings.default_label"),
+          searchText: "mode work mode execute plan code minimal create switch select",
           action: () => {
-            setMode("agents");
+            setMode("modes");
           },
         }]
       : []),
@@ -342,35 +347,27 @@ export function CommandPalette(props: CommandPaletteProps) {
     ];
   }, [props]);
 
-  const agentItems = useMemo<PaletteItem[]>(() => {
-    const selectAgent = (name: string | null) => {
-      props.onSelectAgent?.(name);
+  const modeItems = useMemo<PaletteItem[]>(() => {
+    const selectMode = (name: string) => {
+      if (props.modeSelectionDisabled) return;
+      props.onSelectMode?.(name);
       props.onClose();
     };
-    return [
-      {
-        id: "agent:default",
-        title: t("session.default_agent"),
-        detail: t("session.cmd_agent_default_detail"),
-        meta: props.selectedAgent == null ? t("session.cmd_agent_active") : undefined,
-        icon: props.selectedAgent == null
+    return modes.map((entry) => {
+      const active = props.selectedMode === entry.id || (!props.selectedMode && entry.isDefault);
+      return {
+        id: `mode:${entry.id}`,
+        title: entry.label,
+        detail: entry.description,
+        meta: active ? t("session.cmd_agent_active") : undefined,
+        icon: active
           ? <Check className="size-4 text-primary" />
           : <Zap className="size-4 text-muted-foreground" />,
-        action: () => selectAgent(null),
-      },
-      ...agents.map((agent) => ({
-        id: `agent:${agent.name}`,
-        title: agent.name.charAt(0).toUpperCase() + agent.name.slice(1),
-        detail: agent.description,
-        meta: props.selectedAgent === agent.name ? t("session.cmd_agent_active") : undefined,
-        icon: props.selectedAgent === agent.name
-          ? <Check className="size-4 text-primary" />
-          : <Zap className="size-4 text-muted-foreground" />,
-        searchText: `agent ${agent.name} ${agent.description ?? ""}`.toLowerCase(),
-        action: () => selectAgent(agent.name),
-      })),
-    ];
-  }, [agents, props]);
+        searchText: `mode ${entry.id} ${entry.label} ${entry.description ?? ""}`.toLowerCase(),
+        action: () => selectMode(entry.id),
+      };
+    });
+  }, [modes, props]);
 
   const handleEscape = (event: ReactKeyboardEvent<HTMLElement>) => {
     if (event.key === "Escape") {
@@ -405,8 +402,8 @@ export function CommandPalette(props: CommandPaletteProps) {
     ? sessionItems
     : mode === "accessible-items"
       ? accessibleItems
-      : mode === "agents"
-        ? agentItems
+      : mode === "modes"
+        ? modeItems
         : rootItems;
 
   return (
@@ -417,8 +414,8 @@ export function CommandPalette(props: CommandPaletteProps) {
             ? t("session.palette_title_sessions")
             : mode === "accessible-items"
               ? "Accessible items"
-              : mode === "agents"
-                ? t("session.cmd_agents_title")
+              : mode === "modes"
+                ? t("composer.work_mode_label")
                 : t("session.palette_title_actions")
           }
         </CommandDialogTitle>
@@ -437,8 +434,8 @@ export function CommandPalette(props: CommandPaletteProps) {
                   ? t("session.palette_placeholder_sessions")
                   : mode === "accessible-items"
                     ? "Search servers and artifacts..."
-                    : mode === "agents"
-                      ? t("session.palette_placeholder_agents")
+                    : mode === "modes"
+                      ? t("composer.work_mode_label")
                       : t("session.palette_placeholder_actions")
               }
               onKeyDown={handleBackspace}

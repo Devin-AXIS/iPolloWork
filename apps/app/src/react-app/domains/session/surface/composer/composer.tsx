@@ -1,6 +1,6 @@
 /** @jsxImportSource react */
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { AppWindowMac, ArrowUp, Check, ChevronDown, ChevronRight, FileText, ListTodo, Plus, Plug, Settings, Square, Terminal, X, Zap } from "lucide-react";
+import { AppWindowMac, ArrowUp, Check, ChevronDown, ChevronRight, Code2, FileText, ListTodo, Plus, Plug, Settings, Sparkles, Square, Terminal, X, Zap } from "lucide-react";
 import fuzzysort from "fuzzysort";
 import { toast } from "@/components/ui/sonner";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -8,7 +8,7 @@ import { IPOLLOWORK_EXTENSION_CATALOG, type McpDirectoryInfo } from "@/app/const
 import type { CloudImportedPlugin, CloudImportedPluginFile } from "@/app/cloud/import-state";
 import type { iPolloWorkPluginPackageItem } from "@/app/lib/ipollowork-server";
 import type { ComposerAttachment, McpServerEntry, McpStatusMap, ModelRef, SkillCard, SlashCommandOption } from "@/app/types";
-import type { ConversationAgent } from "../../engine/conversation-engine";
+import type { ConversationAgent, ConversationMode, ConversationModeIcon } from "../../engine/conversation-engine";
 import { formatBytes } from "@/app/utils";
 import { t } from "@/i18n";
 import { isiPolloWorkExtensionEnabled, isiPolloWorkExtensionHidden, IPOLLOWORK_EXTENSION_STATE_CHANGED } from "@/react-app/domains/settings/extension-state";
@@ -72,7 +72,10 @@ type ComposerProps = {
   modelVariant: string | null;
   modelBehaviorOptions?: { value: string | null; label: string }[];
   onModelVariantChange: (value: string | null) => void;
-  selectedAgent: string | null;
+  selectedMode: string | null;
+  modeSelectionDisabled?: boolean;
+  listModes: () => Promise<ConversationMode[]>;
+  onSelectMode: (mode: string | null) => void;
   listAgents: () => Promise<ConversationAgent[]>;
   onSelectAgent: (agent: string | null) => void;
   listCommands: () => Promise<SlashCommandOption[]>;
@@ -114,6 +117,14 @@ const IMAGE_COMPRESS_QUALITY = 0.82;
 const IMAGE_COMPRESS_TARGET_BYTES = 1_500_000;
 const FILE_URL_RE = /^file:\/\//i;
 const HTTP_URL_RE = /^https?:\/\//i;
+
+function WorkModeIcon({ icon, className }: { icon: ConversationModeIcon; className?: string }) {
+  if (icon === "plan") return <ListTodo className={className} />;
+  if (icon === "code") return <Code2 className={className} />;
+  if (icon === "minimal") return <Terminal className={className} />;
+  if (icon === "create") return <Sparkles className={className} />;
+  return <Zap className={className} />;
+}
 
 /**
  * Extract external file/URL drops from a clipboard. Only used when the user
@@ -289,6 +300,7 @@ export function ReactSessionComposer(props: ComposerProps) {
   const [plusMenuSection, setPlusMenuSection] = useState<PlusMenuSection | null>(null);
   const [toolMenuOpen, setToolMenuOpen] = useState(false);
   const [workModeOpen, setWorkModeOpen] = useState(false);
+  const [workModes, setWorkModes] = useState<ConversationMode[]>([]);
   const [toolMenuSection, setToolMenuSection] = useState<ToolMenuSection>("commands");
   const [mentionItems, setMentionItems] = useState<MentionItem[]>([]);
   const [mentionOpen, setMentionOpen] = useState(false);
@@ -427,6 +439,24 @@ export function ReactSessionComposer(props: ComposerProps) {
   useEffect(() => {
     listMcpRef.current = props.listMcp;
   }, [props.listMcp]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void props.listModes()
+      .then((modes) => {
+        if (!cancelled) setWorkModes(modes);
+      })
+      .catch(() => {
+        if (!cancelled) setWorkModes([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [props.listModes]);
+
+  useEffect(() => {
+    if (props.busy || props.modeSelectionDisabled) setWorkModeOpen(false);
+  }, [props.busy, props.modeSelectionDisabled]);
 
   useEffect(() => {
     listImportedPluginsRef.current = props.listImportedPlugins;
@@ -829,10 +859,20 @@ export function ReactSessionComposer(props: ComposerProps) {
     window.requestAnimationFrame(() => window.dispatchEvent(new Event(FOCUS_PROMPT_EVENT)));
   };
 
-  const selectWorkMode = (agent: "build" | "plan") => {
-    props.onSelectAgent(agent);
+  const selectWorkMode = (mode: string) => {
+    if (props.busy || props.modeSelectionDisabled) return;
+    props.onSelectMode(mode);
     setWorkModeOpen(false);
   };
+
+  const activeWorkMode = workModes.find((mode) => mode.id === props.selectedMode)
+    ?? workModes.find((mode) => mode.isDefault)
+    ?? workModes[0]
+    ?? {
+      id: props.selectedMode ?? "default",
+      label: props.selectedMode || t("composer.work_mode_execute"),
+      icon: "execute" as const,
+    };
 
   const applyExtensionSelection = (entry: McpDirectoryInfo) => {
     props.onDraftChange(entry.composerPrompt ?? `Use ${entry.name} to `);
@@ -1671,37 +1711,36 @@ export function ReactSessionComposer(props: ComposerProps) {
                 >
                   <PopoverTrigger
                     type="button"
-                    disabled={props.busy}
-                    aria-label={`${t("composer.work_mode_label")}: ${props.selectedAgent === "plan" ? t("composer.work_mode_plan") : t("composer.work_mode_execute")}`}
+                    disabled={props.busy || props.modeSelectionDisabled}
+                    aria-label={`${t("composer.work_mode_label")}: ${activeWorkMode.label}`}
                     className="inline-flex items-center gap-1.5 rounded-full bg-gray-3 px-3 py-1.5 text-sm text-gray-11 transition-colors hover:bg-gray-4 hover:text-gray-12 disabled:pointer-events-none disabled:opacity-60"
                   >
-                    {props.selectedAgent === "plan" ? <ListTodo className="size-3.5 shrink-0" /> : <Zap className="size-3.5 shrink-0" />}
-                    <span>{props.selectedAgent === "plan" ? t("composer.work_mode_plan") : t("composer.work_mode_execute")}</span>
+                    <WorkModeIcon icon={activeWorkMode.icon} className="size-3.5 shrink-0" />
+                    <span>{activeWorkMode.label}</span>
                     <ChevronDown className="size-4 shrink-0" />
                   </PopoverTrigger>
-                  <PopoverContent side="top" align="start" sideOffset={8} className="w-40 gap-0 p-1.5">
-                    <button
-                      type="button"
-                      data-work-mode-option="execute"
-                      aria-pressed={props.selectedAgent !== "plan"}
-                      className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2.5 text-left text-sm hover:bg-gray-2"
-                      onClick={() => selectWorkMode("build")}
-                    >
-                      <Zap className="size-4 text-gray-10" />
-                      <span className="flex-1">{t("composer.work_mode_execute")}</span>
-                      {props.selectedAgent !== "plan" ? <Check className="size-4 text-gray-11" /> : null}
-                    </button>
-                    <button
-                      type="button"
-                      data-work-mode-option="plan"
-                      aria-pressed={props.selectedAgent === "plan"}
-                      className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2.5 text-left text-sm hover:bg-gray-2"
-                      onClick={() => selectWorkMode("plan")}
-                    >
-                      <ListTodo className="size-4 text-gray-10" />
-                      <span className="flex-1">{t("composer.work_mode_plan")}</span>
-                      {props.selectedAgent === "plan" ? <Check className="size-4 text-gray-11" /> : null}
-                    </button>
+                  <PopoverContent side="top" align="start" sideOffset={8} className="w-64 gap-0 p-1.5">
+                    {workModes.map((mode) => {
+                      const active = mode.id === activeWorkMode.id;
+                      return (
+                        <button
+                          key={mode.id}
+                          type="button"
+                          disabled={props.busy || props.modeSelectionDisabled}
+                          data-work-mode-option={mode.id}
+                          aria-pressed={active}
+                          className="flex w-full items-start gap-2.5 rounded-xl px-3 py-2 text-left text-sm hover:bg-gray-2 disabled:pointer-events-none disabled:opacity-60"
+                          onClick={() => selectWorkMode(mode.id)}
+                        >
+                          <WorkModeIcon icon={mode.icon} className="mt-0.5 size-4 shrink-0 text-gray-10" />
+                          <span className="min-w-0 flex-1">
+                            <span className="block font-medium">{mode.label}</span>
+                            {mode.description ? <span className="mt-0.5 block text-xs leading-4 text-gray-9">{mode.description}</span> : null}
+                          </span>
+                          {active ? <Check className="mt-0.5 size-4 shrink-0 text-gray-11" /> : null}
+                        </button>
+                      );
+                    })}
                   </PopoverContent>
                 </Popover>
                 {props.modelUnavailable ? (

@@ -245,18 +245,21 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
       });
     }
 
-    for (const provider of state.cloudOrgProviders) {
-      const id = provider.providerId.trim();
-      if (!id || merged.has(id)) continue;
-      if (isDesktopProviderBlocked({ providerId: id, checkRestriction: options.checkDesktopAppRestriction })) continue;
-      merged.set(id, {
-        id,
-        name: provider.name.trim() || id,
-        env: getCloudProviderEnv(provider.providerConfig),
-      });
+    if (getProviderEngineAdapter().capabilities.cloudProviderImports) {
+      for (const provider of state.cloudOrgProviders) {
+        const id = provider.providerId.trim();
+        if (!id || merged.has(id)) continue;
+        if (isDesktopProviderBlocked({ providerId: id, checkRestriction: options.checkDesktopAppRestriction })) continue;
+        merged.set(id, {
+          id,
+          name: provider.name.trim() || id,
+          env: getCloudProviderEnv(provider.providerConfig),
+        });
+      }
     }
 
     if (
+      getProviderEngineAdapter().capabilities.customProviders &&
       !merged.has(QWEN3_CODER_PROVIDER.providerId) &&
       !isDesktopProviderBlocked({
         providerId: QWEN3_CODER_PROVIDER.providerId,
@@ -271,6 +274,7 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
     }
 
     if (
+      getProviderEngineAdapter().capabilities.customProviders &&
       !merged.has(TOKENSTAR_PROVIDER.providerId) &&
       !isDesktopProviderBlocked({
         providerId: TOKENSTAR_PROVIDER.providerId,
@@ -935,6 +939,7 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
     }
 
     if (
+      getProviderEngineAdapter().capabilities.customProviders &&
       !isDesktopProviderBlocked({
         providerId: QWEN3_CODER_PROVIDER.providerId,
         checkRestriction: options.checkDesktopAppRestriction,
@@ -950,6 +955,7 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
     }
 
     if (
+      getProviderEngineAdapter().capabilities.customProviders &&
       !isDesktopProviderBlocked({
         providerId: TOKENSTAR_PROVIDER.providerId,
         checkRestriction: options.checkDesktopAppRestriction,
@@ -987,20 +993,22 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
       });
     }
 
-    for (const provider of cloudProviders) {
-      const id = provider.providerId.trim();
-      if (!id) continue;
-      if (isDesktopProviderBlocked({ providerId: id, checkRestriction: options.checkDesktopAppRestriction })) continue;
-      const existing = merged[id] ?? [];
-      if (
-        existing.some(
-          (method) =>
-            method.type === "cloud" && method.cloudProviderId === provider.id,
-        )
-      ) {
-        continue;
+    if (getProviderEngineAdapter().capabilities.cloudProviderImports) {
+      for (const provider of cloudProviders) {
+        const id = provider.providerId.trim();
+        if (!id) continue;
+        if (isDesktopProviderBlocked({ providerId: id, checkRestriction: options.checkDesktopAppRestriction })) continue;
+        const existing = merged[id] ?? [];
+        if (
+          existing.some(
+            (method) =>
+              method.type === "cloud" && method.cloudProviderId === provider.id,
+          )
+        ) {
+          continue;
+        }
+        merged[id] = [...existing, buildCloudProviderMethod(provider)];
       }
-      merged[id] = [...existing, buildCloudProviderMethod(provider)];
     }
 
     return merged;
@@ -1008,9 +1016,9 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
 
   const loadProviderAuthMethods = async (workerType: "local" | "remote") => {
     const methods = await getProviderEngineConnection().listAuthMethods();
-    const cloudProviders = await refreshCloudOrgProviders().catch(
-      () => [] as DenOrgLlmProvider[],
-    );
+    const cloudProviders = getProviderEngineAdapter().capabilities.cloudProviderImports
+      ? await refreshCloudOrgProviders().catch(() => [] as DenOrgLlmProvider[])
+      : [];
     return buildProviderAuthMethods(
       methods,
       getProviderAuthProviders(),
@@ -1075,7 +1083,7 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
     if (!client) return null;
     const connection = getProviderEngineAdapter().connect(client);
 
-    if (optionsArg?.dispose) {
+    if (optionsArg?.dispose && getProviderEngineAdapter().capabilities.authChangesRequireReload) {
       // Prefer the iPolloWork server engine reload: it disposes the engine AND
       // re-registers runtime-DB MCPs, so non-primary workspaces and pending
       // changes are picked up instead of silently dropping (toggles "turn
@@ -1501,6 +1509,7 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
   };
 
   const hasCloudProviderSyncPrerequisites = () => {
+    if (!getProviderEngineAdapter().capabilities.cloudProviderImports) return false;
     if (options.allowCloudImports?.() === false) return false;
     const settings = readDenSettings();
     const workspaceTarget =

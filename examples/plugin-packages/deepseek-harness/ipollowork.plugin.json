@@ -98,6 +98,7 @@
     "methods": [
       {
         "id": "deepseek-api-key",
+        "connectionId": "deepseek",
         "kind": "secret-form",
         "label": "连接 DeepSeek",
         "description": "API Key 由 iPolloWork 安全保存，用于连接 DeepSeek 服务。",
