@@ -5,9 +5,7 @@ import {
   Archive,
   ArchiveRestore,
   ChevronRight,
-  Folder,
   FolderOpen,
-  FolderPlus,
   Loader2,
   Languages,
   Pencil,
@@ -430,6 +428,67 @@ export type AppSidebarProps = {
   onStartResize?: React.PointerEventHandler<HTMLButtonElement>;
 };
 
+type SidebarSectionHeaderProps = {
+  label: string;
+  expanded: boolean;
+  onToggle: () => void;
+  toggleTestId: string;
+  onAdd?: () => void;
+  addLabel?: string;
+  addTestId?: string;
+};
+
+function SidebarSectionHeader({
+  label,
+  expanded,
+  onToggle,
+  toggleTestId,
+  onAdd,
+  addLabel,
+  addTestId,
+}: SidebarSectionHeaderProps) {
+  return (
+    <div className="group/section flex h-8 shrink-0 items-center gap-1 px-4">
+      <div
+        className="flex h-8 min-w-0 flex-1 select-none items-center gap-2 rounded-md text-left text-sm font-medium text-[#858a94] transition-colors hover:text-sidebar-foreground"
+        onDoubleClick={onToggle}
+      >
+        <span className="min-w-0 truncate">{label}</span>
+        <button
+          type="button"
+          onClick={onToggle}
+          onDoubleClick={(event) => {
+            event.stopPropagation();
+            onToggle();
+          }}
+          className="inline-flex size-4 shrink-0 items-center justify-center rounded-sm opacity-0 transition-[opacity,transform] group-hover/section:opacity-100 group-focus-within/section:opacity-100 focus-visible:opacity-100 focus-visible:ring-1 focus-visible:ring-sidebar-ring focus-visible:outline-hidden"
+          aria-label={label}
+          aria-expanded={expanded}
+          data-testid={toggleTestId}
+        >
+          <img
+            src={publicAssetUrl("sidebar-icon/figma-section-chevron-down.svg")}
+            alt=""
+            className={cn("size-4 transition-transform duration-200", !expanded && "-rotate-90")}
+          />
+        </button>
+      </div>
+      {onAdd && addLabel ? (
+        <button
+          type="button"
+          onClick={onAdd}
+          className="inline-flex size-6 shrink-0 items-center justify-center rounded-md transition-colors hover:bg-sidebar-accent focus-visible:ring-1 focus-visible:ring-sidebar-ring focus-visible:outline-hidden"
+          aria-label={addLabel}
+          title={addLabel}
+          data-testid={addTestId}
+        >
+          <img src={publicAssetUrl("sidebar-icon/figma-section-plus.svg")} alt="" className="size-[10.3333px]" />
+        </button>
+      ) : null}
+    </div>
+  );
+}
+
 const primarySidebarActionClassName = "h-8 gap-1 rounded-[8px] px-1 py-0 text-sm font-normal leading-4 text-sidebar-foreground transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground active:bg-sidebar-accent data-active:bg-sidebar-accent data-active:text-sidebar-accent-foreground focus-visible:ring-1";
 
 function useSessionTree(
@@ -452,6 +511,10 @@ export function AppSidebar(props: AppSidebarProps) {
     () => new Set(),
   );
   const [language, setLanguage] = React.useState<Language>(() => currentLocale());
+  const [projectsExpanded, setProjectsExpanded] = React.useState(true);
+  const [ungroupedExpanded, setUngroupedExpanded] = React.useState(true);
+  const ungroupedProject = props.projectSessionLists.find((project) => project.workspace.isDefault);
+  const namedProjects = props.projectSessionLists.filter((project) => !project.workspace.isDefault);
   const primarySidebarActionClass = cn(
     primarySidebarActionClassName,
     language === "zh" && "font-medium",
@@ -460,6 +523,21 @@ export function AppSidebar(props: AppSidebarProps) {
     setLanguage(nextLanguage);
     setLocale(nextLanguage);
   }, []);
+
+  const createUngroupedConversation = React.useCallback(async () => {
+    if (!ungroupedProject) return;
+    const workspaceId = ungroupedProject.workspace.id;
+    if (props.selectedWorkspaceId !== workspaceId) {
+      const selected = await props.onSelectProject(workspaceId);
+      if (selected === false) return;
+    }
+    await props.onCreateTaskInWorkspace(workspaceId);
+  }, [
+    props.onCreateTaskInWorkspace,
+    props.onSelectProject,
+    props.selectedWorkspaceId,
+    ungroupedProject,
+  ]);
 
   const toggleSessionExpanded = React.useCallback((sessionId: string) => {
     const id = sessionId.trim();
@@ -577,8 +655,8 @@ export function AppSidebar(props: AppSidebarProps) {
             ) : null}
           </div>
           <SidebarMenu className="gap-1 px-2">
-            <SidebarMenuItem className="flex items-center gap-1" data-testid="new-conversation-and-project-actions">
-              <div className="min-w-0 flex-1">
+            <SidebarMenuItem data-testid="new-conversation-and-project-actions">
+              <div className="min-w-0">
                 <SidebarMenuButton
                   className={primarySidebarActionClass}
                   disabled={props.newTaskDisabled || !props.selectedWorkspaceId}
@@ -592,18 +670,6 @@ export function AppSidebar(props: AppSidebarProps) {
                   <span className="flex-1 truncate">{t("session.new_task")}</span>
                 </SidebarMenuButton>
               </div>
-              {props.onOpenCreateProject ? (
-                <button
-                  type="button"
-                  onClick={props.onOpenCreateProject}
-                  className="inline-flex size-8 shrink-0 items-center justify-center rounded-lg text-sidebar-foreground/70 transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground active:bg-sidebar-accent focus-visible:ring-1 focus-visible:ring-sidebar-ring focus-visible:outline-hidden"
-                  aria-label={t("projects.create")}
-                  title={t("projects.create")}
-                  data-testid="new-project-button"
-                >
-                  <FolderPlus className="size-3.5" />
-                </button>
-              ) : null}
             </SidebarMenuItem>
             <SidebarMenuItem>
               <SidebarMenuButton
@@ -638,22 +704,61 @@ export function AppSidebar(props: AppSidebarProps) {
             data-sidebar="content"
             className="no-scrollbar flex min-h-0 flex-1 flex-col gap-px overflow-auto [--radius:var(--radius-xl)] group-data-[collapsible=icon]:overflow-hidden"
           >
-            <div className="px-4 pb-1 pt-1 text-xs font-medium text-muted-foreground">
-              {t("projects.title")}
-            </div>
-            {props.projectSessionLists.map((project) => (
-              <ProjectSidebarContent
-                key={project.workspace.id}
-                project={project}
-                className="py-0"
-                showInitialLoading={props.showInitialLoading}
-                onSelectProject={props.onSelectProject}
-                onOpenRenameProject={props.onOpenRenameProject}
-                onRevealProject={props.onRevealProject}
-                onOpenDeleteProject={props.onOpenDeleteProject}
-                canRemoveProject={props.projectSessionLists.length > 1}
+            <Collapsible open={projectsExpanded} onOpenChange={setProjectsExpanded} data-testid="projects-section">
+              <SidebarSectionHeader
+                label={t("projects.title")}
+                expanded={projectsExpanded}
+                onToggle={() => setProjectsExpanded((expanded) => !expanded)}
+                toggleTestId="projects-section-toggle"
+                onAdd={props.onOpenCreateProject}
+                addLabel={t("projects.create")}
+                addTestId="new-project-button"
               />
-            ))}
+              <CollapsibleContent>
+                {namedProjects.map((project) => (
+                  <ProjectSidebarContent
+                    key={project.workspace.id}
+                    project={project}
+                    className="py-0"
+                    showInitialLoading={props.showInitialLoading}
+                    onSelectProject={props.onSelectProject}
+                    onOpenRenameProject={props.onOpenRenameProject}
+                    onRevealProject={props.onRevealProject}
+                    onOpenDeleteProject={props.onOpenDeleteProject}
+                    canRemoveProject={props.projectSessionLists.length > 1}
+                  />
+                ))}
+              </CollapsibleContent>
+            </Collapsible>
+            {ungroupedProject ? (
+              <Collapsible
+                open={ungroupedExpanded}
+                onOpenChange={setUngroupedExpanded}
+                data-testid="ungrouped-section"
+              >
+                <SidebarSectionHeader
+                  label={t("projects.ungrouped")}
+                  expanded={ungroupedExpanded}
+                  onToggle={() => setUngroupedExpanded((expanded) => !expanded)}
+                  toggleTestId="ungrouped-section-toggle"
+                  onAdd={() => void createUngroupedConversation()}
+                  addLabel={t("projects.new_ungrouped_conversation")}
+                />
+                <CollapsibleContent>
+                  <ProjectSidebarContent
+                    project={ungroupedProject}
+                    className="py-0"
+                    showProjectRow={false}
+                    showInitialLoading={props.showInitialLoading}
+                    onSelectProject={props.onSelectProject}
+                    onOpenRenameProject={props.onOpenRenameProject}
+                    onRevealProject={props.onRevealProject}
+                    onOpenDeleteProject={props.onOpenDeleteProject}
+                    canRemoveProject={false}
+                  />
+                </CollapsibleContent>
+              </Collapsible>
+            ) : null}
           </m.div>
         </LazyMotion>
 
@@ -747,6 +852,7 @@ export function AppSidebar(props: AppSidebarProps) {
 type ProjectSidebarContentProps = {
   className: string;
   project: ProjectSessionList;
+  showProjectRow?: boolean;
   showInitialLoading?: boolean;
   onSelectProject: (workspaceId: string) => Promise<boolean> | boolean | void;
   onOpenRenameProject: (workspaceId: string) => void;
@@ -758,6 +864,7 @@ type ProjectSidebarContentProps = {
 function ProjectSidebarContent({
   className,
   project,
+  showProjectRow = true,
   showInitialLoading,
   onSelectProject,
   onOpenRenameProject,
@@ -831,7 +938,7 @@ function ProjectSidebarContent({
     <SidebarGroup className={cn(className, "px-2")}>
       <SidebarGroupContent>
         <Collapsible open={projectExpanded} onOpenChange={setProjectExpanded} className="group/project">
-          <SidebarMenu>
+          {showProjectRow ? <SidebarMenu>
             <SidebarMenuItem className="group/project-row relative h-8">
               <button
                 type="button"
@@ -849,7 +956,11 @@ function ProjectSidebarContent({
                 aria-current={isSelectedProject ? "page" : undefined}
                 aria-expanded={projectExpanded}
               >
-                {projectExpanded ? <FolderOpen className="size-4 shrink-0" /> : <Folder className="size-4 shrink-0" />}
+                <img
+                  src={publicAssetUrl("sidebar-icon/figma-folder-closed.svg")}
+                  alt=""
+                  className="h-[10px] w-3 shrink-0 dark:invert"
+                />
                 <span className="min-w-0 flex-1 truncate">{workspaceLabel(workspace)}</span>
               </button>
               {!projectExpanded ? (
@@ -918,7 +1029,7 @@ function ProjectSidebarContent({
                 </DropdownMenu>
               </div>
             </SidebarMenuItem>
-          </SidebarMenu>
+          </SidebarMenu> : null}
           <CollapsibleContent>
             <SidebarMenuSub className="gap-1 pb-2 pe-1 ps-7">
               {showRemoteConnectionIssue ? (

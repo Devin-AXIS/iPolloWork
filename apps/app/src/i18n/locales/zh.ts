@@ -2469,6 +2469,8 @@ export default {
   "session_management.unpin_session": "取消置顶会话",
   "projects.title": "项目",
   "projects.actions": "项目操作",
+  "projects.ungrouped": "未分组",
+  "projects.new_ungrouped_conversation": "新建未分组对话",
   "projects.create": "新建项目",
   "projects.new_conversation": "在“{project}”中新建对话",
   "projects.create_description": "选择一个独立文件夹作为项目空间。项目中的对话、文件和配置互相隔离。",
