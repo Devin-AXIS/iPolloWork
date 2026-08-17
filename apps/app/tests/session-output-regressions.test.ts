@@ -193,11 +193,11 @@ describe("session output issue regressions", () => {
     expect(source).toContain("enterpriseMode ? (visibleEnterpriseResources.length");
     expect(source).not.toContain("enterpriseMode ? (visible.length || visibleEnterpriseResources.length");
     expect(sessionSource).toContain('listTemplates(props.runtimeWorkspaceId, "personal")');
-    expect(sessionSource).toContain('listEnterpriseResources(activeEnterprise, "template")');
+    expect(sessionSource).toContain('listEnterpriseResources("template")');
     expect(sessionSource).toContain("item.sourceType === \"local\" && item.installed");
     expect(sessionSource).toContain("requestId !== templateCatalogRequestIdRef.current");
     expect(source).toContain("enterpriseTemplateInstallations");
-    expect(source).toContain("resource.sourceTemplateId");
+    expect(source).toContain("resource.manifestId");
     expect(source).toContain("return <TemplateCard template={installedTemplate}");
     expect(source).toContain("primaryAction={action} primaryLabel={label} sourceLabel={sourceLabel}");
   });
@@ -209,7 +209,7 @@ describe("session output issue regressions", () => {
     );
 
     expect(source).toContain("listPluginPackages(props.workspaceId)");
-    expect(source).toContain("installedEnterpriseExtensionVersions.get(resource.slug)");
+    expect(source).toContain("installedEnterpriseExtensionVersions.get(resource.manifestId ?? resource.slug)");
     expect(source).toContain('t("plugin_platform.status.installed")');
     expect(source).toContain("currentVersionInstalled || !resource.latestVersion");
   });

@@ -784,7 +784,7 @@ export function SessionPage(props: SessionPageProps) {
         setEnterpriseTemplateResources([]);
       } else if (activeEnterprise) {
         const [enterpriseResources, installedCatalog] = await Promise.all([
-          listEnterpriseResources(activeEnterprise, "template"),
+          listEnterpriseResources("template"),
           props.ipolloworkServerClient.listTemplates(props.runtimeWorkspaceId, templateResourceScope),
         ]);
         if (requestId !== templateCatalogRequestIdRef.current) return;
@@ -1071,7 +1071,7 @@ export function SessionPage(props: SessionPageProps) {
     if (!activeEnterprise || templateResourceScope === "personal") return;
     setTemplateBusyId(resource.id);
     try {
-      const file = await downloadEnterpriseResource(activeEnterprise, resource);
+      const file = await downloadEnterpriseResource(resource);
       await importDesignTemplate(file);
     } catch (error) {
       const message = error instanceof Error ? error.message : "";

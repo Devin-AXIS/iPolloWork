@@ -88,11 +88,42 @@ const DEEPSEEK_HARNESS_TARGETS = {
   skills: ".dsh/skills/",
 } as const;
 
+const LEGACY_SOURCE_PREFIXES = [
+  ["skills/", ".opencode/skills/"],
+  ["agents/", ".opencode/agents/"],
+  ["commands/", ".opencode/commands/"],
+  ["mcp/", ".opencode/mcps/"],
+  ["engines/opencode/plugins/", ".opencode/plugins/"],
+] as const;
+
 function projectedPath(sourcePath: string, targets: Readonly<Record<string, string>>): string | null {
   for (const [directory, target] of Object.entries(targets)) {
+    if (sourcePath.startsWith(target)) return sourcePath;
     if (sourcePath.startsWith(`${directory}/`)) return `${target}${sourcePath.slice(directory.length + 1)}`;
   }
   return null;
+}
+
+export function pluginEngineSourcePath(version: PluginEngineVersion, portablePath: string): string | null {
+  const ownedPaths = new Set(version.files.map((file) => file.path));
+  if (ownedPaths.has(portablePath)) return portablePath;
+  for (const [portablePrefix, legacyPrefix] of LEGACY_SOURCE_PREFIXES) {
+    if (!portablePath.startsWith(portablePrefix)) continue;
+    const legacyPath = `${legacyPrefix}${portablePath.slice(portablePrefix.length)}`;
+    if (ownedPaths.has(legacyPath)) return legacyPath;
+  }
+  if (portablePath.startsWith("service/")) {
+    const legacyPath = portablePath.slice("service/".length);
+    if (ownedPaths.has(legacyPath)) return legacyPath;
+  }
+  return null;
+}
+
+export function pluginEnginePortablePath(sourcePath: string): string {
+  for (const [portablePrefix, legacyPrefix] of LEGACY_SOURCE_PREFIXES) {
+    if (sourcePath.startsWith(legacyPrefix)) return `${portablePrefix}${sourcePath.slice(legacyPrefix.length)}`;
+  }
+  return sourcePath;
 }
 
 function workspaceFiles(
@@ -112,11 +143,11 @@ function skillTargetPath(
 ): string | null {
   const resource = version.manifest.resources.find((entry) => entry.id === resourceId && entry.type === "skill");
   if (!resource?.path) return null;
-  const ownedPaths = new Set(version.files.map((file) => file.path));
-  const sourcePath = ownedPaths.has(resource.path) && (resource.path === "SKILL.md" || resource.path.endsWith("/SKILL.md"))
+  const portablePath = resource.path === "SKILL.md" || resource.path.endsWith("/SKILL.md")
     ? resource.path
     : `${resource.path.replace(/\/$/, "")}/SKILL.md`;
-  return ownedPaths.has(sourcePath) ? projectedPath(sourcePath, targets) : null;
+  const sourcePath = pluginEngineSourcePath(version, portablePath);
+  return sourcePath ? projectedPath(sourcePath, targets) : null;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -147,8 +178,9 @@ async function mcpEntries(
   const entries: Array<{ name: string; config: Record<string, unknown> }> = [];
   for (const resource of version.manifest.resources) {
     if (resource.type !== "mcp" || !resource.path) continue;
-    const payload: unknown = JSON.parse(await readFile(resolvePath(version.artifactRoot, resource.path), "utf8"));
-    entries.push(...parsePluginMcpEntries(payload, resource.mcpServerName ?? resource.id, resource.path));
+    const sourcePath = pluginEngineSourcePath(version, resource.path) ?? resource.path;
+    const payload: unknown = JSON.parse(await readFile(resolvePath(version.artifactRoot, sourcePath), "utf8"));
+    entries.push(...parsePluginMcpEntries(payload, resource.mcpServerName ?? resource.id, sourcePath));
   }
   return entries;
 }
@@ -166,9 +198,9 @@ function pluginSpecs(version: PluginEngineVersion | null, resolvePath: PluginEng
     if (Boolean(capability.path) === Boolean(capability.packageName)) {
       throw new ApiError(400, "plugin_engine_capability_invalid", `OpenCode plugin ${capability.id} must declare exactly one path or packageName`);
     }
-    return [capability.path
-      ? pathToFileURL(resolvePath(version.artifactRoot, capability.path)).href
-      : capability.packageName ?? ""];
+    if (!capability.path) return [capability.packageName ?? ""];
+    const sourcePath = pluginEngineSourcePath(version, capability.path) ?? capability.path;
+    return [pathToFileURL(resolvePath(version.artifactRoot, sourcePath)).href];
   });
 }
 

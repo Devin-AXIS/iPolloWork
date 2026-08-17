@@ -14,9 +14,11 @@ describe("Cloud marketplace row visibility", () => {
 
   test("installs Cloud artifacts only through the V2 package lifecycle", async () => {
     const source = await Bun.file(new URL("../src/react-app/domains/settings/pages/cloud-marketplaces-view.tsx", import.meta.url)).text();
-    expect(source).toContain("listMarketplacePlugins()");
-    expect(source).toContain("acquireMarketplacePlugin(item.pluginId)");
-    expect(source).toContain("downloadMarketplacePlugin(item.pluginId)");
+    expect(source).toContain('listEnterpriseResources("extension")');
+    expect(source).toContain("Promise.allSettled");
+    expect(source).toContain('marketplaceResult.status === "rejected"');
+    expect(source).toContain('localPackagesResult.status === "fulfilled"');
+    expect(source).toContain("downloadEnterpriseResource(resource)");
     expect(source).toContain("readPluginPackageArchive(file)");
     expect(source).toContain("validatePluginPackageUpload(workspaceId, upload)");
     expect(source).toContain("importPluginPackage(workspaceId, upload)");

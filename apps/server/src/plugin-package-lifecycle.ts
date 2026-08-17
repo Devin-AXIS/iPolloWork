@@ -8,6 +8,8 @@ import { ApiError } from "./errors.js";
 import {
   parsePluginMcpEntries,
   pluginEngineAdapters,
+  pluginEnginePortablePath,
+  pluginEngineSourcePath,
   type PluginEngineAdapter,
   type PluginEngineVersion,
   type PluginWorkspaceFile,
@@ -19,10 +21,32 @@ import serverPackage from "../package.json" with { type: "json" };
 
 const MANIFEST_FILE = "ipollowork.plugin.json";
 const PACKAGE_SIGNATURE_PREFIX = "ipollowork-plugin-package-v1\0";
+const CURRENT_RESOURCE_KEYS = [
+  "type",
+  "id",
+  "label",
+  "description",
+  "command",
+  "envKey",
+  "packageName",
+  "providerId",
+  "mcpServerName",
+  "oauth",
+  "localCommandRef",
+  "actions",
+  "environment",
+  "requires",
+  "provides",
+  "required",
+] as const;
 const TRUSTED_IMPORT_PUBLISHER_KEYS = new Map([
   [
     "smart-future-school/smart-future-school-2026",
-    "MCowBQYDK2VwAyEARwKWW0VeQqnxh1WiOi8+kAutSITD476eRaRguDZkxYk=",
+    [
+      "MCowBQYDK2VwAyEARwKWW0VeQqnxh1WiOi8+kAutSITD476eRaRguDZkxYk=",
+      // Published v1 marketplace packages used this key before the portable package migration.
+      "MCowBQYDK2VwAyEANqxN7w94IK3NWdYZWtoyz/Y6daP7MEqWnKrJHz+XAyI=",
+    ],
   ],
 ]);
 
@@ -48,10 +72,20 @@ const installedPackageSchema = z.object({
   versions: z.record(z.string(), installedVersionSchema),
 });
 const installedPackagesSchema = z.record(z.string(), installedPackageSchema);
+const lifecycleStateV1Schema = z.object({
+  schemaVersion: z.literal(1),
+  packages: z.record(z.string(), installedPackageSchema),
+});
 const lifecycleStateSchema = z.object({
   schemaVersion: z.literal(2),
   packages: installedPackagesSchema,
 });
+// Desktop installs created before portable package manifests remain user-owned data.
+// Keep v1 readable until an explicit artifact migration can rewrite those records safely.
+const persistedLifecycleStateSchema = z.discriminatedUnion("schemaVersion", [
+  lifecycleStateV1Schema,
+  lifecycleStateSchema,
+]);
 
 type OwnedFile = z.infer<typeof ownedFileSchema>;
 type InstalledVersion = z.infer<typeof installedVersionSchema>;
@@ -325,7 +359,8 @@ function integrityForManifest(
 
 async function readState(config: ServerConfig): Promise<LifecycleState> {
   try {
-    return lifecycleStateSchema.parse(JSON.parse(await readFile(statePath(config), "utf8")));
+    const state = persistedLifecycleStateSchema.parse(JSON.parse(await readFile(statePath(config), "utf8")));
+    return state.schemaVersion === 2 ? state : { schemaVersion: 2, packages: state.packages };
   } catch (error) {
     if (errorCode(error) === "ENOENT") return emptyState();
     throw error;
@@ -350,7 +385,11 @@ async function writeState(config: ServerConfig, state: LifecycleState): Promise<
   await writeJsonAtomic(statePath(config), state);
 }
 
-function migrateInstalledManifest(value: unknown, pluginId: string): { manifest: PluginPackageManifest; changed: boolean } {
+function migrateInstalledManifest(value: unknown, pluginId: string): { manifest: unknown; changed: boolean } {
+  if (isRecord(value) && value.schemaVersion === 1) {
+    compatibleManifest(value);
+    return { manifest: value, changed: false };
+  }
   if (!isRecord(value) || !isRecord(value.authorization) || !Array.isArray(value.authorization.methods)) {
     return { manifest: parsePluginPackageManifest(value), changed: false };
   }
@@ -368,9 +407,31 @@ function migrateInstalledManifest(value: unknown, pluginId: string): { manifest:
 
 async function readStateAt(path: string): Promise<LifecycleState | null> {
   try {
-    return lifecycleStateSchema.parse(JSON.parse(await readFile(path, "utf8")));
+    const state = persistedLifecycleStateSchema.parse(JSON.parse(await readFile(path, "utf8")));
+    return state.schemaVersion === 2 ? state : { schemaVersion: 2, packages: state.packages };
   } catch (error) {
     if (errorCode(error) === "ENOENT") return null;
+    throw error;
+  }
+}
+
+function pickDefined(value: Record<string, unknown>, keys: readonly string[]): Record<string, unknown> {
+  return Object.fromEntries(keys.flatMap((key) => value[key] === undefined ? [] : [[key, value[key]]]));
+}
+
+function legacyPortablePath(type: unknown, path: string): string {
+  const portablePath = pluginEnginePortablePath(path);
+  if (portablePath !== path) return portablePath;
+  if (type === "local-service" && !path.startsWith("service/")) return `service/${path}`;
+  return path;
+}
+
+function compatibleManifest(value: unknown): PluginPackageManifest {
+  try {
+    return parsePluginPackageManifest(value);
+  } catch (error) {
+    const legacy = legacyManifestSummary(value);
+    if (legacy) return legacy;
     throw error;
   }
 }
@@ -486,8 +547,123 @@ export async function migratePluginPackageLifecycle(config: ServerConfig): Promi
   return legacySources.length + (manifestChanged ? 1 : 0);
 }
 
+function legacyManifestSummary(value: unknown): PluginPackageManifest | null {
+  if (!isRecord(value) || value.schemaVersion !== 1) return null;
+  const source = isRecord(value.source) ? value.source : {};
+  const packageMetadata = isRecord(value.package) ? value.package : null;
+  const legacyCompatibility = packageMetadata && isRecord(packageMetadata.compatibility)
+    ? packageMetadata.compatibility
+    : null;
+  const compatibility = packageMetadata && isRecord(packageMetadata.compatibility)
+    ? pickDefined(packageMetadata.compatibility, ["ipollowork"])
+    : null;
+  const legacyEntrypoints = packageMetadata && isRecord(packageMetadata.entrypoints) ? packageMetadata.entrypoints : null;
+  const legacyPluginResource = Array.isArray(value.resources)
+    ? value.resources.find((resource) => isRecord(resource) && resource.type === "opencode-plugin" && typeof resource.path === "string")
+    : null;
+  const legacyPluginPath = typeof legacyEntrypoints?.opencode === "string"
+    ? legacyEntrypoints.opencode
+    : isRecord(legacyPluginResource) && typeof legacyPluginResource.path === "string"
+      ? legacyPluginResource.path
+      : null;
+  const opencodeCompatibility = typeof legacyCompatibility?.opencode === "string" ? legacyCompatibility.opencode : undefined;
+  const packageSummary = packageMetadata ? {
+    ...pickDefined(packageMetadata, ["version", "publisher", "updateId", "checksum", "signature"]),
+    ...(compatibility && Object.keys(compatibility).length > 0 ? { compatibility } : {}),
+    ...(legacyPluginPath || opencodeCompatibility ? { engines: ["opencode"] } : {}),
+  } : null;
+  const engineBindings = legacyPluginPath || opencodeCompatibility ? [{
+    engine: "opencode",
+    ...(opencodeCompatibility ? { compatibility: opencodeCompatibility } : {}),
+    capabilities: legacyPluginPath ? [{
+      id: isRecord(legacyPluginResource) && typeof legacyPluginResource.id === "string" ? legacyPluginResource.id : "legacy-runtime",
+      kind: "plugin",
+      path: pluginEnginePortablePath(legacyPluginPath),
+      required: isRecord(legacyPluginResource) ? legacyPluginResource.required === true : true,
+    }] : [],
+  }] : undefined;
+  const resources = Array.isArray(value.resources) ? value.resources.flatMap((resource) => {
+    if (!isRecord(resource) || resource.type === "opencode-plugin") return [];
+    const summary = pickDefined(resource, CURRENT_RESOURCE_KEYS);
+    if (typeof resource.path === "string") summary.path = legacyPortablePath(resource.type, resource.path);
+    return [summary];
+  }) : [];
+  const composer = isRecord(value.composer) && typeof value.composer.prompt === "string"
+    ? { prompt: value.composer.prompt }
+    : undefined;
+  const authorization = isRecord(value.authorization) && Array.isArray(value.authorization.methods) && typeof value.id === "string"
+    ? {
+        ...value.authorization,
+        methods: value.authorization.methods.map((method) => isRecord(method) && typeof method.connectionId !== "string"
+          ? { ...method, connectionId: value.id }
+          : method),
+      }
+    : value.authorization;
+  const sourceSummary = {
+    format: typeof source.format === "string" ? source.format : "ipollowork-extension-manifest",
+    trusted: source.trusted === true,
+    ...pickDefined(source, ["origin", "reference"]),
+  };
+  const summary = {
+    schemaVersion: 2,
+    ...pickDefined(value, [
+      "id",
+      "name",
+      "description",
+      "category",
+      "preview",
+      "icon",
+      "setup",
+      "relatedSkills",
+      "defaultEnabled",
+      "defaultHidden",
+      "platform",
+      "localization",
+      "permissions",
+    ]),
+    source: sourceSummary,
+    resources,
+    ...(composer ? { composer } : {}),
+    ...(authorization ? { authorization } : {}),
+    ...(engineBindings ? { engineBindings } : {}),
+    ...(packageSummary ? { package: packageSummary } : {}),
+  };
+  try {
+    return parsePluginPackageManifest(summary);
+  } catch {
+    return parsePluginPackageManifest({
+      schemaVersion: 2,
+      ...pickDefined(value, ["id", "name", "description", "category", "preview"]),
+      source: sourceSummary,
+      resources,
+      ...(composer ? { composer } : {}),
+      ...(authorization ? { authorization } : {}),
+      ...(engineBindings ? { engineBindings } : {}),
+      ...(packageSummary ? { package: packageSummary } : {}),
+    });
+  }
+}
+
 function manifestFromVersion(version: InstalledVersion): PluginPackageManifest {
-  return parsePluginPackageManifest(version.manifest);
+  return compatibleManifest(version.manifest);
+}
+
+function sourceResourcePaths(sourceManifest: unknown, manifest: PluginPackageManifest): string[] {
+  if (!isRecord(sourceManifest) || sourceManifest.schemaVersion !== 1) {
+    return [
+      ...manifest.resources.flatMap((resource) => resource.path ? [resource.path] : []),
+      ...manifest.engineBindings?.flatMap((binding) => binding.capabilities.flatMap((capability) => capability.path ? [capability.path] : [])) ?? [],
+    ];
+  }
+  const resourcePaths = Array.isArray(sourceManifest.resources)
+    ? sourceManifest.resources.flatMap((resource) => isRecord(resource) && typeof resource.path === "string" ? [resource.path] : [])
+    : [];
+  const packageMetadata = isRecord(sourceManifest.package) ? sourceManifest.package : null;
+  const entrypoints = packageMetadata && isRecord(packageMetadata.entrypoints) ? packageMetadata.entrypoints : null;
+  return [
+    ...resourcePaths,
+    ...entrypoints ? Object.values(entrypoints).flatMap((path) => typeof path === "string" ? [path] : []) : [],
+  ];
 }
 
 function engineVersion(
@@ -712,7 +888,7 @@ export async function previewPluginPackage(input: { packageRoot: string; workspa
   let manifest: PluginPackageManifest;
   try {
     sourceManifest = JSON.parse(await readFile(manifestPath, "utf8"));
-    manifest = parsePluginPackageManifest(sourceManifest);
+    manifest = compatibleManifest(sourceManifest);
   } catch (error) {
     if (errorCode(error) === "ENOENT") throw new ApiError(400, "plugin_package_manifest_missing", `${MANIFEST_FILE} is required`);
     throw error;
@@ -720,10 +896,7 @@ export async function previewPluginPackage(input: { packageRoot: string; workspa
   if (!manifest.package) throw new ApiError(400, "plugin_package_metadata_required", "Package metadata is required for installation");
   const engineAdapter = input.engineId ? pluginEngineAdapters.get(input.engineId) : undefined;
   assertRuntimeCompatibility(manifest, engineAdapter);
-  const resourcePaths = [...new Set([
-    ...manifest.resources.flatMap((resource) => resource.path ? [resource.path] : []),
-    ...manifest.engineBindings?.flatMap((binding) => binding.capabilities.flatMap((capability) => capability.path ? [capability.path] : [])) ?? [],
-  ])];
+  const resourcePaths = [...new Set(sourceResourcePaths(sourceManifest, manifest))];
   const paths = new Set<string>();
   for (const resourcePath of resourcePaths) {
     for (const path of await packageResourceFiles(input.packageRoot, resourcePath)) paths.add(path);
@@ -754,20 +927,20 @@ function signedImportSafety(manifest: PluginPackageManifest, integrity: PluginPa
   if (integrity.status !== "verified") {
     throw new ApiError(400, "plugin_package_signature_requires_checksum", "Signed plugin packages must declare a matching SHA-256 checksum");
   }
-  const publicKey = TRUSTED_IMPORT_PUBLISHER_KEYS.get(`${publisher.id}/${signature.keyId}`);
-  if (!publicKey) {
+  const publicKeys = TRUSTED_IMPORT_PUBLISHER_KEYS.get(`${publisher.id}/${signature.keyId}`);
+  if (!publicKeys) {
     throw new ApiError(400, "plugin_package_signature_untrusted", "Plugin publisher or signing key is not trusted by this iPolloWork build", {
       publisherId: publisher.id,
       keyId: signature.keyId,
     });
   }
   const signatureBytes = Buffer.from(signature.value, "base64");
-  const valid = signatureBytes.byteLength === 64 && verify(
+  const valid = signatureBytes.byteLength === 64 && publicKeys.some((publicKey) => verify(
     null,
     Buffer.from(`${PACKAGE_SIGNATURE_PREFIX}${integrity.sha256}`, "utf8"),
     createPublicKey({ key: Buffer.from(publicKey, "base64"), format: "der", type: "spki" }),
     signatureBytes,
-  );
+  ));
   if (!valid) {
     throw new ApiError(400, "plugin_package_signature_invalid", "Plugin package publisher signature is invalid");
   }
@@ -977,10 +1150,15 @@ export async function resolveInstalledPluginService(input: {
   const manifest = manifestFromVersion(version);
   const servicePath = manifest.resources.find((resource) => resource.type === "local-service" && resource.path)?.path;
   if (!servicePath) throw new ApiError(404, "plugin_service_not_found", "Plugin package does not provide a local service");
+  const sourcePath = pluginEngineSourcePath({
+    manifest,
+    artifactRoot: artifactRoot(input.serverConfig, input.pluginId, version.version),
+    files: version.files,
+  }, servicePath) ?? servicePath;
   return {
     manifest,
     version: version.version,
-    modulePath: resolveWithin(artifactRoot(input.serverConfig, input.pluginId, version.version), servicePath),
+    modulePath: resolveWithin(artifactRoot(input.serverConfig, input.pluginId, version.version), sourcePath),
   };
 }
 
