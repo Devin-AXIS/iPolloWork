@@ -562,7 +562,7 @@ describe("Studio right panel layout", () => {
 
     expect(source).toContain('label={t("right.design")}');
     expect(source).toContain('label={t("right.animation")}');
-    expect(source).not.toContain('label={t("right.catalog")}');
+    expect(source).toContain('label={t("right.catalog")}');
     expect(source).toContain('selectStudioPanel("animation");');
     expect(source).toContain('inspectorMode="properties"');
     expect(source).toContain("showInspectorChrome");
@@ -587,7 +587,8 @@ describe("Studio right panel layout", () => {
     expect(toast).toContain('? "0 8px 32px rgba(0,0,0,0.35)"');
     expect(source).not.toContain('setRightPanelTab("animation-properties")');
     expect(source).not.toContain("const showAnimationProperties =");
-    expect(source).toContain('rightPanelTab === "catalog" || rightPanelTab === "effects"');
+    expect(source).toContain('rightPanelTab === "catalog"');
+    expect(source).toContain('rightPanelTab === "effects"');
     expect(source).toContain('<BlocksTab page="effects" onAddBlock={onAddBlock} />');
     expect(source).not.toContain("<LayersPanel />");
     expect(source).not.toContain("useInspectorSplitResize");
@@ -607,6 +608,10 @@ describe("Studio right panel layout", () => {
     const panel = readFileSync(new URL("./StudioRightPanel.tsx", import.meta.url), "utf8");
     const featureFlags = readFileSync(
       new URL("./editor/manualEditingAvailability.ts", import.meta.url),
+      "utf8",
+    );
+    const effectsCatalog = readFileSync(
+      new URL("./sidebar/BlocksTab.tsx", import.meta.url),
       "utf8",
     );
     const tabButton = readFileSync(new URL("./PanelTabButton.tsx", import.meta.url), "utf8");
@@ -630,18 +635,19 @@ describe("Studio right panel layout", () => {
     expect(panel).toContain('label={t("right.voice")}');
     expect(panel).toContain('label={t("right.style")}');
     expect(panel).toContain('label={t("right.animation")}');
+    expect(panel).toContain('label={t("right.catalog")}');
     expect(panel).toContain('label={t("right.assets")}');
-    expect(panel).toContain("STUDIO_ILLUSTRATION_PANEL_ENABLED && (");
-    expect(panel).toContain('label={t("right.illustration")}');
-    expect(panel).toContain('tooltip={t("right.illustrationTooltip")}');
-    expect(translations).toContain('"right.illustration": "Illustrations"');
-    expect(translations).toContain('"right.illustration": "插画"');
-    expect(panel).toContain("<IllustrationTab />");
-    expect(panel).toContain('rightPanelTab === "illustration")');
-    expect(panel).toContain('setRightPanelTab("assets")');
-    expect(featureFlags).toMatch(
-      /STUDIO_ILLUSTRATION_PANEL_ENABLED = resolveStudioBooleanEnvFlag\([\s\S]*?VITE_STUDIO_ENABLE_ILLUSTRATION_PANEL[\s\S]*?false,\s*\);/,
-    );
+    expect(panel).not.toContain('label={t("right.illustration")}');
+    expect(panel).not.toContain('tooltip={t("right.illustrationTooltip")}');
+    expect(translations).not.toContain('"right.illustration":');
+    expect(panel).not.toContain("<IllustrationEffectsContent />");
+    expect(panel).toContain('selectStudioPanel("catalog")');
+    expect(effectsCatalog).toContain('const ILLUSTRATION_SECTION_FILTER = "illustration" as const');
+    expect(effectsCatalog).toContain('<option value={ILLUSTRATION_SECTION_FILTER}>');
+    expect(effectsCatalog).toContain('data-testid={`catalog-section-${ILLUSTRATION_SECTION_FILTER}`}');
+    expect(effectsCatalog).toContain("<IllustrationEffectsContent />");
+    expect(featureFlags).not.toContain("STUDIO_ILLUSTRATION_PANEL_ENABLED");
+    expect(panel).not.toContain('rightPanelTab === "illustration"');
     expect(panel).not.toContain('label={t("right.renders")}');
     expect(panel).not.toContain('label={t("right.effects")}');
     expect(panel).toContain('const exportDrawer = rightPanelTab === "renders"');
@@ -703,12 +709,18 @@ describe("Studio right panel layout", () => {
 
   it("lazy mounts and destroys right-panel tab content", () => {
     const panel = readFileSync(new URL("./StudioRightPanel.tsx", import.meta.url), "utf8");
+    const effectsCatalog = readFileSync(
+      new URL("./sidebar/BlocksTab.tsx", import.meta.url),
+      "utf8",
+    );
 
     expect(panel).toContain("const PropertyPanel = lazy(");
     expect(panel).toContain("export const preloadStudioPropertyPanel");
     expect(panel).toContain("const BlocksTab = lazy(");
     expect(panel).toContain("const AssetsTab = lazy(");
-    expect(panel).toContain("const IllustrationTab = lazy(");
+    expect(effectsCatalog).toContain(
+      "IllustrationEffectsContent,",
+    );
     expect(panel).toContain("<Suspense");
     expect(panel).toContain("key={rightPanelTab}");
     expect(panel).not.toContain('import { PropertyPanel } from "./editor/PropertyPanel"');
@@ -1069,6 +1081,16 @@ describe("Studio right panel layout", () => {
     expect(catalog).toContain('aria-label={locale === "zh" ? "特效分类" : "Effect category"}');
     expect(catalog).toContain('locale === "zh" ? "全部特效" : "All effects"');
     expect(catalog).toContain('const ALL_SECTIONS_FILTER = "all" as const');
+    expect(catalog).toContain('const ILLUSTRATION_SECTION_FILTER = "illustration" as const');
+    expect(catalog).toContain('<option value={ILLUSTRATION_SECTION_FILTER}>');
+    expect(catalog).toContain("ILLUSTRATION_SKILL_COUNT");
+    expect(catalog).toContain("<IllustrationEffectsContent />");
+    expect(catalog).toContain("if (activeSection === ILLUSTRATION_SECTION_FILTER) return [];");
+    expect(catalog).toContain('data-testid={`catalog-section-${ILLUSTRATION_SECTION_FILTER}`}');
+    expect(catalog).toContain("<CatalogSectionHeader");
+    expect(catalog.indexOf("{sections.map((section)")).toBeLessThan(
+      catalog.indexOf("{showIllustration ? ("),
+    );
     expect(catalog).toContain("showSectionHeaders");
     expect(catalog).toContain("hf-block-catalog-scroll min-h-0 min-w-0 flex-1 overscroll-contain");
     expect(catalog).toContain("DEFAULT_CATALOG_COLUMN_COUNT: CatalogColumnCount = 2");

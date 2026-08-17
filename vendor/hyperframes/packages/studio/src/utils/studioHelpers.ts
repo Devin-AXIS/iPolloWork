@@ -25,7 +25,6 @@ export type RightPanelTab =
   | "design"
   | "voice"
   | "style"
-  | "illustration"
   | "assets"
   | "animation"
   | "animation-properties"

@@ -33,6 +33,10 @@ import {
   type CatalogColumnCount,
 } from "../../utils/studioUiPreferences";
 import { PreviewController } from "./PreviewController";
+import {
+  ILLUSTRATION_SKILL_COUNT,
+  IllustrationEffectsContent,
+} from "./IllustrationTab";
 import searchIconSrc from "../../icons/figmaAssetsSearch.svg?url";
 import type { EffectInsertIntent } from "../../utils/blockInstaller";
 
@@ -56,7 +60,11 @@ const CATALOG_GRID_COLUMNS: Record<CatalogColumnCount, string> = {
   4: "grid-cols-4",
 };
 const ALL_SECTIONS_FILTER = "all" as const;
-type CatalogSectionFilter = AnimationLibrarySection | typeof ALL_SECTIONS_FILTER;
+const ILLUSTRATION_SECTION_FILTER = "illustration" as const;
+export type EffectsCatalogSection =
+  | AnimationLibrarySection
+  | typeof ALL_SECTIONS_FILTER
+  | typeof ILLUSTRATION_SECTION_FILTER;
 
 function nextCatalogColumnCount(current: CatalogColumnCount, deltaY: number): CatalogColumnCount {
   if (deltaY > 0) {
@@ -83,11 +91,15 @@ function getReducedMotionServerSnapshot(): boolean {
   return false;
 }
 
-export const BlocksTab = memo(function BlocksTab({ page = "effects", onAddBlock }: BlocksTabProps) {
+export const BlocksTab = memo(function BlocksTab({
+  page = "effects",
+  onAddBlock,
+}: BlocksTabProps) {
   const { locale } = useStudioI18n();
   const { loading, error, search, setSearch, sections } = useBlockCatalog(page);
   const [previewController] = useState(() => new PreviewController());
-  const [activeSection, setActiveSection] = useState<CatalogSectionFilter>(ALL_SECTIONS_FILTER);
+  const [activeSection, setActiveSection] =
+    useState<EffectsCatalogSection>(ALL_SECTIONS_FILTER);
   const [columnCount, setColumnCount] = useState<CatalogColumnCount>(
     () => readStudioUiPreferences().catalogColumnCount ?? DEFAULT_CATALOG_COLUMN_COUNT,
   );
@@ -118,35 +130,43 @@ export const BlocksTab = memo(function BlocksTab({ page = "effects", onAddBlock 
     setColumnCount((current) => nextCatalogColumnCount(current, deltaY));
   }, []);
   const totalCount = useMemo(
-    () => sections.reduce((total, section) => total + section.items.length, 0),
+    () =>
+      sections.reduce((total, section) => total + section.items.length, 0) +
+      ILLUSTRATION_SKILL_COUNT,
     [sections],
   );
   const visibleSections = useMemo(
-    () =>
-      activeSection === ALL_SECTIONS_FILTER
-        ? sections
-        : sections.filter((section) => section.id === activeSection),
+    () => {
+      if (activeSection === ALL_SECTIONS_FILTER) return sections;
+      if (activeSection === ILLUSTRATION_SECTION_FILTER) return [];
+      return sections.filter((section) => section.id === activeSection);
+    },
     [activeSection, sections],
   );
+  const showIllustrationSection =
+    activeSection === ILLUSTRATION_SECTION_FILTER ||
+    (activeSection === ALL_SECTIONS_FILTER && search.trim() === "");
   return (
     <div className="flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
       <div className="flex-shrink-0 space-y-[10px] border-b border-panel-border px-4 pb-[14px] pt-3">
-        <div className="relative">
-          <img
-            src={searchIconSrc}
-            alt=""
-            className="pointer-events-none absolute left-[11px] top-1/2 h-4 w-4 -translate-y-1/2"
-          />
-          <input
-            type="search"
-            value={search}
-            onChange={(event) => setSearch(event.target.value)}
-            placeholder={locale === "zh" ? "搜索特效片段…" : "Search effect clips…"}
-            aria-label={locale === "zh" ? "搜索特效片段" : "Search effect clips"}
-            data-testid="block-catalog-search"
-            className="h-[34px] w-full rounded-lg border-0 bg-panel-input pl-9 pr-3 text-[13px] text-panel-text-1 outline-none transition-shadow placeholder:text-[#a2a6af] focus:ring-1 focus:ring-[#1FBAC0]/50"
-          />
-        </div>
+        {activeSection !== ILLUSTRATION_SECTION_FILTER ? (
+          <div className="relative">
+            <img
+              src={searchIconSrc}
+              alt=""
+              className="pointer-events-none absolute left-[11px] top-1/2 h-4 w-4 -translate-y-1/2"
+            />
+            <input
+              type="search"
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              placeholder={locale === "zh" ? "搜索特效片段…" : "Search effect clips…"}
+              aria-label={locale === "zh" ? "搜索特效片段" : "Search effect clips"}
+              data-testid="block-catalog-search"
+              className="h-[34px] w-full rounded-lg border-0 bg-panel-input pl-9 pr-3 text-[13px] text-panel-text-1 outline-none transition-shadow placeholder:text-[#a2a6af] focus:ring-1 focus:ring-[#1FBAC0]/50"
+            />
+          </div>
+        ) : null}
         <label className="grid gap-[5px] text-[10px] font-medium leading-3 text-panel-text-3">
           {locale === "zh" ? "分类" : "Category"}
           <select
@@ -155,6 +175,10 @@ export const BlocksTab = memo(function BlocksTab({ page = "effects", onAddBlock 
               const nextSection = event.target.value;
               if (nextSection === ALL_SECTIONS_FILTER) {
                 setActiveSection(ALL_SECTIONS_FILTER);
+                return;
+              }
+              if (nextSection === ILLUSTRATION_SECTION_FILTER) {
+                setActiveSection(ILLUSTRATION_SECTION_FILTER);
                 return;
               }
               const match = sections.find((section) => section.id === nextSection);
@@ -171,15 +195,23 @@ export const BlocksTab = memo(function BlocksTab({ page = "effects", onAddBlock 
                 {SECTION_TITLES[section.id][locale]} · {section.items.length}
               </option>
             ))}
+            <option value={ILLUSTRATION_SECTION_FILTER}>
+              {locale === "zh" ? "插画特效" : "Illustration effects"} ·{" "}
+              {ILLUSTRATION_SKILL_COUNT}
+            </option>
           </select>
         </label>
         <div
           className="rounded-lg bg-panel-input px-3 py-2 text-[10px] leading-4 text-panel-text-3"
           data-testid="effect-clip-placement-help"
         >
-          {locale === "zh"
-            ? "特效会作为独立片段插入时间线：开头自动顺延内容，结尾追加到末尾，转场落在相邻片段交界处。"
-            : "Effects are inserted as timeline clips: openings shift content, endings append, and transitions use adjacent clip boundaries."}
+          {activeSection === ILLUSTRATION_SECTION_FILTER
+            ? locale === "zh"
+              ? "选择插画能力后交给 AI，生成与当前视频匹配的可编辑 HTML 插画素材。"
+              : "Choose an illustration capability and ask AI to create an editable HTML asset for this video."
+            : locale === "zh"
+              ? "特效会作为独立片段插入时间线；插画特效由 AI 根据当前视频生成可编辑素材。"
+              : "Effects are inserted as timeline clips; illustration effects use AI to create editable assets for the current video."}
         </div>
       </div>
 
@@ -196,6 +228,7 @@ export const BlocksTab = memo(function BlocksTab({ page = "effects", onAddBlock 
       ) : (
         <CatalogSectionGrid
           sections={visibleSections}
+          showIllustration={showIllustrationSection}
           search={search}
           locale={locale}
           reducedMotion={reducedMotion}
@@ -213,6 +246,7 @@ export const BlocksTab = memo(function BlocksTab({ page = "effects", onAddBlock 
 
 function CatalogSectionGrid({
   sections,
+  showIllustration,
   search,
   locale,
   reducedMotion,
@@ -224,6 +258,7 @@ function CatalogSectionGrid({
   testId,
 }: {
   sections: CatalogSection[];
+  showIllustration: boolean;
   search: string;
   locale: "en" | "zh";
   reducedMotion: boolean;
@@ -236,11 +271,23 @@ function CatalogSectionGrid({
 }) {
   const [scrollRoot, setScrollRoot] = useState<HTMLDivElement | null>(null);
   const [visibleNames, setVisibleNames] = useState<Set<string>>(() => new Set());
-  const [collapsedSections, setCollapsedSections] = useState<Set<AnimationLibrarySection>>(
-    () => new Set(),
-  );
+  const [collapsedSections, setCollapsedSections] = useState<
+    Set<AnimationLibrarySection | typeof ILLUSTRATION_SECTION_FILTER>
+  >(() => new Set());
   const observerRef = useRef<IntersectionObserver | null>(null);
   const cardElementsRef = useRef<Map<string, HTMLElement>>(new Map());
+
+  const toggleSection = useCallback(
+    (section: AnimationLibrarySection | typeof ILLUSTRATION_SECTION_FILTER) => {
+      setCollapsedSections((current) => {
+        const next = new Set(current);
+        if (next.has(section)) next.delete(section);
+        else next.add(section);
+        return next;
+      });
+    },
+    [],
+  );
 
   const registerCard = useCallback((name: string, element: HTMLElement | null) => {
     const previous = cardElementsRef.current.get(name);
@@ -310,7 +357,9 @@ function CatalogSectionGrid({
     return () => scrollRoot.removeEventListener("wheel", handleWheel);
   }, [onDensityWheel, scrollRoot]);
 
-  const itemCount = sections.reduce((total, section) => total + section.items.length, 0);
+  const itemCount =
+    sections.reduce((total, section) => total + section.items.length, 0) +
+    (showIllustration ? ILLUSTRATION_SKILL_COUNT : 0);
   return (
     <div
       ref={setScrollRoot}
@@ -333,49 +382,12 @@ function CatalogSectionGrid({
               data-testid={`catalog-section-${section.id}`}
             >
               {showSectionHeaders ? (
-                <button
-                  type="button"
-                  aria-expanded={!collapsedSections.has(section.id)}
-                  onClick={() => {
-                    setCollapsedSections((current) => {
-                      const next = new Set(current);
-                      if (next.has(section.id)) next.delete(section.id);
-                      else next.add(section.id);
-                      return next;
-                    });
-                  }}
-                  className={`relative -mx-4 flex h-12 w-[calc(100%+32px)] items-center gap-2 px-4 text-left text-panel-text-1 transition-colors hover:bg-panel-input/50 ${collapsedSections.has(section.id) ? "" : "mb-[14px]"}`}
-                >
-                  <span
-                    className="absolute inset-y-0 left-0 w-[3px] bg-[#1FBAC0]"
-                    aria-hidden="true"
-                  />
-                  {collapsedSections.has(section.id) ? (
-                    <CaretRight
-                      aria-hidden="true"
-                      size={10}
-                      weight="regular"
-                      className="flex-none text-[#a2a6af]"
-                    />
-                  ) : (
-                    <CaretDown
-                      aria-hidden="true"
-                      size={10}
-                      weight="regular"
-                      className="flex-none text-[#a2a6af]"
-                    />
-                  )}
-                  <span className="min-w-0 flex-1 truncate text-sm font-semibold">
-                    {SECTION_TITLES[section.id][locale]}
-                  </span>
-                  <span className="text-xs tabular-nums text-panel-text-3">
-                    {section.items.length}
-                  </span>
-                  <FunnelSimple
-                    aria-hidden="true"
-                    className="h-4 w-4 flex-none text-panel-text-3"
-                  />
-                </button>
+                <CatalogSectionHeader
+                  title={SECTION_TITLES[section.id][locale]}
+                  count={section.items.length}
+                  collapsed={collapsedSections.has(section.id)}
+                  onToggle={() => toggleSection(section.id)}
+                />
               ) : null}
               {!collapsedSections.has(section.id) ? (
                 <div
@@ -398,9 +410,71 @@ function CatalogSectionGrid({
               ) : null}
             </section>
           ))}
+          {showIllustration ? (
+            <section
+              className={`border-b border-panel-border last:border-b-0 ${collapsedSections.has(ILLUSTRATION_SECTION_FILTER) ? "" : "pb-4"}`}
+              data-testid={`catalog-section-${ILLUSTRATION_SECTION_FILTER}`}
+            >
+              {showSectionHeaders ? (
+                <CatalogSectionHeader
+                  title={locale === "zh" ? "插画特效" : "Illustration effects"}
+                  count={ILLUSTRATION_SKILL_COUNT}
+                  collapsed={collapsedSections.has(ILLUSTRATION_SECTION_FILTER)}
+                  onToggle={() => toggleSection(ILLUSTRATION_SECTION_FILTER)}
+                />
+              ) : null}
+              {!collapsedSections.has(ILLUSTRATION_SECTION_FILTER) ? (
+                <IllustrationEffectsContent />
+              ) : null}
+            </section>
+          ) : null}
         </div>
       )}
     </div>
+  );
+}
+
+function CatalogSectionHeader({
+  title,
+  count,
+  collapsed,
+  onToggle,
+}: {
+  title: string;
+  count: number;
+  collapsed: boolean;
+  onToggle: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      aria-expanded={!collapsed}
+      onClick={onToggle}
+      className={`relative -mx-4 flex h-12 w-[calc(100%+32px)] items-center gap-2 px-4 text-left text-panel-text-1 transition-colors hover:bg-panel-input/50 ${collapsed ? "" : "mb-[14px]"}`}
+    >
+      <span
+        className="absolute inset-y-0 left-0 w-[3px] bg-[#1FBAC0]"
+        aria-hidden="true"
+      />
+      {collapsed ? (
+        <CaretRight
+          aria-hidden="true"
+          size={10}
+          weight="regular"
+          className="flex-none text-[#a2a6af]"
+        />
+      ) : (
+        <CaretDown
+          aria-hidden="true"
+          size={10}
+          weight="regular"
+          className="flex-none text-[#a2a6af]"
+        />
+      )}
+      <span className="min-w-0 flex-1 truncate text-sm font-semibold">{title}</span>
+      <span className="text-xs tabular-nums text-panel-text-3">{count}</span>
+      <FunnelSimple aria-hidden="true" className="h-4 w-4 flex-none text-panel-text-3" />
+    </button>
   );
 }
 

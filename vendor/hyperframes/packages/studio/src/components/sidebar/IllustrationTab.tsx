@@ -9,9 +9,11 @@ const ILLUSTRATION_SKILLS = [
   { id: "html-3d-space", label: "3D 空间插画", repository: "heygen-com/hyperframes" },
 ] as const;
 
+export const ILLUSTRATION_SKILL_COUNT = ILLUSTRATION_SKILLS.length;
+
 type IllustrationSkillId = typeof ILLUSTRATION_SKILLS[number]["id"];
 
-export function IllustrationTab() {
+export function IllustrationEffectsContent() {
   const [selectedId, setSelectedId] = useState<IllustrationSkillId>(ILLUSTRATION_SKILLS[0].id);
   const selectedSkill = ILLUSTRATION_SKILLS.find((skill) => skill.id === selectedId) ?? ILLUSTRATION_SKILLS[0];
   const askAi = () => {
@@ -25,7 +27,7 @@ export function IllustrationTab() {
   };
 
   return (
-    <div className="h-full overflow-y-auto px-4 py-4 text-panel-text-1">
+    <div className="px-4 pb-4 text-panel-text-1">
       <label className="grid gap-2 text-xs font-medium">
         插画能力
         <select

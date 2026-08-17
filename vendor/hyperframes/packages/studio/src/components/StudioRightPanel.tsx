@@ -1,12 +1,16 @@
-import { lazy, Suspense, useCallback, useEffect, useRef, type MutableRefObject } from "react";
+import {
+  lazy,
+  Suspense,
+  useCallback,
+  useEffect,
+  useRef,
+  type MutableRefObject,
+} from "react";
 import { PanelTabButton } from "./PanelTabButton";
 import { usePreviewVariablesStore } from "../hooks/previewVariablesStore";
 import type { RenderJob } from "./renders/useRenderQueue";
 import type { BlockParam } from "@hyperframes/core/registry";
-import {
-  STUDIO_ILLUSTRATION_PANEL_ENABLED,
-  STUDIO_INSPECTOR_PANELS_ENABLED,
-} from "./editor/manualEditingAvailability";
+import { STUDIO_INSPECTOR_PANELS_ENABLED } from "./editor/manualEditingAvailability";
 import type { Composition } from "@hyperframes/sdk";
 import type { EditHistoryKind } from "../utils/editHistory";
 import type { UseSlideshowPersistParams } from "../hooks/useSlideshowPersist";
@@ -69,10 +73,6 @@ export const preloadStudioAnimationPanel = () => loadAnimationTemplatesTab();
 const AssetsTab = lazy(() =>
   import("./sidebar/AssetsTab").then((module) => ({ default: module.AssetsTab })),
 );
-const IllustrationTab = lazy(() =>
-  import("./sidebar/IllustrationTab").then((module) => ({ default: module.IllustrationTab })),
-);
-
 export interface StudioRightPanelProps {
   designPanelActive: boolean;
   activeBlockParams?: {
@@ -512,18 +512,11 @@ export function StudioRightPanel({
 
   useEffect(() => () => closeHostPanel(), [closeHostPanel]);
 
-  useEffect(() => {
-    if (!STUDIO_ILLUSTRATION_PANEL_ENABLED && rightPanelTab === "illustration") {
-      setRightPanelTab("assets");
-    }
-  }, [rightPanelTab, setRightPanelTab]);
-
   const selectStudioPanel = (
     panel:
       | "design"
       | "animation"
       | "animation-properties"
-      | "illustration"
       | "assets"
       | "catalog"
       | "effects",
@@ -533,6 +526,7 @@ export function StudioRightPanel({
   };
 
   const exportDrawer = rightPanelTab === "renders";
+  const effectsPanelActive = rightPanelTab === "catalog" || rightPanelTab === "effects";
 
   return (
     <>
@@ -604,19 +598,17 @@ export function StudioRightPanel({
                       }}
                     />
                     <PanelTabButton
+                      label={t("right.catalog")}
+                      tooltip={t("right.catalogTooltip")}
+                      active={effectsPanelActive}
+                      onClick={() => selectStudioPanel("catalog")}
+                    />
+                    <PanelTabButton
                       label={t("right.voice")}
                       tooltip={t("right.voiceTooltip")}
                       active={rightPanelTab === "voice"}
                       onClick={() => openHostPanel("voice")}
                     />
-                    {STUDIO_ILLUSTRATION_PANEL_ENABLED && (
-                      <PanelTabButton
-                        label={t("right.illustration")}
-                        tooltip={t("right.illustrationTooltip")}
-                        active={rightPanelTab === "illustration"}
-                        onClick={() => selectStudioPanel("illustration")}
-                      />
-                    )}
                     <PanelTabButton
                       label={t("right.assets")}
                       tooltip={t("right.assetsTooltip")}
@@ -654,12 +646,10 @@ export function StudioRightPanel({
                       compositionPath={activeBlockParams.compositionPath}
                       onClose={onCloseBlockParams ?? (() => {})}
                     />
-                  ) : rightPanelTab === "catalog" || rightPanelTab === "effects" ? (
+                  ) : effectsPanelActive ? (
                     <BlocksTab page="effects" onAddBlock={onAddBlock} />
                   ) : animationPanelActive ? (
                     animationPanel
-                  ) : STUDIO_ILLUSTRATION_PANEL_ENABLED && rightPanelTab === "illustration" ? (
-                    <IllustrationTab />
                   ) : rightPanelTab === "assets" ? (
                     <AssetsTab
                       projectId={projectId}
