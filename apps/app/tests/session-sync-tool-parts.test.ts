@@ -192,6 +192,84 @@ describe("tool part mapper", () => {
     }
   });
 
+  test("session sync completes streamed messages through the shared engine protocol", () => {
+    const syncInput = { workspaceId: "workspace-a", connectionKey: "test" };
+    const cleanup = __createWorkspaceSessionSyncForTest(syncInput);
+    const release = trackWorkspaceSessionSync(syncInput, "session-a");
+
+    try {
+      __applySessionSyncEventForTest(syncInput, {
+        type: "message.upsert",
+        sessionId: "session-a",
+        message: {
+          id: "msg-a",
+          role: "assistant",
+          parts: [{ type: "text", text: "Done", state: "streaming" }],
+        },
+      });
+      __applySessionSyncEventForTest(syncInput, {
+        type: "message.completed",
+        sessionId: "session-a",
+        messageId: "msg-a",
+        completedAt: 42,
+      });
+
+      const transcript = getReactQueryClient().getQueryData<UIMessage[]>(transcriptKey("workspace-a", "session-a"));
+      expect(transcript?.[0]).toMatchObject({
+        metadata: { ipollowork: { completed: 42 } },
+        parts: [{ type: "text", text: "Done", state: "done" }],
+      });
+    } finally {
+      release();
+      cleanup();
+    }
+  });
+
+  test("session sync keeps consecutive DSH steps on the assistant side", () => {
+    const syncInput = { workspaceId: "workspace-a", connectionKey: "test" };
+    const cleanup = __createWorkspaceSessionSyncForTest(syncInput);
+    const release = trackWorkspaceSessionSync(syncInput, "session-a");
+
+    try {
+      __applySessionSyncEventForTest(syncInput, {
+        type: "message.upsert",
+        sessionId: "session-a",
+        message: {
+          id: "dsh:session-a:assistant:1:1",
+          role: "assistant",
+          parts: [{ type: "reasoning", text: "Inspecting", state: "streaming" }],
+        },
+      });
+      __applySessionSyncEventForTest(syncInput, {
+        type: "message.parts",
+        sessionId: "session-a",
+        messageId: "dsh:session-a:assistant:1:2",
+        partId: "dsh:session-a:assistant:1:2:0",
+        parts: [{
+          type: "text",
+          text: "Final result",
+          state: "streaming",
+          providerMetadata: { ipollowork: { partId: "dsh:session-a:assistant:1:2:0" } },
+        }],
+        messageRole: "assistant",
+        visibleAssistantOutput: true,
+      });
+
+      const transcript = getReactQueryClient().getQueryData<UIMessage[]>(transcriptKey("workspace-a", "session-a"));
+      expect(transcript).toEqual([
+        expect.objectContaining({ id: "dsh:session-a:assistant:1:1", role: "assistant" }),
+        expect.objectContaining({
+          id: "dsh:session-a:assistant:1:2",
+          role: "assistant",
+          parts: [expect.objectContaining({ type: "text", text: "Final result" })],
+        }),
+      ]);
+    } finally {
+      release();
+      cleanup();
+    }
+  });
+
   test("session sync preserves every reference tag from one synthetic part", () => {
     const syncInput = { workspaceId: "workspace-a", connectionKey: "test" };
     const cleanup = __createWorkspaceSessionSyncForTest(syncInput);

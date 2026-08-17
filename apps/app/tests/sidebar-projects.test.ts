@@ -75,6 +75,15 @@ describe("sidebar projects", () => {
     expect(sidebarSource).not.toContain("WorkspaceActionsMenu");
   });
 
+  test("rejects an existing project folder with a visible message", () => {
+    expect(sessionRouteSource).toContain("normalizeDirectoryPath(requestedFolderPath)");
+    expect(sessionRouteSource).toMatch(
+      /const existingProject = workspaces\.find[\s\S]*throw new Error\(t\("projects\.folder_already_in_use"\)\)/,
+    );
+    expect(sessionRouteSource).not.toContain("await selectProject(existingProject.id)");
+    expect(sessionPageSource).toContain('{createProjectError ? <p role="alert"');
+  });
+
   test("shows nested conversation activity on a collapsed project", () => {
     const tree = buildSessionTreeState(
       [

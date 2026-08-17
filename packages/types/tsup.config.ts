@@ -9,6 +9,7 @@ export default defineConfig({
     hyperframes: "src/hyperframes.ts",
     "hyperframes-project": "src/hyperframes-project.ts",
     plugins: "src/plugins.ts",
+    "provider-credentials": "src/provider-credentials.ts",
     templates: "src/templates.ts",
     workspace: "src/workspace.ts",
   },

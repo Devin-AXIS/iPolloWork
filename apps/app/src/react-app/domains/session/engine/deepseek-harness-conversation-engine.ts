@@ -78,6 +78,11 @@ function textDataUrl(url: string): string | null {
   return new TextDecoder().decode(bytes);
 }
 
+function internalPromptText(text: string): string {
+  if (text.startsWith(DEEPSEEK_HARNESS_INTERNAL_SYSTEM_PREFIX)) return text;
+  return `${DEEPSEEK_HARNESS_INTERNAL_SYSTEM_PREFIX}${text}\n</system>`;
+}
+
 function promptContent(parts: ConversationPromptPart[], system?: string) {
   const content: Array<
     { type: "text"; text: string }
@@ -85,7 +90,7 @@ function promptContent(parts: ConversationPromptPart[], system?: string) {
   > = [];
   for (const part of parts) {
     if (part.type === "text") {
-      content.push({ type: "text", text: part.text });
+      content.push({ type: "text", text: part.synthetic ? internalPromptText(part.text) : part.text });
       continue;
     }
     if (part.type === "agent") {
@@ -118,7 +123,7 @@ function promptContent(parts: ConversationPromptPart[], system?: string) {
   if (system?.trim()) {
     content.push({
       type: "text",
-      text: `${DEEPSEEK_HARNESS_INTERNAL_SYSTEM_PREFIX}${system.trim()}\n</system>`,
+      text: internalPromptText(system.trim()),
     });
   }
   return content;

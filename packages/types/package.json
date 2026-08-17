@@ -53,6 +53,12 @@
       "bun": "./src/plugins.ts",
       "default": "./dist/plugins.js"
     },
+    "./provider-credentials": {
+      "types": "./src/provider-credentials.ts",
+      "development": "./src/provider-credentials.ts",
+      "bun": "./src/provider-credentials.ts",
+      "default": "./dist/provider-credentials.js"
+    },
     "./templates": {
       "types": "./src/templates.ts",
       "development": "./src/templates.ts",

@@ -13,6 +13,13 @@ import type { SelectableChatModelSnapshot } from "./preferred-chat-model";
 export const PROVIDER_LIST_CACHE_MS = 5 * 60 * 1000;
 const PROVIDER_LIST_QUERY_ROOT = ["provider-list"] as const;
 
+export type ProviderListQueryInput = {
+  client: unknown;
+  engineId?: string | null;
+  baseUrl?: string | null;
+  directory?: string | null;
+};
+
 export type ConnectedProviderSnapshot = Array<{
   id: string;
   name: string;
@@ -59,6 +66,62 @@ export async function fetchProviderList(input: {
     .listProviders(input.directory?.trim() || undefined);
   recordConnectedProviderSnapshot(input, value);
   return value;
+}
+
+/**
+ * Combine engine catalogs into the app-wide model directory. The first
+ * catalog owns display metadata for duplicate entries; later catalogs only
+ * add models and providers that are absent there. Engine-specific
+ * availability is evaluated separately against the active engine response.
+ */
+export function mergeProviderListResponses(
+  values: ReadonlyArray<ProviderListResponse | null | undefined>,
+): ProviderListResponse {
+  const providers = new Map<string, ProviderListItem>();
+  const connected = new Set<string>();
+  const defaults: Record<string, string> = {};
+
+  for (const value of values) {
+    if (!value) continue;
+    const valueConnected = new Set(value.connected);
+    for (const [providerId, modelId] of Object.entries(value.default)) {
+      defaults[providerId] ??= modelId;
+    }
+    for (const provider of value.all) {
+      const explicitlyConnected = valueConnected.has(provider.id)
+        && (provider.id.trim().toLowerCase() === "opencode" || provider.source !== "env");
+      if (explicitlyConnected) connected.add(provider.id);
+      const current = providers.get(provider.id);
+      if (!current) {
+        providers.set(provider.id, {
+          ...provider,
+          env: [...provider.env],
+          models: { ...provider.models },
+        });
+        continue;
+      }
+      providers.set(provider.id, {
+        ...current,
+        source: current.source === "env" && explicitlyConnected
+          ? provider.source
+          : current.source,
+        env: [...new Set([...current.env, ...provider.env])],
+        models: { ...provider.models, ...current.models },
+      });
+    }
+  }
+
+  return { all: [...providers.values()], connected: [...connected], default: defaults };
+}
+
+export async function ensureMergedProviderListQuery(
+  queryClient: QueryClient,
+  sources: readonly ProviderListQueryInput[],
+): Promise<ProviderListResponse> {
+  const values = await Promise.all(
+    sources.map((source) => ensureProviderListQuery(queryClient, source)),
+  );
+  return mergeProviderListResponses(values);
 }
 
 export function getConnectedProviderItems(value: ProviderListResponse | null | undefined) {

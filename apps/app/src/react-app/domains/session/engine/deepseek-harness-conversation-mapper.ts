@@ -9,6 +9,10 @@ import type {
   ConversationSession,
   ConversationSnapshot,
 } from "./conversation-engine";
+import {
+  completeConversationMessage,
+  conversationMessageMetadata,
+} from "./conversation-engine";
 import type { DeepSeekHarnessServerRequest } from "@/app/lib/deepseek-harness-client";
 
 type DshEvent = {
@@ -44,6 +48,7 @@ const INTERNAL_SESSION_TITLE = /^<system(?:>|\s)/iu;
 export type DeepSeekHarnessLiveState = {
   parts: Set<string>;
   tools: Map<string, ToolState>;
+  assistantMessageIdsByTurn?: Map<string, Set<string>>;
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -94,7 +99,35 @@ function streamingPart(id: string, reasoning: boolean): UIMessage["parts"][numbe
 }
 
 function metadata(event: DshEvent, extra: Record<string, unknown> = {}) {
-  return { ipollowork: { created: event.time, dshSeq: event.seq, ...extra } };
+  return conversationMessageMetadata({ created: event.time }, { dshSeq: event.seq, ...extra });
+}
+
+function turnKey(sessionId: string, turn: number): string {
+  return `${sessionId}:${turn}`;
+}
+
+function rememberAssistantMessage(
+  state: DeepSeekHarnessLiveState,
+  sessionId: string,
+  turn: number,
+  messageId: string,
+): void {
+  state.assistantMessageIdsByTurn ??= new Map();
+  const key = turnKey(sessionId, turn);
+  const messageIds = state.assistantMessageIdsByTurn.get(key) ?? new Set<string>();
+  messageIds.add(messageId);
+  state.assistantMessageIdsByTurn.set(key, messageIds);
+}
+
+function takeAssistantMessagesForTurn(
+  state: DeepSeekHarnessLiveState,
+  sessionId: string,
+  turn: number,
+): string[] {
+  const key = turnKey(sessionId, turn);
+  const messageIds = [...(state.assistantMessageIdsByTurn?.get(key) ?? [])];
+  state.assistantMessageIdsByTurn?.delete(key);
+  return messageIds;
 }
 
 function textOutput(content: unknown): unknown {
@@ -156,10 +189,19 @@ function isVisibleUserMessage(message: Record<string, unknown>): boolean {
 function visibleUserContent(message: Record<string, unknown>): unknown {
   const content = message.content;
   if (!Array.isArray(content)) return content;
-  return content.filter((block, index) => {
-    if (!isRecord(block) || block.type !== "text" || typeof block.text !== "string") return true;
-    if (block.text.startsWith(DEEPSEEK_HARNESS_INTERNAL_SYSTEM_PREFIX)) return false;
-    return index !== 0 || content.length === 1 || !LEGACY_SYSTEM_BLOCK.test(block.text.trim());
+  return content.flatMap((block, index) => {
+    if (!isRecord(block) || block.type !== "text" || typeof block.text !== "string") return [block];
+    if (index === 0 && content.length > 1 && LEGACY_SYSTEM_BLOCK.test(block.text.trim())) return [];
+    let text = block.text;
+    let start = text.indexOf(DEEPSEEK_HARNESS_INTERNAL_SYSTEM_PREFIX);
+    while (start !== -1) {
+      const end = text.indexOf("</system>", start + DEEPSEEK_HARNESS_INTERNAL_SYSTEM_PREFIX.length);
+      text = end === -1
+        ? text.slice(0, start)
+        : `${text.slice(0, start)}${text.slice(end + "</system>".length)}`;
+      start = text.indexOf(DEEPSEEK_HARNESS_INTERNAL_SYSTEM_PREFIX);
+    }
+    return text.trim() ? [{ ...block, text }] : [];
   });
 }
 
@@ -195,22 +237,28 @@ function mapMessageEvent(sessionId: string, event: DshEvent): UIMessage | null {
       ? data
       : null;
   if (!message || typeof message.id !== "string") return null;
-  if (event.type === "assistant/message") {
+  if (event.type === "user/message" && !isVisibleUserMessage(message)) return null;
+  const declaredRole = message.role === "assistant"
+    ? "assistant"
+    : message.role === "system"
+      ? "system"
+      : "user";
+  if (event.type === "assistant/message" || declaredRole === "assistant") {
     const turn = typeof data?.turn === "number" ? data.turn : 0;
     const step = typeof data?.step === "number" ? data.step : 0;
-    const id = assistantMessageId(sessionId, turn, step);
+    const id = event.type === "assistant/message"
+      ? assistantMessageId(sessionId, turn, step)
+      : message.id;
     return {
       id,
       role: "assistant",
       metadata: metadata(event, { dshMessageId: message.id, dshTurn: turn, dshStep: step }),
-      parts: mapBlocks(id, message.content),
+      parts: mapBlocks(id, event.type === "user/message" ? visibleUserContent(message) : message.content),
     };
   }
-  if (!isVisibleUserMessage(message)) return null;
-  const role = message.role === "system" ? "system" : "user";
   return {
     id: message.id,
-    role,
+    role: declaredRole,
     metadata: metadata(event),
     parts: mapBlocks(message.id, visibleUserContent(message)),
   };
@@ -303,6 +351,7 @@ export function mapDeepSeekHarnessSnapshot(snapshot: unknown): ConversationSnaps
   }
   const messages: UIMessage[] = [];
   const tools = new Map<string, ToolState>();
+  const completedTurns = new Map<number, number>();
   let todos: TodoItem[] = [];
   for (const { event } of source.history.events) {
     if (event.type === "user/message" || event.type === "assistant/message") {
@@ -341,6 +390,17 @@ export function mapDeepSeekHarnessSnapshot(snapshot: unknown): ConversationSnaps
       continue;
     }
     if (event.type === "todo/write") todos = mapTodos(source.session.id, data);
+    if (event.type === "turn/end" && typeof data.turn === "number") completedTurns.set(data.turn, event.time);
+  }
+  for (let index = 0; index < messages.length; index += 1) {
+    const message = messages[index];
+    if (!message || message.role !== "assistant") continue;
+    const ipollowork = isRecord(message.metadata) && isRecord(message.metadata.ipollowork)
+      ? message.metadata.ipollowork
+      : null;
+    const turn = ipollowork && typeof ipollowork.dshTurn === "number" ? ipollowork.dshTurn : null;
+    const completedAt = turn === null ? undefined : completedTurns.get(turn);
+    if (typeof completedAt === "number") messages[index] = completeConversationMessage(message, completedAt);
   }
   const session = mapDeepSeekHarnessSession(source.session);
   if (INTERNAL_SESSION_TITLE.test(session.title)) {
@@ -379,10 +439,10 @@ export function mapDeepSeekHarnessEnvelope(
   const type = typeof frame.type === "string" ? frame.type : "";
   const sessionId = typeof frame.sessionId === "string" ? frame.sessionId : "";
   if (type === "host/session-status" && sessionId) {
-    const running = frame.running === true;
-    return running
-      ? [{ type: "session.status", sessionId, status: { type: "busy" } }]
-      : [{ type: "session.status", sessionId, status: { type: "idle" } }, { type: "session.idle", sessionId }];
+    // This status arrives on a different stream from session events and can
+    // overtake assistant chunks. turn/start and turn/end are the ordered,
+    // authoritative lifecycle boundary for a conversation run.
+    return [];
   }
   if (type === "host/session-removed" && sessionId) return [{ type: "session.deleted", sessionId }];
   if (type === "host/agent-error" && sessionId) {
@@ -440,6 +500,11 @@ export function mapDeepSeekHarnessEnvelope(
   const event = frame.event as DshEvent;
   if (event.type === "user/message" || event.type === "assistant/message") {
     const message = mapMessageEvent(sessionId, event);
+    if (message?.role === "assistant") {
+      const data = isRecord(event.data) ? event.data : null;
+      const turn = data && typeof data.turn === "number" ? data.turn : 0;
+      rememberAssistantMessage(state, sessionId, turn, message.id);
+    }
     return message ? [{ type: "message.upsert", sessionId, message }] : [];
   }
   const data = isRecord(event.data) ? event.data : null;
@@ -451,6 +516,7 @@ export function mapDeepSeekHarnessEnvelope(
     const index = typeof chunk.index === "number" ? chunk.index : 0;
     if ((chunk.type === "text-delta" || chunk.type === "reasoning-delta") && typeof chunk.text === "string") {
       const messageId = assistantMessageId(sessionId, turn, step);
+      rememberAssistantMessage(state, sessionId, turn, messageId);
       const id = partId(messageId, index);
       const events: ConversationEvent[] = [];
       if (!state.parts.has(id)) {
@@ -461,6 +527,7 @@ export function mapDeepSeekHarnessEnvelope(
           messageId,
           partId: id,
           parts: [streamingPart(id, chunk.type === "reasoning-delta")],
+          messageRole: "assistant",
           visibleAssistantOutput: true,
         });
       }
@@ -482,6 +549,7 @@ export function mapDeepSeekHarnessEnvelope(
     const turn = typeof data.turn === "number" ? data.turn : 0;
     const step = typeof data.step === "number" ? data.step : 0;
     const messageId = assistantMessageId(sessionId, turn, step);
+    rememberAssistantMessage(state, sessionId, turn, messageId);
     const tool = { messageId, toolName: data.name, input: normalizeToolInput(data.name, data.arguments) };
     state.tools.set(data.callId, tool);
     return [{
@@ -490,6 +558,7 @@ export function mapDeepSeekHarnessEnvelope(
       messageId,
       partId: data.callId,
       parts: [toolPart({ callId: data.callId, toolName: tool.toolName, input: tool.input, state: "input-streaming" })],
+      messageRole: "assistant",
       visibleAssistantOutput: true,
     }];
   }
@@ -510,6 +579,7 @@ export function mapDeepSeekHarnessEnvelope(
         output: result.output,
         errorText: result.errorText,
       })],
+      messageRole: "assistant",
       visibleAssistantOutput: true,
     }];
   }
@@ -520,7 +590,15 @@ export function mapDeepSeekHarnessEnvelope(
   if (event.type === "turn/start") return [{ type: "session.status", sessionId, status: { type: "busy" } }];
   if (event.type === "turn/end") {
     const errorText = turnErrorText(data);
+    const turn = typeof data.turn === "number" ? data.turn : 0;
+    const completedMessages = takeAssistantMessagesForTurn(state, sessionId, turn).map((messageId) => ({
+      type: "message.completed" as const,
+      sessionId,
+      messageId,
+      completedAt: event.time,
+    }));
     return [
+      ...completedMessages,
       ...(errorText ? [{ type: "session.error" as const, sessionId, errorText }] : []),
       { type: "session.status", sessionId, status: { type: "idle" } },
       { type: "session.idle", sessionId },

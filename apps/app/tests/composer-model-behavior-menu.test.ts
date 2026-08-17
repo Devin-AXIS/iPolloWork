@@ -13,6 +13,7 @@ import type { ComposerDraft } from "../src/app/types";
 const modelSelectPath = resolve(import.meta.dir, "../src/components/model-select.tsx");
 const composerPath = resolve(import.meta.dir, "../src/react-app/domains/session/surface/composer/composer.tsx");
 const menuPath = resolve(import.meta.dir, "../src/react-app/domains/session/surface/composer/model-behavior-menu.tsx");
+const modelPickerHookPath = resolve(import.meta.dir, "../src/react-app/domains/session/modals/use-model-picker.ts");
 const sessionRoutePath = resolve(import.meta.dir, "../src/react-app/shell/session-route.tsx");
 
 describe("Composer model and reasoning menu", () => {
@@ -83,6 +84,15 @@ describe("Composer model and reasoning menu", () => {
     expect(source).toContain("onChange: (model: ModelRef) => void");
   });
 
+  test("loads model options when the compact Composer picker opens", () => {
+    const source = readFileSync(modelPickerHookPath, "utf8");
+
+    expect(source).toContain("if ((!open && !compactOpen) || !client) return;");
+    expect(source).toContain("ensureMergedProviderListQuery");
+    expect(source).toContain("catalogSources.length ? catalogSources : [activeSource]");
+    expect(source).toContain("disabled: !isModelAvailableInConnectedProviders");
+  });
+
   test("Composer uses one combined model and reasoning menu", () => {
     const composer = readFileSync(composerPath, "utf8");
     const menu = readFileSync(menuPath, "utf8");
@@ -98,6 +108,9 @@ describe("Composer model and reasoning menu", () => {
     expect(model).toContain("Connect TokenStar");
     expect(model).toContain('grouped.push({ value: "TokenStar", items: [tokenStarEntry] })');
     expect(model).toContain("includeTokenStar &&");
+    expect(model).toContain("ensureMergedProviderListQuery");
+    expect(model).toContain("getSelectableChatProviderItems(catalog ?? data)");
+    expect(model).toContain("disabled={option.disabled}");
     expect(model).not.toContain('option.providerID === "tokenstar") continue');
     expect(model).not.toContain('option.modelID.startsWith("gpt-")');
     expect(model).not.toContain('option.modelID.startsWith("kimi-")');

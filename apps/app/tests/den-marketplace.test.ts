@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
 
-import { createDenClient } from "../src/app/lib/den";
+import { createDenClient, DEFAULT_DEN_BASE_URL } from "../src/app/lib/den";
 
 const originalFetch = globalThis.fetch;
 const manifest = {
@@ -16,6 +16,10 @@ const manifest = {
 describe("iPolloWork Cloud plugin marketplace", () => {
   afterEach(() => {
     Object.defineProperty(globalThis, "fetch", { configurable: true, value: originalFetch });
+  });
+
+  test("uses the hosted marketplace service by default", () => {
+    expect(DEFAULT_DEN_BASE_URL).toBe("http://i.ipollo.ai");
   });
 
   test("lists, acquires, and downloads complete V2 packages", async () => {

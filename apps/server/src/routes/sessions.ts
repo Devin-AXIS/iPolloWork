@@ -232,18 +232,18 @@ export function registerSessionRoutes(options: RegisterSessionRoutesOptions): vo
     }
 
     if (workspace.engineId === DEEPSEEK_HARNESS_ENGINE_ID) {
-      try {
-        await deepseekHarness.call("workspace.archiveSession", { sessionId });
-      } catch (error) {
-        remapSessionReadError(error);
-      }
-    } else {
-      const opencode = createWorkspaceOpencodeClient(config, workspace);
-      unwrapOpencodeResult(
-        await opencode.session.delete({ sessionID: sessionId }),
-        `/session/${encodeURIComponent(sessionId)}`,
+      throw new ApiError(
+        501,
+        "session_delete_unsupported",
+        "DeepSeek Harness supports session archiving but not permanent deletion",
       );
     }
+
+    const opencode = createWorkspaceOpencodeClient(config, workspace);
+    unwrapOpencodeResult(
+      await opencode.session.delete({ sessionID: sessionId }),
+      `/session/${encodeURIComponent(sessionId)}`,
+    );
 
     return jsonResponse({ ok: true });
   });

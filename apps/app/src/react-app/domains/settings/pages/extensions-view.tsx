@@ -83,7 +83,7 @@ export function ExtensionsView(props: ExtensionsViewProps) {
       ? props.client.listPluginPackages(props.workspaceId).catch(() => ({ items: [] }))
       : Promise.resolve({ items: [] });
     void Promise.all([
-      listEnterpriseResources(activeEnterprise, "extension"),
+      listEnterpriseResources("extension"),
       installedPackages,
     ]).then(([items, packages]) => {
       if (!current) return;
@@ -101,7 +101,7 @@ export function ExtensionsView(props: ExtensionsViewProps) {
     if (!activeEnterprise || !props.client || !props.workspaceId || !resource.latestVersion) return;
     setEnterpriseBusyId(resource.id);
     try {
-      const file = await downloadEnterpriseResource(activeEnterprise, resource);
+      const file = await downloadEnterpriseResource(resource);
       const upload = await readPluginPackageArchive(file);
       await props.client.validatePluginPackageUpload(props.workspaceId, upload);
       const result = await props.client.importPluginPackage(props.workspaceId, upload);
@@ -149,7 +149,7 @@ export function ExtensionsView(props: ExtensionsViewProps) {
         ) : enterpriseResources.length ? (
           <div className="grid gap-3 sm:grid-cols-2">
             {enterpriseResources.map((resource) => {
-              const installedVersion = installedEnterpriseExtensionVersions.get(resource.slug);
+              const installedVersion = installedEnterpriseExtensionVersions.get(resource.manifestId ?? resource.slug);
               const currentVersionInstalled = Boolean(installedVersion && installedVersion === resource.latestVersion?.version);
               const actionLabel = currentVersionInstalled
                 ? t("plugin_platform.status.installed")

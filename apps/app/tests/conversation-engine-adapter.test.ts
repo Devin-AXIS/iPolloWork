@@ -226,6 +226,14 @@ describe("conversation engine adapters", () => {
               data: { todos: [{ content: "Verify", status: "in_progress" }] },
             },
           },
+          {
+            event: {
+              type: "turn/end",
+              seq: 6,
+              time: 40,
+              data: { turn: 1, reason: { kind: "completed" } },
+            },
+          },
         ],
       },
     });
@@ -233,7 +241,12 @@ describe("conversation engine adapters", () => {
     expect(snapshot.session).toMatchObject({ id: "dsh-session", title: "Build it" });
     expect(snapshot.messages).toEqual([
       expect.objectContaining({ id: "user-1", role: "user", parts: [expect.objectContaining({ text: "Build it" })] }),
-      expect.objectContaining({ id: "dsh:dsh-session:assistant:1:1", role: "assistant", parts: [expect.objectContaining({ text: "Done" })] }),
+      expect.objectContaining({
+        id: "dsh:dsh-session:assistant:1:1",
+        role: "assistant",
+        metadata: expect.objectContaining({ ipollowork: expect.objectContaining({ completed: 40 }) }),
+        parts: [expect.objectContaining({ text: "Done", state: "done" })],
+      }),
     ]);
     expect(snapshot.todos).toEqual([expect.objectContaining({ content: "Verify", status: "in_progress" })]);
   });
@@ -315,7 +328,10 @@ describe("conversation engine adapters", () => {
 
       await connection.sendPrompt({
         sessionId: "session-1",
-        parts: [{ type: "text", text: "Build it" }],
+        parts: [
+          { type: "text", text: "Build it" },
+          { type: "text", text: "Apply the private template checklist", synthetic: true },
+        ],
         system: "Internal runtime instructions",
         model: { providerID: "deepseek-official", modelID: "deepseek-v4-pro" },
         mode: "code",
@@ -352,6 +368,10 @@ describe("conversation engine adapters", () => {
     });
     expect(requests[3]?.payload.content).toEqual([
       { type: "text", text: "Build it" },
+      {
+        type: "text",
+        text: `${DEEPSEEK_HARNESS_INTERNAL_SYSTEM_PREFIX}Apply the private template checklist\n</system>`,
+      },
       {
         type: "text",
         text: `${DEEPSEEK_HARNESS_INTERNAL_SYSTEM_PREFIX}Internal runtime instructions\n</system>`,
@@ -411,6 +431,72 @@ describe("conversation engine adapters", () => {
         parts: [expect.objectContaining({ type: "text", text: "你好啊" })],
       }),
     })]);
+
+    const mixed = mapDeepSeekHarnessEnvelope({
+      type: "server-request",
+      rpcId: "rpc-mixed-user",
+      payload: {
+        type: "session/event",
+        sessionId: "dsh-session",
+        event: {
+          type: "user/message",
+          seq: 3,
+          time: 30,
+          data: {
+            id: "user-2",
+            role: "user",
+            source: { kind: "user" },
+            content: [{
+              type: "text",
+              text: `Visible request\n${DEEPSEEK_HARNESS_INTERNAL_SYSTEM_PREFIX}private checklist\n</system>\nVisible tail`,
+            }],
+          },
+        },
+      },
+    }, { parts: new Set(), tools: new Map() });
+
+    expect(mixed).toEqual([expect.objectContaining({
+      type: "message.upsert",
+      message: expect.objectContaining({
+        parts: [expect.objectContaining({ text: "Visible request\n\nVisible tail" })],
+      }),
+    })]);
+  });
+
+  test("honors the declared assistant role on DeepSeek Harness user-message envelopes", () => {
+    const events = mapDeepSeekHarnessEnvelope({
+      type: "server-request",
+      rpcId: "rpc-assistant-in-user-envelope",
+      payload: {
+        type: "session/event",
+        sessionId: "dsh-session",
+        event: {
+          type: "user/message",
+          seq: 4,
+          time: 40,
+          data: {
+            id: "assistant-stage",
+            role: "assistant",
+            source: { kind: "user" },
+            turn: 2,
+            step: 1,
+            content: [{ type: "text", text: "The brief is clear. I will inspect the template." }],
+          },
+        },
+      },
+    }, { parts: new Set(), tools: new Map() });
+
+    expect(events).toEqual([expect.objectContaining({
+      type: "message.upsert",
+      message: expect.objectContaining({
+        id: "assistant-stage",
+        role: "assistant",
+        parts: [expect.objectContaining({
+          type: "text",
+          text: "The brief is clear. I will inspect the template.",
+        })],
+      }),
+    })]);
   });
 
   test("streams DeepSeek Harness output after the user message without waiting for completion", () => {
@@ -457,12 +543,64 @@ describe("conversation engine adapters", () => {
     expect(firstChunk).toEqual([
       expect.objectContaining({
         type: "message.parts",
+        messageRole: "assistant",
         parts: [expect.objectContaining({ type: "text", text: "", state: "streaming" })],
       }),
       expect.objectContaining({ type: "message.chunk", chunk: expect.objectContaining({ delta: "你" }) }),
     ]);
     expect(nextChunk).toEqual([
       expect.objectContaining({ type: "message.chunk", chunk: expect.objectContaining({ delta: "好" }) }),
+    ]);
+  });
+
+  test("uses the ordered DeepSeek Harness turn boundary instead of the racing host status", () => {
+    const state = { parts: new Set<string>(), tools: new Map() };
+
+    expect(mapDeepSeekHarnessEnvelope({
+      type: "server-request",
+      rpcId: "rpc-host-idle",
+      payload: { type: "host/session-status", sessionId: "dsh-session", running: false },
+    }, state)).toEqual([]);
+
+    mapDeepSeekHarnessEnvelope({
+      type: "server-request",
+      rpcId: "rpc-chunk",
+      payload: {
+        type: "session/event",
+        sessionId: "dsh-session",
+        event: {
+          type: "assistant/chunk",
+          seq: 10,
+          time: 20,
+          data: { turn: 2, step: 1, chunk: { type: "text-delta", index: 0, text: "Done" } },
+        },
+      },
+    }, state);
+
+    const completed = mapDeepSeekHarnessEnvelope({
+      type: "server-request",
+      rpcId: "rpc-turn-end",
+      payload: {
+        type: "session/event",
+        sessionId: "dsh-session",
+        event: {
+          type: "turn/end",
+          seq: 11,
+          time: 30,
+          data: { turn: 2, reason: { kind: "completed" } },
+        },
+      },
+    }, state);
+
+    expect(completed).toEqual([
+      {
+        type: "message.completed",
+        sessionId: "dsh-session",
+        messageId: "dsh:dsh-session:assistant:2:1",
+        completedAt: 30,
+      },
+      { type: "session.status", sessionId: "dsh-session", status: { type: "idle" } },
+      { type: "session.idle", sessionId: "dsh-session" },
     ]);
   });
 

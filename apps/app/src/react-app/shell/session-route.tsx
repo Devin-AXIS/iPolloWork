@@ -18,6 +18,7 @@ import {
 
 import { captureAnalyticsEvent, markTaskRunStart } from "@/app/lib/analytics";
 import { DeepSeekHarnessClient } from "@/app/lib/deepseek-harness-client";
+import { createClient } from "@/app/lib/opencode";
 import {
   PERSONAL_WORK_CONTEXT_ID,
   readActiveWorkContextId,
@@ -54,6 +55,7 @@ import {
   getWorkspaceTaskLoadErrorDisplay,
   isDesktopRuntime,
   isSandboxWorkspace,
+  normalizeDirectoryPath,
   resolveModelDisplayName,
   safeStringify,
 } from "@/app/utils";
@@ -101,6 +103,7 @@ import { useModelPicker } from "@/react-app/domains/session/modals/use-model-pic
 import { CreateRemoteWorkspaceModal } from "@/react-app/domains/workspace/create-remote-workspace-modal";
 import { useSessionProviderAuth } from "@/react-app/domains/connections/provider-auth/use-session-provider-auth";
 import { providerEngineAdapters } from "@/react-app/domains/connections/provider-auth/provider-engine-adapter";
+import { selectSharedProviderWorkspace } from "@/react-app/domains/connections/provider-auth/shared-provider-workspace";
 import { useMcpConnectedCount } from "@/react-app/domains/connections/use-mcp-connected-count";
 import { useSessionMcpMaintenance } from "@/react-app/domains/connections/use-session-mcp-maintenance";
 import type { iPolloWorkSessionType, iPolloWorkTemplateId } from "@/react-app/domains/session/sidebar/app-sidebar-provider";
@@ -153,6 +156,7 @@ import {
   ensureProviderListQuery,
   getSelectableChatModelSnapshot,
   isModelAvailableInSelectableChatProviders,
+  type ProviderListQueryInput,
   useProviderListQuery,
 } from "@/react-app/infra/provider-list-query";
 import { resolvePreferredSelectableChatModel } from "@/react-app/infra/preferred-chat-model";
@@ -292,6 +296,74 @@ export function SessionRoute() {
       token: selectedWorkspaceServerToken,
     });
   }, [activeEngineId, opencodeClient, selectedWorkspaceEndpoint, selectedWorkspaceServerToken]);
+  const sharedProviderWorkspace = useMemo(
+    () => selectSharedProviderWorkspace(workspaces, selectedWorkspace),
+    [selectedWorkspace, workspaces],
+  );
+  const deepSeekHarnessWorkspace = useMemo(
+    () => workspaces.find(
+      (workspace) => workspace.engineId?.trim() === DEEPSEEK_HARNESS_ENGINE_ID,
+    ) ?? null,
+    [workspaces],
+  );
+  const sharedProviderEndpoint = useMemo(
+    () => resolveWorkspaceEndpoint(sharedProviderWorkspace, { baseUrl, token }),
+    [baseUrl, sharedProviderWorkspace, token],
+  );
+  const deepSeekHarnessEndpoint = useMemo(
+    () => resolveWorkspaceEndpoint(deepSeekHarnessWorkspace, { baseUrl, token }),
+    [baseUrl, deepSeekHarnessWorkspace, token],
+  );
+  const sharedProviderEngineId = sharedProviderWorkspace?.engineId?.trim() || DEFAULT_ENGINE_ID;
+  const sharedProviderRoot = sharedProviderWorkspace?.path?.trim() || "";
+  const sharedProviderClient = useMemo(() => {
+    if (!sharedProviderEndpoint?.token) return null;
+    if (sharedProviderEngineId === DEFAULT_ENGINE_ID) {
+      return createClient(
+        sharedProviderEndpoint.opencodeBaseUrl,
+        sharedProviderRoot || undefined,
+        { token: sharedProviderEndpoint.token, mode: "ipollowork" },
+      );
+    }
+    if (sharedProviderEngineId !== DEEPSEEK_HARNESS_ENGINE_ID) return null;
+    return new DeepSeekHarnessClient({
+      serverBaseUrl: sharedProviderEndpoint.baseUrl,
+      workspaceId: sharedProviderEndpoint.workspaceId,
+      token: sharedProviderEndpoint.token,
+    });
+  }, [sharedProviderEndpoint, sharedProviderEngineId, sharedProviderRoot]);
+  const deepSeekHarnessProviderClient = useMemo(() => {
+    if (!deepSeekHarnessEndpoint?.token) return null;
+    return new DeepSeekHarnessClient({
+      serverBaseUrl: deepSeekHarnessEndpoint.baseUrl,
+      workspaceId: deepSeekHarnessEndpoint.workspaceId,
+      token: deepSeekHarnessEndpoint.token,
+    });
+  }, [deepSeekHarnessEndpoint]);
+  const modelCatalogSources = useMemo<readonly ProviderListQueryInput[]>(() => {
+    const sources: ProviderListQueryInput[] = [];
+    if (sharedProviderClient) {
+      sources.push({
+        client: sharedProviderClient,
+        engineId: sharedProviderEngineId,
+        baseUrl: sharedProviderEndpoint?.opencodeBaseUrl,
+        directory: sharedProviderRoot || undefined,
+      });
+    }
+    if (
+      deepSeekHarnessProviderClient
+      && deepSeekHarnessWorkspace
+      && deepSeekHarnessWorkspace.id !== sharedProviderWorkspace?.id
+    ) {
+      sources.push({
+        client: deepSeekHarnessProviderClient,
+        engineId: DEEPSEEK_HARNESS_ENGINE_ID,
+        baseUrl: deepSeekHarnessEndpoint?.opencodeBaseUrl,
+        directory: deepSeekHarnessWorkspace.path || undefined,
+      });
+    }
+    return sources;
+  }, [deepSeekHarnessEndpoint?.opencodeBaseUrl, deepSeekHarnessProviderClient, deepSeekHarnessWorkspace, sharedProviderClient, sharedProviderEndpoint?.opencodeBaseUrl, sharedProviderEngineId, sharedProviderRoot, sharedProviderWorkspace?.id]);
   useSessionMcpMaintenance({
     cloudSignedIn: denAuth.isSignedIn && activeWorkContextId === PERSONAL_WORK_CONTEXT_ID,
     client: selectedWorkspaceEndpoint?.client ?? null,
@@ -456,10 +528,18 @@ export function SessionRoute() {
     folderPath: string;
     engineId: BuiltInWorkspaceEngineId;
   }) => {
-    if (!client) throw new Error(t("projects.server_unavailable"));
     const name = input.name.trim();
     const requestedFolderPath = input.folderPath.trim();
     if (!name || !requestedFolderPath) throw new Error(t("projects.name_and_folder_required"));
+    const requestedFolderKey = normalizeDirectoryPath(requestedFolderPath);
+    const existingProject = workspaces.find((workspace) =>
+      workspace.workspaceType !== "remote"
+      && normalizeDirectoryPath(workspace.path) === requestedFolderKey
+    );
+    if (existingProject) {
+      throw new Error(t("projects.folder_already_in_use"));
+    }
+    if (!client) throw new Error(t("projects.server_unavailable"));
     const workContextId = activeWorkContextId === PERSONAL_WORK_CONTEXT_ID ? null : activeWorkContextId;
     let folderPath = requestedFolderPath;
     let desktopProjectId: string | null = null;
@@ -502,7 +582,7 @@ export function SessionRoute() {
     rememberProjectForWorkContext(activeWorkContextId, project.id);
     await refreshRouteState();
     navigateToWorkspaceSession(project.id);
-  }, [activeWorkContextId, client, navigateToWorkspaceSession, refreshRouteState, setLegacySelectedWorkspaceId]);
+  }, [activeWorkContextId, client, navigateToWorkspaceSession, refreshRouteState, setLegacySelectedWorkspaceId, workspaces]);
 
   const renameProject = useCallback(async (workspaceId: string, name: string) => {
     const trimmed = name.trim();
@@ -590,7 +670,7 @@ export function SessionRoute() {
   const providerListQuery = useProviderListQuery({
     client: engineProviderClient,
     engineId: activeEngineId,
-    baseUrl: opencodeBaseUrl,
+    baseUrl: selectedWorkspaceEndpoint?.opencodeBaseUrl,
     directory: selectedWorkspaceRoot || undefined,
   });
   const { providerCatalog, modelVariantLabel, modelBehaviorOptions, modelVariantValue } =
@@ -603,8 +683,9 @@ export function SessionRoute() {
   const modelPicker = useModelPicker({
     client: engineProviderClient,
     engineId: activeEngineId,
-    baseUrl: opencodeBaseUrl,
+    baseUrl: selectedWorkspaceEndpoint?.opencodeBaseUrl ?? "",
     workspaceRoot: selectedWorkspaceRoot,
+    catalogSources: modelCatalogSources,
   });
   const setSelectedModel = useCallback((model: ModelRef) => {
     local.setPrefs((previous) => updateEnginePreferences(
@@ -634,12 +715,7 @@ export function SessionRoute() {
       defaults: providerListQuery.data.default,
       current: selectedModel,
     });
-    const nativeDefaultModel = activeEngineId === DEEPSEEK_HARNESS_ENGINE_ID
-      ? Object.entries(providerListQuery.data.default).flatMap(([providerID, modelID]) =>
-          modelID ? [{ providerID, modelID }] : [],
-        )[0] ?? null
-      : null;
-    const preferredModel = preferredSelectableModel ?? nativeDefaultModel;
+    const preferredModel = preferredSelectableModel;
     if (
       !preferredModel ||
       (
@@ -650,7 +726,7 @@ export function SessionRoute() {
       return;
     }
     setSelectedModel(preferredModel);
-  }, [activeEngineId, providerListQuery.data, selectedModel, setSelectedModel]);
+  }, [providerListQuery.data, selectedModel, setSelectedModel]);
   const selectableModels = getSelectableChatModelSnapshot(providerListQuery.data);
   const selectedModelUnavailable = Boolean(
     providerListQuery.data && (
@@ -694,15 +770,16 @@ export function SessionRoute() {
 
   const { store: sessionProviderAuthStore, snapshot: sessionProviderAuthSnapshot } =
     useSessionProviderAuth({
-      engineClient: engineProviderClient,
+      engineClient: sharedProviderClient,
       providers,
       providerDefaults,
       providerConnectedIds,
       disabledProviderIds,
-      selectedWorkspace,
-      selectedWorkspaceEndpoint,
-      selectedWorkspaceRoot,
-      selectedWorkspaceId,
+      selectedWorkspace: sharedProviderWorkspace,
+      selectedWorkspaceEndpoint: sharedProviderEndpoint,
+      providerBaseUrl: sharedProviderEndpoint?.opencodeBaseUrl ?? "",
+      selectedWorkspaceRoot: sharedProviderRoot,
+      selectedWorkspaceId: sharedProviderWorkspace?.id ?? "",
       setProviders,
       setProviderDefaults,
       setProviderConnectedIds,
@@ -725,7 +802,7 @@ export function SessionRoute() {
     runtimeWorkspaceId: selectedWorkspaceEndpoint?.workspaceId ?? null,
   });
   useEffect(() => {
-    if (!engineProviderClient) {
+    if (!sharedProviderClient) {
       setProviders([]);
       setProviderDefaults({});
       setProviderConnectedIds([]);
@@ -760,8 +837,8 @@ export function SessionRoute() {
       let disabledProviders: string[] = [];
       try {
         disabledProviders = await providerEngineAdapters
-          .get(activeEngineId)
-          .connect(engineProviderClient)
+          .get(sharedProviderEngineId)
+          .connect(sharedProviderClient)
           .readDisabledProviders();
         if (!cancelled) setDisabledProviderIds(disabledProviders);
       } catch {
@@ -772,10 +849,10 @@ export function SessionRoute() {
         applyProviderState(
           filterProviderList(
             await ensureProviderListQuery(getReactQueryClient(), {
-              client: engineProviderClient,
-              engineId: activeEngineId,
-              baseUrl: opencodeBaseUrl,
-              directory: selectedWorkspaceRoot || undefined,
+              client: sharedProviderClient,
+              engineId: sharedProviderEngineId,
+              baseUrl: sharedProviderEndpoint?.opencodeBaseUrl,
+              directory: sharedProviderRoot || undefined,
             }),
             disabledProviders,
           ),
@@ -791,7 +868,7 @@ export function SessionRoute() {
     return () => {
       cancelled = true;
     };
-  }, [activeEngineId, denSessionVersion, engineProviderClient, opencodeBaseUrl, selectedWorkspaceRoot]);
+  }, [denSessionVersion, sharedProviderClient, sharedProviderEndpoint?.opencodeBaseUrl, sharedProviderEngineId, sharedProviderRoot]);
 
   const modelLabel = selectedModel
     ? resolveModelDisplayName(selectedModel.modelID)
@@ -1590,7 +1667,7 @@ export function SessionRoute() {
     ],
     execute: async (rawArgs: unknown) => {
       if (
-        providerEngineAdapters.get(activeEngineId).capabilities.customProviders
+        providerEngineAdapters.get(sharedProviderEngineId).capabilities.customProviders
         && checkDesktopRestriction({ restriction: "allowCustomProviders" })
       ) {
         return { ok: false, error: "Custom providers are disabled by your organization." };
@@ -1604,7 +1681,7 @@ export function SessionRoute() {
       );
       return { ok: true, opened: "provider_auth_modal", preferredProviderId: preferred ?? null };
     },
-  }), [activeEngineId, checkDesktopRestriction, sessionProviderAuthStore]);
+  }), [checkDesktopRestriction, sessionProviderAuthStore, sharedProviderEngineId]);
   useControlAction(addProviderControlAction);
 
   const paletteSessionOptions = useMemo<PaletteSessionOption[]>(() => {
@@ -1780,6 +1857,7 @@ export function SessionRoute() {
       engineId={activeEngineId}
       opencodeBaseUrl={opencodeBaseUrl}
       selectedWorkspaceRoot={selectedWorkspaceRoot}
+      modelCatalogSources={modelCatalogSources}
     >
     {conversation && selectedWorkspaceEndpoint && opencodeBaseUrl && selectedWorkspaceServerToken ? (
       <ReactSessionRuntime
@@ -1970,7 +2048,7 @@ export function SessionRoute() {
           : undefined
       }
       onDeleteSession={
-        client && selectedWorkspaceId
+        client && selectedWorkspaceId && activeEngineId !== DEEPSEEK_HARNESS_ENGINE_ID
           ? async (sessionId) => {
               const endpoint = endpointForWorkspace(selectedWorkspace);
               if (!endpoint) return;
@@ -2077,11 +2155,11 @@ export function SessionRoute() {
       disabledProviders={disabledProviderIds}
       onBehaviorChange={() => {}}
       onToggleProvider={async (providerId, enable) => {
-        if (!engineProviderClient) return;
+        if (!sharedProviderClient) return;
         try {
-          const adapter = providerEngineAdapters.get(activeEngineId);
+          const adapter = providerEngineAdapters.get(sharedProviderEngineId);
           if (!adapter.capabilities.disabledProviders) return;
-          const connection = adapter.connect(engineProviderClient);
+          const connection = adapter.connect(sharedProviderClient);
           const current = await connection.readDisabledProviders();
           const next = enable
             ? current.filter((id: string) => id !== providerId)

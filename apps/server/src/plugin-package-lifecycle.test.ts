@@ -154,6 +154,55 @@ async function writeSignedExecutablePackage(packageRoot: string) {
   }, null, 2), "utf8");
 }
 
+async function writeLegacySignedExecutablePackage(packageRoot: string) {
+  const skillPath = ".opencode/skills/signed-research/SKILL.md";
+  await mkdir(join(packageRoot, dirname(skillPath)), { recursive: true });
+  await writeFile(join(packageRoot, "service.mjs"), "export default async () => ({ actions: { ping: async () => ({ pong: true }) } });\n", "utf8");
+  await writeFile(join(packageRoot, skillPath), "# Signed Research\n", "utf8");
+  await writeFile(join(packageRoot, "ipollowork.plugin.json"), JSON.stringify({
+    schemaVersion: 1,
+    id: "signed-research",
+    name: "Signed Research",
+    description: "Signed executable test package.",
+    source: { format: "ipollowork-extension-manifest", origin: "local", trusted: false },
+    package: {
+      version: "1.0.0",
+      publisher: { id: "smart-future-school", name: "智慧未来学校" },
+      updateId: "smart-future-school/signed-research",
+      entrypoints: { service: "service.mjs" },
+      checksum: { algorithm: "sha256", value: "e1f0989fd33e680640c020a16309a1ac88b01412b837181aacdc1f059e257346" },
+      signature: {
+        algorithm: "ed25519",
+        keyId: "smart-future-school-2026",
+        value: "zz4FD0ePLKBuyasb69aanwG5GemRzLF6uZCQ23Zg4Pc+H3QxWpANef5RGfGoIMNriqbW2e96X7vRSmBrvIy7Dw==",
+      },
+    },
+    permissions: [{ id: "network", reason: "Run the signed local service." }],
+    resources: [
+      {
+        type: "local-service",
+        id: "signed-research-service",
+        path: "service.mjs",
+        actions: [{
+          id: "ping",
+          title: "Ping",
+          description: "Return a test response.",
+          effect: "read",
+          inputSchema: { type: "object", properties: {}, additionalProperties: false },
+        }],
+        required: true,
+      },
+      {
+        type: "skill",
+        id: "signed-research-skill",
+        path: skillPath,
+        requires: ["service:signed-research-service"],
+        required: true,
+      },
+    ],
+  }, null, 2), "utf8");
+}
+
 async function expectMissing(path: string) {
   await expect(stat(path)).rejects.toThrow();
 }
@@ -374,6 +423,55 @@ describe("plugin package lifecycle", () => {
     await expectMissing(join(workspaceRoot, ".opencode", "skills", "acme-research", "SKILL.md"));
     expect(await readFile(join(workspaceRoot, "unrelated.txt"), "utf8")).toBe("keep me");
     expect((await readRuntimeOpencodeConfig(config, WORKSPACE_ID)).plugin).toEqual([]);
+  });
+
+  test("loads legacy lifecycle and manifest state without rewriting user data", async () => {
+    const lifecycle = await import("./plugin-package-lifecycle.js");
+    const workspaceRoot = await createRoot("ipollowork-plugin-legacy-state-");
+    const packageRoot = await createRoot("ipollowork-plugin-legacy-state-package-");
+    process.env.IPOLLOWORK_RUNTIME_DB = join(workspaceRoot, "runtime.sqlite");
+    await writeDeclarativePackage(packageRoot);
+    const config = serverConfig(workspaceRoot);
+
+    await lifecycle.installPluginPackage({ serverConfig: config, workspaceId: WORKSPACE_ID, packageRoot, workspaceRoot });
+    const statePath = join(workspaceRoot, "plugin-packages", "state.json");
+    const legacyState = JSON.parse(await readFile(statePath, "utf8"));
+    legacyState.schemaVersion = 1;
+    const legacyVersion = legacyState.packages["acme-research"].versions["1.0.0"];
+    legacyVersion.manifest.schemaVersion = 1;
+    legacyVersion.manifest.package.entrypoints = {};
+    legacyVersion.manifest.package.compatibility = { ipollowork: ">=0.17.0", opencode: ">=1.18.0" };
+    legacyVersion.manifest.resources[0].path = ".opencode/skills/acme-research/SKILL.md";
+    legacyVersion.manifest.authorization = {
+      required: true,
+      methods: [{
+        id: "api-key",
+        kind: "secret-form",
+        label: "API key",
+        fields: [{ id: "apiKey", label: "API key", secret: true, required: true }],
+      }],
+    };
+    await writeFile(statePath, JSON.stringify(legacyState, null, 2), "utf8");
+
+    expect(await lifecycle.listInstalledPluginPackages({ serverConfig: config }))
+      .toMatchObject([{
+        pluginId: "acme-research",
+        version: "1.0.0",
+        manifest: {
+          schemaVersion: 2,
+          resources: [{ id: "acme-skill", type: "skill" }],
+          authorization: { methods: [{ connectionId: "acme-research" }] },
+        },
+      }]);
+
+    expect(JSON.parse(await readFile(statePath, "utf8"))).toMatchObject({ schemaVersion: 1 });
+
+    await lifecycle.uninstallPluginPackage({
+      serverConfig: config,
+      pluginId: "acme-research",
+    });
+    await expectMissing(join(workspaceRoot, ".opencode", "skills", "acme-research", "SKILL.md"));
+    expect(await lifecycle.listInstalledPluginPackages({ serverConfig: config })).toEqual([]);
   });
 
   test("adopts identical activation files but preserves different user content", async () => {
@@ -778,6 +876,53 @@ describe("plugin package lifecycle", () => {
     } finally {
       await server.stop();
     }
+  });
+
+  test("imports and uninstalls a legacy marketplace package with its original signature and paths", async () => {
+    const lifecycle = await import("./plugin-package-lifecycle.js");
+    const workspaceRoot = await createRoot("ipollowork-legacy-signed-plugin-workspace-");
+    const packageRoot = await createRoot("ipollowork-legacy-signed-plugin-package-");
+    process.env.IPOLLOWORK_RUNTIME_DB = join(workspaceRoot, "runtime.sqlite");
+    await writeLegacySignedExecutablePackage(packageRoot);
+    const config = serverConfig(workspaceRoot);
+
+    const preview = await lifecycle.previewPluginPackage({ packageRoot, workspaceRoot, engineId: ENGINE_ID });
+    expect(preview).toMatchObject({
+      manifest: { schemaVersion: 2, id: "signed-research" },
+      integrity: { status: "verified" },
+    });
+    expect(preview.manifest.resources).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: "signed-research-service", path: "service/service.mjs" }),
+      expect.objectContaining({ id: "signed-research-skill", path: "skills/signed-research/SKILL.md" }),
+    ]));
+    expect(preview.files).toEqual(expect.arrayContaining([
+      expect.objectContaining({ path: "service.mjs" }),
+      expect.objectContaining({ path: ".opencode/skills/signed-research/SKILL.md" }),
+    ]));
+    expect(preview.writes).toEqual([expect.objectContaining({ path: ".opencode/skills/signed-research/SKILL.md" })]);
+    expect(await lifecycle.assertPluginPackageSafeForImport({ packageRoot, preview }))
+      .toMatchObject({ level: "signed", signature: { status: "verified" } });
+    const tamperedPreview = structuredClone(preview);
+    if (!tamperedPreview.manifest.package?.signature) throw new Error("Legacy signature fixture is missing");
+    tamperedPreview.manifest.package.signature.value = `${"A".repeat(86)}==`;
+    await expect(lifecycle.assertPluginPackageSafeForImport({ packageRoot, preview: tamperedPreview }))
+      .rejects.toMatchObject({ code: "plugin_package_signature_invalid" });
+
+    await lifecycle.installPluginPackage({ serverConfig: config, workspaceId: WORKSPACE_ID, packageRoot, workspaceRoot });
+    expect(await readFile(join(workspaceRoot, ".opencode", "skills", "signed-research", "SKILL.md"), "utf8"))
+      .toBe("# Signed Research\n");
+    const service = await lifecycle.resolveInstalledPluginService({
+      serverConfig: config,
+      pluginId: "signed-research",
+    });
+    expect(service.modulePath.endsWith("service.mjs")).toBe(true);
+    expect(await readFile(service.modulePath, "utf8")).toContain("pong: true");
+
+    await lifecycle.uninstallPluginPackage({
+      serverConfig: config,
+      pluginId: "signed-research",
+    });
+    await expectMissing(join(workspaceRoot, ".opencode", "skills", "signed-research", "SKILL.md"));
   });
 
   test("imports, runs, and uninstalls a trusted publisher-signed executable archive", async () => {

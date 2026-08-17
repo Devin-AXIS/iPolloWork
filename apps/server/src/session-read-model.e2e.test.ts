@@ -2,6 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { mkdtemp, mkdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { DEEPSEEK_HARNESS_ENGINE_ID } from "@ipollowork/types/workspace";
 
 import { startServer } from "./server.js";
 import type { ServerConfig } from "./types.js";
@@ -121,7 +122,12 @@ function startMockOpencode(input?: { invalidList?: boolean; holdCommand?: Promis
   return { server, requests };
 }
 
-async function startiPolloWorkServer(input: { workspaceRoot: string; opencodeBaseUrl: string }) {
+async function startiPolloWorkServer(input: {
+  workspaceRoot: string;
+  opencodeBaseUrl: string;
+  engineId?: string;
+  readOnly?: boolean;
+}) {
   const config: ServerConfig = {
     host: "127.0.0.1",
     port: 0,
@@ -137,10 +143,11 @@ async function startiPolloWorkServer(input: { workspaceRoot: string; opencodeBas
         preset: "starter",
         workspaceType: "local",
         baseUrl: input.opencodeBaseUrl,
+        ...(input.engineId ? { engineId: input.engineId } : {}),
       },
     ],
     authorizedRoots: [input.workspaceRoot],
-    readOnly: true,
+    readOnly: input.readOnly ?? true,
     startedAt: Date.now(),
     tokenSource: "cli",
     hostTokenSource: "cli",
@@ -169,6 +176,28 @@ async function waitUntil(predicate: () => boolean) {
 }
 
 describe("workspace session read APIs", () => {
+  test("rejects permanent deletion for DeepSeek Harness sessions", async () => {
+    const workspaceRoot = await createWorkspaceRoot();
+    const mock = startMockOpencode();
+    const ipollowork = await startiPolloWorkServer({
+      workspaceRoot,
+      opencodeBaseUrl: `http://127.0.0.1:${mock.server.port}`,
+      engineId: DEEPSEEK_HARNESS_ENGINE_ID,
+      readOnly: false,
+    });
+
+    const response = await fetch(
+      `http://127.0.0.1:${ipollowork.server.port}/workspace/ws_1/sessions/ses_1`,
+      { method: "DELETE", headers: auth(ipollowork.token) },
+    );
+    expect(response.status).toBe(501);
+    expect(await response.json()).toMatchObject({
+      code: "session_delete_unsupported",
+      message: "DeepSeek Harness supports session archiving but not permanent deletion",
+    });
+    expect(mock.requests).toHaveLength(0);
+  });
+
   test("lists sessions and returns session details, messages, and snapshot", async () => {
     const workspaceRoot = await createWorkspaceRoot();
     const mock = startMockOpencode();

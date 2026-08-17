@@ -11,6 +11,8 @@ import {
   selectTemplateEntryArtifacts,
 } from "../src/lib/artifacts";
 import {
+  createVideoArtifactCompletionRequirement,
+  unchangedVideoArtifactIssue,
   videoProjectEntryPath,
 } from "../src/react-app/domains/session/video/video-project";
 
@@ -51,6 +53,23 @@ function slidesArtifact(path: string): ArtifactItem {
 describe("video artifact entry routing", () => {
   test("derives one session-owned video entry", () => {
     expect(videoProjectEntryPath("ses/video 1")).toBe("video/ses_video_1/index.html");
+  });
+
+  test("requires a template video source to change before completion", () => {
+    const requirement = createVideoArtifactCompletionRequirement(
+      "video/ses_video/index.html",
+      "<main>Template</main>",
+      2,
+    );
+
+    expect(requirement).toMatchObject({
+      sourcePath: "video/ses_video/index.html",
+      assistantMessageBaseline: 2,
+    });
+    expect(unchangedVideoArtifactIssue(requirement.baselineFingerprint, "<main>Template</main>")).toMatchObject({
+      code: "artifact_unchanged",
+    });
+    expect(unchangedVideoArtifactIssue(requirement.baselineFingerprint, "<main>Finished video</main>")).toBeNull();
   });
 
   test("matches only the current video entry across workspace path prefixes", () => {

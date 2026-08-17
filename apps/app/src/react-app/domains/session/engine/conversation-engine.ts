@@ -93,6 +93,39 @@ export type ConversationMessageChunk = Extract<
   { type: "text-delta" | "reasoning-delta" }
 >;
 
+export function conversationMessageMetadata(
+  timing: { created?: number; completed?: number },
+  extra: Record<string, unknown> = {},
+): UIMessage["metadata"] | undefined {
+  const ipollowork = {
+    ...(typeof timing.created === "number" ? { created: timing.created } : {}),
+    ...(typeof timing.completed === "number" ? { completed: timing.completed } : {}),
+    ...extra,
+  };
+  return Object.keys(ipollowork).length > 0 ? { ipollowork } : undefined;
+}
+
+export function completeConversationMessage(message: UIMessage, completedAt: number): UIMessage {
+  const metadata = message.metadata && typeof message.metadata === "object"
+    ? message.metadata
+    : {};
+  const existing = "ipollowork" in metadata && metadata.ipollowork && typeof metadata.ipollowork === "object"
+    ? metadata.ipollowork
+    : {};
+  return {
+    ...message,
+    metadata: {
+      ...metadata,
+      ipollowork: { ...existing, completed: completedAt },
+    },
+    parts: message.parts.map((part) =>
+      part.type === "text" || part.type === "reasoning"
+        ? { ...part, state: "done" as const }
+        : part,
+    ),
+  };
+}
+
 export type ConversationEvent =
   | { type: "session.updated"; sessionId: string; info: ConversationSession }
   | { type: "session.deleted"; sessionId: string }
@@ -106,6 +139,7 @@ export type ConversationEvent =
   | { type: "question.asked"; question: ConversationQuestion }
   | { type: "question.replied"; sessionId: string; requestId: string }
   | { type: "message.upsert"; sessionId: string; message: UIMessage }
+  | { type: "message.completed"; sessionId: string; messageId: string; completedAt: number }
   | { type: "message.removed"; sessionId: string; messageId: string }
   | {
       type: "message.parts";
@@ -113,6 +147,7 @@ export type ConversationEvent =
       messageId: string;
       partId: string;
       parts: UIMessage["parts"];
+      messageRole?: UIMessage["role"];
       visibleAssistantOutput: boolean;
     }
   | {

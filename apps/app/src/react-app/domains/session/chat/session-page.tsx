@@ -97,7 +97,11 @@ import { useDesignAiSelectionStore } from "../design/design-ai-selection-store";
 import { waitForTemplateEntrySurface } from "../templates/template-entry-route";
 import { loadTemplateSession } from "../templates/template-session-probe";
 import { TemplateSaveDialog, type TemplateSaveInput, type TemplateSaveMode } from "../templates/template-save-dialog";
-import { videoProjectEntryPath } from "../video/video-project";
+import {
+  createVideoArtifactCompletionRequirement,
+  videoProjectEntryPath,
+  type VideoArtifactCompletionRequirement,
+} from "../video/video-project";
 import { isStreamingSessionStatus } from "../sidebar/utils";
 import {
   TEMPLATE_BRIEF_REFERENCE_ACCEPT,
@@ -619,6 +623,15 @@ export function SessionPage(props: SessionPageProps) {
   const previousTemplateMarketOpenRef = useRef(false);
   const [cloudSignInComingSoonOpen, setCloudSignInComingSoonOpen] = useState(false);
   const [templateSessionData, setTemplateSessionData] = useState<TemplateSessionData | null>(null);
+  const [pendingVideoArtifactCompletion, setPendingVideoArtifactCompletion] = useState<{
+    sessionId: string;
+    requirement: VideoArtifactCompletionRequirement;
+  } | null>(null);
+  const consumePendingVideoArtifactCompletion = useCallback(() => {
+    setPendingVideoArtifactCompletion((current) =>
+      current?.sessionId === props.selectedSessionId ? null : current,
+    );
+  }, [props.selectedSessionId]);
   const [templateSessionLoading, setTemplateSessionLoading] = useState(false);
   const [templateSaveOpen, setTemplateSaveOpen] = useState(false);
   const [templateValidationReport, setTemplateValidationReport] = useState<TemplateValidationReport | null>(null);
@@ -784,7 +797,7 @@ export function SessionPage(props: SessionPageProps) {
         setEnterpriseTemplateResources([]);
       } else if (activeEnterprise) {
         const [enterpriseResources, installedCatalog] = await Promise.all([
-          listEnterpriseResources(activeEnterprise, "template"),
+          listEnterpriseResources("template"),
           props.ipolloworkServerClient.listTemplates(props.runtimeWorkspaceId, templateResourceScope),
         ]);
         if (requestId !== templateCatalogRequestIdRef.current) return;
@@ -1071,7 +1084,7 @@ export function SessionPage(props: SessionPageProps) {
     if (!activeEnterprise || templateResourceScope === "personal") return;
     setTemplateBusyId(resource.id);
     try {
-      const file = await downloadEnterpriseResource(activeEnterprise, resource);
+      const file = await downloadEnterpriseResource(resource);
       await importDesignTemplate(file);
     } catch (error) {
       const message = error instanceof Error ? error.message : "";
@@ -1112,18 +1125,21 @@ export function SessionPage(props: SessionPageProps) {
       }, null, 2),
       baseUpdatedAt: null,
       });
-      setTemplateSessionData((current) => current?.sessionId === props.selectedSessionId ? { ...current, hasBrief: true } : current);
-      setTemplateSessionRevision((value) => value + 1);
-      setDismissedTemplateBriefSessionIds((current) => {
-        if (!props.selectedSessionId || !current.has(props.selectedSessionId)) return current;
-        const next = new Set(current);
-        next.delete(props.selectedSessionId);
-        return next;
-      });
+      if (template.surface === "video") {
+        const source = await props.ipolloworkServerClient.readWorkspaceFile(props.runtimeWorkspaceId, state.entry);
+        setPendingVideoArtifactCompletion({
+          sessionId: props.selectedSessionId,
+          requirement: createVideoArtifactCompletionRequirement(
+            state.entry,
+            source.content,
+            conversationMessages.length,
+          ),
+        });
+      }
       const prompt = templateBriefPrompt({ template, entryPath: state.entry, briefPath: state.briefPath });
       const referencePrompt = referencePayload.contextPack.promptText.trim();
       const visibleTemplateMessage = t("templates.applied", { title: template.title });
-      props.surface?.onSendDraft({
+      const dispatched = await props.surface?.onSendDraft({
         mode: "prompt",
         parts: [
           { type: "text", text: visibleTemplateMessage },
@@ -1134,14 +1150,26 @@ export function SessionPage(props: SessionPageProps) {
         text: visibleTemplateMessage,
         resolvedText: visibleTemplateMessage,
       }, props.selectedSessionId);
+      if (!dispatched) throw new Error("The template task could not be started.");
+      setTemplateSessionData((current) => current?.sessionId === props.selectedSessionId ? { ...current, hasBrief: true } : current);
+      setTemplateSessionRevision((value) => value + 1);
+      setDismissedTemplateBriefSessionIds((current) => {
+        if (!props.selectedSessionId || !current.has(props.selectedSessionId)) return current;
+        const next = new Set(current);
+        next.delete(props.selectedSessionId);
+        return next;
+      });
     } catch (error) {
+      setPendingVideoArtifactCompletion((current) =>
+        current?.sessionId === props.selectedSessionId ? null : current,
+      );
       toast.error(t("templates.brief.submit_failed"), {
         description: error instanceof Error ? error.message : undefined,
       });
     } finally {
       if (referencePayload) revokeTemplateReferenceAttachmentPreviews(referencePayload.attachments);
     }
-  }, [currentTemplateSessionData, props.ipolloworkServerClient, props.runtimeWorkspaceId, props.selectedSessionId, props.surface]);
+  }, [conversationMessages.length, currentTemplateSessionData, props.ipolloworkServerClient, props.runtimeWorkspaceId, props.selectedSessionId, props.surface]);
   const closeTemplateBrief = useCallback(async () => {
     const sessionId = props.selectedSessionId;
     if (!sessionId) return;
@@ -2780,6 +2808,10 @@ export function SessionPage(props: SessionPageProps) {
                         templateEntryPath={templateEntryPathForArtifacts}
                         artifactFiles={artifactFiles}
                         artifactContext={artifactContext}
+                        artifactCompletionRequirement={pendingVideoArtifactCompletion?.sessionId === props.selectedSessionId
+                          ? pendingVideoArtifactCompletion.requirement
+                          : undefined}
+                        onArtifactCompletionRequirementConsumed={consumePendingVideoArtifactCompletion}
                         onOpenVideoStudio={openCurrentVideoStudio}
                         onCreateSession={(type, templateId) => props.sidebar.onCreateTaskInWorkspace(
                           props.selectedWorkspaceId,

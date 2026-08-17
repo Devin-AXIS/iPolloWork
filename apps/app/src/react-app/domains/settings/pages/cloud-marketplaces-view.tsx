@@ -2,16 +2,20 @@
 import * as React from "react";
 import { Cloud, Loader2, RefreshCw, ShieldCheck } from "lucide-react";
 
-import type { DenMarketplacePlugin } from "@/app/lib/den";
+import type { iPolloWorkExtensionManifest } from "@/app/extensions";
+import {
+  downloadEnterpriseResource,
+  listEnterpriseResources,
+  type EnterpriseResource,
+} from "@/app/lib/enterprise-connections";
 import type { iPolloWorkPluginPackageItem, iPolloWorkServerClient } from "@/app/lib/ipollowork-server";
 import { Button } from "@/components/ui/button";
-import { currentLocale, t } from "@/i18n";
-import { resolveExtensionIconUrl } from "@/react-app/design-system/extension-icon-src";
+import { t } from "@/i18n";
 import { useCloudSession } from "@/react-app/domains/settings/cloud/cloud-session-provider";
 import { PluginPackageDetail } from "@/react-app/domains/settings/plugin-package-detail";
 import { PluginPackageListItem } from "@/react-app/domains/settings/plugin-package-list-item";
 import { readPluginPackageArchive } from "@/react-app/domains/settings/plugin-package-archive";
-import { formatPluginPlatformError, localizePluginPackageManifest } from "@/react-app/domains/settings/plugin-platform-state";
+import { formatPluginPlatformError } from "@/react-app/domains/settings/plugin-platform-state";
 import { SettingsListEmptyState, SettingsListSearchInput } from "@/react-app/domains/settings/settings-list";
 import { SettingsNotice, SettingsPill } from "@/react-app/domains/settings/settings-section";
 
@@ -79,27 +83,30 @@ function categoryLabel(categoryId: MarketplaceCategoryId): string {
   return t(`plugin_library.category.${categoryId}`);
 }
 
-function archiveBuffer(bytes: Uint8Array): ArrayBuffer {
-  return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
+function resourcePluginId(resource: EnterpriseResource): string {
+  return resource.manifestId ?? resource.slug;
 }
 
-async function sha256Hex(bytes: Uint8Array): Promise<string> {
-  const digest = await globalThis.crypto.subtle.digest("SHA-256", archiveBuffer(bytes));
-  return [...new Uint8Array(digest)].map((value) => value.toString(16).padStart(2, "0")).join("");
+function resourceManifest(resource: EnterpriseResource): iPolloWorkExtensionManifest {
+  return {
+    schemaVersion: 2,
+    id: resourcePluginId(resource),
+    name: resource.name,
+    description: resource.description,
+    category: resource.category,
+    source: {
+      format: "ipollowork-extension-manifest",
+      trusted: true,
+      origin: "den",
+      reference: resource.id,
+    },
+    resources: [],
+  };
 }
 
-function formatBytes(value: number): string {
-  if (value < 1024) return `${value} B`;
-  if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KB`;
-  return `${(value / 1024 / 1024).toFixed(1)} MB`;
-}
-
-function actionLabel(item: DenMarketplacePlugin, installed: iPolloWorkPluginPackageItem | undefined) {
-  if (installed?.version === item.version) return t("settings.marketplace.installed");
+function actionLabel(resource: EnterpriseResource, installed: iPolloWorkPluginPackageItem | undefined) {
+  if (installed?.version === resource.latestVersion?.version) return t("settings.marketplace.installed");
   if (installed) return t("plugin_platform.action.update");
-  if (item.pointsCost > 0 && !item.acquired) {
-    return t("settings.marketplace.buy_install", { points: item.pointsCost });
-  }
   return t("plugin_platform.action.install");
 }
 
@@ -112,9 +119,8 @@ export function CloudMarketplacesView({
   embedded = false,
   search: controlledSearch,
 }: CloudMarketplacesViewProps) {
-  const locale = currentLocale();
   const cloud = useCloudSession();
-  const [items, setItems] = React.useState<DenMarketplacePlugin[]>([]);
+  const [items, setItems] = React.useState<EnterpriseResource[]>([]);
   const [installed, setInstalled] = React.useState<Record<string, iPolloWorkPluginPackageItem>>({});
   const [selectedId, setSelectedId] = React.useState<string | null>(null);
   const [localSearch, setLocalSearch] = React.useState("");
@@ -132,61 +138,63 @@ export function CloudMarketplacesView({
     setLoading(true);
     setError(null);
     try {
-      const [marketplaceItems, localPackages] = await Promise.all([
-        cloud.client.listMarketplacePlugins(),
+      const [marketplaceResult, localPackagesResult] = await Promise.allSettled([
+        listEnterpriseResources("extension"),
         client && workspaceId ? client.listPluginPackages(workspaceId) : Promise.resolve({ items: [] }),
       ]);
-      setItems(marketplaceItems);
-      setInstalled(Object.fromEntries(localPackages.items.map((item) => [item.pluginId, item])));
+      if (marketplaceResult.status === "rejected") throw marketplaceResult.reason;
+      setItems(marketplaceResult.value);
+      if (localPackagesResult.status === "fulfilled") {
+        setInstalled(Object.fromEntries(localPackagesResult.value.items.map((item) => [item.pluginId, item])));
+      } else {
+        setInstalled({});
+        setError(formatPluginPlatformError(localPackagesResult.reason, t("plugin_platform.error.load")));
+      }
     } catch (cause) {
       setError(formatPluginPlatformError(cause, t("settings.marketplace.load_failed")));
     } finally {
       setLoading(false);
     }
-  }, [client, cloud.client, cloud.isSignedIn, workspaceId]);
+  }, [client, cloud.isSignedIn, workspaceId]);
 
   React.useEffect(() => {
     void refresh();
   }, [refresh]);
 
-  const install = React.useCallback(async (item: DenMarketplacePlugin) => {
-    if (!client || !workspaceId || installed[item.pluginId]?.version === item.version) return;
-    setBusyId(item.pluginId);
+  const install = React.useCallback(async (resource: EnterpriseResource) => {
+    const pluginId = resourcePluginId(resource);
+    if (!client || !workspaceId || !resource.latestVersion || installed[pluginId]?.version === resource.latestVersion.version) return;
+    setBusyId(resource.id);
     setError(null);
     try {
-      await cloud.client.acquireMarketplacePlugin(item.pluginId);
-      const download = await cloud.client.downloadMarketplacePlugin(item.pluginId);
-      if (download.digest && await sha256Hex(download.bytes) !== download.digest.toLowerCase()) {
-        throw new Error(t("settings.marketplace.digest_mismatch"));
-      }
-      const file = new File([archiveBuffer(download.bytes)], download.fileName, { type: "application/zip" });
+      const file = await downloadEnterpriseResource(resource);
       const upload = await readPluginPackageArchive(file);
       await client.validatePluginPackageUpload(workspaceId, upload);
       await client.importPluginPackage(workspaceId, upload);
       await refresh();
-      await onInstalled?.(item.pluginId);
+      await onInstalled?.(pluginId);
     } catch (cause) {
       setError(formatPluginPlatformError(cause, t("settings.marketplace.install_failed")));
     } finally {
       setBusyId(null);
     }
-  }, [client, cloud.client, installed, onInstalled, refresh, workspaceId]);
+  }, [client, installed, onInstalled, refresh, workspaceId]);
 
-  const localizedItems = React.useMemo(() => items.map((item) => ({
-    ...item,
-    manifest: localizePluginPackageManifest(item.manifest, locale),
-  })), [items, locale]);
   const filteredItems = React.useMemo(() => {
     const query = search.trim().toLocaleLowerCase();
-    if (!query) return localizedItems;
-    return localizedItems.filter((item) => [item.manifest.name, item.manifest.description, item.publisher, item.category]
+    if (!query) return items;
+    return items.filter((item) => [item.name, item.description, item.enterpriseCategory, item.category]
       .some((value) => value.toLocaleLowerCase().includes(query)));
-  }, [localizedItems, search]);
-  const selected = localizedItems.find((item) => item.pluginId === selectedId) ?? null;
+  }, [items, search]);
+  const selected = items.find((item) => item.id === selectedId) ?? null;
   const featuredItems = filteredItems.filter((item) => item.featured);
   const categorySections = MARKETPLACE_CATEGORY_IDS.map((categoryId) => ({
     categoryId,
-    items: filteredItems.filter((item) => !item.featured && resolveMarketplaceCategory(item) === categoryId),
+    items: filteredItems.filter((item) => !item.featured && resolveMarketplaceCategory({
+      pluginId: resourcePluginId(item),
+      category: item.category,
+      manifest: {},
+    }) === categoryId),
   })).filter((section) => section.items.length > 0);
 
   if (!shouldShowMarketplaceRows(cloud.isSignedIn)) {
@@ -203,50 +211,31 @@ export function CloudMarketplacesView({
   }
 
   if (selected) {
-    const manifest = selected.manifest;
-    const iconUrl = resolveExtensionIconUrl({ iconSrc: manifest.icon?.src, iconSlug: manifest.icon?.simpleIconSlug });
-    const localPackage = installed[selected.pluginId];
-    const resources = Object.entries(manifest.resources.reduce<Record<string, typeof manifest.resources>>((groups, resource) => {
-      (groups[resource.type] ??= []).push(resource);
-      return groups;
-    }, {}));
+    const pluginId = resourcePluginId(selected);
+    const localPackage = installed[pluginId];
     return (
       <PluginPackageDetail
-        name={manifest.name}
-        description={manifest.description}
-        iconUrl={iconUrl}
+        name={selected.name}
+        description={selected.description}
         onBack={() => setSelectedId(null)}
         action={(
-          <Button disabled={!client || !workspaceId || busyId !== null || localPackage?.version === selected.version} onClick={() => void install(selected)}>
-            {busyId === selected.pluginId ? <Loader2 size={14} className="animate-spin" /> : null}
+          <Button disabled={!client || !workspaceId || !selected.latestVersion || busyId !== null || localPackage?.version === selected.latestVersion.version} onClick={() => void install(selected)}>
+            {busyId === selected.id ? <Loader2 size={14} className="animate-spin" /> : null}
             {actionLabel(selected, localPackage)}
           </Button>
         )}
       >
         <div className="mb-6 flex flex-wrap gap-2">
-          <SettingsPill>v{selected.version}</SettingsPill>
-          <SettingsPill>{selected.publisher}</SettingsPill>
-          <SettingsPill>{selected.pointsCost === 0 ? t("settings.marketplace.free") : `${selected.pointsCost} iPoints`}</SettingsPill>
+          {selected.latestVersion ? <SettingsPill>v{selected.latestVersion.version}</SettingsPill> : null}
+          <SettingsPill>{selected.enterpriseCategory}</SettingsPill>
+          <SettingsPill>{t("settings.marketplace.free")}</SettingsPill>
         </div>
-        <div className="grid gap-5 border-t border-dls-border pt-6 lg:grid-cols-[minmax(0,1fr)_220px]">
-          <div>
-            <h3 className="text-xs font-semibold uppercase tracking-[0.14em] text-dls-secondary">{t("settings.marketplace.capabilities")}</h3>
-            <div className="mt-3 grid gap-3 sm:grid-cols-2">
-              {resources.map(([type, entries]) => (
-                <div key={type} className="rounded-xl border border-dls-border bg-dls-hover/30 p-4">
-                  <div className="text-xs font-semibold capitalize text-dls-text">{type}</div>
-                  <div className="mt-2 space-y-1.5">{entries.map((resource) => <div key={resource.id} className="text-xs text-dls-secondary">{resource.label ?? resource.id}</div>)}</div>
-                </div>
-              ))}
-            </div>
-            {manifest.setup?.instructions ? <SettingsNotice className="mt-4">{manifest.setup.instructions}</SettingsNotice> : null}
-          </div>
-          <div className="space-y-3 rounded-xl border border-dls-border bg-dls-hover/30 p-4 text-xs text-dls-secondary">
+        <div className="border-t border-dls-border pt-6">
+          <div className="max-w-sm space-y-3 rounded-xl border border-dls-border bg-dls-hover/30 p-4 text-xs text-dls-secondary">
             <div className="flex items-center gap-2 font-semibold text-dls-text"><ShieldCheck size={15} />{t("settings.marketplace.package_info")}</div>
-            <div className="flex justify-between gap-3"><span>{t("settings.marketplace.size")}</span><span>{formatBytes(selected.size)}</span></div>
-            <div className="flex justify-between gap-3"><span>{t("settings.marketplace.resources")}</span><span>{manifest.resources.length}</span></div>
-            <div className="flex justify-between gap-3"><span>{t("settings.marketplace.permissions")}</span><span>{manifest.permissions?.length ?? 0}</span></div>
-            <div className="break-all font-mono text-[10px]">{selected.digest}</div>
+            <div className="flex justify-between gap-3"><span>ID</span><span className="truncate">{pluginId}</span></div>
+            <div className="flex justify-between gap-3"><span>{t("plugin_library.category.other")}</span><span>{selected.category}</span></div>
+            {selected.latestVersion ? <div className="break-all font-mono text-[10px]">{selected.latestVersion.digest}</div> : null}
           </div>
         </div>
         {error ? <div role="alert" className="rounded-xl border border-red-6 bg-red-2 px-5 py-3 text-xs text-red-11">{error}</div> : null}
@@ -310,14 +299,14 @@ export function CloudMarketplacesView({
 
 type MarketplaceSectionProps = {
   title: string;
-  items: DenMarketplacePlugin[];
+  items: EnterpriseResource[];
   installed: Record<string, iPolloWorkPluginPackageItem>;
   busyId: string | null;
   client: iPolloWorkServerClient | null;
   workspaceId: string | null;
-  onOpen: (pluginId: string) => void;
+  onOpen: (resourceId: string) => void;
   onOpenInstalled?: (pluginId: string) => void;
-  onInstall: (item: DenMarketplacePlugin) => Promise<void>;
+  onInstall: (item: EnterpriseResource) => Promise<void>;
 };
 
 function MarketplaceSection(props: MarketplaceSectionProps) {
@@ -326,24 +315,23 @@ function MarketplaceSection(props: MarketplaceSectionProps) {
       <h2 className="border-b border-dls-border pb-2 text-sm font-semibold text-dls-text">{props.title}</h2>
       <div className="grid gap-x-8 lg:grid-cols-2">
         {props.items.map((item) => {
-          const localPackage = props.installed[item.pluginId];
+          const pluginId = resourcePluginId(item);
+          const localPackage = props.installed[pluginId];
+          const manifest = resourceManifest(item);
           return (
             <PluginPackageListItem
-              key={item.pluginId}
-              manifest={item.manifest}
-              version={item.version}
+              key={item.id}
+              manifest={manifest}
+              version={item.latestVersion?.version ?? "-"}
               compact
               featured={item.featured}
-              badge={item.pointsCost > 0
-                ? <span className="rounded-full border border-dls-border px-2 py-0.5 text-[10px] text-dls-secondary">{item.pointsCost} iPoints</span>
-                : null}
-              status={localPackage ? (localPackage.version === item.version ? t("settings.marketplace.installed") : t("extensions.update_available")) : item.publisher}
-              actionBusy={props.busyId === item.pluginId}
-              actionDisabled={!props.client || !props.workspaceId || props.busyId !== null || localPackage?.version === item.version}
-              actionLabel={<>{props.busyId === item.pluginId ? <Loader2 size={14} className="animate-spin" /> : null}{actionLabel(item, localPackage)}</>}
+              status={localPackage ? (localPackage.version === item.latestVersion?.version ? t("settings.marketplace.installed") : t("extensions.update_available")) : item.enterpriseCategory}
+              actionBusy={props.busyId === item.id}
+              actionDisabled={!props.client || !props.workspaceId || !item.latestVersion || props.busyId !== null || localPackage?.version === item.latestVersion.version}
+              actionLabel={<>{props.busyId === item.id ? <Loader2 size={14} className="animate-spin" /> : null}{actionLabel(item, localPackage)}</>}
               onOpen={() => localPackage && props.onOpenInstalled
-                ? props.onOpenInstalled(item.pluginId)
-                : props.onOpen(item.pluginId)}
+                ? props.onOpenInstalled(pluginId)
+                : props.onOpen(item.id)}
               onAction={() => void props.onInstall(item)}
             />
           );

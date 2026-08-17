@@ -219,7 +219,7 @@ export function TemplateMarketDialog(props: TemplateMarketDialogProps) {
     const templatesById = new Map(props.templates.map((template) => [template.manifest.id, template]));
     const installations = new Map<string, TemplateCatalogItem>();
     for (const resource of props.enterpriseResources) {
-      const installed = (resource.sourceTemplateId ? templatesById.get(resource.sourceTemplateId) : undefined)
+      const installed = (resource.manifestId ? templatesById.get(resource.manifestId) : undefined)
         ?? templatesById.get(resource.slug);
       if (installed) installations.set(resource.id, installed);
     }
