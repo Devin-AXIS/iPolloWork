@@ -70,7 +70,7 @@ describe("sidebar projects", () => {
     expect(sidebarSource).toContain('t("projects.rename")');
     expect(sidebarSource).toContain('t("projects.show_in_folder")');
     expect(sessionPageSource).toContain("pickDirectory({ title: t(\"projects.choose_folder\") })");
-    expect(sessionPageSource).toContain("props.sidebar.onCreateProject({ name, folderPath })");
+    expect(sessionPageSource).toContain("props.sidebar.onCreateProject({ name, folderPath, engineId: createProjectEngineId })");
     expect(sidebarSource).not.toContain("WorkspaceHeader");
     expect(sidebarSource).not.toContain("WorkspaceActionsMenu");
   });

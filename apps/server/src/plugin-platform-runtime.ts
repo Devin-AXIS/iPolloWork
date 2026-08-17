@@ -1,68 +1,39 @@
-import { randomBytes } from "node:crypto";
-import { chmod, mkdir, readFile, writeFile } from "node:fs/promises";
-import { dirname, join } from "node:path";
-
 import { ApiError } from "./errors.js";
-import { startPluginAuthorizationFlow } from "./plugin-authorization.js";
-import { PluginAuthorizationStore, type PluginConnectionStatus } from "./plugin-authorization-store.js";
+import { authorizationMethodFingerprint } from "./authorization-method.js";
+import { authorizationConsumerId, authorizationVault } from "./authorization-runtime.js";
+import {
+  exchangeDeviceCode,
+  exchangeOAuthAuthorizationCode,
+  refreshOAuthCredential,
+  startPluginAuthorizationFlow,
+  tokenValues,
+} from "./authorization-protocol.js";
+import { type AuthorizationVault, type ConnectionStatus } from "./authorization-vault.js";
 import { listInstalledPluginPackages } from "./plugin-package-lifecycle.js";
 import type { PluginAuthorizationMethod, PluginPackageManifest } from "./plugin-package-manifest.js";
-import { runtimeStorageDir } from "./runtime-opencode-config-store.js";
 import type { ServerConfig } from "./types.js";
 
-const storeByPath = new Map<string, Promise<PluginAuthorizationStore>>();
-const credentialRefreshesByStore = new WeakMap<PluginAuthorizationStore, Map<string, Promise<Readonly<Record<string, string>>>>>();
+const credentialRefreshesByStore = new WeakMap<AuthorizationVault, Map<string, Promise<Readonly<Record<string, string>>>>>();
 
-function safeSegment(value: string): string {
-  return value.replace(/[^A-Za-z0-9._-]+/g, "-");
+export function pluginAuthorizationConsumerId(pluginId: string): string {
+  return authorizationConsumerId("plugin", pluginId);
 }
 
-function storePath(config: ServerConfig, workspaceId: string): string {
-  return join(runtimeStorageDir(config), "plugin-authorization", `${safeSegment(workspaceId)}.vault`);
-}
-
-function keyPath(config: ServerConfig): string {
-  return join(runtimeStorageDir(config), "plugin-authorization.key");
-}
-
-async function encryptionKey(config: ServerConfig): Promise<Buffer> {
-  const path = keyPath(config);
-  try {
-    const key = Buffer.from((await readFile(path, "utf8")).trim(), "base64");
-    if (key.byteLength !== 32) throw new ApiError(500, "plugin_authorization_key_invalid", "Plugin authorization encryption key is invalid");
-    return key;
-  } catch (error) {
-    if (!error || typeof error !== "object" || Reflect.get(error, "code") !== "ENOENT") throw error;
+export async function migratePluginAuthorizationConsumers(config: ServerConfig): Promise<number> {
+  const installed = await listInstalledPluginPackages({ serverConfig: config });
+  const store = await authorizationVault(config);
+  let migrated = 0;
+  for (const plugin of installed) {
+    migrated += await store.mergeConsumers(
+      pluginAuthorizationConsumerId(plugin.pluginId),
+      config.workspaces.map((workspace) => authorizationConsumerId("plugin", `${workspace.id}:${plugin.pluginId}`)),
+    );
   }
-  const key = randomBytes(32);
-  await mkdir(dirname(path), { recursive: true });
-  try {
-    await writeFile(path, `${key.toString("base64")}\n`, { encoding: "utf8", mode: 0o600, flag: "wx" });
-    await chmod(path, 0o600).catch(() => undefined);
-    return key;
-  } catch (error) {
-    if (!error || typeof error !== "object" || Reflect.get(error, "code") !== "EEXIST") throw error;
-    const existing = Buffer.from((await readFile(path, "utf8")).trim(), "base64");
-    if (existing.byteLength !== 32) throw new ApiError(500, "plugin_authorization_key_invalid", "Plugin authorization encryption key is invalid");
-    return existing;
-  }
-}
-
-export async function pluginAuthorizationStore(config: ServerConfig, workspaceId: string): Promise<PluginAuthorizationStore> {
-  const path = storePath(config, workspaceId);
-  const existing = storeByPath.get(path);
-  if (existing) return existing;
-  const created = encryptionKey(config).then((key) => new PluginAuthorizationStore({ filePath: path, encryptionKey: key }));
-  storeByPath.set(path, created);
-  return created;
-}
-
-export function pluginInstallationId(workspaceId: string, pluginId: string): string {
-  return `${workspaceId}:${pluginId}`;
+  return migrated;
 }
 
 export type BoundPluginAuthorizationRuntime = {
-  listConnections(): Promise<PluginConnectionStatus[]>;
+  listConnections(): Promise<ConnectionStatus[]>;
   getCredential(methodId: string, accountId?: string): Promise<Readonly<Record<string, string>> | null>;
   readCredential(accountId: string, methodId: string): Promise<Readonly<Record<string, string>> | null>;
   setActiveAccount(methodId: string, accountId: string): Promise<boolean>;
@@ -72,6 +43,10 @@ type BoundPluginAuthorizationOptions = {
   fetcher?: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
   now?: () => number;
 };
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
 
 /**
  * Creates a capability bound to one installed plugin. Local-service adapters can
@@ -85,17 +60,19 @@ export async function bindPluginAuthorizationRuntime(
   options: BoundPluginAuthorizationOptions = {},
 ): Promise<BoundPluginAuthorizationRuntime> {
   const manifest = await installedManifest(config, workspaceId, pluginId);
-  const installationId = pluginInstallationId(workspaceId, manifest.id);
-  const store = await pluginAuthorizationStore(config, workspaceId);
+  const consumerId = pluginAuthorizationConsumerId(manifest.id);
+  const store = await authorizationVault(config);
   const getCredential = async (methodId: string, accountId?: string) => {
     const method = authorizationMethod(manifest, methodId);
+    const methodFingerprint = authorizationMethodFingerprint(method);
     const credential = accountId
-      ? { accountId, values: await store.readCredentialForAccount({ installationId, accountId, methodId }) }
-      : await store.readActiveCredential({ installationId, methodId });
+      ? { accountId, values: await store.readCredentialForAccount({ connectionId: method.connectionId, accountId, methodId, methodFingerprint }) }
+      : await store.readActiveCredential({ consumerId, connectionId: method.connectionId, methodId, methodFingerprint });
     if (!credential?.values) return null;
     const values = await refreshCredentialIfNeeded({
-      installationId,
+      connectionId: method.connectionId,
       accountId: credential.accountId,
+      methodFingerprint,
       method,
       values: credential.values,
       store,
@@ -105,15 +82,26 @@ export async function bindPluginAuthorizationRuntime(
     return Object.freeze({ ...values });
   };
   return {
-    listConnections: () => store.listConnections(installationId),
+    listConnections: async () => (await Promise.all((manifest.authorization?.methods ?? []).map((method) =>
+      store.listConnections({ connectionId: method.connectionId, methodId: method.id, methodFingerprint: authorizationMethodFingerprint(method) })
+    ))).flat(),
     getCredential,
     readCredential: (accountId, methodId) => getCredential(methodId, accountId),
-    setActiveAccount: (methodId, accountId) => store.setActiveAccount({ installationId, methodId, accountId }),
+    setActiveAccount: (methodId, accountId) => {
+      const method = authorizationMethod(manifest, methodId);
+      return store.setActiveAccount({
+        consumerId,
+        connectionId: method.connectionId,
+        methodId,
+        methodFingerprint: authorizationMethodFingerprint(method),
+        accountId,
+      });
+    },
   };
 }
 
 async function installedManifest(config: ServerConfig, workspaceId: string, pluginId: string): Promise<PluginPackageManifest> {
-  const installed = (await listInstalledPluginPackages({ serverConfig: config, workspaceId })).find((entry) => entry.pluginId === pluginId);
+  const installed = (await listInstalledPluginPackages({ serverConfig: config })).find((entry) => entry.pluginId === pluginId);
   if (!installed) throw new ApiError(404, "plugin_package_not_installed", "Plugin package is not installed");
   return installed.manifest;
 }
@@ -138,9 +126,11 @@ function stringRecord(value: unknown): Record<string, string> {
 
 export async function listPluginAuthorization(config: ServerConfig, workspaceId: string, pluginId: string) {
   const manifest = await installedManifest(config, workspaceId, pluginId);
-  const installationId = pluginInstallationId(workspaceId, pluginId);
-  const store = await pluginAuthorizationStore(config, workspaceId);
-  const connections = await store.listConnections(installationId);
+  const consumerId = pluginAuthorizationConsumerId(pluginId);
+  const store = await authorizationVault(config);
+  const connections = (await Promise.all((manifest.authorization?.methods ?? []).map((method) =>
+    store.listConnections({ connectionId: method.connectionId, methodId: method.id, methodFingerprint: authorizationMethodFingerprint(method) })
+  ))).flat();
   const requiredMethodIds = [...new Set(manifest.resources.flatMap((resource) =>
     resource.requires?.flatMap((requirement) => requirement.startsWith("authorization:") ? [requirement.slice("authorization:".length)] : []) ?? []
   ))];
@@ -155,7 +145,7 @@ export async function listPluginAuthorization(config: ServerConfig, workspaceId:
     requiredMethodIds,
     methods: manifest.authorization?.methods.map((method) => ({ id: method.id, kind: method.kind, label: method.label, description: method.description ?? null })) ?? [],
     connections,
-    flows: await store.listPendingFlows(installationId),
+    flows: await store.listPendingFlows(consumerId),
   };
 }
 
@@ -176,11 +166,12 @@ export async function savePluginSecretAuthorization(input: {
   if (unexpected.length) throw new ApiError(400, "plugin_authorization_field_unknown", `Unknown authorization field: ${unexpected[0]}`);
   const missing = method.fields.filter((field) => field.required !== false && !values[field.id]?.trim());
   if (missing.length) throw new ApiError(400, "plugin_authorization_field_required", `${missing[0]?.label ?? "Authorization field"} is required`);
-  const store = await pluginAuthorizationStore(input.config, input.workspaceId);
+  const store = await authorizationVault(input.config);
   const saved = await store.saveCredential({
-    installationId: pluginInstallationId(input.workspaceId, input.pluginId),
+    connectionId: method.connectionId,
     accountId: input.accountId,
     methodId: input.methodId,
+    methodFingerprint: authorizationMethodFingerprint(method),
     values,
     secretFields: method.fields.filter((field) => field.secret !== false).map((field) => field.id),
   });
@@ -198,19 +189,20 @@ export async function startIndependentPluginAuthorization(input: {
   const manifest = await installedManifest(input.config, input.workspaceId, input.pluginId);
   const method = authorizationMethod(manifest, input.methodId);
   if (method.kind === "secret-form") throw new ApiError(400, "plugin_authorization_method_invalid", "Secret forms are saved directly and cannot be started");
-  const installationId = pluginInstallationId(input.workspaceId, input.pluginId);
+  const consumerId = pluginAuthorizationConsumerId(input.pluginId);
   let started;
   if (method.kind === "oauth-pkce") {
-    started = await startPluginAuthorizationFlow({ installationId, accountId: input.accountId, method, callbackUrl: input.callbackUrl });
+    started = await startPluginAuthorizationFlow({ installationId: consumerId, accountId: input.accountId, method, callbackUrl: input.callbackUrl });
   } else if (method.kind === "device-code") {
-    started = await startPluginAuthorizationFlow({ installationId, accountId: input.accountId, method });
+    started = await startPluginAuthorizationFlow({ installationId: consumerId, accountId: input.accountId, method });
   } else {
-    started = await startPluginAuthorizationFlow({ installationId, accountId: input.accountId, method, callbackUrl: input.callbackUrl });
+    started = await startPluginAuthorizationFlow({ installationId: consumerId, accountId: input.accountId, method, callbackUrl: input.callbackUrl });
   }
-  const store = await pluginAuthorizationStore(input.config, input.workspaceId);
+  const store = await authorizationVault(input.config);
   const state = "state" in started.private ? started.private.state : started.public.flowId;
   await store.savePendingFlow({
-    installationId,
+    consumerId,
+    connectionId: method.connectionId,
     accountId: input.accountId,
     methodId: method.id,
     flowId: started.public.flowId,
@@ -221,35 +213,13 @@ export async function startIndependentPluginAuthorization(input: {
   return started.public;
 }
 
-function tokenValues(payload: unknown): Record<string, string> {
-  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
-    throw new ApiError(502, "plugin_authorization_token_invalid", "Authorization server returned an invalid token response");
-  }
-  const accessToken = Reflect.get(payload, "access_token");
-  if (typeof accessToken !== "string" || !accessToken) {
-    throw new ApiError(502, "plugin_authorization_token_failed", "Authorization server did not return an access token");
-  }
-  const values: Record<string, string> = { accessToken };
-  for (const [source, target] of [
-    ["refresh_token", "refreshToken"],
-    ["token_type", "tokenType"],
-    ["scope", "scope"],
-    ["id_token", "idToken"],
-  ]) {
-    const value = Reflect.get(payload, source);
-    if (typeof value === "string" && value) values[target] = value;
-  }
-  const expiresIn = Reflect.get(payload, "expires_in");
-  if (typeof expiresIn === "number" && Number.isFinite(expiresIn)) values.expiresAt = String(Date.now() + expiresIn * 1_000);
-  return values;
-}
-
 async function refreshCredentialIfNeeded(input: {
-  installationId: string;
+  connectionId: string;
   accountId: string;
+  methodFingerprint: string;
   method: PluginAuthorizationMethod;
   values: Record<string, string>;
-  store: PluginAuthorizationStore;
+  store: AuthorizationVault;
   fetcher: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
   now: number;
 }): Promise<Readonly<Record<string, string>>> {
@@ -259,28 +229,55 @@ async function refreshCredentialIfNeeded(input: {
   }
   const refreshToken = input.values.refreshToken;
   if (!refreshToken) throw new ApiError(401, "plugin_authorization_expired", "Plugin authorization expired; reconnect the plugin");
-  const endpoint = input.method.kind === "hosted-browser" ? input.method.refreshUrl : input.method.tokenUrl;
-  if (!endpoint) throw new ApiError(401, "plugin_authorization_expired", "Plugin authorization expired; reconnect the plugin");
+  if (input.method.kind === "hosted-browser" && !input.method.refreshUrl) {
+    throw new ApiError(401, "plugin_authorization_expired", "Plugin authorization expired; reconnect the plugin");
+  }
   const refreshes = credentialRefreshesByStore.get(input.store) ?? new Map<string, Promise<Readonly<Record<string, string>>>>();
   credentialRefreshesByStore.set(input.store, refreshes);
-  const refreshKey = `${input.installationId}\0${input.accountId}\0${input.method.id}`;
+  const refreshKey = `${input.connectionId}\0${input.accountId}\0${input.methodFingerprint}`;
   const current = refreshes.get(refreshKey);
   if (current) return current;
   const refreshing = (async () => {
-    const body = new URLSearchParams({ grant_type: "refresh_token", refresh_token: refreshToken });
-    if (input.method.kind === "oauth-pkce" || input.method.kind === "device-code") body.set("client_id", input.method.clientId);
-    const response = await input.fetcher(endpoint, {
-      method: "POST",
-      headers: { accept: "application/json", "content-type": "application/x-www-form-urlencoded" },
-      body,
-    });
-    const payload: unknown = await response.json();
-    if (!response.ok) throw new ApiError(401, "plugin_authorization_refresh_failed", "Plugin authorization could not be refreshed; reconnect the plugin");
-    const refreshed = { ...input.values, ...tokenValues(payload) };
+    let refreshedValues: Record<string, string>;
+    if (input.method.kind === "hosted-browser") {
+      const response = await input.fetcher(input.method.refreshUrl ?? "", {
+        method: "POST",
+        headers: { accept: "application/json", "content-type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({ grant_type: "refresh_token", refresh_token: refreshToken }),
+      });
+      const payload: unknown = await response.json();
+      if (!response.ok || !payload || typeof payload !== "object" || Array.isArray(payload)) {
+        throw new ApiError(401, "plugin_authorization_refresh_failed", "Plugin authorization could not be refreshed; reconnect the plugin");
+      }
+      const accessToken = Reflect.get(payload, "access_token");
+      const tokenType = Reflect.get(payload, "token_type");
+      if (typeof accessToken !== "string" || typeof tokenType !== "string") {
+        throw new ApiError(401, "plugin_authorization_refresh_failed", "Plugin authorization could not be refreshed; reconnect the plugin");
+      }
+      refreshedValues = tokenValues({
+        access_token: accessToken,
+        token_type: tokenType.toLowerCase(),
+        ...(typeof Reflect.get(payload, "refresh_token") === "string" ? { refresh_token: Reflect.get(payload, "refresh_token") } : {}),
+        ...(typeof Reflect.get(payload, "scope") === "string" ? { scope: Reflect.get(payload, "scope") } : {}),
+        ...(typeof Reflect.get(payload, "id_token") === "string" ? { id_token: Reflect.get(payload, "id_token") } : {}),
+        ...(typeof Reflect.get(payload, "expires_in") === "number" ? { expires_in: Reflect.get(payload, "expires_in") } : {}),
+      }, input.now);
+    } else if (input.method.kind === "oauth-pkce" || input.method.kind === "device-code") {
+      refreshedValues = await refreshOAuthCredential({
+        method: input.method,
+        refreshToken,
+        fetcher: input.fetcher,
+        now: input.now,
+      });
+    } else {
+      throw new ApiError(401, "plugin_authorization_expired", "Plugin authorization expired; reconnect the plugin");
+    }
+    const refreshed = { ...input.values, ...refreshedValues };
     await input.store.saveCredential({
-      installationId: input.installationId,
+      connectionId: input.connectionId,
       accountId: input.accountId,
       methodId: input.method.id,
+      methodFingerprint: input.methodFingerprint,
       values: refreshed,
       secretFields: Object.keys(refreshed),
       now: input.now,
@@ -303,9 +300,9 @@ export async function completePluginBrowserAuthorization(input: {
   code?: string;
   fetcher?: typeof fetch;
 }) {
-  const installationId = pluginInstallationId(input.workspaceId, input.pluginId);
-  const store = await pluginAuthorizationStore(input.config, input.workspaceId);
-  const flow = await store.consumePendingFlow({ installationId, state: input.state });
+  const consumerId = pluginAuthorizationConsumerId(input.pluginId);
+  const store = await authorizationVault(input.config);
+  const flow = await store.consumePendingFlow({ consumerId, state: input.state });
   if (!flow) throw new ApiError(400, "plugin_authorization_callback_invalid", "Authorization callback is invalid, expired, or already used");
   const manifest = await installedManifest(input.config, input.workspaceId, input.pluginId);
   const method = authorizationMethod(manifest, flow.methodId);
@@ -315,20 +312,15 @@ export async function completePluginBrowserAuthorization(input: {
     const verifier = flow.privateData.pkceVerifier;
     const redirectUri = flow.privateData.redirectUri;
     if (typeof verifier !== "string" || typeof redirectUri !== "string") throw new ApiError(500, "plugin_authorization_flow_invalid", "OAuth flow state is invalid");
-    const response = await (input.fetcher ?? fetch)(method.tokenUrl, {
-      method: "POST",
-      headers: { accept: "application/json", "content-type": "application/x-www-form-urlencoded" },
-      body: new URLSearchParams({
-        grant_type: "authorization_code",
-        code: input.code,
-        client_id: method.clientId,
-        redirect_uri: redirectUri,
-        code_verifier: verifier,
-      }),
+    values = await exchangeOAuthAuthorizationCode({
+      method,
+      code: input.code,
+      state: input.state,
+      expectedState: flow.state,
+      redirectUri,
+      verifier,
+      fetcher: input.fetcher,
     });
-    const payload: unknown = await response.json();
-    if (!response.ok) throw new ApiError(502, "plugin_authorization_token_failed", `Token exchange failed with HTTP ${response.status}`);
-    values = tokenValues(payload);
   } else if (method.kind === "hosted-browser") {
     if (!input.code) throw new ApiError(400, "plugin_authorization_code_required", "Authorization code is required");
     const callbackUrl = flow.privateData.callbackUrl;
@@ -339,15 +331,32 @@ export async function completePluginBrowserAuthorization(input: {
       body: new URLSearchParams({ code: input.code, redirect_uri: callbackUrl }),
     });
     const payload: unknown = await response.json();
-    if (!response.ok) throw new ApiError(502, "plugin_authorization_token_failed", `Hosted token exchange failed with HTTP ${response.status}`);
-    values = tokenValues(payload);
+    if (!response.ok || !isRecord(payload)) throw new ApiError(502, "plugin_authorization_token_failed", `Hosted token exchange failed with HTTP ${response.status}`);
+    const accessToken = Reflect.get(payload, "access_token");
+    const tokenType = Reflect.get(payload, "token_type");
+    if (typeof accessToken !== "string" || typeof tokenType !== "string") {
+      throw new ApiError(502, "plugin_authorization_token_failed", "Hosted authorization server returned an invalid token response");
+    }
+    const refreshToken = Reflect.get(payload, "refresh_token");
+    const scope = Reflect.get(payload, "scope");
+    const idToken = Reflect.get(payload, "id_token");
+    const expiresIn = Reflect.get(payload, "expires_in");
+    values = tokenValues({
+      access_token: accessToken,
+      token_type: tokenType.toLowerCase(),
+      ...(typeof refreshToken === "string" ? { refresh_token: refreshToken } : {}),
+      ...(typeof scope === "string" ? { scope } : {}),
+      ...(typeof idToken === "string" ? { id_token: idToken } : {}),
+      ...(typeof expiresIn === "number" ? { expires_in: expiresIn } : {}),
+    });
   } else {
     throw new ApiError(400, "plugin_authorization_callback_invalid", "This authorization method does not use a browser callback");
   }
   const saved = await store.saveCredential({
-    installationId,
+    connectionId: method.connectionId,
     accountId: flow.accountId,
     methodId: flow.methodId,
+    methodFingerprint: authorizationMethodFingerprint(method),
     values,
     secretFields: Object.keys(values),
   });
@@ -360,37 +369,25 @@ export async function pollPluginDeviceAuthorization(input: {
   pluginId: string;
   flowId: string;
   fetcher?: typeof fetch;
-}): Promise<PluginConnectionStatus | { status: "pending"; flowId: string; expiresAt: number }> {
-  const installationId = pluginInstallationId(input.workspaceId, input.pluginId);
-  const store = await pluginAuthorizationStore(input.config, input.workspaceId);
-  const flow = await store.readPendingFlow({ installationId, flowId: input.flowId });
+}): Promise<ConnectionStatus | { status: "pending"; flowId: string; expiresAt: number }> {
+  const consumerId = pluginAuthorizationConsumerId(input.pluginId);
+  const store = await authorizationVault(input.config);
+  const flow = await store.readPendingFlow({ consumerId, flowId: input.flowId });
   if (!flow) throw new ApiError(400, "plugin_authorization_flow_invalid", "Device authorization is invalid or expired");
   const manifest = await installedManifest(input.config, input.workspaceId, input.pluginId);
   const method = authorizationMethod(manifest, flow.methodId);
   if (method.kind !== "device-code") throw new ApiError(400, "plugin_authorization_method_invalid", "This flow is not device authorization");
   const deviceCode = flow.privateData.deviceCode;
   if (typeof deviceCode !== "string") throw new ApiError(500, "plugin_authorization_flow_invalid", "Device authorization flow state is invalid");
-  const response = await (input.fetcher ?? fetch)(method.tokenUrl, {
-    method: "POST",
-    headers: { accept: "application/json", "content-type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({
-      grant_type: "urn:ietf:params:oauth:grant-type:device_code",
-      device_code: deviceCode,
-      client_id: method.clientId,
-    }),
-  });
-  const payload: unknown = await response.json();
-  if (!response.ok && payload && typeof payload === "object" && !Array.isArray(payload)) {
-    const providerError = Reflect.get(payload, "error");
-    if (providerError === "authorization_pending" || providerError === "slow_down") return { status: "pending", flowId: flow.flowId, expiresAt: flow.expiresAt };
-  }
-  if (!response.ok) throw new ApiError(502, "plugin_authorization_token_failed", `Device token exchange failed with HTTP ${response.status}`);
-  const values = tokenValues(payload);
-  await store.consumePendingFlow({ installationId, state: flow.state });
+  const exchanged = await exchangeDeviceCode({ method, deviceCode, fetcher: input.fetcher });
+  if ("pending" in exchanged) return { status: "pending", flowId: flow.flowId, expiresAt: flow.expiresAt };
+  const values = exchanged;
+  await store.consumePendingFlow({ consumerId, state: flow.state });
   const saved = await store.saveCredential({
-    installationId,
+    connectionId: method.connectionId,
     accountId: flow.accountId,
     methodId: flow.methodId,
+    methodFingerprint: authorizationMethodFingerprint(method),
     values,
     secretFields: Object.keys(values),
   });
@@ -398,23 +395,26 @@ export async function pollPluginDeviceAuthorization(input: {
 }
 
 export async function revokePluginAuthorization(input: { config: ServerConfig; workspaceId: string; pluginId: string; accountId: string }) {
-  const store = await pluginAuthorizationStore(input.config, input.workspaceId);
-  return store.revokeAccount({ installationId: pluginInstallationId(input.workspaceId, input.pluginId), accountId: input.accountId });
+  const manifest = await installedManifest(input.config, input.workspaceId, input.pluginId);
+  const connectionIds = [...new Set((manifest.authorization?.methods ?? []).map((method) => method.connectionId))];
+  const store = await authorizationVault(input.config);
+  const removed = await Promise.all(connectionIds.map((connectionId) => store.revokeAccount({ connectionId, accountId: input.accountId })));
+  return removed.some(Boolean);
 }
 
 export async function cancelPluginAuthorizationFlow(input: { config: ServerConfig; workspaceId: string; pluginId: string; flowId: string }) {
-  const store = await pluginAuthorizationStore(input.config, input.workspaceId);
-  return store.cancelPendingFlow({ installationId: pluginInstallationId(input.workspaceId, input.pluginId), flowId: input.flowId });
+  const store = await authorizationVault(input.config);
+  return store.cancelPendingFlow({ consumerId: pluginAuthorizationConsumerId(input.pluginId), flowId: input.flowId });
 }
 
 export async function deletePluginAuthorization(input: { config: ServerConfig; workspaceId: string; pluginId: string }) {
-  const store = await pluginAuthorizationStore(input.config, input.workspaceId);
-  return store.deleteInstallation(pluginInstallationId(input.workspaceId, input.pluginId));
+  const store = await authorizationVault(input.config);
+  return store.deleteConsumer(pluginAuthorizationConsumerId(input.pluginId));
 }
 
 export async function reconcilePluginAuthorization(input: { config: ServerConfig; workspaceId: string; pluginId: string }) {
   const manifest = await installedManifest(input.config, input.workspaceId, input.pluginId);
-  const methodIds = new Set(manifest.authorization?.methods.map((method) => method.id) ?? []);
-  const store = await pluginAuthorizationStore(input.config, input.workspaceId);
-  return store.retainMethods(pluginInstallationId(input.workspaceId, input.pluginId), methodIds);
+  const methods = new Map((manifest.authorization?.methods ?? []).map((method) => [method.id, method.connectionId]));
+  const store = await authorizationVault(input.config);
+  return store.retainMethods(pluginAuthorizationConsumerId(input.pluginId), methods);
 }

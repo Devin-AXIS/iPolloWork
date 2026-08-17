@@ -5,10 +5,13 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import {
+  deepSeekHarnessPluginEngineAdapter,
   openCodePluginEngineAdapter,
+  pluginEngineAdapters,
   PluginEngineAdapterRegistry,
   type PluginEngineAdapter,
 } from "./plugin-engine-adapter.js";
+import { bundledPluginPackageIds } from "./plugin-package-catalog.js";
 import { readRuntimeOpencodeConfig } from "./runtime-opencode-config-store.js";
 import { pluginServiceDataDirectory } from "./plugin-service-runtime.js";
 import { startServer } from "./server.js";
@@ -80,6 +83,7 @@ async function writePackage(packageRoot: string, version: string, runtimeText: s
       required: true,
       methods: [{
         id: "api-key",
+        connectionId: "acme-research",
         kind: "secret-form",
         label: "API key",
         fields: [{ id: "apiKey", label: "API key", secret: true, required: true }],
@@ -164,6 +168,115 @@ afterEach(async () => {
 });
 
 describe("plugin package lifecycle", () => {
+  test("migrates installed authorization manifests into the current lifecycle state", async () => {
+    const lifecycle = await import("./plugin-package-lifecycle.js");
+    const workspaceRoot = await createRoot("ipollowork-plugin-migration-");
+    process.env.IPOLLOWORK_RUNTIME_DB = join(workspaceRoot, "runtime.sqlite");
+    const packageRoot = await createRoot("ipollowork-plugin-migration-package-");
+    await writePackage(packageRoot, "1.0.0", "export default async () => ({})\n", "# Acme Research\n");
+    const manifest = JSON.parse(await readFile(join(packageRoot, "ipollowork.plugin.json"), "utf8"));
+    delete manifest.authorization.methods[0].connectionId;
+
+    const legacyLifecycleRoot = join(workspaceRoot, "plugin-packages", WORKSPACE_ID);
+    const legacyArtifactManifestPath = join(legacyLifecycleRoot, "artifacts", "acme-research", "1.0.0", "ipollowork.plugin.json");
+    await mkdir(dirname(legacyArtifactManifestPath), { recursive: true });
+    await writeFile(legacyArtifactManifestPath, JSON.stringify(manifest, null, 2), "utf8");
+    await writeFile(join(legacyLifecycleRoot, "state.json"), JSON.stringify({
+      schemaVersion: 2,
+      packages: {
+        "acme-research": {
+          pluginId: "acme-research",
+          enabled: true,
+          disabledResourceIds: [],
+          currentVersion: "1.0.0",
+          previousVersion: null,
+          versions: {
+            "1.0.0": { version: "1.0.0", manifest, files: [], installedAt: 1_800_000_000_000 },
+          },
+        },
+      },
+    }, null, 2), "utf8");
+
+    const config = serverConfig(workspaceRoot);
+    const server = await startServer(config);
+    try {
+      const response = await fetch(`http://127.0.0.1:${server.port}/workspace/${WORKSPACE_ID}/plugin-packages`, {
+        headers: { Authorization: `Bearer ${config.token}` },
+      });
+      expect(response.status).toBe(200);
+      expect(await response.json()).toMatchObject({
+        items: [{ pluginId: "acme-research", manifest: { authorization: { methods: [{ connectionId: "acme-research" }] } } }],
+      });
+    } finally {
+      await server.stop();
+    }
+    expect(await lifecycle.migratePluginPackageLifecycle(config)).toBe(0);
+    expect((await lifecycle.listInstalledPluginPackages({ serverConfig: config }))[0]
+      ?.manifest.authorization?.methods[0]?.connectionId).toBe("acme-research");
+    const lifecycleRoot = join(workspaceRoot, "plugin-packages");
+    expect(JSON.parse(await readFile(join(lifecycleRoot, "state.json"), "utf8"))).toMatchObject({
+      schemaVersion: 2,
+      packages: { "acme-research": { versions: { "1.0.0": { manifest: { authorization: { methods: [{ connectionId: "acme-research" }] } } } } } },
+    });
+    expect(JSON.parse(await readFile(join(lifecycleRoot, "artifacts", "acme-research", "1.0.0", "ipollowork.plugin.json"), "utf8"))).toMatchObject({
+      authorization: { methods: [{ connectionId: "acme-research" }] },
+    });
+    await expectMissing(legacyLifecycleRoot);
+  });
+
+  test("keeps the latest workspace package metadata while merging legacy inventories", async () => {
+    const lifecycle = await import("./plugin-package-lifecycle.js");
+    const workspaceRoot = await createRoot("ipollowork-plugin-inventory-migration-");
+    process.env.IPOLLOWORK_RUNTIME_DB = join(workspaceRoot, "runtime.sqlite");
+    const packageRoot = await createRoot("ipollowork-plugin-inventory-package-");
+    await writePackage(packageRoot, "1.0.0", "export default async () => ({})\n", "# Acme Research\n");
+    const currentManifest = JSON.parse(await readFile(join(packageRoot, "ipollowork.plugin.json"), "utf8"));
+    const legacyPackages = [
+      { workspaceId: "ws_legacy_old", installedAt: 1_800_000_000_000, name: "Acme Research Legacy" },
+      { workspaceId: "ws_legacy_latest", installedAt: 1_800_000_000_001, name: "Acme Research Current" },
+    ];
+    for (const legacyPackage of legacyPackages) {
+      const manifest = { ...currentManifest, name: legacyPackage.name };
+      const lifecycleRoot = join(workspaceRoot, "plugin-packages", legacyPackage.workspaceId);
+      const manifestPath = join(lifecycleRoot, "artifacts", "acme-research", "1.0.0", "ipollowork.plugin.json");
+      await mkdir(dirname(manifestPath), { recursive: true });
+      await writeFile(manifestPath, JSON.stringify(manifest, null, 2), "utf8");
+      await writeFile(join(lifecycleRoot, "state.json"), JSON.stringify({
+        schemaVersion: 2,
+        packages: {
+          "acme-research": {
+            pluginId: "acme-research",
+            enabled: true,
+            disabledResourceIds: [],
+            currentVersion: "1.0.0",
+            previousVersion: null,
+            versions: {
+              "1.0.0": { version: "1.0.0", manifest, files: [], installedAt: legacyPackage.installedAt },
+            },
+          },
+        },
+      }, null, 2), "utf8");
+    }
+
+    const baseConfig = serverConfig(workspaceRoot);
+    const config: ServerConfig = {
+      ...baseConfig,
+      workspaces: legacyPackages.map((legacyPackage) => ({
+        ...baseConfig.workspaces[0],
+        id: legacyPackage.workspaceId,
+      })),
+    };
+
+    expect(await lifecycle.migratePluginPackageLifecycle(config)).toBe(2);
+    expect((await lifecycle.listInstalledPluginPackages({ serverConfig: config }))[0]?.name).toBe("Acme Research Current");
+    expect(JSON.parse(await readFile(join(workspaceRoot, "plugin-packages", "artifacts", "acme-research", "1.0.0", "ipollowork.plugin.json"), "utf8"))).toMatchObject({
+      name: "Acme Research Current",
+    });
+    for (const legacyPackage of legacyPackages) {
+      await expectMissing(join(workspaceRoot, "plugin-packages", legacyPackage.workspaceId));
+    }
+  });
+
   test("registers unique engine adapters and rejects duplicate IDs", () => {
     const alternateAdapter: PluginEngineAdapter = {
       id: "deepseek-harness",
@@ -177,6 +290,8 @@ describe("plugin package lifecycle", () => {
     expect(registry.ids()).toEqual([ENGINE_ID, "deepseek-harness"]);
     expect(registry.get(ENGINE_ID)).toBe(openCodePluginEngineAdapter);
     expect(registry.get("deepseek-harness")).toBe(alternateAdapter);
+    expect(pluginEngineAdapters.ids()).toEqual([ENGINE_ID, "deepseek-harness"]);
+    expect(pluginEngineAdapters.get("deepseek-harness")).toBe(deepSeekHarnessPluginEngineAdapter);
     expect(() => new PluginEngineAdapterRegistry([
       openCodePluginEngineAdapter,
       openCodePluginEngineAdapter,
@@ -251,10 +366,10 @@ describe("plugin package lifecycle", () => {
     expect(repeated).toMatchObject({ status: "unchanged", pluginId: "acme-research", version: "1.0.0" });
     expect(await readFile(join(workspaceRoot, ".opencode", "skills", "acme-research", "SKILL.md"), "utf8")).toBe("# Acme Research\n");
     const installedSpec = (await readRuntimeOpencodeConfig(config, WORKSPACE_ID)).plugin?.[0] ?? "";
-    expect(installedSpec).toContain("/plugin-packages/ws_plugin_package/artifacts/acme-research/1.0.0/");
+    expect(installedSpec).toContain("/plugin-packages/artifacts/acme-research/1.0.0/");
     expect(installedSpec).not.toContain(`${workspaceRoot}/.opencode/plugins`);
 
-    await lifecycle.uninstallPluginPackage({ serverConfig: config, workspaceId: WORKSPACE_ID, pluginId: "acme-research", workspaceRoot });
+    await lifecycle.uninstallPluginPackage({ serverConfig: config, pluginId: "acme-research" });
     await expectMissing(join(workspaceRoot, ".opencode", "plugins", "acme-research.ts"));
     await expectMissing(join(workspaceRoot, ".opencode", "skills", "acme-research", "SKILL.md"));
     expect(await readFile(join(workspaceRoot, "unrelated.txt"), "utf8")).toBe("keep me");
@@ -408,25 +523,154 @@ describe("plugin package lifecycle", () => {
     });
   });
 
-  test("selects the workspace engine and rejects an unregistered adapter", async () => {
+  test("installs portable skills through the DeepSeek Harness adapter", async () => {
     const lifecycle = await import("./plugin-package-lifecycle.js");
     const workspaceRoot = await createRoot("ipollowork-plugin-engine-selection-workspace-");
     const packageRoot = await createRoot("ipollowork-plugin-engine-selection-package-");
     await writeDeclarativePackage(packageRoot);
+    const skill = "---\nname: acme-research\ndescription: Research with Acme.\n---\n\n# Acme Research\n";
+    await writeFile(join(packageRoot, "skills", "acme-research", "SKILL.md"), skill, "utf8");
     const config = serverConfig(workspaceRoot);
     const workspace = config.workspaces[0];
     if (!workspace) throw new Error("Test workspace is missing");
     workspace.engineId = "deepseek-harness";
 
-    await expect(lifecycle.installPluginPackage({
+    const installed = await lifecycle.installPluginPackage({
       serverConfig: config,
       workspaceId: WORKSPACE_ID,
       packageRoot,
       workspaceRoot,
-    })).rejects.toMatchObject({
-      code: "plugin_engine_not_registered",
-      details: { engine: "deepseek-harness", registeredEngines: [ENGINE_ID] },
     });
+
+    expect(installed).toMatchObject({ status: "installed", pluginId: "acme-research" });
+    expect(await readFile(join(workspaceRoot, ".dsh", "skills", "acme-research", "SKILL.md"), "utf8")).toBe(skill);
+    await expectMissing(join(workspaceRoot, ".opencode", "skills", "acme-research", "SKILL.md"));
+
+    await lifecycle.uninstallPluginPackage({
+      serverConfig: config,
+      pluginId: "acme-research",
+    });
+    await expectMissing(join(workspaceRoot, ".dsh", "skills", "acme-research", "SKILL.md"));
+  });
+
+  test("projects bundled Design and Video packages into DeepSeek Harness skills", async () => {
+    const lifecycle = await import("./plugin-package-lifecycle.js");
+    const workspaceRoot = await createRoot("ipollowork-plugin-dsh-creative-workspace-");
+    const config = serverConfig(workspaceRoot);
+    const workspace = config.workspaces[0];
+    if (!workspace) throw new Error("Test workspace is missing");
+    workspace.engineId = "deepseek-harness";
+    const packages = [
+      {
+        id: "design-agent",
+        root: fileURLToPath(new URL("../../../examples/plugin-packages/design-agent", import.meta.url)),
+        skill: "ipollowork-design-studio",
+        heading: "# iPolloWork Design Studio",
+      },
+      {
+        id: "video-agent",
+        root: fileURLToPath(new URL("../../../examples/plugin-packages/video-agent", import.meta.url)),
+        skill: "ipollowork-video-studio",
+        heading: "# iPolloWork Video Studio",
+      },
+    ];
+
+    for (const item of packages) {
+      await lifecycle.installPluginPackage({
+        serverConfig: config,
+        workspaceId: WORKSPACE_ID,
+        packageRoot: item.root,
+        workspaceRoot,
+      });
+      expect(await readFile(join(workspaceRoot, ".dsh", "skills", item.skill, "SKILL.md"), "utf8"))
+        .toContain(item.heading);
+    }
+  });
+
+  test("shares one installed package inventory across OpenCode and DeepSeek Harness projects", async () => {
+    const lifecycle = await import("./plugin-package-lifecycle.js");
+    const openCodeRoot = await createRoot("ipollowork-plugin-shared-opencode-");
+    const deepSeekRoot = await createRoot("ipollowork-plugin-shared-dsh-");
+    const packageRoot = await createRoot("ipollowork-plugin-shared-package-");
+    process.env.IPOLLOWORK_RUNTIME_DB = join(openCodeRoot, "runtime.sqlite");
+    await writeDeclarativePackage(packageRoot);
+    const config = serverConfig(openCodeRoot);
+    config.workspaces.push({
+      id: "ws_deepseek_harness",
+      name: "DeepSeek Harness",
+      path: deepSeekRoot,
+      preset: "starter",
+      workspaceType: "local",
+      engineId: "deepseek-harness",
+    });
+    config.authorizedRoots.push(deepSeekRoot);
+
+    await lifecycle.installPluginPackage({
+      serverConfig: config,
+      workspaceId: WORKSPACE_ID,
+      packageRoot,
+      workspaceRoot: openCodeRoot,
+    });
+    const server = await startServer(config);
+    try {
+      const response = await fetch(`http://127.0.0.1:${server.port}/workspace/ws_deepseek_harness/plugin-packages`, {
+        headers: { authorization: `Bearer ${config.token}` },
+      });
+      expect(response.status).toBe(200);
+      expect(await response.json()).toMatchObject({ items: [{ pluginId: "acme-research", version: "1.0.0" }] });
+      expect(await readFile(join(deepSeekRoot, ".dsh", "skills", "acme-research", "SKILL.md"), "utf8"))
+        .toBe("# Acme Research\n");
+      await lifecycle.uninstallPluginPackage({ serverConfig: config, pluginId: "acme-research" });
+      await expectMissing(join(openCodeRoot, ".opencode", "skills", "acme-research", "SKILL.md"));
+      await expectMissing(join(deepSeekRoot, ".dsh", "skills", "acme-research", "SKILL.md"));
+      expect(await lifecycle.listInstalledPluginPackages({ serverConfig: config })).toEqual([]);
+    } finally {
+      await server.stop();
+    }
+  });
+
+  test("lists the same bundled packages for the DeepSeek Harness engine", async () => {
+    const workspaceRoot = await createRoot("ipollowork-plugin-dsh-catalog-workspace-");
+    process.env.IPOLLOWORK_RUNTIME_DB = join(workspaceRoot, "runtime.sqlite");
+    const config = serverConfig(workspaceRoot);
+    const workspace = config.workspaces[0];
+    if (!workspace) throw new Error("Test workspace is missing");
+    workspace.engineId = "deepseek-harness";
+    const server = await startServer(config);
+
+    try {
+      const response = await fetch(`http://127.0.0.1:${server.port}/workspace/${WORKSPACE_ID}/plugin-packages/catalog`, {
+        headers: { authorization: "Bearer token" },
+      });
+      expect(response.status).toBe(200);
+      const payload = await response.json();
+      const pluginIds = payload.items.map((item: { pluginId: string }) => item.pluginId);
+      expect(pluginIds).toEqual([...bundledPluginPackageIds]);
+    } finally {
+      await server.stop();
+    }
+  });
+
+  test("keeps Work-layer resources while projecting DeepSeek Harness skills", async () => {
+    const lifecycle = await import("./plugin-package-lifecycle.js");
+    const workspaceRoot = await createRoot("ipollowork-plugin-dsh-unsupported-workspace-");
+    const packageRoot = await createRoot("ipollowork-plugin-dsh-unsupported-package-");
+    await writeDeclarativePackage(packageRoot);
+    const mcpPath = join(packageRoot, "mcp", "acme.json");
+    await mkdir(dirname(mcpPath), { recursive: true });
+    await writeFile(mcpPath, JSON.stringify({ type: "remote", url: "https://mcp.acme.example/mcp" }), "utf8");
+    const manifestPath = join(packageRoot, "ipollowork.plugin.json");
+    const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
+    manifest.resources.push({ type: "mcp", id: "acme-mcp", path: "mcp/acme.json", required: true });
+    await writeFile(manifestPath, JSON.stringify(manifest, null, 2), "utf8");
+
+    const preview = await lifecycle.previewPluginPackage({
+      packageRoot,
+      workspaceRoot,
+      engineId: "deepseek-harness",
+    });
+    expect(preview.files.map((file) => file.path)).toContain("mcp/acme.json");
+    expect(preview.writes.map((file) => file.path)).toEqual([".dsh/skills/acme-research/SKILL.md"]);
   });
 
   test("allows remote HTTPS MCP imports but blocks local MCP commands", async () => {
@@ -718,12 +962,19 @@ describe("plugin package lifecycle", () => {
           result: { status: "installed", pluginId: service.id, version: "1.0.2" },
           item: { pluginId: service.id, manifest: { source: { trusted: true } } },
         });
-        expect((await readRuntimeOpencodeConfig(config, WORKSPACE_ID)).mcp?.[service.id]).toEqual({
-          type: "remote",
-          url: service.url,
-          enabled: true,
-          oauth: service.oauth,
-        });
+        const runtimeMcp = (await readRuntimeOpencodeConfig(config, WORKSPACE_ID)).mcp?.[service.id];
+        if (service.oauth === false) {
+          expect(runtimeMcp).toEqual({ type: "remote", url: service.url, enabled: true, oauth: false });
+        } else {
+          expect(runtimeMcp).toMatchObject({
+            type: "remote",
+            url: `${base}/mcp-proxy/${WORKSPACE_ID}/${service.id}`,
+            enabled: true,
+            oauth: false,
+          });
+          expect((runtimeMcp?.headers as Record<string, unknown> | undefined)?.Authorization).toMatch(/^Bearer [A-Za-z0-9_-]{32,}$/);
+          expect(runtimeMcp?.connectionId).toBeUndefined();
+        }
         expect(await readFile(join(workspaceRoot, ".opencode", "skills", service.skill, "SKILL.md"), "utf8"))
           .toContain(service.heading);
         await expectMissing(join(workspaceRoot, ".opencode", "mcps", `${service.id}.json`));
@@ -914,7 +1165,7 @@ describe("plugin package lifecycle", () => {
       enabled: false,
     });
     await expectMissing(join(workspaceRoot, ".opencode", "skills", "acme-research", "SKILL.md"));
-    expect((await lifecycle.listInstalledPluginPackages({ serverConfig: config, workspaceId: WORKSPACE_ID }))[0]?.disabledResourceIds)
+    expect((await lifecycle.listInstalledPluginPackages({ serverConfig: config }))[0]?.disabledResourceIds)
       .toEqual(["acme-skill"]);
 
     await lifecycle.setPluginPackageEnabled({ serverConfig: config, workspaceId: WORKSPACE_ID, pluginId: "acme-research", workspaceRoot, enabled: false });
@@ -933,7 +1184,7 @@ describe("plugin package lifecycle", () => {
     });
     expect(await readFile(join(workspaceRoot, ".opencode", "skills", "acme-research", "SKILL.md"), "utf8")).toBe("# Acme Research\n");
 
-    await lifecycle.uninstallPluginPackage({ serverConfig: config, workspaceId: WORKSPACE_ID, pluginId: "acme-research", workspaceRoot });
+    await lifecycle.uninstallPluginPackage({ serverConfig: config, pluginId: "acme-research" });
     expect((await readRuntimeOpencodeConfig(config, WORKSPACE_ID)).mcp?.["acme-research"]).toBeUndefined();
   });
 });

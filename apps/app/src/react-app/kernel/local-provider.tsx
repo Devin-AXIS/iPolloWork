@@ -9,6 +9,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { DEFAULT_ENGINE_ID } from "@ipollowork/types/workspace";
 
 import { THINKING_PREF_KEY } from "../../app/constants";
 import type { ModelRef, SettingsTab, View } from "../../app/types";
@@ -27,14 +28,7 @@ export type LocalUIState = {
 
 export type LocalPreferences = {
   showThinking: boolean;
-  modelVariant: string | null;
-  defaultModel: ModelRef | null;
-  /**
-   * Name of the opencode agent used for new prompts (null = the server's
-   * default, usually "build"). Persisted so a reload does not silently
-   * fall back to the default agent (#2101).
-   */
-  selectedAgent: string | null;
+  enginePreferences: Record<string, EnginePreferences>;
   featureFlags: {
     microsandboxCreateSandbox: boolean;
     /**
@@ -62,6 +56,12 @@ export type LocalPreferences = {
   desktopNotifications: DesktopNotificationPreference;
 };
 
+export type EnginePreferences = {
+  model: ModelRef | null;
+  modelVariant: string | null;
+  mode: string | null;
+};
+
 type LocalContextValue = {
   ui: LocalUIState;
   setUi: (updater: (previous: LocalUIState) => LocalUIState) => void;
@@ -78,14 +78,64 @@ export const DEFAULT_SHOW_THINKING = true;
 const INITIAL_UI: LocalUIState = { view: "settings", tab: "preferences" };
 const INITIAL_PREFS: LocalPreferences = {
   showThinking: DEFAULT_SHOW_THINKING,
-  modelVariant: null,
-  defaultModel: null,
-  selectedAgent: null,
+  enginePreferences: {},
   featureFlags: { microsandboxCreateSandbox: true, memory: false },
   hasCompletedOnboarding: false,
   analyticsEnabled: true,
   desktopNotifications: DEFAULT_DESKTOP_NOTIFICATION_PREFERENCE,
 };
+
+const EMPTY_ENGINE_PREFERENCES: EnginePreferences = {
+  model: null,
+  modelVariant: null,
+  mode: null,
+};
+
+export function getEnginePreferences(
+  preferences: LocalPreferences,
+  engineId?: string | null,
+): EnginePreferences {
+  return preferences.enginePreferences[engineId?.trim() || DEFAULT_ENGINE_ID]
+    ?? EMPTY_ENGINE_PREFERENCES;
+}
+
+export function updateEnginePreferences(
+  preferences: LocalPreferences,
+  engineId: string | null | undefined,
+  updater: (previous: EnginePreferences) => EnginePreferences,
+): LocalPreferences {
+  const resolvedEngineId = engineId?.trim() || DEFAULT_ENGINE_ID;
+  return {
+    ...preferences,
+    enginePreferences: {
+      ...preferences.enginePreferences,
+      [resolvedEngineId]: updater(getEnginePreferences(preferences, resolvedEngineId)),
+    },
+  };
+}
+
+function normalizeModelRef(value: unknown): ModelRef | null {
+  if (!value || typeof value !== "object") return null;
+  const model = value as Partial<ModelRef>;
+  return typeof model.providerID === "string" && typeof model.modelID === "string"
+    ? { providerID: model.providerID, modelID: model.modelID }
+    : null;
+}
+
+function normalizeEnginePreferences(value: unknown): Record<string, EnginePreferences> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  return Object.fromEntries(
+    Object.entries(value).flatMap(([engineId, selection]) => {
+      if (!selection || typeof selection !== "object" || Array.isArray(selection)) return [];
+      const record = selection as Partial<EnginePreferences>;
+      return [[engineId, {
+        model: normalizeModelRef(record.model),
+        modelVariant: typeof record.modelVariant === "string" ? record.modelVariant : null,
+        mode: typeof record.mode === "string" ? record.mode : null,
+      }]];
+    }),
+  );
+}
 
 function readPersisted<T>(key: string, fallback: T): T {
   if (typeof window === "undefined") return fallback;
@@ -120,19 +170,31 @@ export function LocalProvider({ children }: LocalProviderProps) {
     readPersisted(UI_STORAGE_KEY, INITIAL_UI),
   );
   const [prefs, setPrefsRaw] = useState<LocalPreferences>(() => {
-    const persisted = readPersisted(LOCAL_PREFERENCES_KEY, INITIAL_PREFS);
+    const persisted = readPersisted(LOCAL_PREFERENCES_KEY, INITIAL_PREFS) as LocalPreferences & {
+      defaultModel?: unknown;
+      modelVariant?: unknown;
+      selectedAgent?: unknown;
+    };
     delete (persisted as { releaseChannel?: unknown }).releaseChannel;
     delete (persisted as { providerStepCompleted?: unknown }).providerStepCompleted;
     persisted.desktopNotifications = isDesktopNotificationPreference(persisted.desktopNotifications)
       ? persisted.desktopNotifications
       : DEFAULT_DESKTOP_NOTIFICATION_PREFERENCE;
-    if (persisted.defaultModel) {
-      return persisted;
-    }
-    return {
-      ...persisted,
-      defaultModel: readStoredDefaultModel(),
+    const enginePreferences = normalizeEnginePreferences(persisted.enginePreferences);
+    const openCodePreferences = enginePreferences[DEFAULT_ENGINE_ID] ?? EMPTY_ENGINE_PREFERENCES;
+    enginePreferences[DEFAULT_ENGINE_ID] = {
+      model: openCodePreferences.model
+        ?? normalizeModelRef(persisted.defaultModel)
+        ?? readStoredDefaultModel(),
+      modelVariant: openCodePreferences.modelVariant
+        ?? (typeof persisted.modelVariant === "string" ? persisted.modelVariant : null),
+      mode: openCodePreferences.mode
+        ?? (typeof persisted.selectedAgent === "string" ? persisted.selectedAgent : null),
     };
+    delete persisted.defaultModel;
+    delete persisted.modelVariant;
+    delete persisted.selectedAgent;
+    return { ...persisted, enginePreferences };
   });
   const ready = true;
   const migratedThinkingRef = useRef(false);

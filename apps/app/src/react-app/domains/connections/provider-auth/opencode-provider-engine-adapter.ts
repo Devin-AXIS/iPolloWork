@@ -228,6 +228,12 @@ function buildOpenCodeCloudProviderPatch(
 export const openCodeProviderEngineAdapter: ProviderEngineAdapter = {
   id: DEFAULT_ENGINE_ID,
   configFileName: "opencode.json",
+  capabilities: {
+    cloudProviderImports: true,
+    customProviders: true,
+    disabledProviders: true,
+    authChangesRequireReload: true,
+  },
   connect: openCodeConnection,
   emptyProjectConfig: () => '{\n  "$schema": "https://opencode.ai/config.json"\n}\n',
   async readProjectConfig(target) {

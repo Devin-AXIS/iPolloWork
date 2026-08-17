@@ -100,6 +100,7 @@
     "methods": [
       {
         "id": "wechat-official-account",
+        "connectionId": "wechat-official",
         "kind": "secret-form",
         "label": "连接微信公众号",
         "description": "填写服务号的 AppID 与 AppSecret。凭据仅保存在 iPolloWork 加密授权仓库中；需要具备相应 API 发布权限的认证服务号。",

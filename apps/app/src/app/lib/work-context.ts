@@ -201,6 +201,7 @@ async function activateWorkspaceEverywhere(workspace: WorkspaceInfo) {
       name: workspace.displayName?.trim() || workspace.name,
       preset: workspace.preset || "starter",
       workContextId: workspace.workContextId,
+      engineId: workspace.engineId,
     });
     serverWorkspace = created.workspaces.find((entry) => entry.id === workspace.id || entry.path === workspace.path) ?? null;
   }

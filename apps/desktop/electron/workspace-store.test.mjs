@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, mkdir, readFile, realpath, utimes, writeFile } from "node:fs/promises";
+import { access, mkdtemp, mkdir, readFile, realpath, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { test } from "node:test";
@@ -166,6 +166,23 @@ test("migrates the system workspace marker without classifying named projects as
     const persisted = JSON.parse(await readFile(path.join(userDataPath, "ipollowork-workspaces.json"), "utf8"));
     assert.equal(persisted.workspaces[0].isDefault, true);
     assert.equal(persisted.workspaces[1].isDefault, false);
+  });
+});
+
+test("persists the selected conversation engine on a local workspace", async () => {
+  await withIsolatedBootstrapStore(async ({ store, root }) => {
+    const folderPath = path.join(root, "deepseek-workspace");
+    const created = await store.createWorkspace({
+      folderPath,
+      name: "Harness Project",
+      preset: "starter",
+      engineId: "deepseek-harness",
+    });
+
+    assert.equal(created.workspaces[0].engineId, "deepseek-harness");
+    await assert.rejects(access(path.join(folderPath, ".opencode")));
+    const reloaded = await store.readWorkspaceState();
+    assert.equal(reloaded.workspaces[0].engineId, "deepseek-harness");
   });
 });
 

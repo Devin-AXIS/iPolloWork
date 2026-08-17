@@ -6,7 +6,7 @@
 import { useEffect, useMemo, useState } from "react";
 
 import { isDesktopProviderBlocked } from "@/app/cloud/desktop-app-restrictions";
-import type { Client, ModelOption } from "@/app/types";
+import type { ModelOption } from "@/app/types";
 import { modelSupportsVision } from "@/app/utils/model-capabilities";
 import { useCheckDesktopRestriction } from "@/react-app/domains/cloud/desktop-config-provider";
 import {
@@ -21,7 +21,7 @@ import {
 import { t } from "@/i18n";
 
 export type UseModelPickerInput = {
-  client: Client | null;
+  client: unknown | null;
   engineId?: string | null;
   baseUrl: string;
   workspaceRoot: string;

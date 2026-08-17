@@ -2,8 +2,8 @@ import { DEFAULT_ENGINE_ID } from "@ipollowork/types/workspace";
 
 import { createClient, unwrap } from "@/app/lib/opencode";
 import type { Client } from "@/app/types";
+import { t } from "@/i18n";
 import {
-  ConversationEngineAdapterRegistry,
   type ConversationEngineAdapter,
   type ConversationEngineConnection,
   type ConversationPermission,
@@ -150,7 +150,7 @@ function openCodeConnection(input: { baseUrl: string; token?: string; directory?
         sessionID: input.sessionId,
         parts: input.parts,
         model: input.model,
-        agent: input.agent,
+        agent: input.mode,
         ...(input.reasoningEffort
           ? { reasoning_effort: input.reasoningEffort }
           : input.variant
@@ -174,6 +174,22 @@ function openCodeConnection(input: { baseUrl: string; token?: string; directory?
         return [];
       }
     },
+    async listModes() {
+      const agents = unwrap(await client.app.agents());
+      return agents
+        .filter((agent) => !agent.hidden && agent.mode !== "subagent")
+        .map((agent) => ({
+          id: agent.name,
+          label: agent.name === "build"
+            ? t("composer.work_mode_execute")
+            : agent.name === "plan"
+              ? t("composer.work_mode_plan")
+              : agent.name,
+          description: agent.description,
+          icon: agent.name === "plan" ? "plan" as const : "execute" as const,
+          isDefault: agent.name === "build",
+        }));
+    },
     async listAgents() {
       return unwrap(await client.app.agents()).map((agent) => ({
         name: agent.name,
@@ -192,8 +208,3 @@ export const openCodeConversationEngineAdapter: ConversationEngineAdapter = {
   id: DEFAULT_ENGINE_ID,
   connect: openCodeConnection,
 };
-
-export const conversationEngineAdapters = new ConversationEngineAdapterRegistry(
-  DEFAULT_ENGINE_ID,
-  [openCodeConversationEngineAdapter],
-);

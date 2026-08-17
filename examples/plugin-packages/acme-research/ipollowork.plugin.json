@@ -43,6 +43,7 @@
     "methods": [
       {
         "id": "api-key",
+        "connectionId": "acme-research",
         "kind": "secret-form",
         "label": "API key",
         "description": "Paste a key created in your Acme account.",
