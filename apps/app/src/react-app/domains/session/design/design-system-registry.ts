@@ -5,10 +5,6 @@ type DesignSystemManifest = {
   name: string;
   category: string;
   description?: string;
-  preview?: {
-    dir?: string;
-    pages?: Array<{ path: string; role?: string; title?: string }>;
-  };
   files?: {
     tokens?: string;
     designTokens?: string;

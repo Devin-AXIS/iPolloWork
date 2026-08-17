@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { fileURLToPath } from "node:url";
 import {
   ensureHtmlDesignSystemContract,
   readAppliedDesignSystemId,
@@ -22,8 +23,27 @@ const panelPath = new URL(
   "../src/react-app/domains/session/design/design-panel.tsx",
   import.meta.url,
 );
+const designSystemsRoot = fileURLToPath(new URL(
+  "../src/react-app/domains/session/design/design-systems/design-systems/",
+  import.meta.url,
+));
 
 describe("Design system theme contract", () => {
+  test("does not ship unused system or preview HTML", async () => {
+    const htmlFiles: string[] = [];
+    for await (const path of new Bun.Glob("**/*.html").scan({ cwd: designSystemsRoot, onlyFiles: true })) {
+      htmlFiles.push(path.replaceAll("\\", "/"));
+    }
+    expect(htmlFiles.filter((path) => !path.endsWith("/components.html"))).toEqual([]);
+
+    const manifestsWithPreview: string[] = [];
+    for await (const path of new Bun.Glob("*/manifest.json").scan({ cwd: designSystemsRoot, onlyFiles: true })) {
+      const manifest = await Bun.file(`${designSystemsRoot}/${path}`).json();
+      if (Object.hasOwn(manifest, "preview")) manifestsWithPreview.push(path);
+    }
+    expect(manifestsWithPreview).toEqual([]);
+  });
+
   test("emits persistent theme metadata and a high-priority compatibility layer", async () => {
     const source = await Bun.file(registryPath).text();
 
