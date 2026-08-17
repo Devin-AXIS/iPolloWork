@@ -79,7 +79,31 @@ async function waitForDrainOrClose(nodeRes: ServerResponse): Promise<void> {
 /**
  * Convert a Node.js IncomingMessage into a Web API Request.
  */
-function toWebRequest(nodeReq: IncomingMessage, hostname: string, port: number): Request {
+/**
+ * Signals that the client went away.
+ *
+ * `close` also fires on a perfectly normal response, so the finished flag is what
+ * separates "the exchange completed" from "the socket died under us". Without this a
+ * long-lived response — an SSE stream — has no way to learn its reader is gone, and its
+ * producer keeps running for the life of the process.
+ */
+function createDisconnectSignal(nodeReq: IncomingMessage, nodeRes: ServerResponse): AbortSignal {
+  const controller = new AbortController();
+  const abort = (): void => {
+    if (nodeRes.writableFinished) return;
+    if (!controller.signal.aborted) controller.abort();
+  };
+  nodeRes.once("close", abort);
+  nodeReq.once("aborted", abort);
+  return controller.signal;
+}
+
+function toWebRequest(
+  nodeReq: IncomingMessage,
+  hostname: string,
+  port: number,
+  signal?: AbortSignal,
+): Request {
   const url = `http://${hostname}:${port}${nodeReq.url ?? "/"}`;
   const method = nodeReq.method ?? "GET";
   const headers = new Headers();
@@ -106,6 +130,7 @@ function toWebRequest(nodeReq: IncomingMessage, hostname: string, port: number):
     method,
     headers,
     body,
+    ...(signal ? { signal } : {}),
     // @ts-expect-error duplex is required for streaming request bodies in Node
     duplex: hasBody ? "half" : undefined,
   });
@@ -114,7 +139,11 @@ function toWebRequest(nodeReq: IncomingMessage, hostname: string, port: number):
 /**
  * Write a Web API Response to a Node.js ServerResponse.
  */
-async function writeWebResponse(webRes: Response, nodeRes: ServerResponse): Promise<void> {
+async function writeWebResponse(
+  webRes: Response,
+  nodeRes: ServerResponse,
+  disconnected?: AbortSignal,
+): Promise<void> {
   const headersObj: Record<string, string | string[]> = {};
   webRes.headers.forEach((value, key) => {
     const existing = headersObj[key];
@@ -135,17 +164,36 @@ async function writeWebResponse(webRes: Response, nodeRes: ServerResponse): Prom
   }
 
   const reader = webRes.body.getReader();
+  let drained = false;
+
+  // An idle stream parks in `reader.read()` with nothing to wake it, so noticing the
+  // disconnect between chunks is not enough — the read itself has to be cut short.
+  // Cancelling does both: it resolves the pending read and reaches the stream's
+  // `cancel()` callback, which is how the producer learns to release its upstream.
+  const cancelOnDisconnect = (): void => {
+    void reader.cancel().catch(() => undefined);
+  };
+  disconnected?.addEventListener("abort", cancelOnDisconnect, { once: true });
+
   try {
     while (true) {
       const { done, value } = await reader.read();
-      if (done) break;
+      if (done) {
+        drained = true;
+        break;
+      }
       if (!isResponseWritable(nodeRes)) break;
       if (!nodeRes.write(value)) {
         await waitForDrainOrClose(nodeRes);
       }
     }
   } finally {
-    reader.releaseLock();
+    disconnected?.removeEventListener("abort", cancelOnDisconnect);
+    if (!drained) {
+      await reader.cancel().catch(() => undefined);
+    } else {
+      reader.releaseLock();
+    }
     endResponse(nodeRes);
   }
 }
@@ -168,9 +216,10 @@ export function serve(options: ServeOptions): Promise<ServeResult> {
     });
 
     try {
-      const webReq = toWebRequest(nodeReq, hostname, boundPort);
+      const disconnected = createDisconnectSignal(nodeReq, nodeRes);
+      const webReq = toWebRequest(nodeReq, hostname, boundPort, disconnected);
       const webRes = await fetchHandler(webReq);
-      await writeWebResponse(webRes, nodeRes);
+      await writeWebResponse(webRes, nodeRes, disconnected);
     } catch (error) {
       if (isExpectedConnectionAbort(error)) {
         if (isResponseWritable(nodeRes) && !nodeRes.headersSent) {

@@ -1,0 +1,106 @@
+{
+  "schemaVersion": 2,
+  "id": "public-api",
+  "name": "iPolloWork Public API",
+  "description": "把 iPolloWork 服务端的 /api/v1 公共 API 声明为可组合的组件：统一会话、任务、Webhook、令牌策略、OpenAPI 描述与旧路由兼容层，每个模块都可以独立开关。",
+  "category": "开发者工具与集成",
+  "preview": true,
+  "source": {
+    "format": "ipollowork-builtin",
+    "origin": "builtin",
+    "trusted": true,
+    "reference": "apps/server/src/api"
+  },
+  "icon": { "simpleIconSlug": "openapiinitiative" },
+  "setup": {
+    "instructions": "无需安装：组件随 ipollowork-server 一同发布，由 registerApiV1() 挂载到路由表。用 IPOLLOWORK_API_MODULES / IPOLLOWORK_API_MODULES_DISABLED 选择启用的模块，用 GET /api/v1/modules 查看当前生效的清单。",
+    "primaryCta": "查看 API 文档",
+    "secondaryCta": "查看已启用模块",
+    "requiredEnv": ["IPOLLOWORK_API_MODULES", "IPOLLOWORK_API_MODULES_DISABLED"]
+  },
+  "resources": [],
+  "contributions": [
+    {
+      "type": "server-route",
+      "ref": "sessions",
+      "label": "Sessions",
+      "description": "GET/POST /api/v1/workspaces/{workspaceId}/sessions 及其子路由：创建、查询、发送提示、打断、SSE 事件流、回复权限与提问。引擎无关，OpenCode 与 DeepSeek Harness 共用同一套请求。",
+      "location": "server"
+    },
+    {
+      "type": "server-route",
+      "ref": "tasks",
+      "label": "Tasks",
+      "description": "/api/v1/workspaces/{workspaceId}/tasks：把一个目标提交为后台任务，轮询或流式跟踪到 done / failed / cancelled。任务记录仅存于内存，重启后丢失。依赖 sessions 模块。",
+      "location": "server"
+    },
+    {
+      "type": "server-route",
+      "ref": "webhooks",
+      "label": "Webhooks",
+      "description": "/api/v1/workspaces/{workspaceId}/webhooks：工作区级出站事件订阅，HMAC 签名投递、有限次重试，并拒绝指向私有网段的地址。",
+      "location": "server"
+    },
+    {
+      "type": "server-route",
+      "ref": "policy",
+      "label": "Token policy",
+      "description": "GET /api/v1/whoami 返回调用方身份；GET/PUT /api/v1/tokens/{tokenId}/policy（host 鉴权）读写单个令牌的工作区绑定、审批策略与过期时间。",
+      "location": "server"
+    },
+    {
+      "type": "server-route",
+      "ref": "openapi",
+      "label": "API description",
+      "description": "GET /api/v1/openapi.json、/api/v1/docs、/api/v1/modules：由模块声明直接生成的 OpenAPI 3.1 文档、零依赖 HTML 参考页和已启用模块清单。",
+      "location": "server"
+    },
+    {
+      "type": "server-route",
+      "ref": "compat",
+      "label": "Legacy compatibility",
+      "description": "把旧版路由以别名形式重新发布到 /api/v1 前缀下，请求转派回旧处理器；旧路径保持可用。玩具 UI、/opencode/* 原始代理、浏览器 OAuth 回调等非公共契约不在别名范围内。",
+      "location": "server"
+    }
+  ],
+  "localization": {
+    "defaultLocale": "zh",
+    "translations": {
+      "en": {
+        "description": "Declares the iPolloWork server's /api/v1 public API as a composable component: unified sessions, tasks, webhooks, token policy, the OpenAPI description, and the legacy compatibility layer, each independently toggleable.",
+        "category": "Developer Tools & Integrations",
+        "setup": {
+          "instructions": "Nothing to install: the component ships inside ipollowork-server and is mounted by registerApiV1(). Choose the enabled modules with IPOLLOWORK_API_MODULES / IPOLLOWORK_API_MODULES_DISABLED, and read the live catalogue from GET /api/v1/modules.",
+          "primaryCta": "Open the API reference",
+          "secondaryCta": "List enabled modules"
+        }
+      }
+    }
+  },
+  "package": {
+    "version": "1.0.0",
+    "publisher": {
+      "id": "ipollowork",
+      "name": "iPolloWork"
+    },
+    "compatibility": {
+      "ipollowork": ">=0.21.0"
+    },
+    "updateId": "ipollowork/public-api"
+  },
+  "platform": ["darwin", "linux", "windows"],
+  "permissions": [
+    {
+      "id": "network",
+      "reason": "对外投递 Webhook 事件，并接受来自本机以外的 API 客户端请求。"
+    },
+    {
+      "id": "workspace-read",
+      "reason": "读取工作区会话、任务与配置以响应 API 请求。"
+    },
+    {
+      "id": "workspace-write",
+      "reason": "创建会话、发送提示并执行任务，需要写入工作区。"
+    }
+  ]
+}

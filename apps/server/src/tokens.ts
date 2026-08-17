@@ -138,6 +138,21 @@ export class TokenService {
     return true;
   }
 
+  /**
+   * Resolves the record behind an already-hashed token, so callers holding an
+   * `Actor.tokenHash` can recover the token id without ever seeing the secret.
+   * Returns `null` for the shared config token, which has no stored record.
+   */
+  async findByHash(hash: string): Promise<Omit<TokenRecord, "hash"> | null> {
+    const trimmed = hash.trim();
+    if (!trimmed) return null;
+    await this.ensureLoaded();
+    const found = this.byHash.get(trimmed);
+    if (!found) return null;
+    const { hash: _hash, ...rest } = found;
+    return rest;
+  }
+
   async scopeForToken(token: string): Promise<TokenScope | null> {
     const trimmed = token.trim();
     if (!trimmed) return null;

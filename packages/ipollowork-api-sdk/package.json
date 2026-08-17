@@ -1,0 +1,51 @@
+{
+  "name": "@ipollowork/api-sdk",
+  "version": "0.1.0",
+  "description": "Official TypeScript client for the iPolloWork public API",
+  "author": "iPolloWork <support@ipolloworklabs.com>",
+  "license": "SEE LICENSE IN ../../LICENSE",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "development": "./src/index.ts",
+      "bun": "./src/index.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "src",
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "bun test src"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Devin-AXIS/iPolloWork.git",
+    "directory": "packages/ipollowork-api-sdk"
+  },
+  "bugs": {
+    "url": "https://github.com/Devin-AXIS/iPolloWork/issues"
+  },
+  "homepage": "https://github.com/Devin-AXIS/iPolloWork/tree/main/packages/ipollowork-api-sdk",
+  "keywords": [
+    "ipollowork",
+    "api",
+    "sdk",
+    "client",
+    "ai-agent"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.3"
+  }
+}
