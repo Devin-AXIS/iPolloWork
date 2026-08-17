@@ -137,6 +137,38 @@ test("persists an enterprise work context on its dedicated workspace", async () 
   });
 });
 
+test("migrates the system workspace marker without classifying named projects as ungrouped", async () => {
+  await withIsolatedBootstrapStore(async ({ createStore, root, userDataPath }) => {
+    const defaultPath = path.join(root, "home", "iPolloWork");
+    const projectPath = path.join(root, "named-project");
+    await Promise.all([
+      mkdir(defaultPath, { recursive: true }),
+      mkdir(projectPath, { recursive: true }),
+      mkdir(userDataPath, { recursive: true }),
+    ]);
+    await writeFile(
+      path.join(userDataPath, "ipollowork-workspaces.json"),
+      JSON.stringify({
+        selectedId: "default",
+        activeId: "default",
+        workspaces: [
+          { id: "default", name: "iPolloWork", path: defaultPath, workspaceType: "local" },
+          { id: "project", name: "Project A", path: projectPath, workspaceType: "local" },
+        ],
+      }),
+      "utf8",
+    );
+
+    const state = await createStore().readWorkspaceState();
+
+    assert.equal(state.workspaces[0].isDefault, true);
+    assert.equal(state.workspaces[1].isDefault, false);
+    const persisted = JSON.parse(await readFile(path.join(userDataPath, "ipollowork-workspaces.json"), "utf8"));
+    assert.equal(persisted.workspaces[0].isDefault, true);
+    assert.equal(persisted.workspaces[1].isDefault, false);
+  });
+});
+
 test("persists the selected conversation engine on a local workspace", async () => {
   await withIsolatedBootstrapStore(async ({ store, root }) => {
     const folderPath = path.join(root, "deepseek-workspace");

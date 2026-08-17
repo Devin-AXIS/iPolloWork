@@ -2630,6 +2630,8 @@ export default {
   "session_management.unpin_session": "Unpin session",
   "projects.title": "Projects",
   "projects.actions": "Project actions",
+  "projects.ungrouped": "Ungrouped",
+  "projects.new_ungrouped_conversation": "New ungrouped conversation",
   "projects.create": "New project",
   "projects.new_conversation": "New conversation in {project}",
   "projects.create_description": "Choose an independent folder for this project. Its conversations, files, and configuration stay isolated.",
