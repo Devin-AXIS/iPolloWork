@@ -1,10 +1,11 @@
-import { afterEach, describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, spyOn, test } from "bun:test";
 import { mkdtemp, mkdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DEEPSEEK_HARNESS_ENGINE_ID } from "@ipollowork/types/workspace";
 
 import { startServer } from "./server.js";
+import { DeepSeekHarnessRuntime } from "./deepseek-harness-runtime.js";
 import type { ServerConfig } from "./types.js";
 
 type Served = {
@@ -37,19 +38,30 @@ function auth(token: string) {
 }
 
 function startMockOpencode(input?: { invalidList?: boolean; holdCommand?: Promise<void> }) {
-  const requests: Array<{ pathname: string; search: string; directory: string | null }> = [];
+  const requests: Array<{
+    method: string;
+    pathname: string;
+    search: string;
+    directory: string | null;
+    body: unknown;
+  }> = [];
   const server = Bun.serve({
     hostname: "127.0.0.1",
     port: 0,
     async fetch(request) {
       const url = new URL(request.url);
+      const body = request.method === "GET"
+        ? null
+        : await request.clone().json().catch(() => null);
       requests.push({
+        method: request.method,
         pathname: url.pathname,
         search: url.search,
         directory: request.headers.get("x-opencode-directory"),
+        body,
       });
 
-      if (url.pathname === "/session") {
+      if (url.pathname === "/session" && request.method === "GET") {
         if (input?.invalidList) {
           return Response.json({ nope: true });
         }
@@ -62,6 +74,16 @@ function startMockOpencode(input?: { invalidList?: boolean; holdCommand?: Promis
             time: { created: 100, updated: 200 },
           },
         ]);
+      }
+
+      if (url.pathname === "/session" && request.method === "POST") {
+        return Response.json({
+          id: "ses_created",
+          title: isRecord(body) && typeof body.title === "string" ? body.title : "New conversation",
+          slug: "ses_created",
+          directory: request.headers.get("x-opencode-directory"),
+          time: { created: 300, updated: 300 },
+        });
       }
 
       if (url.pathname === "/session/status") {
@@ -115,11 +137,19 @@ function startMockOpencode(input?: { invalidList?: boolean; holdCommand?: Promis
         return Response.json({ ok: true });
       }
 
+      if (url.pathname === "/session/ses_created/prompt_async" && request.method === "POST") {
+        return Response.json(true);
+      }
+
       return Response.json({ code: "not_found", message: "Not found" }, { status: 404 });
     },
   }) as Served;
   stops.push(() => server.stop(true));
   return { server, requests };
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 async function startiPolloWorkServer(input: {
@@ -401,5 +431,177 @@ describe("workspace session read APIs", () => {
       message: "OpenCode returned invalid session list",
     });
 
+  });
+});
+
+describe("workspace session write APIs", () => {
+  test("reports engine-specific session capabilities for the mounted workspace", async () => {
+    const workspaceRoot = await createWorkspaceRoot();
+    const mock = startMockOpencode();
+    const ipollowork = await startiPolloWorkServer({
+      workspaceRoot,
+      opencodeBaseUrl: `http://127.0.0.1:${mock.server.port}`,
+      engineId: DEEPSEEK_HARNESS_ENGINE_ID,
+      readOnly: false,
+    });
+
+    const response = await fetch(
+      `http://127.0.0.1:${ipollowork.server.port}/w/ws_1/capabilities`,
+      { headers: auth(ipollowork.token) },
+    );
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      engine: {
+        id: DEEPSEEK_HARNESS_ENGINE_ID,
+        sessions: { read: true, create: true, prompt: true, delete: false },
+      },
+    });
+  });
+
+  test("creates an OpenCode session and submits a prompt through the engine-agnostic routes", async () => {
+    const workspaceRoot = await createWorkspaceRoot();
+    const mock = startMockOpencode();
+    const ipollowork = await startiPolloWorkServer({
+      workspaceRoot,
+      opencodeBaseUrl: `http://127.0.0.1:${mock.server.port}`,
+      readOnly: false,
+    });
+    const base = `http://127.0.0.1:${ipollowork.server.port}`;
+    const headers = { ...auth(ipollowork.token), "Content-Type": "application/json" };
+
+    const createResponse = await fetch(`${base}/workspace/ws_1/sessions`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ title: "CI review" }),
+    });
+    expect(createResponse.status).toBe(201);
+    await expect(createResponse.json()).resolves.toMatchObject({
+      item: { id: "ses_created", title: "CI review", directory: workspaceRoot },
+    });
+
+    const promptResponse = await fetch(`${base}/workspace/ws_1/sessions/ses_created/prompt`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        text: "Review this change",
+        model: { providerID: "openai", modelID: "gpt-test" },
+        mode: "review",
+        reasoningEffort: "high",
+      }),
+    });
+    expect(promptResponse.status).toBe(202);
+    await expect(promptResponse.json()).resolves.toEqual({ ok: true, accepted: true });
+
+    const createRequest = mock.requests.find((request) => request.method === "POST" && request.pathname === "/session");
+    expect(createRequest?.directory).toBe(workspaceRoot);
+    expect(createRequest?.body).toMatchObject({ title: "CI review" });
+    const promptRequest = mock.requests.find((request) => request.pathname === "/session/ses_created/prompt_async");
+    expect(promptRequest?.body).toMatchObject({
+      parts: [{ type: "text", text: "Review this change" }],
+      model: { providerID: "openai", modelID: "gpt-test" },
+      agent: "review",
+      variant: "high",
+    });
+  });
+
+  test("rejects an empty unified prompt before calling the engine", async () => {
+    const workspaceRoot = await createWorkspaceRoot();
+    const mock = startMockOpencode();
+    const ipollowork = await startiPolloWorkServer({
+      workspaceRoot,
+      opencodeBaseUrl: `http://127.0.0.1:${mock.server.port}`,
+      readOnly: false,
+    });
+
+    const response = await fetch(
+      `http://127.0.0.1:${ipollowork.server.port}/workspace/ws_1/sessions/ses_created/prompt`,
+      {
+        method: "POST",
+        headers: { ...auth(ipollowork.token), "Content-Type": "application/json" },
+        body: JSON.stringify({ text: "   " }),
+      },
+    );
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({ code: "invalid_payload" });
+    expect(mock.requests.some((request) => request.pathname.endsWith("/prompt_async"))).toBe(false);
+  });
+
+  test("creates a DeepSeek Harness session and translates the unified prompt", async () => {
+    const calls: Array<{ method: string; payload: unknown }> = [];
+    const call = spyOn(DeepSeekHarnessRuntime.prototype, "call").mockImplementation(
+      async <T>(method: string, payload: unknown): Promise<T> => {
+        calls.push({ method, payload });
+        const value = method === "session.create"
+          ? { sessionId: "dsh_created", agentPreset: "standard" }
+          : undefined;
+        return value as T;
+      },
+    );
+    const workspaceRoot = await createWorkspaceRoot();
+    const mock = startMockOpencode();
+
+    try {
+      const ipollowork = await startiPolloWorkServer({
+        workspaceRoot,
+        opencodeBaseUrl: `http://127.0.0.1:${mock.server.port}`,
+        engineId: DEEPSEEK_HARNESS_ENGINE_ID,
+        readOnly: false,
+      });
+      const base = `http://127.0.0.1:${ipollowork.server.port}`;
+      const headers = { ...auth(ipollowork.token), "Content-Type": "application/json" };
+
+      const createResponse = await fetch(`${base}/workspace/ws_1/sessions`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ title: "Harness review" }),
+      });
+      expect(createResponse.status).toBe(201);
+      await expect(createResponse.json()).resolves.toMatchObject({
+        item: {
+          id: "dsh_created",
+          title: "Harness review",
+          directory: workspaceRoot,
+          dsh: { blank: true, agentPreset: "standard" },
+        },
+      });
+
+      const promptResponse = await fetch(`${base}/workspace/ws_1/sessions/dsh_created/prompt`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          text: "Review this change",
+          model: { providerID: "deepseek", modelID: "deepseek-chat" },
+          mode: "code",
+          reasoningEffort: "high",
+          clientTimeZone: "Asia/Shanghai",
+        }),
+      });
+      expect(promptResponse.status).toBe(202);
+      expect(calls).toEqual([
+        { method: "session.create", payload: { cwd: workspaceRoot } },
+        { method: "session.rename", payload: { sessionId: "dsh_created", title: "Harness review" } },
+        { method: "agentPreset.select", payload: { sessionId: "dsh_created", agentPreset: "code" } },
+        {
+          method: "session.selectModel",
+          payload: {
+            sessionId: "dsh_created",
+            provider: "deepseek",
+            model: "deepseek-chat",
+            reasoningEffort: "high",
+          },
+        },
+        {
+          method: "session.prompt",
+          payload: {
+            sessionId: "dsh_created",
+            mode: "queue",
+            content: [{ type: "text", text: "Review this change" }],
+            clientTimeZone: "Asia/Shanghai",
+          },
+        },
+      ]);
+    } finally {
+      call.mockRestore();
+    }
   });
 });

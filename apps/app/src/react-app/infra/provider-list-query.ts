@@ -35,6 +35,16 @@ export type ConnectedProviderSnapshotChange = {
 
 const connectedProviderSnapshots = new Map<string, ConnectedProviderSnapshot>();
 const connectedProviderSnapshotChanges = new Map<string, ConnectedProviderSnapshotChange>();
+const MAX_CONNECTED_PROVIDER_SNAPSHOTS = 100;
+
+function trimConnectedProviderSnapshots(): void {
+  while (connectedProviderSnapshots.size > MAX_CONNECTED_PROVIDER_SNAPSHOTS) {
+    const oldest = connectedProviderSnapshots.keys().next().value;
+    if (oldest === undefined) break;
+    connectedProviderSnapshots.delete(oldest);
+    connectedProviderSnapshotChanges.delete(oldest);
+  }
+}
 
 export function providerListQueryKey(input: {
   engineId?: string | null;
@@ -209,8 +219,11 @@ function recordConnectedProviderSnapshot(
   const previous = connectedProviderSnapshots.get(key) ?? null;
   const next = getConnectedProviderSnapshot(value);
   const changed = previous !== null && JSON.stringify(previous) !== JSON.stringify(next);
+  connectedProviderSnapshots.delete(key);
+  connectedProviderSnapshotChanges.delete(key);
   connectedProviderSnapshots.set(key, next);
   connectedProviderSnapshotChanges.set(key, { changed, previous, next });
+  trimConnectedProviderSnapshots();
   if (changed) {
     dispatchConnectedProviderChanges(previous, next);
   }

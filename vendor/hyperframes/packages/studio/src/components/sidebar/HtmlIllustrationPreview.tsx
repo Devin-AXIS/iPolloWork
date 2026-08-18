@@ -5,10 +5,12 @@ const ILLUSTRATION_HEIGHT = 900;
 
 export function HtmlIllustrationPreview({
   src,
+  srcDoc,
   title,
   className = "",
 }: {
-  src: string;
+  src?: string;
+  srcDoc?: string;
   title: string;
   className?: string;
 }) {
@@ -32,6 +34,7 @@ export function HtmlIllustrationPreview({
     >
       <iframe
         src={src}
+        srcDoc={srcDoc}
         title={title}
         loading="lazy"
         sandbox=""

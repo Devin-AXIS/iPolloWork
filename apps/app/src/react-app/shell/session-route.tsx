@@ -1881,6 +1881,7 @@ export function SessionRoute() {
         name: selectedWorkspace.name ?? undefined,
         displayName: selectedWorkspace.displayNameResolved,
         workspaceType: selectedWorkspace.workspaceType,
+        engineId: activeEngineId,
       } : { workspaceType: "local" }}
       selectedWorkspaceRoot={selectedWorkspaceRoot}
       selectedWorkspaceError={selectedWorkspaceError}

@@ -15,6 +15,7 @@ const ipolloworkWorkspaceConfigs = sqliteTable("ipollowork_workspace_configs", {
 type iPolloWorkWorkspaceConfigDb = {
   get: (workspaceId: string) => { configJson: string } | undefined;
   upsert: (value: { workspaceId: string; configJson: string; updatedAt: number }) => void;
+  close: () => void;
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -57,6 +58,7 @@ async function openDb(path: string): Promise<iPolloWorkWorkspaceConfigDb> {
           })
           .run();
       },
+      close: () => sqlite.close(),
     };
   }
   const { DatabaseSync } = await importNodeSqlite();
@@ -73,10 +75,20 @@ async function openDb(path: string): Promise<iPolloWorkWorkspaceConfigDb> {
     upsert: ({ workspaceId, configJson, updatedAt }) => {
       upsert.run(workspaceId, configJson, updatedAt);
     },
+    close: () => sqlite.close(),
   };
 }
 
 const dbByPath = new Map<string, Promise<iPolloWorkWorkspaceConfigDb>>();
+
+export async function disposeiPolloWorkWorkspaceConfigStore(config: ServerConfig): Promise<void> {
+  const path = runtimeDbPath(config);
+  const pending = dbByPath.get(path);
+  if (!pending) return;
+  dbByPath.delete(path);
+  const db = await pending;
+  db.close();
+}
 
 async function workspaceConfigDb(config: ServerConfig): Promise<iPolloWorkWorkspaceConfigDb> {
   const path = runtimeDbPath(config);

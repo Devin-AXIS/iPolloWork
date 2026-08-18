@@ -121,6 +121,7 @@ type TemplateDb = {
   getSession(workspaceId: string, sessionId: string): TemplateSessionRow | undefined;
   listSessions(workspaceId: string): TemplateSessionRow[];
   upsertSession(row: TemplateSessionRow): void;
+  close(): void;
 };
 
 type ZipEntry = { name: string; data: Buffer };
@@ -206,6 +207,7 @@ async function openTemplateDb(path: string): Promise<TemplateDb> {
       getSession: (workspaceId, sessionId) => getSession.get(workspaceId, sessionId) as TemplateSessionRow | undefined,
       listSessions: (workspaceId) => listSessions.all(workspaceId) as TemplateSessionRow[],
       upsertSession: (row) => { upsertSession.run(row.workspaceId, row.sessionId, row.surface, row.templateId, row.version, row.sourceType, row.entry, row.briefPath, row.manifestJson, row.createdAt); },
+      close: () => sqlite.close(),
     };
   }
   const { DatabaseSync } = await importNodeSqlite();
@@ -226,7 +228,17 @@ async function openTemplateDb(path: string): Promise<TemplateDb> {
     getSession: (workspaceId, sessionId) => getSession.get(workspaceId, sessionId) as unknown as TemplateSessionRow | undefined,
     listSessions: (workspaceId) => listSessions.all(workspaceId) as unknown as TemplateSessionRow[],
     upsertSession: (row) => { upsertSession.run(row.workspaceId, row.sessionId, row.surface, row.templateId, row.version, row.sourceType, row.entry, row.briefPath, row.manifestJson, row.createdAt); },
+    close: () => sqlite.close(),
   };
+}
+
+export async function disposeTemplateStore(config: ServerConfig): Promise<void> {
+  const path = runtimeDbPath(config);
+  const pending = dbByPath.get(path);
+  if (!pending) return;
+  dbByPath.delete(path);
+  const db = await pending;
+  db.close();
 }
 
 async function templateDb(config: ServerConfig) {

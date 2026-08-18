@@ -47,6 +47,7 @@ import {
   getArtifactsFromMessages,
 } from "@/lib/artifacts";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import {
@@ -162,6 +163,29 @@ type TemplateSessionData = {
   hasBrief: boolean;
 };
 
+function SessionEngineBadge({ engineId }: { engineId?: string | null }) {
+  const isDeepSeekHarness = engineId?.trim() === DEEPSEEK_HARNESS_ENGINE_ID;
+  const label = t(isDeepSeekHarness ? "projects.engine_dsh" : "projects.engine_opencode");
+  const Icon = isDeepSeekHarness ? Zap : Code2;
+  return (
+    <Badge
+      variant="outline"
+      data-engine-id={isDeepSeekHarness ? DEEPSEEK_HARNESS_ENGINE_ID : DEFAULT_ENGINE_ID}
+      aria-label={label}
+      title={label}
+      className={cn(
+        "h-6 gap-1.5 rounded-full px-2.5 text-[11px] font-semibold tracking-[-0.01em] shadow-[0_1px_2px_rgb(0_0_0/0.04),inset_0_1px_0_rgb(255_255_255/0.35)] backdrop-blur-md",
+        isDeepSeekHarness
+          ? "border-[rgba(124,58,237,0.24)] bg-[linear-gradient(90deg,rgba(139,92,246,0.13),rgba(99,102,241,0.11),rgba(59,130,246,0.09))] text-[#6d28d9] dark:border-[rgba(167,139,250,0.28)] dark:text-[#ddd6fe]"
+          : "border-[rgba(5,150,105,0.24)] bg-[linear-gradient(90deg,rgba(16,185,129,0.13),rgba(20,184,166,0.11),rgba(6,182,212,0.09))] text-[#047857] dark:border-[rgba(52,211,153,0.28)] dark:text-[#a7f3d0]",
+      )}
+    >
+      <Icon className="size-3.5" aria-hidden="true" />
+      <span>{label}</span>
+    </Badge>
+  );
+}
+
 export type SessionPageHistoryControls = {
   canUndo: boolean;
   canRedo: boolean;
@@ -223,6 +247,7 @@ export type SessionPageProps = {
     name?: string;
     displayName?: string;
     workspaceType?: WorkspaceInfo["workspaceType"];
+    engineId?: string | null;
   };
   selectedWorkspaceRoot: string;
   selectedWorkspaceError?: string | null;
@@ -2567,7 +2592,7 @@ export function SessionPage(props: SessionPageProps) {
             >
               <main className="flex h-full min-w-0 flex-col overflow-hidden border-r border-border/40 dark:border-white/[0.055]">
           <header className={cn(
-            "relative z-10 h-10 shrink-0 items-center justify-between border-b border-border px-4 [border-bottom-width:0.5px] md:px-6 mac:titlebar-drag mac:backdrop-blur-2xl mac:backdrop-saturate-150 @container/titlebar",
+            "relative z-10 h-10 shrink-0 items-center justify-between border-b border-border px-4 [border-bottom-width:0.5px] md:grid md:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] md:px-6 mac:titlebar-drag mac:backdrop-blur-2xl mac:backdrop-saturate-150 @container/titlebar",
             mainHeaderHidden ? "hidden" : "flex",
             sidebarVisuallyCollapsed && shellConfig.sidebar ? "!pl-16 mac:!pl-32" : "",
           )}>
@@ -2585,7 +2610,7 @@ export function SessionPage(props: SessionPageProps) {
                 <img src={publicAssetUrl("sidebar-left-expand.svg")} alt="" className="h-3 w-4 shrink-0 dark:invert" />
               </Button>
             ) : null}
-            <div className="flex min-w-0 items-center gap-1">
+            <div className="relative z-10 flex min-w-0 max-w-full items-center gap-1 md:justify-self-start">
               {showMainHeaderTitle ? (
                 <h1 className="truncate text-[14px] font-medium text-dls-text">
                   {showWorkspaceSetupEmptyState
@@ -2662,7 +2687,13 @@ export function SessionPage(props: SessionPageProps) {
               ) : null}
             </div>
 
-            <div className="flex items-center gap-1.5 text-gray-10 mac:titlebar-no-drag">
+            {props.selectedSessionId ? (
+              <div className="pointer-events-none hidden md:flex md:justify-self-center">
+                <SessionEngineBadge engineId={props.selectedWorkspaceDisplay.engineId} />
+              </div>
+            ) : null}
+
+            <div className="relative z-10 flex items-center gap-1.5 text-gray-10 md:justify-self-end mac:titlebar-no-drag">
               <ConversationOutputTrigger
                 active={activeSidePanel === "outputs"}
                 disabled={!conversationMessages.length && !designTemplateEntryPath}

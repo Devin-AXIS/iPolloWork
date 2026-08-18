@@ -14,12 +14,6 @@ import {
   requestedVideoDurationSeconds,
   videoTaskSystemContext,
 } from "../src/react-app/domains/session/video/video-project";
-import {
-  parseVideoIllustrationDisplayMetadata,
-  parseVideoIllustrationReference,
-  videoIllustrationReferenceInstruction,
-} from "../src/react-app/domains/session/video/video-illustration";
-
 describe("HyperFrames Video Studio", () => {
   test("shows a live warning while the current session AI is editing the video", () => {
     const panelSource = readFileSync(
@@ -42,62 +36,56 @@ describe("HyperFrames Video Studio", () => {
     expect(previewSource).toContain('t("preview.aiEditingWarning")');
   });
 
-  test("passes the Ian illustration skill through the composer and asset-library contract", () => {
-    const reference = parseVideoIllustrationReference({
-      id: "ian-xiaohei-illustrations",
-      label: "Ian 小黑正文插画",
-      repository: "helloianneo/ian-xiaohei-illustrations",
-    });
-    expect(reference).not.toBeNull();
-    if (!reference) throw new Error("Expected a valid illustration reference");
-    const instruction = videoIllustrationReferenceInstruction(reference);
-    expect(instruction).toContain("helloianneo/ian-xiaohei-illustrations");
-    expect(instruction).toContain("self-contained HTML file");
-    expect(instruction).toContain("existing workspace file-reading and HTML-authoring capability");
-    expect(instruction).not.toContain("ipollowork_extension_call");
-    expect(instruction).not.toContain("extensionId openai-image-generation");
-    expect(instruction).toContain("current video project's index.html");
-    expect(instruction).toContain("assets/video-illustrations/");
-    expect(instruction).toContain("插画已生成并放入素材库");
-    expect(instruction).toContain("read the file back");
-    expect(parseVideoIllustrationDisplayMetadata(instruction)).toEqual(reference);
+  test("generates illustration effects locally and inserts them at the playhead", () => {
+    const panelSource = readFileSync(
+      new URL("../src/react-app/domains/session/video/video-panel.tsx", import.meta.url),
+      "utf8",
+    );
+    const illustrationSource = readFileSync(
+      new URL("../../../vendor/hyperframes/packages/studio/src/components/sidebar/IllustrationTab.tsx", import.meta.url),
+      "utf8",
+    );
+    const rendererSource = readFileSync(
+      new URL("../../../vendor/hyperframes/packages/studio/src/utils/illustrationEffect.ts", import.meta.url),
+      "utf8",
+    );
+    const studioSource = readFileSync(
+      new URL("../../../vendor/hyperframes/packages/studio/src/App.tsx", import.meta.url),
+      "utf8",
+    );
 
-    const panelSource = readFileSync(new URL("../src/react-app/domains/session/video/video-panel.tsx", import.meta.url), "utf8");
-    const surfaceSource = readFileSync(new URL("../src/react-app/domains/session/surface/session-surface.tsx", import.meta.url), "utf8");
-    expect(panelSource).toContain('ipollowork:hyperframes:illustration-reference');
-    expect(surfaceSource).toContain('ipollowork:add-illustration-reference');
-    expect(surfaceSource).toContain("Every selected reference is a required deliverable");
-    expect(surfaceSource).toContain("data-ipw-animation-reference");
-    expect(surfaceSource).toContain("requirements.animationReferences");
-    expect(surfaceSource).toContain("AI 插画已添加到对话框");
+    expect(panelSource).not.toContain("ipollowork:hyperframes:illustration-reference");
+    expect(illustrationSource).not.toContain("postMessage");
+    expect(illustrationSource).toContain("srcDoc={previewHtml}");
+    expect(illustrationSource).toContain("disabled={!canInsert || Boolean(insertingId)}");
+    expect(rendererSource).toContain("assets/video-illustrations/");
+    expect(rendererSource).toContain('data-ipollowork-renderer="local-v1"');
+    expect(studioSource).toContain("fileManager.writeProjectFile(assetPath");
+    expect(studioSource).toContain("fileManager.refreshFileTree()");
+    expect(studioSource).toContain("start: playerState.currentTime");
+    expect(studioSource).toContain("resolveAvailableVisualTrack(targetElements");
+    expect(studioSource).toContain("timelineEditing.handleTimelineAssetDrop(");
   });
-
-  test("maps all six illustration choices to offline self-contained HTML contracts", () => {
-    const profiles = [
-      ["ian-xiaohei-illustrations", "helloianneo/ian-xiaohei-illustrations", "ian-xiaohei-illustrations"],
-      ["html-infographic", "openai/visualize", "visualize"],
-      ["html-concept-explainer", "ipollowork/faceless-explainer", "faceless-explainer + hyperframes-core"],
-      ["html-kinetic-typography", "heygen-com/hyperframes", "hyperframes-animation"],
-      ["html-svg-path", "heygen-com/hyperframes", "hyperframes-keyframes"],
-      ["html-3d-space", "heygen-com/hyperframes", "hyperframes-keyframes"],
-    ];
-
-    for (const [id, repository, skill] of profiles) {
-      const reference = parseVideoIllustrationReference({ id, label: id, repository });
-      expect(reference).not.toBeNull();
-      if (!reference) throw new Error(`Expected ${id} to be a valid illustration profile`);
-      const instruction = videoIllustrationReferenceInstruction(reference);
-      expect(instruction).toContain(skill);
-      expect(instruction).toContain("exactly one self-contained HTML file");
-      expect(instruction).toContain("editable HTML/CSS/inline SVG");
-      expect(instruction).toContain("no CDN, remote font, network request");
-      expect(instruction).toContain("1600x900");
-      expect(instruction).toContain("complete composition must be visible and meaningful on its first frame");
-      expect(instruction).toContain("prefers-reduced-motion: reduce");
-      expect(instruction).toContain("assets/video-illustrations/");
+  test("keeps all six illustration styles in one offline renderer", () => {
+    const rendererSource = readFileSync(
+      new URL("../../../vendor/hyperframes/packages/studio/src/utils/illustrationEffect.ts", import.meta.url),
+      "utf8",
+    );
+    for (const id of [
+      "ian-xiaohei-illustrations",
+      "html-infographic",
+      "html-concept-explainer",
+      "html-kinetic-typography",
+      "html-svg-path",
+      "html-3d-space",
+    ]) {
+      expect(rendererSource).toContain(`"${id}"`);
     }
-
-    expect(parseVideoIllustrationReference({ id: "unknown", label: "Unknown", repository: "unknown" })).toBeNull();
+    expect(rendererSource).toContain("renderIllustrationEffectHtml");
+    expect(rendererSource).toContain("effectScene(id, data)");
+    expect(rendererSource).not.toContain("<script");
+    expect(rendererSource).not.toContain("http://");
+    expect(rendererSource).not.toContain("https://");
   });
   test("reuses the embedded Design system inspector for the active video composition", () => {
     const panelSource = readFileSync(
@@ -226,7 +214,10 @@ describe("HyperFrames Video Studio", () => {
     expect(studioSource).toContain("Suspense fallback={<RightPanelLoadingFallback width={panelLayout.rightWidth} />}");
 
     const advancedBranchStart = desktopSource.indexOf("} else if (action === 'advanced') {");
-    const advancedBranchEnd = desktopSource.indexOf("postEditorMessage({\n            type: 'ipollowork:hyperframes:open-advanced'", advancedBranchStart);
+    const advancedBranchEnd = desktopSource.indexOf(
+      "type: 'ipollowork:hyperframes:open-advanced'",
+      advancedBranchStart,
+    );
     expect(advancedBranchStart).toBeGreaterThan(-1);
     expect(advancedBranchEnd).toBeGreaterThan(advancedBranchStart);
     expect(desktopSource.slice(advancedBranchStart, advancedBranchEnd)).toContain("showToolbar(selected)");

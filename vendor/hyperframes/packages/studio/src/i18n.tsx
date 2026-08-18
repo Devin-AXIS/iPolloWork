@@ -98,8 +98,6 @@ type TranslationKey =
   | "right.styleTooltip"
   | "right.assets"
   | "right.assetsTooltip"
-  | "right.illustration"
-  | "right.illustrationTooltip"
   | "right.animation"
   | "right.animationTooltip"
   | "right.animationTemplates"
@@ -223,8 +221,6 @@ const messages: Record<StudioLocale, Record<TranslationKey, string>> = {
     "right.styleTooltip": "Video design system",
     "right.assets": "Assets",
     "right.assetsTooltip": "Videos, images, audio, and fonts",
-    "right.illustration": "Illustrations",
-    "right.illustrationTooltip": "Generate video assets with HTML illustrations",
     "right.animation": "Animation",
     "right.animationTooltip": "Browse templates and edit selected-element animation",
     "right.animationTemplates": "Animation templates",
@@ -348,8 +344,6 @@ const messages: Record<StudioLocale, Record<TranslationKey, string>> = {
     "right.styleTooltip": "视频设计系统",
     "right.assets": "素材",
     "right.assetsTooltip": "视频、图片、音频和字体",
-    "right.illustration": "插画",
-    "right.illustrationTooltip": "使用 HTML 插画能力生成视频素材",
     "right.animation": "动画",
     "right.animationTooltip": "浏览模板并编辑所选元素动画",
     "right.animationTemplates": "动画模板",

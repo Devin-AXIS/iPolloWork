@@ -58,14 +58,6 @@ export const STUDIO_BLOCKS_PANEL_ENABLED = resolveStudioBooleanEnvFlag(
   true,
 );
 
-// Keep the illustration authoring entry hidden until its Studio workflow is
-// ready to ship. Existing illustration assets remain available in Assets.
-export const STUDIO_ILLUSTRATION_PANEL_ENABLED = resolveStudioBooleanEnvFlag(
-  env,
-  ["VITE_STUDIO_ENABLE_ILLUSTRATION_PANEL"],
-  false,
-);
-
 export const STUDIO_GSAP_PANEL_ENABLED = resolveStudioBooleanEnvFlag(
   env,
   ["VITE_STUDIO_ENABLE_GSAP_PANEL", "VITE_STUDIO_GSAP_PANEL_ENABLED"],

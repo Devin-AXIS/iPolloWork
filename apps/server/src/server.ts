@@ -4,6 +4,7 @@ import { homedir, hostname } from "node:os";
 import { dirname, join, relative, resolve, sep } from "node:path";
 import { createOpencodeClient } from "@opencode-ai/sdk/v2/client";
 import { IPOLLOWORK_PACKAGE_EXTENSION, IPOLLOWORK_PACKAGE_MEDIA_TYPE, templateCategorySchema } from "@ipollowork/types/templates";
+import { DEEPSEEK_HARNESS_ENGINE_ID } from "@ipollowork/types/workspace";
 import { DEFAULT_ENGINE_ID, type ApprovalRequest, type Capabilities, type ServerConfig, type WorkspaceInfo, type Actor, type ReloadReason, type ReloadTrigger, type TokenScope } from "./types.js";
 import { ApprovalService } from "./approvals.js";
 import { addPlugin, listPlugins, normalizePluginSpec, removePlugin } from "./plugins.js";
@@ -44,7 +45,7 @@ import {
   readWorkspaceCloudImports,
   syncDesktopCloudResources,
 } from "./desktop-cloud-sync.js";
-import { installCloudPlugin, readCloudPluginResolved, readInstalledCloudPlugins, removeCloudPlugin } from "./cloud-plugins.js";
+import { disposeCloudPluginStore, installCloudPlugin, readCloudPluginResolved, readInstalledCloudPlugins, removeCloudPlugin } from "./cloud-plugins.js";
 import {
   assertPluginPackageSafeForImport,
   installPluginPackage,
@@ -106,6 +107,7 @@ import { registerSessionRoutes } from "./routes/sessions.js";
 import { registerDeepSeekHarnessRoutes } from "./routes/deepseek-harness.js";
 import { registerWorkspaceRoutes } from "./routes/workspaces.js";
 import {
+  disposeRuntimeOpencodeConfigStore,
   mergeOpencodeConfigs,
   mergeRuntimeProviderUpdate,
   readRuntimeOpencodeConfig,
@@ -115,6 +117,7 @@ import {
   writeRuntimeOpencodeConfig,
 } from "./runtime-opencode-config-store.js";
 import {
+  disposeiPolloWorkWorkspaceConfigStore,
   hasiPolloWorkWorkspaceConfig,
   mergeiPolloWorkWorkspaceConfigs,
   readiPolloWorkWorkspaceConfig,
@@ -126,6 +129,7 @@ import {
   MAX_TEMPLATE_PACKAGE_BYTES,
   adoptLegacyVideoSession,
   createTemplateAuthoringSession,
+  disposeTemplateStore,
   exportLocalTemplatePackage,
   exportTemplateFromSession,
   importTemplate,
@@ -784,9 +788,14 @@ export async function startServer(config: ServerConfig): Promise<ServeResult> {
   const refreshWorkspaceReloadBaseline = (workspaceId: string, reasons?: ReloadReason[]) =>
     watcherHandle.refreshWorkspace(workspaceId, reasons);
   reloadBaselineRefreshers.set(config, refreshWorkspaceReloadBaseline);
-  const restartReloadWatchers = () => {
-    watcherHandle.close();
-    watcherHandle = startReloadWatchers({ config, reloadEvents, logger });
+  let reloadWatcherRestart = Promise.resolve();
+  const restartReloadWatchers = (): Promise<void> => {
+    const restart = async () => {
+      await watcherHandle.close();
+      watcherHandle = startReloadWatchers({ config, reloadEvents, logger });
+    };
+    reloadWatcherRestart = reloadWatcherRestart.then(restart, restart);
+    return reloadWatcherRestart;
   };
   const routes = createRoutes(config, approvals, tokens, env, deepseekHarness, restartReloadWatchers);
 
@@ -941,11 +950,24 @@ export async function startServer(config: ServerConfig): Promise<ServeResult> {
   return {
     ...server,
     stop: async () => {
-      watcherHandle.close();
+      await reloadWatcherRestart;
+      await watcherHandle.close();
       reloadBaselineRefreshers.delete(config);
-      await deepseekHarness.close();
-      await disposeAllPluginServices(config);
-      await server.stop();
+      try {
+        await deepseekHarness.close();
+        await disposeAllPluginServices(config);
+        await server.stop();
+      } finally {
+        await Promise.all([
+          disposeCloudPluginStore(config),
+          disposeRuntimeOpencodeConfigStore(config),
+          disposeiPolloWorkWorkspaceConfigStore(config),
+          disposeTemplateStore(config),
+        ]);
+        // Bun releases Windows SQLite file handles on the following event-loop
+        // turn even though Database.close() itself is synchronous.
+        await new Promise<void>((resolveClose) => setTimeout(resolveClose, process.platform === "win32" ? 100 : 0));
+      }
     },
   };
 }
@@ -1171,7 +1193,7 @@ async function requireHost(request: Request, config: ServerConfig, tokens: Token
   return { type: "remote", clientId, tokenHash: hashToken(bearer), scope };
 }
 
-function buildCapabilities(config: ServerConfig): Capabilities {
+function buildCapabilities(config: ServerConfig, workspace?: WorkspaceInfo): Capabilities {
   const writeEnabled = !config.readOnly;
   const schemaVersion = 1;
   const sandboxBackend = resolveSandboxBackend();
@@ -1199,6 +1221,17 @@ function buildCapabilities(config: ServerConfig): Capabilities {
     commands: { read: true, write: writeEnabled },
     config: { read: true, write: writeEnabled },
     templates: { read: true, install: writeEnabled, import: writeEnabled, uninstall: writeEnabled },
+    ...(workspace ? {
+      engine: {
+        id: workspace.engineId?.trim() || DEFAULT_ENGINE_ID,
+        sessions: {
+          read: true,
+          create: writeEnabled,
+          prompt: writeEnabled,
+          delete: writeEnabled && workspace.engineId !== DEEPSEEK_HARNESS_ENGINE_ID,
+        },
+      },
+    } : {}),
 
     approvals: { mode: config.approval.mode, timeoutMs: config.approval.timeoutMs },
     sandbox: { enabled: sandboxEnabled, backend: sandboxBackend },
@@ -1442,7 +1475,7 @@ function createRoutes(
   tokens: TokenService,
   env: EnvService,
   deepseekHarness: DeepSeekHarnessRuntime,
-  onWorkspacesChanged: () => void,
+  onWorkspacesChanged: () => Promise<void>,
 ): Route[] {
   const routes: Route[] = [];
   registerCoreRoutes({
@@ -1484,6 +1517,7 @@ function createRoutes(
     routes,
     config,
     jsonResponse,
+    readJsonBody,
     parseOptionalBoolean,
     parseOptionalPositiveInteger,
     parseOptionalNonNegativeInteger,

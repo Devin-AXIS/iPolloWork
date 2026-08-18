@@ -56,7 +56,7 @@ interface RegisterCoreRoutesOptions {
   readOptionalJsonBody: ReadJsonBody;
   parseOptionalBoolean: ParseOptionalBoolean;
   ensureWritable: (config: ServerConfig) => void;
-  buildCapabilities: (config: ServerConfig) => Capabilities;
+  buildCapabilities: (config: ServerConfig, workspace?: WorkspaceInfo) => Capabilities;
   fetchRuntimeControl: FetchRuntimeControl;
   resolveWorkspace: (config: ServerConfig, id: string) => Promise<WorkspaceInfo>;
   serializeWorkspace: (workspace: ServerConfig["workspaces"][number]) => unknown;
@@ -212,8 +212,9 @@ export function registerCoreRoutes(options: RegisterCoreRoutesOptions): void {
     });
   });
 
-  addRoute(routes, "GET", "/w/:id/capabilities", "client", async () => {
-    return jsonResponse(buildCapabilities(config));
+  addRoute(routes, "GET", "/w/:id/capabilities", "client", async (ctx) => {
+    const workspace = await resolveWorkspace(config, ctx.params.id);
+    return jsonResponse(buildCapabilities(config, workspace));
   });
 
   addRoute(routes, "GET", "/w/:id/workspaces", "client", async (ctx) => {
