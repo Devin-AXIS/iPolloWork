@@ -2,8 +2,9 @@
   "schemaVersion": 2,
   "id": "video-agent",
   "name": "iPolloWork Video Agent",
-  "description": "管理 iPolloWork Video Studio、HyperFrames 与旁白工作流的官方 Agent Skills，不改变内置 Studio、时间线或视频项目。",
+  "description": "提供 iPolloWork Video Studio、HyperFrames、旁白工作流与配套 Agent Skills。",
   "category": "AI Agent 与自动化",
+  "defaultEnabled": true,
   "source": {
     "format": "ipollowork-extension-manifest",
     "origin": "builtin",
@@ -20,7 +21,7 @@
     "defaultLocale": "zh",
     "translations": {
       "en": {
-        "description": "Official Agent Skills for iPolloWork Video Studio, HyperFrames, and voiceover workflows, without replacing the built-in Studio, timeline, or video project.",
+        "description": "iPolloWork Video Studio, HyperFrames, voiceover workflows, and official Agent Skills.",
         "category": "AI Agents & Automation",
         "composer": { "prompt": "Use iPolloWork Video Agent to create or edit video in the current session's Video Studio project." },
         "resources": {
@@ -39,7 +40,7 @@
     }
   },
   "package": {
-    "version": "0.1.3",
+    "version": "0.2.0",
     "publisher": {
       "id": "ipollowork",
       "name": "iPolloWork"
@@ -61,6 +62,15 @@
     {
       "id": "process",
       "reason": "运行 HyperFrames 对当前会话项目的只读检查和验证命令。"
+    }
+  ],
+  "contributions": [
+    {
+      "type": "session-side-panel",
+      "ref": "ipollowork.video.panel",
+      "label": "Video",
+      "description": "在当前会话右侧打开 Video Studio。",
+      "location": "session-right-pane"
     }
   ],
   "relatedSkills": [

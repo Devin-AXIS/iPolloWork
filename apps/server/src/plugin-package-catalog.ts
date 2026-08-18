@@ -18,6 +18,8 @@ export const bundledPluginPackageIds = [
   "deepseek-harness",
 ] as const;
 
+export const defaultBundledPluginPackageIds = ["design-agent", "video-agent"] as const;
+
 const moduleDirectory = dirname(fileURLToPath(import.meta.url));
 
 export function bundledPluginPackageRoots(): string[] {

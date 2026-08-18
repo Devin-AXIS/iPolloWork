@@ -77,14 +77,20 @@ const lifecycleStateV1Schema = z.object({
   schemaVersion: z.literal(1),
   packages: z.record(z.string(), installedPackageSchema),
 });
-const lifecycleStateSchema = z.object({
+const lifecycleStateV2Schema = z.object({
   schemaVersion: z.literal(2),
   packages: installedPackagesSchema,
+});
+const lifecycleStateSchema = z.object({
+  schemaVersion: z.literal(3),
+  packages: installedPackagesSchema,
+  suppressedDefaultPluginIds: z.array(z.string()).default([]),
 });
 // Desktop installs created before portable package manifests remain user-owned data.
 // Keep v1 readable until an explicit artifact migration can rewrite those records safely.
 const persistedLifecycleStateSchema = z.discriminatedUnion("schemaVersion", [
   lifecycleStateV1Schema,
+  lifecycleStateV2Schema,
   lifecycleStateSchema,
 ]);
 
@@ -149,7 +155,7 @@ export type InstalledPluginUiResource = {
 };
 
 function emptyState(): LifecycleState {
-  return { schemaVersion: 2, packages: {} };
+  return { schemaVersion: 3, packages: {}, suppressedDefaultPluginIds: [] };
 }
 
 function errorCode(error: unknown): string | null {
@@ -372,7 +378,9 @@ function integrityForManifest(
 async function readState(config: ServerConfig): Promise<LifecycleState> {
   try {
     const state = persistedLifecycleStateSchema.parse(JSON.parse(await readFile(statePath(config), "utf8")));
-    return state.schemaVersion === 2 ? state : { schemaVersion: 2, packages: state.packages };
+    return state.schemaVersion === 3
+      ? state
+      : { schemaVersion: 3, packages: state.packages, suppressedDefaultPluginIds: [] };
   } catch (error) {
     if (errorCode(error) === "ENOENT") return emptyState();
     throw error;
@@ -420,7 +428,9 @@ function migrateInstalledManifest(value: unknown, pluginId: string): { manifest:
 async function readStateAt(path: string): Promise<LifecycleState | null> {
   try {
     const state = persistedLifecycleStateSchema.parse(JSON.parse(await readFile(path, "utf8")));
-    return state.schemaVersion === 2 ? state : { schemaVersion: 2, packages: state.packages };
+    return state.schemaVersion === 3
+      ? state
+      : { schemaVersion: 3, packages: state.packages, suppressedDefaultPluginIds: [] };
   } catch (error) {
     if (errorCode(error) === "ENOENT") return null;
     throw error;
@@ -540,8 +550,10 @@ export async function migratePluginPackageLifecycle(config: ServerConfig): Promi
   if (sources.length === 0) return 0;
 
   const packages: LifecycleState["packages"] = {};
+  const suppressedDefaultPluginIds = new Set<string>();
   let manifestChanged = false;
   for (const source of sources) {
+    source.state.suppressedDefaultPluginIds.forEach((pluginId) => suppressedDefaultPluginIds.add(pluginId));
     for (const installed of Object.values(source.state.packages)) {
       const migrated = await migratedPackage(config, source.root, installed);
       manifestChanged ||= migrated.changed;
@@ -554,7 +566,11 @@ export async function migratePluginPackageLifecycle(config: ServerConfig): Promi
       await writeJsonAtomic(join(artifactRoot(config, installed.pluginId, version.version), MANIFEST_FILE), version.manifest);
     }
   }
-  await writeState(config, lifecycleStateSchema.parse({ schemaVersion: 2, packages }));
+  await writeState(config, lifecycleStateSchema.parse({
+    schemaVersion: 3,
+    packages,
+    suppressedDefaultPluginIds: [...suppressedDefaultPluginIds].sort(),
+  }));
   for (const source of legacySources) await rm(source.root, { recursive: true, force: true });
   return legacySources.length + (manifestChanged ? 1 : 0);
 }
@@ -1074,6 +1090,10 @@ export async function listInstalledPluginPackages(input: { serverConfig: ServerC
   }).sort((left, right) => left.name.localeCompare(right.name));
 }
 
+export async function listSuppressedDefaultPluginIds(input: { serverConfig: ServerConfig }): Promise<string[]> {
+  return (await readState(input.serverConfig)).suppressedDefaultPluginIds;
+}
+
 export async function readInstalledPluginUiResource(input: {
   serverConfig: ServerConfig;
   pluginId: string;
@@ -1235,6 +1255,10 @@ export async function installPluginPackage(input: {
       input.workspaceRoot,
       existing,
     );
+    if (state.suppressedDefaultPluginIds.includes(existing.pluginId)) {
+      state.suppressedDefaultPluginIds = state.suppressedDefaultPluginIds.filter((pluginId) => pluginId !== existing.pluginId);
+      await writeState(input.serverConfig, state);
+    }
     return { status: "unchanged", pluginId: existing.pluginId, version: existing.currentVersion };
   }
   const version = await snapshotPackage(input.serverConfig, input.packageRoot, preview);
@@ -1247,6 +1271,7 @@ export async function installPluginPackage(input: {
     previousVersion: null,
     versions: { [version.version]: version },
   };
+  state.suppressedDefaultPluginIds = state.suppressedDefaultPluginIds.filter((pluginId) => pluginId !== preview.manifest.id);
   await writeState(input.serverConfig, state);
   return { status: "installed", pluginId: preview.manifest.id, version: version.version };
 }
@@ -1286,6 +1311,7 @@ export async function updatePluginPackage(input: {
   installed.versions[next.version] = next;
   installed.currentVersion = next.version;
   installed.previousVersion = previousVersion;
+  state.suppressedDefaultPluginIds = state.suppressedDefaultPluginIds.filter((pluginId) => pluginId !== installed.pluginId);
   await writeState(input.serverConfig, state);
   return { status: "updated", pluginId: installed.pluginId, previousVersion, version: next.version };
 }
@@ -1490,6 +1516,9 @@ export async function uninstallPluginPackage(input: {
     for (const path of filesByPath.keys()) await rm(resolveWithin(workspace.path, path), { force: true });
   }
   delete state.packages[input.pluginId];
+  if (manifestFromVersion(current).defaultEnabled && !state.suppressedDefaultPluginIds.includes(input.pluginId)) {
+    state.suppressedDefaultPluginIds.push(input.pluginId);
+  }
   await writeState(input.serverConfig, state);
   await rm(join(stateDirectory(input.serverConfig), "artifacts", safeSegment(input.pluginId)), { recursive: true, force: true });
   return { status: "uninstalled", pluginId: input.pluginId, version: current.version };

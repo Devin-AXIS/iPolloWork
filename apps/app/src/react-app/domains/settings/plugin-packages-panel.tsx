@@ -325,6 +325,18 @@ export function PluginPackagesPanel(props: PluginPackagesPanelProps) {
         ...capability,
         type: `${binding.engine}/${capability.kind}`,
       }))) ?? [],
+      ...item.manifest.contributions?.flatMap((contribution) => (
+        contribution.type === "session-side-panel"
+        && contribution.location === "session-right-pane"
+        && contribution.ref
+          ? [{
+              id: contribution.ref,
+              type: "workspace",
+              label: contribution.label,
+              description: contribution.description,
+            }]
+          : []
+      )) ?? [],
     ];
     const skillResources = item.manifest.resources.filter((resource) => resource.type === "skill");
     const relatedSkillNames = item.manifest.relatedSkills ?? [];
