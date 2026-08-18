@@ -3,7 +3,7 @@ import type { CSSProperties } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { UIMessage } from "ai";
 import { useNavigate } from "react-router-dom";
-import { Code2, Ellipsis, Eye, FileText, Film, FolderOpen, Globe, Image, LoaderCircle, Mic2, Palette, PanelRightClose, PanelRightOpen, Pencil, Presentation, Search, Settings2, Trash2, Upload, X, Zap } from "lucide-react";
+import { Code2, Ellipsis, Eye, FileText, Film, Folder, FolderPlus, Globe, Image, LoaderCircle, Lock, Mic2, Palette, PanelRightClose, PanelRightOpen, Pencil, Presentation, Search, Settings2, Trash2, Upload, X, Zap } from "lucide-react";
 import { MAX_TEMPLATE_PACKAGE_BYTES, TEMPLATE_PACKAGE_FILE_ACCEPT, isPptxCompatibleTemplate, type PptxCompatibility, type TemplateCatalogItem, type TemplateCategory, type TemplateManifestV1, type TemplateSessionSnapshot, type TemplateSessionState, type TemplateValidationReport } from "@ipollowork/types/templates";
 import {
   DEEPSEEK_HARNESS_ENGINE_ID,
@@ -60,6 +60,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { toast } from "@/components/ui/sonner";
 import { ConfirmModal } from "../../../design-system/modals/confirm-modal";
 import { useDenAuth } from "../../cloud/den-auth-provider";
@@ -137,6 +138,8 @@ import { cn } from "@/lib/utils";
 import { useActiveEnterpriseConnection } from "@/react-app/domains/enterprise/use-active-enterprise-connection";
 import { useInstalledPluginContributions } from "@/react-app/plugin-ui/plugin-ui-contributions";
 import type { WorkspaceAppModelContext } from "@/react-app/plugin-ui/workspace-app-frame";
+import projectEngineSelectedIcon from "./assets/project-engine-selected.svg";
+import projectEngineUnselectedIcon from "./assets/project-engine-unselected.svg";
 
 const STARTUP_SKELETON_ROWS = [
   { id: "intro", titleWidth: "42%", bodyWidth: "88%" },
@@ -2516,7 +2519,7 @@ export function SessionPage(props: SessionPageProps) {
   const submitCreateProject = async () => {
     const name = createProjectName.trim();
     const folderPath = createProjectFolder.trim();
-    if (!name || !folderPath) return;
+    if (!name) return;
     setCreateProjectBusy(true);
     setCreateProjectError(null);
     try {
@@ -2621,8 +2624,8 @@ export function SessionPage(props: SessionPageProps) {
         />
         <SidebarInset className="relative min-h-0 overflow-hidden bg-background mac:bg-background/80">
           <div className="flex min-h-0 flex-1">
-          <div className="relative flex min-h-0 flex-1">
-            {mainHeaderHidden ? (
+          <div className="relative flex min-h-0 min-w-0 flex-1">
+            {mainHeaderHidden && mainWorkspaceView !== "extensions" ? (
               <Tooltip>
                 <TooltipTrigger
                   render={
@@ -2661,7 +2664,7 @@ export function SessionPage(props: SessionPageProps) {
               <main className="flex h-full min-w-0 flex-col overflow-hidden border-r border-border/40 dark:border-white/[0.055]">
           <header className={cn(
             "relative z-10 h-10 shrink-0 items-center justify-between border-b border-border px-4 [border-bottom-width:0.5px] md:grid md:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] md:px-6 mac:titlebar-drag mac:backdrop-blur-2xl mac:backdrop-saturate-150 @container/titlebar",
-            mainHeaderHidden ? "hidden" : "flex",
+            mainHeaderHidden ? "hidden!" : "flex",
             sidebarVisuallyCollapsed && shellConfig.sidebar ? "!pl-16 mac:!pl-32" : "",
           )}>
             {shellConfig.sidebar && sidebarVisuallyCollapsed ? (
@@ -3237,33 +3240,79 @@ export function SessionPage(props: SessionPageProps) {
       ) : null}
 
       <Dialog open={createProjectOpen} onOpenChange={(open) => { if (!open && !createProjectBusy) setCreateProjectOpen(false); }}>
-        <DialogContent className="sm:max-w-lg">
-          <DialogHeader>
-            <DialogTitle>{t("projects.create")}</DialogTitle>
-            <DialogDescription>{t("projects.create_description")}</DialogDescription>
+        <DialogContent
+          data-testid="create-project-dialog"
+          className="max-h-[calc(100dvh-32px)] w-[calc(100%-32px)] max-w-[516px] gap-4 overflow-y-auto rounded-[16px] p-6 ring-0 dark:ring-1 dark:ring-border"
+        >
+          <DialogHeader className="gap-1.5">
+            <DialogTitle className="pe-8 text-base leading-6">{t("projects.create")}</DialogTitle>
+            <DialogDescription className="text-[13px] leading-5">
+              {t("projects.create_description")}
+            </DialogDescription>
           </DialogHeader>
-          <div className="space-y-3">
-            <Input
-              value={createProjectName}
-              onChange={(event) => setCreateProjectName(event.currentTarget.value)}
-              placeholder={t("projects.name_placeholder")}
-              disabled={createProjectBusy}
-            />
-            <button
-              type="button"
-              className="flex h-10 w-full items-center gap-2 rounded-lg border border-input bg-background px-3 text-left text-sm transition-colors hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-hidden disabled:opacity-50"
-              onClick={() => void pickProjectFolder()}
-              disabled={createProjectBusy}
-            >
-              <FolderOpen className="size-4 shrink-0 text-muted-foreground" />
-              <span className={cn("min-w-0 flex-1 truncate", !createProjectFolder && "text-muted-foreground")}>
-                {createProjectFolder || t("projects.choose_folder")}
-              </span>
-            </button>
+
+          <div className="space-y-4">
+            <div className="space-y-1.5">
+              <label htmlFor="create-project-name" className="block text-[13px] font-medium leading-5 text-foreground">
+                {t("projects.name")}
+              </label>
+              <div className="relative">
+                <span data-testid="project-name-icon" aria-hidden="true" className="pointer-events-none absolute start-3 top-1/2 z-10 flex size-6 -translate-y-1/2 items-center justify-center text-muted-foreground">
+                  <Folder className="size-4" />
+                </span>
+                <Input
+                  id="create-project-name"
+                  value={createProjectName}
+                  onChange={(event) => setCreateProjectName(event.currentTarget.value)}
+                  onKeyDown={(event) => { if (event.key === "Enter") void submitCreateProject(); }}
+                  placeholder={t("projects.name_example")}
+                  disabled={createProjectBusy}
+                  className="h-10 rounded-lg px-4 ps-12 text-sm leading-[22px] placeholder-shown:text-[13px] placeholder-shown:leading-5 placeholder:text-slate-9 focus-visible:ring-0! has-focus-visible:ring-0! dark:placeholder:text-slate-11"
+                />
+              </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <p className="text-[13px] font-medium leading-5 text-foreground">{t("projects.source_folder")}</p>
+              <button
+                type="button"
+                data-testid="project-folder-picker"
+                className="flex h-10 w-full items-center gap-3 rounded-lg border border-border bg-background px-3 text-left text-sm leading-[22px] text-muted-foreground transition-colors hover:border-foreground/20 hover:bg-muted/50 hover:text-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/30 focus-visible:outline-hidden disabled:pointer-events-none disabled:opacity-50"
+                onClick={() => void pickProjectFolder()}
+                disabled={createProjectBusy}
+                title={createProjectFolder || undefined}
+              >
+                <span data-testid="project-folder-icon" aria-hidden="true" className="flex size-6 shrink-0 items-center justify-center">
+                  <FolderPlus className="size-4" />
+                </span>
+                <span
+                  data-testid="project-folder-label"
+                  className={cn(
+                    "min-w-0 flex-1 truncate font-normal",
+                    createProjectFolder
+                      ? "text-sm leading-[22px] text-foreground"
+                      : "text-[13px] leading-5 text-slate-9 dark:text-slate-11",
+                  )}
+                >
+                  {createProjectFolder || t("projects.choose_folder")}
+                </span>
+              </button>
+            </div>
+
             <fieldset className="space-y-2">
-              <legend className="text-xs font-medium text-muted-foreground">{t("projects.engine")}</legend>
-              <div className="grid grid-cols-2 gap-2">
-                {([
+              <legend className="mb-1.5 text-[13px] font-medium leading-5 text-foreground">{t("projects.default_engine")}</legend>
+              <RadioGroup
+                value={createProjectEngineId}
+                onValueChange={(engineId) => {
+                  if (engineId === DEFAULT_ENGINE_ID || engineId === DEEPSEEK_HARNESS_ENGINE_ID) {
+                    setCreateProjectEngineId(engineId);
+                  }
+                }}
+                disabled={createProjectBusy}
+                aria-label={t("projects.default_engine")}
+                className="grid grid-cols-2 gap-4"
+              >
+                {[
                   {
                     id: DEFAULT_ENGINE_ID,
                     name: t("projects.engine_opencode"),
@@ -3274,35 +3323,72 @@ export function SessionPage(props: SessionPageProps) {
                     name: t("projects.engine_dsh"),
                     description: t("projects.engine_dsh_description"),
                   },
-                ] as const).map((engine) => {
+                ].map((engine) => {
                   const selected = createProjectEngineId === engine.id;
                   return (
-                    <button
+                    <label
                       key={engine.id}
-                      type="button"
-                      role="radio"
-                      aria-checked={selected}
+                      data-testid="project-engine-option"
+                      data-state={selected ? "selected" : "default"}
                       className={cn(
-                        "rounded-lg border px-3 py-2.5 text-left transition-colors focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-hidden",
+                        "relative flex min-h-[90px] cursor-pointer flex-col gap-2 rounded-lg border-2 bg-transparent p-4 text-left transition-colors has-focus-visible:ring-3 has-focus-visible:ring-ring/30",
                         selected
-                          ? "border-foreground/30 bg-muted text-foreground"
-                          : "border-input bg-background text-muted-foreground hover:bg-muted/60 hover:text-foreground",
+                          ? "border-[var(--project-dialog-accent)]"
+                          : "border-[var(--project-dialog-option-border)] hover:border-foreground/20 hover:bg-muted/40",
+                        createProjectBusy && "pointer-events-none opacity-50",
                       )}
-                      disabled={createProjectBusy}
-                      onClick={() => setCreateProjectEngineId(engine.id)}
                     >
-                      <span className="block text-sm font-medium">{engine.name}</span>
-                      <span className="mt-0.5 block text-xs leading-4">{engine.description}</span>
-                    </button>
+                      <RadioGroupItem
+                        value={engine.id}
+                        disabled={createProjectBusy}
+                        className="absolute inset-0 z-10 size-full cursor-pointer opacity-0"
+                      />
+                      <span className="flex items-center justify-between gap-3">
+                        <span className={cn(
+                          "text-sm font-semibold leading-[22px]",
+                          selected ? "text-[var(--project-dialog-accent-strong)]" : "text-foreground",
+                        )}>
+                          {engine.name}
+                        </span>
+                        <img
+                          src={selected ? projectEngineSelectedIcon : projectEngineUnselectedIcon}
+                          alt=""
+                          className="size-4 shrink-0"
+                        />
+                      </span>
+                      <span className="text-xs leading-[18px] text-muted-foreground">{engine.description}</span>
+                    </label>
                   );
                 })}
+              </RadioGroup>
+              <div className="flex min-h-9 items-center gap-2 rounded-lg bg-[var(--project-dialog-notice)] px-4 py-2 text-[11px] leading-4 text-muted-foreground">
+                <Lock className="size-4 shrink-0" />
+                <span>{t("projects.engine_locked_notice")}</span>
               </div>
             </fieldset>
+
             {createProjectError ? <p role="alert" className="text-xs text-destructive">{createProjectError}</p> : null}
           </div>
-          <DialogFooter>
-            <DialogClose render={<Button variant="outline" type="button" disabled={createProjectBusy} />}>{t("common.cancel")}</DialogClose>
-            <Button type="button" disabled={createProjectBusy || !createProjectName.trim() || !createProjectFolder.trim()} onClick={() => void submitCreateProject()}>
+
+          <DialogFooter className="mx-0 mb-0 flex-row gap-4 rounded-none border-0 bg-transparent p-0 sm:justify-end">
+            <DialogClose
+              render={(
+                <Button
+                  variant="outline"
+                  type="button"
+                  disabled={createProjectBusy}
+                  className="h-9 rounded-lg bg-background px-4"
+                />
+              )}
+            >
+              {t("common.cancel")}
+            </DialogClose>
+            <Button
+              type="button"
+              disabled={createProjectBusy || !createProjectName.trim()}
+              onClick={() => void submitCreateProject()}
+              className="h-9 rounded-lg px-4"
+            >
               {createProjectBusy ? <LoaderCircle className="size-4 animate-spin" /> : null}
               {t("projects.create")}
             </Button>

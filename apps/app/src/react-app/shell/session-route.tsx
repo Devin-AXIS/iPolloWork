@@ -530,14 +530,16 @@ export function SessionRoute() {
   }) => {
     const name = input.name.trim();
     const requestedFolderPath = input.folderPath.trim();
-    if (!name || !requestedFolderPath) throw new Error(t("projects.name_and_folder_required"));
-    const requestedFolderKey = normalizeDirectoryPath(requestedFolderPath);
-    const existingProject = workspaces.find((workspace) =>
-      workspace.workspaceType !== "remote"
-      && normalizeDirectoryPath(workspace.path) === requestedFolderKey
-    );
-    if (existingProject) {
-      throw new Error(t("projects.folder_already_in_use"));
+    if (!name) throw new Error(t("projects.name_required"));
+    if (requestedFolderPath) {
+      const requestedFolderKey = normalizeDirectoryPath(requestedFolderPath);
+      const existingProject = workspaces.find((workspace) =>
+        workspace.workspaceType !== "remote"
+        && normalizeDirectoryPath(workspace.path) === requestedFolderKey
+      );
+      if (existingProject) {
+        throw new Error(t("projects.folder_already_in_use"));
+      }
     }
     if (!client) throw new Error(t("projects.server_unavailable"));
     const workContextId = activeWorkContextId === PERSONAL_WORK_CONTEXT_ID ? null : activeWorkContextId;
@@ -546,7 +548,7 @@ export function SessionRoute() {
 
     if (isDesktopRuntime()) {
       const desktopState = await workspaceCreate({
-        folderPath,
+        folderPath: folderPath || undefined,
         name,
         preset: "starter",
         workContextId,
@@ -559,6 +561,8 @@ export function SessionRoute() {
       desktopProjectId = desktopProject.id;
       folderPath = desktopProject.path;
     }
+
+    if (!folderPath) throw new Error(t("projects.create_failed"));
 
     const result = await client.createLocalWorkspace({
       folderPath,

@@ -72,4 +72,16 @@ describe("workspace resize performance", () => {
       "state.workspaceLeftSidebarResizing === previous.workspaceLeftSidebarResizing",
     );
   });
+
+  test("lets embedded settings shrink to the main workspace width", () => {
+    expect(sessionPageSource).toContain(
+      '<div className="relative flex min-h-0 min-w-0 flex-1">',
+    );
+  });
+
+  test("hides the right-panel toggle from the embedded Extensions navigation", () => {
+    expect(sessionPageSource).toContain(
+      '{mainHeaderHidden && mainWorkspaceView !== "extensions" ? (',
+    );
+  });
 });
