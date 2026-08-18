@@ -29,6 +29,7 @@ interface CacheEntry {
 }
 
 const lastSweepAt = new Map<string, number>();
+const MAX_TRACKED_CACHE_DIRS = 128;
 
 function positiveEnvNumber(name: string, fallback: number): number {
   const parsed = Number(process.env[name]);
@@ -52,7 +53,13 @@ function proxyCacheCleanupDefaults(): Required<
 function shouldSkipSweep(cacheDir: string, now: number, minSweepIntervalMs: number): boolean {
   const previousSweep = lastSweepAt.get(cacheDir);
   if (previousSweep !== undefined && now - previousSweep < minSweepIntervalMs) return true;
+  lastSweepAt.delete(cacheDir);
   lastSweepAt.set(cacheDir, now);
+  while (lastSweepAt.size > MAX_TRACKED_CACHE_DIRS) {
+    const oldest = lastSweepAt.keys().next().value;
+    if (oldest === undefined) break;
+    lastSweepAt.delete(oldest);
+  }
   return false;
 }
 

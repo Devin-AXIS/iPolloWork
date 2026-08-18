@@ -18,7 +18,7 @@ type ParseOptionalBoolean = (value: string | null, name: string) => boolean | un
 interface RegisterWorkspaceRoutesOptions {
   routes: Route[];
   config: ServerConfig;
-  onWorkspacesChanged: () => void;
+  onWorkspacesChanged: () => Promise<void>;
   jsonResponse: JsonResponse;
   readJsonBody: ReadJsonBody;
   readOptionalJsonBody: ReadJsonBody;
@@ -333,7 +333,7 @@ export function registerWorkspaceRoutes(options: RegisterWorkspaceRoutesOptions)
       config.authorizedRoots = [...config.authorizedRoots, workspacePath];
     }
     const persisted = await persistServerWorkspaceState(config);
-    onWorkspacesChanged();
+    await onWorkspacesChanged();
 
     await recordAudit(workspace.path, {
       id: shortId(),
@@ -428,7 +428,7 @@ export function registerWorkspaceRoutes(options: RegisterWorkspaceRoutesOptions)
 
     config.workspaces = [workspace, ...config.workspaces.filter((entry) => entry.id !== workspace.id)];
     const persisted = await persistServerWorkspaceState(config);
-    onWorkspacesChanged();
+    await onWorkspacesChanged();
 
     await recordAudit(workspace.path, {
       id: shortId(),
@@ -466,7 +466,7 @@ export function registerWorkspaceRoutes(options: RegisterWorkspaceRoutesOptions)
     );
 
     const persisted = await persistServerWorkspaceState(config);
-    onWorkspacesChanged();
+    await onWorkspacesChanged();
 
     await recordAudit(workspace.path, {
       id: shortId(),
@@ -497,7 +497,7 @@ export function registerWorkspaceRoutes(options: RegisterWorkspaceRoutesOptions)
       ...config.workspaces.filter((entry) => entry.id !== workspace.id),
     ];
     const persisted = persist ? await persistServerWorkspaceState(config) : false;
-    if (persist) onWorkspacesChanged();
+    if (persist) await onWorkspacesChanged();
     await recordAudit(workspace.path, {
       id: shortId(),
       workspaceId: workspace.id,
@@ -528,7 +528,7 @@ export function registerWorkspaceRoutes(options: RegisterWorkspaceRoutesOptions)
       config.authorizedRoots = config.authorizedRoots.filter((root) => resolve(root) !== resolve(workspace.path));
     }
     const persisted = await persistServerWorkspaceState(config);
-    onWorkspacesChanged();
+    await onWorkspacesChanged();
 
     await recordAudit(workspace.path, {
       id: shortId(),

@@ -16,6 +16,7 @@ import { STUDIO_BLOCKS_PANEL_ENABLED } from "../editor/manualEditingAvailability
 import { Tooltip } from "../ui";
 import { useStudioI18n } from "../../i18n";
 import type { EffectInsertIntent } from "../../utils/blockInstaller";
+import type { IllustrationEffectData, IllustrationEffectId } from "../../utils/illustrationEffect";
 
 export type SidebarTab = "compositions" | "assets" | "code" | "blocks";
 
@@ -60,6 +61,10 @@ interface LeftSidebarProps {
   lintFindingsByFile?: Map<string, { count: number; messages: string[] }>;
   onToggleCollapse?: () => void;
   onAddBlock?: (blockName: string, intent?: EffectInsertIntent) => Promise<boolean>;
+  onInsertIllustration?: (
+    effectId: IllustrationEffectId,
+    data: IllustrationEffectData,
+  ) => Promise<boolean>;
   takeoverContent?: ReactNode;
   onAddAssetToTimeline?: (path: string) => void;
 }
@@ -92,6 +97,7 @@ export const LeftSidebar = memo(
       lintFindingsByFile,
       onToggleCollapse,
       onAddBlock,
+      onInsertIllustration,
       takeoverContent,
       onAddAssetToTimeline,
     },
@@ -266,7 +272,7 @@ export const LeftSidebar = memo(
             )}
 
             {STUDIO_BLOCKS_PANEL_ENABLED && tab === "blocks" && (
-              <BlocksTab onAddBlock={onAddBlock} />
+              <BlocksTab onAddBlock={onAddBlock} onInsertIllustration={onInsertIllustration} />
             )}
 
             {/* Lint button pinned at the bottom */}

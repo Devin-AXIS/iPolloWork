@@ -88,6 +88,7 @@ const cloudPluginInstallConfigs = sqliteTable("cloud_plugin_install_configs", {
 type CloudPluginDb = {
   get: (workspaceId: string) => { configJson: string } | undefined;
   upsert: (value: { workspaceId: string; configJson: string; updatedAt: number }) => void;
+  close: () => void;
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -519,6 +520,7 @@ async function openCloudPluginDb(path: string): Promise<CloudPluginDb> {
           })
           .run();
       },
+      close: () => sqlite.close(),
     };
   }
   const { DatabaseSync } = await importNodeSqlite();
@@ -535,10 +537,20 @@ async function openCloudPluginDb(path: string): Promise<CloudPluginDb> {
     upsert: ({ workspaceId, configJson, updatedAt }) => {
       upsert.run(workspaceId, configJson, updatedAt);
     },
+    close: () => sqlite.close(),
   };
 }
 
 const dbByPath = new Map<string, Promise<CloudPluginDb>>();
+
+export async function disposeCloudPluginStore(config: ServerConfig): Promise<void> {
+  const path = runtimeDbPath(config);
+  const pending = dbByPath.get(path);
+  if (!pending) return;
+  dbByPath.delete(path);
+  const db = await pending;
+  db.close();
+}
 
 async function cloudPluginDb(config: ServerConfig): Promise<CloudPluginDb> {
   const path = runtimeDbPath(config);

@@ -39,10 +39,15 @@ import {
 } from "./IllustrationTab";
 import searchIconSrc from "../../icons/figmaAssetsSearch.svg?url";
 import type { EffectInsertIntent } from "../../utils/blockInstaller";
+import type { IllustrationEffectData, IllustrationEffectId } from "../../utils/illustrationEffect";
 
 interface BlocksTabProps {
   page?: CatalogPage;
   onAddBlock?: (blockName: string, intent?: EffectInsertIntent) => Promise<boolean>;
+  onInsertIllustration?: (
+    effectId: IllustrationEffectId,
+    data: IllustrationEffectData,
+  ) => Promise<boolean>;
 }
 
 const SECTION_TITLES: Record<AnimationLibrarySection, { en: string; zh: string }> = {
@@ -94,6 +99,7 @@ function getReducedMotionServerSnapshot(): boolean {
 export const BlocksTab = memo(function BlocksTab({
   page = "effects",
   onAddBlock,
+  onInsertIllustration,
 }: BlocksTabProps) {
   const { locale } = useStudioI18n();
   const { loading, error, search, setSearch, sections } = useBlockCatalog(page);
@@ -207,11 +213,11 @@ export const BlocksTab = memo(function BlocksTab({
         >
           {activeSection === ILLUSTRATION_SECTION_FILTER
             ? locale === "zh"
-              ? "选择插画能力后交给 AI，生成与当前视频匹配的可编辑 HTML 插画素材。"
-              : "Choose an illustration capability and ask AI to create an editable HTML asset for this video."
+              ? "选中片段后可在本地生成可编辑 HTML 插画，并插入当前播放头。"
+              : "Select a clip to generate an editable HTML illustration locally at the playhead."
             : locale === "zh"
-              ? "特效会作为独立片段插入时间线；插画特效由 AI 根据当前视频生成可编辑素材。"
-              : "Effects are inserted as timeline clips; illustration effects use AI to create editable assets for the current video."}
+              ? "特效会作为独立片段插入时间线；插画特效会使用选中片段的数据在本地生成。"
+              : "Effects are inserted as timeline clips; illustration effects are generated locally from the selected clip."}
         </div>
       </div>
 
@@ -236,6 +242,7 @@ export const BlocksTab = memo(function BlocksTab({
           onDensityWheel={handleDensityWheel}
           previewController={previewController}
           onAddBlock={onAddBlock}
+          onInsertIllustration={onInsertIllustration}
           showSectionHeaders
           testId={`block-catalog-${page}`}
         />
@@ -254,6 +261,7 @@ function CatalogSectionGrid({
   onDensityWheel,
   previewController,
   onAddBlock,
+  onInsertIllustration,
   showSectionHeaders,
   testId,
 }: {
@@ -266,6 +274,10 @@ function CatalogSectionGrid({
   onDensityWheel: (deltaY: number) => void;
   previewController: PreviewController;
   onAddBlock?: (blockName: string, intent?: EffectInsertIntent) => Promise<boolean>;
+  onInsertIllustration?: (
+    effectId: IllustrationEffectId,
+    data: IllustrationEffectData,
+  ) => Promise<boolean>;
   showSectionHeaders: boolean;
   testId: string;
 }) {
@@ -424,7 +436,7 @@ function CatalogSectionGrid({
                 />
               ) : null}
               {!collapsedSections.has(ILLUSTRATION_SECTION_FILTER) ? (
-                <IllustrationEffectsContent />
+                <IllustrationEffectsContent onInsert={onInsertIllustration} />
               ) : null}
             </section>
           ) : null}

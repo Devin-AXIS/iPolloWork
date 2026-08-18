@@ -126,6 +126,10 @@ export interface Capabilities {
   commands: { read: boolean; write: boolean };
   config: { read: boolean; write: boolean };
   templates: { read: boolean; install: boolean; import: boolean; uninstall: boolean };
+  engine?: {
+    id: string;
+    sessions: { read: true; create: boolean; prompt: boolean; delete: boolean };
+  };
 
   approvals: { mode: ApprovalMode; timeoutMs: number };
   sandbox: { enabled: boolean; backend: SandboxBackend };

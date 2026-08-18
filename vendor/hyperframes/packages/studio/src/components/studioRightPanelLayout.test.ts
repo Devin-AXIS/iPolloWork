@@ -87,15 +87,20 @@ describe("Studio right panel layout", () => {
       new URL("./sidebar/IllustrationTab.tsx", import.meta.url),
       "utf8",
     );
-    expect(illustration).toContain('id: "ian-xiaohei-illustrations"');
-    expect(illustration).toContain('id: "html-infographic"');
-    expect(illustration).toContain('id: "html-concept-explainer"');
-    expect(illustration).toContain('id: "html-kinetic-typography"');
-    expect(illustration).toContain('id: "html-svg-path"');
-    expect(illustration).toContain('id: "html-3d-space"');
-    expect(illustration).toContain("onChange={(event) =>");
-    expect(illustration).not.toContain("disabled");
-    expect(illustration).toContain("自包含 HTML 插画");
+    const renderer = readFileSync(
+      new URL("../utils/illustrationEffect.ts", import.meta.url),
+      "utf8",
+    );
+    expect(renderer).toContain('"ian-xiaohei-illustrations"');
+    expect(renderer).toContain('"html-infographic"');
+    expect(renderer).toContain('"html-concept-explainer"');
+    expect(renderer).toContain('"html-kinetic-typography"');
+    expect(renderer).toContain('"html-svg-path"');
+    expect(renderer).toContain('"html-3d-space"');
+    expect(illustration).toContain("ILLUSTRATION_EFFECTS.map");
+    expect(illustration).toContain("srcDoc={previewHtml}");
+    expect(illustration).toContain("disabled={!canInsert || Boolean(insertingId)}");
+    expect(illustration).toContain("可预览全部插画");
   });
 
   it("orders populated inspector groups for the selected element type", () => {
@@ -589,7 +594,8 @@ describe("Studio right panel layout", () => {
     expect(source).not.toContain("const showAnimationProperties =");
     expect(source).toContain('rightPanelTab === "catalog"');
     expect(source).toContain('rightPanelTab === "effects"');
-    expect(source).toContain('<BlocksTab page="effects" onAddBlock={onAddBlock} />');
+    expect(source).toContain('page="effects"');
+    expect(source).toContain("onInsertIllustration={onInsertIllustration}");
     expect(source).not.toContain("<LayersPanel />");
     expect(source).not.toContain("useInspectorSplitResize");
     expect(source).not.toContain('aria-label={t("right.resizePanes")}');
@@ -645,7 +651,9 @@ describe("Studio right panel layout", () => {
     expect(effectsCatalog).toContain('const ILLUSTRATION_SECTION_FILTER = "illustration" as const');
     expect(effectsCatalog).toContain('<option value={ILLUSTRATION_SECTION_FILTER}>');
     expect(effectsCatalog).toContain('data-testid={`catalog-section-${ILLUSTRATION_SECTION_FILTER}`}');
-    expect(effectsCatalog).toContain("<IllustrationEffectsContent />");
+    expect(effectsCatalog).toContain(
+      "<IllustrationEffectsContent onInsert={onInsertIllustration} />",
+    );
     expect(featureFlags).not.toContain("STUDIO_ILLUSTRATION_PANEL_ENABLED");
     expect(panel).not.toContain('rightPanelTab === "illustration"');
     expect(panel).not.toContain('label={t("right.renders")}');
@@ -719,7 +727,7 @@ describe("Studio right panel layout", () => {
     expect(panel).toContain("const BlocksTab = lazy(");
     expect(panel).toContain("const AssetsTab = lazy(");
     expect(effectsCatalog).toContain(
-      "IllustrationEffectsContent,",
+      "IllustrationEffectsContent",
     );
     expect(panel).toContain("<Suspense");
     expect(panel).toContain("key={rightPanelTab}");
@@ -1084,7 +1092,7 @@ describe("Studio right panel layout", () => {
     expect(catalog).toContain('const ILLUSTRATION_SECTION_FILTER = "illustration" as const');
     expect(catalog).toContain('<option value={ILLUSTRATION_SECTION_FILTER}>');
     expect(catalog).toContain("ILLUSTRATION_SKILL_COUNT");
-    expect(catalog).toContain("<IllustrationEffectsContent />");
+    expect(catalog).toContain("<IllustrationEffectsContent onInsert={onInsertIllustration} />");
     expect(catalog).toContain("if (activeSection === ILLUSTRATION_SECTION_FILTER) return [];");
     expect(catalog).toContain('data-testid={`catalog-section-${ILLUSTRATION_SECTION_FILTER}`}');
     expect(catalog).toContain("<CatalogSectionHeader");

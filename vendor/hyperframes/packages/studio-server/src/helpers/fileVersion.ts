@@ -11,7 +11,21 @@ interface StoredReceipt extends FileWriteReceipt {
 }
 
 const RECEIPT_TTL_MS = 10_000;
+const MAX_RECEIPT_PATHS = 512;
 const receipts = new Map<string, StoredReceipt[]>();
+
+function pruneReceipts(now: number): void {
+  for (const [path, entries] of receipts) {
+    const active = entries.filter((entry) => now - entry.recordedAt < RECEIPT_TTL_MS);
+    if (active.length > 0) receipts.set(path, active);
+    else receipts.delete(path);
+  }
+  while (receipts.size > MAX_RECEIPT_PATHS) {
+    const oldest = receipts.keys().next().value;
+    if (oldest === undefined) break;
+    receipts.delete(oldest);
+  }
+}
 
 /** Strong content version used as both the JSON version and HTTP ETag. */
 export function fileContentVersion(content: string): string {
@@ -25,16 +39,20 @@ export function createWriteToken(requestToken?: string): string {
 
 export function recordFileWriteReceipt(absPath: string, receipt: FileWriteReceipt): void {
   const now = Date.now();
+  pruneReceipts(now);
   const current = (receipts.get(absPath) ?? []).filter(
     (entry) => now - entry.recordedAt < RECEIPT_TTL_MS,
   );
   current.push({ ...receipt, recordedAt: now });
+  receipts.delete(absPath);
   receipts.set(absPath, current);
+  pruneReceipts(now);
 }
 
 /** Attach one API write's identity to the corresponding filesystem-watch echo. */
 export function consumeFileWriteReceipt(absPath: string): FileWriteReceipt | null {
   const now = Date.now();
+  pruneReceipts(now);
   const current = (receipts.get(absPath) ?? []).filter(
     (entry) => now - entry.recordedAt < RECEIPT_TTL_MS,
   );

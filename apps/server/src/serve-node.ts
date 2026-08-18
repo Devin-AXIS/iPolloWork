@@ -48,6 +48,23 @@ function endResponse(nodeRes: ServerResponse, chunk?: string): void {
   nodeRes.end(chunk);
 }
 
+function createDisconnectSignal(nodeReq: IncomingMessage, nodeRes: ServerResponse) {
+  const controller = new AbortController();
+  const abort = () => {
+    if (nodeRes.writableFinished || controller.signal.aborted) return;
+    controller.abort(new DOMException("Client disconnected", "AbortError"));
+  };
+  nodeReq.once("aborted", abort);
+  nodeRes.once("close", abort);
+  return {
+    signal: controller.signal,
+    dispose() {
+      nodeReq.off("aborted", abort);
+      nodeRes.off("close", abort);
+    },
+  };
+}
+
 async function waitForDrainOrClose(nodeRes: ServerResponse): Promise<void> {
   if (!isResponseWritable(nodeRes)) return;
 
@@ -79,7 +96,12 @@ async function waitForDrainOrClose(nodeRes: ServerResponse): Promise<void> {
 /**
  * Convert a Node.js IncomingMessage into a Web API Request.
  */
-function toWebRequest(nodeReq: IncomingMessage, hostname: string, port: number): Request {
+function toWebRequest(
+  nodeReq: IncomingMessage,
+  hostname: string,
+  port: number,
+  signal: AbortSignal,
+): Request {
   const url = `http://${hostname}:${port}${nodeReq.url ?? "/"}`;
   const method = nodeReq.method ?? "GET";
   const headers = new Headers();
@@ -106,6 +128,7 @@ function toWebRequest(nodeReq: IncomingMessage, hostname: string, port: number):
     method,
     headers,
     body,
+    signal,
     // @ts-expect-error duplex is required for streaming request bodies in Node
     duplex: hasBody ? "half" : undefined,
   });
@@ -114,7 +137,11 @@ function toWebRequest(nodeReq: IncomingMessage, hostname: string, port: number):
 /**
  * Write a Web API Response to a Node.js ServerResponse.
  */
-async function writeWebResponse(webRes: Response, nodeRes: ServerResponse): Promise<void> {
+async function writeWebResponse(
+  webRes: Response,
+  nodeRes: ServerResponse,
+  disconnectSignal: AbortSignal,
+): Promise<void> {
   const headersObj: Record<string, string | string[]> = {};
   webRes.headers.forEach((value, key) => {
     const existing = headersObj[key];
@@ -135,6 +162,13 @@ async function writeWebResponse(webRes: Response, nodeRes: ServerResponse): Prom
   }
 
   const reader = webRes.body.getReader();
+  let disconnected = disconnectSignal.aborted;
+  const cancelReader = () => {
+    disconnected = true;
+    void reader.cancel(disconnectSignal.reason).catch(() => undefined);
+  };
+  disconnectSignal.addEventListener("abort", cancelReader, { once: true });
+  if (disconnectSignal.aborted) cancelReader();
   try {
     while (true) {
       const { done, value } = await reader.read();
@@ -145,6 +179,10 @@ async function writeWebResponse(webRes: Response, nodeRes: ServerResponse): Prom
       }
     }
   } finally {
+    disconnectSignal.removeEventListener("abort", cancelReader);
+    if (disconnected) {
+      await reader.cancel(disconnectSignal.reason).catch(() => undefined);
+    }
     reader.releaseLock();
     endResponse(nodeRes);
   }
@@ -159,6 +197,7 @@ export function serve(options: ServeOptions): Promise<ServeResult> {
   const { hostname, port, fetch: fetchHandler } = options;
 
   const server = createServer(async (nodeReq, nodeRes) => {
+    const disconnect = createDisconnectSignal(nodeReq, nodeRes);
     nodeRes.on("error", (error) => {
       if (isWriteAfterEndError(error)) {
         console.warn("[serve-node] Ignored response write after end");
@@ -168,9 +207,9 @@ export function serve(options: ServeOptions): Promise<ServeResult> {
     });
 
     try {
-      const webReq = toWebRequest(nodeReq, hostname, boundPort);
+      const webReq = toWebRequest(nodeReq, hostname, boundPort, disconnect.signal);
       const webRes = await fetchHandler(webReq);
-      await writeWebResponse(webRes, nodeRes);
+      await writeWebResponse(webRes, nodeRes, disconnect.signal);
     } catch (error) {
       if (isExpectedConnectionAbort(error)) {
         if (isResponseWritable(nodeRes) && !nodeRes.headersSent) {
@@ -184,6 +223,8 @@ export function serve(options: ServeOptions): Promise<ServeResult> {
         nodeRes.writeHead(500, { "Content-Type": "application/json" });
       }
       endResponse(nodeRes, JSON.stringify({ error: "internal_error" }));
+    } finally {
+      disconnect.dispose();
     }
   });
 

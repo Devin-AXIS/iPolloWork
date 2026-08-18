@@ -17,6 +17,7 @@ import { setCompositionSourceMap } from "../editor/domEditingDom";
 import { ensureMotionPathPluginLoaded } from "../../utils/gsapSoftReload";
 import { readStudioUiPreferences, writeStudioUiPreferences } from "../../utils/studioUiPreferences";
 import { useAssetPreviewStore } from "../../utils/assetPreviewStore";
+import { installEmbeddedHtmlAssetScaling } from "../../utils/studioPreviewHelpers";
 
 // Timeline gets a generous default height so the preview isn't oversized and the
 // tracks have room to breathe (CapCut-style). Users can still drag the divider.
@@ -126,6 +127,13 @@ export function NLEProvider({
 
   const onIframeLoad = useCallback(() => {
     baseOnIframeLoad();
+    let previewDocument: Document | null = null;
+    try {
+      previewDocument = iframeRef.current?.contentDocument ?? null;
+    } catch {
+      // External/cross-origin previews cannot host editable local illustration assets.
+    }
+    if (previewDocument) installEmbeddedHtmlAssetScaling(previewDocument);
     // Pre-load + register MotionPathPlugin once so adding a motion path in the
     // studio doesn't take the async plugin-load flash path on the first soft
     // reload (the comp may not ship the plugin until it actually uses one).

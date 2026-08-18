@@ -26,6 +26,7 @@ const runtimeOpencodeConfigs = sqliteTable("runtime_opencode_configs", {
 type RuntimeOpencodeDb = {
   get: (workspaceId: string) => { configJson: string } | undefined;
   upsert: (value: { workspaceId: string; configJson: string; updatedAt: number }) => void;
+  close: () => void;
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -112,6 +113,7 @@ async function openRuntimeDb(path: string): Promise<RuntimeOpencodeDb> {
           })
           .run();
       },
+      close: () => sqlite.close(),
     };
   }
   const { DatabaseSync } = await importNodeSqlite();
@@ -128,10 +130,20 @@ async function openRuntimeDb(path: string): Promise<RuntimeOpencodeDb> {
     upsert: ({ workspaceId, configJson, updatedAt }) => {
       upsert.run(workspaceId, configJson, updatedAt);
     },
+    close: () => sqlite.close(),
   };
 }
 
 const dbByPath = new Map<string, Promise<RuntimeOpencodeDb>>();
+
+export async function disposeRuntimeOpencodeConfigStore(config: ServerConfig): Promise<void> {
+  const path = runtimeDbPath(config);
+  const pending = dbByPath.get(path);
+  if (!pending) return;
+  dbByPath.delete(path);
+  const db = await pending;
+  db.close();
+}
 
 async function runtimeDb(config: ServerConfig): Promise<RuntimeOpencodeDb> {
   const path = runtimeDbPath(config);

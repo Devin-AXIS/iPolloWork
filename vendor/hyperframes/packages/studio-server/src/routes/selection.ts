@@ -99,6 +99,7 @@ function isSelectionSnapshot(value: unknown): value is StudioSelectionSnapshot {
 
 export function registerSelectionRoutes(api: Hono, adapter: StudioApiAdapter): void {
   const selections = new Map<string, StoredSelection>();
+  const maxSelections = 256;
 
   api.get("/projects/:id/selection", async (c) => {
     const project = await adapter.resolveProject(c.req.param("id"));
@@ -135,7 +136,13 @@ export function registerSelectionRoutes(api: Hono, adapter: StudioApiAdapter): v
 
     const selection = { ...body.selection, projectId: project.id };
     const updatedAt = new Date().toISOString();
+    selections.delete(project.id);
     selections.set(project.id, { selection, updatedAt });
+    while (selections.size > maxSelections) {
+      const oldest = selections.keys().next().value;
+      if (oldest === undefined) break;
+      selections.delete(oldest);
+    }
     return c.json({ ok: true, selection, updatedAt });
   });
 }

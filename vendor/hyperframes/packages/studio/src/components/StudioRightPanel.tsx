@@ -15,6 +15,7 @@ import type { Composition } from "@hyperframes/sdk";
 import type { EditHistoryKind } from "../utils/editHistory";
 import type { UseSlideshowPersistParams } from "../hooks/useSlideshowPersist";
 import type { EffectInsertIntent } from "../utils/blockInstaller";
+import type { IllustrationEffectData, IllustrationEffectId } from "../utils/illustrationEffect";
 
 import { useStudioPlaybackContext, useStudioShellContext } from "../contexts/StudioContext";
 import { usePanelLayoutContext } from "../contexts/PanelLayoutContext";
@@ -110,6 +111,10 @@ export interface StudioRightPanelProps {
   }) => Promise<void>;
   onToggleElementHidden?: ToggleHiddenHandler;
   onAddBlock?: (blockName: string, intent?: EffectInsertIntent) => Promise<boolean>;
+  onInsertIllustration?: (
+    effectId: IllustrationEffectId,
+    data: IllustrationEffectData,
+  ) => Promise<boolean>;
 }
 
 // fallow-ignore-next-line complexity
@@ -128,6 +133,7 @@ export function StudioRightPanel({
   recordEdit,
   onToggleElementHidden,
   onAddBlock,
+  onInsertIllustration,
 }: StudioRightPanelProps) {
   const {
     rightWidth,
@@ -647,7 +653,11 @@ export function StudioRightPanel({
                       onClose={onCloseBlockParams ?? (() => {})}
                     />
                   ) : effectsPanelActive ? (
-                    <BlocksTab page="effects" onAddBlock={onAddBlock} />
+                    <BlocksTab
+                      page="effects"
+                      onAddBlock={onAddBlock}
+                      onInsertIllustration={onInsertIllustration}
+                    />
                   ) : animationPanelActive ? (
                     animationPanel
                   ) : rightPanelTab === "assets" ? (
