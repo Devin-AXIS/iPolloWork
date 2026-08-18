@@ -1,0 +1,59 @@
+{
+  "schemaVersion": 2,
+  "id": "workspace-canvas",
+  "name": "Workspace Canvas",
+  "description": "A minimal MCP App canvas that can be edited by people and agents.",
+  "category": "Productivity & Collaboration",
+  "source": {
+    "format": "ipollowork-extension-manifest",
+    "origin": "local",
+    "trusted": false
+  },
+  "package": {
+    "version": "1.0.0",
+    "publisher": {
+      "id": "ipollowork",
+      "name": "iPolloWork"
+    },
+    "compatibility": {
+      "ipollowork": ">=0.21.0"
+    },
+    "updateId": "ipollowork/workspace-canvas"
+  },
+  "resources": [
+    {
+      "type": "ui",
+      "id": "canvas",
+      "label": "Workspace Canvas",
+      "description": "An editable shared canvas exposed through standard MCP App tools.",
+      "path": "ui/canvas.html",
+      "required": true,
+      "ui": {
+        "uri": "ui://workspace-canvas/canvas",
+        "mimeType": "text/html;profile=mcp-app",
+        "prefersBorder": false
+      }
+    }
+  ],
+  "contributions": [
+    {
+      "type": "workspace-app",
+      "ref": "canvas",
+      "label": "Canvas",
+      "description": "Open the shared canvas in the right workspace."
+    },
+    {
+      "type": "settings-page",
+      "ref": "canvas",
+      "label": "Canvas Settings",
+      "description": "Configure and inspect the same canvas inside Settings."
+    },
+    {
+      "type": "conversation-template",
+      "label": "Plan on a canvas",
+      "description": "Create a visual plan and keep it synchronized with the conversation.",
+      "prompt": "Open the Canvas workspace app and build a concise visual plan for this task.",
+      "mode": "work"
+    }
+  ]
+}

@@ -1,6 +1,6 @@
 /** @jsxImportSource react */
 import type * as React from "react";
-import { ChevronDown, X } from "lucide-react";
+import { ChevronDown, PanelsTopLeft, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -48,7 +48,8 @@ export type SettingsShellProps = SettingsPageFrameProps & {
 };
 
 export function SettingsShell(props: SettingsShellProps) {
-  const title = getSettingsTabLabel(props.activeTab);
+  const activePluginPage = props.pluginPages?.find((page) => page.id === props.activePluginPageId);
+  const title = activePluginPage?.label ?? getSettingsTabLabel(props.activeTab);
 
   if (props.compact) {
     return (
@@ -60,6 +61,9 @@ export function SettingsShell(props: SettingsShellProps) {
                 activeTab={props.activeTab}
                 developerMode={props.developerMode}
                 onSelectTab={props.onSelectTab}
+                pluginPages={props.pluginPages}
+                activePluginPageId={props.activePluginPageId}
+                onSelectPluginPage={props.onSelectPluginPage}
               />
             )}
           </div>
@@ -97,6 +101,9 @@ export function SettingsShell(props: SettingsShellProps) {
           activeTab={props.activeTab}
           onSelectTab={props.onSelectTab}
           developerMode={props.developerMode}
+          pluginPages={props.pluginPages}
+          activePluginPageId={props.activePluginPageId}
+          onSelectPluginPage={props.onSelectPluginPage}
           onClose={props.onClose}
         />
         <SidebarInset className="min-h-0 overflow-hidden bg-background mac:bg-background/80 mac:[&_header]:transition-[padding-left] mac:[&_header]:duration-200 mac:[&_header]:ease-linear mac:peer-data-[state=collapsed]:[&_header]:pl-16 [&_header]:pl-16 md:[&_header]:pl-6">
@@ -147,14 +154,15 @@ export function SettingsShell(props: SettingsShellProps) {
   );
 }
 
-function SettingsSectionMenu(props: Pick<SettingsPageFrameProps, "activeTab" | "developerMode" | "onSelectTab">) {
+function SettingsSectionMenu(props: Pick<SettingsPageFrameProps, "activeTab" | "developerMode" | "onSelectTab" | "pluginPages" | "activePluginPageId" | "onSelectPluginPage">) {
   const { memoryEnabled } = useFeatureFlagsPreferences();
   const sections: Array<{ label: string | null; tabs: SettingsTab[] }> = [
     { label: t("settings.group_workspace"), tabs: getWorkspaceSettingsTabs() },
     { label: t("settings.group_global"), tabs: getGlobalSettingsTabs(props.developerMode) },
     { label: t("settings.group_cloud"), tabs: getCloudSettingsTabs(memoryEnabled) },
   ];
-  const ActiveIcon = getSettingsTabIcon(props.activeTab);
+  const activePluginPage = props.pluginPages?.find((page) => page.id === props.activePluginPageId);
+  const ActiveIcon = activePluginPage ? PanelsTopLeft : getSettingsTabIcon(props.activeTab);
 
   return (
     <DropdownMenu>
@@ -162,8 +170,8 @@ function SettingsSectionMenu(props: Pick<SettingsPageFrameProps, "activeTab" | "
         render={(
           <Button variant="outline" size="sm" className="min-w-0 max-w-46 justify-start gap-2">
             <ActiveIcon className="size-4 shrink-0" />
-            <span className="truncate">{getSettingsTabLabel(props.activeTab)}</span>
-            {isSettingsTabBeta(props.activeTab) ? <SettingsBetaBadge /> : null}
+            <span className="truncate">{activePluginPage?.label ?? getSettingsTabLabel(props.activeTab)}</span>
+            {!activePluginPage && isSettingsTabBeta(props.activeTab) ? <SettingsBetaBadge /> : null}
             <ChevronDown className="ml-auto size-4 shrink-0" />
           </Button>
         )}
@@ -187,6 +195,16 @@ function SettingsSectionMenu(props: Pick<SettingsPageFrameProps, "activeTab" | "
                 </DropdownMenuItem>
               );
             })}
+            {index === 0 ? props.pluginPages?.map((page) => (
+              <DropdownMenuItem
+                key={page.id}
+                onClick={() => props.onSelectPluginPage?.(page.id)}
+                className={props.activePluginPageId === page.id ? "bg-foreground/10 text-accent-foreground" : undefined}
+              >
+                {page.iconSrc ? <img src={page.iconSrc} alt="" className="size-4 rounded-sm object-contain" /> : <PanelsTopLeft />}
+                <span>{page.label}</span>
+              </DropdownMenuItem>
+            )) : null}
           </DropdownMenuGroup>
         ))}
       </DropdownMenuContent>

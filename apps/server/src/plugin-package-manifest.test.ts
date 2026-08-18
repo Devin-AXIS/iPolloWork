@@ -465,4 +465,52 @@ describe("plugin package manifest", () => {
       "relatedSkills.1",
     ]));
   });
+
+  test("accepts standard MCP App UI resources and rejects incomplete UI declarations", async () => {
+    const { validatePluginPackageManifest } = await import("./plugin-package-manifest.js");
+    const manifest = await Bun.file(new URL("../../../examples/plugin-packages/workspace-canvas/ipollowork.plugin.json", import.meta.url)).json();
+
+    const result = validatePluginPackageManifest(manifest);
+
+    expect(result.success).toBe(true);
+    if (!result.success) throw new Error(JSON.stringify(result.issues));
+    expect(result.manifest.resources[0]).toMatchObject({
+      type: "ui",
+      path: "ui/canvas.html",
+      ui: { uri: "ui://workspace-canvas/canvas", mimeType: "text/html;profile=mcp-app" },
+    });
+    expect(result.manifest.contributions?.map((contribution) => contribution.type)).toEqual([
+      "workspace-app",
+      "settings-page",
+      "conversation-template",
+    ]);
+
+    const invalid = validatePluginPackageManifest({
+      ...manifest,
+      resources: [{ type: "ui", id: "canvas", path: "ui/canvas.js" }],
+    });
+    expect(invalid.success).toBe(false);
+    if (invalid.success) throw new Error("Expected incomplete UI metadata to be rejected");
+    expect(invalid.issues.map((issue) => issue.path)).toEqual(expect.arrayContaining([
+      "resources.0.path",
+      "resources.0.ui",
+    ]));
+
+    const undeclaredNetwork = validatePluginPackageManifest({
+      ...manifest,
+      resources: [{
+        ...manifest.resources[0],
+        ui: {
+          ...manifest.resources[0].ui,
+          csp: { connectDomains: ["https://api.example.com"] },
+        },
+      }],
+    });
+    expect(undeclaredNetwork.success).toBe(false);
+    if (undeclaredNetwork.success) throw new Error("Expected undeclared UI network access to be rejected");
+    expect(undeclaredNetwork.issues).toContainEqual({
+      path: "resources.0.ui.csp",
+      message: "requires the network package permission",
+    });
+  });
 });

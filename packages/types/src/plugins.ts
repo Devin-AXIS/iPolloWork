@@ -8,13 +8,18 @@ const SIMPLE_ID_RE = /^[a-z0-9]+(?:[._-][a-z0-9]+)*$/;
 const FIELD_ID_RE = /^[A-Za-z][A-Za-z0-9._-]*$/;
 const ENV_KEY_RE = /^[A-Za-z_][A-Za-z0-9_]*$/;
 const RELATION_RE = /^(?:action|authorization|resource|service|workflow):[a-z0-9]+(?:[._/-][a-z0-9]+)*$/;
+const UI_URI_RE = /^ui:\/\/[a-z0-9]+(?:[._/-][a-z0-9]+)*$/;
+const CSP_SOURCE_RE = /^(?:https:\/\/(?:\*\.)?[A-Za-z0-9.-]+(?::\d+)?|http:\/\/(?:localhost|127\.0\.0\.1|\[::1\])(?::\d+)?)$/;
 const RESERVED_EXTENSION_IDS = new Set(["google-workspace", "media-center", "openai-image-generation", "storage"]);
+export const PLUGIN_UI_RESOURCE_MIME_TYPE = "text/html;profile=mcp-app";
+export const PLUGIN_UI_HOST_CONTEXT_KEY = "ai.ipollo/workspace";
 const PORTABLE_RESOURCE_DIRECTORIES: Record<string, string> = {
   skill: "skills/",
   agent: "agents/",
   command: "commands/",
   mcp: "mcp/",
   "local-service": "service/",
+  ui: "ui/",
 };
 
 const sourceFormatSchema = z.enum([
@@ -39,6 +44,7 @@ const resourceTypeSchema = z.enum([
   "file",
   "local-service",
   "native-binary",
+  "ui",
 ]);
 
 const permissionIdSchema = z.enum([
@@ -50,6 +56,7 @@ const permissionIdSchema = z.enum([
   "notifications",
   "camera",
   "microphone",
+  "geolocation",
 ]);
 
 const reloadReasonSchema = z.enum(["plugins", "skills", "mcp", "config", "agents", "commands"]);
@@ -63,6 +70,9 @@ const contributionTypeSchema = z.enum([
   "server-route",
   "native-capability",
   "test-action",
+  "workspace-app",
+  "settings-page",
+  "conversation-template",
 ]);
 const enablementConditionTypeSchema = z.enum([
   "mcp-connected",
@@ -102,6 +112,24 @@ const serviceActionSchema = z.object({
 
 const relationSchema = z.string().regex(RELATION_RE, "must use kind:id syntax");
 
+const uiResourceMetadataSchema = z.object({
+  uri: z.string().regex(UI_URI_RE, "must use a ui:// URI"),
+  mimeType: z.literal(PLUGIN_UI_RESOURCE_MIME_TYPE),
+  csp: z.object({
+    connectDomains: z.array(z.string().regex(CSP_SOURCE_RE)).optional(),
+    resourceDomains: z.array(z.string().regex(CSP_SOURCE_RE)).optional(),
+    frameDomains: z.array(z.string().regex(CSP_SOURCE_RE)).optional(),
+    baseUriDomains: z.array(z.string().regex(CSP_SOURCE_RE)).optional(),
+  }).strict().optional(),
+  permissions: z.object({
+    camera: z.object({}).strict().optional(),
+    microphone: z.object({}).strict().optional(),
+    geolocation: z.object({}).strict().optional(),
+    clipboardWrite: z.object({}).strict().optional(),
+  }).strict().optional(),
+  prefersBorder: z.boolean().optional(),
+}).strict();
+
 const resourceSchema = z.object({
   type: resourceTypeSchema,
   id: z.string().min(1),
@@ -120,6 +148,7 @@ const resourceSchema = z.object({
   requires: z.array(relationSchema).optional(),
   provides: z.array(relationSchema).optional(),
   required: z.boolean().optional(),
+  ui: uiResourceMetadataSchema.optional(),
 }).strict();
 
 const secretFieldSchema = z.object({
@@ -224,6 +253,8 @@ const contributionSchema = z.object({
   description: z.string().optional(),
   prompt: z.string().optional(),
   location: z.enum(["settings-detail", "composer", "session-right-pane", "session-rail", "server", "native"]).optional(),
+  action: z.string().regex(SIMPLE_ID_RE).optional(),
+  mode: z.enum(["work", "code", "design", "video"]).optional(),
 }).strict();
 
 const setupSchema = z.object({
@@ -345,6 +376,7 @@ const manifestSchema = z.object({
     context.addIssue({ code: "custom", path: ["package", "engines"], message: "engine IDs must be unique" });
   }
 
+  const permissionIds = new Set<string>(manifest.permissions?.map((permission) => permission.id) ?? []);
   const resourceIds = new Set<string>();
   manifest.resources.forEach((resource, index) => {
     if (resourceIds.has(resource.id)) {
@@ -357,6 +389,49 @@ const manifestSchema = z.object({
     }
     if (resource.type === "mcp" && resource.path && !resource.path.endsWith(".json")) {
       context.addIssue({ code: "custom", path: ["resources", index, "path"], message: "must be a JSON file" });
+    }
+    if (resource.type === "ui") {
+      if (!resource.path) {
+        context.addIssue({ code: "custom", path: ["resources", index, "path"], message: "is required for UI resources" });
+      } else if (!resource.path.endsWith(".html")) {
+        context.addIssue({ code: "custom", path: ["resources", index, "path"], message: "must be an HTML file" });
+      }
+      if (!resource.ui) {
+        context.addIssue({ code: "custom", path: ["resources", index, "ui"], message: "is required for UI resources" });
+      } else {
+        const csp = resource.ui.csp;
+        const requestsNetwork = [csp?.connectDomains, csp?.resourceDomains, csp?.frameDomains, csp?.baseUriDomains]
+          .some((domains) => Boolean(domains?.length));
+        if (requestsNetwork && !permissionIds.has("network")) {
+          context.addIssue({ code: "custom", path: ["resources", index, "ui", "csp"], message: "requires the network package permission" });
+        }
+        const permissionMap = {
+          camera: "camera",
+          microphone: "microphone",
+          geolocation: "geolocation",
+          clipboardWrite: "clipboard",
+        } as const;
+        Object.entries(permissionMap).forEach(([uiPermission, packagePermission]) => {
+          if (resource.ui?.permissions?.[uiPermission as keyof typeof permissionMap] && !permissionIds.has(packagePermission)) {
+            context.addIssue({ code: "custom", path: ["resources", index, "ui", "permissions", uiPermission], message: `requires the ${packagePermission} package permission` });
+          }
+        });
+      }
+    } else if (resource.ui) {
+      context.addIssue({ code: "custom", path: ["resources", index, "ui"], message: "is only supported by UI resources" });
+    }
+  });
+
+  manifest.contributions?.forEach((contribution, index) => {
+    if (contribution.type === "workspace-app" || contribution.type === "settings-page") {
+      if (!contribution.ref) {
+        context.addIssue({ code: "custom", path: ["contributions", index, "ref"], message: "is required for UI contributions" });
+      } else if (!manifest.resources.some((resource) => resource.id === contribution.ref && resource.type === "ui")) {
+        context.addIssue({ code: "custom", path: ["contributions", index, "ref"], message: "must reference a UI resource" });
+      }
+    }
+    if (contribution.type === "conversation-template" && !contribution.prompt?.trim()) {
+      context.addIssue({ code: "custom", path: ["contributions", index, "prompt"], message: "is required for conversation templates" });
     }
   });
 
@@ -401,7 +476,6 @@ const manifestSchema = z.object({
     methodIds.add(method.id);
   });
 
-  const permissionIds: Set<string> = new Set(manifest.permissions?.map((permission) => permission.id) ?? []);
   const methodsById = new Map(manifest.authorization?.methods.map((method) => [method.id, method]) ?? []);
   Object.entries(manifest.localization?.translations ?? {}).forEach(([locale, translation]) => {
     Object.keys(translation.resources ?? {}).forEach((resourceId) => {
@@ -490,6 +564,20 @@ export type PluginReloadReason = z.infer<typeof reloadReasonSchema>;
 export type PluginSourceFormat = z.infer<typeof sourceFormatSchema>;
 export type PluginSource = PluginManifest["source"];
 export type PluginResource = PluginManifest["resources"][number];
+export type PluginUiResource = PluginResource & {
+  type: "ui";
+  path: string;
+  ui: z.infer<typeof uiResourceMetadataSchema>;
+};
+export type PluginUiHostContextV1 = {
+  schemaVersion: 1;
+  pluginId: string;
+  resourceId: string;
+  surface: "workspace" | "settings";
+  workspaceId: string;
+  workspaceRoot: string;
+  sessionId: string | null;
+};
 export type PluginResourceType = PluginResource["type"];
 export type PluginContribution = NonNullable<PluginManifest["contributions"]>[number];
 export type PluginContributionType = PluginContribution["type"];

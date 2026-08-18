@@ -306,6 +306,17 @@ export type iPolloWorkPluginPackageItem = {
   integrity: { sha256: string; status: "verified" | "unsigned" };
 };
 
+export type iPolloWorkPluginUiResource = {
+  pluginId: string;
+  version: string;
+  resource: iPolloWorkExtensionManifest["resources"][number] & {
+    type: "ui";
+    path: string;
+    ui: NonNullable<iPolloWorkExtensionManifest["resources"][number]["ui"]>;
+  };
+  html: string;
+};
+
 export type iPolloWorkPluginPackagePreview = {
   manifest: iPolloWorkExtensionManifest;
   files: Array<{ path: string; sha256: string }>;
@@ -318,7 +329,7 @@ export type iPolloWorkPluginPackageImportSafety =
   | {
       level: "declarative";
       localCode: false;
-      allowedResourceTypes: Array<"skill" | "agent" | "command" | "file" | "mcp">;
+      allowedResourceTypes: Array<"skill" | "agent" | "command" | "file" | "mcp" | "ui">;
     }
   | {
       level: "signed";
@@ -1557,6 +1568,12 @@ export function createiPolloWorkServerClient(options: { baseUrl: string; token?:
         hostToken,
         timeoutMs: timeouts.config,
       }),
+    getPluginPackageUiResource: (workspaceId: string, pluginId: string, resourceId: string) =>
+      requestJson<iPolloWorkPluginUiResource>(
+        baseUrl,
+        `/workspace/${encodeURIComponent(workspaceId)}/plugin-packages/${encodeURIComponent(pluginId)}/ui/${encodeURIComponent(resourceId)}`,
+        { token, hostToken, timeoutMs: timeouts.config },
+      ),
     listBundledPluginPackages: (workspaceId: string) =>
       requestJson<{ items: iPolloWorkBundledPluginPackageItem[] }>(baseUrl, `/workspace/${encodeURIComponent(workspaceId)}/plugin-packages/catalog`, {
         token,

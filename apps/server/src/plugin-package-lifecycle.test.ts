@@ -362,6 +362,41 @@ describe("plugin package lifecycle", () => {
     expect(preview.writes.some((entry) => entry.path === ".opencode/mcps/figma.json")).toBe(false);
   });
 
+  test("installs and serves an enabled Workspace App from immutable package artifacts", async () => {
+    const lifecycle = await import("./plugin-package-lifecycle.js");
+    const workspaceRoot = await createRoot("ipollowork-workspace-app-");
+    const packageRoot = fileURLToPath(new URL("../../../examples/plugin-packages/workspace-canvas", import.meta.url));
+    const config = serverConfig(workspaceRoot);
+    process.env.IPOLLOWORK_RUNTIME_DB = join(workspaceRoot, "runtime.sqlite");
+
+    await lifecycle.installPluginPackage({
+      serverConfig: config,
+      workspaceId: WORKSPACE_ID,
+      packageRoot,
+      workspaceRoot,
+    });
+    const resource = await lifecycle.readInstalledPluginUiResource({
+      serverConfig: config,
+      pluginId: "workspace-canvas",
+      resourceId: "canvas",
+    });
+
+    expect(resource.resource.ui.uri).toBe("ui://workspace-canvas/canvas");
+    expect(resource.html).toContain("Workspace Canvas");
+    await lifecycle.setPluginPackageEnabled({
+      serverConfig: config,
+      workspaceId: WORKSPACE_ID,
+      pluginId: "workspace-canvas",
+      workspaceRoot,
+      enabled: false,
+    });
+    await expect(lifecycle.readInstalledPluginUiResource({
+      serverConfig: config,
+      pluginId: "workspace-canvas",
+      resourceId: "canvas",
+    })).rejects.toMatchObject({ code: "plugin_package_disabled" });
+  });
+
   test("expands directory resources into owned files without duplicates", async () => {
     const lifecycle = await import("./plugin-package-lifecycle.js");
     const workspaceRoot = await createRoot("ipollowork-plugin-directory-workspace-");

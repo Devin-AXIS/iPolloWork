@@ -13,6 +13,7 @@ acme-research/
 ├── ipollowork.plugin.json
 ├── service/acme-research.ts
 ├── skills/acme-research/SKILL.md
+├── ui/canvas.html
 └── engines/opencode/plugins/acme-research.ts
 ```
 
@@ -133,6 +134,41 @@ Package versions use semantic versions. A published version is immutable: changi
 
 Omit `package.engines` for a portable package. Set it when the package requires one of the listed engines. Portable skills, agents, commands, MCP definitions, and services stay under `skills/`, `agents/`, `commands/`, `mcp/`, and `service/`. `engineBindings` contains optional native enhancements under `engines/<engine>/` plus their engine-version ranges. The active adapter projects portable capabilities into its own runtime layout; package authors never write engine runtime paths directly.
 
+## Workspace Apps
+
+Interactive plugin UI uses the [MCP Apps protocol](https://github.com/modelcontextprotocol/ext-apps), not a separate iPolloWork message format. A `ui` resource owns one static HTML entry under `ui/`, declares the standard `ui://` URI and `text/html;profile=mcp-app` MIME type, and can be contributed to the right workspace or Settings:
+
+```json
+{
+  "resources": [{
+    "type": "ui",
+    "id": "canvas",
+    "path": "ui/canvas.html",
+    "ui": {
+      "uri": "ui://workspace-canvas/canvas",
+      "mimeType": "text/html;profile=mcp-app",
+      "prefersBorder": false
+    }
+  }],
+  "contributions": [
+    { "type": "workspace-app", "ref": "canvas", "label": "Canvas" },
+    { "type": "settings-page", "ref": "canvas", "label": "Canvas Settings" },
+    {
+      "type": "conversation-template",
+      "label": "Plan on a canvas",
+      "prompt": "Build a visual plan for this task.",
+      "mode": "work"
+    }
+  ]
+}
+```
+
+The host loads the installed immutable artifact in a script-only sandbox, applies the resource CSP and permission policy, and speaks MCP Apps JSON-RPC over `postMessage`. Standard `ui/message` and `ui/update-model-context` requests connect the surface to the current conversation. A view can expose standard `tools/list` and `tools/call` handlers; iPolloWork publishes those view tools to the active agent as `workspace_app.list_tools` and `workspace_app.call_tool`, so AI and direct manipulation edit the same surface. A view can also call the package's declared local-service actions through standard server `tools/call` requests.
+
+iPolloWork adds only the versioned `ai.ipollo/workspace` host-context field with the current plugin, resource, surface, workspace, root, and session IDs. Apps that ignore this optional field remain standard MCP Apps. Network, frames, camera, microphone, geolocation, and clipboard-write are denied unless the UI resource explicitly declares and the host grants them.
+
+See [`examples/plugin-packages/workspace-canvas`](../examples/plugin-packages/workspace-canvas) for a framework-free example that contributes one editable right-side canvas, one Settings page, one conversation template, and two agent-callable canvas tools. The package is engine-neutral and uses the same install, enable, update, rollback, and uninstall lifecycle as every other capability bundle.
+
 ## Authorization methods
 
 A plugin can declare several choices. The settings UI renders all fields itself; third-party React code is not loaded there.
@@ -199,6 +235,7 @@ POST   /workspace/:id/plugin-packages
 POST   /workspace/:id/plugin-packages/:pluginId/update
 POST   /workspace/:id/plugin-packages/:pluginId/rollback
 PATCH  /workspace/:id/plugin-packages/:pluginId
+GET    /workspace/:id/plugin-packages/:pluginId/ui/:resourceId
 DELETE /workspace/:id/plugin-packages/:pluginId
 ```
 

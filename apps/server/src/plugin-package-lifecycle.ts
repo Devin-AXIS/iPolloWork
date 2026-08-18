@@ -14,7 +14,7 @@ import {
   type PluginEngineVersion,
   type PluginWorkspaceFile,
 } from "./plugin-engine-adapter.js";
-import { parsePluginPackageManifest, type PluginPackageManifest } from "./plugin-package-manifest.js";
+import { parsePluginPackageManifest, type PluginPackageManifest, type PluginResource } from "./plugin-package-manifest.js";
 import { runtimeStorageDir } from "./runtime-opencode-config-store.js";
 import { DEFAULT_ENGINE_ID, type ServerConfig } from "./types.js";
 import serverPackage from "../package.json" with { type: "json" };
@@ -38,6 +38,7 @@ const CURRENT_RESOURCE_KEYS = [
   "requires",
   "provides",
   "required",
+  "ui",
 ] as const;
 const TRUSTED_IMPORT_PUBLISHER_KEYS = new Map([
   [
@@ -105,7 +106,7 @@ export type PluginPackageImportSafety =
   | {
       level: "declarative";
       localCode: false;
-      allowedResourceTypes: Array<"skill" | "agent" | "command" | "file" | "mcp">;
+      allowedResourceTypes: Array<"skill" | "agent" | "command" | "file" | "mcp" | "ui">;
     }
   | {
       level: "signed";
@@ -134,6 +135,17 @@ export type InstalledPluginService = {
   manifest: PluginPackageManifest;
   version: string;
   modulePath: string;
+};
+
+export type InstalledPluginUiResource = {
+  pluginId: string;
+  version: string;
+  resource: PluginResource & {
+    type: "ui";
+    path: string;
+    ui: NonNullable<PluginResource["ui"]>;
+  };
+  html: string;
 };
 
 function emptyState(): LifecycleState {
@@ -910,7 +922,7 @@ export async function previewPluginPackage(input: { packageRoot: string; workspa
   return { manifest, files, writes, integrity: integrityForManifest(manifest, files, sourceManifest) };
 }
 
-const SAFE_IMPORT_RESOURCE_TYPES = new Set(["skill", "agent", "command", "file", "mcp"]);
+const SAFE_IMPORT_RESOURCE_TYPES = new Set(["skill", "agent", "command", "file", "mcp", "ui"]);
 
 function hasExecutableCapabilities(manifest: PluginPackageManifest): boolean {
   return manifest.resources.some((resource) => resource.type === "local-service" && Boolean(resource.path))
@@ -958,6 +970,7 @@ function safeImportResourcePath(type: string, path: string): boolean {
   if (type === "agent") return path.startsWith("agents/");
   if (type === "command") return path.startsWith("commands/");
   if (type === "mcp") return path.startsWith("mcp/") && path.endsWith(".json");
+  if (type === "ui") return path.startsWith("ui/") && path.endsWith(".html");
   return type === "file" && ["skills/", "agents/", "commands/"]
     .some((prefix) => path.startsWith(prefix));
 }
@@ -1038,7 +1051,7 @@ export async function assertPluginPackageSafeForImport(input: {
   return {
     level: "declarative",
     localCode: false,
-    allowedResourceTypes: ["skill", "agent", "command", "file", "mcp"],
+    allowedResourceTypes: ["skill", "agent", "command", "file", "mcp", "ui"],
   };
 }
 
@@ -1059,6 +1072,40 @@ export async function listInstalledPluginPackages(input: { serverConfig: ServerC
       integrity: integrityForManifest(manifest, version.files, version.manifest),
     };
   }).sort((left, right) => left.name.localeCompare(right.name));
+}
+
+export async function readInstalledPluginUiResource(input: {
+  serverConfig: ServerConfig;
+  pluginId: string;
+  resourceId: string;
+}): Promise<InstalledPluginUiResource> {
+  const state = await readState(input.serverConfig);
+  const installed = state.packages[input.pluginId];
+  if (!installed) throw new ApiError(404, "plugin_package_not_installed", "Plugin package is not installed");
+  if (!installed.enabled) throw new ApiError(409, "plugin_package_disabled", "Plugin package is disabled");
+  if (installed.disabledResourceIds.includes(input.resourceId)) {
+    throw new ApiError(409, "plugin_resource_disabled", "Plugin UI resource is disabled");
+  }
+  const version = installed.versions[installed.currentVersion];
+  if (!version) throw new ApiError(500, "plugin_package_state_invalid", "Installed package version is missing");
+  const manifest = manifestFromVersion(version);
+  const resource = manifest.resources.find((entry) => entry.id === input.resourceId && entry.type === "ui");
+  if (!resource?.path || !resource.ui) {
+    throw new ApiError(404, "plugin_ui_resource_not_found", "Plugin UI resource was not found");
+  }
+  if (!version.files.some((file) => file.path === resource.path)) {
+    throw new ApiError(500, "plugin_package_state_invalid", "Plugin UI resource file is missing from the installed package");
+  }
+  const html = await readFile(resolveWithin(artifactRoot(input.serverConfig, input.pluginId, version.version), resource.path), "utf8");
+  if (Buffer.byteLength(html, "utf8") > 5 * 1024 * 1024) {
+    throw new ApiError(413, "plugin_ui_resource_too_large", "Plugin UI resource exceeds the 5MB limit");
+  }
+  return {
+    pluginId: input.pluginId,
+    version: version.version,
+    resource: resource as InstalledPluginUiResource["resource"],
+    html,
+  };
 }
 
 async function reconcilePackageProjection(
