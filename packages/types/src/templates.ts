@@ -150,6 +150,7 @@ const CUSTOMER_VISIBLE_CURATED_CATEGORY_TEMPLATE_IDS = new Set([
   "ipollowork.html-anything.motion-frames",
   "ipollowork.hyperframes.permission-vault",
   "ipollowork.hyperframes.code-explainer",
+  "ipollowork.pptx-ipollo-vi-enterprise",
   "ipollowork.pptx-brand-narrative",
   "ipollowork.html-anything.deck-blueprint",
   "ipollowork.html-anything.deck-xhs-pastel",

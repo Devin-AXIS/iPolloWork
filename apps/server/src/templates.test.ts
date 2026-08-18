@@ -785,6 +785,7 @@ describe("template installations", () => {
     expect(first.every((item) => item.installed)).toBe(true);
     expect(first.some((item) => item.manifest.id === "ipollowork.saas-landing")).toBe(false);
     expect(first.some((item) => item.manifest.id === "ipollowork.pptx-northstar-strategy")).toBe(false);
+    expect(first.some((item) => item.manifest.id === "ipollowork.pptx-ipollo-vi-enterprise")).toBe(true);
     expect(first.some((item) => item.manifest.id === "ipollowork.app-calm-mobile")).toBe(true);
     expect(first.some((item) => item.manifest.id === "ipollowork.html-anything.social-carousel")).toBe(true);
     expect(first.some((item) => item.manifest.id === "ipollowork.html-anything.data-report")).toBe(true);
