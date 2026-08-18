@@ -220,4 +220,4 @@ iPolloWork uses the **iPolloWork Source Available License 1.0**:
 - The iPolloWork name, logo, and product attribution must remain visible in user-facing frontend displays unless prior written authorization expressly permits different branding.
 - Separately licensed third-party components and code previously released under MIT retain their original licenses and existing rights.
 
-See `LICENSE` for the controlling terms and `LICENSES/MIT-legacy.txt` for the historical MIT notice. This is a source-available license, not an OSI-approved open-source license.
+See `LICENSE` for the controlling terms and `LICENSES/MIT.txt` for the historical MIT notice. This is a source-available license, not an OSI-approved open-source license.
