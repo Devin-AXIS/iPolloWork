@@ -253,9 +253,16 @@ describe("plugin package lifecycle", () => {
         headers: { Authorization: `Bearer ${config.token}` },
       });
       expect(response.status).toBe(200);
-      expect(await response.json()).toMatchObject({
-        items: [{ pluginId: "acme-research", manifest: { authorization: { methods: [{ connectionId: "acme-research" }] } } }],
-      });
+      expect((await response.json()).items).toEqual(expect.arrayContaining([
+        expect.objectContaining({
+          pluginId: "acme-research",
+          manifest: expect.objectContaining({
+            authorization: expect.objectContaining({
+              methods: expect.arrayContaining([expect.objectContaining({ connectionId: "acme-research" })]),
+            }),
+          }),
+        }),
+      ]));
     } finally {
       await server.stop();
     }
@@ -264,7 +271,7 @@ describe("plugin package lifecycle", () => {
       ?.manifest.authorization?.methods[0]?.connectionId).toBe("acme-research");
     const lifecycleRoot = join(workspaceRoot, "plugin-packages");
     expect(JSON.parse(await readFile(join(lifecycleRoot, "state.json"), "utf8"))).toMatchObject({
-      schemaVersion: 2,
+      schemaVersion: 3,
       packages: { "acme-research": { versions: { "1.0.0": { manifest: { authorization: { methods: [{ connectionId: "acme-research" }] } } } } } },
     });
     expect(JSON.parse(await readFile(join(lifecycleRoot, "artifacts", "acme-research", "1.0.0", "ipollowork.plugin.json"), "utf8"))).toMatchObject({
@@ -750,13 +757,16 @@ describe("plugin package lifecycle", () => {
         headers: { authorization: `Bearer ${config.token}` },
       });
       expect(response.status).toBe(200);
-      expect(await response.json()).toMatchObject({ items: [{ pluginId: "acme-research", version: "1.0.0" }] });
+      expect((await response.json()).items).toEqual(expect.arrayContaining([
+        expect.objectContaining({ pluginId: "acme-research", version: "1.0.0" }),
+      ]));
       expect(await readFile(join(deepSeekRoot, ".dsh", "skills", "acme-research", "SKILL.md"), "utf8"))
         .toBe("# Acme Research\n");
       await lifecycle.uninstallPluginPackage({ serverConfig: config, pluginId: "acme-research" });
       await expectMissing(join(openCodeRoot, ".opencode", "skills", "acme-research", "SKILL.md"));
       await expectMissing(join(deepSeekRoot, ".dsh", "skills", "acme-research", "SKILL.md"));
-      expect(await lifecycle.listInstalledPluginPackages({ serverConfig: config })).toEqual([]);
+      expect((await lifecycle.listInstalledPluginPackages({ serverConfig: config })).map((item) => item.pluginId))
+        .not.toContain("acme-research");
     } finally {
       await server.stop();
     }
@@ -907,7 +917,8 @@ describe("plugin package lifecycle", () => {
 
       const removal = await fetch(`${base}/workspace/${WORKSPACE_ID}/plugin-packages/acme-research`, { method: "DELETE", headers });
       expect(removal.status).toBe(200);
-      expect(await (await fetch(`${base}/workspace/${WORKSPACE_ID}/plugin-packages`, { headers })).json()).toEqual({ items: [] });
+      const remaining = await (await fetch(`${base}/workspace/${WORKSPACE_ID}/plugin-packages`, { headers })).json();
+      expect(remaining.items.map((item: { pluginId: string }) => item.pluginId)).not.toContain("acme-research");
     } finally {
       await server.stop();
     }
@@ -1072,8 +1083,8 @@ describe("plugin package lifecycle", () => {
           { pluginId: "context7", version: "1.0.2", installedVersion: null, updateAvailable: false },
           { pluginId: "github", version: "0.1.2", installedVersion: null, updateAvailable: false },
           { pluginId: "wechat-official", version: "0.1.2", installedVersion: null, updateAvailable: false },
-          { pluginId: "design-agent", version: "0.1.2", installedVersion: null, updateAvailable: false },
-          { pluginId: "video-agent", version: "0.1.3", installedVersion: null, updateAvailable: false },
+          { pluginId: "design-agent", version: "0.2.0", installedVersion: "0.2.0", updateAvailable: false },
+          { pluginId: "video-agent", version: "0.2.0", installedVersion: "0.2.0", updateAvailable: false },
           { pluginId: "deepseek-harness", version: "0.3.5", installedVersion: null, updateAvailable: false },
         ],
       });
@@ -1242,7 +1253,7 @@ describe("plugin package lifecycle", () => {
     }
   });
 
-  test("manages creative Agent skills without touching projects or related global skills", async () => {
+  test("installs and removes creative workspace packages without touching projects or related global skills", async () => {
     const workspaceRoot = await createRoot("ipollowork-creative-agent-catalog-api-");
     process.env.IPOLLOWORK_RUNTIME_DB = join(workspaceRoot, "runtime.sqlite");
     const designDirectory = join(workspaceRoot, "design", "existing-session");
@@ -1264,28 +1275,29 @@ describe("plugin package lifecycle", () => {
     const packages = [
       {
         pluginId: "design-agent",
-        version: "0.1.2",
+        version: "0.2.0",
         skillPath: join(workspaceRoot, ".opencode", "skills", "ipollowork-design-studio", "SKILL.md"),
         heading: "# iPolloWork Design Studio",
       },
       {
         pluginId: "video-agent",
-        version: "0.1.3",
+        version: "0.2.0",
         skillPath: join(workspaceRoot, ".opencode", "skills", "ipollowork-video-studio", "SKILL.md"),
         heading: "# iPolloWork Video Studio",
       },
     ];
 
     try {
+      const defaults = await fetch(`${base}/workspace/${WORKSPACE_ID}/plugin-packages`, { headers });
+      expect(defaults.status).toBe(200);
+      expect((await defaults.json()).items).toEqual(expect.arrayContaining(
+        packages.map((item) => expect.objectContaining({
+          pluginId: item.pluginId,
+          version: item.version,
+          enabled: true,
+        })),
+      ));
       for (const item of packages) {
-        const installation = await fetch(`${base}/workspace/${WORKSPACE_ID}/plugin-packages/catalog/${item.pluginId}/install`, {
-          method: "POST",
-          headers,
-        });
-        expect(installation.status).toBe(200);
-        expect(await installation.json()).toMatchObject({
-          result: { status: "installed", pluginId: item.pluginId, version: item.version },
-        });
         expect(await readFile(item.skillPath, "utf8")).toContain(item.heading);
       }
 
@@ -1312,6 +1324,23 @@ describe("plugin package lifecycle", () => {
         });
         expect(removal.status).toBe(200);
         await expectMissing(item.skillPath);
+      }
+
+      const afterRemoval = await fetch(`${base}/workspace/${WORKSPACE_ID}/plugin-packages`, { headers });
+      expect(afterRemoval.status).toBe(200);
+      expect((await afterRemoval.json()).items.map((item: { pluginId: string }) => item.pluginId))
+        .not.toEqual(expect.arrayContaining(packages.map((item) => item.pluginId)));
+
+      for (const item of packages) {
+        const installation = await fetch(`${base}/workspace/${WORKSPACE_ID}/plugin-packages/catalog/${item.pluginId}/install`, {
+          method: "POST",
+          headers,
+        });
+        expect(installation.status).toBe(200);
+        expect(await installation.json()).toMatchObject({
+          result: { status: "installed", pluginId: item.pluginId, version: item.version },
+        });
+        expect(await readFile(item.skillPath, "utf8")).toContain(item.heading);
       }
 
       expect(await readFile(designEntry, "utf8")).toBe("<main>Existing design</main>\n");
