@@ -656,6 +656,13 @@ export function createWorkspaceStore({ app, defaultDenBaseUrl, defaultRequireSig
     return path.join(os.homedir(), "iPolloWork");
   }
 
+  function managedProjectWorkspaceDir() {
+    if (process.env.IPOLLOWORK_DEV_MODE === "1") {
+      return path.join(app.getPath("userData"), "ipollowork-dev-data", "home", ".ipollowork", "projects");
+    }
+    return path.join(os.homedir(), ".ipollowork", "projects");
+  }
+
   // True first run: create the default "iPolloWork" workspace under the user's
   // home directory so the renderer lands directly in a ready workspace — no
   // folder picker, no empty state. Cross-platform (os.homedir + path.join).
@@ -1046,8 +1053,9 @@ export function createWorkspaceStore({ app, defaultDenBaseUrl, defaultRequireSig
 
   async function createWorkspace(input = {}) {
     const rawFolderPath = String(input.folderPath ?? "").trim();
-    if (!rawFolderPath) throw new Error("folderPath is required");
-    const folderPath = await normalizeLocalWorkspacePath(rawFolderPath);
+    const folderPath = rawFolderPath
+      ? await normalizeLocalWorkspacePath(rawFolderPath)
+      : path.join(managedProjectWorkspaceDir(), randomBytes(12).toString("hex"));
     const folderPathKey = normalizeWorkspacePathKey(folderPath);
 
     return mutateWorkspaceState(async (state) => {
@@ -1062,20 +1070,21 @@ export function createWorkspaceStore({ app, defaultDenBaseUrl, defaultRequireSig
       }
 
       await mkdir(folderPath, { recursive: true });
+      const materializedFolderPath = await normalizeLocalWorkspacePath(folderPath);
       const preset = String(input.preset ?? "starter");
       const workspace = normalizeWorkspaceEntry({
-        id: localWorkspaceId(folderPath),
-        name: String(input.name ?? (path.basename(folderPath) || "Workspace")),
-        displayName: String(input.name ?? (path.basename(folderPath) || "Workspace")),
-        path: folderPath,
+        id: localWorkspaceId(materializedFolderPath),
+        name: String(input.name ?? (path.basename(materializedFolderPath) || "Workspace")),
+        displayName: String(input.name ?? (path.basename(materializedFolderPath) || "Workspace")),
+        path: materializedFolderPath,
         preset,
         workContextId: input.workContextId,
         workspaceType: "local",
         engineId: input.engineId,
       });
       if (workspace.engineId === "opencode") {
-        await mkdir(path.join(folderPath, ".opencode"), { recursive: true });
-        await writeWorkspaceiPolloWorkConfig(folderPath, defaultWorkspaceiPolloWorkConfig(folderPath, preset));
+        await mkdir(path.join(materializedFolderPath, ".opencode"), { recursive: true });
+        await writeWorkspaceiPolloWorkConfig(materializedFolderPath, defaultWorkspaceiPolloWorkConfig(materializedFolderPath, preset));
       }
 
       state.workspaces.push(workspace);

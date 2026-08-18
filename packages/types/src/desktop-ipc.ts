@@ -305,7 +305,7 @@ export type DesktopFetchResult = {
 };
 
 export type WorkspaceCreateInput = {
-  folderPath: string;
+  folderPath?: string | null;
   name?: string | null;
   preset?: string | null;
   workContextId?: `enterprise:${string}` | null;

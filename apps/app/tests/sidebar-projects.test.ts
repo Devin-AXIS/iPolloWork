@@ -19,6 +19,18 @@ const sessionRouteSource = readFileSync(
   new URL("../src/react-app/shell/session-route.tsx", import.meta.url),
   "utf8",
 );
+const appStyleSource = readFileSync(
+  new URL("../src/app/index.css", import.meta.url),
+  "utf8",
+);
+const englishLocaleSource = readFileSync(
+  new URL("../src/i18n/locales/en.ts", import.meta.url),
+  "utf8",
+);
+const chineseLocaleSource = readFileSync(
+  new URL("../src/i18n/locales/zh.ts", import.meta.url),
+  "utf8",
+);
 
 describe("sidebar projects", () => {
   test("renders named projects inside an independently collapsible all-projects section", () => {
@@ -31,6 +43,8 @@ describe("sidebar projects", () => {
     expect(sidebarSource).toContain('data-testid="project-row"');
     expect(sidebarSource).toContain('aria-current={isSelectedProject ? "page" : undefined}');
     expect(sidebarSource).toContain('aria-expanded={projectExpanded}');
+    expect(sidebarSource).toContain("if (isSelectedProject) setProjectExpanded(true);");
+    expect(sidebarSource).not.toContain('isSelectedProject && "bg-sidebar-accent/70 font-medium"');
     expect(sidebarSource).toContain("onSelectProject(workspace.id)");
     expect(sidebarSource).toContain("<ConversationList");
     expect(sidebarSource).not.toContain("group-data-open/project:rotate-90");
@@ -41,6 +55,9 @@ describe("sidebar projects", () => {
     expect(sidebarSource).toContain('addTestId="new-project-button"');
     expect(sidebarSource).toContain('t("session.new_task")');
     expect(sidebarSource).toContain('t("projects.create")');
+    expect(sidebarSource.match(/className="flex size-4 shrink-0 items-center justify-center"/g)).toHaveLength(4);
+    expect(sidebarSource).toContain('primarySidebarActionClassName = "h-8 gap-2 rounded-[8px] px-2');
+    expect(sidebarSource).toContain('<SidebarMenu className="gap-1">');
   });
 
   test("renders the default workspace as a separate ungrouped conversation section", () => {
@@ -61,7 +78,8 @@ describe("sidebar projects", () => {
   });
 
   test("manages project folders without restoring the legacy workspace UI", () => {
-    expect(sidebarSource).toContain("onDoubleClick={() => setProjectExpanded((expanded) => !expanded)}");
+    expect(sidebarSource).toMatch(/if \(isSelectedProject\)[\s\S]*setProjectExpanded\(\(expanded\) => !expanded\);/);
+    expect(sidebarSource).not.toContain("onDoubleClick={() => setProjectExpanded");
     expect(sidebarSource).toContain('data-testid="project-new-conversation-button"');
     expect(sidebarSource).toContain("const createConversationInProject = async () =>");
     expect(sidebarSource).toMatch(/await onSelectProject\(workspace\.id\);[\s\S]*await ctx\.onCreateTaskInWorkspace\(workspace\.id\);/);
@@ -84,6 +102,54 @@ describe("sidebar projects", () => {
     expect(sessionPageSource).toContain('{createProjectError ? <p role="alert"');
   });
 
+  test("creates a managed local project when no source folder is selected", () => {
+    expect(sessionPageSource).toContain("if (!name) return;");
+    expect(sessionPageSource).toContain('disabled={createProjectBusy || !createProjectName.trim()}');
+    expect(sessionRouteSource).toContain("folderPath: folderPath || undefined");
+    expect(sessionRouteSource).toContain('if (!folderPath) throw new Error(t("projects.create_failed"));');
+    expect(sessionRouteSource).not.toContain('if (!name || !requestedFolderPath)');
+  });
+
+  test("matches the project creation design with localized, theme-aware controls", () => {
+    expect(sessionPageSource).toContain('data-testid="create-project-dialog"');
+    expect(sessionPageSource).not.toContain('showCloseButton={false}');
+    expect(sessionPageSource).toContain('data-testid="project-folder-picker"');
+    expect(sessionPageSource).toContain('data-testid="project-engine-option"');
+    expect(sessionPageSource).toContain('max-w-[516px]');
+    expect(sessionPageSource).toContain('t("projects.engine_locked_notice")');
+    expect(sessionPageSource).toContain("<RadioGroup");
+    expect(sessionPageSource).toContain("projectEngineSelectedIcon");
+    expect(sessionPageSource).toContain('data-state={selected ? "selected" : "default"}');
+    expect(sessionPageSource).toContain("hover:border-foreground/20 hover:bg-muted/40");
+    expect(sessionPageSource).toContain("has-focus-visible:ring-3 has-focus-visible:ring-ring/30");
+    expect(sessionPageSource).not.toContain("focus-within:ring-3");
+    expect(sessionPageSource).toContain('<DialogDescription className="text-[13px] leading-5">');
+    expect(sessionPageSource).toContain('className="block text-[13px] font-medium leading-5 text-foreground"');
+    expect(sessionPageSource).toContain('className="text-xs leading-[18px] text-muted-foreground"');
+    expect(sessionPageSource).toContain('text-[11px] leading-4 text-muted-foreground');
+    expect(appStyleSource).toContain("--project-dialog-accent: #1fbac0");
+    expect(appStyleSource).toContain("--project-dialog-accent-strong: #a9e7ea");
+    expect(appStyleSource).toContain("--project-dialog-option-border: #e7e7e8");
+    expect(sessionPageSource).toContain('data-testid="project-name-icon"');
+    expect(sessionPageSource).toContain('className="pointer-events-none absolute start-3 top-1/2 z-10 flex size-6');
+    expect(sessionPageSource).toContain('className="flex h-10 w-full items-center gap-3 rounded-lg border border-border bg-background px-3');
+    expect(sessionPageSource).toContain('data-testid="project-folder-icon"');
+    expect(sessionPageSource).toContain('className="flex size-6 shrink-0 items-center justify-center"');
+    expect(sessionPageSource).toContain('placeholder-shown:text-[13px] placeholder-shown:leading-5 placeholder:text-slate-9 focus-visible:ring-0! has-focus-visible:ring-0! dark:placeholder:text-slate-11');
+    expect(sessionPageSource).toContain('data-testid="project-folder-label"');
+    expect(sessionPageSource).toContain('? "text-sm leading-[22px] text-foreground"');
+    expect(sessionPageSource).toContain(': "text-[13px] leading-5 text-slate-9 dark:text-slate-11"');
+    expect(sessionPageSource).not.toContain('h-[141px]');
+    expect(sessionPageSource).not.toContain('border-dashed');
+    expect(sessionPageSource).toContain('createProjectFolder || t("projects.choose_folder")');
+    expect(englishLocaleSource).not.toContain('"projects.add_folder"');
+    expect(chineseLocaleSource).not.toContain('"projects.add_folder"');
+    expect(englishLocaleSource).toContain('"projects.name_example": "For example: iPolloWork"');
+    expect(chineseLocaleSource).toContain('"projects.name_example": "例如：iPolloWork"');
+    expect(existsSync(new URL("../src/react-app/domains/session/chat/assets/project-engine-selected.svg", import.meta.url))).toBe(true);
+    expect(existsSync(new URL("../src/react-app/domains/session/chat/assets/project-engine-unselected.svg", import.meta.url))).toBe(true);
+  });
+
   test("shows nested conversation activity on a collapsed project", () => {
     const tree = buildSessionTreeState(
       [
@@ -104,6 +170,8 @@ describe("sidebar projects", () => {
     expect(sidebarSource).toContain("function ConversationList");
     expect(sidebarSource).toContain("flattenSessionRows(");
     expect(sidebarSource).toContain("remainingSessionCount");
+    expect(sidebarSource).toContain('<SidebarMenuSub className="translate-x-0 gap-1 pb-2">');
+    expect(sidebarSource).toContain('const rowPadding = depth > 0 ? "ps-[68px]" : "ps-8";');
     expect(sidebarSource).not.toContain("GroupedSessionList");
   });
 

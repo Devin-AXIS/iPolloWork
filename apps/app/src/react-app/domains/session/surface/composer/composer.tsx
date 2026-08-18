@@ -1713,7 +1713,7 @@ export function ReactSessionComposer(props: ComposerProps) {
                     type="button"
                     disabled={props.busy || props.modeSelectionDisabled}
                     aria-label={`${t("composer.work_mode_label")}: ${activeWorkMode.label}`}
-                    className="inline-flex items-center gap-1.5 rounded-full bg-gray-3 px-3 py-1.5 text-sm text-gray-11 transition-colors hover:bg-gray-4 hover:text-gray-12 disabled:pointer-events-none disabled:opacity-60"
+                    className="inline-flex items-center gap-1.5 rounded-full bg-gray-2 px-3 py-1.5 text-sm text-gray-11 transition-colors hover:bg-gray-3 hover:text-gray-12 disabled:pointer-events-none disabled:opacity-60"
                   >
                     <WorkModeIcon icon={activeWorkMode.icon} className="size-3.5 shrink-0" />
                     <span>{activeWorkMode.label}</span>
@@ -1787,7 +1787,7 @@ export function ReactSessionComposer(props: ComposerProps) {
                       className={`relative inline-flex h-8 max-h-8 w-8 shrink-0 items-center justify-center rounded-full transition-colors ${
                         canSend
                           ? "bg-[var(--dls-accent)] text-[var(--dls-accent-fg)] hover:bg-[var(--dls-accent-hover)]"
-                          : "bg-gray-4 text-gray-10"
+                          : "bg-gray-2 text-gray-10"
                       }`}
                       title={t("composer.queue_hint")}
                     >
@@ -1806,7 +1806,7 @@ export function ReactSessionComposer(props: ComposerProps) {
                     disabled={props.disabled || !canSend}
                     className={`inline-flex h-8 max-h-8 w-8 items-center justify-center rounded-full transition-colors ${
                       !canSend || props.disabled
-                        ? `bg-gray-4 text-gray-10 ${props.layout === "inline" ? "dark:bg-white/15 dark:text-[#999]" : ""}`
+                        ? "bg-gray-2 text-gray-10"
                         : props.layout === "inline"
                           ? "bg-[var(--dls-accent)] text-[var(--dls-accent-fg)] hover:bg-[var(--dls-accent-hover)] dark:bg-white dark:text-black dark:hover:bg-white/90"
                           : "bg-[var(--dls-accent)] text-[var(--dls-accent-fg)] hover:bg-[var(--dls-accent-hover)]"

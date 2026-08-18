@@ -1389,7 +1389,7 @@ export function createExtensionsStore(options: {
         mutateState((current) => ({
           ...current,
           hubSkills: [],
-          hubSkillsStatus: "No hub repo selected. Add a GitHub repo to browse skills.",
+          hubSkillsStatus: null,
         }));
         hubSkillsLoaded = true;
         hubSkillsLoadKey = loadKey;
@@ -1416,7 +1416,7 @@ export function createExtensionsStore(options: {
         mutateState((current) => ({
           ...current,
           hubSkills: next,
-          hubSkillsStatus: next.length ? null : "No hub skills found.",
+          hubSkillsStatus: null,
           hubSkillsContextKey: getWorkspaceContextKey(),
         }));
         hubSkillsLoaded = true;
@@ -1450,17 +1450,17 @@ export function createExtensionsStore(options: {
       mutateState((current) => ({
         ...current,
         hubSkills: sorted,
-        hubSkillsStatus: sorted.length ? null : "No hub skills found.",
+        hubSkillsStatus: null,
         hubSkillsContextKey: getWorkspaceContextKey(),
       }));
       hubSkillsLoaded = true;
       hubSkillsLoadKey = loadKey;
-    } catch (error) {
+    } catch {
       if (refreshHubSkillsAborted) return;
       mutateState((current) => ({
         ...current,
         hubSkills: [],
-        hubSkillsStatus: error instanceof Error ? error.message : "Failed to load hub skills.",
+        hubSkillsStatus: t("skills.hub_load_failed"),
       }));
     } finally {
       refreshHubSkillsInFlight = false;
@@ -1529,13 +1529,12 @@ export function createExtensionsStore(options: {
       cloudOrgSkillsLoaded = true;
       cloudOrgSkillsLoadKey = loadKey;
       await refreshImportedCloudSkills();
-    } catch (error) {
+    } catch {
       if (refreshCloudOrgSkillsAborted || getCurrentCloudOrgLoadKey() !== loadKey) return;
       mutateState((current) => ({
         ...current,
         cloudOrgSkills: [],
-        cloudOrgSkillsStatus:
-          error instanceof Error ? error.message : t("skills.cloud_org_load_failed"),
+        cloudOrgSkillsStatus: t("skills.cloud_org_load_failed"),
       }));
     } finally {
       if (refreshCloudOrgSkillsInFlightKey === loadKey) {
@@ -2830,7 +2829,7 @@ export function createExtensionsStore(options: {
         ...current,
         hubRepo: nextRepos[0] ?? null,
         hubSkills: nextRepos.length ? current.hubSkills : [],
-        hubSkillsStatus: nextRepos.length ? current.hubSkillsStatus : "No hub repo selected. Add a GitHub repo to browse skills.",
+        hubSkillsStatus: nextRepos.length ? current.hubSkillsStatus : null,
       }));
       hubSkillsLoaded = false;
       if (!nextRepos.length) {

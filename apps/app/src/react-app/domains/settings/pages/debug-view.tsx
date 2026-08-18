@@ -22,10 +22,11 @@ import type { OpencodeExecutionSnapshot } from "../../../../app/lib/desktop-type
 import { formatRelativeTime, isDesktopRuntime } from "../../../../app/utils";
 import { t } from "../../../../i18n";
 import { Button } from "@/components/ui/button";
+import { settingsStandardContentClass } from "@/react-app/domains/settings/shell/panel";
 
 const sectionHeaderClass = "flex flex-col gap-1 pb-2";
-const sectionTitleClass = "text-[15px] font-semibold tracking-[-0.2px] text-dls-text";
-const sectionDescClass = "text-[12px] text-dls-secondary";
+const sectionTitleClass = "text-ui-body font-semibold tracking-[-0.2px] text-dls-text";
+const sectionDescClass = "text-ui-compact text-dls-secondary";
 const cardClass =
   "rounded-2xl border border-dls-border bg-dls-surface/95 p-5 space-y-4";
 const subCardClass = "rounded-xl border border-dls-border bg-dls-sidebar/40 p-4 space-y-3";
@@ -347,7 +348,7 @@ export function DebugView(props: DebugViewProps) {
       : "";
 
   return (
-    <section className="space-y-6 max-w-3xl w-full">
+    <section className={`${settingsStandardContentClass} space-y-6`}>
       {/* Section: Runtime overview */}
       <div className={cardClass}>
         <div className="flex items-start justify-between gap-3">
@@ -903,7 +904,7 @@ export function DebugView(props: DebugViewProps) {
       {isDesktop ? (
         <div className="space-y-3 rounded-2xl border border-red-7/30 bg-red-3/10 p-5">
           <div className={sectionHeaderClass}>
-            <div className="text-[15px] font-semibold tracking-[-0.2px] text-red-11">
+            <div className="text-ui-body font-semibold tracking-[-0.2px] text-red-11">
               {t("settings.danger_section_title")}
             </div>
             <div className={sectionDescClass}>{t("settings.danger_section_desc")}</div>

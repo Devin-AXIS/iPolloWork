@@ -104,6 +104,8 @@ describe("Composer model and reasoning menu", () => {
     expect(menu).toContain('type MenuView = "root" | "model" | "behavior"');
     expect(menu).toContain("modelVariantLabel");
     expect(menu).toContain("onModelVariantChange");
+    expect(menu).toContain("rounded-full bg-gray-2 px-3 py-1.5 text-sm");
+    expect(menu).toContain("hover:bg-gray-3");
     expect(model).toContain('kind: "tokenstar-connect"');
     expect(model).toContain("Connect TokenStar");
     expect(model).toContain('grouped.push({ value: "TokenStar", items: [tokenStarEntry] })');
@@ -126,7 +128,8 @@ describe("Composer model and reasoning menu", () => {
     expect(modelIndex).toBeGreaterThan(-1);
     expect(modeIndex).toBeGreaterThan(modelIndex);
     expect(composer).toContain("<PopoverTrigger");
-    expect(composer).toContain("rounded-full bg-gray-3 px-3 py-1.5 text-sm");
+    expect(composer).toContain("rounded-full bg-gray-2 px-3 py-1.5 text-sm");
+    expect(composer).toContain("hover:bg-gray-3");
     expect(composer).toContain("props.listModes()")
     expect(composer).toContain("workModes.map((mode)");
     expect(composer).toContain("data-work-mode-option={mode.id}");
@@ -134,6 +137,8 @@ describe("Composer model and reasoning menu", () => {
     expect(composer).toContain("if (props.busy || props.modeSelectionDisabled) return;");
     expect(composer).toContain("if (props.busy || props.modeSelectionDisabled) setWorkModeOpen(false);");
     expect(composer).toContain("disabled={props.busy || props.modeSelectionDisabled}");
+    expect(composer.match(/"bg-gray-2 text-gray-10"/g)).toHaveLength(2);
+    expect(composer).not.toContain("dark:bg-white/15");
     expect(composer).toContain("<ChevronDown");
     expect(composer).toContain("<WorkModeIcon");
     expect(composer).toContain("mode.description");

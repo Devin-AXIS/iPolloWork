@@ -19,6 +19,7 @@ import { formatPluginPlatformError } from "@/react-app/domains/settings/plugin-p
 import { SettingsListEmptyState, SettingsListSearchInput } from "@/react-app/domains/settings/settings-list";
 import { SettingsNotice, SettingsPill } from "@/react-app/domains/settings/settings-section";
 import { notifyPluginUiContributionsChanged } from "@/react-app/plugin-ui/plugin-ui-contributions";
+import { settingsPageTitleClass } from "@/react-app/domains/settings/shell/panel";
 
 export const MARKETPLACE_CATEGORY_IDS = [
   "ai-agents",
@@ -31,6 +32,8 @@ export const MARKETPLACE_CATEGORY_IDS = [
 ] as const;
 
 export type MarketplaceCategoryId = typeof MARKETPLACE_CATEGORY_IDS[number];
+export type MarketplaceCategoryFilter = "all" | MarketplaceCategoryId;
+export type MarketplaceStatusFilter = "all" | "available" | "installed" | "update";
 
 const categoryKeywords: Record<Exclude<MarketplaceCategoryId, "other">, string[]> = {
   "ai-agents": ["ai agent", "agent", "automation", "智能体", "代理", "自动化"],
@@ -59,6 +62,8 @@ export type CloudMarketplacesViewProps = {
   onOpenInstalled?: (pluginId: string) => void;
   embedded?: boolean;
   search?: string;
+  categoryFilter?: MarketplaceCategoryFilter;
+  statusFilter?: MarketplaceStatusFilter;
 };
 
 export function shouldShowMarketplaceRows(isSignedIn: boolean): boolean {
@@ -119,6 +124,8 @@ export function CloudMarketplacesView({
   onOpenInstalled,
   embedded = false,
   search: controlledSearch,
+  categoryFilter = "all",
+  statusFilter = "all",
 }: CloudMarketplacesViewProps) {
   const cloud = useCloudSession();
   const [items, setItems] = React.useState<EnterpriseResource[]>([]);
@@ -184,10 +191,22 @@ export function CloudMarketplacesView({
 
   const filteredItems = React.useMemo(() => {
     const query = search.trim().toLocaleLowerCase();
-    if (!query) return items;
-    return items.filter((item) => [item.name, item.description, item.enterpriseCategory, item.category]
-      .some((value) => value.toLocaleLowerCase().includes(query)));
-  }, [items, search]);
+    return items.filter((item) => {
+      if (query && [item.name, item.description, item.enterpriseCategory, item.category]
+        .every((value) => !value.toLocaleLowerCase().includes(query))) return false;
+      if (categoryFilter !== "all" && resolveMarketplaceCategory({
+        pluginId: resourcePluginId(item),
+        category: item.category,
+        manifest: {},
+      }) !== categoryFilter) return false;
+      const localPackage = installed[resourcePluginId(item)];
+      const version = item.latestVersion?.version;
+      if (statusFilter === "installed" && !localPackage) return false;
+      if (statusFilter === "update" && (!localPackage || !version || localPackage.version === version)) return false;
+      if (statusFilter === "available" && localPackage) return false;
+      return true;
+    });
+  }, [categoryFilter, installed, items, search, statusFilter]);
   const selected = items.find((item) => item.id === selectedId) ?? null;
   const featuredItems = filteredItems.filter((item) => item.featured);
   const categorySections = MARKETPLACE_CATEGORY_IDS.map((categoryId) => ({
@@ -251,8 +270,8 @@ export function CloudMarketplacesView({
         <>
           <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
             <div>
-              <h1 className="text-2xl font-semibold text-dls-text">{t("extensions.marketplace_title")}</h1>
-              <p className="mt-1 text-sm text-dls-secondary">{t("extensions.marketplace_description")}</p>
+              <h1 className={settingsPageTitleClass}>{t("extensions.marketplace_title")}</h1>
+              <p className="settings-description mt-1 text-ui-control leading-5 text-dls-secondary">{t("extensions.marketplace_description")}</p>
             </div>
             <Button size="sm" variant="outline" disabled={loading || busyId !== null} onClick={() => void refresh()}>
               <RefreshCw size={14} className={loading ? "animate-spin" : ""} />{t("common.refresh")}
@@ -265,7 +284,20 @@ export function CloudMarketplacesView({
       {loading && items.length === 0 ? <SettingsNotice>{t("settings.marketplace.loading")}</SettingsNotice> : null}
       {!loading && filteredItems.length === 0 ? <SettingsListEmptyState>{search ? t("settings.marketplace.no_match") : t("settings.marketplace.empty")}</SettingsListEmptyState> : null}
 
-      {featuredItems.length > 0 ? (
+      {embedded && filteredItems.length > 0 ? (
+        <MarketplaceRows
+          items={filteredItems}
+          installed={installed}
+          busyId={busyId}
+          client={client}
+          workspaceId={workspaceId}
+          onOpen={setSelectedId}
+          onOpenInstalled={onOpenInstalled}
+          onInstall={install}
+        />
+      ) : null}
+
+      {!embedded && featuredItems.length > 0 ? (
         <MarketplaceSection
           title={t("plugin_library.featured")}
           items={featuredItems}
@@ -279,7 +311,7 @@ export function CloudMarketplacesView({
         />
       ) : null}
 
-      {categorySections.map((section) => (
+      {!embedded ? categorySections.map((section) => (
         <MarketplaceSection
           key={section.categoryId}
           title={categoryLabel(section.categoryId)}
@@ -292,7 +324,7 @@ export function CloudMarketplacesView({
           onOpenInstalled={onOpenInstalled}
           onInstall={install}
         />
-      ))}
+      )) : null}
 
       {error ? <div role="alert" className="rounded-xl border border-red-6 bg-red-2 px-5 py-3 text-xs text-red-11">{error}</div> : null}
     </section>
@@ -315,30 +347,39 @@ function MarketplaceSection(props: MarketplaceSectionProps) {
   return (
     <section>
       <h2 className="border-b border-dls-border pb-2 text-sm font-semibold text-dls-text">{props.title}</h2>
-      <div className="grid gap-x-8 lg:grid-cols-2">
-        {props.items.map((item) => {
-          const pluginId = resourcePluginId(item);
-          const localPackage = props.installed[pluginId];
-          const manifest = resourceManifest(item);
-          return (
-            <PluginPackageListItem
-              key={item.id}
-              manifest={manifest}
-              version={item.latestVersion?.version ?? "-"}
-              compact
-              featured={item.featured}
-              status={localPackage ? (localPackage.version === item.latestVersion?.version ? t("settings.marketplace.installed") : t("extensions.update_available")) : item.enterpriseCategory}
-              actionBusy={props.busyId === item.id}
-              actionDisabled={!props.client || !props.workspaceId || !item.latestVersion || props.busyId !== null || localPackage?.version === item.latestVersion.version}
-              actionLabel={<>{props.busyId === item.id ? <Loader2 size={14} className="animate-spin" /> : null}{actionLabel(item, localPackage)}</>}
-              onOpen={() => localPackage && props.onOpenInstalled
-                ? props.onOpenInstalled(pluginId)
-                : props.onOpen(item.id)}
-              onAction={() => void props.onInstall(item)}
-            />
-          );
-        })}
-      </div>
+      <MarketplaceRows {...props} />
     </section>
+  );
+}
+
+function MarketplaceRows(props: Omit<MarketplaceSectionProps, "title">) {
+  return (
+    <div className="mt-3 grid gap-x-8 gap-y-2 lg:grid-cols-2">
+      {props.items.map((item) => {
+        const pluginId = resourcePluginId(item);
+        const localPackage = props.installed[pluginId];
+        const version = item.latestVersion?.version;
+        return (
+          <PluginPackageListItem
+            key={item.id}
+            manifest={resourceManifest(item)}
+            version={version ?? "-"}
+            compact
+            featured={item.featured}
+            badge={item.featured
+              ? <span className="inline-flex h-4 items-center rounded-full bg-green-9 px-[5px] text-[10px] leading-none text-white">{t("plugin_platform.official_bundle")}</span>
+              : null}
+            status={localPackage ? (localPackage.version === version ? t("settings.marketplace.installed") : t("extensions.update_available")) : item.enterpriseCategory}
+            actionBusy={props.busyId === item.id}
+            actionDisabled={!props.client || !props.workspaceId || !version || props.busyId !== null || localPackage?.version === version}
+            actionLabel={<>{props.busyId === item.id ? <Loader2 size={14} className="animate-spin" /> : null}{actionLabel(item, localPackage)}</>}
+            onOpen={() => localPackage && props.onOpenInstalled
+              ? props.onOpenInstalled(pluginId)
+              : props.onOpen(item.id)}
+            onAction={() => void props.onInstall(item)}
+          />
+        );
+      })}
+    </div>
   );
 }
