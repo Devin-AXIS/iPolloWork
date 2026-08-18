@@ -18,6 +18,7 @@ import { readPluginPackageArchive } from "@/react-app/domains/settings/plugin-pa
 import { formatPluginPlatformError } from "@/react-app/domains/settings/plugin-platform-state";
 import { SettingsListEmptyState, SettingsListSearchInput } from "@/react-app/domains/settings/settings-list";
 import { SettingsNotice, SettingsPill } from "@/react-app/domains/settings/settings-section";
+import { notifyPluginUiContributionsChanged } from "@/react-app/plugin-ui/plugin-ui-contributions";
 
 export const MARKETPLACE_CATEGORY_IDS = [
   "ai-agents",
@@ -172,6 +173,7 @@ export function CloudMarketplacesView({
       await client.validatePluginPackageUpload(workspaceId, upload);
       await client.importPluginPackage(workspaceId, upload);
       await refresh();
+      notifyPluginUiContributionsChanged();
       await onInstalled?.(pluginId);
     } catch (cause) {
       setError(formatPluginPlatformError(cause, t("settings.marketplace.install_failed")));

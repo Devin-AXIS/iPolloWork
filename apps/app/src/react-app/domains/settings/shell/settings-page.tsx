@@ -11,6 +11,7 @@ import {
   Info,
   Layout,
   Paintbrush,
+  PanelsTopLeft,
   Puzzle,
   RefreshCcw,
   ShieldCheck,
@@ -237,8 +238,12 @@ export function getCloudSettingsTabs(memoryEnabled: boolean): SettingsTab[] {
 type SettingsPageProps = {
   activeTab: SettingsTab;
   onSelectTab: (tab: SettingsTab) => void;
+  pluginPages?: PluginSettingsNavigationItem[];
+  activePluginPageId?: string | null;
+  onSelectPluginPage?: (id: string) => void;
   developerMode: boolean;
   hidePageHeader?: boolean;
+  fullBleed?: boolean;
   showUpdateToolbar?: boolean;
   updateToolbarTone?: string;
   updateToolbarTitle?: string;
@@ -251,7 +256,14 @@ type SettingsPageProps = {
   children: React.ReactNode;
 };
 
-type SettingsSidebarProps = Pick<SettingsPageProps, "activeTab" | "onSelectTab" | "developerMode"> & {
+export type PluginSettingsNavigationItem = {
+  id: string;
+  label: string;
+  description?: string;
+  iconSrc?: string | null;
+};
+
+type SettingsSidebarProps = Pick<SettingsPageProps, "activeTab" | "onSelectTab" | "pluginPages" | "activePluginPageId" | "onSelectPluginPage" | "developerMode"> & {
   onClose: () => void;
 };
 
@@ -285,7 +297,7 @@ export function SettingsSidebar(props: SettingsSidebarProps) {
                   <SidebarMenuItem key={tab}>
                     <SidebarMenuButton
                       type="button"
-                      isActive={props.activeTab === tab}
+                      isActive={!props.activePluginPageId && props.activeTab === tab}
                       onClick={() => props.onSelectTab(tab)}
                     >
                       <Icon />
@@ -294,6 +306,19 @@ export function SettingsSidebar(props: SettingsSidebarProps) {
                   </SidebarMenuItem>
                 );
               })}
+              {props.pluginPages?.map((page) => (
+                <SidebarMenuItem key={page.id}>
+                  <SidebarMenuButton
+                    type="button"
+                    isActive={props.activePluginPageId === page.id}
+                    onClick={() => props.onSelectPluginPage?.(page.id)}
+                    title={page.description}
+                  >
+                    {page.iconSrc ? <img src={page.iconSrc} alt="" className="size-4 rounded-sm object-contain" /> : <PanelsTopLeft />}
+                    <span>{page.label}</span>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              ))}
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
@@ -379,6 +404,9 @@ function DesktopPolicyBanner() {
 }
 
 export function SettingsPage(props: SettingsPageProps) {
+  if (props.fullBleed) {
+    return <div className="flex min-h-0 flex-1 flex-col overflow-hidden">{props.children}</div>;
+  }
   return (
     <SettingsContent>
       {!props.hidePageHeader ? (

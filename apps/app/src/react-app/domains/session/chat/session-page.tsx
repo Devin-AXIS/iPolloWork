@@ -136,6 +136,8 @@ import { useControlAction, type iPolloWorkControlAction } from "../../../shell/c
 import { getExtensionId, isiPolloWorkExtensionEnabled, IPOLLOWORK_EXTENSION_STATE_CHANGED } from "../../settings/extension-state";
 import { cn } from "@/lib/utils";
 import { useActiveEnterpriseConnection } from "@/react-app/domains/enterprise/use-active-enterprise-connection";
+import { useInstalledPluginContributions } from "@/react-app/plugin-ui/plugin-ui-contributions";
+import type { WorkspaceAppModelContext } from "@/react-app/plugin-ui/workspace-app-frame";
 
 const STARTUP_SKELETON_ROWS = [
   { id: "intro", titleWidth: "42%", bodyWidth: "88%" },
@@ -614,6 +616,10 @@ export function SessionPage(props: SessionPageProps) {
   ));
   const sessionPanelState = useSessionPanelState(props.selectedSessionId ?? "");
   const activePanelTab = useActivePanelTab(props.selectedSessionId ?? "");
+  const { workspaceApps } = useInstalledPluginContributions(
+    props.ipolloworkServerClient,
+    props.runtimeWorkspaceId,
+  );
   const [hiddenTargetRevision, setHiddenTargetRevision] = useState(0);
   const [, setExtensionStateVersion] = useState(0);
   const hiddenAccessibleTargetIds = useMemo(
@@ -2147,6 +2153,37 @@ export function SessionPage(props: SessionPageProps) {
   const openVoiceRailPane = useCallback(() => {
     toggleCurrentSidePanel("voice");
   }, [toggleCurrentSidePanel]);
+  const openWorkspaceApp = useCallback((surface: (typeof workspaceApps)[number]) => {
+    if (!props.selectedSessionId) return;
+    openTab(props.selectedSessionId, {
+      id: `workspace-app:${surface.id}`,
+      type: "workspace-app",
+      label: surface.label,
+      sessionId: props.selectedSessionId,
+      surface,
+    });
+    setCurrentSidePanel("panel");
+  }, [openTab, props.selectedSessionId, setCurrentSidePanel]);
+  const sendWorkspaceAppMessage = useCallback((input: {
+    text: string;
+    modelContext: WorkspaceAppModelContext | null;
+  }) => {
+    if (!props.selectedSessionId || activePanelTab?.type !== "workspace-app") return false;
+    const context = input.modelContext
+      ? `The active Workspace App is ${activePanelTab.label}. Use its available workspace_app tools when the user asks to inspect or edit it. Current app context:\n${JSON.stringify(input.modelContext, null, 2)}`
+      : `The active Workspace App is ${activePanelTab.label}. Use its available workspace_app tools when the user asks to inspect or edit it.`;
+    return props.surface?.onSendDraft({
+      mode: "prompt",
+      parts: [{ type: "text", text: input.text }],
+      attachments: [],
+      text: input.text,
+      resolvedText: input.text,
+      capability: {
+        id: `workspace-app:${activePanelTab.surface.pluginId}:${activePanelTab.surface.resource.id}`,
+        instruction: context,
+      },
+    }, props.selectedSessionId) ?? false;
+  }, [activePanelTab, props.selectedSessionId, props.surface?.onSendDraft]);
   const sidePanelLauncherItems = useMemo<SidePanelLauncherItem[]>(() => [
     {
       id: "web",
@@ -2182,7 +2219,17 @@ export function SessionPage(props: SessionPageProps) {
       onClick: showVideoRailPane,
       disabled: !props.selectedSessionId || props.selectedWorkspaceDisplay.workspaceType === "remote",
     },
-  ], [activePanelTab?.type, addBrowserPanelTab, hasArtifactTargets, locale, panelRailActive, props.selectedSessionId, props.selectedWorkspaceDisplay.workspaceType, showArtifactRailPane, showDesignRailPane, showVideoRailPane, videoRailActive]);
+    ...workspaceApps.map((surface) => ({
+      id: `workspace-app:${surface.id}`,
+      label: surface.label,
+      iconSrc: surface.iconSrc ?? publicAssetUrl("ipollowork-mark.svg"),
+      active: panelRailActive
+        && activePanelTab?.type === "workspace-app"
+        && activePanelTab.surface.id === surface.id,
+      onClick: () => openWorkspaceApp(surface),
+      disabled: !props.selectedSessionId,
+    })),
+  ], [activePanelTab, addBrowserPanelTab, hasArtifactTargets, locale, openWorkspaceApp, panelRailActive, props.selectedSessionId, props.selectedWorkspaceDisplay.workspaceType, showArtifactRailPane, showDesignRailPane, showVideoRailPane, videoRailActive, workspaceApps]);
   const removeAccessibleTarget = useCallback((target: OpenTarget) => {
     const nextHiddenIds = new Set(hiddenAccessibleTargetIds);
     nextHiddenIds.add(target.id);
@@ -3065,6 +3112,7 @@ export function SessionPage(props: SessionPageProps) {
                         launcherItems={sidePanelLauncherItems}
                         aiEditing={isStreamingSessionStatus(props.sidebar.sessionStatusById[props.selectedSessionId])}
                         onAskAi={handleDesignAskAi}
+                        onSendWorkspaceAppMessage={sendWorkspaceAppMessage}
                         onSaveAsTemplate={hasTemplateSession && props.selectedWorkspaceDisplay.workspaceType === "local" ? openTemplateSave : undefined}
                         expanded={rightPanelExpanded}
                         titlebarInset={rightPanelExpanded && (!shellConfig.sidebar || !sidebarOpen)}

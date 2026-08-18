@@ -31,6 +31,7 @@ import type {
 import type { iPolloWorkPluginAuthorizationMethod } from "@/app/extensions";
 import type { McpStatus, McpStatusMap } from "@/app/types";
 import { resolveExtensionIconUrl } from "@/react-app/design-system/extension-icon-src";
+import { notifyPluginUiContributionsChanged } from "@/react-app/plugin-ui/plugin-ui-contributions";
 import { AuthorizationFormDialog } from "@/react-app/domains/settings/authorization-form-dialog";
 import { PluginPackageDetail } from "@/react-app/domains/settings/plugin-package-detail";
 import { SettingsListSearchInput } from "@/react-app/domains/settings/settings-list";
@@ -127,6 +128,7 @@ export function PluginPackagesPanel(props: PluginPackagesPanelProps) {
         props.client.listBundledPluginPackages(props.workspaceId),
       ]);
       setItems(response.items);
+      notifyPluginUiContributionsChanged();
       setCatalogItems(catalog.items);
       const states = await Promise.all(response.items.map(async (item) => ({
         pluginId: item.pluginId,

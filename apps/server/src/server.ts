@@ -52,6 +52,7 @@ import {
   listInstalledPluginPackages,
   migratePluginPackageLifecycle,
   previewPluginPackage,
+  readInstalledPluginUiResource,
   reconcilePluginPackagesForWorkspace,
   rollbackPluginPackage,
   setPluginPackageEnabled,
@@ -1906,6 +1907,16 @@ function createRoutes(
     await reconcilePluginPackagesForWorkspace({ serverConfig: config, workspaceId: workspace.id, workspaceRoot: workspace.path });
     const items = await listInstalledPluginPackages({ serverConfig: config });
     return jsonResponse({ items });
+  });
+
+  addRoute(routes, "GET", "/workspace/:id/plugin-packages/:pluginId/ui/:resourceId", "client", async (ctx) => {
+    await resolveWorkspace(config, ctx.params.id);
+    const result = await readInstalledPluginUiResource({
+      serverConfig: config,
+      pluginId: ctx.params.pluginId ?? "",
+      resourceId: ctx.params.resourceId ?? "",
+    });
+    return jsonResponse(result);
   });
 
   addRoute(routes, "GET", "/workspace/:id/plugin-packages/catalog", "client", async (ctx) => {

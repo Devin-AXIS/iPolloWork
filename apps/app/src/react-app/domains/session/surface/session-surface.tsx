@@ -115,6 +115,7 @@ import { MessageListProvider, type DispatchAction } from "@/components/chat/mess
 import { OpenTargetProvider, type OpenTargetOptions } from "@/lib/target-provider";
 import type { ThreadStatus } from "@/lib/messages";
 import { collectToolParts, getActiveToolLabel } from "@/lib/tool-activity";
+import { useInstalledPluginContributions } from "@/react-app/plugin-ui/plugin-ui-contributions";
 
 import {
   EnvironmentVariableProvider,
@@ -601,6 +602,7 @@ export function SessionSurface(props: SessionSurfaceProps) {
   const local = useLocal();
   const { config: shellConfig } = useShellConfig();
   const showThinking = local.prefs.showThinking;
+  const { conversationTemplates } = useInstalledPluginContributions(props.client, props.workspaceId);
   const findOpen = useSessionFindStore((state) => state.open);
   const findSessionId = useSessionFindStore((state) => state.sessionId);
   const findAppliedQuery = useSessionFindStore((state) => state.appliedQuery);
@@ -1944,13 +1946,15 @@ export function SessionSurface(props: SessionSurfaceProps) {
             <NewConversationStarter
               selectedMode={newConversationMode}
               selectedCapabilityId={starterCapability?.id}
+              promptTemplates={conversationTemplates}
               onSelectMode={(mode) => {
                 setNewConversationMode(mode);
                 setStarterCapability(null);
                 if (mode !== "video") setSelectedAnimations([]);
               }}
-              onSelectPrompt={(_prompt, capability) => {
+              onSelectPrompt={(prompt, capability) => {
                 setStarterCapability(capability ?? null);
+                if (prompt) setComposerDraft(props.sessionId, prompt);
                 window.dispatchEvent(new Event("ipollowork:focusPrompt"));
               }}
               templates={props.designTemplates}

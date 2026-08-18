@@ -2,10 +2,11 @@ import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 
 import { isCollectibleArtifactTarget, type OpenTarget, type OpenTargetPreview } from "../artifacts/open-target";
+import type { PluginUiSurface } from "@/react-app/plugin-ui/plugin-ui-contributions";
 
 export const PERSISTED_PANEL_TAB_STORE_KEY = "ipollowork:panel-tabs:v1";
 
-export type PanelTabType = "artifact" | "browser" | "design" | "video";
+export type PanelTabType = "artifact" | "browser" | "design" | "video" | "workspace-app";
 
 export type { BrowserPanelTab } from "../../../../app/lib/desktop-types";
 import type { BrowserPanelTab } from "../../../../app/lib/desktop-types";
@@ -33,7 +34,15 @@ export type VideoPanelTab = {
   sessionId: string;
 };
 
-export type PanelTab = BrowserPanelTab | ArtifactPanelTab | DesignPanelTab | VideoPanelTab;
+export type WorkspaceAppPanelTab = {
+  id: string;
+  type: "workspace-app";
+  label: string;
+  sessionId: string;
+  surface: PluginUiSurface;
+};
+
+export type PanelTab = BrowserPanelTab | ArtifactPanelTab | DesignPanelTab | VideoPanelTab | WorkspaceAppPanelTab;
 
 export type SessionPanelState = {
   tabs: PanelTab[];
@@ -173,6 +182,10 @@ function isSameTab(left: PanelTab, right: PanelTab) {
 
   if (left.type === "video" && right.type === "video") {
     return left.label === right.label && left.sessionId === right.sessionId;
+  }
+
+  if (left.type === "workspace-app" && right.type === "workspace-app") {
+    return left.label === right.label && left.sessionId === right.sessionId && left.surface.id === right.surface.id;
   }
 
   return false;
@@ -325,7 +338,7 @@ export const usePanelTabStore = create<PanelTabStore>()(
         const mergedTabs: PanelTab[] = [];
 
         for (const tab of session.tabs) {
-          if (tab.type === "artifact" || tab.type === "design" || tab.type === "video") {
+          if (tab.type === "artifact" || tab.type === "design" || tab.type === "video" || tab.type === "workspace-app") {
             mergedTabs.push(tab);
             continue;
           }

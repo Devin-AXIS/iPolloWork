@@ -157,6 +157,8 @@ import {
   OPENAI_IMAGE_MODEL,
 } from "@/react-app/domains/settings/openai-image-extension";
 import type { LocalProviderInstallInput } from "@/react-app/domains/settings/openai-image-extension";
+import { useInstalledPluginContributions } from "@/react-app/plugin-ui/plugin-ui-contributions";
+import { WorkspaceAppFrame } from "@/react-app/plugin-ui/workspace-app-frame";
 
 const ROUTE_IPOLLOWORK_CAPABILITIES: iPolloWorkServerCapabilities = {
   skills: { read: true, write: true, source: "ipollowork" },
@@ -240,6 +242,8 @@ export function parseSettingsPath(pathname: string): {
   redirectPath: string | null;
   extensionsSection?: ExtensionsSection;
   pluginPackageId?: string;
+  pluginPagePluginId?: string;
+  pluginPageResourceId?: string;
 } {
   const trimmed = pathname
     .replace(/^\/workspace\/[^/]+\/settings\/?/, "")
@@ -286,6 +290,16 @@ export function parseSettingsPath(pathname: string): {
       if (tail === "skills") return { tab: "extensions", redirectPath: null, extensionsSection: "skills" };
       if (tail === "plugins") return { tab: "extensions", redirectPath: null, extensionsSection: "plugins" };
       return { tab: "extensions", redirectPath: null, extensionsSection: "all" };
+    case "plugin":
+      if (tail && detailId) {
+        return {
+          tab: "extensions",
+          redirectPath: null,
+          pluginPagePluginId: decodeURIComponent(tail),
+          pluginPageResourceId: decodeURIComponent(detailId),
+        };
+      }
+      return { tab: "extensions", redirectPath: "extensions" };
     default:
       return { tab: "preferences", redirectPath: "preferences" };
   }
@@ -333,6 +347,9 @@ function findSessionWorkspaceId(
 }
 
 function settingsPathForRoute(route: ReturnType<typeof parseSettingsPath>) {
+  if (route.pluginPagePluginId && route.pluginPageResourceId) {
+    return `plugin/${encodeURIComponent(route.pluginPagePluginId)}/${encodeURIComponent(route.pluginPageResourceId)}`;
+  }
   if (route.tab === "extensions" && route.pluginPackageId) {
     return `extensions/plugin/${encodeURIComponent(route.pluginPackageId)}`;
   }
@@ -836,6 +853,18 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
   routeStateRef.current.providerRuntimeWorkspaceId = sharedProviderEndpoint?.workspaceId ?? null;
   routeStateRef.current.providerServerClient = sharedProviderEndpoint?.client ?? null;
   const runtimeWorkspaceId = selectedWorkspaceEndpoint?.workspaceId ?? selectedWorkspace?.id ?? null;
+  const pluginUiClient = selectedWorkspaceEndpoint?.client ?? ipolloworkClient;
+  const { settingsPages } = useInstalledPluginContributions(pluginUiClient, runtimeWorkspaceId);
+  const selectedPluginSettingsPage = settingsPages.find((page) => (
+    page.pluginId === route.pluginPagePluginId
+    && page.resource.id === route.pluginPageResourceId
+  )) ?? null;
+  const pluginSettingsNavigation = useMemo(() => settingsPages.map((page) => ({
+    id: page.id,
+    label: page.label,
+    description: page.description,
+    iconSrc: page.iconSrc,
+  })), [settingsPages]);
   const activeEnginePreferences = getEnginePreferences(local.prefs, activeEngineId);
   routeStateRef.current.runtimeWorkspaceId = runtimeWorkspaceId;
 
@@ -1796,7 +1825,16 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
     navigateSettingsPath("cloud-account");
   };
 
-  const settingsView = (() => {
+  const settingsView = selectedPluginSettingsPage && pluginUiClient && runtimeWorkspaceId ? (
+    <WorkspaceAppFrame
+      surface={selectedPluginSettingsPage}
+      client={pluginUiClient}
+      workspaceId={runtimeWorkspaceId}
+      workspaceRoot={selectedWorkspaceRoot}
+      placement="settings"
+      className="min-h-0 flex-1"
+    />
+  ) : (() => {
     switch (route.tab) {
       case "general":
         return (
@@ -2140,12 +2178,18 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
       <SettingsShell
         activeTab={route.tab}
         onSelectTab={(tab) => navigateSettingsPath(tab)}
+        pluginPages={pluginSettingsNavigation}
+        activePluginPageId={selectedPluginSettingsPage?.id ?? null}
+        onSelectPluginPage={(id) => {
+          const page = settingsPages.find((candidate) => candidate.id === id);
+          if (page) navigateSettingsPath(`plugin/${encodeURIComponent(page.pluginId)}/${encodeURIComponent(page.resource.id)}`);
+        }}
         developerMode={developerMode}
         headerStatus={routeiPolloWorkStatus}
         busyHint={loading ? t("session.loading_detail") : busyLabel}
         onClose={props.onClose ?? (() => navigate(selectedWorkspaceId ? workspaceSessionRoute(selectedWorkspaceId, navigationSessionId) : "/session"))}
         compact={props.embedded}
-        headerTitle={route.tab === "extensions" && !route.pluginPackageId ? (
+        headerTitle={route.tab === "extensions" && !route.pluginPackageId && !selectedPluginSettingsPage ? (
           <SettingsSegmentedTabs
             value={route.extensionsSection === "skills" ? "skills" : "plugins"}
             ariaLabel={t("plugin_library.navigation_label")}
@@ -2156,7 +2200,8 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
             onValueChange={(value) => navigateSettingsPath(value === "skills" ? "extensions/skills" : "extensions")}
           />
         ) : undefined}
-        hidePageHeader={route.tab === "extensions" || Boolean(route.pluginPackageId)}
+        hidePageHeader={route.tab === "extensions" || Boolean(route.pluginPackageId) || Boolean(selectedPluginSettingsPage)}
+        fullBleed={Boolean(selectedPluginSettingsPage)}
         hideShellHeader={Boolean(route.pluginPackageId)}
       >
         {settingsView}
