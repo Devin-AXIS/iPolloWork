@@ -98,6 +98,7 @@ import {
   type WorkspaceExportSensitiveMode,
 } from "./workspace-export-safety.js";
 import { serve, type ServeResult } from "./serve-node.js";
+import { registerApiV1 } from "./api/index.js";
 import { registerCoreRoutes } from "./routes/core.js";
 import { registerFileRoutes } from "./routes/files.js";
 import { registerOperationRoutes } from "./routes/operations.js";
@@ -3213,6 +3214,23 @@ function createRoutes(
       timestamp: Date.now(),
     });
     return jsonResponse(result);
+  });
+
+  // Mounted last: `matchRoute` returns the first match, so appending /api/v1 cannot shadow
+  // a legacy route, and the compat module's late-bound `legacyRoutes` sees the whole table.
+  registerApiV1({
+    routes,
+    config,
+    serverVersion: SERVER_VERSION,
+    ensureWritable,
+    requireClientScope,
+    jsonResponse,
+    readJsonBody,
+    resolveWorkspace,
+    createWorkspaceOpencodeClient,
+    unwrapOpencodeResult,
+    deepseekHarness,
+    legacyRoutes: () => routes,
   });
 
   return routes;
