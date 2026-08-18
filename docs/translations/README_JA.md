@@ -28,7 +28,7 @@ Codex のようなコーディングは出発点にすぎません。成果物�
 <div align="center">
   <h3>iPolloWork 公式 WeChat コミュニティに参加</h3>
   <p>WeChat で下の QR コードをスキャンすると、製品情報やコミュニティでの交流を目的とした公式グループに参加できます。</p>
-  <img src="../docs/assets/ipollowork-official-wechat-group.jpg" alt="iPolloWork 公式 WeChat コミュニティの QR コード" width="220" />
+  <img src="../assets/ipollowork-official-wechat-group.jpg" alt="iPolloWork 公式 WeChat コミュニティの QR コード" width="220" />
 </div>
 
 ## iPolloWork の違い

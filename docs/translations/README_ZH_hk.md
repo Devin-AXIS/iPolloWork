@@ -30,7 +30,7 @@ Codex 式編碼只是起點。當結果變成演示稿、網頁、視覺設計�
 <div align="center">
   <h3>加入 iPolloWork 官方微信羣</h3>
   <p>使用微信掃描下方二維碼，加入官方社區，獲取產品動態並交流使用經驗。</p>
-  <img src="../docs/assets/ipollowork-official-wechat-group.jpg" alt="iPolloWork 官方微信羣二維碼" width="220" />
+  <img src="../assets/ipollowork-official-wechat-group.jpg" alt="iPolloWork 官方微信羣二維碼" width="220" />
 </div>
 
 ## 它真正解決的三件事
