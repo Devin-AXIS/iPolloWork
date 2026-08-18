@@ -28,7 +28,7 @@ Codex 式编码只是起点。当结果变成演示稿、网页、视觉设计�
 <div align="center">
   <h3>加入 iPolloWork 官方微信群</h3>
   <p>使用微信扫描下方二维码，加入官方社区，获取产品动态并交流使用经验。</p>
-  <img src="../docs/assets/ipollowork-official-wechat-group.jpg" alt="iPolloWork 官方微信群二维码" width="220" />
+  <img src="../assets/ipollowork-official-wechat-group.jpg" alt="iPolloWork 官方微信群二维码" width="220" />
 </div>
 
 ## 它真正解决的三件事
