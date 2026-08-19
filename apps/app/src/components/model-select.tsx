@@ -391,7 +391,11 @@ export function ModelSelect({
           }}
           onConfigureModels={() => {
             onOpenChange(false);
-            onConfigureModels?.();
+            if (onConfigureModels) {
+              onConfigureModels();
+              return;
+            }
+            window.dispatchEvent(new CustomEvent(openModelPickerEvent));
           }}
           onConfigureTokenStar={() => {
             onOpenChange(false);
