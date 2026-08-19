@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "test": "bun test --isolate tests/",
+    "coverage": "bun test --isolate --coverage --coverage-reporter=text --coverage-reporter=lcov --coverage-dir=coverage/app tests/",
     "dev": "cross-env IPOLLOWORK_DEV_MODE=1 vite",
     "build": "vite build",
     "dev:web": "cross-env IPOLLOWORK_DEV_MODE=1 vite",
