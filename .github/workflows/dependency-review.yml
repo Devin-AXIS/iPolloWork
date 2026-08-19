@@ -5,12 +5,6 @@ on:
     branches:
       - main
       - dev
-    paths:
-      - "package.json"
-      - "pnpm-lock.yaml"
-      - "pnpm-workspace.yaml"
-      - "apps/**/package.json"
-      - "packages/**/package.json"
 
 permissions:
   contents: read
