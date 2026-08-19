@@ -8,7 +8,7 @@ import { toast } from "@/components/ui/sonner";
 
 import { captureAnalyticsEvent } from "@/app/lib/analytics";
 import { createClient, unwrap } from "@/app/lib/opencode";
-import { isPluginPackageReady } from "@/app/lib/plugin-package-readiness";
+import { activePluginEngineCompatibility, isPluginPackageReady } from "@/app/lib/plugin-package-readiness";
 import { t } from "@/i18n";
 import { readWorkspaceCloudImports, type CloudImportedPlugin } from "@/app/cloud/import-state";
 import type {
@@ -218,7 +218,7 @@ export type SessionSurfaceProps = {
   respondQuestion?: (requestID: string, answers: string[][]) => void;
   safeStringify?: (value: unknown) => string;
   onChangeModel?: (model: { providerID: string; modelID: string }) => void;
-  onConfigureModels?: () => void;
+  onConfigureModels?: (providerId?: string) => void;
   onUploadInboxFiles?: ((files: File[], options?: { notify?: boolean }) => void | Promise<unknown>) | null;
   providerConnectedCount?: number;
   onCreateSession?: (type: NewConversationMode, templateId?: string) => void;
@@ -1660,6 +1660,7 @@ export function SessionSurface(props: SessionSurfaceProps) {
     return response.items
       .filter((item) =>
         item.enabled
+        && activePluginEngineCompatibility(item)?.status !== "unsupported"
         && Boolean(item.manifest.composer?.prompt.trim())
         && item.manifest.resources.some((resource) =>
           resource.provides?.includes("service:external-subagent") === true

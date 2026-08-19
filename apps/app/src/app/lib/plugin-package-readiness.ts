@@ -3,6 +3,15 @@ import type {
   iPolloWorkPluginPackageItem,
 } from "./ipollowork-server";
 import type { McpStatusMap } from "../types";
+import type { PluginEngineCompatibility } from "@ipollowork/types/plugins";
+
+export function activePluginEngineCompatibility(item: {
+  activeEngineId?: string;
+  engineCompatibility?: readonly PluginEngineCompatibility[];
+}): PluginEngineCompatibility | undefined {
+  if (!item.activeEngineId) return undefined;
+  return item.engineCompatibility?.find((entry) => entry.engineId === item.activeEngineId);
+}
 
 export function pluginPackageAuthorization(
   item: iPolloWorkPluginPackageItem,
@@ -31,6 +40,7 @@ export function isPluginPackageReady(
   mcpStatuses: McpStatusMap,
 ) {
   if (!item.enabled) return false;
+  if (activePluginEngineCompatibility(item)?.status === "unsupported") return false;
   const authorization = pluginPackageAuthorization(item, state, mcpStatuses);
   return !authorization.required || authorization.connected;
 }

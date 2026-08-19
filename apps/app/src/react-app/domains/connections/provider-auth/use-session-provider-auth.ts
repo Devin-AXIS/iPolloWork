@@ -166,7 +166,8 @@ export function useSessionProviderAuth(input: UseSessionProviderAuthInput) {
     store,
   ]);
 
-  // After onboarding, auto-open the provider modal if no providers are connected.
+  // After onboarding, only require provider setup when org policy disables
+  // the built-in model capability.
   // The welcome route appends ?onboarding=1 to the session URL after workspace creation.
   useEffect(() => {
     const hash = window.location.hash;
@@ -180,8 +181,12 @@ export function useSessionProviderAuth(input: UseSessionProviderAuthInput) {
     if (!onboardingProviderAuthPendingRef.current) return;
     if (!selectedWorkspaceEndpoint) return;
     onboardingProviderAuthPendingRef.current = false;
+    // The built-in OpenCode models are the default account capability. Do not
+    // force a provider/key prompt merely because the new project's agent
+    // engine is DSH; users can connect another provider when they choose one.
+    if (!checkDesktopRestriction({ restriction: "allowZenModel" })) return;
     store.openProviderAuthModal({ returnFocusTarget: "composer" });
-  }, [selectedWorkspaceEndpoint, store]);
+  }, [checkDesktopRestriction, selectedWorkspaceEndpoint, store]);
 
   // Session is where forced sign-in lands. Keep org-managed cloud providers in
   // sync here so sign-in applies engine-provider changes before Settings opens.

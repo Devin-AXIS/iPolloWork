@@ -1,5 +1,11 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, test } from "bun:test";
 import { DEEPSEEK_HARNESS_ENGINE_ID, DEFAULT_ENGINE_ID } from "@ipollowork/types/workspace";
+import {
+  sharedProviderCredentialEnvKey,
+  sharedProviderIdsFromEnvKeys,
+  sharedProviderProfileEnvKey,
+} from "@ipollowork/types/provider-credentials";
 
 import {
   getEnginePreferences,
@@ -11,6 +17,15 @@ import {
   buildSharedProviderProfile,
   sharedProviderConnectionEnvEntries,
 } from "../src/react-app/domains/connections/provider-auth/shared-provider-profile";
+
+const sessionRouteSource = readFileSync(
+  new URL("../src/react-app/shell/session-route.tsx", import.meta.url),
+  "utf8",
+);
+const settingsRouteSource = readFileSync(
+  new URL("../src/react-app/shell/settings-route.tsx", import.meta.url),
+  "utf8",
+);
 
 function preferences(): LocalPreferences {
   return {
@@ -35,11 +50,11 @@ function preferences(): LocalPreferences {
 }
 
 describe("shared AI provider preferences", () => {
-  test("uses one model selection while preserving engine-specific modes", () => {
+  test("preserves an independent model selection for each engine", () => {
     const initial = preferences();
     expect(getEnginePreferences(initial, DEEPSEEK_HARNESS_ENGINE_ID)).toEqual({
-      model: { providerID: "openai", modelID: "gpt-5" },
-      modelVariant: "high",
+      model: { providerID: "deepseek", modelID: "legacy-engine-model" },
+      modelVariant: null,
       mode: "code",
     });
 
@@ -49,9 +64,13 @@ describe("shared AI provider preferences", () => {
       modelVariant: null,
     }));
 
-    expect(getEnginePreferences(updated, DEFAULT_ENGINE_ID).model).toEqual({
+    expect(getEnginePreferences(updated, DEEPSEEK_HARNESS_ENGINE_ID).model).toEqual({
       providerID: "anthropic",
       modelID: "claude-sonnet",
+    });
+    expect(getEnginePreferences(updated, DEFAULT_ENGINE_ID).model).toEqual({
+      providerID: "openai",
+      modelID: "gpt-5",
     });
     expect(getEnginePreferences(updated, DEEPSEEK_HARNESS_ENGINE_ID).mode).toBe("code");
     expect(getEnginePreferences(updated, DEFAULT_ENGINE_ID).mode).toBe("build");
@@ -64,6 +83,15 @@ describe("shared AI provider preferences", () => {
     expect(selectSharedProviderWorkspace([dsh, openCode], dsh)).toBe(openCode);
     expect(selectSharedProviderWorkspace([dsh, openCode], openCode)).toBe(openCode);
     expect(selectSharedProviderWorkspace([dsh], dsh)).toBe(dsh);
+  });
+
+  test("keeps the built-in OpenCode catalog when only a DSH workspace exists", () => {
+    for (const source of [sessionRouteSource, settingsRouteSource]) {
+      expect(source).toContain("const sharedProviderEngineId = DEFAULT_ENGINE_ID");
+      expect(source).toContain("sharedProviderEndpoint.opencodeBaseUrl");
+      expect(source).toContain("if (deepSeekHarnessProviderClient && deepSeekHarnessWorkspace)");
+      expect(source).not.toContain("deepSeekHarnessWorkspace.id !== sharedProviderWorkspace?.id");
+    }
   });
 
   test("describes compatible providers once for every engine adapter", () => {
@@ -84,5 +112,15 @@ describe("shared AI provider preferences", () => {
       models: [{ id: "acme-large", name: "Acme Large" }],
     });
     expect(sharedProviderConnectionEnvEntries({ apiKey: "secret", profile })).toHaveLength(2);
+  });
+
+  test("derives account provider connections from user-level credentials", () => {
+    expect(sharedProviderIdsFromEnvKeys([
+      sharedProviderProfileEnvKey("openai"),
+      sharedProviderCredentialEnvKey("openai"),
+      sharedProviderCredentialEnvKey("deepseek-official"),
+      sharedProviderCredentialEnvKey("openai"),
+      "OPENAI_API_KEY",
+    ])).toEqual(["deepseek-official", "openai"]);
   });
 });

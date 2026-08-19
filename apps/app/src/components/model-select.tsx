@@ -5,7 +5,6 @@ import { ChevronDown, Settings2 } from "lucide-react";
 import { DEFAULT_ENGINE_ID } from "@ipollowork/types/workspace";
 
 import type { ModelOption, ModelRef } from "@/app/types";
-import { modelSupportsVision } from "@/app/utils/model-capabilities";
 import { t } from "@/i18n";
 import { ProviderIcon } from "@/react-app/design-system/provider-icon";
 import {
@@ -22,8 +21,8 @@ import { useWorkspace } from "@/react-app/shell/workspace-provider";
 import { useCheckDesktopRestriction } from "@/react-app/domains/cloud/desktop-config-provider";
 import {
   ensureMergedProviderListQuery,
-  getSelectableChatProviderItems,
-  isModelAvailableInConnectedProviders,
+  getChatProviderCatalogItems,
+  resolveModelRuntime,
   useProviderListQuery,
 } from "@/react-app/infra/provider-list-query";
 import { getReactQueryClient } from "@/react-app/infra/query-client";
@@ -56,6 +55,7 @@ function useModelOptions(open: boolean) {
     engineId,
     modelCatalogSources,
     opencodeBaseUrl,
+    connectedProviderIds,
     selectedWorkspaceRoot,
   } = useWorkspace();
   const checkDesktopRestriction = useCheckDesktopRestriction();
@@ -75,7 +75,11 @@ function useModelOptions(open: boolean) {
     const sources = modelCatalogSources.length
       ? modelCatalogSources
       : [{ client, engineId, baseUrl: opencodeBaseUrl, directory: selectedWorkspaceRoot }];
-    setCatalog(await ensureMergedProviderListQuery(getReactQueryClient(), sources));
+    setCatalog(await ensureMergedProviderListQuery(
+      getReactQueryClient(),
+      sources,
+      { force: true },
+    ));
   }, [client, engineId, modelCatalogSources, opencodeBaseUrl, refetch, selectedWorkspaceRoot]);
 
   React.useEffect(() => {
@@ -102,26 +106,35 @@ function useModelOptions(open: boolean) {
       restriction: "allowCustomProviders",
     });
 
-    const options = getSelectableChatProviderItems(catalog ?? data)
+    const catalogValue = catalog ?? data;
+    const accountConnected = new Set([
+      ...(catalogValue?.connected ?? []),
+      ...connectedProviderIds,
+    ]);
+    const options = getChatProviderCatalogItems(catalogValue)
+      .filter((provider) => accountConnected.has(provider.id))
       .flatMap((provider) =>
-        Object.entries(provider.models).map(([id, model]) => ({
-          providerID: provider.id,
-          modelID: id,
-          title: model.name,
-          description: provider.name,
-          behaviorTitle: t("model_behavior.title_reasoning_effort"),
-          behaviorLabel: t("settings.provider_default_label"),
-          behaviorDescription: "",
-          behaviorValue: null,
-          isFree: false,
-          isConnected: true,
-          disabled: !data || !isModelAvailableInConnectedProviders(data, {
+        Object.entries(provider.models).map(([id, model]) => {
+          const runtime = resolveModelRuntime(data, {
             providerID: provider.id,
             modelID: id,
-          }),
-          footer: t("model_picker.engine_unavailable"),
-          supportsVision: modelSupportsVision(model),
-        })),
+          }, engineId);
+          return {
+            providerID: provider.id,
+            modelID: id,
+            title: model.name,
+            description: provider.name,
+            behaviorTitle: t("model_behavior.title_reasoning_effort"),
+            behaviorLabel: t("settings.provider_default_label"),
+            behaviorDescription: "",
+            behaviorValue: null,
+            isFree: provider.id.trim().toLowerCase() === "opencode",
+            isConnected: true,
+            disabled: runtime.status !== "ready",
+            footer: t("model_picker.engine_unavailable"),
+            supportsVision: runtime.capabilities?.vision === true,
+          };
+        }),
       );
 
     return options.filter((option) => {
@@ -140,7 +153,7 @@ function useModelOptions(open: boolean) {
 
       return true;
     });
-  }, [catalog, checkDesktopRestriction, data]);
+  }, [catalog, checkDesktopRestriction, connectedProviderIds, data, engineId]);
 
   return {
     options,
@@ -210,7 +223,7 @@ interface ModelSelectProps {
   value: ModelRef;
   onOpenChange: (open: boolean) => void;
   onChange: (model: ModelRef) => void;
-  onConfigureModels?: () => void;
+  onConfigureModels?: (providerId?: string) => void;
   onConfigureTokenStar?: () => void;
   disabled?: boolean;
 }
@@ -218,7 +231,7 @@ interface ModelSelectProps {
 export type ModelListContentProps = {
   value: ModelRef;
   onChange: (model: ModelRef) => void;
-  onConfigureModels?: () => void;
+  onConfigureModels?: (providerId?: string) => void;
   onConfigureTokenStar?: () => void;
   autoFocus?: boolean;
 };
@@ -288,9 +301,15 @@ export function ModelListContent({
                     className="gap-2 data-disabled:opacity-50"
                     key={item.id}
                     value={`${option.providerID}:${option.modelID} ${option.title} ${option.description ?? ""}`}
-                    disabled={option.disabled}
+                    disabled={option.disabled && (option.isConnected || !onConfigureModels)}
                     onClick={() => {
-                      if (!option.disabled) handleSelect(option);
+                      if (option.disabled && !option.isConnected) {
+                        setSearch("");
+                        onConfigureModels?.(option.providerID);
+                        return;
+                      }
+                      if (option.disabled) return;
+                      handleSelect(option);
                     }}
                     data-checked={isSameModel(value, option)}
                   >
@@ -389,9 +408,9 @@ export function ModelSelect({
             onChange(model);
             onOpenChange(false);
           }}
-          onConfigureModels={() => {
+          onConfigureModels={(providerId) => {
             onOpenChange(false);
-            onConfigureModels?.();
+            onConfigureModels?.(providerId);
           }}
           onConfigureTokenStar={() => {
             onOpenChange(false);

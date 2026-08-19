@@ -195,6 +195,20 @@ describe("plugin developer and user flow", () => {
     });
   });
 
+  test("distinguishes universal, engine-specific, and multi-engine plugin packages", async () => {
+    const { pluginPackageEngineScope } = await import("../src/react-app/domains/settings/plugin-platform-state.js");
+    const universal = { ...manifest, package: { ...manifest.package, engines: undefined } };
+    const harness = { ...manifest, package: { ...manifest.package, engines: ["deepseek-harness"] } };
+    const legacyHarness = { ...universal, id: "deepseek-harness" };
+    const multiEngine = { ...manifest, package: { ...manifest.package, engines: ["opencode", "deepseek-harness"] } };
+
+    expect(pluginPackageEngineScope(universal)).toEqual({ kind: "universal" });
+    expect(pluginPackageEngineScope(harness)).toEqual({ kind: "engine", engineId: "deepseek-harness" });
+    expect(pluginPackageEngineScope(legacyHarness)).toEqual({ kind: "engine", engineId: "deepseek-harness" });
+    expect(pluginPackageEngineScope(manifest)).toEqual({ kind: "engine", engineId: "opencode" });
+    expect(pluginPackageEngineScope(multiEngine)).toEqual({ kind: "multi-engine", engineIds: ["opencode", "deepseek-harness"] });
+  });
+
   test("ships the primary plugin-platform states in English and Chinese", () => {
     const keys = [
       "plugin_platform.action.install",

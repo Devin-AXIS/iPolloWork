@@ -11,8 +11,8 @@ import type { Client } from "../../../../app/types";
 import { isDesktopRuntime } from "../../../../app/utils";
 import { getCloudProviderEnv } from "./cloud-provider-config";
 import type {
-  ProviderEngineAdapter,
-  ProviderEngineConnection,
+  ModelRuntimeAdapter,
+  ModelRuntimeConnection,
 } from "./provider-engine-adapter";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -40,7 +40,7 @@ function isOpenCodeClient(value: unknown): value is Client {
   );
 }
 
-function openCodeConnection(client: unknown): ProviderEngineConnection {
+function openCodeConnection(client: unknown): ModelRuntimeConnection {
   if (!isOpenCodeClient(client)) {
     throw new Error("OpenCode provider client is unavailable");
   }
@@ -225,7 +225,7 @@ function buildOpenCodeCloudProviderPatch(
   };
 }
 
-export const openCodeProviderEngineAdapter: ProviderEngineAdapter = {
+export const openCodeProviderEngineAdapter: ModelRuntimeAdapter = {
   id: DEFAULT_ENGINE_ID,
   configFileName: "opencode.json",
   capabilities: {

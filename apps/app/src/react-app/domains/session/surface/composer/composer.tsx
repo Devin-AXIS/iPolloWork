@@ -6,6 +6,7 @@ import { toast } from "@/components/ui/sonner";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import type { CloudImportedPlugin, CloudImportedPluginFile } from "@/app/cloud/import-state";
 import type { iPolloWorkPluginPackageItem } from "@/app/lib/ipollowork-server";
+import { activePluginEngineCompatibility } from "@/app/lib/plugin-package-readiness";
 import type { ComposerAttachment, McpServerEntry, McpStatusMap, ModelRef, SkillCard, SlashCommandOption } from "@/app/types";
 import type { ConversationAgent, ConversationMode, ConversationModeIcon } from "../../engine/conversation-engine";
 import { formatBytes } from "@/app/utils";
@@ -51,7 +52,7 @@ type ComposerProps = {
   selectedModel: ModelRef;
   onModelPickerOpenChange: (open: boolean) => void;
   onModelChange: (model: ModelRef) => void;
-  onConfigureModels?: () => void;
+  onConfigureModels?: (providerId?: string) => void;
   onConfigureTokenStar?: () => void;
   attachments: ComposerAttachment[];
   hasPromptContext?: boolean;
@@ -797,7 +798,9 @@ export function ReactSessionComposer(props: ComposerProps) {
   const activePlugin = toolMenuSection.startsWith("plugin:")
     ? pluginSections.find((entry) => entry.section === toolMenuSection)?.plugin ?? null
     : null;
-  const composerExtensions = installedExtensions;
+  const composerExtensions = installedExtensions.filter((item) => (
+    activePluginEngineCompatibility(item)?.status !== "unsupported"
+  ));
   const canSend = props.draft.trim().length > 0 || props.attachments.length > 0 || props.hasPromptContext;
 
   useEffect(() => {
@@ -1609,7 +1612,11 @@ export function ReactSessionComposer(props: ComposerProps) {
                                     <div className="min-w-0 flex-1">
                                       <div className="flex items-center justify-between gap-3">
                                         <div className="truncate text-xs font-semibold text-gray-11">{entry.name}</div>
-                                        <span className="shrink-0 rounded-full bg-green-3 px-2 py-0.5 text-[10px] font-medium text-green-11">{t("composer.enabled")}</span>
+                                        {activePluginEngineCompatibility(entry)?.status === "partial" ? (
+                                          <span className="shrink-0 rounded-full bg-amber-3 px-2 py-0.5 text-[10px] font-medium text-amber-11">{t("plugin_platform.engine.partial")}</span>
+                                        ) : (
+                                          <span className="shrink-0 rounded-full bg-green-3 px-2 py-0.5 text-[10px] font-medium text-green-11">{t("composer.enabled")}</span>
+                                        )}
                                       </div>
                                       <div className="truncate text-xs text-gray-10">{entry.manifest.description}</div>
                                     </div>

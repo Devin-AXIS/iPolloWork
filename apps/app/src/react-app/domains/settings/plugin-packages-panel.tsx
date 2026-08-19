@@ -29,7 +29,7 @@ import type {
 } from "@/app/lib/ipollowork-server";
 import type { iPolloWorkPluginAuthorizationMethod } from "@/app/extensions";
 import type { McpStatus, McpStatusMap } from "@/app/types";
-import { pluginPackageAuthorization } from "@/app/lib/plugin-package-readiness";
+import { activePluginEngineCompatibility, pluginPackageAuthorization } from "@/app/lib/plugin-package-readiness";
 import { resolveExtensionIconUrl } from "@/react-app/design-system/extension-icon-src";
 import { notifyPluginUiContributionsChanged } from "@/react-app/plugin-ui/plugin-ui-contributions";
 import { AuthorizationFormDialog } from "@/react-app/domains/settings/authorization-form-dialog";
@@ -55,6 +55,7 @@ import {
   derivePluginPrimaryAction,
   formatPluginPlatformError,
   localizePluginPackageManifest,
+  pluginPackageEngineScope,
   type PluginPackageRelationships,
 } from "./plugin-platform-state";
 
@@ -119,6 +120,55 @@ function statusText(state: iPolloWorkPluginAuthorizationState | undefined, requi
   if (state?.flows.some((flow) => flow.status === "pending")) return t("plugin_platform.status.pending");
   if (state?.flows.some((flow) => flow.status === "expired")) return t("plugin_platform.status.expired");
   return t("plugin_platform.status.needs_authorization");
+}
+
+function engineName(engineId: string): string {
+  return engineId === "deepseek-harness" ? "DeepSeek Harness" : engineId === "opencode" ? "OpenCode" : engineId;
+}
+
+function engineCompatibilityBadge(
+  item: iPolloWorkPluginPackageItem | iPolloWorkBundledPluginPackageItem,
+): ReactNode {
+  const compatibility = activePluginEngineCompatibility(item);
+  if (!compatibility) return null;
+  const name = engineName(compatibility.engineId);
+  if (compatibility.status === "ready") {
+    return <span className="inline-flex h-4 items-center rounded-full bg-green-3 px-1.5 text-[10px] leading-none text-green-11">{t("plugin_platform.engine.ready", { engine: name })}</span>;
+  }
+  if (compatibility.status === "partial") {
+    return <span className="inline-flex h-4 items-center rounded-full bg-amber-3 px-1.5 text-[10px] leading-none text-amber-11">{t("plugin_platform.engine.partial")}</span>;
+  }
+  return <span className="inline-flex h-4 items-center rounded-full bg-red-3 px-1.5 text-[10px] leading-none text-red-11">{t("plugin_platform.engine.unsupported", { engine: name })}</span>;
+}
+
+function engineScopeBadge(item: iPolloWorkPluginPackageItem | iPolloWorkBundledPluginPackageItem): ReactNode {
+  const scope = pluginPackageEngineScope(item.manifest);
+  if (scope.kind === "universal") {
+    return <span className="inline-flex h-4 items-center rounded-full bg-blue-3 px-1.5 text-[10px] leading-none text-blue-11">{t("plugin_platform.engine_scope.universal")}</span>;
+  }
+  if (scope.kind === "multi-engine") {
+    return <span className="inline-flex h-4 items-center rounded-full bg-violet-3 px-1.5 text-[10px] leading-none text-violet-11">{t("plugin_platform.engine_scope.multiple")}</span>;
+  }
+  const label = scope.engineId === "deepseek-harness"
+    ? t("plugin_platform.engine_scope.harness")
+    : scope.engineId === "opencode"
+      ? t("plugin_platform.engine_scope.opencode")
+      : t("plugin_platform.engine_scope.specific", { engine: engineName(scope.engineId) });
+  return <span className="inline-flex h-4 items-center rounded-full bg-gray-3 px-1.5 text-[10px] leading-none text-gray-11">{label}</span>;
+}
+
+function pluginPackageBadges(
+  item: iPolloWorkPluginPackageItem | iPolloWorkBundledPluginPackageItem,
+  disabled = false,
+): ReactNode {
+  return (
+    <>
+      {engineScopeBadge(item)}
+      {disabled
+        ? <span className="rounded-full bg-amber-3 px-2 py-0.5 text-[10px] text-amber-11">{t("plugin_platform.status.disabled")}</span>
+        : engineCompatibilityBadge(item)}
+    </>
+  );
 }
 
 export const PluginPackagesPanel = forwardRef<PluginPackagesPanelHandle, PluginPackagesPanelProps>(function PluginPackagesPanel(props, ref) {
@@ -409,6 +459,10 @@ export const PluginPackagesPanel = forwardRef<PluginPackagesPanelHandle, PluginP
       ?? t("plugin_platform.publisher_unknown");
     const category = item.manifest.category?.trim()
       || (item.pluginId === "figma" ? t("plugin_platform.category_design_development") : t("plugin_platform.default_category"));
+    const activeCompatibility = activePluginEngineCompatibility(item);
+    const unavailableCapabilities = activeCompatibility
+      ? [...activeCompatibility.unsupportedRequiredResourceIds, ...activeCompatibility.unsupportedCapabilityIds]
+      : [];
 
     const toggleKey = `${item.pluginId}:toggle`;
 
@@ -449,6 +503,16 @@ export const PluginPackagesPanel = forwardRef<PluginPackagesPanelHandle, PluginP
           </div>
         )}
       >
+        {activeCompatibility && activeCompatibility.status !== "ready" ? (
+          <div className="mt-6 rounded-xl border border-amber-6 bg-amber-2 px-4 py-3 text-xs leading-5 text-amber-11">
+            {activeCompatibility.status === "unsupported"
+              ? t("plugin_platform.engine.unsupported", { engine: engineName(activeCompatibility.engineId) })
+              : t("plugin_platform.engine.limitations", {
+                  engine: engineName(activeCompatibility.engineId),
+                  capabilities: unavailableCapabilities.join(", ") || activeCompatibility.unsupportedResourceIds.join(", "),
+                })}
+          </div>
+        ) : null}
         {item.manifest.composer?.prompt ? (
             <div className="mt-8 rounded-2xl border border-violet-6/40 bg-gradient-to-r from-blue-3/70 via-violet-3/45 to-dls-hover p-6 sm:p-8">
               <div className="mx-auto flex max-w-3xl items-center gap-3 rounded-2xl border border-dls-border/70 bg-dls-surface/85 px-4 py-3 shadow-sm backdrop-blur">
@@ -949,7 +1013,7 @@ export const PluginPackagesPanel = forwardRef<PluginPackagesPanelHandle, PluginP
                 version={item.version}
                 compact
                 featured
-                badge={<span className="inline-flex h-4 items-center rounded-full bg-green-9 px-[5px] text-[10px] leading-none text-white">{t("plugin_platform.official_bundle")}</span>}
+                badge={pluginPackageBadges(item)}
                 actionBusy={busyKey !== null}
                 actionLabel={<>{busyKey === `catalog:${item.pluginId}` ? <Loader2 size={14} className="animate-spin" /> : null}{item.updateAvailable ? t("plugin_platform.action.update") : t("plugin_platform.action.install")}</>}
                 onAction={() => void installBundledPackage(item)}
@@ -972,7 +1036,7 @@ export const PluginPackagesPanel = forwardRef<PluginPackagesPanelHandle, PluginP
                   manifest={item.manifest}
                   version={item.version}
                   compact
-                  badge={!item.enabled ? <span className="rounded-full bg-amber-3 px-2 py-0.5 text-[10px] text-amber-11">{t("plugin_platform.status.disabled")}</span> : null}
+                  badge={pluginPackageBadges(item, !item.enabled)}
                   status={<span className="inline-flex items-center gap-1.5">{connected || !authorization.required ? <CheckCircle2 size={13} className="text-green-9" /> : <KeyRound size={13} className="text-amber-9" />}{statusText(auth, authorization.required, connected)}</span>}
                   actionBusy={busyKey !== null}
                   actionLabel={t(primaryAction.labelKey)}

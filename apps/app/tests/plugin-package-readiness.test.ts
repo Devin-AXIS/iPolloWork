@@ -29,6 +29,16 @@ function pluginPackage(options: {
       authorization: options.authorization,
     },
     integrity: { sha256: "test", status: "unsigned" },
+    activeEngineId: "opencode",
+    engineCompatibility: [{
+      engineId: "opencode",
+      status: "ready",
+      supportedResourceIds: (options.resources ?? []).map((resource) => resource.id),
+      unsupportedResourceIds: [],
+      unsupportedRequiredResourceIds: [],
+      unsupportedCapabilityIds: [],
+      nativeEngineOnly: false,
+    }],
   };
 }
 
@@ -58,6 +68,20 @@ describe("plugin package readiness", () => {
   test("shows enabled extensions that do not require authorization", () => {
     expect(isPluginPackageReady(pluginPackage(), undefined, {})).toBe(true);
     expect(isPluginPackageReady(pluginPackage({ enabled: false }), undefined, {})).toBe(false);
+  });
+
+  test("keeps older server plugin payloads usable before compatibility metadata is available", () => {
+    const item = pluginPackage();
+    delete item.activeEngineId;
+    delete item.engineCompatibility;
+
+    expect(isPluginPackageReady(item, undefined, {})).toBe(true);
+  });
+
+  test("hides packages unsupported by the active engine", () => {
+    const item = pluginPackage();
+    item.engineCompatibility[0]!.status = "unsupported";
+    expect(isPluginPackageReady(item, undefined, {})).toBe(false);
   });
 
   test("requires declared plugin authorization to be ready", () => {

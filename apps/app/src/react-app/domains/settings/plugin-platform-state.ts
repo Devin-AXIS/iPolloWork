@@ -5,8 +5,29 @@ import type {
   iPolloWorkPluginAuthorizationMethodTranslation,
   iPolloWorkPluginAuthorizationMethod,
 } from "../../../app/extensions";
+import { DEEPSEEK_HARNESS_ENGINE_ID } from "@ipollowork/types/workspace";
 
 export type PluginPrimaryActionKind = "install" | "connect" | "open" | "update" | "repair";
+
+export type PluginPackageEngineScope =
+  | { kind: "universal" }
+  | { kind: "engine"; engineId: string }
+  | { kind: "multi-engine"; engineIds: string[] };
+
+export function pluginPackageEngineScope(
+  manifest: iPolloWorkExtensionManifest,
+): PluginPackageEngineScope {
+  // Built-in Harness packages installed before engine ownership metadata was
+  // introduced still carry this stable package ID in their immutable manifest.
+  if (manifest.id === DEEPSEEK_HARNESS_ENGINE_ID) {
+    return { kind: "engine", engineId: DEEPSEEK_HARNESS_ENGINE_ID };
+  }
+  const engineIds = manifest.package?.engines;
+  const [engineId] = engineIds ?? [];
+  if (!engineId) return { kind: "universal" };
+  if (engineIds?.length === 1) return { kind: "engine", engineId };
+  return { kind: "multi-engine", engineIds: [...(engineIds ?? [])] };
+}
 
 type PluginPackageRelationshipSource = { manifest: iPolloWorkExtensionManifest };
 

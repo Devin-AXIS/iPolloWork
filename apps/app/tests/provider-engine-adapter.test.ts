@@ -3,13 +3,15 @@ import { parse } from "jsonc-parser";
 
 import {
   deepSeekHarnessProviderEngineAdapter,
-  providerEngineAdapters,
-  ProviderEngineAdapterRegistry,
+  modelRuntimeAdapters,
+  ModelRuntimeAdapterRegistry,
   openCodeProviderEngineAdapter,
 } from "../src/react-app/domains/connections/provider-auth/provider-engine-adapter";
 import { createProviderAuthStore } from "../src/react-app/domains/connections/provider-auth/store";
 import { getReactQueryClient } from "../src/react-app/infra/query-client";
 import {
+  ensureMergedProviderListQuery,
+  getChatProviderCatalogItems,
   mergeProviderListResponses,
   providerListQueryKey,
 } from "../src/react-app/infra/provider-list-query";
@@ -40,6 +42,9 @@ function createOpenCodeProviderClient() {
   return {
     calls,
     client: {
+      global: {
+        health: async () => ({ data: { healthy: true } }),
+      },
       provider: {
         list: async () => ({ data: providerList }),
         auth: async () => ({ data: { openai: [{ type: "oauth", label: "OpenAI" }] } }),
@@ -85,26 +90,109 @@ function createOpenCodeProviderClient() {
   };
 }
 
-describe("provider engine adapters", () => {
-  test("keeps OpenCode as default while registering DeepSeek Harness as a peer", () => {
-    expect(providerEngineAdapters.ids()).toEqual([DEFAULT_ENGINE_ID, DEEPSEEK_HARNESS_ENGINE_ID]);
-    expect(providerEngineAdapters.get()).toBe(openCodeProviderEngineAdapter);
-    expect(providerEngineAdapters.get(DEEPSEEK_HARNESS_ENGINE_ID)).toBe(deepSeekHarnessProviderEngineAdapter);
-    expect(() => providerEngineAdapters.get("unknown")).toThrow(
-      "Provider engine is not registered: unknown",
+describe("model runtime adapters", () => {
+  test("keeps OpenCode as default while registering DeepSeek Harness as a model runtime peer", () => {
+    expect(modelRuntimeAdapters.ids()).toEqual([DEFAULT_ENGINE_ID, DEEPSEEK_HARNESS_ENGINE_ID]);
+    expect(modelRuntimeAdapters.get()).toBe(openCodeProviderEngineAdapter);
+    expect(modelRuntimeAdapters.get(DEEPSEEK_HARNESS_ENGINE_ID)).toBe(deepSeekHarnessProviderEngineAdapter);
+    expect(() => modelRuntimeAdapters.get("unknown")).toThrow(
+      "Model runtime is not registered: unknown",
     );
   });
 
-  test("rejects duplicate provider adapters", () => {
-    expect(() => new ProviderEngineAdapterRegistry([
+  test("rejects duplicate model runtime adapters", () => {
+    expect(() => new ModelRuntimeAdapterRegistry([
       openCodeProviderEngineAdapter,
       { ...openCodeProviderEngineAdapter },
-    ])).toThrow(`Duplicate provider engine adapter: ${DEFAULT_ENGINE_ID}`);
+    ])).toThrow(`Duplicate model runtime adapter: ${DEFAULT_ENGINE_ID}`);
   });
 
   test("separates provider caches by engine", () => {
     expect(providerListQueryKey({ engineId: "opencode", baseUrl: "http://runtime" }))
       .not.toEqual(providerListQueryKey({ engineId: "deepseek-harness", baseUrl: "http://runtime" }));
+  });
+
+  test("force-refreshes every engine catalog when the model picker opens", async () => {
+    const queryClient = getReactQueryClient();
+    queryClient.clear();
+    const { client } = createOpenCodeProviderClient();
+    const source = {
+      client,
+      engineId: DEFAULT_ENGINE_ID,
+      baseUrl: "http://runtime",
+      directory: "C:\\workspace",
+    };
+    queryClient.setQueryData(providerListQueryKey(source), {
+      all: [{
+        id: "stale-provider",
+        name: "Stale provider",
+        source: "config",
+        env: [],
+        models: {},
+      }],
+      connected: ["stale-provider"],
+      default: {},
+    });
+
+    expect((await ensureMergedProviderListQuery(queryClient, [source])).all[0]?.id)
+      .toBe("stale-provider");
+    expect((await ensureMergedProviderListQuery(queryClient, [source], { force: true })).all[0]?.id)
+      .toBe("opencode");
+    queryClient.clear();
+  });
+
+  test("resolves a connected GPT model independently from the agent engine", () => {
+    const providers = {
+      all: [{
+        id: "openai",
+        name: "OpenAI",
+        source: "config" as const,
+        env: ["OPENAI_API_KEY"],
+        models: {
+          "gpt-5": {
+            id: "gpt-5",
+            name: "GPT-5",
+            capabilities: {
+              attachment: true,
+              reasoning: true,
+              toolcall: true,
+              input: { text: true, image: true },
+              output: { text: true },
+            },
+          },
+        },
+      }],
+      connected: ["openai"],
+      default: { openai: "gpt-5" },
+    };
+
+    expect(modelRuntimeAdapters.resolveModel({
+      engineId: DEEPSEEK_HARNESS_ENGINE_ID,
+      providers,
+      model: { providerID: "openai", modelID: "gpt-5" },
+    })).toEqual({
+      engineId: DEEPSEEK_HARNESS_ENGINE_ID,
+      model: { providerID: "openai", modelID: "gpt-5" },
+      status: "ready",
+      capabilities: {
+        text: true,
+        attachments: true,
+        vision: true,
+        reasoning: true,
+        toolCalls: true,
+      },
+    });
+
+    expect(modelRuntimeAdapters.resolveModel({
+      engineId: DEFAULT_ENGINE_ID,
+      providers: { ...providers, connected: [] },
+      model: { providerID: "openai", modelID: "gpt-5" },
+    }).status).toBe("provider-disconnected");
+    expect(modelRuntimeAdapters.resolveModel({
+      engineId: DEFAULT_ENGINE_ID,
+      providers,
+      model: { providerID: "openai", modelID: "missing" },
+    }).status).toBe("model-unavailable");
   });
 
   test("routes provider list, auth and disabled state through OpenCode", async () => {
@@ -153,13 +241,22 @@ describe("provider engine adapters", () => {
         }
         if (method === "llm.providers") {
           return {
-            providers: [{
-              provider: "deepseek-official",
-              displayName: "DeepSeek",
-              settingsNs: "deepseek",
-              settingsPath: ["connection"],
-              active: true,
-            }],
+            providers: [
+              {
+                provider: "deepseek-official",
+                displayName: "DeepSeek",
+                settingsNs: "deepseek",
+                settingsPath: ["connection"],
+                active: true,
+              },
+              {
+                provider: "opencode",
+                displayName: "OpenCode Zen",
+                settingsNs: "llm-pi-ai",
+                settingsPath: ["providers", "opencode"],
+                active: false,
+              },
+            ],
           } as T;
         }
         if (method === "settings.describe") {
@@ -198,6 +295,7 @@ describe("provider engine adapters", () => {
     });
     expect(await connection.listAuthMethods()).toEqual({
       "deepseek-official": [{ type: "api", label: "API key" }],
+      opencode: [{ type: "api", label: "API key" }],
     });
 
     await connection.setApiKey("deepseek-official", "secret");
@@ -338,6 +436,20 @@ describe("provider engine adapters", () => {
     expect(merged.connected).toEqual([]);
   });
 
+  test("keeps disconnected catalog models available for the shared key flow", () => {
+    expect(getChatProviderCatalogItems({
+      all: [{
+        id: "openai",
+        name: "OpenAI",
+        source: "api",
+        env: [],
+        models: { "gpt-next": { id: "gpt-next", name: "GPT Next", capabilities: {} } },
+      }],
+      connected: [],
+      default: {},
+    }).map((provider) => provider.id)).toEqual(["openai"]);
+  });
+
   test("updates the same endpoint-scoped provider cache read by a DeepSeek session", async () => {
     const queryClient = getReactQueryClient();
     queryClient.clear();
@@ -449,9 +561,15 @@ describe("provider engine adapters", () => {
     expect(store.getSnapshot()).toMatchObject({
       providerAuthModalOpen: true,
       providerAuthPreferredProviderId: "deepseek-official",
+      connectedProviderIds: ["opencode"],
       providerAuthMethods: {
         "deepseek-official": [{ type: "api", label: expect.any(String) }],
       },
+    });
+    expect(store.getSnapshot().providerAuthProviders).toContainEqual({
+      id: "opencode",
+      name: "iPolloWork Built-in Models",
+      env: [],
     });
 
     await store.submitProviderApiKey("deepseek-official", "secret");
@@ -549,10 +667,16 @@ describe("provider engine adapters", () => {
     let connectedIds = ["opencode"];
     const serverClient = {
       patchConfig: async (_workspaceId: string, patch: unknown) => {
+        calls.push({ name: "patch-config" });
         runtimePatches.push(patch);
         return { ok: true };
       },
+      reloadEngine: async () => {
+        calls.push({ name: "reload-engine" });
+        return { ok: true };
+      },
       upsertUserEnv: async (entries: Array<{ key: string; value: string }>) => {
+        calls.push({ name: "mirror-shared" });
         mirroredCredentials.push(...entries);
         return { updated: entries.map((entry) => entry.key) };
       },
@@ -622,6 +746,15 @@ describe("provider engine adapters", () => {
         auth: { type: "api", key: "secret" },
       },
     });
+    expect(calls.findIndex((call) => call.name === "mirror-shared")).toBeLessThan(
+      calls.findIndex((call) => call.name === "patch-config"),
+    );
+    expect(calls.findIndex((call) => call.name === "patch-config")).toBeLessThan(
+      calls.findIndex((call) => call.name === "reload-engine"),
+    );
+    expect(calls.findIndex((call) => call.name === "reload-engine")).toBeLessThan(
+      calls.findIndex((call) => call.name === "set"),
+    );
     expect(mirroredCredentials[0]).toEqual({
       key: sharedProviderCredentialEnvKey("deepseek-official"),
       value: "secret",
@@ -633,6 +766,109 @@ describe("provider engine adapters", () => {
       baseURL: "https://api.deepseek.com",
     });
     expect(connectedIds).toContain("deepseek-official");
+  });
+
+  test("imports a DSH API-key connection into OpenCode", async () => {
+    const { calls, client } = createOpenCodeProviderClient();
+    const credentialKey = sharedProviderCredentialEnvKey("deepseek-official");
+    const profileKey = sharedProviderProfileEnvKey("deepseek-official");
+    const profile = JSON.stringify({
+      schemaVersion: 1,
+      providerId: "deepseek-official",
+      displayName: "DeepSeek",
+      api: "openai-completions",
+      baseURL: "https://api.deepseek.com",
+      models: [{ id: "deepseek-v4-pro", name: "DeepSeek-V4-Pro" }],
+    });
+    const runtimePatches: unknown[] = [];
+    const serverClient = {
+      listUserEnvKeys: async () => ({ keys: [credentialKey, profileKey] }),
+      getUserEnv: async (key: string) => ({
+        item: { key, value: key === credentialKey ? "secret" : profile },
+      }),
+      getConfig: async () => ({ opencode: { provider: {} } }),
+      patchConfig: async (_workspaceId: string, patch: unknown) => {
+        calls.push({ name: "patch-config" });
+        runtimePatches.push(patch);
+        return { ok: true };
+      },
+      reloadEngine: async () => {
+        calls.push({ name: "reload-engine" });
+        return { ok: true };
+      },
+    };
+    let providers = [{
+      id: "opencode",
+      name: "OpenCode",
+      source: "api" as const,
+      env: [],
+      models: {},
+    }];
+    const store = createProviderAuthStore({
+      client: () => client,
+      providers: () => providers,
+      providerDefaults: () => ({ opencode: "default-model" }),
+      providerConnectedIds: () => ["opencode"],
+      disabledProviders: () => [],
+      checkDesktopAppRestriction: () => false,
+      selectedWorkspaceDisplay: () => ({
+        id: "workspace-shared-import",
+        name: "Shared import",
+        path: "C:\\workspace",
+        preset: "starter",
+        workspaceType: "local",
+        engineId: DEFAULT_ENGINE_ID,
+      }),
+      providerBaseUrl: () => "http://localhost:43122/opencode",
+      selectedWorkspaceRoot: () => "C:\\workspace",
+      runtimeWorkspaceId: () => "workspace-shared-import",
+      ipolloworkServer: {
+        getSnapshot: () => ({
+          ipolloworkServerStatus: "connected",
+          ipolloworkServerClient: serverClient as never,
+          ipolloworkServerCapabilities: { config: { read: true, write: true } },
+        }),
+      },
+      setProviders: (value) => { providers = value; },
+      setProviderDefaults: () => {},
+      setProviderConnectedIds: () => {},
+      setDisabledProviders: () => {},
+      markEngineConfigReloadRequired: () => {},
+    });
+
+    await store.refreshProviders();
+    await store.refreshProviders();
+
+    expect(store.getSnapshot().connectedProviderIds).toEqual([
+      "opencode",
+      "deepseek-official",
+    ]);
+
+    expect(runtimePatches).toEqual([{
+      opencode: {
+        provider: {
+          "deepseek-official": {
+            npm: "@ai-sdk/openai-compatible",
+            name: "DeepSeek",
+            options: { baseURL: "https://api.deepseek.com" },
+            models: { "deepseek-v4-pro": { name: "DeepSeek-V4-Pro" } },
+          },
+        },
+      },
+    }]);
+    expect(calls.filter((call) => call.name === "set")).toEqual([{
+      name: "set",
+      value: {
+        providerID: "deepseek-official",
+        auth: { type: "api", key: "secret" },
+      },
+    }]);
+    expect(calls.findIndex((call) => call.name === "patch-config")).toBeLessThan(
+      calls.findIndex((call) => call.name === "reload-engine"),
+    );
+    expect(calls.findIndex((call) => call.name === "reload-engine")).toBeLessThan(
+      calls.findIndex((call) => call.name === "set"),
+    );
   });
 
   test("removes project provider state without leaving disabled entries", () => {

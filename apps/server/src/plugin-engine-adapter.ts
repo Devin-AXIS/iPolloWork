@@ -1,13 +1,18 @@
-import { readFile } from "node:fs/promises";
+import { createHash, randomUUID } from "node:crypto";
+import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import { dirname } from "node:path";
 import { pathToFileURL } from "node:url";
 
+import type { PluginEngineCompatibility } from "@ipollowork/types/plugins";
 import { DEEPSEEK_HARNESS_ENGINE_ID } from "@ipollowork/types/workspace";
+import { parse, stringify } from "yaml";
 
 import type {
   PluginPackageManifest,
   PluginResourceType,
 } from "./plugin-package-manifest.js";
 import { ApiError } from "./errors.js";
+import { deepSeekHarnessManagedPluginPatchPath } from "./deepseek-harness-runtime.js";
 import { addMcp, removeMcp } from "./mcp.js";
 import { addPlugin, removePlugin } from "./plugins.js";
 import type { ServerConfig } from "./types.js";
@@ -42,6 +47,8 @@ export interface PluginEngineAdapter {
   readonly id: string;
   /** Portable package resources this engine can consume through this adapter. */
   readonly portableResourceTypes: ReadonlySet<PluginResourceType>;
+  /** Native engine-binding capability kinds implemented by this adapter. */
+  readonly nativeCapabilityKinds: ReadonlySet<string>;
   validate?(manifest: PluginPackageManifest): void;
   compatibility(manifest: PluginPackageManifest): PluginCompatibilityCheck[];
   workspaceFiles(version: PluginEngineVersion): PluginWorkspaceFile[];
@@ -58,6 +65,47 @@ const APP_MANAGED_PLUGIN_RESOURCE_TYPES = new Set<PluginResourceType>([
   "local-service",
 ]);
 
+const PASSIVE_PLUGIN_RESOURCE_TYPES = new Set<PluginResourceType>([
+  "file",
+  "secret",
+]);
+
+function adapterSupportsResource(
+  adapter: PluginEngineAdapter,
+  resource: PluginPackageManifest["resources"][number],
+): boolean {
+  if (APP_MANAGED_PLUGIN_RESOURCE_TYPES.has(resource.type) || PASSIVE_PLUGIN_RESOURCE_TYPES.has(resource.type)) return true;
+  if (!adapter.portableResourceTypes.has(resource.type)) return false;
+  return !(adapter.id === DEEPSEEK_HARNESS_ENGINE_ID && resource.type === "mcp" && resource.oauth === true);
+}
+
+export function pluginEngineCompatibility(
+  adapter: PluginEngineAdapter,
+  manifest: PluginPackageManifest,
+): PluginEngineCompatibility {
+  const supportedResourceIds = manifest.resources
+    .filter((resource) => adapterSupportsResource(adapter, resource))
+    .map((resource) => resource.id);
+  const unsupportedResources = manifest.resources.filter((resource) => !adapterSupportsResource(adapter, resource));
+  const binding = manifest.engineBindings?.find((entry) => entry.engine === adapter.id);
+  const unsupportedCapabilityIds = binding?.capabilities
+    .filter((capability) => !adapter.nativeCapabilityKinds.has(capability.kind))
+    .map((capability) => capability.id) ?? [];
+  const nativeEngineOnly = Boolean(manifest.package?.engines?.length && !manifest.package.engines.includes(adapter.id));
+  const canActivate = supportedResourceIds.length > 0
+    || Boolean(binding?.capabilities.some((capability) => adapter.nativeCapabilityKinds.has(capability.kind)));
+  const hasLimitations = nativeEngineOnly || unsupportedResources.length > 0 || unsupportedCapabilityIds.length > 0;
+  return {
+    engineId: adapter.id,
+    status: !canActivate ? "unsupported" : hasLimitations ? "partial" : "ready",
+    supportedResourceIds,
+    unsupportedResourceIds: unsupportedResources.map((resource) => resource.id),
+    unsupportedRequiredResourceIds: unsupportedResources.filter((resource) => resource.required).map((resource) => resource.id),
+    unsupportedCapabilityIds,
+    nativeEngineOnly,
+  };
+}
+
 /**
  * Native engine restrictions apply only to native bindings. Portable and
  * app-managed resources stay installable wherever an adapter can consume
@@ -67,9 +115,7 @@ export function pluginEngineCanActivate(
   adapter: PluginEngineAdapter,
   manifest: PluginPackageManifest,
 ): boolean {
-  return manifest.resources.some((resource) =>
-    APP_MANAGED_PLUGIN_RESOURCE_TYPES.has(resource.type)
-    || adapter.portableResourceTypes.has(resource.type));
+  return pluginEngineCompatibility(adapter, manifest).status !== "unsupported";
 }
 
 export class PluginEngineAdapterRegistry {
@@ -197,11 +243,12 @@ export function parsePluginMcpEntries(
 async function mcpEntries(
   version: PluginEngineVersion | null,
   resolvePath: PluginEngineContext["resolvePath"],
+  includeResource: (resource: PluginPackageManifest["resources"][number]) => boolean = () => true,
 ): Promise<Array<{ name: string; config: Record<string, unknown> }>> {
   if (!version) return [];
   const entries: Array<{ name: string; config: Record<string, unknown> }> = [];
   for (const resource of version.manifest.resources) {
-    if (resource.type !== "mcp" || !resource.path) continue;
+    if (resource.type !== "mcp" || !resource.path || !includeResource(resource)) continue;
     const sourcePath = pluginEngineSourcePath(version, resource.path) ?? resource.path;
     const payload: unknown = JSON.parse(await readFile(resolvePath(version.artifactRoot, sourcePath), "utf8"));
     entries.push(...parsePluginMcpEntries(payload, resource.mcpServerName ?? resource.id, sourcePath));
@@ -231,6 +278,7 @@ function pluginSpecs(version: PluginEngineVersion | null, resolvePath: PluginEng
 export const openCodePluginEngineAdapter: PluginEngineAdapter = {
   id: "opencode",
   portableResourceTypes: new Set(["skill", "agent", "command", "mcp"]),
+  nativeCapabilityKinds: new Set(["plugin"]),
   compatibility(manifest) {
     const binding = manifest.engineBindings?.find((entry) => entry.engine === "opencode");
     return [{ name: "OpenCode", version: constants.opencodeVersion, range: binding?.compatibility }];
@@ -264,9 +312,95 @@ export const openCodePluginEngineAdapter: PluginEngineAdapter = {
   },
 };
 
+type DeepSeekHarnessPatchPlugin = {
+  id: string;
+  name: "@deepseek-ai/dsh-mcp-client";
+  config: {
+    serverName: string;
+    transport: "streamable-http";
+    url: string;
+    headers: Record<string, string>;
+  };
+};
+
+let deepSeekHarnessPatchWrite = Promise.resolve();
+
+function deepSeekHarnessPluginPrefix(pluginId: string): string {
+  return `ipollowork-${createHash("sha256").update(pluginId).digest("hex").slice(0, 12)}-`;
+}
+
+function deepSeekHarnessServerName(value: string): string {
+  const normalized = value.replace(/[^A-Za-z0-9_-]/g, "_") || "plugin";
+  if (normalized.length <= 32) return normalized;
+  const suffix = createHash("sha256").update(value).digest("hex").slice(0, 8);
+  return `${normalized.slice(0, 23)}-${suffix}`;
+}
+
+function deepSeekHarnessPatchPlugins(value: unknown): DeepSeekHarnessPatchPlugin[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((patch) => {
+    if (!isRecord(patch) || !Array.isArray(patch.insert)) return [];
+    return patch.insert.flatMap((entry) => {
+      if (!isRecord(entry) || typeof entry.id !== "string" || entry.name !== "@deepseek-ai/dsh-mcp-client" || !isRecord(entry.config)) return [];
+      const serverName = entry.config.serverName;
+      const transport = entry.config.transport;
+      const url = entry.config.url;
+      const headers = entry.config.headers;
+      if (typeof serverName !== "string" || transport !== "streamable-http" || typeof url !== "string" || !isRecord(headers)) return [];
+      const stringHeaders = Object.fromEntries(Object.entries(headers).filter((header): header is [string, string] => typeof header[1] === "string"));
+      return [{ id: entry.id, name: entry.name, config: { serverName, transport, url, headers: stringHeaders } }];
+    });
+  });
+}
+
+async function syncDeepSeekHarnessMcpPatch(
+  config: ServerConfig,
+  pluginId: string,
+  entries: Array<{ name: string; config: Record<string, unknown> }>,
+): Promise<void> {
+  const update = async () => {
+    const path = deepSeekHarnessManagedPluginPatchPath(config);
+    let current: DeepSeekHarnessPatchPlugin[] = [];
+    try {
+      current = deepSeekHarnessPatchPlugins(parse(await readFile(path, "utf8")));
+    } catch (error) {
+      if (!isRecord(error) || error.code !== "ENOENT") throw error;
+    }
+    const prefix = deepSeekHarnessPluginPrefix(pluginId);
+    const next = current.filter((entry) => !entry.id.startsWith(prefix));
+    for (const entry of entries) {
+      const url = typeof entry.config.url === "string" ? entry.config.url : "";
+      const headers = entry.config.headers;
+      if (
+        entry.config.type !== "remote"
+        || entry.config.enabled === false
+        || !url
+        || (isRecord(headers) && Object.keys(headers).length > 0)
+      ) continue;
+      next.push({
+        id: `${prefix}mcp-${createHash("sha256").update(entry.name).digest("hex").slice(0, 10)}`,
+        name: "@deepseek-ai/dsh-mcp-client",
+        config: {
+          serverName: deepSeekHarnessServerName(entry.name),
+          transport: "streamable-http",
+          url,
+          headers: {},
+        },
+      });
+    }
+    await mkdir(dirname(path), { recursive: true });
+    const temporaryPath = `${path}.${randomUUID()}.tmp`;
+    await writeFile(temporaryPath, stringify(next.length > 0 ? [{ insert: next }] : []), "utf8");
+    await rename(temporaryPath, path);
+  };
+  deepSeekHarnessPatchWrite = deepSeekHarnessPatchWrite.then(update, update);
+  await deepSeekHarnessPatchWrite;
+}
+
 export const deepSeekHarnessPluginEngineAdapter: PluginEngineAdapter = {
   id: DEEPSEEK_HARNESS_ENGINE_ID,
-  portableResourceTypes: new Set(["skill"]),
+  portableResourceTypes: new Set(["skill", "mcp"]),
+  nativeCapabilityKinds: new Set(),
   compatibility(manifest) {
     const binding = manifest.engineBindings?.find((entry) => entry.engine === DEEPSEEK_HARNESS_ENGINE_ID);
     return [{
@@ -281,7 +415,13 @@ export const deepSeekHarnessPluginEngineAdapter: PluginEngineAdapter = {
   skillTargetPath(version, resourceId) {
     return skillTargetPath(version, resourceId, DEEPSEEK_HARNESS_TARGETS);
   },
-  async syncRuntime() {},
+  async syncRuntime(input) {
+    const nextEntries = input.enabled
+      ? await mcpEntries(input.next, input.resolvePath, (resource) => resource.oauth !== true)
+      : [];
+    const pluginId = input.next?.manifest.id ?? input.current?.manifest.id;
+    if (pluginId) await syncDeepSeekHarnessMcpPatch(input.config, pluginId, nextEntries);
+  },
 };
 
 export const pluginEngineAdapters = new PluginEngineAdapterRegistry([

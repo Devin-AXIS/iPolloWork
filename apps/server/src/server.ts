@@ -39,6 +39,8 @@ import { EnvService } from "./env-file.js";
 import { migrateLegacyAuthorizationServices } from "./authorization-center.js";
 import { migrateLegacyPluginAuthorization } from "./authorization-migration.js";
 import { DeepSeekHarnessRuntime } from "./deepseek-harness-runtime.js";
+import { pluginEngineAdapters, pluginEngineCompatibility } from "./plugin-engine-adapter.js";
+import type { PluginPackageManifest } from "./plugin-package-manifest.js";
 import {
   normalizeResourceSnapshot,
   readDesktopCloudSyncState,
@@ -772,6 +774,16 @@ export function assertOpencodeProxyAllowed(actor: Actor, method: string, proxyPa
 
 function isSessionCommandProxyRequest(method: string, proxyPath: string) {
   return method === "POST" && /^\/session\/[^/]+\/command$/.test(normalizeOpencodeProxyPath(proxyPath));
+}
+
+function pluginPackageEngineState(workspace: WorkspaceInfo, manifest: PluginPackageManifest) {
+  const activeEngineId = workspace.engineId?.trim() || DEFAULT_ENGINE_ID;
+  return {
+    activeEngineId,
+    engineCompatibility: pluginEngineAdapters.ids().map((engineId) => (
+      pluginEngineCompatibility(pluginEngineAdapters.get(engineId), manifest)
+    )),
+  };
 }
 
 async function ensureDefaultBundledPluginPackages(config: ServerConfig): Promise<void> {
@@ -1994,7 +2006,10 @@ function createRoutes(
     const workspace = await resolveWorkspace(config, ctx.params.id);
     await prepareDefaultPlugins();
     await reconcilePluginPackagesForWorkspace({ serverConfig: config, workspaceId: workspace.id, workspaceRoot: workspace.path });
-    const items = await listInstalledPluginPackages({ serverConfig: config });
+    const items = (await listInstalledPluginPackages({ serverConfig: config })).map((item) => ({
+      ...item,
+      ...pluginPackageEngineState(workspace, item.manifest),
+    }));
     return jsonResponse({ items });
   });
 
@@ -2025,6 +2040,7 @@ function createRoutes(
         integrity: preview.integrity,
         installedVersion: current?.version ?? null,
         updateAvailable: Boolean(current && current.version !== preview.manifest.package?.version),
+        ...pluginPackageEngineState(workspace, preview.manifest),
       };
     }));
     return jsonResponse({ items });
@@ -2064,8 +2080,9 @@ function createRoutes(
       name: pluginId,
       action: current ? "updated" : "added",
     });
-    const item = (await listInstalledPluginPackages({ serverConfig: config }))
+    const installedItem = (await listInstalledPluginPackages({ serverConfig: config }))
       .find((entry) => entry.pluginId === pluginId);
+    const item = installedItem ? { ...installedItem, ...pluginPackageEngineState(workspace, installedItem.manifest) } : undefined;
     return jsonResponse({ result, item });
   });
 
@@ -2089,6 +2106,7 @@ function createRoutes(
           safety,
           installedVersion,
           versionChange: pluginPackageVersionChange(installedVersion, incomingVersion),
+          ...pluginPackageEngineState(workspace, preview.manifest),
         },
       });
     });
@@ -2142,8 +2160,9 @@ function createRoutes(
         name: preview.manifest.id,
         action: current ? "updated" : "added",
       });
-      const item = (await listInstalledPluginPackages({ serverConfig: config }))
+      const installedItem = (await listInstalledPluginPackages({ serverConfig: config }))
         .find((entry) => entry.pluginId === preview.manifest.id);
+      const item = installedItem ? { ...installedItem, ...pluginPackageEngineState(workspace, installedItem.manifest) } : undefined;
       return jsonResponse({ result, item, safety });
     });
   });
@@ -2154,7 +2173,7 @@ function createRoutes(
     const packageRoot = resolveLocalPluginPackageRoot(workspace.path, body.packageRoot);
     const preview = await previewPluginPackage({ packageRoot, workspaceRoot: workspace.path, engineId: workspace.engineId ?? DEFAULT_ENGINE_ID });
     const safety = await assertPluginPackageSafeForImport({ packageRoot, preview, purpose: "install" });
-    return jsonResponse({ preview: { ...preview, safety } });
+    return jsonResponse({ preview: { ...preview, safety, ...pluginPackageEngineState(workspace, preview.manifest) } });
   });
 
   addRoute(routes, "POST", "/workspace/:id/plugin-packages", "client", async (ctx) => {
@@ -2182,7 +2201,8 @@ function createRoutes(
       timestamp: Date.now(),
     });
     if (result.status === "installed") emitReloadEvent(ctx.reloadEvents, workspace, "plugins", { type: "plugin", name: preview.manifest.id, action: "added" });
-    const item = (await listInstalledPluginPackages({ serverConfig: config })).find((entry) => entry.pluginId === preview.manifest.id);
+    const installedItem = (await listInstalledPluginPackages({ serverConfig: config })).find((entry) => entry.pluginId === preview.manifest.id);
+    const item = installedItem ? { ...installedItem, ...pluginPackageEngineState(workspace, installedItem.manifest) } : undefined;
     return jsonResponse({ result, item });
   });
 
@@ -2744,7 +2764,13 @@ function createRoutes(
     readJsonBody,
     requireClientScope,
     resolveWorkspace,
-    reloadOpencodeEngine,
+    reloadWorkspaceEngine: async (serverConfig, workspace) => {
+      if (workspace.engineId === DEEPSEEK_HARNESS_ENGINE_ID) {
+        await deepseekHarness.close();
+        return;
+      }
+      await reloadOpencodeEngine(serverConfig, workspace);
+    },
   });
 
   registerFileRoutes({

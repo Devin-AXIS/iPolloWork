@@ -33,6 +33,7 @@ export type ModelPickerModalProps = {
   target: "default" | "session";
   current: ModelRef;
   onSelect: (model: ModelRef) => void;
+  onConnectProvider?: (providerId: string) => void;
   onBehaviorChange: (model: ModelRef, value: string | null) => void;
   onToggleProvider?: (providerId: string, enabled: boolean) => void;
   onOpenSettings: () => void;
@@ -44,6 +45,7 @@ type ProviderGroup = {
   name: string;
   isNew: boolean;
   isCloud: boolean;
+  isConnected: boolean;
   isDisabled: boolean;
   hasCurrent: boolean;
   recommended: ModelOption[];
@@ -97,6 +99,7 @@ export function ModelPickerModal(props: ModelPickerModalProps) {
           name: opt.description ?? resolveProviderDisplayName(opt.providerID),
           isNew: !!opt.isRecommended,
           isCloud: opt.source === "cloud",
+          isConnected: opt.isConnected,
           isDisabled: disabledSet.has(opt.providerID),
           hasCurrent: false,
           recommended: [],
@@ -150,9 +153,14 @@ export function ModelPickerModal(props: ModelPickerModalProps) {
 
   const handleSelect = useCallback(
     (opt: ModelOption) => {
-      if (!opt.disabled) props.onSelect({ providerID: opt.providerID, modelID: opt.modelID });
+      if (opt.disabled && !opt.isConnected) {
+        props.onConnectProvider?.(opt.providerID);
+        return;
+      }
+      if (opt.disabled) return;
+      props.onSelect({ providerID: opt.providerID, modelID: opt.modelID });
     },
-    [props.onSelect],
+    [props.onConnectProvider, props.onSelect],
   );
 
   // Escape
@@ -218,7 +226,8 @@ export function ModelPickerModal(props: ModelPickerModalProps) {
                   group={group}
                   expanded={expandedProviders.has(group.id)}
                   current={props.current}
-                  canToggleProvider={!!props.onToggleProvider}
+                  canToggleProvider={!!props.onToggleProvider && group.isConnected}
+                  canConnectProvider={!!props.onConnectProvider}
                   onToggleExpand={() => toggleProvider(group.id)}
                   onToggleProvider={props.onToggleProvider}
                   onSelect={handleSelect}
@@ -248,6 +257,7 @@ function ProviderAccordion({
   expanded,
   current,
   canToggleProvider,
+  canConnectProvider,
   onToggleExpand,
   onToggleProvider,
   onSelect,
@@ -256,6 +266,7 @@ function ProviderAccordion({
   expanded: boolean;
   current: ModelRef;
   canToggleProvider: boolean;
+  canConnectProvider: boolean;
   onToggleExpand: () => void;
   onToggleProvider?: (providerId: string, enabled: boolean) => void;
   onSelect: (opt: ModelOption) => void;
@@ -324,7 +335,7 @@ function ProviderAccordion({
                 {t("model_picker.recommended")}
               </div>
               {group.recommended.map((opt) => (
-                <DefaultModelRow key={opt.modelID} opt={opt} current={current} onSelect={onSelect} recommended />
+                <DefaultModelRow key={opt.modelID} opt={opt} current={current} onSelect={onSelect} canConnectProvider={canConnectProvider} recommended />
               ))}
             </>
           ) : null}
@@ -336,7 +347,7 @@ function ProviderAccordion({
                 </div>
               ) : null}
               {group.other.map((opt) => (
-                <DefaultModelRow key={opt.modelID} opt={opt} current={current} onSelect={onSelect} />
+                <DefaultModelRow key={opt.modelID} opt={opt} current={current} onSelect={onSelect} canConnectProvider={canConnectProvider} />
               ))}
             </>
           ) : null}
@@ -351,9 +362,9 @@ function ProviderAccordion({
 /* ------------------------------------------------------------------ */
 
 function DefaultModelRow({
-  opt, current, onSelect, recommended,
+  opt, current, onSelect, canConnectProvider, recommended,
 }: {
-  opt: ModelOption; current: ModelRef; onSelect: (opt: ModelOption) => void; recommended?: boolean;
+  opt: ModelOption; current: ModelRef; onSelect: (opt: ModelOption) => void; canConnectProvider: boolean; recommended?: boolean;
 }) {
   const active = modelEquals(current, { providerID: opt.providerID, modelID: opt.modelID });
   const visionBadgeLabel = opt.supportsVision ? t("model_picker.badge_vision") : null;
@@ -361,12 +372,14 @@ function DefaultModelRow({
   return (
     <button
       type="button"
-      disabled={opt.disabled}
+      disabled={opt.disabled && (opt.isConnected || !canConnectProvider)}
       title={opt.disabled ? opt.footer : undefined}
       className={[
         "flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left transition-colors",
-        opt.disabled
+        opt.disabled && opt.isConnected
           ? "cursor-not-allowed opacity-50"
+          : opt.disabled
+            ? "hover:bg-dls-hover"
           : active
             ? "bg-green-3/50"
             : "hover:bg-dls-hover",

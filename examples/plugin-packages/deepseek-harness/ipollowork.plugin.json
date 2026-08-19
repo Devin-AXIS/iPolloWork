@@ -68,7 +68,7 @@
     }
   },
   "package": {
-    "version": "0.3.5",
+    "version": "0.3.6",
     "publisher": {
       "id": "ipollowork",
       "name": "iPolloWork"
@@ -76,6 +76,7 @@
     "compatibility": {
       "ipollowork": ">=0.21.0"
     },
+    "engines": ["deepseek-harness"],
     "updateId": "ipollowork/deepseek-harness"
   },
   "platform": ["darwin", "windows"],

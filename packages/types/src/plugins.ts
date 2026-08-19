@@ -639,6 +639,16 @@ export type PluginEnablementConditionType = PluginEnablementCondition["type"];
 export type PluginEnablementResult = { condition: PluginEnablementCondition; met: boolean };
 export type PluginEngineBinding = NonNullable<PluginManifest["engineBindings"]>[number];
 export type PluginEngineCapability = PluginEngineBinding["capabilities"][number];
+export type PluginEngineCompatibilityStatus = "ready" | "partial" | "unsupported";
+export type PluginEngineCompatibility = {
+  engineId: string;
+  status: PluginEngineCompatibilityStatus;
+  supportedResourceIds: string[];
+  unsupportedResourceIds: string[];
+  unsupportedRequiredResourceIds: string[];
+  unsupportedCapabilityIds: string[];
+  nativeEngineOnly: boolean;
+};
 export type PluginLocalization = NonNullable<PluginManifest["localization"]>;
 export type PluginTranslation = PluginLocalization["translations"][string];
 export type PluginAuthorizationMethodTranslation = NonNullable<PluginTranslation["authorizationMethods"]>[string];

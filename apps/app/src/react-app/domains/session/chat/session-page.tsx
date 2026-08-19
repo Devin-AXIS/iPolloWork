@@ -3,7 +3,7 @@ import type { CSSProperties } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { UIMessage } from "ai";
 import { useNavigate } from "react-router-dom";
-import { Code2, Ellipsis, Eye, FileText, Film, Folder, FolderPlus, Globe, Image, LoaderCircle, Lock, Mic2, Palette, PanelRightClose, PanelRightOpen, Pencil, Presentation, Search, Settings2, Trash2, Upload, X, Zap } from "lucide-react";
+import { Code2, Ellipsis, Eye, FileText, Film, Folder, FolderPlus, Globe, Image, KeyRound, LoaderCircle, Lock, Mic2, Palette, PanelRightClose, PanelRightOpen, Pencil, Presentation, Search, Settings2, Trash2, Upload, X, Zap } from "lucide-react";
 import { MAX_TEMPLATE_PACKAGE_BYTES, TEMPLATE_PACKAGE_FILE_ACCEPT, isPptxCompatibleTemplate, type PptxCompatibility, type TemplateCatalogItem, type TemplateCategory, type TemplateManifestV1, type TemplateSessionSnapshot, type TemplateSessionState, type TemplateValidationReport } from "@ipollowork/types/templates";
 import {
   DEEPSEEK_HARNESS_ENGINE_ID,
@@ -299,7 +299,7 @@ export type SessionPageProps = {
   questionReplyBusy?: boolean;
   respondQuestion?: (requestID: string, answers: string[][]) => void;
   notFoundMessage?: string | null;
-  onOpenProviderAuth?: () => void;
+  onOpenProviderAuth?: (preferredProviderId?: string) => void;
   onRenameSession?: (sessionId: string, title: string) => Promise<void> | void;
   onDeleteSession?: (sessionId: string) => Promise<void> | void;
   onArchiveSession?: (sessionId: string, archived: boolean) => Promise<void> | void;
@@ -2259,6 +2259,9 @@ export function SessionPage(props: SessionPageProps) {
     setCurrentSidePanel(null);
     setMainWorkspaceView("extensions");
   }, [setCurrentSidePanel]);
+  const closeExtensionsRailPane = useCallback(() => {
+    setMainWorkspaceView(null);
+  }, []);
   const openPluginWorkshopForSession = useCallback((
     sessionId: string,
     creationBaselinePluginIds?: string[],
@@ -2589,6 +2592,10 @@ export function SessionPage(props: SessionPageProps) {
   const mainHeaderHidden = mainWorkspaceView === "extensions"
     || showProjectNoTasksState
     || (showNewConversationChrome && !sidebarVisuallyCollapsed);
+  const floatingHeaderActionClosesExtensions = mainWorkspaceView === "extensions";
+  const floatingHeaderActionLabel = floatingHeaderActionClosesExtensions
+    ? t("plugin_library.close_page")
+    : sidePanelOpen ? t("session.right_panel_close") : t("session.right_panel_open");
   const visibleWorkspaceWidth = viewportWidth - (shellConfig.sidebar && sidebarOpen ? effectiveLeftSidebarWidth : 0);
   const floatingRightPanelToggleOffset = sidePanelOpen
     ? Math.min(effectiveBrowserPanelWidth, Math.max(0, visibleWorkspaceWidth - 40)) + 8
@@ -2794,21 +2801,25 @@ export function SessionPage(props: SessionPageProps) {
                       size="icon-sm"
                       className="absolute top-2 z-50 rounded-lg bg-background/80 text-muted-foreground shadow-sm backdrop-blur transition-colors hover:bg-muted hover:text-foreground mac:titlebar-no-drag"
                       style={{ right: floatingRightPanelToggleOffset }}
-                      aria-label={sidePanelOpen ? t("session.right_panel_close") : t("session.right_panel_open")}
-                      title={sidePanelOpen ? t("session.right_panel_close") : t("session.right_panel_open")}
-                      aria-pressed={sidePanelOpen}
-                      disabled={!props.selectedSessionId && !sidePanelOpen}
-                      onClick={toggleRightPanel}
+                      aria-label={floatingHeaderActionLabel}
+                      title={floatingHeaderActionLabel}
+                      aria-pressed={floatingHeaderActionClosesExtensions ? undefined : sidePanelOpen}
+                      disabled={!floatingHeaderActionClosesExtensions && !props.selectedSessionId && !sidePanelOpen}
+                      onClick={floatingHeaderActionClosesExtensions ? closeExtensionsRailPane : toggleRightPanel}
                     >
-                      <img
-                        src={publicAssetUrl(sidePanelOpen ? "sidebar-right-open.svg" : "sidebar-right-closed.svg")}
-                        alt=""
-                        className="h-3 w-4 shrink-0 dark:invert"
-                      />
+                      {floatingHeaderActionClosesExtensions ? (
+                        <X className="size-4" />
+                      ) : (
+                        <img
+                          src={publicAssetUrl(sidePanelOpen ? "sidebar-right-open.svg" : "sidebar-right-closed.svg")}
+                          alt=""
+                          className="h-3 w-4 shrink-0 dark:invert"
+                        />
+                      )}
                     </Button>
                   }
                 />
-                <TooltipContent>{sidePanelOpen ? t("session.right_panel_close") : t("session.right_panel_open")}</TooltipContent>
+                <TooltipContent>{floatingHeaderActionLabel}</TooltipContent>
               </Tooltip>
             ) : null}
             <div
@@ -3529,6 +3540,21 @@ export function SessionPage(props: SessionPageProps) {
                         />
                       </span>
                       <span className="text-xs leading-[18px] text-muted-foreground">{engine.description}</span>
+                      {engine.id === DEEPSEEK_HARNESS_ENGINE_ID ? (
+                        <button
+                          type="button"
+                          className="relative z-20 mt-auto inline-flex w-fit items-center gap-1.5 text-xs font-medium text-[var(--project-dialog-accent-strong)] hover:underline disabled:pointer-events-none disabled:opacity-50"
+                          disabled={createProjectBusy}
+                          onClick={(event) => {
+                            event.preventDefault();
+                            event.stopPropagation();
+                            props.onOpenProviderAuth?.("deepseek-official");
+                          }}
+                        >
+                          <KeyRound className="size-3.5" />
+                          {t("projects.configure_deepseek_key")}
+                        </button>
+                      ) : null}
                     </label>
                   );
                 })}

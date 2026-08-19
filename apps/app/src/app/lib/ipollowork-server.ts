@@ -17,6 +17,7 @@ import {
 } from "@ipollowork/types/templates";
 import type { iPolloWorkExtensionManifest } from "../extensions";
 import type {
+  PluginEngineCompatibility,
   PluginWorkshopExportFormat,
   PluginWorkshopProjectSnapshot,
   PluginWorkshopProjectSummary,
@@ -310,6 +311,8 @@ export type iPolloWorkPluginPackageItem = {
   previousVersion: string | null;
   manifest: iPolloWorkExtensionManifest;
   integrity: { sha256: string; status: "verified" | "unsigned" };
+  activeEngineId?: string;
+  engineCompatibility?: PluginEngineCompatibility[];
 };
 
 export type iPolloWorkPluginUiResource = {
@@ -329,6 +332,8 @@ export type iPolloWorkPluginPackagePreview = {
   writes: Array<{ path: string; sha256: string }>;
   integrity: { sha256: string; status: "verified" | "unsigned" };
   safety: iPolloWorkPluginPackageImportSafety;
+  activeEngineId?: string;
+  engineCompatibility?: PluginEngineCompatibility[];
 };
 
 export type iPolloWorkPluginPackageImportPreview = iPolloWorkPluginPackagePreview & {
@@ -363,6 +368,8 @@ export type iPolloWorkBundledPluginPackageItem = {
   integrity: { sha256: string; status: "verified" | "unsigned" };
   installedVersion: string | null;
   updateAvailable: boolean;
+  activeEngineId?: string;
+  engineCompatibility?: PluginEngineCompatibility[];
 };
 
 export type iPolloWorkPluginConnectionStatus = {

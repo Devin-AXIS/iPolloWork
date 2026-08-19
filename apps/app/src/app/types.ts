@@ -14,8 +14,13 @@ export type ProviderModel = {
   capabilities: {
     attachment?: boolean;
     reasoning?: boolean;
+    toolcall?: boolean;
     input?: {
+      text?: boolean;
       image?: boolean;
+    };
+    output?: {
+      text?: boolean;
     };
   };
   variants?: Record<string, Record<string, unknown>>;

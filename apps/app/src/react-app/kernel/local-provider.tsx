@@ -96,15 +96,7 @@ export function getEnginePreferences(
   engineId?: string | null,
 ): EnginePreferences {
   const resolvedEngineId = engineId?.trim() || DEFAULT_ENGINE_ID;
-  const enginePreferences = preferences.enginePreferences[resolvedEngineId]
-    ?? EMPTY_ENGINE_PREFERENCES;
-  const sharedModelPreferences = preferences.enginePreferences[DEFAULT_ENGINE_ID]
-    ?? EMPTY_ENGINE_PREFERENCES;
-  return {
-    ...enginePreferences,
-    model: sharedModelPreferences.model,
-    modelVariant: sharedModelPreferences.modelVariant,
-  };
+  return preferences.enginePreferences[resolvedEngineId] ?? EMPTY_ENGINE_PREFERENCES;
 }
 
 export function updateEnginePreferences(
@@ -115,24 +107,11 @@ export function updateEnginePreferences(
   const resolvedEngineId = engineId?.trim() || DEFAULT_ENGINE_ID;
   const previousEngine = getEnginePreferences(preferences, resolvedEngineId);
   const next = updater(previousEngine);
-  const previousShared = preferences.enginePreferences[DEFAULT_ENGINE_ID]
-    ?? EMPTY_ENGINE_PREFERENCES;
   return {
     ...preferences,
     enginePreferences: {
       ...preferences.enginePreferences,
-      [DEFAULT_ENGINE_ID]: {
-        ...previousShared,
-        model: next.model,
-        modelVariant: next.modelVariant,
-      },
-      [resolvedEngineId]: {
-        ...(preferences.enginePreferences[resolvedEngineId] ?? EMPTY_ENGINE_PREFERENCES),
-        ...(resolvedEngineId === DEFAULT_ENGINE_ID
-          ? { model: next.model, modelVariant: next.modelVariant }
-          : {}),
-        mode: next.mode,
-      },
+      [resolvedEngineId]: next,
     },
   };
 }

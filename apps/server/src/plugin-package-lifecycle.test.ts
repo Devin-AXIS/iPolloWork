@@ -8,6 +8,7 @@ import {
   deepSeekHarnessPluginEngineAdapter,
   openCodePluginEngineAdapter,
   pluginEngineAdapters,
+  pluginEngineCompatibility,
   PluginEngineAdapterRegistry,
   type PluginEngineAdapter,
 } from "./plugin-engine-adapter.js";
@@ -347,6 +348,7 @@ describe("plugin package lifecycle", () => {
     const alternateAdapter: PluginEngineAdapter = {
       id: "deepseek-harness",
       portableResourceTypes: new Set(["skill"]),
+      nativeCapabilityKinds: new Set(),
       compatibility: () => [],
       workspaceFiles: () => [],
       skillTargetPath: () => null,
@@ -363,6 +365,35 @@ describe("plugin package lifecycle", () => {
       openCodePluginEngineAdapter,
       openCodePluginEngineAdapter,
     ])).toThrow("Duplicate plugin engine adapter: opencode");
+  });
+
+  test("reports complete, partial, and unsupported engine compatibility without hiding portable resources", async () => {
+    const packageRoot = await createRoot("ipollowork-plugin-compatibility-");
+    await writeDeclarativePackage(packageRoot);
+    const manifest = JSON.parse(await readFile(join(packageRoot, "ipollowork.plugin.json"), "utf8"));
+
+    expect(pluginEngineCompatibility(openCodePluginEngineAdapter, manifest)).toMatchObject({
+      engineId: "opencode",
+      status: "ready",
+      supportedResourceIds: ["acme-skill"],
+    });
+
+    manifest.resources.push({
+      type: "mcp",
+      id: "private-mcp",
+      mcpServerName: "private",
+      path: "mcp/private.json",
+      oauth: true,
+      required: true,
+    });
+    expect(pluginEngineCompatibility(deepSeekHarnessPluginEngineAdapter, manifest)).toMatchObject({
+      engineId: "deepseek-harness",
+      status: "partial",
+      unsupportedRequiredResourceIds: ["private-mcp"],
+    });
+
+    manifest.resources = [{ type: "command", id: "command-only", path: "commands/only.md", required: true }];
+    expect(pluginEngineCompatibility(deepSeekHarnessPluginEngineAdapter, manifest).status).toBe("unsupported");
   });
 
   test("previews the complete Figma package and every bundled workflow file", async () => {
@@ -858,6 +889,47 @@ describe("plugin package lifecycle", () => {
     });
     expect(preview.files.map((file) => file.path)).toContain("mcp/acme.json");
     expect(preview.writes.map((file) => file.path)).toEqual([".dsh/skills/acme-research/SKILL.md"]);
+  });
+
+  test("loads public remote MCP tools through the managed DeepSeek Harness patch", async () => {
+    const lifecycle = await import("./plugin-package-lifecycle.js");
+    const workspaceRoot = await createRoot("ipollowork-plugin-dsh-mcp-workspace-");
+    const packageRoot = await createRoot("ipollowork-plugin-dsh-mcp-package-");
+    process.env.IPOLLOWORK_RUNTIME_DB = join(workspaceRoot, "runtime.sqlite");
+    await writeDeclarativePackage(packageRoot);
+    const mcpPath = join(packageRoot, "mcp", "context7.json");
+    await mkdir(dirname(mcpPath), { recursive: true });
+    await writeFile(mcpPath, JSON.stringify({ type: "remote", url: "https://mcp.context7.com/mcp" }), "utf8");
+    await writeFile(join(packageRoot, "mcp", "private.json"), JSON.stringify({
+      mcpServers: {
+        "private-account": { type: "remote", url: "https://private.example.com/mcp" },
+      },
+    }), "utf8");
+    const manifestPath = join(packageRoot, "ipollowork.plugin.json");
+    const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
+    manifest.resources.push({ type: "mcp", id: "context7-mcp", mcpServerName: "context7", path: "mcp/context7.json", required: true });
+    manifest.resources.push({ type: "mcp", id: "private-mcp", path: "mcp/private.json", oauth: true });
+    await writeFile(manifestPath, JSON.stringify(manifest, null, 2), "utf8");
+    const config = serverConfig(workspaceRoot);
+    const workspace = config.workspaces[0];
+    if (!workspace) throw new Error("Test workspace is missing");
+    workspace.engineId = "deepseek-harness";
+
+    await lifecycle.installPluginPackage({
+      serverConfig: config,
+      workspaceId: WORKSPACE_ID,
+      packageRoot,
+      workspaceRoot,
+    });
+
+    const patch = await readFile(join(workspaceRoot, "deepseek-harness", "ipollowork-plugin-packages.patch.yml"), "utf8");
+    expect(patch).toContain("@deepseek-ai/dsh-mcp-client");
+    expect(patch).toContain("serverName: context7");
+    expect(patch).toContain("https://mcp.context7.com/mcp");
+    expect(patch).not.toContain("private-account");
+
+    await lifecycle.uninstallPluginPackage({ serverConfig: config, pluginId: "acme-research" });
+    expect(await readFile(join(workspaceRoot, "deepseek-harness", "ipollowork-plugin-packages.patch.yml"), "utf8")).toBe("[]\n");
   });
 
   test("allows remote HTTPS MCP imports but blocks local MCP commands", async () => {

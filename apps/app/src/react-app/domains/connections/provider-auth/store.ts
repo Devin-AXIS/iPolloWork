@@ -1,9 +1,12 @@
 import { useSyncExternalStore } from "react";
 import {
+  parseSharedProviderProfile,
   sharedProviderCredentialEnvKey,
+  sharedProviderIdsFromEnvKeys,
   sharedProviderProfileEnvKey,
   type SharedProviderProfile,
 } from "@ipollowork/types/provider-credentials";
+import { DEFAULT_ENGINE_ID } from "@ipollowork/types/workspace";
 
 import { parse } from "jsonc-parser";
 
@@ -31,7 +34,10 @@ import {
   filterProviderList,
 } from "../../../../app/utils/providers";
 import { getReactQueryClient } from "../../../infra/query-client";
-import { ensureProviderListQuery } from "../../../infra/provider-list-query";
+import {
+  ensureProviderListQuery,
+  refreshProviderListQueries,
+} from "../../../infra/provider-list-query";
 import type { iPolloWorkServerStoreSnapshot } from "../ipollowork-server-store";
 
 /**
@@ -67,12 +73,13 @@ import {
 import { refreshDesktopCloudSync } from "../../../../app/cloud/desktop-cloud-sync";
 import { dispatchNewProviders } from "../../../../app/lib/provider-events";
 import {
+  DESKTOP_RESTRICTION_OPENCODE_PROVIDER_ID,
   isDesktopProviderBlocked,
   type DesktopAppRestrictionChecker,
 } from "../../../../app/cloud/desktop-app-restrictions";
 import { TOKENSTAR_PROVIDER, tokenStarRuntimeModels } from "./tokenstar-provider";
 import {
-  providerEngineAdapters,
+  modelRuntimeAdapters,
   type ProviderEngineAuthAuthorization,
   type ProviderEngineAuthMethod,
   type ProviderEngineConfigTarget,
@@ -145,6 +152,7 @@ export type ProviderAuthStoreSnapshot = {
   providerAuthPreferredProviderId: string | null;
   providerAuthWorkerType: "local" | "remote";
   providerAuthProviders: ProviderAuthProvider[];
+  connectedProviderIds: string[];
   cloudOrgProviders: DenOrgLlmProvider[];
   importedCloudProviders: Record<string, CloudImportedProvider>;
 };
@@ -179,6 +187,7 @@ type MutableState = {
   providerAuthMethods: Record<string, ProviderAuthMethod[]>;
   providerAuthPreferredProviderId: string | null;
   providerAuthReturnFocusTarget: ProviderReturnFocusTarget;
+  accountConnectedProviderIds: string[];
   cloudOrgProviders: DenOrgLlmProvider[];
   importedCloudProviders: Record<string, CloudImportedProvider>;
 };
@@ -254,6 +263,7 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
     providerAuthMethods: {},
     providerAuthPreferredProviderId: null,
     providerAuthReturnFocusTarget: "none",
+    accountConnectedProviderIds: [],
     cloudOrgProviders: [],
     importedCloudProviders: {},
   };
@@ -264,6 +274,11 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
   let cloudProviderSyncInFlight: Promise<void> | null = null;
   let cloudProviderSyncQueuedReason: CloudProviderSyncReason | null = null;
   let cloudProviderSyncContextKey = "";
+  let sharedProviderImportFingerprint = "";
+  let sharedProviderImportInFlight: Promise<{
+    changed: boolean;
+    requiresReload: boolean;
+  }> | null = null;
 
   const emitChange = () => {
     for (const listener of listeners) listener();
@@ -273,7 +288,7 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
     options.selectedWorkspaceDisplay().workspaceType === "remote" ? "remote" : "local";
 
   const getProviderEngineAdapter = () =>
-    providerEngineAdapters.get(options.selectedWorkspaceDisplay().engineId);
+    modelRuntimeAdapters.get(options.selectedWorkspaceDisplay().engineId);
 
   const getProviderEngineConnection = () => {
     const client = options.client();
@@ -298,6 +313,20 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
         id,
         name: provider.name?.trim() || id,
         env: Array.isArray(provider.env) ? provider.env : [],
+      });
+    }
+
+    if (
+      !merged.has(DESKTOP_RESTRICTION_OPENCODE_PROVIDER_ID) &&
+      !isDesktopProviderBlocked({
+        providerId: DESKTOP_RESTRICTION_OPENCODE_PROVIDER_ID,
+        checkRestriction: options.checkDesktopAppRestriction,
+      })
+    ) {
+      merged.set(DESKTOP_RESTRICTION_OPENCODE_PROVIDER_ID, {
+        id: DESKTOP_RESTRICTION_OPENCODE_PROVIDER_ID,
+        name: "iPolloWork Built-in Models",
+        env: [],
       });
     }
 
@@ -404,6 +433,18 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
       providerAuthPreferredProviderId: state.providerAuthPreferredProviderId,
       providerAuthWorkerType: getProviderAuthWorkerType(),
       providerAuthProviders: getProviderAuthProviders(),
+      connectedProviderIds: [
+        ...new Set([
+          ...(!isDesktopProviderBlocked({
+            providerId: DESKTOP_RESTRICTION_OPENCODE_PROVIDER_ID,
+            checkRestriction: options.checkDesktopAppRestriction,
+          })
+            ? [DESKTOP_RESTRICTION_OPENCODE_PROVIDER_ID]
+            : []),
+          ...options.providerConnectedIds(),
+          ...state.accountConnectedProviderIds,
+        ]),
+      ],
       cloudOrgProviders: state.cloudOrgProviders,
       importedCloudProviders: state.importedCloudProviders,
     };
@@ -909,6 +950,10 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
         ipolloworkClient.deleteUserEnv(sharedProviderCredentialEnvKey(providerId)),
         ipolloworkClient.deleteUserEnv(sharedProviderProfileEnvKey(providerId)),
       ]);
+      setStateField(
+        "accountConnectedProviderIds",
+        state.accountConnectedProviderIds.filter((id) => id !== providerId),
+      );
     }
   };
 
@@ -919,6 +964,154 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
     const ipolloworkClient = getProviderServerSnapshot().ipolloworkServerClient;
     if (!ipolloworkClient) return;
     await ipolloworkClient.upsertUserEnv(sharedProviderConnectionEnvEntries({ apiKey, profile }));
+    setStateField(
+      "accountConnectedProviderIds",
+      [...new Set([...state.accountConnectedProviderIds, profile.providerId])],
+    );
+    await refreshProviderListQueries(getReactQueryClient());
+  };
+
+  const refreshAccountConnectedProviderIds = async () => {
+    const ipolloworkClient = getProviderServerSnapshot().ipolloworkServerClient;
+    if (!ipolloworkClient) return null;
+    const { keys } = await ipolloworkClient.listUserEnvKeys();
+    const providerIds = sharedProviderIdsFromEnvKeys(keys);
+    if (
+      providerIds.length !== state.accountConnectedProviderIds.length ||
+      providerIds.some((providerId, index) => providerId !== state.accountConnectedProviderIds[index])
+    ) {
+      setStateField("accountConnectedProviderIds", providerIds);
+    }
+    return keys;
+  };
+
+  const reloadProviderEngine = async (client: unknown) => {
+    if (!getProviderEngineAdapter().capabilities.authChangesRequireReload) return;
+
+    // Prefer the iPolloWork server engine reload: it disposes the engine AND
+    // re-registers runtime-DB MCPs, so non-primary workspaces and pending
+    // changes are picked up instead of silently dropping (toggles "turn
+    // off").
+    let reloaded = false;
+    try {
+      const ipolloworkSnapshot = getProviderServerSnapshot();
+      const ipolloworkClient = ipolloworkSnapshot.ipolloworkServerClient;
+      if (ipolloworkSnapshot.ipolloworkServerStatus === "connected" && ipolloworkClient) {
+        const workspaceId =
+          options.runtimeWorkspaceId()?.trim() ||
+          (await options.ensureRuntimeWorkspaceId?.())?.trim() ||
+          "";
+        if (workspaceId) {
+          try {
+            await ipolloworkClient.reloadEngine(workspaceId);
+          } catch (error) {
+            const unreachable =
+              error instanceof iPolloWorkServerError && error.code === "opencode_engine_unreachable";
+            if (!unreachable || !isDesktopRuntime()) {
+              throw error;
+            }
+            await engineRestart({});
+          }
+          reloaded = true;
+        }
+      }
+    } catch {
+      // fall back to a direct engine dispose below
+    }
+
+    if (!reloaded) {
+      try {
+        await getProviderEngineAdapter().connect(client).dispose();
+      } catch {
+        // ignore dispose failures and try reading current state anyway
+      }
+    }
+
+    try {
+      const activeClient = options.client() ?? client;
+      await getProviderEngineAdapter().connect(activeClient).waitUntilHealthy();
+    } catch {
+      // ignore health wait failures and still attempt provider reads
+    }
+  };
+
+  const importSharedProviderConnections = (keys: readonly string[]) => {
+    if (sharedProviderImportInFlight) return sharedProviderImportInFlight;
+    sharedProviderImportInFlight = (async () => {
+      const adapter = getProviderEngineAdapter();
+      if (adapter.id !== DEFAULT_ENGINE_ID) {
+        return { changed: false, requiresReload: false };
+      }
+      const ipolloworkClient = getProviderServerSnapshot().ipolloworkServerClient;
+      const engineClient = options.client();
+      if (!ipolloworkClient || !engineClient) {
+        return { changed: false, requiresReload: false };
+      }
+      const keySet = new Set(keys);
+      const providerIds = sharedProviderIdsFromEnvKeys(keys);
+      const connections = await Promise.all(providerIds.map(async (providerId) => {
+        const credentialKey = sharedProviderCredentialEnvKey(providerId);
+        const profileKey = sharedProviderProfileEnvKey(providerId);
+        const [credential, profile] = await Promise.all([
+          ipolloworkClient.getUserEnv(credentialKey),
+          keySet.has(profileKey) ? ipolloworkClient.getUserEnv(profileKey) : null,
+        ]);
+        return {
+          providerId,
+          apiKey: credential.item.value.trim(),
+          profile: profile ? parseSharedProviderProfile(profile.item.value) : null,
+        };
+      }));
+      const fingerprint = JSON.stringify({ workspace: currentWorkspaceKey(), connections });
+      if (fingerprint === sharedProviderImportFingerprint) {
+        return { changed: false, requiresReload: false };
+      }
+
+      const target = await resolveProviderEngineConfigTarget("read");
+      const runtimeProviderIds = new Set(await adapter.runtimeProviderIds(target));
+      let runtimeConfigChanged = false;
+      for (const entry of connections) {
+        if (!entry.apiKey) continue;
+        const profile = entry.profile;
+        if (profile?.baseURL && !runtimeProviderIds.has(entry.providerId)) {
+          await patchRuntimeProviders(
+            adapter.buildCompatibleProviderPatch({
+              id: entry.providerId,
+              name: profile.displayName,
+              baseURL: profile.baseURL,
+              models: Object.fromEntries(
+                profile.models.map((model) => [model.id, { name: model.name ?? model.id }]),
+              ),
+            }),
+          );
+          runtimeProviderIds.add(entry.providerId);
+          runtimeConfigChanged = true;
+        }
+      }
+
+      // A provider added to runtime config is not addressable through the
+      // currently running engine. Reload first, then acquire a fresh
+      // connection and write all credentials.
+      if (runtimeConfigChanged) {
+        await reloadProviderEngine(engineClient);
+      }
+      const activeClient = options.client() ?? engineClient;
+      const connection = adapter.connect(activeClient);
+      let credentialsChanged = false;
+      for (const entry of connections) {
+        if (!entry.apiKey) continue;
+        await connection.setApiKey(entry.providerId, entry.apiKey);
+        credentialsChanged = true;
+      }
+      if (credentialsChanged) {
+        await reloadProviderEngine(activeClient);
+      }
+      sharedProviderImportFingerprint = fingerprint;
+      return { changed: connections.length > 0, requiresReload: false };
+    })().finally(() => {
+      sharedProviderImportInFlight = null;
+    });
+    return sharedProviderImportInFlight;
   };
 
   const describeProviderError = (error: unknown, fallback: string) => {
@@ -1185,57 +1378,28 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
     }
   }
 
-  async function refreshProviders(optionsArg?: { dispose?: boolean }) {
+  async function refreshProviders(optionsArg?: {
+    dispose?: boolean;
+    force?: boolean;
+    skipSharedImport?: boolean;
+  }) {
+    const accountEnvKeys = await refreshAccountConnectedProviderIds().catch(() => null);
     const client = options.client();
     if (!client) return null;
-    const connection = getProviderEngineAdapter().connect(client);
-
-    if (optionsArg?.dispose && getProviderEngineAdapter().capabilities.authChangesRequireReload) {
-      // Prefer the iPolloWork server engine reload: it disposes the engine AND
-      // re-registers runtime-DB MCPs, so non-primary workspaces and pending
-      // changes are picked up instead of silently dropping (toggles "turn
-      // off").
-      let reloaded = false;
-      try {
-        const ipolloworkSnapshot = getProviderServerSnapshot();
-        const ipolloworkClient = ipolloworkSnapshot.ipolloworkServerClient;
-        if (ipolloworkSnapshot.ipolloworkServerStatus === "connected" && ipolloworkClient) {
-          const workspaceId =
-            options.runtimeWorkspaceId()?.trim() ||
-            (await options.ensureRuntimeWorkspaceId?.())?.trim() ||
-            "";
-          if (workspaceId) {
-            try {
-              await ipolloworkClient.reloadEngine(workspaceId);
-            } catch (error) {
-              const unreachable =
-                error instanceof iPolloWorkServerError && error.code === "opencode_engine_unreachable";
-              if (!unreachable || !isDesktopRuntime()) {
-                throw error;
-              }
-              await engineRestart({});
-            }
-            reloaded = true;
-          }
-        }
-      } catch {
-        // fall back to a direct engine dispose below
-      }
-
-      if (!reloaded) {
-        try {
-          await connection.dispose();
-        } catch {
-          // ignore dispose failures and try reading current state anyway
-        }
-      }
-
-      try {
-        const activeClient = options.client() ?? client;
-        await getProviderEngineAdapter().connect(activeClient).waitUntilHealthy();
-      } catch {
-        // ignore health wait failures and still attempt provider reads
-      }
+    const sharedProviderImport = optionsArg?.skipSharedImport || !accountEnvKeys
+      ? { changed: false, requiresReload: false }
+      : await importSharedProviderConnections(accountEnvKeys).catch(() => ({
+          changed: false,
+          requiresReload: false,
+        }));
+    if (sharedProviderImport.changed) {
+      await refreshProviderListQueries(getReactQueryClient());
+    }
+    if (
+      (optionsArg?.dispose || sharedProviderImport.requiresReload)
+      && getProviderEngineAdapter().capabilities.authChangesRequireReload
+    ) {
+      await reloadProviderEngine(client);
     }
 
     const activeClient = options.client() ?? client;
@@ -1257,7 +1421,7 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
           engineId: getProviderEngineAdapter().id,
           baseUrl: options.providerBaseUrl(),
           directory: options.selectedWorkspaceRoot(),
-          force: Boolean(optionsArg?.dispose),
+          force: Boolean(optionsArg?.force || optionsArg?.dispose || sharedProviderImport.changed),
         }),
         disabledProviders,
       );
@@ -1357,6 +1521,7 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
       isDeepSeekOfficial && getProviderEngineAdapter().capabilities.customProviders;
     const isQwen3Coder = resolvedProviderId === QWEN3_CODER_PROVIDER.providerId;
     const isTokenStar = resolvedProviderId === TOKENSTAR_PROVIDER.providerId;
+    const materializesRuntimeProvider = materializesDeepSeekProvider || isQwen3Coder || isTokenStar;
     let sharedProfile = catalogSharedProviderProfile(options.providers(), resolvedProviderId);
 
     if (isDeepSeekOfficial) {
@@ -1387,7 +1552,10 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
     }
 
     try {
-      const connection = getProviderEngineConnection();
+      // Persist the engine-neutral credential before touching an engine.
+      // Engine reloads can remount the UI, so doing this last used to leave a
+      // half-installed provider with no shared key.
+      await mirrorSharedProviderConnection(trimmed, sharedProfile);
       if (materializesDeepSeekProvider) {
         await patchRuntimeProviders(
           getProviderEngineAdapter().buildCompatibleProviderPatch({
@@ -1451,14 +1619,25 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
           // Runtime config owns this provider; legacy file cleanup is best-effort.
         }
       }
-      await connection.setApiKey(providerId, trimmed);
-      await mirrorSharedProviderConnection(trimmed, sharedProfile);
-      if (materializesDeepSeekProvider || isQwen3Coder || isTokenStar) {
+      // Runtime-defined providers do not exist in the currently running
+      // OpenCode instance until the config patch above has been loaded. Saving
+      // credentials against that stale instance silently leaves the provider
+      // half-installed (config present, key missing), so reload before auth.
+      if (
+        materializesRuntimeProvider
+        && getProviderEngineAdapter().capabilities.authChangesRequireReload
+      ) {
+        await reloadProviderEngine(options.client());
+      }
+      await getProviderEngineConnection().setApiKey(providerId, trimmed);
+      await reloadProviderEngine(options.client());
+      if (materializesRuntimeProvider) {
         const syntheticProviderId = isTokenStar
           ? TOKENSTAR_PROVIDER.providerId
           : isQwen3Coder
             ? QWEN3_CODER_PROVIDER.providerId
             : DEEPSEEK_OFFICIAL_PROVIDER.providerId;
+        await refreshProviders({ force: true, skipSharedImport: true });
         const nextConnected = [
           ...options.providerConnectedIds().filter((id) => id !== syntheticProviderId),
           syntheticProviderId,
@@ -1466,9 +1645,8 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
         options.setProviderConnectedIds(nextConnected);
         refreshSnapshot();
         emitChange();
-        void refreshProviders({ dispose: true }).catch(() => null);
       } else {
-        await refreshProviders({ dispose: true });
+        await refreshProviders({ force: true, skipSharedImport: true });
       }
       return `${t("status.connected")} ${providerId}`;
     } catch (error) {
@@ -1925,6 +2103,7 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
     emitChange();
     if (workspaceChanged) {
       void refreshImportedCloudProviders();
+      void refreshProviders().catch(() => null);
     }
     if (!hasCloudProviderSyncPrerequisites()) {
       cloudProviderSyncContextKey = "";
@@ -2052,6 +2231,7 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
         })();
       }
     });
+    void refreshProviders().catch(() => null);
     refreshSnapshot();
     emitChange();
   };

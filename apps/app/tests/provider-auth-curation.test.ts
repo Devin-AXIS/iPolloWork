@@ -3,6 +3,7 @@ import { describe, expect, test } from "bun:test";
 import {
   buildProviderAuthEntries,
   formatProviderAuthName,
+  getProviderAuthEntryVariantLabel,
   getProviderAuthEntryGroups,
 } from "../src/react-app/domains/connections/provider-auth/provider-auth-curation";
 import type {
@@ -29,6 +30,7 @@ const apiMethods: Record<string, ProviderAuthMethod[]> = {
   stepfun: [{ type: "api", label: "API key" }],
   tokenstar: [{ type: "api", label: "API key" }],
   "github-copilot": [{ type: "oauth", label: "Login with GitHub Copilot" }],
+  deepseek: [{ type: "api", label: "API key" }],
   "deepseek-official": [{ type: "api", label: "API key" }],
 };
 
@@ -51,6 +53,7 @@ const providers: ProviderAuthProvider[] = [
   { id: "stepfun", name: "StepFun (China)", env: ["API_KEY"] },
   { id: "tokenstar", name: "TokenStar", env: [] },
   { id: "github-copilot", name: "GitHub Copilot", env: [] },
+  { id: "deepseek", name: "DeepSeek", env: ["DEEPSEEK_API_KEY"] },
   { id: "deepseek-official", name: "DeepSeek Official", env: ["DEEPSEEK_API_KEY"] },
 ];
 
@@ -128,7 +131,34 @@ describe("provider auth curation", () => {
     expect(formatProviderAuthName("opencode", "OpenCode Zen")).toBe("iPolloWork Built-in Models");
   });
 
-  test("presents the native DeepSeek Harness provider directly", () => {
+  test("labels the canonical DeepSeek provider", () => {
     expect(formatProviderAuthName("deepseek-official", "DeepSeek Official")).toBe("DeepSeek");
+  });
+
+  test("collapses the legacy DeepSeek provider into deepseek-official", () => {
+    const entries = buildProviderAuthEntries({
+      authMethods: apiMethods,
+      connectedProviderIds: ["deepseek"],
+      providers,
+      isRemoteWorker: false,
+      showiPolloWorkModelsSubscribe: false,
+    });
+    const groups = getProviderAuthEntryGroups(entries, "");
+    const deepSeekEntries = [...groups.recommended, ...groups.more].filter(
+      (entry) => entry.name === "DeepSeek",
+    );
+
+    expect(deepSeekEntries).toHaveLength(1);
+    const [deepSeek] = deepSeekEntries;
+    expect(deepSeek).toMatchObject({
+      id: "deepseek-official",
+      connected: true,
+      variantIds: ["deepseek"],
+    });
+    if (!deepSeek) throw new Error("Expected the canonical DeepSeek provider");
+    expect(getProviderAuthEntryVariantLabel(deepSeek)).toBeNull();
+    expect(
+      getProviderAuthEntryGroups(entries, "deepseek").recommended.map((entry) => entry.id),
+    ).toEqual(["deepseek-official"]);
   });
 });

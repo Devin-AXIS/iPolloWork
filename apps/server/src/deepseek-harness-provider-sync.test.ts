@@ -7,10 +7,29 @@ import {
 
 import {
   deepSeekHarnessProviderCredentials,
+  deepSeekHarnessWebArgs,
   sharedProviderApiCredentials,
 } from "./deepseek-harness-runtime.js";
 
 describe("DeepSeek Harness provider credential sync", () => {
+  test("places launcher patch options before web-app options", () => {
+    expect(deepSeekHarnessWebArgs("", "C:/runtime/plugins.patch.yml")).toEqual([
+      "web",
+      "--patch",
+      "C:/runtime/plugins.patch.yml",
+      "--port",
+      "0",
+    ]);
+    expect(deepSeekHarnessWebArgs("C:/runtime/dsh.js", "C:/runtime/plugins.patch.yml")).toEqual([
+      "C:/runtime/dsh.js",
+      "web",
+      "--patch",
+      "C:/runtime/plugins.patch.yml",
+      "--port",
+      "0",
+    ]);
+  });
+
   test("imports API keys without exposing OAuth credentials", () => {
     expect([...sharedProviderApiCredentials([
       { key: sharedProviderCredentialEnvKey("openai"), value: " sk-openai " },
@@ -28,13 +47,54 @@ describe("DeepSeek Harness provider credential sync", () => {
   test("does not turn the media-center DashScope credential into a chat provider", () => {
     expect([...deepSeekHarnessProviderCredentials([
       { key: "DASHSCOPE_API_KEY", value: " dashscope-key " },
-    ])]).toEqual([]);
+    ])]).toEqual([[
+      "opencode",
+      {
+        apiKey: "public",
+        bridge: {
+          providerId: "opencode",
+          displayName: "iPolloWork Built-in Models",
+          api: "openai-completions",
+          baseURL: "https://opencode.ai/zen/v1",
+          discoverModels: true,
+        },
+      },
+    ]]);
+  });
+
+  test("always exposes OpenCode Zen free models to the DSH inference bridge", () => {
+    expect(deepSeekHarnessProviderCredentials([]).get("opencode")).toEqual({
+      apiKey: "public",
+      bridge: {
+        providerId: "opencode",
+        displayName: "iPolloWork Built-in Models",
+        api: "openai-completions",
+        baseURL: "https://opencode.ai/zen/v1",
+        discoverModels: true,
+      },
+    });
+  });
+
+  test("keeps the Zen bridge when the user replaces the public key with an account key", () => {
+    expect(deepSeekHarnessProviderCredentials([{
+      key: sharedProviderCredentialEnvKey("opencode"),
+      value: "zen-account-key",
+    }]).get("opencode")).toEqual({
+      apiKey: "zen-account-key",
+      bridge: {
+        providerId: "opencode",
+        displayName: "iPolloWork Built-in Models",
+        api: "openai-completions",
+        baseURL: "https://opencode.ai/zen/v1",
+        discoverModels: true,
+      },
+    });
   });
 
   test("bridges an explicitly shared Alibaba credential into a callable DSH provider", () => {
     expect([...deepSeekHarnessProviderCredentials([
       { key: sharedProviderCredentialEnvKey("alibaba-cn"), value: " dashscope-key " },
-    ])]).toEqual([[
+    ])].find(([providerId]) => providerId === "alibaba-cn")).toEqual([
       "alibaba-cn",
       {
         apiKey: "dashscope-key",
@@ -46,7 +106,7 @@ describe("DeepSeek Harness provider credential sync", () => {
           discoverModels: true,
         },
       },
-    ]]);
+    ]);
   });
 
   test("preserves the shared Alibaba provider id while ignoring ambient DashScope", () => {
@@ -71,7 +131,7 @@ describe("DeepSeek Harness provider credential sync", () => {
           models: [{ id: "acme-large", name: "Acme Large" }],
         }),
       },
-    ])]).toEqual([[
+    ])].find(([candidate]) => candidate === providerId)).toEqual([
       providerId,
       {
         apiKey: "acme-key",
@@ -83,7 +143,7 @@ describe("DeepSeek Harness provider credential sync", () => {
           models: [{ id: "acme-large", name: "Acme Large" }],
         },
       },
-    ]]);
+    ]);
   });
 
   test("ignores a profile whose encoded provider id does not match", () => {
@@ -100,6 +160,9 @@ describe("DeepSeek Harness provider credential sync", () => {
           models: [{ id: "acme-large" }],
         }),
       },
-    ])]).toEqual([["acme", { apiKey: "acme-key" }]]);
+    ])].find(([providerId]) => providerId === "acme")).toEqual([
+      "acme",
+      { apiKey: "acme-key" },
+    ]);
   });
 });

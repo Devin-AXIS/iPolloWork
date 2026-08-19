@@ -61,6 +61,18 @@ export function sharedProviderIdFromCredentialEnvKey(key: string): string | null
   return providerIdFromEnvKey(key, SHARED_PROVIDER_CREDENTIAL_SUFFIX)
 }
 
+/** Provider connections owned by the current iPolloWork user account. */
+export function sharedProviderIdsFromEnvKeys(keys: readonly string[]): string[] {
+  return [
+    ...new Set(
+      keys.flatMap((key) => {
+        const providerId = sharedProviderIdFromCredentialEnvKey(key)
+        return providerId ? [providerId] : []
+      }),
+    ),
+  ].sort()
+}
+
 export function sharedProviderProfileEnvKey(providerId: string): string {
   return `${SHARED_PROVIDER_CREDENTIAL_PREFIX}${encodedProviderId(providerId)}${SHARED_PROVIDER_PROFILE_SUFFIX}`
 }
