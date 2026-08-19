@@ -3,24 +3,55 @@ title: "Roadmap"
 description: "What iPolloWork supports today and what is coming next."
 ---
 
-Sharing the upcoming items in our roadmap:
+This roadmap covers the next year of public iPolloWork development. It is not a
+promise that every item will ship on a specific date; it documents the intended
+direction so contributors can align work and non-goals.
 
-Last updated: 04/16/2026
+Last updated: 2026-08-19
 
 ## Live today
 
 - Desktop app on Windows, Mac, and Linux.
-- Shared agents, skills, Agents, and MCPs.
-- Sign in with OpenAI Auth or other LLM providers.
-- Use any LLM, including LiteLLM and Cloudflare Gateaway.
-- Connect to a remote workspace or a cloud worker for long running tasks.
-- Cloud: Org Hub with provisioned Skills, Agents, and MCPs.
-- Cloud: RBAC, teams within an org, and the ability to deploy cloud workers.
+- Local-first workspace for code, files, browser tasks, documents,
+  presentations, websites, design, and video.
+- Agent workflows backed by OpenCode integration.
+- Skills, plugins, MCP servers, and browser automation.
+- Local providers and cloud-connected providers.
+- GitHub release packaging for desktop installers and portable artifacts.
+- Cloud and self-hosted deployment paths for teams that need shared workers,
+  organization administration, and provider governance.
 
-## Roadmap
+## 2026 Q3-Q4
 
-- Better support for Windows.
-- Claude-compatible plugin marketplace.
-- Git-based provisioning for plugins, skills, and MCPs.
-- Automatic push-based provisioning and sync.
-- Advanced enterprise controls: RBAC, audit trails, SSO/SAML, MDM provisioning...
+- Harden Windows and Linux desktop packaging, installer flows, and update
+  diagnostics.
+- Continue DeepSeek Harness subagent integration while preserving iPolloWork as
+  the primary workspace and keeping DSH optional.
+- Improve plugin package lifecycle checks, package metadata validation, and
+  local installation recovery.
+- Expand design, presentation, website, and video editing flows so generated
+  artifacts remain editable after the first agent pass.
+- Keep release automation aligned with signed macOS builds, Windows signing
+  readiness, REUSE compliance, OpenSSF Scorecard, and security analysis.
+
+## 2027 Q1-Q2
+
+- Strengthen organization controls for shared providers, hosted workers,
+  marketplace assignment, and account recovery.
+- Improve Git-based provisioning and synchronization for plugins, skills, MCP
+  servers, and organization-managed defaults.
+- Add more observable end-to-end validation for high-risk desktop, server,
+  connector, and artifact workflows.
+- Improve documentation for self-hosted deployments, release verification,
+  security boundaries, and operator responsibilities.
+- Continue accessibility and internationalization work across the desktop and
+  browser UI.
+
+## Not Planned In This Window
+
+- Requiring iPolloCloud for local use.
+- Forking or silently rewriting OpenCode internals.
+- Moving user workspace contents into a hosted service by default.
+- Supporting every model provider, plugin marketplace, or enterprise identity
+  system before the stable local workflow is reliable.
+- Treating unsigned local development builds as official public releases.
