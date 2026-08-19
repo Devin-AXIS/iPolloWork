@@ -523,21 +523,23 @@ function InitialProjectTaskStarter({
 
   return (
     <div className="flex h-full min-h-0 justify-center overflow-y-auto bg-background px-5" data-testid="initial-project-task-starter">
-      <div className="flex min-h-full w-full max-w-[800px] flex-col justify-center pb-12 pt-8">
-        <NewConversationStarter
-          selectedMode={starterMode}
-          selectedCapabilityId={starterCapability?.id}
-          onSelectMode={(mode) => {
-            setStarterMode(mode);
-            setStarterCapability(null);
-          }}
-          onSelectPrompt={(prompt, capability) => {
-            setStarterCapability(capability ?? null);
-            if (prompt) setDraft(prompt);
-            window.dispatchEvent(new Event("ipollowork:focusPrompt"));
-          }}
-        />
-        <div className="mt-12 w-full max-w-[616px] shrink-0">
+      <div className="flex min-h-full w-full max-w-[800px] flex-col justify-center pb-[max(64px,env(safe-area-inset-bottom))] pt-8 has-[[data-testid=new-conversation-template-strip]]:justify-start">
+        <div data-testid="new-conversation-starter-slot" className="shrink-0">
+          <NewConversationStarter
+            selectedMode={starterMode}
+            selectedCapabilityId={starterCapability?.id}
+            onSelectMode={(mode) => {
+              setStarterMode(mode);
+              setStarterCapability(null);
+            }}
+            onSelectPrompt={(prompt, capability) => {
+              setStarterCapability(capability ?? null);
+              if (prompt) setDraft(prompt);
+              window.dispatchEvent(new Event("ipollowork:focusPrompt"));
+            }}
+          />
+        </div>
+        <div data-testid="new-conversation-starter-composer-shell" className="mt-6 w-full max-w-[616px] shrink-0">
           <ReactSessionComposer
             draft={draft}
             mentions={{}}

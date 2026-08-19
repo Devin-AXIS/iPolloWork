@@ -19,6 +19,8 @@ describe("new conversation animation catalog", () => {
     expect(starter).toContain('mode === "video" && VIDEO_TEMPLATE_PICKER_ENABLED');
     expect(surface).toContain("if (!VIDEO_ANIMATION_PICKER_ENABLED");
     expect(starter).toContain("function TemplateStrip");
+    expect(starter).toContain('data-testid="new-conversation-template-strip"');
+    expect(starter).toContain('mt-4 min-h-[185px] rounded-xl');
   });
 
   test("separates the GSAP catalog into animation and effect libraries", () => {
@@ -114,4 +116,41 @@ describe("new conversation animation catalog", () => {
     expect(composer).toContain("dark:bg-white dark:text-black");
   });
 
+  test("keeps the shortcut editor inside the main content inset", () => {
+    expect(starter).toContain('data-testid="new-conversation-shortcut-editor"');
+    expect(starter).toContain('createPortal(');
+    expect(starter).toContain('document.body');
+    expect(starter).toContain("button.closest<HTMLElement>('[data-slot=\"sidebar-inset\"]')");
+    expect(starter).toContain("contentRect?.right ?? window.innerWidth");
+    expect(starter).toContain("contentRight - contentLeft - horizontalMargin * 2");
+    expect(starter).toContain("Math.max(rect.right - width, contentLeft + horizontalMargin)");
+    expect(starter).toContain("const availableAbove = Math.max(0, rect.top - gap - verticalMargin)");
+    expect(starter).toContain("const availableBelow = Math.max(0, window.innerHeight - rect.bottom - gap - verticalMargin)");
+    expect(starter).toContain("const maxHeight = Math.min(420, opensAbove ? availableAbove : availableBelow)");
+    expect(starter).toContain("{ left, width, maxHeight, bottom:");
+    expect(starter).toContain("{ left, width, maxHeight, top:");
+  });
+
+  test("lets optional starter modules expand the page while keeping the composer close to the content", () => {
+    expect(starter).toContain('data-testid="new-conversation-starter-layout"');
+    expect(starter).toContain('className="relative w-full overflow-visible');
+    expect(starter).toContain('data-testid="new-conversation-starter-header"');
+    expect(starter).toContain('data-testid="new-conversation-starter-tasks"');
+    expect(starter).toContain('className="relative pt-6"');
+    expect(starter).toContain('data-testid="new-conversation-quick-actions"');
+    expect(sessionPage).toContain('data-testid="new-conversation-starter-slot"');
+    expect(surface).toContain('data-testid="new-conversation-starter-slot"');
+    expect(sessionPage).toContain('className="shrink-0"');
+    expect(surface).toContain('className="shrink-0"');
+    expect(sessionPage).toContain('flex min-h-full w-full max-w-[800px] flex-col justify-center');
+    expect(surface).toContain('flex min-h-full w-full max-w-[800px] flex-col justify-center');
+    expect(sessionPage).toContain('has-[[data-testid=new-conversation-template-strip]]:justify-start');
+    expect(surface).toContain('has-[[data-testid=new-conversation-template-strip]]:justify-start');
+    expect(sessionPage).toContain('pb-[max(64px,env(safe-area-inset-bottom))]');
+    expect(surface).toContain('pb-[max(64px,env(safe-area-inset-bottom))]');
+    expect(sessionPage).toContain('data-testid="new-conversation-starter-composer-shell"');
+    expect(surface).toContain('data-testid="new-conversation-starter-composer-shell"');
+    expect(sessionPage).toContain('mt-6 w-full max-w-[616px] shrink-0');
+    expect(surface).toContain('mt-6 w-full shrink-0');
+  });
 });
