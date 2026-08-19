@@ -22,6 +22,9 @@ catalog:
 
 linkWorkspacePackages: true
 preferWorkspacePackages: true
+overrides:
+  seroval: 1.5.4
+  seroval-plugins: 1.5.4
 allowBuilds:
   "@ffmpeg-installer/darwin-arm64": false
   "@ffmpeg-installer/darwin-x64": false
@@ -35,6 +38,7 @@ allowBuilds:
   better-sqlite3: true
   core-js: true
   electron: true
+  electron-winstaller: true
   esbuild: true
   msw: false
   node-pty: true
