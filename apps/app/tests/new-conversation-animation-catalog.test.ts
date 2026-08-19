@@ -74,7 +74,7 @@ describe("new conversation animation catalog", () => {
     expect(sessionPage).toContain("const refreshStarterTemplateCatalog = useCallback");
     expect(sessionPage).toContain("PERSONAL_WORK_CONTEXT_ID");
     expect(sessionPage).toMatch(/listTemplates\(\s*props\.runtimeWorkspaceId,\s*PERSONAL_WORK_CONTEXT_ID,/);
-    expect(sessionPage).toContain("designTemplates={starterTemplateCatalog}");
+    expect(sessionPage).toContain("designTemplates={availableStarterTemplateCatalog}");
     expect(sessionPage).toContain("onRequestDesignTemplates={() => void refreshStarterTemplateCatalog()}");
   });
 
@@ -92,17 +92,26 @@ describe("new conversation animation catalog", () => {
     expect(sessionPage).toContain("const designTemplateEntryPath = currentTemplateSessionData?.manifest.surface === \"design\"");
   });
 
-  test("matches the Figma dark palette without changing the light theme", () => {
+  test("matches the redesigned tabs with semantic theme colors and spring motion", () => {
     expect(surface).toContain('dark:bg-[#131313]');
     expect(starter).toContain('new-conversation-bg.png');
     expect(starter).toContain('max-w-none dark:opacity-20');
-    expect(starter).toContain('dark:bg-[#333]');
-    expect(starter).toContain('dark:bg-black dark:text-[#ccc]');
-    expect(starter).toContain('brightness-0 dark:invert dark:opacity-80');
+    expect(starter).toContain('rounded-full bg-muted p-1');
+    expect(starter).toContain('data-testid="new-conversation-mode-indicator"');
+    expect(starter).toContain('layoutId={`new-conversation-mode-indicator-${modeTabIndicatorId}`}');
+    expect(starter).toContain('type: "spring"');
+    expect(starter).toContain("mass: 1");
+    expect(starter).toContain("stiffness: 300");
+    expect(starter).toContain("damping: 20");
+    expect(starter).toContain("transition={reduceMotion ? { duration: 0 } : MODE_TAB_SPRING}");
+    expect(starter).toContain('className="pointer-events-none absolute inset-0 -z-10 rounded-full bg-background"');
+    expect(starter).toContain('text-muted-foreground hover:bg-background/70 hover:text-foreground');
+    expect(starter).toContain('brightness-0 dark:invert');
     expect(starter).toContain('dark:text-[#ccc]');
     expect(starter).toContain('dark:invert dark:opacity-80');
     expect(composer).toContain("new-conversation-composer");
     expect(styles).toContain("--new-conversation-composer-surface: #343434");
     expect(composer).toContain("dark:bg-white dark:text-black");
   });
+
 });

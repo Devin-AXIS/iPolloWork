@@ -1,7 +1,8 @@
 "use client";
 
-import { type ChangeEvent, useEffect, useMemo, useRef, useState } from "react";
+import { type ChangeEvent, useEffect, useId, useMemo, useRef, useState } from "react";
 import type { CSSProperties } from "react";
+import { LazyMotion, domAnimation, m, useReducedMotion, type Transition } from "motion/react";
 import {
   CheckIcon,
   ChevronDownIcon,
@@ -116,6 +117,13 @@ const MODES = [
   { id: "design", iconSrc: publicAssetUrl("new-conversation-tabs/design.svg"), label: "new_conversation.mode.design" },
   { id: "video", iconSrc: publicAssetUrl("new-conversation-tabs/video.svg"), label: "new_conversation.mode.video" },
 ] as const satisfies ReadonlyArray<{ id: NewConversationMode; iconSrc: string; label: string }>;
+
+const MODE_TAB_SPRING = {
+  type: "spring",
+  mass: 1,
+  stiffness: 300,
+  damping: 20,
+} satisfies Transition;
 
 type StarterAction = {
   id: string;
@@ -970,8 +978,8 @@ function ShortcutEditor({
   );
 }
 
-export function newConversationPlaceholder(mode: NewConversationMode) {
-  return t(`new_conversation.placeholder.${mode}`);
+export function newConversationPlaceholder() {
+  return t("new_conversation.placeholder");
 }
 
 export function NewConversationStarter({
@@ -995,6 +1003,8 @@ export function NewConversationStarter({
   onChangeAnimationParams,
   onRetryAnimationCatalog,
 }: NewConversationStarterProps) {
+  const modeTabIndicatorId = useId();
+  const reduceMotion = useReducedMotion();
   const [activeTemplateCategory, setActiveTemplateCategory] = useState<TemplateCategory | null>(null);
   const [hoveredMode, setHoveredMode] = useState<NewConversationMode | null>(null);
   const [shortcutEditorOpen, setShortcutEditorOpen] = useState(false);
@@ -1152,48 +1162,61 @@ export function NewConversationStarter({
           <h1 className="mt-3 font-sans text-[48px] font-semibold leading-none tracking-[-1.92px] text-black dark:text-white">
             {t("new_conversation.title")}
           </h1>
-          <p className="mt-8 font-sans text-[16px] font-light leading-normal tracking-[-0.64px] text-[#666] dark:text-[#ccc]">{t("new_conversation.subtitle")}</p>
         </div>
 
-        <div
-          className="mt-8 grid h-[46px] w-full max-w-[394px] grid-cols-4 items-center gap-1.5 rounded-[12px] bg-[#F5F5F5] p-1 dark:bg-[#333]"
-          role="tablist"
-          aria-label={t("new_conversation.mode_label")}
-        >
-        {MODES.map(({ id, iconSrc, label }) => {
-          const selected = id === selectedMode;
-          return (
-            <button
-              key={id}
-              type="button"
-              role="tab"
-              aria-selected={selected}
-              className={cn(
-                "inline-flex h-[38px] min-w-0 items-center justify-center gap-1.5 rounded-[8px] px-1.5 font-sans text-[12px] font-medium leading-normal transition-[background-color,color,box-shadow] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
-                selected
-                  ? "bg-white text-black dark:bg-black dark:text-[#ccc]"
-                  : "text-[#999] hover:bg-white/70 hover:text-black dark:hover:bg-black/50 dark:hover:text-[#ccc] dark:active:bg-black dark:active:text-[#ccc]",
-              )}
-              onClick={() => selectMode(id)}
-              onMouseEnter={() => setHoveredMode(id)}
-              onMouseLeave={() => setHoveredMode(null)}
-            >
-              <img
-                src={iconSrc}
-                alt=""
-                aria-hidden
+        <LazyMotion features={domAnimation}>
+          <div
+            className="mt-8 flex h-[42px] w-fit max-w-full items-center gap-2 rounded-full bg-muted p-1"
+            role="tablist"
+            aria-label={t("new_conversation.mode_label")}
+          >
+          {MODES.map(({ id, iconSrc, label }) => {
+            const selected = id === selectedMode;
+            return (
+              <button
+                key={id}
+                type="button"
+                role="tab"
+                aria-selected={selected}
                 className={cn(
-                  "shrink-0 object-contain",
-                  id === "video" ? "h-[14px] w-[18px]" : "size-4",
-                  (selected || hoveredMode === id) && "brightness-0 dark:invert dark:opacity-80",
+                  "relative isolate inline-flex h-9 w-[92px] min-w-0 items-center justify-center gap-1 rounded-full px-3 font-sans text-[13px] font-normal leading-5 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+                  selected
+                    ? "text-foreground"
+                    : "text-muted-foreground hover:bg-background/70 hover:text-foreground",
                 )}
-              />
-              <span className="min-w-0 truncate">{t(label)}</span>
-            </button>
-          );
-        })}
-        </div>
+                onClick={() => selectMode(id)}
+                onMouseEnter={() => setHoveredMode(id)}
+                onMouseLeave={() => setHoveredMode(null)}
+              >
+                {selected ? (
+                  <m.span
+                    layoutId={`new-conversation-mode-indicator-${modeTabIndicatorId}`}
+                    data-testid="new-conversation-mode-indicator"
+                    aria-hidden="true"
+                    initial={false}
+                    transition={reduceMotion ? { duration: 0 } : MODE_TAB_SPRING}
+                    className="pointer-events-none absolute inset-0 -z-10 rounded-full bg-background"
+                  />
+                ) : null}
+                <img
+                  src={iconSrc}
+                  alt=""
+                  aria-hidden
+                  className={cn(
+                    "shrink-0 object-contain transition-[filter,opacity] duration-150",
+                    id === "video" ? "h-[14px] w-[18px]" : "size-4",
+                    (selected || hoveredMode === id) && "brightness-0 dark:invert",
+                  )}
+                />
+                <span className="min-w-0 truncate">{t(label)}</span>
+              </button>
+            );
+          })}
+          </div>
+        </LazyMotion>
+      </div>
 
+      <div className="relative">
         <div className="mt-5 flex flex-wrap gap-2" aria-label={t("new_conversation.quick_actions_label")}>
         {actions.map(({ id, label, prompt, templateCategory, icon: ActionIcon }) => {
           const selectedTemplateAction = templateCategory !== undefined && templateCategory === activeTemplateCategory;

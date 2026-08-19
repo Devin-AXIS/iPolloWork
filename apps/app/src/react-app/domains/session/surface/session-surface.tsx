@@ -1,5 +1,5 @@
 /** @jsxImportSource react */
-import { useCallback, useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useEffectEvent, useMemo, useRef, useState, type ReactNode } from "react";
 import type { UIMessage } from "ai";
 import { useQuery } from "@tanstack/react-query";
 import type { TemplateCatalogItem } from "@ipollowork/types/templates";
@@ -244,6 +244,7 @@ export type SessionSurfaceProps = {
   onArtifactCompletionRequirementConsumed?: () => void;
   environmentRuntimeKey?: string | null;
   onApplyEnvironmentChanges?: () => Promise<ApplyEnvironmentChangesResult>;
+  composerEndAccessory?: ReactNode;
 };
 
 function messageToReadableText(message: UIMessage) {
@@ -1881,7 +1882,8 @@ export function SessionSurface(props: SessionSurfaceProps) {
           isSandboxWorkspace={props.isSandboxWorkspace}
           onUploadInboxFiles={props.onUploadInboxFiles ?? handleUploadInboxFiles}
           layout={layout}
-          placeholder={isEmptyConversation ? newConversationPlaceholder(newConversationMode) : undefined}
+          endAccessory={props.composerEndAccessory}
+          placeholder={isEmptyConversation ? newConversationPlaceholder() : undefined}
           compactTopSpacing={Boolean(starterCapability || selectedAnimations.length || selectedVoiceReference || selectedIllustrationReference || props.activeQuestion || (props.todos ?? []).some((todo) => todo.content.trim()) || props.activePermission || queuedMessages.length > 0)}
           topAccessory={
             starterCapability || selectedAnimations.length || selectedVoiceReference || selectedIllustrationReference || props.activeQuestion || (props.todos ?? []).some((todo) => todo.content.trim()) || props.activePermission || queuedMessages.length > 0 ? (

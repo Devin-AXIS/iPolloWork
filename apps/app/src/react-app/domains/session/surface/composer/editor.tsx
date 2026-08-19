@@ -1035,7 +1035,7 @@ export const LexicalPromptEditor = forwardRef<LexicalPromptEditorHandle, EditorP
             />
           }
           placeholder={
-            <div className="pointer-events-none absolute left-0 top-0 text-[15px] leading-6 text-dls-secondary/70">
+            <div data-testid="composer-placeholder" className="pointer-events-none absolute left-0 top-0 text-[15px] leading-6 text-slate-10">
               {props.placeholder}
             </div>
           }
