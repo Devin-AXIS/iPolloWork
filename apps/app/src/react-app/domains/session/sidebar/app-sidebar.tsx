@@ -416,12 +416,13 @@ export type AppSidebarProps = {
     name: string | null;
     email: string | null;
   };
-  activePrimaryItem?: "template-market" | "extensions" | null;
+  activePrimaryItem?: "template-market" | "extensions" | "plugin-workshop" | null;
   onOpenAccount: () => void;
   onOpenSettings: (route?: string) => void;
   onOpenHelp: () => void;
   onOpenTemplateMarket: () => void;
   onOpenExtensions: () => void;
+  onOpenPluginWorkshop: () => void;
   onSignIn: () => void;
   /** Opens the cross-session message search dialog (Cmd/Ctrl+Shift+F). */
   onOpenSessionSearch?: () => void;
@@ -693,6 +694,18 @@ export function AppSidebar(props: AppSidebarProps) {
                   <img src={publicAssetUrl("sidebar-icon/figma-plug.svg")} alt="" className="h-[13px] w-2 dark:invert" />
                 </span>
                 <span className="flex-1 truncate">{t("settings.tab_extensions")}</span>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+            <SidebarMenuItem>
+              <SidebarMenuButton
+                onClick={props.onOpenPluginWorkshop}
+                isActive={props.activePrimaryItem === "plugin-workshop"}
+                className={primarySidebarActionClass}
+              >
+                <span className="flex size-4 shrink-0 items-center justify-center" aria-hidden="true">
+                  <img src={publicAssetUrl("sidebar-icon/plugin.svg")} alt="" className="size-[12px] dark:invert" />
+                </span>
+                <span className="flex-1 truncate">{t("plugin_workshop.title")}</span>
               </SidebarMenuButton>
             </SidebarMenuItem>
           </SidebarMenu>

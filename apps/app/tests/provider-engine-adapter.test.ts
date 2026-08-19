@@ -14,7 +14,11 @@ import {
   providerListQueryKey,
 } from "../src/react-app/infra/provider-list-query";
 import { DEEPSEEK_HARNESS_ENGINE_ID, DEFAULT_ENGINE_ID } from "@ipollowork/types/workspace";
-import { sharedProviderCredentialEnvKey } from "@ipollowork/types/provider-credentials";
+import {
+  parseSharedProviderProfile,
+  sharedProviderCredentialEnvKey,
+  sharedProviderProfileEnvKey,
+} from "@ipollowork/types/provider-credentials";
 
 function createOpenCodeProviderClient() {
   const calls: Array<{ name: string; value?: unknown }> = [];
@@ -455,10 +459,17 @@ describe("provider engine adapters", () => {
     expect(queryClient.getQueryData(sessionQueryKey)).toMatchObject({
       connected: ["deepseek-official"],
     });
-    expect(mirroredCredentials).toEqual([{
+    expect(mirroredCredentials[0]).toEqual({
       key: sharedProviderCredentialEnvKey("deepseek-official"),
       value: "secret",
-    }]);
+    });
+    expect(mirroredCredentials[1]?.key).toBe(sharedProviderProfileEnvKey("deepseek-official"));
+    expect(parseSharedProviderProfile(mirroredCredentials[1]?.value ?? "")).toMatchObject({
+      providerId: "deepseek-official",
+      api: "openai-completions",
+      baseURL: "https://api.deepseek.com",
+      models: [{ id: "deepseek-v4-flash" }, { id: "deepseek-v4-pro" }],
+    });
     queryClient.clear();
   });
 
@@ -611,10 +622,16 @@ describe("provider engine adapters", () => {
         auth: { type: "api", key: "secret" },
       },
     });
-    expect(mirroredCredentials).toEqual([{
+    expect(mirroredCredentials[0]).toEqual({
       key: sharedProviderCredentialEnvKey("deepseek-official"),
       value: "secret",
-    }]);
+    });
+    expect(mirroredCredentials[1]?.key).toBe(sharedProviderProfileEnvKey("deepseek-official"));
+    expect(parseSharedProviderProfile(mirroredCredentials[1]?.value ?? "")).toMatchObject({
+      providerId: "deepseek-official",
+      api: "openai-completions",
+      baseURL: "https://api.deepseek.com",
+    });
     expect(connectedIds).toContain("deepseek-official");
   });
 

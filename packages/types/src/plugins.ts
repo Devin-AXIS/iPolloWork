@@ -13,6 +13,16 @@ const CSP_SOURCE_RE = /^(?:https:\/\/(?:\*\.)?[A-Za-z0-9.-]+(?::\d+)?|http:\/\/(
 const RESERVED_EXTENSION_IDS = new Set(["google-workspace", "media-center", "openai-image-generation", "storage"]);
 export const PLUGIN_UI_RESOURCE_MIME_TYPE = "text/html;profile=mcp-app";
 export const PLUGIN_UI_HOST_CONTEXT_KEY = "ai.ipollo/workspace";
+export const PLUGIN_INSTALL_PACKAGE_EXTENSION = ".ipollowork-plugin";
+export const PLUGIN_SOURCE_ARCHIVE_EXTENSION = ".zip";
+export const pluginPackageArchiveFormatSchema = z.enum(["install", "source"]);
+export type PluginPackageArchiveFormat = z.infer<typeof pluginPackageArchiveFormatSchema>;
+export const pluginWorkshopExportFormatSchema = pluginPackageArchiveFormatSchema;
+export type PluginWorkshopExportFormat = PluginPackageArchiveFormat;
+
+export function pluginPackageArchiveExtension(format: PluginPackageArchiveFormat): string {
+  return format === "install" ? PLUGIN_INSTALL_PACKAGE_EXTENSION : PLUGIN_SOURCE_ARCHIVE_EXTENSION;
+}
 const PORTABLE_RESOURCE_DIRECTORIES: Record<string, string> = {
   skill: "skills/",
   agent: "agents/",
@@ -569,6 +579,30 @@ export type PluginUiResource = PluginResource & {
   path: string;
   ui: z.infer<typeof uiResourceMetadataSchema>;
 };
+export type PluginWorkshopProjectSummary = {
+  directoryId: string;
+  packageRoot: string;
+  manifest: PluginPackageManifest | null;
+  modifiedAt: number;
+  error: string | null;
+};
+export type PluginWorkshopProjectSnapshot = {
+  project: PluginWorkshopProjectSummary;
+  revision: string;
+  ui: {
+    resource: PluginUiResource;
+    html: string;
+  } | null;
+};
+export type PluginWorkshopSourceBundle = {
+  pluginId: string;
+  version: string;
+  files: Array<{ path: string; contentBase64: string }>;
+  preparation: {
+    localizedUrls: string[];
+    removedNetworkPermission: boolean;
+  };
+};
 export type PluginUiHostContextV1 = {
   schemaVersion: 1;
   pluginId: string;
@@ -577,6 +611,11 @@ export type PluginUiHostContextV1 = {
   workspaceId: string;
   workspaceRoot: string;
   sessionId: string | null;
+  /** Present only while an unpacked Plugin Workshop project is being previewed. */
+  developmentPreview?: {
+    mode: "plugin-workshop";
+    revision: string;
+  };
 };
 export type PluginResourceType = PluginResource["type"];
 export type PluginContribution = NonNullable<PluginManifest["contributions"]>[number];

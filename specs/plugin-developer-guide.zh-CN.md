@@ -133,19 +133,21 @@ plugins/acme-research
 
 绝对路径、`../` 穿越路径以及工作区外目录会被拒绝。
 
-### 2.2 压缩包上传格式
+### 2.2 安装包与源码包
 
-设置页可导入 ZIP 插件包；未来开发者平台继续复用同一契约：
+插件市场和插件库只安装 `.ipollowork-plugin` 分发包；插件工坊只导入 `.zip` 源码包。插件工坊可以从同一份源码分别导出这两种产物：
 
 ```text
-acme-research-1.0.0.zip
+acme-research-1.0.0.ipollowork-plugin
 ├── ipollowork.plugin.json   ← 必须直接位于压缩包根目录
 ├── service/
 ├── skills/
 └── engines/
 ```
 
-不要在 ZIP 里再包一层无意义目录，例如下面这种结构不应作为标准上传物：
+两种格式底层都是 ZIP 容器，并且都必须包含 `ipollowork.plugin.json`。`.ipollowork-plugin` 是经过构建、可直接安装的分发产物；`-source.zip` 保留原始工程文件，用于重新导入插件工坊继续开发。
+
+不要在压缩包里再包一层无意义目录，例如下面这种结构不应作为标准上传物：
 
 ```text
 acme-research-1.0.0.zip
@@ -153,7 +155,7 @@ acme-research-1.0.0.zip
     └── ipollowork.plugin.json
 ```
 
-平台接收 ZIP 后会在受限临时目录中校验，再调用同一安装生命周期。ZIP 只是传输容器，内部仍是本文定义的插件包。
+平台接收 `.ipollowork-plugin` 后会在受限临时目录中校验，再调用同一安装生命周期。该文件底层使用 ZIP 容器，内部仍是本文定义的插件包。
 
 ### 2.3 推荐完整目录
 

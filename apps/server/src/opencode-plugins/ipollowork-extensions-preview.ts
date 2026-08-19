@@ -40,6 +40,12 @@ const uiExecuteArgsSchema = z.object({
   args: z.record(z.string(), z.unknown()).optional().describe("JSON arguments for the action, if required."),
 });
 
+const workspaceAppArgsSchema = z.object({
+  operation: z.enum(["list_tools", "call_tool"]).describe("List the active right-side Workspace App tools, or call one of them."),
+  name: z.string().trim().min(1).optional().describe("Tool name returned by the list_tools operation. Required for call_tool."),
+  arguments: z.record(z.string(), z.unknown()).optional().describe("Arguments for the selected Workspace App tool."),
+});
+
 const browserOpenUrlArgsSchema = z.object({
   url: z.string().describe("The website URL to open in the iPolloWork built-in browser."),
   provider: z.enum(["auto", "builtin", "external"]).optional().describe("Browser provider. Use builtin or auto; external is reserved for future support."),
@@ -742,6 +748,30 @@ export const iPolloWorkExtensionsPreview = async () => {
           context: contextPayload(context),
         });
         return JSON.stringify(payload, null, 2);
+      },
+    },
+    ipollowork_workspace_app: {
+      description: "Interact with the active right-side Workspace App or Plugin Workshop Studio. In a Plugin Workshop conversation, use operation=list_tools first, then operation=call_tool with the matching tool and request-derived arguments. A successful call_tool updates the visible Studio; do not claim it changed unless this tool returns ok=true.",
+      args: workspaceAppArgsSchema.shape,
+      async execute(rawArgs: unknown, context: OpenCodeContext) {
+        const args = workspaceAppArgsSchema.parse(rawArgs);
+        const sessionId = context.sessionID?.trim();
+        if (!sessionId) {
+          return JSON.stringify({ ok: false, error: "Workspace App tools require the current iPolloWork session." }, null, 2);
+        }
+        if (args.operation === "call_tool" && !args.name) {
+          return JSON.stringify({ ok: false, error: "name is required for call_tool" }, null, 2);
+        }
+        const result = await uiBridgeRequest("/execute", {
+          method: "POST",
+          body: args.operation === "list_tools"
+            ? { actionId: "workspace_app.list_tools", args: { sessionId } }
+            : {
+                actionId: "workspace_app.call_tool",
+                args: { sessionId, name: args.name, arguments: args.arguments ?? {} },
+              },
+        });
+        return JSON.stringify(result, null, 2);
       },
     },
     ...(uiControlEnabled ? {

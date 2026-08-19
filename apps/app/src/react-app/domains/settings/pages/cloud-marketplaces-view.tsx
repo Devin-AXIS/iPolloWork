@@ -14,7 +14,7 @@ import { t } from "@/i18n";
 import { useCloudSession } from "@/react-app/domains/settings/cloud/cloud-session-provider";
 import { PluginPackageDetail } from "@/react-app/domains/settings/plugin-package-detail";
 import { PluginPackageListItem } from "@/react-app/domains/settings/plugin-package-list-item";
-import { readPluginPackageArchive } from "@/react-app/domains/settings/plugin-package-archive";
+import { readPluginPackageArchive } from "@/app/lib/plugin-package-archive";
 import { formatPluginPlatformError } from "@/react-app/domains/settings/plugin-platform-state";
 import { SettingsListEmptyState, SettingsListSearchInput } from "@/react-app/domains/settings/settings-list";
 import { SettingsNotice, SettingsPill } from "@/react-app/domains/settings/settings-section";
@@ -169,7 +169,7 @@ export function CloudMarketplacesView({
     setError(null);
     try {
       const file = await downloadEnterpriseResource(resource);
-      const upload = await readPluginPackageArchive(file);
+      const upload = await readPluginPackageArchive(file, "install");
       await client.validatePluginPackageUpload(workspaceId, upload);
       await client.importPluginPackage(workspaceId, upload);
       await refresh();

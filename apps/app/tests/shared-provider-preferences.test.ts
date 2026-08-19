@@ -7,6 +7,10 @@ import {
   type LocalPreferences,
 } from "../src/react-app/kernel/local-provider";
 import { selectSharedProviderWorkspace } from "../src/react-app/domains/connections/provider-auth/shared-provider-workspace";
+import {
+  buildSharedProviderProfile,
+  sharedProviderConnectionEnvEntries,
+} from "../src/react-app/domains/connections/provider-auth/shared-provider-profile";
 
 function preferences(): LocalPreferences {
   return {
@@ -60,5 +64,25 @@ describe("shared AI provider preferences", () => {
     expect(selectSharedProviderWorkspace([dsh, openCode], dsh)).toBe(openCode);
     expect(selectSharedProviderWorkspace([dsh, openCode], openCode)).toBe(openCode);
     expect(selectSharedProviderWorkspace([dsh], dsh)).toBe(dsh);
+  });
+
+  test("describes compatible providers once for every engine adapter", () => {
+    const profile = buildSharedProviderProfile({
+      providerId: "acme",
+      displayName: "Acme Gateway",
+      api: "https://gateway.acme.example/v1",
+      npm: "@ai-sdk/openai-compatible",
+      models: { "acme-large": { name: "Acme Large" } },
+    });
+
+    expect(profile).toEqual({
+      schemaVersion: 1,
+      providerId: "acme",
+      displayName: "Acme Gateway",
+      api: "openai-completions",
+      baseURL: "https://gateway.acme.example/v1",
+      models: [{ id: "acme-large", name: "Acme Large" }],
+    });
+    expect(sharedProviderConnectionEnvEntries({ apiKey: "secret", profile })).toHaveLength(2);
   });
 });

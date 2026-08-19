@@ -15,6 +15,7 @@ import {
   unchangedVideoArtifactIssue,
   videoProjectEntryPath,
 } from "../src/react-app/domains/session/video/video-project";
+import { deriveOpenTargets, getAssistantFileMentionPaths } from "../src/react-app/domains/session/artifacts/open-target";
 
 function htmlArtifact(path: string): ArtifactItem {
   const name = path.split("/").pop() ?? path;
@@ -184,5 +185,37 @@ describe("video artifact entry routing", () => {
     }];
 
     expect(getArtifactsFromMessages(messages)).toEqual([]);
+  });
+
+  test("shows an assistant-mentioned Skill markdown file as an editable artifact", () => {
+    const skillPath = "C:\\Users\\31939\\Desktop\\dsh\\测试\\plugins\\equity-insight-studio\\skills\\equity-data-analyst\\SKILL.md";
+    const messages = [{
+      id: "assistant-skill",
+      role: "assistant" as const,
+      parts: [{ type: "text" as const, text: `Skill 文件路径：\n\`${skillPath}\`` }],
+    }];
+    const verifiedTarget = {
+      id: "file:plugins/equity-insight-studio/skills/equity-data-analyst/skill.md",
+      kind: "file" as const,
+      value: "plugins/equity-insight-studio/skills/equity-data-analyst/SKILL.md",
+      name: "SKILL.md",
+      preview: "markdown" as const,
+      confidence: 95,
+      reason: "resolved artifact",
+      exists: true,
+    };
+
+    expect(getAssistantFileMentionPaths(messages[0].parts[0].text)).toEqual([skillPath]);
+    expect(getAssistantFileMentionPaths(`技能文件路径：${skillPath}。`)).toEqual([skillPath]);
+    expect(deriveOpenTargets(messages)).toContainEqual(expect.objectContaining({
+      value: skillPath.replaceAll("\\", "/"),
+      name: "SKILL.md",
+      preview: "markdown",
+    }));
+    expect(getArtifactsFromMessages(messages, [verifiedTarget])).toContainEqual(expect.objectContaining({
+      name: "SKILL.md",
+      type: "markdown",
+      legacy_target: verifiedTarget,
+    }));
   });
 });

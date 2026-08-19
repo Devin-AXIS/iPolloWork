@@ -1,5 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import { sharedProviderCredentialEnvKey } from "@ipollowork/types/provider-credentials";
+import {
+  serializeSharedProviderProfile,
+  sharedProviderCredentialEnvKey,
+  sharedProviderProfileEnvKey,
+} from "@ipollowork/types/provider-credentials";
 
 import {
   deepSeekHarnessProviderCredentials,
@@ -45,10 +49,57 @@ describe("DeepSeek Harness provider credential sync", () => {
     ]]);
   });
 
-  test("uses an explicitly shared Alibaba key while ignoring ambient DashScope", () => {
+  test("preserves the shared Alibaba provider id while ignoring ambient DashScope", () => {
     expect(deepSeekHarnessProviderCredentials([
       { key: "DASHSCOPE_API_KEY", value: "ambient-key" },
       { key: sharedProviderCredentialEnvKey("alibaba"), value: "shared-key" },
-    ]).get("alibaba-cn")?.apiKey).toBe("shared-key");
+    ]).get("alibaba")?.apiKey).toBe("shared-key");
+  });
+
+  test("bridges an engine-neutral compatible provider profile", () => {
+    const providerId = "acme-gateway";
+    expect([...deepSeekHarnessProviderCredentials([
+      { key: sharedProviderCredentialEnvKey(providerId), value: "acme-key" },
+      {
+        key: sharedProviderProfileEnvKey(providerId),
+        value: serializeSharedProviderProfile({
+          schemaVersion: 1,
+          providerId,
+          displayName: "Acme Gateway",
+          api: "openai-completions",
+          baseURL: "https://gateway.acme.example/v1",
+          models: [{ id: "acme-large", name: "Acme Large" }],
+        }),
+      },
+    ])]).toEqual([[
+      providerId,
+      {
+        apiKey: "acme-key",
+        bridge: {
+          providerId,
+          displayName: "Acme Gateway",
+          api: "openai-completions",
+          baseURL: "https://gateway.acme.example/v1",
+          models: [{ id: "acme-large", name: "Acme Large" }],
+        },
+      },
+    ]]);
+  });
+
+  test("ignores a profile whose encoded provider id does not match", () => {
+    expect([...deepSeekHarnessProviderCredentials([
+      { key: sharedProviderCredentialEnvKey("acme"), value: "acme-key" },
+      {
+        key: sharedProviderProfileEnvKey("other"),
+        value: serializeSharedProviderProfile({
+          schemaVersion: 1,
+          providerId: "acme",
+          displayName: "Acme",
+          api: "openai-completions",
+          baseURL: "https://gateway.acme.example/v1",
+          models: [{ id: "acme-large" }],
+        }),
+      },
+    ])]).toEqual([["acme", { apiKey: "acme-key" }]]);
   });
 });

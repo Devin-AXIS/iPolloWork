@@ -14,6 +14,14 @@ import {
   requestedVideoDurationSeconds,
   videoTaskSystemContext,
 } from "../src/react-app/domains/session/video/video-project";
+import {
+  findNewPluginWorkshopProjectId,
+  mergePluginWorkshopInstruction,
+  nextPluginWorkshopLabel,
+  pluginWorkshopProjectIdsFromPaths,
+  pluginWorkshopSystemInstruction,
+  pluginWorkshopTabId,
+} from "../src/react-app/domains/session/plugin-workshop/plugin-workshop-contract";
 describe("HyperFrames Video Studio", () => {
   test("shows a live warning while the current session AI is editing the video", () => {
     const panelSource = readFileSync(
@@ -742,6 +750,193 @@ describe("HyperFrames Video Studio", () => {
     expect(sessionPageSource).toContain('setCurrentSidePanel("panel")');
   });
 
+  test("keeps Plugin Workshop in the shared conversation and right-panel tab flow", () => {
+    const sessionPageSource = readFileSync(
+      new URL("../src/react-app/domains/session/chat/session-page.tsx", import.meta.url),
+      "utf8",
+    );
+    const sidebarSource = readFileSync(
+      new URL("../src/react-app/domains/session/sidebar/app-sidebar.tsx", import.meta.url),
+      "utf8",
+    );
+    const sidePanelSource = readFileSync(
+      new URL("../src/react-app/domains/session/panel/side-panel.tsx", import.meta.url),
+      "utf8",
+    );
+    const tabStoreSource = readFileSync(
+      new URL("../src/react-app/domains/session/panel/panel-tab-store.ts", import.meta.url),
+      "utf8",
+    );
+    const workshopSource = readFileSync(
+      new URL("../src/react-app/domains/session/plugin-workshop/plugin-workshop.tsx", import.meta.url),
+      "utf8",
+    );
+    const serverClientSource = readFileSync(
+      new URL("../src/app/lib/ipollowork-server.ts", import.meta.url),
+      "utf8",
+    );
+    const selectedToolbarSource = workshopSource.slice(
+      workshopSource.indexOf('data-testid="plugin-workshop-studio"'),
+      workshopSource.indexOf('<div className="relative min-h-0 flex-1', workshopSource.indexOf('data-testid="plugin-workshop-studio"')),
+    );
+
+    expect(sidebarSource).toContain("onOpenPluginWorkshop");
+    expect(sessionPageSource).toContain("pluginWorkshopSystemInstruction");
+    expect(sessionPageSource).toContain('props.sidebar.onCreateTaskInWorkspace(props.selectedWorkspaceId, "work")');
+    expect(sessionPageSource).toContain("creationBaselinePluginIds");
+    expect(sessionPageSource).toContain("onClick: openPluginWorkshop");
+    expect(sessionPageSource).not.toContain("openPluginWorkshopInCurrentSession");
+    expect(sessionPageSource).toContain("pluginWorkshopTabId(sessionId)");
+    expect(sessionPageSource).toContain('type: "plugin-studio"');
+    expect(sessionPageSource).toContain("autoOpenedPluginWorkshopSessionRef");
+    expect(sessionPageSource).toContain("if (!props.selectedSessionKnown) return;");
+    expect(sessionPageSource).toContain('sessionPanelState.tabs.find((tab) => tab.type === "plugin-studio")');
+    expect(sessionPageSource).toContain('setSidePanelState(sessionId, "panel")');
+    expect(tabStoreSource).toContain('type: "plugin-studio"');
+    expect(tabStoreSource).toContain('tab.type === "plugin-studio"');
+    expect(tabStoreSource).toContain("creationBaselinePluginIds");
+    expect(sidePanelSource).toContain("<PluginWorkshopPanel");
+    expect(workshopSource).toContain("<WorkspaceAppFrame");
+    expect(workshopSource).toContain("exportPluginWorkshopProject");
+    expect(workshopSource).toContain("importPluginWorkshopProject");
+    expect(workshopSource).toContain("plugin_workshop_project_exists");
+    expect(workshopSource).toContain("<ConfirmModal");
+    expect(workshopSource).toContain('confirmLabel="覆盖导入"');
+    expect(workshopSource).toContain('cancelLabel="取消导入"');
+    expect(serverClientSource).toContain('options?.overwrite ? "?overwrite=true" : ""');
+    expect(workshopSource).toContain("snapshotRequestGenerationRef.current += 1");
+    expect(workshopSource).toContain("requestGeneration !== snapshotRequestGenerationRef.current");
+    expect(workshopSource).toContain('const previewRuntimeKey = snapshot ? `${snapshot.project.directoryId}:${snapshot.revision}` : ""');
+    expect(workshopSource).toContain("key={previewRuntimeKey}");
+    expect(workshopSource).toContain("validatePluginPackageUpload");
+    expect(workshopSource).toContain("importPluginPackage");
+    expect(workshopSource).toContain("bundle.preparation.localizedUrls");
+    expect(workshopSource).toContain("AI_REPAIR_DEBOUNCE_MS = 600");
+    expect(workshopSource).toContain("repairRequestLockedRef.current");
+    expect(workshopSource).toContain("disabled={repairRequestLocked || props.aiEditing}");
+    expect(workshopSource).toContain("把想法变成成果");
+    expect(workshopSource).toContain("导入插件源码");
+    expect(workshopSource).toContain('readPluginPackageArchive(file, "source"');
+    expect(workshopSource).toContain("accept={PLUGIN_SOURCE_ARCHIVE_EXTENSION}");
+    expect(workshopSource).toContain("选择要试用的插件");
+    expect(selectedToolbarSource).not.toContain("导入");
+    expect(selectedToolbarSource).not.toContain("校验通过");
+    expect(selectedToolbarSource).not.toContain("需要处理");
+    expect(selectedToolbarSource).toContain("导出插件");
+    expect(workshopSource).toContain('exportProject("install")');
+    expect(workshopSource).toContain('exportProject("source")');
+    expect(workshopSource).toContain(".ipollowork-plugin · 可直接安装");
+    expect(workshopSource).toContain(".zip · 保留原始插件文件夹");
+    expect(selectedToolbarSource).toContain("安装到软件");
+  });
+
+  test("opens independent Plugin Workshop tabs without selecting an old project", () => {
+    expect(pluginWorkshopTabId("session-a")).toBe("plugin-workshop:session-a");
+    expect(pluginWorkshopTabId("session-b")).toBe("plugin-workshop:session-b");
+    expect(nextPluginWorkshopLabel(["插件工坊 1", "插件工坊 3"], "插件工坊")).toBe("插件工坊 2");
+    expect(findNewPluginWorkshopProjectId(null, ["existing-plugin"])).toBeNull();
+    expect(findNewPluginWorkshopProjectId(null, ["session-plugin", "existing-plugin"], {
+      preferredIds: new Set(["session-plugin"]),
+    })).toBeNull();
+    expect(findNewPluginWorkshopProjectId(
+      new Set(["session-plugin", "existing-plugin"]),
+      ["session-plugin", "existing-plugin"],
+      { preferredIds: new Set(["session-plugin"]) },
+    )).toBeNull();
+    expect(findNewPluginWorkshopProjectId(new Set(["existing-plugin"]), ["new-plugin", "existing-plugin"]))
+      .toBe("new-plugin");
+    expect(findNewPluginWorkshopProjectId(
+      new Set(["existing-plugin"]),
+      ["plugin-a", "plugin-b", "existing-plugin"],
+      {
+        preferredIds: new Set(["plugin-b"]),
+        claimedIds: new Set(["plugin-a"]),
+        allowUnlinked: false,
+      },
+    )).toBe("plugin-b");
+    expect(findNewPluginWorkshopProjectId(
+      new Set(["existing-plugin"]),
+      ["plugin-a", "existing-plugin"],
+      { allowUnlinked: false },
+    )).toBeNull();
+    expect([...pluginWorkshopProjectIdsFromPaths([
+      "plugins/finance-board/ui/studio.html",
+      "C:\\workspace\\plugins\\research.tools\\skills\\SKILL.md",
+      "design/session/entry.html",
+    ])]).toEqual(["finance-board", "research.tools"]);
+  });
+
+  test("scopes uninstalled plugin previews to the workshop conversation", () => {
+    const instruction = pluginWorkshopSystemInstruction("finance-board");
+    const workshopSource = readFileSync(
+      new URL("../src/react-app/domains/session/plugin-workshop/plugin-workshop.tsx", import.meta.url),
+      "utf8",
+    );
+    const workspaceAppSource = readFileSync(
+      new URL("../src/react-app/plugin-ui/workspace-app-frame.tsx", import.meta.url),
+      "utf8",
+    );
+
+    expect(instruction).toContain("development preview only in this Plugin Workshop conversation");
+    expect(instruction).toContain("uninstalled development trial");
+    expect(instruction).toContain("installation is not required");
+    expect(instruction).toContain("ipollowork_workspace_app");
+    expect(instruction).toContain("operation=list_tools");
+    expect(instruction).toContain("operation=call_tool");
+    expect(instruction).toContain("automatic execution target for every normal user message");
+    expect(instruction).toContain("The user does not need to say \"try the plugin\"");
+    expect(instruction).toContain("edit the selected project first");
+    expect(instruction).toContain("developmentPreview.mode");
+    expect(instruction).toContain("[hidden] { display: none !important; }");
+    expect(instruction).toContain('hostContext["ai.ipollo/workspace"].developmentPreview');
+    expect(instruction).toContain("Do not use ipollowork_extension_call for an uninstalled draft");
+    expect(workshopSource).toContain("developmentPreview={developmentPreview}");
+    expect(workshopSource).toContain("未安装 · 当前会话可试用");
+    expect(workshopSource).toContain("已选中 · 对话会自动调用");
+    expect(workspaceAppSource).toContain("developmentPreview: pluginContext.developmentPreview");
+    expect(workspaceAppSource).toContain('data-development-preview={props.developmentPreview ? "plugin-workshop" : undefined}');
+    expect(workspaceAppSource).toContain("sameWorkspaceAppRuntimeResource");
+    expect(workspaceAppSource).toContain("developmentPreviewRef.current");
+    expect(workspaceAppSource).toContain('sandbox="allow-scripts allow-same-origin"');
+    expect(workspaceAppSource).not.toContain('key={props.developmentPreview?.revision}');
+    expect(workshopSource).toContain("aiEditingRef.current ? 800 : 3_000");
+    expect(workshopSource).not.toContain("[props.aiEditing, props.tab.pluginId, refreshSnapshot]");
+    expect(workspaceAppSource.indexOf("const connection = bridge.connect(transport);")).toBeLessThan(
+      workspaceAppSource.indexOf("iframe.srcdoc = withContentSecurityPolicy(resource);"),
+    );
+  });
+
+  test("refreshes the selected Plugin Workshop target without duplicating its instruction", () => {
+    const initial = mergePluginWorkshopInstruction("Keep this capability context.", "finance-board");
+    const refreshed = mergePluginWorkshopInstruction(initial, "ai-data-insights");
+
+    expect(refreshed).toContain("Keep this capability context.");
+    expect(refreshed).toContain("plugins/ai-data-insights/");
+    expect(refreshed).not.toContain("plugins/finance-board/");
+    expect(refreshed.match(/# iPolloWork Plugin Workshop/g)).toHaveLength(1);
+  });
+
+  test("does not auto-invoke an unrelated plugin before the workshop selects one", () => {
+    const instruction = pluginWorkshopSystemInstruction();
+
+    expect(instruction).toContain("Project mode: CREATE_NEW");
+    expect(instruction).toContain("No plugin is selected yet");
+    expect(instruction).toContain("Treat every existing plugins/* directory as protected");
+    expect(instruction).toContain("Only a right-side selection changes this conversation to EDIT_SELECTED mode");
+    expect(instruction).toContain("automatically select only the newly-created directory and open its Studio");
+    expect(instruction).not.toContain("automatic execution target for every normal user message");
+  });
+
+  test("edits a plugin only after it is selected in the right-side workshop", () => {
+    const instruction = pluginWorkshopSystemInstruction("stock-analyst");
+
+    expect(instruction).toContain("Project mode: EDIT_SELECTED");
+    expect(instruction).toContain("explicitly selected plugins/stock-analyst/");
+    expect(instruction).toContain("only plugin directory you may edit or upgrade");
+    expect(instruction).toContain("automatically run one representative request through the new Studio version");
+    expect(instruction).not.toContain("Project mode: CREATE_NEW");
+  });
+
   test("keeps a collapsed-sidebar title clear of its expand button", () => {
     const sessionPageSource = readFileSync(
       new URL("../src/react-app/domains/session/chat/session-page.tsx", import.meta.url),
@@ -894,6 +1089,8 @@ describe("HyperFrames Video Studio", () => {
     expect(contract).toContain("verify its response type and local file signature");
     expect(contract).toContain("never run `npx hyperframes check`");
     expect(contract).toContain("never use legacy `.frame` millisecond timelines");
+    expect(contract).toContain("A 1080×1920 portrait project stays 9:16");
+    expect(contract).toContain("never rewrite it to 1920×1080");
     expect(contract).toContain("seconds-based `data-start`");
     expect(contract).toContain("Root `data-duration` must cover the last scene/audio/clip");
     expect(contract).toContain("Delivery requirements contract");

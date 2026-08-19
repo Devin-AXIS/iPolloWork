@@ -12,6 +12,7 @@ import {
   PanelsTopLeft,
   Plus,
   RotateCw,
+  WandSparkles,
   X,
 } from "lucide-react";
 import { useDragControls } from "motion/react";
@@ -45,6 +46,7 @@ import { DesignPanel } from "../design/design-panel";
 import type { DesignAiSelectionContext } from "@ipollowork/design-studio";
 import { VideoPanel } from "../video/video-panel";
 import { WorkspaceAppFrame, type WorkspaceAppModelContext } from "@/react-app/plugin-ui/workspace-app-frame";
+import { PluginWorkshopPanel } from "../plugin-workshop/plugin-workshop";
 import {
   computeBounds,
   getElectronBrowser,
@@ -190,7 +192,7 @@ function SidePanelTab({ tab, active, onSelect, onClose }: SidePanelTabProps) {
               <Globe />
             )
           ) : (
-            tab.type === "design" ? <Code2 /> : tab.type === "video" ? <Film /> : tab.type === "workspace-app" ? <PanelsTopLeft /> : <ArtifactIcon type={tab.preview} />
+            tab.type === "design" ? <Code2 /> : tab.type === "video" ? <Film /> : tab.type === "workspace-app" ? <PanelsTopLeft /> : tab.type === "plugin-studio" ? <WandSparkles /> : <ArtifactIcon type={tab.preview} />
           )}
           <span className="min-w-0 flex-1 truncate text-left">{tab.label}</span>
         </PanelTab>
@@ -745,6 +747,19 @@ export function SidePanel({
           />
         ) : activeTab?.type === "browser" ? (
           <BrowserPanelContent tab={activeTab} onClose={() => closeTab(activeTab)} />
+        ) : activeTab?.type === "plugin-studio" && client && workspaceId ? (
+          <div className="min-h-0 flex-1 overflow-hidden">
+            <PluginWorkshopPanel
+              key={`${activeTab.sessionId}:${activeTab.id}`}
+              tab={activeTab}
+              client={client}
+              workspaceId={workspaceId}
+              workspaceRoot={workspaceRoot}
+              aiEditing={aiEditing}
+              expanded={expanded}
+              onSendMessage={onSendWorkspaceAppMessage}
+            />
+          </div>
         ) : activeTab?.type === "workspace-app" && client && workspaceId ? (
           <div className="min-h-0 flex-1 overflow-hidden">
             <WorkspaceAppFrame

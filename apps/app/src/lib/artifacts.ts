@@ -7,7 +7,7 @@ import {
   isWriteToolPart,
 } from "@/lib/build-in-tools";
 import { useOpenTargets } from "@/lib/target-provider";
-import { isCollectibleArtifactTarget, isOpenableFileTarget, type OpenTarget, type OpenTargetPreview } from "@/react-app/domains/session/artifacts/open-target";
+import { getAssistantFileMentionPaths, isCollectibleArtifactTarget, isOpenableFileTarget, type OpenTarget, type OpenTargetPreview } from "@/react-app/domains/session/artifacts/open-target";
 
 export type ArtifactType = "website" | "markdown" | "sheet" | "slides" | "document" | "image" | "video" | "audio" | "pdf" | "html" | "text" | "unknown";
 
@@ -414,22 +414,9 @@ function artifactPathCandidate(path: unknown, verifiedFromWrite = false): Artifa
   return normalized ? { path: normalized, verifiedFromWrite } : null;
 }
 
-const FILE_PATTERN = /(?:^|[\s"'`([{])((?:\.{1,2}[/\\]|~[/\\]|[/\\])?[\w.\-]+(?:[/\\][\w.\-]+)+\.[a-z][a-z0-9]{0,9}|[\w.\-]+\.[a-z][a-z0-9]{0,9})/gi;
-const ASSISTANT_ARTIFACT_MENTION_PATTERN = /\b(?:artifact|created|deck|deliverable|exported|file|generated|opened|presentation|saved|slides?|updated|wrote)\b/i;
-
 function getArtifactPathsFromText(text: unknown) {
   if (typeof text !== "string") return [];
-  if (!ASSISTANT_ARTIFACT_MENTION_PATTERN.test(text)) return [];
-  const paths: string[] = [];
-
-  FILE_PATTERN.lastIndex = 0;
-  for (const match of text.matchAll(FILE_PATTERN)) {
-    if (match[1] && getArtifactType(match[1]) !== "unknown") {
-      paths.push(match[1]);
-    }
-  }
-
-  return paths;
+  return getAssistantFileMentionPaths(text).filter((path) => getArtifactType(path) !== "unknown");
 }
 
 function getArtifactPathsFromMessage(message: UIMessage) {

@@ -138,6 +138,12 @@ import { cn } from "@/lib/utils";
 import { useActiveEnterpriseConnection } from "@/react-app/domains/enterprise/use-active-enterprise-connection";
 import { useInstalledPluginContributions } from "@/react-app/plugin-ui/plugin-ui-contributions";
 import type { WorkspaceAppModelContext } from "@/react-app/plugin-ui/workspace-app-frame";
+import {
+  mergePluginWorkshopInstruction,
+  nextPluginWorkshopLabel,
+  pluginWorkshopSystemInstruction,
+  pluginWorkshopTabId,
+} from "../plugin-workshop/plugin-workshop-contract";
 
 const STARTUP_SKELETON_ROWS = [
   { id: "intro", titleWidth: "42%", bodyWidth: "88%" },
@@ -243,6 +249,7 @@ export type SessionPageSurfaceProps = Omit<
 
 export type SessionPageProps = {
   selectedSessionId: string | null;
+  selectedSessionKnown: boolean;
   selectedWorkspaceId: string;
   selectedWorkspaceDisplay: {
     id?: string;
@@ -637,6 +644,19 @@ export function SessionPage(props: SessionPageProps) {
   const selectedSessionTitle = useMemo(
     () => sessionTitleForId(props.sidebar.projectSessionLists, props.selectedSessionId),
     [props.selectedSessionId, props.sidebar.projectSessionLists],
+  );
+  const selectedWorkspaceProject = useMemo(
+    () => props.sidebar.projectSessionLists.find(
+      (project) => project.workspace.id === props.selectedWorkspaceId,
+    ) ?? null,
+    [props.selectedWorkspaceId, props.sidebar.projectSessionLists],
+  );
+  const hasSelectedTask = Boolean(props.selectedSessionId && props.selectedSessionKnown);
+  const showProjectNoTasksState = Boolean(
+    props.workspaces.length > 0
+      && !props.selectedSessionId
+      && selectedWorkspaceProject?.status === "ready"
+      && selectedWorkspaceProject.sessions.length === 0,
   );
   const [templateSessionRevision, setTemplateSessionRevision] = useState(0);
   const [templateCatalog, setTemplateCatalog] = useState<TemplateCatalogItem[]>([]);
@@ -1306,7 +1326,72 @@ export function SessionPage(props: SessionPageProps) {
   const [deleteProjectId, setDeleteProjectId] = useState<string | null>(null);
   const [deleteProjectBusy, setDeleteProjectBusy] = useState(false);
   const [mainWorkspaceView, setMainWorkspaceView] = useState<"extensions" | null>(null);
+  const observedPluginWorkshopSessionRef = useRef<string | null>(null);
+  const autoOpenedPluginWorkshopSessionRef = useRef<string | null>(null);
   const preserveSidePanelOnPanelOpenRef = useRef(false);
+
+  useEffect(() => {
+    const sessionId = props.selectedSessionId;
+    if (!sessionId) {
+      observedPluginWorkshopSessionRef.current = null;
+      autoOpenedPluginWorkshopSessionRef.current = null;
+      return;
+    }
+    if (!props.selectedSessionKnown) return;
+    if (observedPluginWorkshopSessionRef.current !== sessionId) {
+      observedPluginWorkshopSessionRef.current = sessionId;
+      autoOpenedPluginWorkshopSessionRef.current = null;
+    }
+    if (autoOpenedPluginWorkshopSessionRef.current === sessionId) return;
+    const workshopTab = sessionPanelState.tabs.find((tab) => tab.type === "plugin-studio");
+    if (!workshopTab) return;
+
+    autoOpenedPluginWorkshopSessionRef.current = sessionId;
+    selectTab(sessionId, workshopTab.id);
+    setMainWorkspaceView(null);
+    setSidePanelState(sessionId, "panel");
+  }, [props.selectedSessionId, props.selectedSessionKnown, selectTab, sessionPanelState.tabs, setSidePanelState]);
+
+  const sendSessionDraft = useCallback((draft: ComposerDraft, sessionId: string) => {
+    const send = props.surface?.onSendDraft;
+    if (!send) return false;
+    const workspaceAppTab = sessionId === props.selectedSessionId
+      && sessionSidePanel === "panel"
+      && activePanelTab?.type === "workspace-app"
+      ? activePanelTab
+      : null;
+    const workshopTab = sessionId === props.selectedSessionId
+      && sessionSidePanel === "panel"
+      && activePanelTab?.type === "plugin-studio"
+      ? activePanelTab
+      : null;
+    if (workspaceAppTab) {
+      const workspaceCapabilityId = `workspace-app:${workspaceAppTab.surface.pluginId}:${workspaceAppTab.surface.resource.id}`;
+      const capabilityId = draft.capability?.id;
+      const alreadyScoped = capabilityId?.split("+").includes(workspaceCapabilityId) === true;
+      const workspaceInstruction = `The user explicitly activated the ${workspaceAppTab.label} Workspace App for this request. You must use its available workspace_app tools instead of substituting a generic response. Call workspace_app.list_tools to inspect the app tools, then call workspace_app.call_tool with the appropriate tool and arguments. If the app cannot complete the request, explain the concrete tool error.`;
+      const capabilityInstruction = draft.capability?.instruction?.includes(workspaceInstruction)
+        ? draft.capability.instruction
+        : [draft.capability?.instruction, workspaceInstruction].filter(Boolean).join("\n\n");
+      return send({
+        ...draft,
+        capability: {
+          id: alreadyScoped ? capabilityId : capabilityId ? `${capabilityId}+${workspaceCapabilityId}` : workspaceCapabilityId,
+          instruction: capabilityInstruction,
+        },
+      }, sessionId);
+    }
+    if (!workshopTab) return send(draft, sessionId);
+    const capabilityId = draft.capability?.id;
+    const alreadyScoped = capabilityId?.split("+").includes("plugin-workshop") === true;
+    return send({
+      ...draft,
+      capability: {
+        id: alreadyScoped ? capabilityId : capabilityId ? `${capabilityId}+plugin-workshop` : "plugin-workshop",
+        instruction: mergePluginWorkshopInstruction(draft.capability?.instruction, workshopTab.pluginId),
+      },
+    }, sessionId);
+  }, [activePanelTab, props.selectedSessionId, props.surface?.onSendDraft, sessionSidePanel]);
 
   const setCurrentSidePanel = useCallback((panel: SidePanelItem | null) => {
     if (panel === "design" && props.selectedSessionId) {
@@ -2150,6 +2235,48 @@ export function SessionPage(props: SessionPageProps) {
     setCurrentSidePanel(null);
     setMainWorkspaceView("extensions");
   }, [setCurrentSidePanel]);
+  const openPluginWorkshopForSession = useCallback((
+    sessionId: string,
+    creationBaselinePluginIds?: string[],
+  ) => {
+    const existingLabels = Object.values(usePanelTabStore.getState().sessions)
+      .flatMap((session) => session.tabs)
+      .filter((tab) => tab.type === "plugin-studio")
+      .map((tab) => tab.label);
+    openTab(sessionId, {
+      id: pluginWorkshopTabId(sessionId),
+      type: "plugin-studio",
+      label: nextPluginWorkshopLabel(existingLabels, t("plugin_workshop.title")),
+      sessionId,
+      creationBaselinePluginIds,
+    });
+    setMainWorkspaceView(null);
+    setSidePanelState(sessionId, "panel");
+  }, [openTab, setSidePanelState]);
+  const openPluginWorkshop = useCallback(() => {
+    void (async () => {
+      const baselinePromise = props.ipolloworkServerClient && props.runtimeWorkspaceId
+        ? props.ipolloworkServerClient.listPluginWorkshopProjects(props.runtimeWorkspaceId)
+          .then((response) => response.items.map((project) => project.directoryId))
+          .catch(() => undefined)
+        : Promise.resolve(undefined);
+      const [sessionId, creationBaselinePluginIds] = await Promise.all([
+        props.sidebar.onCreateTaskInWorkspace(props.selectedWorkspaceId, "work"),
+        baselinePromise,
+      ]);
+      if (!sessionId) {
+        toast.error(t("plugin_workshop.create_session_failed"));
+        return;
+      }
+      openPluginWorkshopForSession(sessionId, creationBaselinePluginIds);
+    })();
+  }, [
+    openPluginWorkshopForSession,
+    props.ipolloworkServerClient,
+    props.runtimeWorkspaceId,
+    props.selectedWorkspaceId,
+    props.sidebar,
+  ]);
   const openVoiceRailPane = useCallback(() => {
     toggleCurrentSidePanel("voice");
   }, [toggleCurrentSidePanel]);
@@ -2164,26 +2291,34 @@ export function SessionPage(props: SessionPageProps) {
     });
     setCurrentSidePanel("panel");
   }, [openTab, props.selectedSessionId, setCurrentSidePanel]);
+  const openWorkspaceAppForPlugin = useCallback((pluginId: string) => {
+    const surface = workspaceApps.find((entry) => entry.pluginId === pluginId);
+    if (surface) openWorkspaceApp(surface);
+  }, [openWorkspaceApp, workspaceApps]);
   const sendWorkspaceAppMessage = useCallback((input: {
     text: string;
     modelContext: WorkspaceAppModelContext | null;
   }) => {
-    if (!props.selectedSessionId || activePanelTab?.type !== "workspace-app") return false;
-    const context = input.modelContext
-      ? `The active Workspace App is ${activePanelTab.label}. Use its available workspace_app tools when the user asks to inspect or edit it. Current app context:\n${JSON.stringify(input.modelContext, null, 2)}`
-      : `The active Workspace App is ${activePanelTab.label}. Use its available workspace_app tools when the user asks to inspect or edit it.`;
-    return props.surface?.onSendDraft({
+    if (!props.selectedSessionId || (activePanelTab?.type !== "workspace-app" && activePanelTab?.type !== "plugin-studio")) return false;
+    const context = activePanelTab.type === "workspace-app"
+      ? input.modelContext
+        ? `The active Workspace App is ${activePanelTab.label}. Use its available workspace_app tools when the user asks to inspect or edit it. Current app context:\n${JSON.stringify(input.modelContext, null, 2)}`
+        : `The active Workspace App is ${activePanelTab.label}. Use its available workspace_app tools when the user asks to inspect or edit it.`
+      : pluginWorkshopSystemInstruction(activePanelTab.pluginId);
+    return sendSessionDraft({
       mode: "prompt",
       parts: [{ type: "text", text: input.text }],
       attachments: [],
       text: input.text,
       resolvedText: input.text,
       capability: {
-        id: `workspace-app:${activePanelTab.surface.pluginId}:${activePanelTab.surface.resource.id}`,
+        id: activePanelTab.type === "workspace-app"
+          ? `workspace-app:${activePanelTab.surface.pluginId}:${activePanelTab.surface.resource.id}`
+          : "plugin-workshop",
         instruction: context,
       },
     }, props.selectedSessionId) ?? false;
-  }, [activePanelTab, props.selectedSessionId, props.surface?.onSendDraft]);
+  }, [activePanelTab, props.selectedSessionId, sendSessionDraft]);
   const sidePanelLauncherItems = useMemo<SidePanelLauncherItem[]>(() => [
     {
       id: "web",
@@ -2219,6 +2354,14 @@ export function SessionPage(props: SessionPageProps) {
       onClick: showVideoRailPane,
       disabled: !props.selectedSessionId || props.selectedWorkspaceDisplay.workspaceType === "remote",
     },
+    {
+      id: "plugin-workshop",
+      label: t("plugin_workshop.title"),
+      iconSrc: publicAssetUrl("sidebar-icon/plugin.svg"),
+      active: panelRailActive && activePanelTab?.type === "plugin-studio",
+      onClick: openPluginWorkshop,
+      disabled: !props.selectedWorkspaceId,
+    },
     ...workspaceApps.map((surface) => ({
       id: `workspace-app:${surface.id}`,
       label: surface.label,
@@ -2229,7 +2372,7 @@ export function SessionPage(props: SessionPageProps) {
       onClick: () => openWorkspaceApp(surface),
       disabled: !props.selectedSessionId,
     })),
-  ], [activePanelTab, addBrowserPanelTab, hasArtifactTargets, locale, openWorkspaceApp, panelRailActive, props.selectedSessionId, props.selectedWorkspaceDisplay.workspaceType, showArtifactRailPane, showDesignRailPane, showVideoRailPane, videoRailActive, workspaceApps]);
+  ], [activePanelTab, addBrowserPanelTab, hasArtifactTargets, locale, openPluginWorkshop, openWorkspaceApp, panelRailActive, props.selectedSessionId, props.selectedWorkspaceDisplay.workspaceType, props.selectedWorkspaceId, showArtifactRailPane, showDesignRailPane, showVideoRailPane, videoRailActive, workspaceApps]);
   const removeAccessibleTarget = useCallback((target: OpenTarget) => {
     const nextHiddenIds = new Set(hiddenAccessibleTargetIds);
     nextHiddenIds.add(target.id);
@@ -2344,16 +2487,17 @@ export function SessionPage(props: SessionPageProps) {
     () => sessionTitleForId(props.sidebar.projectSessionLists, sessionActionId),
     [props.sidebar.projectSessionLists, sessionActionId],
   );
-  const showWorkspaceSetupEmptyState = props.workspaces.length === 0 && !props.selectedSessionId;
-  const showNewConversationChrome = !props.selectedSessionId && !showWorkspaceSetupEmptyState;
+  const showWorkspaceSetupEmptyState = props.workspaces.length === 0 && !hasSelectedTask;
+  const showNewConversationChrome = !hasSelectedTask && !showWorkspaceSetupEmptyState;
   const showStartupSkeleton =
-    !props.selectedSessionId &&
+    !hasSelectedTask &&
+    !showProjectNoTasksState &&
     !props.clientConnected &&
     props.startupPhase !== "sessionIndexReady" &&
     props.startupPhase !== "firstSessionReady" &&
     props.startupPhase !== "ready";
   const showSessionLoadingState =
-    Boolean(props.selectedSessionId) && props.sessionLoadingById(props.selectedSessionId) && !showWorkspaceSetupEmptyState;
+    hasSelectedTask && props.sessionLoadingById(props.selectedSessionId!) && !showWorkspaceSetupEmptyState;
   const sidebarInitialLoading = useMemo(() => getSidebarInitialLoading(props.sidebar), [props.sidebar]);
   // Derive the main-pane error from the same data the sidebar uses so the two
   // panes can never disagree. We check (in priority order):
@@ -2388,7 +2532,8 @@ export function SessionPage(props: SessionPageProps) {
     props.ipolloworkServerClient?.token?.trim() ||
     "";
   const canRenderReactSurface = Boolean(
-    props.selectedSessionId &&
+    hasSelectedTask &&
+      props.selectedSessionId &&
       props.runtimeWorkspaceId &&
       props.ipolloworkServerClient &&
       reactSessionBaseUrl &&
@@ -2403,20 +2548,23 @@ export function SessionPage(props: SessionPageProps) {
   );
   const showBrandedSessionLoading = Boolean(
     canRenderReactSurface &&
+      hasSelectedTask &&
       props.selectedSessionId &&
       settledSessionId !== props.selectedSessionId &&
       !templateEntrySurfaceReady,
   );
   const showHeaderMenu = Boolean(
-    props.selectedSessionId || props.developerMode,
+    hasSelectedTask || props.developerMode,
   );
   const selectedSessionIsDefaultTitle = selectedSessionTitle === t("session.default_title");
   const showMainHeaderTitle = Boolean(
     !rightWorkspaceExpanded &&
-      (showWorkspaceSetupEmptyState || (props.selectedSessionId && !selectedSessionIsDefaultTitle)),
+      (showWorkspaceSetupEmptyState || (hasSelectedTask && !selectedSessionIsDefaultTitle)),
   );
   const showMainHeaderMenu = showHeaderMenu && showMainHeaderTitle;
-  const mainHeaderHidden = mainWorkspaceView === "extensions" || (showNewConversationChrome && !sidebarVisuallyCollapsed);
+  const mainHeaderHidden = mainWorkspaceView === "extensions"
+    || showProjectNoTasksState
+    || (showNewConversationChrome && !sidebarVisuallyCollapsed);
   const visibleWorkspaceWidth = viewportWidth - (shellConfig.sidebar && sidebarOpen ? effectiveLeftSidebarWidth : 0);
   const floatingRightPanelToggleOffset = sidePanelOpen
     ? Math.min(effectiveBrowserPanelWidth, Math.max(0, visibleWorkspaceWidth - 40)) + 8
@@ -2441,6 +2589,11 @@ export function SessionPage(props: SessionPageProps) {
     setSessionActionId(null);
     setMainWorkspaceView(null);
   }, [props.selectedSessionId]);
+
+  useEffect(() => {
+    if (!showProjectNoTasksState || !sidePanelOpen) return;
+    closeRightPane();
+  }, [closeRightPane, showProjectNoTasksState, sidePanelOpen]);
 
   const openRenameModal = (sessionId: string) => {
     if (!props.onRenameSession) return;
@@ -2588,12 +2741,19 @@ export function SessionPage(props: SessionPageProps) {
             name: denAuth.user?.name ?? null,
             email: denAuth.user?.email ?? null,
           }}
-          activePrimaryItem={templateMarketOpen ? "template-market" : mainWorkspaceView === "extensions" ? "extensions" : null}
+          activePrimaryItem={templateMarketOpen
+            ? "template-market"
+            : mainWorkspaceView === "extensions"
+              ? "extensions"
+              : activePanelTab?.type === "plugin-studio"
+                ? "plugin-workshop"
+                : null}
           onOpenAccount={openCloudAccount}
           onOpenSettings={props.onOpenSettings}
           onOpenHelp={props.onOpenHelp}
           onOpenTemplateMarket={() => setTemplateMarketOpen(true)}
           onOpenExtensions={openExtensionsRailPane}
+          onOpenPluginWorkshop={openPluginWorkshop}
           onSignIn={openCloudSignIn}
           onOpenSessionSearch={props.sidebar.onOpenSessionSearch ? handleSidebarOpenSessionSearch : undefined}
           onStartResize={startLeftSidebarResize}
@@ -2601,7 +2761,7 @@ export function SessionPage(props: SessionPageProps) {
         <SidebarInset className="relative min-h-0 overflow-hidden bg-background mac:bg-background/80">
           <div className="flex min-h-0 flex-1">
           <div className="relative flex min-h-0 flex-1">
-            {mainHeaderHidden ? (
+            {mainHeaderHidden && !showProjectNoTasksState ? (
               <Tooltip>
                 <TooltipTrigger
                   render={
@@ -2734,41 +2894,44 @@ export function SessionPage(props: SessionPageProps) {
               ) : null}
             </div>
 
-            {props.selectedSessionId ? (
+            {hasSelectedTask ? (
               <div className="pointer-events-none hidden md:flex md:justify-self-center">
                 <SessionEngineBadge engineId={props.selectedWorkspaceDisplay.engineId} />
               </div>
             ) : null}
 
             <div className="relative z-10 flex items-center gap-1.5 text-gray-10 md:justify-self-end mac:titlebar-no-drag">
-              <ConversationOutputTrigger
-                active={activeSidePanel === "outputs"}
-                disabled={!conversationMessages.length && !designTemplateEntryPath}
-                onClick={() => toggleCurrentSidePanel("outputs")}
-              />
-              <Tooltip>
-                <TooltipTrigger
-                  render={
-                    <Button
-                      variant="ghost"
-                      size="icon-sm"
-                      className="rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-                      aria-label={sidePanelOpen ? t("session.right_panel_close") : t("session.right_panel_open")}
-                      title={sidePanelOpen ? t("session.right_panel_close") : t("session.right_panel_open")}
-                      aria-pressed={sidePanelOpen}
-                      disabled={!props.selectedSessionId && !sidePanelOpen}
-                      onClick={toggleRightPanel}
-                    >
-                      <img
-                        src={publicAssetUrl(sidePanelOpen ? "sidebar-right-open.svg" : "sidebar-right-closed.svg")}
-                        alt=""
-                        className="h-3 w-4 shrink-0 dark:invert"
-                      />
-                    </Button>
-                  }
-                />
-                <TooltipContent>{sidePanelOpen ? t("session.right_panel_close") : t("session.right_panel_open")}</TooltipContent>
-              </Tooltip>
+              {hasSelectedTask ? (
+                <>
+                  <ConversationOutputTrigger
+                    active={activeSidePanel === "outputs"}
+                    disabled={!conversationMessages.length && !designTemplateEntryPath}
+                    onClick={() => toggleCurrentSidePanel("outputs")}
+                  />
+                  <Tooltip>
+                    <TooltipTrigger
+                      render={
+                        <Button
+                          variant="ghost"
+                          size="icon-sm"
+                          className="rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                          aria-label={sidePanelOpen ? t("session.right_panel_close") : t("session.right_panel_open")}
+                          title={sidePanelOpen ? t("session.right_panel_close") : t("session.right_panel_open")}
+                          aria-pressed={sidePanelOpen}
+                          onClick={toggleRightPanel}
+                        >
+                          <img
+                            src={publicAssetUrl(sidePanelOpen ? "sidebar-right-open.svg" : "sidebar-right-closed.svg")}
+                            alt=""
+                            className="h-3 w-4 shrink-0 dark:invert"
+                          />
+                        </Button>
+                      }
+                    />
+                    <TooltipContent>{sidePanelOpen ? t("session.right_panel_close") : t("session.right_panel_open")}</TooltipContent>
+                  </Tooltip>
+                </>
+              ) : null}
             </div>
           </header>
 
@@ -2865,6 +3028,7 @@ export function SessionPage(props: SessionPageProps) {
                         // must come from the resolved workspace endpoint passed by
                         // SessionRoute, not from anything in `surface`.
                         {...props.surface!}
+                        onSendDraft={sendSessionDraft}
                         client={props.ipolloworkServerClient!}
                         environmentClient={props.environmentClient}
                         workspaceId={props.runtimeWorkspaceId!}
@@ -2891,6 +3055,7 @@ export function SessionPage(props: SessionPageProps) {
                           : undefined}
                         onArtifactCompletionRequirementConsumed={consumePendingVideoArtifactCompletion}
                         onOpenVideoStudio={openCurrentVideoStudio}
+                        onOpenWorkspaceApp={openWorkspaceAppForPlugin}
                         onCreateSession={(type, templateId) => props.sidebar.onCreateTaskInWorkspace(
                           props.selectedWorkspaceId,
                           type,
@@ -2940,8 +3105,15 @@ export function SessionPage(props: SessionPageProps) {
               ) : null}
 
               {mainWorkspaceView === null && !showDelayedSessionLoadingState && !canRenderReactSurface && !showStartupSkeleton ? (
-                <div className={`mx-auto max-w-[800px] px-6 ${showWorkspaceSetupEmptyState ? "pt-20" : "pt-10"}`}>
-                  {props.notFoundMessage ? (
+                <div className={showProjectNoTasksState
+                  ? "flex h-full items-center justify-center px-6"
+                  : `mx-auto max-w-[800px] px-6 ${showWorkspaceSetupEmptyState ? "pt-20" : "pt-10"}`}
+                >
+                  {showProjectNoTasksState ? (
+                    <div className="text-center text-sm text-dls-secondary" role="status" aria-live="polite">
+                      {t("workspace.no_tasks")}
+                    </div>
+                  ) : props.notFoundMessage ? (
                     <div className="px-6 py-16 text-center">
                       <div className="mx-auto max-w-md rounded-2xl border border-dls-border bg-dls-card px-5 py-6 shadow-[var(--dls-card-shadow)]">
                         <h3 className="text-base font-medium text-dls-text">Workspace or session not found</h3>
@@ -2998,7 +3170,7 @@ export function SessionPage(props: SessionPageProps) {
                         </div>
                       </div>
                     </div>
-                  ) : props.selectedSessionId ? (
+                  ) : hasSelectedTask ? (
                     <div className="px-6 py-16 text-center text-sm text-dls-secondary">
                       {t("session.loading_detail")}
                     </div>

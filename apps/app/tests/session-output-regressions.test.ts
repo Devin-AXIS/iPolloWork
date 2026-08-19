@@ -3,6 +3,33 @@ import { readFileSync } from "node:fs";
 import { formatProcessDuration } from "../src/components/chat/utils";
 
 describe("session output issue regressions", () => {
+  test("empty projects hide task controls and render the no-task state", () => {
+    const sessionPageSource = readFileSync(
+      new URL("../src/react-app/domains/session/chat/session-page.tsx", import.meta.url),
+      "utf8",
+    );
+    const chineseLocaleSource = readFileSync(
+      new URL("../src/i18n/locales/zh.ts", import.meta.url),
+      "utf8",
+    );
+
+    expect(sessionPageSource).toContain("const showProjectNoTasksState = Boolean(");
+    expect(sessionPageSource).toContain("const hasSelectedTask = Boolean(props.selectedSessionId && props.selectedSessionKnown);");
+    expect(sessionPageSource).toContain("&& !props.selectedSessionId");
+    expect(sessionPageSource).toContain('selectedWorkspaceProject?.status === "ready"');
+    expect(sessionPageSource).toContain("selectedWorkspaceProject.sessions.length === 0");
+    expect(sessionPageSource).toContain("{mainHeaderHidden && !showProjectNoTasksState ? (");
+    expect(sessionPageSource).toContain("{hasSelectedTask ? (\n                <>");
+    expect(sessionPageSource).toContain('{t("workspace.no_tasks")}');
+    expect(chineseLocaleSource).toContain('"workspace.no_tasks": "没有任务"');
+
+    const sessionRouteSource = readFileSync(
+      new URL("../src/react-app/shell/session-route.tsx", import.meta.url),
+      "utf8",
+    );
+    expect(sessionRouteSource).toContain("selectedSessionKnown={selectedSessionKnown}");
+  });
+
   test("shows the active workspace engine in the centered session header badge", () => {
     const sessionPageSource = readFileSync(
       new URL("../src/react-app/domains/session/chat/session-page.tsx", import.meta.url),

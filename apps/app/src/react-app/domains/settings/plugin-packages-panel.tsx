@@ -30,6 +30,7 @@ import type {
 } from "@/app/lib/ipollowork-server";
 import type { iPolloWorkPluginAuthorizationMethod } from "@/app/extensions";
 import type { McpStatus, McpStatusMap } from "@/app/types";
+import { pluginPackageAuthorization } from "@/app/lib/plugin-package-readiness";
 import { resolveExtensionIconUrl } from "@/react-app/design-system/extension-icon-src";
 import { notifyPluginUiContributionsChanged } from "@/react-app/plugin-ui/plugin-ui-contributions";
 import { AuthorizationFormDialog } from "@/react-app/domains/settings/authorization-form-dialog";
@@ -69,26 +70,6 @@ type McpConnectionFeedback = {
   status: "connecting" | "connected" | "unavailable";
   error?: string;
 };
-
-function packageAuthorization(
-  item: iPolloWorkPluginPackageItem,
-  state: iPolloWorkPluginAuthorizationState | undefined,
-  mcpStatuses: McpStatusMap,
-) {
-  const pluginAuthorizationRequired = (item.manifest.authorization?.methods?.length ?? 0) > 0;
-  const hasGuidedSetup = Boolean(item.manifest.setup?.instructions?.trim());
-  const connectionMcpResources = item.manifest.resources.filter((resource) =>
-    resource.type === "mcp"
-      && Boolean(resource.mcpServerName)
-      && (resource.oauth === true || hasGuidedSetup)
-  );
-  const required = pluginAuthorizationRequired || connectionMcpResources.length > 0;
-  const pluginReady = !pluginAuthorizationRequired || state?.ready === true;
-  const mcpReady = connectionMcpResources.every((resource) =>
-    resource.mcpServerName ? mcpStatuses[resource.mcpServerName]?.status === "connected" : false
-  );
-  return { required, connected: required && pluginReady && mcpReady, connectionMcpResources };
-}
 
 function statusText(state: iPolloWorkPluginAuthorizationState | undefined, required: boolean, connected: boolean) {
   if (!required) return t("plugin_platform.status.installed");
@@ -305,7 +286,7 @@ export function PluginPackagesPanel(props: PluginPackagesPanelProps) {
     const item = { ...selectedSourceItem, name: localizedManifest.name, manifest: localizedManifest };
     const auth = authorizations[item.pluginId];
     const methods = item.manifest.authorization?.methods ?? [];
-    const authorization = packageAuthorization(item, auth, props.mcpStatuses);
+    const authorization = pluginPackageAuthorization(item, auth, props.mcpStatuses);
     const connected = authorization.connected;
     const flow = flows[item.pluginId];
     const setupHelpUrl = item.manifest.contributions?.find((contribution) =>
@@ -810,7 +791,7 @@ export function PluginPackagesPanel(props: PluginPackagesPanelProps) {
                 ))}
                 {filteredItems.map((item) => {
                   const auth = authorizations[item.pluginId];
-                  const authorization = packageAuthorization(item, auth, props.mcpStatuses);
+                  const authorization = pluginPackageAuthorization(item, auth, props.mcpStatuses);
                   const connected = authorization.connected;
                   const primaryAction = derivePluginPrimaryAction({
                     installed: true,
@@ -858,7 +839,6 @@ export function PluginPackagesPanel(props: PluginPackagesPanelProps) {
         open={importOpen}
         client={props.client}
         workspaceId={props.workspaceId}
-        installedPluginIds={items.map((item) => item.pluginId)}
         onClose={() => setImportOpen(false)}
         onInstalled={async (pluginId) => {
           await refresh();

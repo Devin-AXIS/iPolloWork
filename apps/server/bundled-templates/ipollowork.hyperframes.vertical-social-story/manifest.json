@@ -1,0 +1,45 @@
+{
+  "schemaVersion": 1,
+  "id": "ipollowork.hyperframes.vertical-social-story",
+  "version": "1.0.1",
+  "kind": "design",
+  "category": "video",
+  "subcategory": "portrait-social-video",
+  "style": "bold",
+  "tags": ["video", "portrait", "vertical", "9:16", "social", "short-form", "竖屏", "短视频"],
+  "surface": "video",
+  "title": "竖屏社交短视频",
+  "description": "一个原生 1080×1920 的 9:16 竖屏模板，适合产品亮点、数据证明和社交媒体行动号召。",
+  "cover": "cover.png",
+  "entry": "index.html",
+  "source": {
+    "name": "iPolloWork HyperFrames",
+    "repository": "https://github.com/heygen-com/hyperframes",
+    "license": "Apache-2.0",
+    "attribution": "Original iPolloWork portrait composition built for the HyperFrames runtime."
+  },
+  "designSystem": {
+    "tokenVersion": 1,
+    "tokens": "design-tokens.css",
+    "editableGroups": ["theme", "background", "typography", "components"],
+    "variables": [
+      { "id": "eyebrow", "label": "顶部标签", "type": "text", "group": "content" },
+      { "id": "title", "label": "主标题", "type": "text", "group": "content" },
+      { "id": "subtitle", "label": "副标题", "type": "text", "group": "content" },
+      { "id": "metric", "label": "核心数据", "type": "text", "group": "content" },
+      { "id": "metricLabel", "label": "数据说明", "type": "text", "group": "content" },
+      { "id": "proofA", "label": "证明要点一", "type": "text", "group": "content" },
+      { "id": "proofB", "label": "证明要点二", "type": "text", "group": "content" },
+      { "id": "cta", "label": "行动号召", "type": "text", "group": "content" },
+      { "id": "brandName", "label": "品牌名称", "type": "text", "group": "brand" },
+      { "id": "logoUrl", "label": "品牌标志", "type": "image", "group": "brand" }
+    ]
+  },
+  "applyChecklist": [
+    "保持根合成、视口和画布为 1080×1920（9:16），除非用户明确要求更换视频格式。",
+    "替换主标题、核心数据、两条证明要点和行动号召，并确保每个镜头在手机屏幕上可读。",
+    "通过 design-tokens.css 调整颜色、字体、圆角和间距，不要破坏竖屏安全区。",
+    "导出前确认 Video Studio 显示的源尺寸为 1080×1920，1080p 导出使用 portrait 预设。"
+  ],
+  "minimumAppVersion": "0.17.28"
+}

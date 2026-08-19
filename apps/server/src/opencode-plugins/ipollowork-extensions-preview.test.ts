@@ -1,4 +1,7 @@
 import { afterEach, describe, expect, test } from "bun:test";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { z } from "zod";
 import { hyperframesStudioPort, videoProjectId } from "@ipollowork/types/hyperframes";
 
@@ -7,6 +10,7 @@ import { iPolloWorkExtensionsPreview } from "./ipollowork-extensions-preview.js"
 const originalServerUrl = process.env.IPOLLOWORK_SERVER_URL;
 const originalServerToken = process.env.IPOLLOWORK_SERVER_TOKEN;
 const originalUiControlTools = process.env.IPOLLOWORK_UI_CONTROL_TOOLS;
+const originalUiControlDiscovery = process.env.IPOLLOWORK_UI_CONTROL_DISCOVERY;
 const stops: Array<() => void> = [];
 
 const searchResultSchema = z.object({
@@ -40,6 +44,8 @@ afterEach(() => {
   else process.env.IPOLLOWORK_SERVER_TOKEN = originalServerToken;
   if (originalUiControlTools === undefined) delete process.env.IPOLLOWORK_UI_CONTROL_TOOLS;
   else process.env.IPOLLOWORK_UI_CONTROL_TOOLS = originalUiControlTools;
+  if (originalUiControlDiscovery === undefined) delete process.env.IPOLLOWORK_UI_CONTROL_DISCOVERY;
+  else process.env.IPOLLOWORK_UI_CONTROL_DISCOVERY = originalUiControlDiscovery;
 });
 
 async function transformedSystem(plugin: Awaited<ReturnType<typeof iPolloWorkExtensionsPreview>>): Promise<string> {
@@ -159,6 +165,46 @@ function startFakeVideoStudio() {
   throw new Error("Could not allocate a deterministic Video Studio test port");
 }
 
+async function startFakeUiBridge() {
+  const requests: Array<{ actionId?: string; args?: unknown }> = [];
+  const token = "workspace-app-test-token";
+  const server = Bun.serve({
+    hostname: "127.0.0.1",
+    port: 0,
+    async fetch(request) {
+      if (request.headers.get("authorization") !== `Bearer ${token}`) {
+        return Response.json({ ok: false, error: "Unauthorized" }, { status: 401 });
+      }
+      const body = await request.json() as { actionId?: string; args?: unknown };
+      requests.push(body);
+      if (body.actionId === "workspace_app.list_tools") {
+        return Response.json({
+          ok: true,
+          actionId: body.actionId,
+          result: { tools: [{ name: "set_analysis", inputSchema: { type: "object" } }] },
+        });
+      }
+      return Response.json({
+        ok: true,
+        actionId: body.actionId,
+        result: { content: [{ type: "text", text: "Dashboard updated" }] },
+      });
+    },
+  });
+  const directory = await mkdtemp(join(tmpdir(), "ipollowork-ui-bridge-"));
+  const discoveryPath = join(directory, "discovery.json");
+  await writeFile(discoveryPath, JSON.stringify({
+    baseUrl: `http://127.0.0.1:${server.port}`,
+    token,
+  }), "utf8");
+  process.env.IPOLLOWORK_UI_CONTROL_DISCOVERY = discoveryPath;
+  stops.push(() => {
+    server.stop(true);
+    void rm(directory, { recursive: true, force: true });
+  });
+  return { requests };
+}
+
 describe("iPolloWorkExtensionsPreview session tools", () => {
   test("searches past chat transcript text and prefers the user's matching message", async () => {
     const fake = startFakeiPolloWorkServer();
@@ -217,6 +263,7 @@ describe("iPolloWorkExtensionsPreview UI control tools", () => {
     expect(tools).not.toContain("ipollowork_ui_snapshot");
     expect(tools).not.toContain("ipollowork_ui_list_actions");
     expect(tools).not.toContain("ipollowork_ui_execute_action");
+    expect(tools).toContain("ipollowork_workspace_app");
     expect(tools).toContain("ipollowork_session_search");
     expect(tools).toContain("ipollowork_extension_list_actions");
     expect(tools).toContain("list_motion_presets");
@@ -243,6 +290,39 @@ describe("iPolloWorkExtensionsPreview UI control tools", () => {
 
     const system = await transformedSystem(plugin);
     expect(system).toContain("ipollowork_ui_execute_action");
+  });
+
+  test("updates the active Workspace App without enabling general UI-control tools", async () => {
+    delete process.env.IPOLLOWORK_UI_CONTROL_TOOLS;
+    const fake = await startFakeUiBridge();
+    const plugin = await iPolloWorkExtensionsPreview();
+
+    const listed = JSON.parse(await plugin.tool.ipollowork_workspace_app.execute({
+      operation: "list_tools",
+    }, { sessionID: "session-plugin-workshop" }));
+    expect(listed).toMatchObject({
+      ok: true,
+      actionId: "workspace_app.list_tools",
+      result: { tools: [{ name: "set_analysis" }] },
+    });
+
+    const called = JSON.parse(await plugin.tool.ipollowork_workspace_app.execute({
+      operation: "call_tool",
+      name: "set_analysis",
+      arguments: { title: "Alibaba", charts: [] },
+    }, { sessionID: "session-plugin-workshop" }));
+    expect(called).toMatchObject({ ok: true, actionId: "workspace_app.call_tool" });
+    expect(fake.requests).toEqual([
+      { actionId: "workspace_app.list_tools", args: { sessionId: "session-plugin-workshop" } },
+      {
+        actionId: "workspace_app.call_tool",
+        args: {
+          sessionId: "session-plugin-workshop",
+          name: "set_analysis",
+          arguments: { title: "Alibaba", charts: [] },
+        },
+      },
+    ]);
   });
 });
 

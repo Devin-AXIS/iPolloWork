@@ -6,6 +6,8 @@ import { join } from "node:path";
 import {
   providerApiKeyCredentialRef,
   sharedProviderIdFromCredentialEnvKey,
+  sharedProviderProfiles,
+  type SharedProviderProfile,
 } from "@ipollowork/types/provider-credentials";
 
 import { isReservedEnvKey, type EnvService } from "./env-file.js";
@@ -46,9 +48,10 @@ type DeepSeekHarnessDiscoveredModels = {
 type DeepSeekHarnessProviderBridge = {
   providerId: string;
   displayName: string;
-  api?: string;
+  api?: SharedProviderProfile["api"];
   baseURL?: string;
   discoverModels?: boolean;
+  models?: SharedProviderProfile["models"];
 };
 
 type DeepSeekHarnessProviderCredential = {
@@ -64,10 +67,27 @@ const DASHSCOPE_PROVIDER_BRIDGE: DeepSeekHarnessProviderBridge = {
   discoverModels: true,
 };
 
-function providerBridge(providerId: string): DeepSeekHarnessProviderBridge | undefined {
-  return providerId === "alibaba" || providerId === "alibaba-cn"
-    ? DASHSCOPE_PROVIDER_BRIDGE
-    : undefined;
+function providerBridge(
+  providerId: string,
+  profile?: SharedProviderProfile,
+): DeepSeekHarnessProviderBridge | undefined {
+  if (providerId === "alibaba" || providerId === "alibaba-cn") {
+    return {
+      ...DASHSCOPE_PROVIDER_BRIDGE,
+      providerId,
+      displayName: profile?.displayName
+        || (providerId === "alibaba" ? "Alibaba" : DASHSCOPE_PROVIDER_BRIDGE.displayName),
+      ...(profile?.models.length ? { models: profile.models, discoverModels: false } : {}),
+    };
+  }
+  if (!profile?.baseURL || !profile.api || profile.models.length === 0) return undefined;
+  return {
+    providerId: profile.providerId,
+    displayName: profile.displayName,
+    api: profile.api,
+    baseURL: profile.baseURL,
+    models: profile.models,
+  };
 }
 
 export function sharedProviderApiCredentials(
@@ -84,10 +104,12 @@ export function deepSeekHarnessProviderCredentials(
   records: ReadonlyArray<{ key: string; value: string }>,
 ): Map<string, DeepSeekHarnessProviderCredential> {
   const credentials = new Map<string, DeepSeekHarnessProviderCredential>();
+  const profiles = sharedProviderProfiles(records);
   for (const [providerId, apiKey] of sharedProviderApiCredentials(records)) {
-    credentials.set(providerBridge(providerId)?.providerId ?? providerId, {
+    const bridge = providerBridge(providerId, profiles.get(providerId));
+    credentials.set(bridge?.providerId ?? providerId, {
       apiKey,
-      bridge: providerBridge(providerId),
+      ...(bridge ? { bridge } : {}),
     });
   }
   return credentials;
@@ -196,13 +218,26 @@ export class DeepSeekHarnessRuntime {
     for (const [providerId, credential] of credentials) {
       const { apiKey, bridge } = credential;
       const route = routes.get(providerId);
-      if (bridge) {
-        const ref = providerApiKeyCredentialRef(providerId);
-        if (route?.active) {
+      const ref = providerApiKeyCredentialRef(providerId);
+      if (route) {
+        try {
+          await this.#callAtBaseUrl(baseUrl, "settings.mutate", {
+            ns: route.settingsNs,
+            ops: [{
+              op: "set",
+              path: [...route.settingsPath, "apiKeyEnv"],
+              value: ref,
+            }],
+          });
           await this.#callAtBaseUrl(baseUrl, "credentials.set", { ref, value: apiKey });
-          continue;
+        } catch {
+          // A provider can be OpenCode-only (for example OAuth/custom protocol).
+          // Leave that route untouched without blocking every other DSH model.
         }
-        let models: DeepSeekHarnessDiscoveredModels["models"] | undefined;
+        continue;
+      }
+      if (bridge) {
+        let models: DeepSeekHarnessDiscoveredModels["models"] | undefined = bridge.models;
         if (bridge.discoverModels) {
           const discovery = await this.#callAtBaseUrl<DeepSeekHarnessDiscoveredModels>(
             baseUrl,
@@ -239,22 +274,6 @@ export class DeepSeekHarnessRuntime {
           // rejects discovery or its profile.
         }
         continue;
-      }
-      if (!route) continue;
-      const ref = providerApiKeyCredentialRef(providerId);
-      try {
-        await this.#callAtBaseUrl(baseUrl, "settings.mutate", {
-          ns: route.settingsNs,
-          ops: [{
-            op: "set",
-            path: [...route.settingsPath, "apiKeyEnv"],
-            value: ref,
-          }],
-        });
-        await this.#callAtBaseUrl(baseUrl, "credentials.set", { ref, value: apiKey });
-      } catch {
-        // A provider can be OpenCode-only (for example OAuth/custom protocol).
-        // Leave that route untouched without blocking every other DSH model.
       }
     }
     this.#syncedCredentialFingerprint = fingerprint;

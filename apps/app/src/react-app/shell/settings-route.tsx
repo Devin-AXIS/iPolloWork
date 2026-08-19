@@ -134,7 +134,10 @@ import {
 import { ModelPickerModal } from "@/react-app/domains/session/modals/model-picker-modal";
 import type { ModelRef } from "@/app/types";
 import { DEEPSEEK_HARNESS_ENGINE_ID, DEFAULT_ENGINE_ID } from "@ipollowork/types/workspace";
-import { sharedProviderCredentialEnvKey } from "@ipollowork/types/provider-credentials";
+import {
+  buildSharedProviderProfile,
+  sharedProviderConnectionEnvEntries,
+} from "@/react-app/domains/connections/provider-auth/shared-provider-profile";
 import { recordInspectorEvent } from "../../app/lib/app-inspector";
 import { ensureDesktopLocaliPolloWorkConnection } from "./desktop-local-ipollowork";
 import { resolveiPolloWorkConnection } from "./ipollowork-connection";
@@ -1215,10 +1218,17 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
           throw new Error("The shared provider service is not connected.");
         }
         await engineAdapter.connect(sharedProviderClient).setApiKey(input.providerId, input.apiKey.trim());
-        await client.upsertUserEnv([{
-          key: sharedProviderCredentialEnvKey(input.providerId),
-          value: input.apiKey.trim(),
-        }]);
+        await client.upsertUserEnv(sharedProviderConnectionEnvEntries({
+          apiKey: input.apiKey.trim(),
+          profile: buildSharedProviderProfile({
+            providerId: input.providerId,
+            displayName: input.name,
+            api,
+            baseURL,
+            npm: input.npm,
+            models,
+          }),
+        }));
       }
       if (input.setDefault) {
         setActiveModel({ providerID: input.providerId, modelID: modelId });

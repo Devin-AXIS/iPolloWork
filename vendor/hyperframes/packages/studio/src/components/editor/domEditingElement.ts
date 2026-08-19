@@ -161,16 +161,23 @@ function getPreferredClipAncestor(startEl: HTMLElement): HTMLElement | null {
   return null;
 }
 
-export function getEditableUnitSelectionTarget(startEl: HTMLElement): HTMLElement | null {
+export function getEditableUnitSelectionTarget(
+  startEl: HTMLElement,
+  options?: Pick<DomEditContextOptions, "isMasterView">,
+): HTMLElement | null {
   let editableUnit: HTMLElement | null = startEl;
   while (editableUnit) {
     const compositionSource = getCompositionSourceForHost(editableUnit)?.replace(/\\/g, "/");
-    const isEffectComposition = compositionSource?.includes("/effects/") === true;
-    // Inserted effects expose their authored descendants in the expanded
-    // timeline and must behave like ordinary canvas elements. Older projects
-    // may still carry the temporary edit-as-unit marker, so explicitly ignore
-    // it on effect hosts while preserving the marker for intentional units.
-    if (editableUnit.hasAttribute("data-hf-edit-as-unit") && !isEffectComposition) {
+    const compositionId = editableUnit.getAttribute("data-composition-id") ?? "";
+    const isEndingEffect =
+      compositionSource?.includes("/effects/effect-ending-") === true ||
+      compositionId.startsWith("effect-ending-");
+    // In the master composition, an ending effect is one movable/resizable
+    // visual. Promote clicks on its animated descendants to the parent-owned
+    // host so their own GSAP timelines cannot reset a canvas drag. Drilling
+    // into the effect still exposes every authored descendant for editing.
+    if (isEndingEffect && options?.isMasterView) return editableUnit;
+    if (editableUnit.hasAttribute("data-hf-edit-as-unit") && !isEndingEffect) {
       return editableUnit;
     }
     editableUnit = editableUnit.parentElement;
@@ -182,7 +189,7 @@ export function getSelectionCandidate(
   startEl: HTMLElement,
   options: DomEditContextOptions,
 ): HTMLElement {
-  const editableUnit = getEditableUnitSelectionTarget(startEl);
+  const editableUnit = getEditableUnitSelectionTarget(startEl, options);
   if (editableUnit) return editableUnit;
 
   const structuredMotionRoot = getStructuredMotionSelectionRoot(startEl);

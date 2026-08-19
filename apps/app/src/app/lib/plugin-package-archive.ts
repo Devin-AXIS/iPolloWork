@@ -1,6 +1,10 @@
 import JSZip from "jszip";
+import {
+  pluginPackageArchiveExtension,
+  type PluginPackageArchiveFormat,
+} from "@ipollowork/types/plugins";
 
-import type { iPolloWorkPluginPackageUpload } from "@/app/lib/ipollowork-server";
+import type { iPolloWorkPluginPackageUpload } from "./ipollowork-server";
 
 const MANIFEST_FILE = "ipollowork.plugin.json";
 const MAX_ARCHIVE_BYTES = 12 * 1024 * 1024;
@@ -12,12 +16,21 @@ function decodedBase64Bytes(value: string): number {
   const padding = value.endsWith("==") ? 2 : value.endsWith("=") ? 1 : 0;
   return Math.floor((value.length * 3) / 4) - padding;
 }
+
 function safeRelativePath(value: string): boolean {
   if (!value || value.startsWith("/") || value.startsWith("\\")) return false;
   return !value.replaceAll("\\", "/").split("/").some((part) => !part || part === "." || part === "..");
 }
 
-export async function readPluginPackageArchive(file: File): Promise<iPolloWorkPluginPackageUpload> {
+export async function readPluginPackageArchive(
+  file: File,
+  format: PluginPackageArchiveFormat,
+  invalidExtensionMessage?: string,
+): Promise<iPolloWorkPluginPackageUpload> {
+  const expectedExtension = pluginPackageArchiveExtension(format);
+  if (!file.name.toLowerCase().endsWith(expectedExtension)) {
+    throw new Error(invalidExtensionMessage ?? `请选择 ${expectedExtension} 文件。`);
+  }
   if (file.size > MAX_ARCHIVE_BYTES) throw new Error("插件压缩包不能超过 12 MB。");
   const archive = await JSZip.loadAsync(new Uint8Array(await file.arrayBuffer()));
   const entries = Object.values(archive.files).filter((entry) =>

@@ -1,5 +1,9 @@
 import { useSyncExternalStore } from "react";
-import { sharedProviderCredentialEnvKey } from "@ipollowork/types/provider-credentials";
+import {
+  sharedProviderCredentialEnvKey,
+  sharedProviderProfileEnvKey,
+  type SharedProviderProfile,
+} from "@ipollowork/types/provider-credentials";
 
 import { parse } from "jsonc-parser";
 
@@ -73,6 +77,10 @@ import {
   type ProviderEngineAuthMethod,
   type ProviderEngineConfigTarget,
 } from "./provider-engine-adapter";
+import {
+  buildSharedProviderProfile,
+  sharedProviderConnectionEnvEntries,
+} from "./shared-provider-profile";
 
 type ProviderReturnFocusTarget = "none" | "composer";
 type CloudProviderSyncReason = "sign_in" | "app_launch" | "interval" | "settings_cloud_opened";
@@ -192,6 +200,39 @@ const DEEPSEEK_OFFICIAL_PROVIDER = {
     "deepseek-v4-pro": { name: "DeepSeek-V4-Pro" },
   },
 } as const;
+
+function catalogSharedProviderProfile(
+  providers: readonly ProviderListItem[],
+  providerId: string,
+): SharedProviderProfile {
+  const provider = providers.find((entry) => entry.id === providerId);
+  return buildSharedProviderProfile({
+    providerId,
+    displayName: provider?.name?.trim() || providerId,
+    models: provider?.models ?? {},
+  });
+}
+
+function cloudSharedProviderProfile(
+  provider: DenOrgLlmProviderConnection,
+  providerId: string,
+): SharedProviderProfile {
+  const configuredApi = typeof provider.providerConfig.api === "string"
+    ? provider.providerConfig.api.trim()
+    : "";
+  const optionsBaseURL = isRecord(provider.providerConfig.options)
+    && typeof provider.providerConfig.options.baseURL === "string"
+    ? provider.providerConfig.options.baseURL.trim()
+    : "";
+  return buildSharedProviderProfile({
+    providerId,
+    displayName: provider.name,
+    api: configuredApi,
+    baseURL: optionsBaseURL,
+    npm: typeof provider.providerConfig.npm === "string" ? provider.providerConfig.npm : undefined,
+    models: Object.fromEntries(provider.models.map((model) => [model.id, { name: model.name }])),
+  });
+}
 
 export type ProviderAuthStore = ReturnType<typeof createProviderAuthStore>;
 
@@ -864,17 +905,20 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
     await getProviderEngineConnection().removeCredentials(providerId);
     const ipolloworkClient = getProviderServerSnapshot().ipolloworkServerClient;
     if (ipolloworkClient) {
-      await ipolloworkClient.deleteUserEnv(sharedProviderCredentialEnvKey(providerId));
+      await Promise.all([
+        ipolloworkClient.deleteUserEnv(sharedProviderCredentialEnvKey(providerId)),
+        ipolloworkClient.deleteUserEnv(sharedProviderProfileEnvKey(providerId)),
+      ]);
     }
   };
 
-  const mirrorSharedProviderApiKey = async (providerId: string, apiKey: string) => {
+  const mirrorSharedProviderConnection = async (
+    apiKey: string,
+    profile: SharedProviderProfile,
+  ) => {
     const ipolloworkClient = getProviderServerSnapshot().ipolloworkServerClient;
     if (!ipolloworkClient) return;
-    await ipolloworkClient.upsertUserEnv([{
-      key: sharedProviderCredentialEnvKey(providerId),
-      value: apiKey,
-    }]);
+    await ipolloworkClient.upsertUserEnv(sharedProviderConnectionEnvEntries({ apiKey, profile }));
   };
 
   const describeProviderError = (error: unknown, fallback: string) => {
@@ -1313,6 +1357,34 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
       isDeepSeekOfficial && getProviderEngineAdapter().capabilities.customProviders;
     const isQwen3Coder = resolvedProviderId === QWEN3_CODER_PROVIDER.providerId;
     const isTokenStar = resolvedProviderId === TOKENSTAR_PROVIDER.providerId;
+    let sharedProfile = catalogSharedProviderProfile(options.providers(), resolvedProviderId);
+
+    if (isDeepSeekOfficial) {
+      sharedProfile = buildSharedProviderProfile({
+        providerId: DEEPSEEK_OFFICIAL_PROVIDER.providerId,
+        displayName: DEEPSEEK_OFFICIAL_PROVIDER.name,
+        baseURL: DEEPSEEK_OFFICIAL_PROVIDER.baseURL,
+        models: DEEPSEEK_OFFICIAL_PROVIDER.models,
+      });
+    } else if (isQwen3Coder) {
+      sharedProfile = buildSharedProviderProfile({
+        providerId: QWEN3_CODER_PROVIDER.providerId,
+        displayName: QWEN3_CODER_PROVIDER.name,
+        baseURL: QWEN3_CODER_PROVIDER.baseURL,
+        models: {
+          [QWEN3_CODER_PROVIDER.modelId]: { name: QWEN3_CODER_PROVIDER.modelName },
+        },
+      });
+    } else if (isTokenStar) {
+      sharedProfile = buildSharedProviderProfile({
+        providerId: TOKENSTAR_PROVIDER.providerId,
+        displayName: TOKENSTAR_PROVIDER.name,
+        baseURL: TOKENSTAR_PROVIDER.baseURL,
+        models: Object.fromEntries(
+          TOKENSTAR_PROVIDER.fallbackModels.map((model) => [model.id, { name: model.name }]),
+        ),
+      });
+    }
 
     try {
       const connection = getProviderEngineConnection();
@@ -1380,7 +1452,7 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
         }
       }
       await connection.setApiKey(providerId, trimmed);
-      await mirrorSharedProviderApiKey(providerId, trimmed);
+      await mirrorSharedProviderConnection(trimmed, sharedProfile);
       if (materializesDeepSeekProvider || isQwen3Coder || isTokenStar) {
         const syntheticProviderId = isTokenStar
           ? TOKENSTAR_PROVIDER.providerId
@@ -1454,7 +1526,10 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
       }
       if (primaryApiKey) {
         await connection.setApiKey(localProviderId, primaryApiKey);
-        await mirrorSharedProviderApiKey(localProviderId, primaryApiKey);
+        await mirrorSharedProviderConnection(
+          primaryApiKey,
+          cloudSharedProviderProfile(provider, localProviderId),
+        );
         await mirroriPolloWorkModelsVoiceEnv(provider, primaryApiKey);
       }
       if (existingImported?.providerId && existingImported.providerId !== localProviderId) {

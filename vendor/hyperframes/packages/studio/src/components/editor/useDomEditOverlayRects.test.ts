@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 
 import { describe, expect, it } from "vitest";
+import { orientedOverlayRect } from "./domEditOverlayGeometry";
 import { shouldMeasureDomEditChildRect } from "./useDomEditOverlayRects";
 
 describe("shouldMeasureDomEditChildRect", () => {
@@ -55,5 +56,34 @@ describe("shouldMeasureDomEditChildRect", () => {
     root.appendChild(child);
 
     expect(shouldMeasureDomEditChildRect(root, child)).toBe(true);
+  });
+});
+
+describe("composition-host edit coordinates", () => {
+  it("moves a selected sub-composition host in parent coordinates", () => {
+    const overlay = document.createElement("div");
+    const iframe = document.createElement("iframe");
+    document.body.append(overlay, iframe);
+    const doc = iframe.contentDocument!;
+    doc.body.innerHTML = `
+      <main data-composition-id="master" data-width="1000" data-height="500">
+        <div id="ending" data-composition-src="compositions/effects/effect-ending-demo.html"
+          data-width="1920" data-height="1080"></div>
+      </main>
+    `;
+    const host = doc.getElementById("ending") as HTMLElement;
+    Object.defineProperty(overlay, "getBoundingClientRect", {
+      value: () => ({ left: 0, top: 0, width: 500, height: 250 }),
+    });
+    Object.defineProperty(iframe, "getBoundingClientRect", {
+      value: () => ({ left: 0, top: 0, width: 500, height: 250 }),
+    });
+    Object.defineProperty(host, "getBoundingClientRect", {
+      value: () => ({ left: 100, top: 50, width: 400, height: 225 }),
+    });
+
+    const rect = orientedOverlayRect(overlay, iframe, host);
+    expect(rect?.editScaleX).toBe(0.5);
+    expect(rect?.editScaleY).toBe(0.5);
   });
 });

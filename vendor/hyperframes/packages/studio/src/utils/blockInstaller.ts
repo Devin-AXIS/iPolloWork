@@ -1,6 +1,7 @@
 import type { RegistryItem } from "@hyperframes/core/registry";
 import type { TimelineElement } from "../player";
 import {
+  fitTimelineAssetGeometry,
   insertTimelineAssetIntoSource,
   resolveTimelineAssetCompositionSize,
 } from "./timelineAssetDrop";
@@ -285,6 +286,7 @@ export async function addBlockToProject(opts: AddBlockOptions): Promise<{
       );
 
       const isBlock = block.type === "hyperframes:block";
+      const isEndingEffect = isBlock && block.librarySection === "ending-effect";
       const { width: hostWidth, height: hostHeight } =
         resolveTimelineAssetCompositionSize(originalContent);
       const hostDims = { left: 0, top: 0, width: hostWidth, height: hostHeight };
@@ -337,11 +339,14 @@ export async function addBlockToProject(opts: AddBlockOptions): Promise<{
         relevantElements.reduce((highest, element) => Math.max(highest, element.zIndex ?? 0), 0) +
         1;
 
-      const width = hostDims.width;
-      const height = hostDims.height;
+      const geometry = isEndingEffect
+        ? fitTimelineAssetGeometry(block.dimensions, hostDims)
+        : hostDims;
+      const width = geometry.width;
+      const height = geometry.height;
 
-      const left = visualPosition ? Math.round(visualPosition.left) : 0;
-      const top = visualPosition ? Math.round(visualPosition.top) : 0;
+      const left = visualPosition ? Math.round(visualPosition.left) : geometry.left;
+      const top = visualPosition ? Math.round(visualPosition.top) : geometry.top;
 
       const subCompHtml = [
         `<div`,
@@ -357,6 +362,9 @@ export async function addBlockToProject(opts: AddBlockOptions): Promise<{
         `  data-track-index="${track}"`,
         `  data-width="${width}"`,
         `  data-height="${height}"`,
+        ...(isEndingEffect
+          ? [`  data-hf-edit-as-unit=""`, `  data-hf-content-fit="contain"`]
+          : []),
         `  style="position: absolute; left: ${left}px; top: ${top}px; width: ${width}px; height: ${height}px; z-index: ${zIndex}"`,
         `></div>`,
       ].join("\n");

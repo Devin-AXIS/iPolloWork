@@ -14,7 +14,7 @@ import {
 import type { iPolloWorkServerClient } from "@/app/lib/ipollowork-server";
 import { useActiveEnterpriseConnection } from "@/react-app/domains/enterprise/use-active-enterprise-connection";
 import { WorkResourceScopeSwitch } from "@/react-app/domains/enterprise/work-resource-scope-switch";
-import { readPluginPackageArchive } from "@/react-app/domains/settings/plugin-package-archive";
+import { readPluginPackageArchive } from "@/app/lib/plugin-package-archive";
 
 import { PluginsView, type PluginsExtensionsStore } from "./plugins-view";
 
@@ -102,7 +102,7 @@ export function ExtensionsView(props: ExtensionsViewProps) {
     setEnterpriseBusyId(resource.id);
     try {
       const file = await downloadEnterpriseResource(resource);
-      const upload = await readPluginPackageArchive(file);
+      const upload = await readPluginPackageArchive(file, "install");
       await props.client.validatePluginPackageUpload(props.workspaceId, upload);
       const result = await props.client.importPluginPackage(props.workspaceId, upload);
       setInstalledEnterpriseExtensionVersions((versions) => new Map(versions).set(result.result.pluginId, result.result.version));

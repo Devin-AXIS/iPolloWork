@@ -247,6 +247,7 @@ export function SessionRoute() {
     opencodeBaseUrl,
     opencodeClient,
     selectedWorkspaceError,
+    selectedSessionKnown,
     routeNotFoundMessage,
     endpointForWorkspace,
     refreshRouteState,
@@ -1875,6 +1876,7 @@ export function SessionRoute() {
     ) : null}
     <SessionPage
       selectedSessionId={selectedSessionId}
+      selectedSessionKnown={selectedSessionKnown}
       selectedWorkspaceId={selectedWorkspaceId}
       selectedWorkspaceDisplay={selectedWorkspace ? {
         id: selectedWorkspace.id,

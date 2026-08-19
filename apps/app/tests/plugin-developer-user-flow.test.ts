@@ -36,6 +36,17 @@ const manifest = {
 };
 
 describe("plugin developer and user flow", () => {
+  test("asks before replacing an installed plugin with an older version", async () => {
+    const source = await Bun.file(new URL("../src/react-app/domains/settings/plugin-package-import-modal.tsx", import.meta.url)).text();
+
+    expect(source).toContain('preview?.versionChange === "downgrade"');
+    expect(source).toContain("setDowngradeConfirmationOpen(true)");
+    expect(source).toContain("void install(true)");
+    expect(source).toContain("<ConfirmModal");
+    expect(source).toContain('confirmLabel={t("plugin_platform.import_downgrade_confirm")}');
+    expect(source).toContain('cancelLabel={t("plugin_platform.import_downgrade_cancel")}');
+  });
+
   test("localizes plugin display metadata without changing runtime identity", async () => {
     const { localizePluginPackageManifest } = await import("../src/react-app/domains/settings/plugin-platform-state.js");
     const localizedManifest: iPolloWorkExtensionManifest = {
@@ -217,6 +228,11 @@ describe("plugin developer and user flow", () => {
       "plugin_platform.import_title",
       "plugin_platform.import_safety",
       "plugin_platform.import_error",
+      "plugin_platform.import_invalid_extension",
+      "plugin_platform.import_downgrade_title",
+      "plugin_platform.import_downgrade_description",
+      "plugin_platform.import_downgrade_confirm",
+      "plugin_platform.import_downgrade_cancel",
       "mcp.quick_connect_figma_title",
       "mcp.quick_connect_figma_desc",
     ];
@@ -228,21 +244,44 @@ describe("plugin developer and user flow", () => {
   });
 
   test("reads a wrapped complete plugin archive into a bounded upload payload", async () => {
-    const { readPluginPackageArchive } = await import("../src/react-app/domains/settings/plugin-package-archive");
+    const { readPluginPackageArchive } = await import("../src/app/lib/plugin-package-archive");
     const zip = new JSZip();
     zip.file("acme-research/ipollowork.plugin.json", JSON.stringify({ schemaVersion: 1 }));
     zip.file("acme-research/skills/acme-research/SKILL.md", "# Acme Research\n");
     zip.file("__MACOSX/acme-research/._SKILL.md", "ignored");
     const archive = await zip.generateAsync({ type: "uint8array" });
 
-    const upload = await readPluginPackageArchive(new File([archive], "acme-research.zip", { type: "application/zip" }));
+    const upload = await readPluginPackageArchive(
+      new File([archive], "acme-research-source.zip", { type: "application/zip" }),
+      "source",
+    );
 
-    expect(upload.archiveName).toBe("acme-research.zip");
+    expect(upload.archiveName).toBe("acme-research-source.zip");
     expect(upload.files.map((file) => file.path)).toEqual([
       "ipollowork.plugin.json",
       "skills/acme-research/SKILL.md",
     ]);
     expect(upload.files.every((file) => !file.path.startsWith("acme-research/"))).toBe(true);
+  });
+
+  test("separates install packages from Plugin Workshop source archives", async () => {
+    const { readPluginPackageArchive } = await import("../src/app/lib/plugin-package-archive");
+    const zip = new JSZip();
+    zip.file("ipollowork.plugin.json", JSON.stringify({ schemaVersion: 2 }));
+    const archive = await zip.generateAsync({ type: "uint8array" });
+
+    await expect(readPluginPackageArchive(
+      new File([archive], "acme-research.zip", { type: "application/zip" }),
+      "install",
+    )).rejects.toThrow(".ipollowork-plugin");
+    await expect(readPluginPackageArchive(
+      new File([archive], "acme-research.ipollowork-plugin", { type: "application/zip" }),
+      "source",
+    )).rejects.toThrow(".zip");
+    await expect(readPluginPackageArchive(
+      new File([archive], "acme-research.ipollowork-plugin", { type: "application/zip" }),
+      "install",
+    )).resolves.toMatchObject({ archiveName: "acme-research.ipollowork-plugin" });
   });
 
   test("routes migrated services through the existing MCP directory", async () => {

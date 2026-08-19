@@ -935,6 +935,7 @@ export function useWorkspaceRouteState(input: UseWorkspaceRouteStateInput) {
     opencodeClient,
     selectedWorkspaceIsLoading,
     selectedWorkspaceError,
+    selectedSessionKnown,
     routeNotFoundMessage,
     endpointForWorkspace,
     refreshRouteState,

@@ -1,6 +1,10 @@
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve, sep } from "node:path";
+import {
+  pluginPackageArchiveExtension,
+  type PluginPackageArchiveFormat,
+} from "@ipollowork/types/plugins";
 import { z } from "zod";
 
 import { ApiError } from "./errors.js";
@@ -71,9 +75,21 @@ export function parsePluginPackageUpload(value: unknown): PluginPackageUpload {
 
 export async function withMaterializedPluginPackageUpload<T>(
   value: unknown,
+  format: PluginPackageArchiveFormat,
   operation: (input: { archiveName: string; packageRoot: string }) => Promise<T>,
 ): Promise<T> {
   const upload = parsePluginPackageUpload(value);
+  const expectedExtension = pluginPackageArchiveExtension(format);
+  if (!upload.archiveName.toLowerCase().endsWith(expectedExtension)) {
+    throw new ApiError(
+      400,
+      "plugin_package_archive_format_invalid",
+      format === "install"
+        ? `Installable plugin packages must use the ${expectedExtension} extension`
+        : `Plugin Workshop source archives must use the ${expectedExtension} extension`,
+      { format, expectedExtension },
+    );
+  }
   const packageRoot = await mkdtemp(join(tmpdir(), "ipollowork-plugin-import-"));
   try {
     for (const file of upload.files) {
