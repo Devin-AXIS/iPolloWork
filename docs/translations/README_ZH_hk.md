@@ -12,6 +12,8 @@
   <a href="https://github.com/Devin-AXIS/iPolloWork/stargazers"><img src="https://img.shields.io/github/stars/Devin-AXIS/iPolloWork?style=flat" alt="GitHub stars" /></a>
   <a href="https://x.com/iPolloWork"><img src="https://img.shields.io/badge/X%20Global-%40iPolloWork%20%C2%B7%207.9K%20followers-000000?logo=x&amp;logoColor=white" alt="Follow iPolloWork on X" /></a>
   <a href="https://x.com/iPolloCN"><img src="https://img.shields.io/badge/X%20%E4%B8%AD%E6%96%87-%40iPolloCN%20%C2%B7%203.4K%20followers-000000?logo=x&amp;logoColor=white" alt="Follow iPolloCN on X" /></a>
+  <a href="https://www.bestpractices.dev/projects/14127"><img src="https://www.bestpractices.dev/projects/14127/badge" alt="OpenSSF Best Practices" /></a>
+  <a href="https://github.com/opea-project"><img src="https://img.shields.io/badge/OPEA-Open%20Platform%20for%20Enterprise%20AI-ff7a00" alt="OPEA: Open Platform for Enterprise AI" /></a>
 </p>
 
 <p align="center">
@@ -30,7 +32,7 @@ Codex 式編碼只是起點。當結果變成演示稿、網頁、視覺設計�
 <div align="center">
   <h3>加入 iPolloWork 官方微信羣</h3>
   <p>使用微信掃描下方二維碼，加入官方社區，獲取產品動態並交流使用經驗。</p>
-  <img src="../docs/assets/ipollowork-official-wechat-group.jpg" alt="iPolloWork 官方微信羣二維碼" width="220" />
+  <img src="../assets/ipollowork-official-wechat-group.jpg" alt="iPolloWork 官方微信羣二維碼" width="220" />
 </div>
 
 ## 它真正解決的三件事

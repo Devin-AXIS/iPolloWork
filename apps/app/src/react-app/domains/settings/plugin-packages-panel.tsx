@@ -1,5 +1,5 @@
 /** @jsxImportSource react */
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   AppWindow,
   Bot,
@@ -11,15 +11,14 @@ import {
   Loader2,
   Package,
   Plug,
-  RefreshCw,
   ShieldCheck,
   Sparkles,
-  Upload,
   WandSparkles,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { currentLocale, t } from "@/i18n";
 import type {
   iPolloWorkPluginAuthorizationFlow,
@@ -37,8 +36,20 @@ import { AuthorizationFormDialog } from "@/react-app/domains/settings/authorizat
 import { PluginPackageDetail } from "@/react-app/domains/settings/plugin-package-detail";
 import { SettingsListSearchInput } from "@/react-app/domains/settings/settings-list";
 import { SettingsSegmentedTabs } from "@/react-app/domains/settings/settings-segmented-tabs";
+import {
+  settingsPageDescriptionClass,
+  settingsPageTitleClass,
+  settingsSectionTitleClass,
+  settingsStandardContentClass,
+} from "@/react-app/domains/settings/shell/panel";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { PluginPackageImportModal } from "./plugin-package-import-modal";
 import { PluginPackageListItem } from "./plugin-package-list-item";
+import {
+  MARKETPLACE_CATEGORY_IDS,
+  type MarketplaceCategoryFilter,
+  type MarketplaceStatusFilter,
+} from "./pages/cloud-marketplaces-view";
 import {
   collectPluginPackageRelationships,
   derivePluginPrimaryAction,
@@ -57,7 +68,15 @@ type PluginPackagesPanelProps = {
   onConnectMcp: (serverName: string) => Promise<McpStatus | null>;
   onLogoutMcpAuth: (serverName: string) => void;
   onRelationshipsChange: (relationships: PluginPackageRelationships) => void;
-  marketplaceView: (search: string) => ReactNode;
+  marketplaceView: (
+    search: string,
+    filters: { category: MarketplaceCategoryFilter; status: MarketplaceStatusFilter },
+  ) => ReactNode;
+};
+
+export type PluginPackagesPanelHandle = {
+  refresh: () => void;
+  openImport: () => void;
 };
 
 type SecretAuthorizationEditor = {
@@ -71,6 +90,29 @@ type McpConnectionFeedback = {
   error?: string;
 };
 
+const INSTALLED_TILE_WIDTH = 48;
+const INSTALLED_TILE_GAP = 8;
+
+function packageAuthorization(
+  item: iPolloWorkPluginPackageItem,
+  state: iPolloWorkPluginAuthorizationState | undefined,
+  mcpStatuses: McpStatusMap,
+) {
+  const pluginAuthorizationRequired = (item.manifest.authorization?.methods?.length ?? 0) > 0;
+  const hasGuidedSetup = Boolean(item.manifest.setup?.instructions?.trim());
+  const connectionMcpResources = item.manifest.resources.filter((resource) =>
+    resource.type === "mcp"
+      && Boolean(resource.mcpServerName)
+      && (resource.oauth === true || hasGuidedSetup)
+  );
+  const required = pluginAuthorizationRequired || connectionMcpResources.length > 0;
+  const pluginReady = !pluginAuthorizationRequired || state?.ready === true;
+  const mcpReady = connectionMcpResources.every((resource) =>
+    resource.mcpServerName ? mcpStatuses[resource.mcpServerName]?.status === "connected" : false
+  );
+  return { required, connected: required && pluginReady && mcpReady, connectionMcpResources };
+}
+
 function statusText(state: iPolloWorkPluginAuthorizationState | undefined, required: boolean, connected: boolean) {
   if (!required) return t("plugin_platform.status.installed");
   if (connected) return t("plugin_platform.status.connected");
@@ -79,7 +121,7 @@ function statusText(state: iPolloWorkPluginAuthorizationState | undefined, requi
   return t("plugin_platform.status.needs_authorization");
 }
 
-export function PluginPackagesPanel(props: PluginPackagesPanelProps) {
+export const PluginPackagesPanel = forwardRef<PluginPackagesPanelHandle, PluginPackagesPanelProps>(function PluginPackagesPanel(props, ref) {
   const locale = currentLocale();
   const [items, setItems] = useState<iPolloWorkPluginPackageItem[]>([]);
   const [catalogItems, setCatalogItems] = useState<iPolloWorkBundledPluginPackageItem[]>([]);
@@ -91,8 +133,13 @@ export function PluginPackagesPanel(props: PluginPackagesPanelProps) {
   const [secretEditor, setSecretEditor] = useState<SecretAuthorizationEditor | null>(null);
   const [mcpConnectionFeedbacks, setMcpConnectionFeedbacks] = useState<Record<string, McpConnectionFeedback>>({});
   const [loaded, setLoaded] = useState(false);
-  const [source, setSource] = useState<"marketplace" | "personal">("personal");
+  const [source, setSource] = useState<"marketplace" | "personal">("marketplace");
   const [search, setSearch] = useState("");
+  const [marketplaceCategory, setMarketplaceCategory] = useState<MarketplaceCategoryFilter>("all");
+  const [marketplaceStatus, setMarketplaceStatus] = useState<MarketplaceStatusFilter>("all");
+  const [installedExpanded, setInstalledExpanded] = useState(false);
+  const [installedPreviewLimit, setInstalledPreviewLimit] = useState(Number.MAX_SAFE_INTEGER);
+  const installedPreviewRowRef = useRef<HTMLDivElement>(null);
 
   const refresh = useCallback(async () => {
     if (!props.client || !props.workspaceId) {
@@ -125,6 +172,11 @@ export function PluginPackagesPanel(props: PluginPackagesPanelProps) {
     }
   }, [props.client, props.workspaceId]);
 
+  useImperativeHandle(ref, () => ({
+    refresh: () => void refresh(),
+    openImport: () => setImportOpen(true),
+  }), [refresh]);
+
   useEffect(() => {
     void refresh();
   }, [refresh]);
@@ -151,6 +203,13 @@ export function PluginPackagesPanel(props: PluginPackagesPanelProps) {
     );
     return { ...sourceItem, name: manifest.name, manifest };
   }), [catalogItems, items, locale]);
+  const installedPreviewItems = installedExpanded
+    ? localizedItems
+    : localizedItems.slice(0, installedPreviewLimit);
+  const remainingInstalledCount = Math.max(0, localizedItems.length - installedPreviewItems.length);
+  const remainingInstalledItems = installedExpanded
+    ? []
+    : localizedItems.slice(installedPreviewItems.length);
   const filteredItems = useMemo(() => {
     const query = search.trim().toLocaleLowerCase();
     if (!query) return localizedItems;
@@ -170,6 +229,25 @@ export function PluginPackagesPanel(props: PluginPackagesPanelProps) {
   useEffect(() => {
     props.onRelationshipsChange(relationships);
   }, [props.onRelationshipsChange, relationships]);
+
+  useEffect(() => {
+    const row = installedPreviewRowRef.current;
+    if (!row) return;
+
+    const updatePreviewLimit = () => {
+      const rowWidth = row.parentElement?.getBoundingClientRect().width ?? row.getBoundingClientRect().width;
+      const nextLimit = Math.max(
+        1,
+        Math.floor((rowWidth + INSTALLED_TILE_GAP) / (INSTALLED_TILE_WIDTH + INSTALLED_TILE_GAP)),
+      );
+      setInstalledPreviewLimit((current) => current === nextLimit ? current : nextLimit);
+    };
+
+    updatePreviewLimit();
+    const observer = new ResizeObserver(updatePreviewLimit);
+    observer.observe(row);
+    return () => observer.disconnect();
+  }, [localizedItems.length]);
 
   const run = useCallback(async (key: string, operation: () => Promise<void>): Promise<boolean> => {
     setBusyKey(key);
@@ -266,12 +344,12 @@ export function PluginPackagesPanel(props: PluginPackagesPanelProps) {
   const selectedSourceItem = items.find((item) => item.pluginId === props.selectedPluginId);
   if (props.selectedPluginId && !selectedSourceItem) {
     return (
-      <section className="w-full max-w-4xl py-2">
+      <section className={`${settingsStandardContentClass} py-2`}>
         <Button variant="ghost" size="sm" className="-ml-2 text-dls-secondary" onClick={() => props.onSelectPlugin(null)}>
           <ChevronLeft size={16} />
           {t("plugin_platform.back_to_plugins")}
         </Button>
-        <div className="flex min-h-64 items-center justify-center text-sm text-dls-secondary">
+        <div className="flex min-h-64 items-center justify-center text-ui-control leading-5 text-dls-secondary">
           {!loaded ? <Loader2 size={18} className="animate-spin" /> : error ?? t("plugin_platform.error.not_found")}
         </div>
       </section>
@@ -295,6 +373,7 @@ export function PluginPackagesPanel(props: PluginPackagesPanelProps) {
         && contribution.ref?.startsWith("https://")
     )?.ref;
     const iconUrl = resolveExtensionIconUrl({
+      pluginId: item.pluginId,
       iconSrc: item.manifest.icon?.src,
       iconSlug: item.manifest.icon?.simpleIconSlug,
     });
@@ -306,6 +385,18 @@ export function PluginPackagesPanel(props: PluginPackagesPanelProps) {
         ...capability,
         type: `${binding.engine}/${capability.kind}`,
       }))) ?? [],
+      ...item.manifest.contributions?.flatMap((contribution) => (
+        contribution.type === "session-side-panel"
+        && contribution.location === "session-right-pane"
+        && contribution.ref
+          ? [{
+              id: contribution.ref,
+              type: "workspace",
+              label: contribution.label,
+              description: contribution.description,
+            }]
+          : []
+      )) ?? [],
     ];
     const skillResources = item.manifest.resources.filter((resource) => resource.type === "skill");
     const relatedSkillNames = item.manifest.relatedSkills ?? [];
@@ -692,147 +783,220 @@ export function PluginPackagesPanel(props: PluginPackagesPanelProps) {
   }
 
   return (
-    <section className="space-y-7">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight text-dls-text">{t("plugin_library.title")}</h1>
-          <p className="mt-1 text-sm text-dls-secondary">{t("plugin_library.description")}</p>
+    <section className="w-full">
+      <div className="space-y-4">
+        <div className="max-w-lg">
+          <h1 data-testid="plugin-library-heading" className={settingsPageTitleClass}>{t("plugin_library.title")}</h1>
+          <p data-testid="plugin-library-description" className={settingsPageDescriptionClass}>{t("plugin_library.description")}</p>
         </div>
-        <div className="flex items-center gap-2">
-          <Button
-            size="icon-sm"
-            variant="ghost"
-            disabled={busyKey !== null}
-            aria-label={t("common.refresh")}
-            title={t("common.refresh")}
-            onClick={() => void refresh()}
-          >
-            <RefreshCw size={15} />
-          </Button>
-          <Button size="sm" disabled={busyKey !== null} onClick={() => setImportOpen(true)}>
-            <Upload size={14} />
-            {t("plugin_library.add")}
-          </Button>
-        </div>
+        <SettingsListSearchInput
+          value={search}
+          onChange={(event) => setSearch(event.currentTarget.value)}
+          placeholder={t("plugin_library.search")}
+          aria-label={t("plugin_library.search")}
+          containerClassName="h-[34px] rounded-lg border-transparent bg-[#f5f6f9] shadow-none hover:bg-[#f1f2f5] dark:bg-white/[0.06] dark:hover:bg-white/[0.09]"
+        />
       </div>
 
-      <SettingsListSearchInput
-        value={search}
-        onChange={(event) => setSearch(event.currentTarget.value)}
-        placeholder={t("plugin_library.search")}
-        aria-label={t("plugin_library.search")}
-      />
-
-      <div>
+      <section data-testid="plugin-library-installed" className="mt-8 space-y-3">
         <div className="border-b border-dls-border pb-2">
-          <h2 className="text-sm font-semibold text-dls-text">{t("plugin_library.installed")}</h2>
+          <div>
+            <h2 className={settingsSectionTitleClass}>{t("plugin_library.installed")}</h2>
+            <p className={settingsPageDescriptionClass}>{t("plugin_library.installed_description")}</p>
+          </div>
         </div>
+
         {localizedItems.length > 0 ? (
-          <div className="flex flex-wrap gap-2 pt-3">
-            {localizedItems.map((item) => {
-              const iconUrl = resolveExtensionIconUrl({
-                iconSrc: item.manifest.icon?.src,
-                iconSlug: item.manifest.icon?.simpleIconSlug,
+          <div className="flex flex-col gap-3">
+            <TooltipProvider delay={0}>
+              <div
+                ref={installedPreviewRowRef}
+                data-testid="plugin-installed-row"
+                className={`flex w-full items-center gap-2 ${installedExpanded ? "flex-wrap" : "flex-nowrap"}`}
+              >
+                {installedPreviewItems.map((item) => {
+                  const iconUrl = resolveExtensionIconUrl({
+                    pluginId: item.pluginId,
+                    iconSrc: item.manifest.icon?.src,
+                    iconSlug: item.manifest.icon?.simpleIconSlug,
+                  });
+                  const authorization = packageAuthorization(item, authorizations[item.pluginId], props.mcpStatuses);
+                  const status = statusText(
+                    authorizations[item.pluginId],
+                    authorization.required,
+                    authorization.connected,
+                  );
+                  return (
+                    <Tooltip key={item.pluginId}>
+                      <TooltipTrigger
+                        render={(
+                          <button
+                            data-testid="plugin-installed-tile"
+                            type="button"
+                            className="flex size-12 shrink-0 items-center justify-center overflow-hidden rounded-lg border-2 border-transparent bg-[#f6f7fb] transition-colors hover:border-[#1FBAC0] focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/30"
+                            aria-label={t("plugin_library.open_plugin", { name: item.name })}
+                            onClick={() => props.onSelectPlugin(item.pluginId)}
+                          />
+                        )}
+                      >
+                        {iconUrl ? <img src={iconUrl} alt="" className="size-7 object-contain" /> : <Package size={18} />}
+                      </TooltipTrigger>
+                      <TooltipContent data-testid="plugin-installed-tooltip">{item.name} · {status}</TooltipContent>
+                    </Tooltip>
+                  );
+                })}
+              </div>
+            </TooltipProvider>
+            {installedExpanded || remainingInstalledCount > 0 ? (
+              <Button
+                data-testid="plugin-installed-expand"
+                data-remaining-count={remainingInstalledCount}
+                data-expanded={installedExpanded}
+                aria-expanded={installedExpanded}
+                variant="ghost"
+                size="sm"
+                className="self-start text-dls-secondary"
+                onClick={() => setInstalledExpanded((current) => !current)}
+              >
+                {!installedExpanded ? (
+                  <span data-testid="plugin-installed-overflow-thumbnails" className="flex -space-x-1">
+                    {remainingInstalledItems.slice(0, 3).map((item) => {
+                      const iconUrl = resolveExtensionIconUrl({
+                        pluginId: item.pluginId,
+                        iconSrc: item.manifest.icon?.src,
+                        iconSlug: item.manifest.icon?.simpleIconSlug,
+                      });
+                      return (
+                        <span key={item.pluginId} className="flex size-6 items-center justify-center overflow-hidden rounded-md border border-dls-border bg-dls-surface">
+                          {iconUrl ? <img src={iconUrl} alt="" className="size-4 object-contain" /> : <Package size={12} />}
+                        </span>
+                      );
+                    })}
+                  </span>
+                ) : null}
+                {installedExpanded
+                  ? t("plugin_library.show_less")
+                  : t("plugin_library.view_more", { count: remainingInstalledCount })}
+              </Button>
+            ) : null}
+          </div>
+        ) : (
+          <p className="text-ui-control leading-5 text-dls-secondary">{t("plugin_platform.empty_title")}</p>
+        )}
+      </section>
+
+      <section data-testid="plugin-library-source" className="mt-8 space-y-3">
+        <div className="border-b border-dls-border pb-2">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <SettingsSegmentedTabs
+              value={source}
+              ariaLabel={t("plugin_library.source_label")}
+              items={[
+                { value: "marketplace", label: t("plugin_library.marketplace") },
+                { value: "personal", label: t("plugin_library.personal") },
+              ]}
+              onValueChange={setSource}
+            />
+
+            {source === "marketplace" ? (
+              <div className="flex flex-wrap items-center gap-3">
+                <Select value={marketplaceCategory} onValueChange={(value) => { if (value) setMarketplaceCategory(value); }}>
+                  <SelectTrigger data-testid="plugin-category-filter" className="w-[132px]">
+                    <SelectValue>
+                      {marketplaceCategory === "all"
+                        ? t("plugin_library.all_categories")
+                        : t(`plugin_library.category.${marketplaceCategory}`)}
+                    </SelectValue>
+                  </SelectTrigger>
+                  <SelectContent align="end">
+                    <SelectItem value="all">{t("plugin_library.all_categories")}</SelectItem>
+                    {MARKETPLACE_CATEGORY_IDS.map((categoryId) => (
+                      <SelectItem key={categoryId} value={categoryId}>{t(`plugin_library.category.${categoryId}`)}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Select value={marketplaceStatus} onValueChange={(value) => { if (value) setMarketplaceStatus(value); }}>
+                  <SelectTrigger data-testid="plugin-status-filter" className="w-[132px]">
+                    <SelectValue>
+                      {marketplaceStatus === "all"
+                        ? t("plugin_library.all_statuses")
+                        : t(`plugin_library.status_${marketplaceStatus}`)}
+                    </SelectValue>
+                  </SelectTrigger>
+                  <SelectContent align="end">
+                    <SelectItem value="all">{t("plugin_library.all_statuses")}</SelectItem>
+                    <SelectItem value="available">{t("plugin_library.status_available")}</SelectItem>
+                    <SelectItem value="installed">{t("plugin_library.status_installed")}</SelectItem>
+                    <SelectItem value="update">{t("plugin_library.status_update")}</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            ) : null}
+          </div>
+          <p className="settings-description mt-2 text-ui-control leading-5 text-dls-secondary">
+            {t(source === "marketplace" ? "plugin_library.marketplace_description" : "plugin_library.personal_description")}
+          </p>
+        </div>
+
+        {source === "marketplace" ? (
+          props.marketplaceView(search, { category: marketplaceCategory, status: marketplaceStatus })
+        ) : (filteredCatalogItems.length > 0 || filteredItems.length > 0) ? (
+          <div className="grid gap-x-8 gap-y-2 lg:grid-cols-2">
+            {filteredCatalogItems.map((item) => (
+              <PluginPackageListItem
+                key={`catalog:${item.pluginId}`}
+                manifest={item.manifest}
+                version={item.version}
+                compact
+                featured
+                badge={<span className="inline-flex h-4 items-center rounded-full bg-green-9 px-[5px] text-[10px] leading-none text-white">{t("plugin_platform.official_bundle")}</span>}
+                actionBusy={busyKey !== null}
+                actionLabel={<>{busyKey === `catalog:${item.pluginId}` ? <Loader2 size={14} className="animate-spin" /> : null}{item.updateAvailable ? t("plugin_platform.action.update") : t("plugin_platform.action.install")}</>}
+                onAction={() => void installBundledPackage(item)}
+              />
+            ))}
+            {filteredItems.map((item) => {
+              const auth = authorizations[item.pluginId];
+              const authorization = packageAuthorization(item, auth, props.mcpStatuses);
+              const connected = authorization.connected;
+              const primaryAction = derivePluginPrimaryAction({
+                installed: true,
+                authorizationRequired: authorization.required,
+                connected,
+                updateAvailable: false,
+                broken: !item.enabled,
               });
               return (
-                <button
+                <PluginPackageListItem
                   key={item.pluginId}
-                  type="button"
-                  className="group flex size-9 items-center justify-center overflow-hidden rounded-lg border border-dls-border bg-dls-surface text-dls-secondary shadow-sm transition hover:-translate-y-0.5 hover:border-dls-secondary/40 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
-                  title={item.name}
-                  aria-label={t("plugin_library.open_plugin", { name: item.name })}
-                  onClick={() => props.onSelectPlugin(item.pluginId)}
-                >
-                  {iconUrl ? <img src={iconUrl} alt="" className="size-5 object-contain" /> : <Package size={16} />}
-                </button>
+                  manifest={item.manifest}
+                  version={item.version}
+                  compact
+                  badge={!item.enabled ? <span className="rounded-full bg-amber-3 px-2 py-0.5 text-[10px] text-amber-11">{t("plugin_platform.status.disabled")}</span> : null}
+                  status={<span className="inline-flex items-center gap-1.5">{connected || !authorization.required ? <CheckCircle2 size={13} className="text-green-9" /> : <KeyRound size={13} className="text-amber-9" />}{statusText(auth, authorization.required, connected)}</span>}
+                  actionBusy={busyKey !== null}
+                  actionLabel={t(primaryAction.labelKey)}
+                  onOpen={() => props.onSelectPlugin(item.pluginId)}
+                  onAction={() => {
+                    if (primaryAction.kind === "repair") {
+                      void run(`${item.pluginId}:enable`, async () => {
+                        await props.client?.setPluginPackageEnabled(props.workspaceId ?? "", item.pluginId, true);
+                        await refresh();
+                      });
+                      return;
+                    }
+                    props.onSelectPlugin(item.pluginId);
+                  }}
+                />
               );
             })}
           </div>
         ) : (
-          <p className="pt-4 text-sm text-dls-secondary">{t("plugin_platform.empty_title")}</p>
-        )}
-      </div>
-
-      <div>
-        <div className="border-b border-dls-border pb-2">
-          <SettingsSegmentedTabs
-            value={source}
-            ariaLabel={t("plugin_library.source_label")}
-            items={[
-              { value: "personal", label: t("plugin_library.personal") },
-              { value: "marketplace", label: t("plugin_library.marketplace") },
-            ]}
-            onValueChange={setSource}
-          />
-        </div>
-
-        {source === "marketplace" ? (
-          <div className="pt-5">{props.marketplaceView(search)}</div>
-        ) : (
-          <div className="pt-5">
-            <div className="mb-2">
-              <h2 className="text-sm font-semibold text-dls-text">{t("plugin_library.personal_title")}</h2>
-              <p className="mt-1 text-xs text-dls-secondary">{t("plugin_library.personal_description")}</p>
-            </div>
-            {(filteredCatalogItems.length > 0 || filteredItems.length > 0) ? (
-              <div className="grid gap-x-8 lg:grid-cols-2">
-                {filteredCatalogItems.map((item) => (
-                  <PluginPackageListItem
-                    key={`catalog:${item.pluginId}`}
-                    manifest={item.manifest}
-                    version={item.version}
-                    compact
-                    featured
-                    badge={<span className="rounded-full bg-blue-3 px-2 py-0.5 text-[10px] text-blue-11">{t("plugin_platform.official_bundle")}</span>}
-                    actionBusy={busyKey !== null}
-                    actionLabel={<>{busyKey === `catalog:${item.pluginId}` ? <Loader2 size={14} className="animate-spin" /> : null}{item.updateAvailable ? t("plugin_platform.action.update") : t("plugin_platform.action.install")}</>}
-                    onAction={() => void installBundledPackage(item)}
-                  />
-                ))}
-                {filteredItems.map((item) => {
-                  const auth = authorizations[item.pluginId];
-                  const authorization = pluginPackageAuthorization(item, auth, props.mcpStatuses);
-                  const connected = authorization.connected;
-                  const primaryAction = derivePluginPrimaryAction({
-                    installed: true,
-                    authorizationRequired: authorization.required,
-                    connected,
-                    updateAvailable: false,
-                    broken: !item.enabled,
-                  });
-                  return (
-                    <PluginPackageListItem
-                      key={item.pluginId}
-                      manifest={item.manifest}
-                      version={item.version}
-                      compact
-                      badge={!item.enabled ? <span className="rounded-full bg-amber-3 px-2 py-0.5 text-[10px] text-amber-11">{t("plugin_platform.status.disabled")}</span> : null}
-                      status={<span className="inline-flex items-center gap-1.5">{connected || !authorization.required ? <CheckCircle2 size={13} className="text-green-9" /> : <KeyRound size={13} className="text-amber-9" />}{statusText(auth, authorization.required, connected)}</span>}
-                      actionBusy={busyKey !== null}
-                      actionLabel={t(primaryAction.labelKey)}
-                      onOpen={() => props.onSelectPlugin(item.pluginId)}
-                      onAction={() => {
-                        if (primaryAction.kind === "repair") {
-                          void run(`${item.pluginId}:enable`, async () => {
-                            await props.client?.setPluginPackageEnabled(props.workspaceId ?? "", item.pluginId, true);
-                            await refresh();
-                          });
-                          return;
-                        }
-                        props.onSelectPlugin(item.pluginId);
-                      }}
-                    />
-                  );
-                })}
-              </div>
-            ) : (
-              <div className="rounded-2xl border border-dashed border-dls-border px-6 py-10 text-center text-sm text-dls-secondary">
-                {search ? t("settings.marketplace.no_match") : t("plugin_library.personal_empty")}
-              </div>
-            )}
+          <div className="rounded-2xl border border-dashed border-dls-border px-6 py-10 text-center text-ui-control leading-5 text-dls-secondary">
+            {search ? t("settings.marketplace.no_match") : t("plugin_library.personal_empty")}
           </div>
         )}
-      </div>
+      </section>
 
       {error ? <div role="alert" className="rounded-xl border border-red-6 bg-red-2 px-5 py-3 text-xs text-red-11">{error}</div> : null}
       <PluginPackageImportModal
@@ -847,4 +1011,4 @@ export function PluginPackagesPanel(props: PluginPackagesPanelProps) {
       />
     </section>
   );
-}
+});

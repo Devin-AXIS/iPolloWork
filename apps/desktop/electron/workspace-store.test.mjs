@@ -137,6 +137,22 @@ test("persists an enterprise work context on its dedicated workspace", async () 
   });
 });
 
+test("creates a managed local project folder when no source folder is provided", async () => {
+  await withIsolatedBootstrapStore(async ({ store, root }) => {
+    const created = await store.createWorkspace({
+      name: "Managed Project",
+      preset: "starter",
+    });
+    const workspace = created.workspaces[0];
+    const managedProjectsRoot = path.join(root, "home", ".ipollowork", "projects");
+
+    assert.equal(path.dirname(workspace.path), await realpath(managedProjectsRoot));
+    assert.equal(workspace.name, "Managed Project");
+    await access(workspace.path);
+    await access(path.join(workspace.path, ".opencode"));
+  });
+});
+
 test("migrates the system workspace marker without classifying named projects as ungrouped", async () => {
   await withIsolatedBootstrapStore(async ({ createStore, root, userDataPath }) => {
     const defaultPath = path.join(root, "home", "iPolloWork");

@@ -119,7 +119,7 @@ export function ExtensionsView(props: ExtensionsViewProps) {
   };
 
   return (
-    <section className="w-full max-w-5xl animate-in space-y-5 fade-in duration-300">
+    <section className="mx-auto w-full max-w-[1280px] animate-in space-y-5 fade-in duration-300">
       {activeEnterprise ? (
         <div className="flex justify-end">
           <div className="flex items-center gap-2">

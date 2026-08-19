@@ -35,6 +35,7 @@ export function PluginPackageListItem({
   onAction,
 }: PluginPackageListItemProps) {
   const iconUrl = resolveExtensionIconUrl({
+    pluginId: manifest.id,
     iconSrc: manifest.icon?.src,
     iconSlug: manifest.icon?.simpleIconSlug,
   });
@@ -43,23 +44,19 @@ export function PluginPackageListItem({
 
   if (compact) {
     return (
-      <div className="flex min-w-0 items-center gap-3 border-b border-dls-border py-3">
+      <div data-testid="plugin-package-list-item" className="flex h-[74px] min-w-0 items-center gap-4 rounded-[8px] bg-transparent px-4 py-2 transition-colors hover:bg-[#f6f7fb] focus-within:bg-[#f6f7fb] dark:hover:bg-dls-hover dark:focus-within:bg-dls-hover">
         <button
           type="button"
-          className="flex min-w-0 flex-1 items-center gap-3 rounded-xl text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
+          className="flex min-w-0 flex-1 items-center gap-4 rounded-lg text-left focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/30"
           onClick={onOpen}
           disabled={!onOpen}
         >
-          <span className={`flex size-10 shrink-0 items-center justify-center overflow-hidden rounded-lg border bg-dls-surface ${featured ? "border-blue-6 text-blue-11" : "border-dls-border text-dls-secondary"}`}>
-            {iconUrl ? <img src={iconUrl} alt="" className="size-5 object-contain" /> : <Package size={17} />}
+          <span className="flex size-12 shrink-0 items-center justify-center overflow-hidden rounded-[8px] bg-[#f3f3f4] text-dls-secondary dark:bg-dls-hover">
+            {iconUrl ? <img src={iconUrl} alt="" className="size-7 object-contain" /> : <Package size={18} />}
           </span>
-          <span className="min-w-0 flex-1">
-            <span className="flex min-w-0 items-center gap-2">
-              <span className="truncate text-sm font-semibold text-dls-text">{manifest.name}</span>
-              {badge}
-            </span>
-            <span className="mt-1 line-clamp-1 block text-xs text-dls-secondary">{manifest.description}</span>
-            {status ? <span className="mt-1 block truncate text-[11px] text-dls-secondary">{status}</span> : null}
+          <span data-testid="plugin-package-card-copy" className="flex min-w-0 flex-1 flex-col gap-1">
+            <span className="truncate text-ui-body font-semibold leading-5 tracking-[0.1px] text-dls-text">{manifest.name}</span>
+            <span className="line-clamp-2 text-ui-caption leading-[15px] text-dls-secondary">{manifest.description}</span>
           </span>
         </button>
         <Button size="sm" variant="outline" className="shrink-0" disabled={actionBusy || actionDisabled} onClick={onAction}>
@@ -72,17 +69,17 @@ export function PluginPackageListItem({
   return (
     <div className={`flex flex-col gap-4 px-5 py-4 sm:flex-row sm:items-center sm:justify-between ${featured ? "bg-blue-2/40" : ""}`}>
       <button type="button" className="flex min-w-0 flex-1 items-start gap-3 text-left" onClick={onOpen} disabled={!onOpen}>
-        <span className={`flex size-11 shrink-0 items-center justify-center overflow-hidden rounded-xl border bg-dls-surface ${featured ? "border-blue-6 text-blue-11" : "border-dls-border text-dls-secondary"}`}>
+        <span className={`flex size-11 shrink-0 items-center justify-center overflow-hidden rounded-xl border bg-[#f6f7fb] ${featured ? "border-blue-6 text-blue-11" : "border-dls-border text-dls-secondary"}`}>
           {iconUrl ? <img src={iconUrl} alt="" className="size-6 object-contain" /> : <Package size={19} />}
         </span>
         <span className="min-w-0">
           <span className="flex flex-wrap items-center gap-2">
-            <span className="truncate text-sm font-semibold text-dls-text">{manifest.name}</span>
-            <span className="text-[11px] text-dls-secondary">v{version}</span>
+            <span className="truncate text-ui-body font-semibold text-dls-text">{manifest.name}</span>
+            <span className="text-ui-caption text-dls-secondary">v{version}</span>
             {badge}
           </span>
-          <span className="mt-1 line-clamp-2 block text-xs text-dls-secondary">{manifest.description}</span>
-          <span className="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-dls-secondary">
+          <span className="mt-1 line-clamp-2 block text-ui-compact text-dls-secondary">{manifest.description}</span>
+          <span className="mt-1 flex flex-wrap items-center gap-2 text-ui-caption text-dls-secondary">
             <span>{t("plugin_platform.bundle_contents", { skills, mcps })}</span>
             {status ? <><span aria-hidden>·</span>{status}</> : null}
           </span>

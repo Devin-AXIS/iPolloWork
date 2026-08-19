@@ -10,6 +10,8 @@
   <a href="https://github.com/Devin-AXIS/iPolloWork/stargazers"><img src="https://img.shields.io/github/stars/Devin-AXIS/iPolloWork?style=flat" alt="GitHub stars" /></a>
   <a href="https://x.com/iPolloWork"><img src="https://img.shields.io/badge/X%20Global-%40iPolloWork%20%C2%B7%207.9K%20followers-000000?logo=x&amp;logoColor=white" alt="Follow iPolloWork on X" /></a>
   <a href="https://x.com/iPolloCN"><img src="https://img.shields.io/badge/X%20%E4%B8%AD%E6%96%87-%40iPolloCN%20%C2%B7%203.4K%20followers-000000?logo=x&amp;logoColor=white" alt="Follow iPolloCN on X" /></a>
+  <a href="https://www.bestpractices.dev/projects/14127"><img src="https://www.bestpractices.dev/projects/14127/badge" alt="OpenSSF Best Practices" /></a>
+  <a href="https://github.com/opea-project"><img src="https://img.shields.io/badge/OPEA-Open%20Platform%20for%20Enterprise%20AI-ff7a00" alt="OPEA: Open Platform for Enterprise AI" /></a>
 </p>
 
 <p align="center">
@@ -28,7 +30,7 @@ Codex のようなコーディングは出発点にすぎません。成果物�
 <div align="center">
   <h3>iPolloWork 公式 WeChat コミュニティに参加</h3>
   <p>WeChat で下の QR コードをスキャンすると、製品情報やコミュニティでの交流を目的とした公式グループに参加できます。</p>
-  <img src="../docs/assets/ipollowork-official-wechat-group.jpg" alt="iPolloWork 公式 WeChat コミュニティの QR コード" width="220" />
+  <img src="../assets/ipollowork-official-wechat-group.jpg" alt="iPolloWork 公式 WeChat コミュニティの QR コード" width="220" />
 </div>
 
 ## iPolloWork の違い
@@ -188,7 +190,7 @@ iPolloWork desktop/UI ── local API ──> iPolloWork server ──> OpenCod
 
 ## コントリビューション
 
-プロダクトを変更する前に、`AGENTS.md`、`VISION.md`、`PRINCIPLES.md`、`PRODUCT.md`、`ARCHITECTURE.md` を読んでください。まず関連する範囲のテストを実行し、その後に次を実行します。
+プロダクトを変更する前に、`AGENTS.md`、`docs/governance.md`、`CONTRIBUTING.md`、`SECURITY.md`、`apps/app/src/react-app/ARCHITECTURE.md` を読んでください。まず関連する範囲のテストを実行し、その後に次を実行します。
 
 ```bash
 ./ipollowork check

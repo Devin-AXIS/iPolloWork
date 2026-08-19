@@ -433,6 +433,15 @@ const manifestSchema = z.object({
   });
 
   manifest.contributions?.forEach((contribution, index) => {
+    if (contribution.type === "session-side-panel"
+      && manifest.package
+      && (manifest.source.origin !== "builtin" || !manifest.source.trusted)) {
+      context.addIssue({
+        code: "custom",
+        path: ["contributions", index, "type"],
+        message: "native session panels are restricted to trusted built-in packages",
+      });
+    }
     if (contribution.type === "workspace-app" || contribution.type === "settings-page") {
       if (!contribution.ref) {
         context.addIssue({ code: "custom", path: ["contributions", index, "ref"], message: "is required for UI contributions" });

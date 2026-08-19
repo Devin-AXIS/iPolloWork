@@ -48,6 +48,7 @@ import type { McpServerEntry, McpStatusMap } from "../../../../app/types";
 import { formatRelativeTime, isDesktopRuntime, isWindowsPlatform } from "../../../../app/utils";
 import { currentLocale, t, type Language } from "../../../../i18n";
 import { Button } from "@/components/ui/button";
+import { settingsStandardContentClass } from "@/react-app/domains/settings/shell/panel";
 import { ConfirmModal } from "../../../design-system/modals/confirm-modal";
 import { AddMcpModal } from "../../connections/modals/add-mcp-modal";
 import { ClaudePluginImportModal } from "../../connections/modals/claude-plugin-import-modal";
@@ -502,7 +503,7 @@ export function McpView(props: McpViewProps) {
   };
 
   return (
-    <section className="space-y-8 max-w-3xl w-full animate-in fade-in duration-300">
+    <section className={`${settingsStandardContentClass} animate-in space-y-8 fade-in duration-300`}>
       {showHeader ? (
         <McpViewHeader connectedCount={connectedCount} />
       ) : null}
@@ -839,8 +840,8 @@ export function McpView(props: McpViewProps) {
 function McpViewHeader(props: { connectedCount: number }) {
   return (
     <div>
-      <h2 className="text-3xl font-semibold text-dls-text">{t("mcp.apps_title")}</h2>
-      <p className="mt-1.5 text-sm text-dls-secondary">{t("mcp.apps_subtitle")}</p>
+      <h2 className="text-ui-title-sm font-semibold text-dls-text">{t("mcp.apps_title")}</h2>
+      <p className="settings-description mt-1.5 text-ui-control leading-5 text-dls-secondary">{t("mcp.apps_subtitle")}</p>
       {props.connectedCount > 0 ? (
         <div className="mt-3 inline-flex items-center gap-2 rounded-full bg-green-3 px-3 py-1">
           <div className="size-2 rounded-full bg-green-9" />

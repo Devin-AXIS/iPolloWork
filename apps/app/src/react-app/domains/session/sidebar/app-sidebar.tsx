@@ -490,7 +490,7 @@ function SidebarSectionHeader({
   );
 }
 
-const primarySidebarActionClassName = "h-8 gap-1 rounded-[8px] px-1 py-0 text-sm font-normal leading-4 text-sidebar-foreground transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground active:bg-sidebar-accent data-active:bg-sidebar-accent data-active:text-sidebar-accent-foreground focus-visible:ring-1";
+const primarySidebarActionClassName = "h-8 gap-2 rounded-[8px] px-2 py-0 text-sm font-normal leading-4 text-sidebar-foreground transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground active:bg-sidebar-accent data-active:bg-sidebar-accent data-active:text-sidebar-accent-foreground focus-visible:ring-1";
 
 function useSessionTree(
   sessions: ProjectSessionList["sessions"],
@@ -655,7 +655,7 @@ export function AppSidebar(props: AppSidebarProps) {
               </button>
             ) : null}
           </div>
-          <SidebarMenu className="gap-1 px-2">
+          <SidebarMenu className="gap-1">
             <SidebarMenuItem data-testid="new-conversation-and-project-actions">
               <div className="min-w-0">
                 <SidebarMenuButton
@@ -666,7 +666,7 @@ export function AppSidebar(props: AppSidebarProps) {
                   onClick={() => props.onCreateTaskInWorkspace(props.selectedWorkspaceId)}
                 >
                   <span className="flex size-4 shrink-0 items-center justify-center" aria-hidden="true">
-                    <img src={publicAssetUrl("sidebar-icon/figma-square-pen.svg")} alt="" className="size-[11px] dark:invert" />
+                    <img src={publicAssetUrl("sidebar-icon/figma-square-pen.svg")} alt="" className="size-3.5 dark:invert" />
                   </span>
                   <span className="flex-1 truncate">{t("session.new_task")}</span>
                 </SidebarMenuButton>
@@ -679,7 +679,7 @@ export function AppSidebar(props: AppSidebarProps) {
                 className={primarySidebarActionClass}
               >
                 <span className="flex size-4 shrink-0 items-center justify-center" aria-hidden="true">
-                  <img src={publicAssetUrl("sidebar-icon/figma-layout-panel-top.svg")} alt="" className="size-[11px] dark:invert" />
+                  <img src={publicAssetUrl("sidebar-icon/figma-layout-panel-top.svg")} alt="" className="size-3.5 dark:invert" />
                 </span>
                 <span className="flex-1 truncate">{t("template_market.title")}</span>
               </SidebarMenuButton>
@@ -691,7 +691,7 @@ export function AppSidebar(props: AppSidebarProps) {
                 className={primarySidebarActionClass}
               >
                 <span className="flex size-4 shrink-0 items-center justify-center" aria-hidden="true">
-                  <img src={publicAssetUrl("sidebar-icon/figma-plug.svg")} alt="" className="h-[13px] w-2 dark:invert" />
+                  <img src={publicAssetUrl("sidebar-icon/toy-brick.svg")} alt="" className="size-3.5 dark:invert" />
                 </span>
                 <span className="flex-1 truncate">{t("settings.tab_extensions")}</span>
               </SidebarMenuButton>
@@ -891,6 +891,10 @@ function ProjectSidebarContent({
   const [projectExpanded, setProjectExpanded] = React.useState(true);
   const tree = useSessionTree(project.sessions, ctx.sessionStatusById);
 
+  React.useEffect(() => {
+    if (isSelectedProject) setProjectExpanded(true);
+  }, [isSelectedProject]);
+
   const forcedExpandedSessionIds = React.useMemo(
     () => new Set(
       ctx.selectedSessionId
@@ -956,24 +960,27 @@ function ProjectSidebarContent({
               <button
                 type="button"
                 onClick={() => {
-                  if (!isSelectedProject) void Promise.resolve(onSelectProject(workspace.id));
+                  if (isSelectedProject) {
+                    setProjectExpanded((expanded) => !expanded);
+                    return;
+                  }
+                  setProjectExpanded(true);
+                  void Promise.resolve(onSelectProject(workspace.id));
                 }}
-                onDoubleClick={() => setProjectExpanded((expanded) => !expanded)}
-                className={cn(
-                  "flex h-8 w-full min-w-0 items-center gap-2 rounded-lg px-2 pe-16 text-left text-sm text-sidebar-foreground transition-colors hover:bg-sidebar-accent focus-visible:ring-1 focus-visible:ring-sidebar-ring focus-visible:outline-hidden",
-                  isSelectedProject && "bg-sidebar-accent/70 font-medium",
-                )}
+                className="flex h-8 w-full min-w-0 items-center gap-2 rounded-lg px-2 pe-16 text-left text-sm text-sidebar-foreground transition-colors hover:bg-sidebar-accent focus-visible:ring-1 focus-visible:ring-sidebar-ring focus-visible:outline-hidden mac:hover:bg-black/5 dark:mac:hover:bg-white/10"
                 title={workspaceLabel(workspace)}
                 data-testid="project-row"
                 data-project-id={workspace.id}
                 aria-current={isSelectedProject ? "page" : undefined}
                 aria-expanded={projectExpanded}
               >
-                <img
-                  src={publicAssetUrl("sidebar-icon/figma-folder-closed.svg")}
-                  alt=""
-                  className="h-[10px] w-3 shrink-0 dark:invert"
-                />
+                <span className="flex size-4 shrink-0 items-center justify-center" aria-hidden="true">
+                  <img
+                    src={publicAssetUrl("sidebar-icon/figma-folder-closed.svg")}
+                    alt=""
+                    className="h-auto w-3.5 dark:invert"
+                  />
+                </span>
                 <span className="min-w-0 flex-1 truncate">{workspaceLabel(workspace)}</span>
               </button>
               {!projectExpanded ? (
@@ -1044,7 +1051,7 @@ function ProjectSidebarContent({
             </SidebarMenuItem>
           </SidebarMenu> : null}
           <CollapsibleContent>
-            <SidebarMenuSub className="gap-1 pb-2 pe-1 ps-7">
+            <SidebarMenuSub className="translate-x-0 gap-1 pb-2">
               {showRemoteConnectionIssue ? (
                 <RemoteConnectionIssueCard
                   message={connectionIssueMessage}
@@ -1181,7 +1188,7 @@ function SessionMenuItem({
   const isSessionActive = tree.activeIds.has(session.id);
   const isSessionStreaming = tree.streamingIds.has(session.id) || isStreamingSessionStatus(sessionActivityStatus);
   const isArchived = isSessionArchived(session);
-  const rowPadding = depth > 0 ? "ps-10" : "ps-1";
+  const rowPadding = depth > 0 ? "ps-[68px]" : "ps-8";
   const trailingActionPosition = "right-1";
   const nestedActionPosition = "right-8";
   const sessionFontWeight = ctx.language === "zh" ? "font-medium" : "font-normal";
@@ -1209,7 +1216,7 @@ function SessionMenuItem({
           <CollapsibleTrigger
             render={
               <SidebarMenuSubButton
-                className={cn("relative h-8 rounded-[8px] pe-8 text-sm leading-4", sessionFontWeight, rowPadding)}
+                className={cn("relative h-8 translate-x-0 rounded-[8px] pe-8 text-sm leading-4", sessionFontWeight, rowPadding)}
                 isActive={isSelected}
                 onClick={openSession}
                 onPointerEnter={prefetchSession}
@@ -1247,7 +1254,7 @@ function SessionMenuItem({
           onClick={openSession}
           onPointerEnter={prefetchSession}
           onFocus={prefetchSession}
-          className={cn("h-8 rounded-[8px] pe-8 text-sm leading-4 transition-[padding] duration-75 group-hover/menu-sub-item:pe-8 group-has-data-popup-open/menu-sub-item:pe-8", sessionFontWeight, rowPadding)}
+          className={cn("h-8 translate-x-0 rounded-[8px] pe-8 text-sm leading-4 transition-[padding] duration-75 group-hover/menu-sub-item:pe-8 group-has-data-popup-open/menu-sub-item:pe-8", sessionFontWeight, rowPadding)}
         >
           <PinnedIndicator isPinned={isPinned} />
           <span

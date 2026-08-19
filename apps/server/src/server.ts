@@ -50,6 +50,7 @@ import {
   assertPluginPackageSafeForImport,
   installPluginPackage,
   listInstalledPluginPackages,
+  listSuppressedDefaultPluginIds,
   migratePluginPackageLifecycle,
   pluginPackageVersionChange,
   previewPluginPackage,
@@ -62,7 +63,7 @@ import {
   updatePluginPackage,
 } from "./plugin-package-lifecycle.js";
 import { withMaterializedPluginPackageUpload } from "./plugin-package-upload.js";
-import { bundledPluginPackageIds, resolveBundledPluginPackageRoot } from "./plugin-package-catalog.js";
+import { bundledPluginPackageIds, defaultBundledPluginPackageIds, resolveBundledPluginPackageRoot } from "./plugin-package-catalog.js";
 import {
   cancelPluginAuthorizationFlow,
   completePluginBrowserAuthorization,
@@ -773,6 +774,70 @@ function isSessionCommandProxyRequest(method: string, proxyPath: string) {
   return method === "POST" && /^\/session\/[^/]+\/command$/.test(normalizeOpencodeProxyPath(proxyPath));
 }
 
+async function ensureDefaultBundledPluginPackages(config: ServerConfig): Promise<void> {
+  const workspaces = config.workspaces.filter((workspace) => workspace.workspaceType === "local");
+  const installWorkspace = workspaces[0];
+  if (!installWorkspace) return;
+
+  const logger = createServerLogger(config);
+  const installedById = new Map(
+    (await listInstalledPluginPackages({ serverConfig: config })).map((item) => [item.pluginId, item]),
+  );
+  const suppressed = new Set(await listSuppressedDefaultPluginIds({ serverConfig: config }));
+
+  for (const pluginId of defaultBundledPluginPackageIds) {
+    try {
+      const packageRoot = await resolveBundledPluginPackageRoot(pluginId);
+      const preview = await previewPluginPackage({
+        packageRoot,
+        workspaceRoot: installWorkspace.path,
+        engineId: installWorkspace.engineId ?? DEFAULT_ENGINE_ID,
+      });
+      if (!preview.manifest.defaultEnabled
+        || preview.manifest.source.origin !== "builtin"
+        || !preview.manifest.source.trusted) continue;
+
+      const installed = installedById.get(pluginId);
+      if (!installed && suppressed.has(pluginId)) continue;
+      if (!installed) {
+        await installPluginPackage({
+          serverConfig: config,
+          workspaceId: installWorkspace.id,
+          packageRoot,
+          workspaceRoot: installWorkspace.path,
+        });
+      } else if (installed.version !== preview.manifest.package?.version) {
+        await updatePluginPackage({
+          serverConfig: config,
+          workspaceId: installWorkspace.id,
+          packageRoot,
+          workspaceRoot: installWorkspace.path,
+        });
+      }
+    } catch (error) {
+      logger.log("warn", `Default plugin package could not be prepared: ${pluginId}`, {
+        pluginId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  for (const workspace of workspaces) {
+    try {
+      await reconcilePluginPackagesForWorkspace({
+        serverConfig: config,
+        workspaceId: workspace.id,
+        workspaceRoot: workspace.path,
+      });
+    } catch (error) {
+      logger.log("warn", `Plugin package projection could not be reconciled: ${workspace.id}`, {
+        workspaceId: workspace.id,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+}
+
 export async function startServer(config: ServerConfig): Promise<ServeResult> {
   // This is a real migration, not a runtime fallback: legacy template.json
   // records are moved into the canonical SQLite table before routes exist.
@@ -1481,6 +1546,17 @@ function createRoutes(
   onWorkspacesChanged: () => Promise<void>,
 ): Route[] {
   const routes: Route[] = [];
+  let defaultPluginPreparation: Promise<void> | null = null;
+  const prepareDefaultPlugins = () => {
+    if (!defaultPluginPreparation) {
+      defaultPluginPreparation = ensureDefaultBundledPluginPackages(config)
+        .catch((error) => {
+          defaultPluginPreparation = null;
+          throw error;
+        });
+    }
+    return defaultPluginPreparation;
+  };
   registerCoreRoutes({
     routes,
     config,
@@ -1916,6 +1992,7 @@ function createRoutes(
 
   addRoute(routes, "GET", "/workspace/:id/plugin-packages", "client", async (ctx) => {
     const workspace = await resolveWorkspace(config, ctx.params.id);
+    await prepareDefaultPlugins();
     await reconcilePluginPackagesForWorkspace({ serverConfig: config, workspaceId: workspace.id, workspaceRoot: workspace.path });
     const items = await listInstalledPluginPackages({ serverConfig: config });
     return jsonResponse({ items });
@@ -1933,6 +2010,7 @@ function createRoutes(
 
   addRoute(routes, "GET", "/workspace/:id/plugin-packages/catalog", "client", async (ctx) => {
     const workspace = await resolveWorkspace(config, ctx.params.id);
+    await prepareDefaultPlugins();
     const installed = await listInstalledPluginPackages({ serverConfig: config });
     const installedById = new Map(installed.map((item) => [item.pluginId, item]));
     const items = await Promise.all(bundledPluginPackageIds.map(async (pluginId) => {

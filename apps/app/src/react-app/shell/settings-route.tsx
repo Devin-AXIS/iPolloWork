@@ -1,7 +1,9 @@
 /** @jsxImportSource react */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Navigate, useLocation, useNavigate, useParams } from "react-router-dom";
+import { Download, Plus, RefreshCw, Sparkles } from "lucide-react";
 import { toast } from "@/components/ui/sonner";
+import { Button } from "@/components/ui/button";
 
 import {
   getMcpServerName,
@@ -87,11 +89,11 @@ import { DebugView } from "@/react-app/domains/settings/pages/debug-view";
 import { EnvironmentView } from "@/react-app/domains/settings/pages/environment-view";
 import { AuthorizationCenterView } from "@/react-app/domains/settings/pages/authorization-center-view";
 import { ExtensionsView, type ExtensionsSection } from "@/react-app/domains/settings/pages/extensions-view";
-import { PluginPackagesPanel } from "@/react-app/domains/settings/plugin-packages-panel";
+import { PluginPackagesPanel, type PluginPackagesPanelHandle } from "@/react-app/domains/settings/plugin-packages-panel";
 import type { PluginPackageRelationships } from "@/react-app/domains/settings/plugin-platform-state";
 import { SettingsSegmentedTabs } from "@/react-app/domains/settings/settings-segmented-tabs";
 import { RecoveryView } from "@/react-app/domains/settings/pages/recovery-view";
-import { SkillsView } from "@/react-app/domains/settings/pages/skills-view";
+import { SkillsView, type SkillsViewHandle } from "@/react-app/domains/settings/pages/skills-view";
 import { UpdatesView } from "@/react-app/domains/settings/pages/updates-view";
 import { useDebugViewModel } from "@/react-app/domains/settings/state/debug-view-model";
 import { useElectronUpdaterState } from "@/react-app/domains/settings/state/electron-updater-state";
@@ -416,6 +418,8 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
   const workContextRef = useRef(activeWorkContextId);
   const reconnectAttemptedWorkspaceIdRef = useRef("");
   const refreshMcpServersRef = useRef<(() => void | Promise<void>) | null>(null);
+  const pluginPackagesPanelRef = useRef<PluginPackagesPanelHandle>(null);
+  const skillsViewRef = useRef<SkillsViewHandle>(null);
   const notifyMcpReloadingRef = useRef<(() => void) | null>(null);
   const pollMcpServersAfterReloadRef = useRef<(() => void | Promise<void>) | null>(null);
   const [providers, setProviders] = useState<ProviderListItem[]>([]);
@@ -1956,9 +1960,10 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
       case "extensions": {
         const skillsView = (
           <SkillsView
+            ref={skillsViewRef}
             workspaceName={selectedWorkspaceName}
             busy={busy}
-            showHeader={false}
+            showActions={false}
             canInstallSkillCreator={canWriteWorkspaceSkills}
             canUseDesktopTools={!isRemoteWorkspace}
             accessHint={skillsAccessHint}
@@ -1973,6 +1978,7 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
         );
         const pluginPackagesView = (
           <PluginPackagesPanel
+            ref={pluginPackagesPanelRef}
             client={selectedWorkspaceEndpoint?.client ?? ipolloworkClient}
             workspaceId={runtimeWorkspaceId}
             selectedPluginId={route.pluginPackageId ?? null}
@@ -1998,10 +2004,12 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
               void connectionsStore.logoutMcpAuth(serverName);
             }}
             onRelationshipsChange={setPluginPackageRelationships}
-            marketplaceView={(search) => (
+            marketplaceView={(search, filters) => (
               <CloudMarketplacesView
                 embedded
                 search={search}
+                categoryFilter={filters.category}
+                statusFilter={filters.status}
                 client={selectedWorkspaceEndpoint?.client ?? ipolloworkClient}
                 workspaceId={runtimeWorkspaceId}
                 onOpenAccount={openCloudAccountSettings}
@@ -2210,9 +2218,49 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
             onValueChange={(value) => navigateSettingsPath(value === "skills" ? "extensions/skills" : "extensions")}
           />
         ) : undefined}
+        headerActions={route.tab === "extensions" && !route.pluginPackageId && !selectedPluginSettingsPage ? (
+          route.extensionsSection === "skills" ? (
+            <div data-testid="skills-library-navigation-actions" className="flex items-center gap-4">
+              <Button size="default" variant="outline" onClick={() => skillsViewRef.current?.refresh()} disabled={busy}>
+                <RefreshCw size={14} />
+                {t("common.refresh")}
+              </Button>
+              <Button
+                size="default"
+                variant="outline"
+                onClick={() => skillsViewRef.current?.importLocal()}
+                disabled={busy || isRemoteWorkspace}
+              >
+                <Download size={14} />
+                {t("skills.import_local_skill")}
+              </Button>
+              <Button
+                size="default"
+                onClick={() => skillsViewRef.current?.createInChat()}
+                disabled={busy || (isRemoteWorkspace && !canWriteWorkspaceSkills)}
+              >
+                <Sparkles size={14} />
+                {t("skills.create_in_chat")}
+              </Button>
+            </div>
+          ) : (
+            <div data-testid="plugin-library-navigation-actions" className="flex items-center gap-4">
+              <Button size="default" variant="outline" onClick={() => pluginPackagesPanelRef.current?.refresh()}>
+                <RefreshCw size={16} />
+                {t("common.refresh")}
+              </Button>
+              <Button size="default" onClick={() => pluginPackagesPanelRef.current?.openImport()}>
+                <Plus size={16} />
+                {t("plugin_library.add")}
+              </Button>
+            </div>
+          )
+        ) : undefined}
+        showNotifications={route.tab !== "extensions"}
         hidePageHeader={route.tab === "extensions" || Boolean(route.pluginPackageId) || Boolean(selectedPluginSettingsPage)}
         fullBleed={Boolean(selectedPluginSettingsPage)}
         hideShellHeader={Boolean(route.pluginPackageId)}
+        hideCloseButton={props.embedded && route.tab === "extensions"}
       >
         {settingsView}
       </SettingsShell>

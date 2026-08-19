@@ -49,7 +49,7 @@ export type EnvironmentVariableTableProps = {
 
 export function EnvironmentVariableTable({ className, children }: EnvironmentVariableTableProps) {
   return (
-    <Card variant="outline" className={cn("w-full p-0 rounded-xl", className)}>
+    <Card variant="outline" className={cn("w-full rounded-[8px] p-0", className)}>
       <CardContent className="p-0">
         <Table>{children}</Table>
       </CardContent>

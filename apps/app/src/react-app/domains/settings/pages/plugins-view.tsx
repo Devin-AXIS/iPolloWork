@@ -4,6 +4,7 @@ import { Cpu } from "lucide-react";
 import { t } from "../../../../i18n";
 import { Button } from "@/components/ui/button";
 import { TextInput } from "../../../design-system/text-input";
+import { settingsStandardContentClass } from "@/react-app/domains/settings/shell/panel";
 
 // Explicit, prop-driven shape of the extensions store. The Solid
 // PluginsView pulled this from useExtensions(); in React we pass it
@@ -61,7 +62,7 @@ export function PluginsView(props: PluginsViewProps) {
   const { extensions } = props;
   const scope = extensions.pluginScope;
   return (
-    <section className="space-y-6 max-w-3xl w-full">
+    <section className={`${settingsStandardContentClass} space-y-6`}>
       <div className="bg-gray-2/30 border border-gray-6/50 rounded-2xl p-5 space-y-4">
         <div className="flex items-start justify-between gap-4">
           <div className="space-y-1">

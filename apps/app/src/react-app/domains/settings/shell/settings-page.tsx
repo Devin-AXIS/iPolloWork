@@ -37,6 +37,7 @@ import {
 } from "@/components/ui/sidebar";
 import { t } from "../../../../i18n";
 import type { SettingsTab } from "../../../../app/types";
+import { publicAssetUrl } from "../../../../app/lib/public-asset";
 import { cn } from "@/lib/utils";
 import { useOrgRestrictions } from "../../cloud/desktop-config-provider";
 import {
@@ -94,6 +95,23 @@ export function getSettingsTabIcon(tab: SettingsTab) {
     default:
       return Cog;
   }
+}
+
+export function SettingsTabIcon({ tab, className }: { tab: SettingsTab; className?: string }) {
+  if (tab === "extensions") {
+    return (
+      <span className={cn("flex size-4 shrink-0 items-center justify-center", className)} aria-hidden="true">
+        <img src={publicAssetUrl("sidebar-icon/toy-brick.svg")} alt="" className="size-[15px] dark:invert" />
+      </span>
+    );
+  }
+
+  const Icon = getSettingsTabIcon(tab);
+  return (
+    <span className={cn("flex size-4 shrink-0 items-center justify-center", className)} aria-hidden="true">
+      <Icon className="size-4! [&_*]:[vector-effect:non-scaling-stroke]" strokeWidth={1} />
+    </span>
+  );
 }
 
 export function getSettingsTabLabel(tab: SettingsTab) {
@@ -274,7 +292,7 @@ export function SettingsSidebar(props: SettingsSidebarProps) {
   const cloudTabs = getCloudSettingsTabs(memoryEnabled);
 
   return (
-    <Sidebar className="mac:**:data-[sidebar=sidebar]:bg-transparent">
+    <Sidebar className="!border-e-0 mac:**:data-[sidebar=sidebar]:bg-transparent">
       <div className="hidden h-10 mac:block mac:titlebar-drag" />
       <SidebarHeader>
         <SidebarMenu>
@@ -292,7 +310,6 @@ export function SettingsSidebar(props: SettingsSidebarProps) {
           <SidebarGroupContent>
             <SidebarMenu>
               {workspaceTabs.map((tab) => {
-                const Icon = getSettingsTabIcon(tab);
                 return (
                   <SidebarMenuItem key={tab}>
                     <SidebarMenuButton
@@ -300,7 +317,7 @@ export function SettingsSidebar(props: SettingsSidebarProps) {
                       isActive={!props.activePluginPageId && props.activeTab === tab}
                       onClick={() => props.onSelectTab(tab)}
                     >
-                      <Icon />
+                      <SettingsTabIcon tab={tab} />
                       <SettingsSidebarTabLabel tab={tab} />
                     </SidebarMenuButton>
                   </SidebarMenuItem>
@@ -328,7 +345,6 @@ export function SettingsSidebar(props: SettingsSidebarProps) {
           <SidebarGroupContent>
             <SidebarMenu>
               {globalTabs.map((tab) => {
-                const Icon = getSettingsTabIcon(tab);
                 return (
                   <SidebarMenuItem key={tab}>
                     <SidebarMenuButton
@@ -336,7 +352,7 @@ export function SettingsSidebar(props: SettingsSidebarProps) {
                       isActive={props.activeTab === tab}
                       onClick={() => props.onSelectTab(tab)}
                     >
-                      <Icon />
+                      <SettingsTabIcon tab={tab} />
                       <SettingsSidebarTabLabel tab={tab} />
                     </SidebarMenuButton>
                   </SidebarMenuItem>
@@ -351,7 +367,6 @@ export function SettingsSidebar(props: SettingsSidebarProps) {
           <SidebarGroupContent>
             <SidebarMenu>
               {cloudTabs.map((tab) => {
-                const Icon = getSettingsTabIcon(tab);
                 return (
                   <SidebarMenuItem key={tab}>
                     <SidebarMenuButton
@@ -359,7 +374,7 @@ export function SettingsSidebar(props: SettingsSidebarProps) {
                       isActive={props.activeTab === tab}
                       onClick={() => props.onSelectTab(tab)}
                     >
-                      <Icon />
+                      <SettingsTabIcon tab={tab} />
                       <SettingsSidebarTabLabel tab={tab} />
                     </SidebarMenuButton>
                   </SidebarMenuItem>
