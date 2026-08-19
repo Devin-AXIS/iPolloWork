@@ -1,8 +1,8 @@
 {
   "schemaVersion": 2,
   "id": "design-agent",
-  "name": "iPolloWork Design Agent",
-  "description": "提供 iPolloWork Design Studio、演示文稿工作台与配套 Agent Skills。",
+  "name": "iPollo Design",
+  "description": "提供 iPollo Design、演示文稿工作台与配套 Agent Skills。",
   "category": "AI Agent 与自动化",
   "defaultEnabled": true,
   "source": {
@@ -15,15 +15,15 @@
     "src": "ipollowork-mark.svg"
   },
   "composer": {
-    "prompt": "使用 iPolloWork Design Agent 在当前会话的设计项目中创建或编辑内容。"
+    "prompt": "使用 iPollo Design 在当前会话的设计项目中创建或编辑内容。"
   },
   "localization": {
     "defaultLocale": "zh",
     "translations": {
       "en": {
-        "description": "iPolloWork Design Studio, presentation workspace, and official Agent Skills.",
+        "description": "iPollo Design workspace, presentation workspace, and official Agent Skills.",
         "category": "AI Agents & Automation",
-        "composer": { "prompt": "Use iPolloWork Design Agent to create or edit content in the current session's design project." },
+        "composer": { "prompt": "Use iPollo Design to create or edit content in the current session's design project." },
         "resources": {
           "ipollowork-design-studio": { "description": "Safely create and edit HTML designs in the current iPolloWork Design session." },
           "ipollowork-presentations": {
@@ -39,7 +39,7 @@
     }
   },
   "package": {
-    "version": "0.2.0",
+    "version": "0.3.0",
     "publisher": {
       "id": "ipollowork",
       "name": "iPolloWork"

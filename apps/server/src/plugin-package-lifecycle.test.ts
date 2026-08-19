@@ -1083,8 +1083,8 @@ describe("plugin package lifecycle", () => {
           { pluginId: "context7", version: "1.0.2", installedVersion: null, updateAvailable: false },
           { pluginId: "github", version: "0.1.2", installedVersion: null, updateAvailable: false },
           { pluginId: "wechat-official", version: "0.1.2", installedVersion: null, updateAvailable: false },
-          { pluginId: "design-agent", version: "0.2.0", installedVersion: "0.2.0", updateAvailable: false },
-          { pluginId: "video-agent", version: "0.2.0", installedVersion: "0.2.0", updateAvailable: false },
+          { pluginId: "design-agent", version: "0.3.0", installedVersion: "0.3.0", updateAvailable: false },
+          { pluginId: "video-agent", version: "0.3.0", installedVersion: "0.3.0", updateAvailable: false },
           { pluginId: "deepseek-harness", version: "0.3.5", installedVersion: null, updateAvailable: false },
         ],
       });
@@ -1253,20 +1253,18 @@ describe("plugin package lifecycle", () => {
     }
   });
 
-  test("installs and removes creative workspace packages without touching projects or related global skills", async () => {
+  test("installs, toggles, removes, and restores complete creative workspace packages", async () => {
     const workspaceRoot = await createRoot("ipollowork-creative-agent-catalog-api-");
     process.env.IPOLLOWORK_RUNTIME_DB = join(workspaceRoot, "runtime.sqlite");
     const designDirectory = join(workspaceRoot, "design", "existing-session");
     const videoDirectory = join(workspaceRoot, "video", "existing-session");
     const designEntry = join(designDirectory, "entry.html");
     const videoEntry = join(videoDirectory, "index.html");
-    const relatedSkill = join(workspaceRoot, ".opencode", "skills", "hyperframes-cli", "SKILL.md");
+    const videoSupportSkill = join(workspaceRoot, ".opencode", "skills", "hyperframes-cli", "SKILL.md");
     await mkdir(designDirectory, { recursive: true });
     await mkdir(videoDirectory, { recursive: true });
-    await mkdir(dirname(relatedSkill), { recursive: true });
     await writeFile(designEntry, "<main>Existing design</main>\n", "utf8");
     await writeFile(videoEntry, "<div data-composition>Existing video</div>\n", "utf8");
-    await writeFile(relatedSkill, "# Existing HyperFrames CLI\n", "utf8");
 
     const config = serverConfig(workspaceRoot);
     const server = await startServer(config);
@@ -1275,13 +1273,13 @@ describe("plugin package lifecycle", () => {
     const packages = [
       {
         pluginId: "design-agent",
-        version: "0.2.0",
+        version: "0.3.0",
         skillPath: join(workspaceRoot, ".opencode", "skills", "ipollowork-design-studio", "SKILL.md"),
         heading: "# iPolloWork Design Studio",
       },
       {
         pluginId: "video-agent",
-        version: "0.2.0",
+        version: "0.3.0",
         skillPath: join(workspaceRoot, ".opencode", "skills", "ipollowork-video-studio", "SKILL.md"),
         heading: "# iPolloWork Video Studio",
       },
@@ -1300,6 +1298,7 @@ describe("plugin package lifecycle", () => {
       for (const item of packages) {
         expect(await readFile(item.skillPath, "utf8")).toContain(item.heading);
       }
+      expect(await readFile(videoSupportSkill, "utf8")).toContain("# HyperFrames CLI");
 
       const disabled = await fetch(`${base}/workspace/${WORKSPACE_ID}/plugin-packages/design-agent/resources/ipollowork-design-studio`, {
         method: "PATCH",
@@ -1317,6 +1316,22 @@ describe("plugin package lifecycle", () => {
       expect(enabled.status).toBe(200);
       expect(await readFile(packages[0].skillPath, "utf8")).toContain(packages[0].heading);
 
+      const videoSkillDisabled = await fetch(`${base}/workspace/${WORKSPACE_ID}/plugin-packages/video-agent/resources/hyperframes-cli`, {
+        method: "PATCH",
+        headers,
+        body: JSON.stringify({ enabled: false }),
+      });
+      expect(videoSkillDisabled.status).toBe(200);
+      await expectMissing(videoSupportSkill);
+
+      const videoSkillEnabled = await fetch(`${base}/workspace/${WORKSPACE_ID}/plugin-packages/video-agent/resources/hyperframes-cli`, {
+        method: "PATCH",
+        headers,
+        body: JSON.stringify({ enabled: true }),
+      });
+      expect(videoSkillEnabled.status).toBe(200);
+      expect(await readFile(videoSupportSkill, "utf8")).toContain("# HyperFrames CLI");
+
       for (const item of packages) {
         const removal = await fetch(`${base}/workspace/${WORKSPACE_ID}/plugin-packages/${item.pluginId}`, {
           method: "DELETE",
@@ -1325,6 +1340,7 @@ describe("plugin package lifecycle", () => {
         expect(removal.status).toBe(200);
         await expectMissing(item.skillPath);
       }
+      await expectMissing(videoSupportSkill);
 
       const afterRemoval = await fetch(`${base}/workspace/${WORKSPACE_ID}/plugin-packages`, { headers });
       expect(afterRemoval.status).toBe(200);
@@ -1342,10 +1358,10 @@ describe("plugin package lifecycle", () => {
         });
         expect(await readFile(item.skillPath, "utf8")).toContain(item.heading);
       }
+      expect(await readFile(videoSupportSkill, "utf8")).toContain("# HyperFrames CLI");
 
       expect(await readFile(designEntry, "utf8")).toBe("<main>Existing design</main>\n");
       expect(await readFile(videoEntry, "utf8")).toBe("<div data-composition>Existing video</div>\n");
-      expect(await readFile(relatedSkill, "utf8")).toBe("# Existing HyperFrames CLI\n");
     } finally {
       await server.stop();
     }
