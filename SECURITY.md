@@ -80,6 +80,9 @@ verification succeeds. Local packages are for development testing and must not
 be presented as official releases unless they were produced with the appropriate
 signing credentials and release verification.
 
+See [Release integrity](docs/release-integrity.md) for the current coverage,
+release signing, and checksum verification process.
+
 Release managers should:
 
 - create annotated, signed Git tags for public major, minor, patch, and security
