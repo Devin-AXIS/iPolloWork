@@ -44,3 +44,17 @@ export function isPluginPackageReady(
   const authorization = pluginPackageAuthorization(item, state, mcpStatuses);
   return !authorization.required || authorization.connected;
 }
+
+export function isDelegatableExternalAgent(item: Pick<
+  iPolloWorkPluginPackageItem,
+  "activeEngineId" | "disabledResourceIds" | "enabled" | "engineCompatibility" | "manifest" | "pluginId"
+>) {
+  return item.enabled
+    && item.pluginId !== item.activeEngineId
+    && activePluginEngineCompatibility(item)?.status !== "unsupported"
+    && Boolean(item.manifest.composer?.prompt.trim())
+    && item.manifest.resources.some((resource) =>
+      resource.provides?.includes("service:external-subagent") === true
+      && !item.disabledResourceIds.includes(resource.id)
+    );
+}

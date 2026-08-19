@@ -2,7 +2,7 @@
   "schemaVersion": 2,
   "id": "deepseek-harness",
   "name": "DeepSeek Harness",
-  "description": "把代码审查、开发和研究任务委派给 DeepSeek Harness 协作完成。",
+  "description": "让 OpenCode 把代码审查、开发和研究任务委派给 DeepSeek Harness 协作完成。",
   "category": "AI Agent 与自动化",
   "preview": true,
   "source": {
@@ -24,7 +24,7 @@
     "defaultLocale": "zh",
     "translations": {
       "en": {
-        "description": "Delegate code review, development, and research tasks to DeepSeek Harness.",
+        "description": "Let OpenCode delegate code review, development, and research tasks to DeepSeek Harness.",
         "category": "AI Agents & Automation",
         "composer": {
           "prompt": "Work with DeepSeek Harness on the following task:"
@@ -36,11 +36,11 @@
         },
         "resources": {
           "deepseek-harness-service": {
-            "description": "Delegate tasks to DeepSeek Harness and view progress and results."
+            "description": "Let OpenCode delegate tasks to DeepSeek Harness and view progress and results."
           },
           "deepseek-harness": {
             "label": "DeepSeek Harness",
-            "description": "Delegate code review, development, and research tasks to DeepSeek Harness."
+            "description": "Let OpenCode delegate code review, development, and research tasks to DeepSeek Harness."
           }
         },
         "authorizationMethods": {
@@ -68,7 +68,7 @@
     }
   },
   "package": {
-    "version": "0.3.6",
+    "version": "0.3.7",
     "publisher": {
       "id": "ipollowork",
       "name": "iPolloWork"
@@ -76,7 +76,7 @@
     "compatibility": {
       "ipollowork": ">=0.21.0"
     },
-    "engines": ["deepseek-harness"],
+    "engines": ["opencode"],
     "updateId": "ipollowork/deepseek-harness"
   },
   "platform": ["darwin", "windows"],
@@ -127,7 +127,7 @@
       "type": "local-service",
       "id": "deepseek-harness-service",
       "label": "DeepSeek Harness",
-      "description": "使用 DeepSeek Harness 执行委派任务，并查看进度和结果。",
+      "description": "供 OpenCode 将任务委派给 DeepSeek Harness，并查看进度和结果。",
       "path": "service/deepseek-harness.mjs",
       "environment": [
         "DSH_RUNTIME_BIN",
@@ -271,7 +271,7 @@
       "type": "skill",
       "id": "deepseek-harness",
       "label": "DeepSeek Harness",
-      "description": "把代码审查、开发和研究任务委派给 DeepSeek Harness 协作完成。",
+      "description": "供 OpenCode 把代码审查、开发和研究任务委派给 DeepSeek Harness 协作完成。",
       "path": "skills/deepseek-harness/SKILL.md",
       "provides": ["workflow:deepseek-harness"],
       "required": true

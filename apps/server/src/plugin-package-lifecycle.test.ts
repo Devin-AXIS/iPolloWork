@@ -1436,11 +1436,11 @@ describe("plugin package lifecycle", () => {
           { pluginId: "sentry", version: "1.0.2", installedVersion: null, updateAvailable: false },
           { pluginId: "stripe", version: "1.0.2", installedVersion: null, updateAvailable: false },
           { pluginId: "context7", version: "1.0.2", installedVersion: null, updateAvailable: false },
-          { pluginId: "github", version: "0.1.2", installedVersion: null, updateAvailable: false },
-          { pluginId: "wechat-official", version: "0.1.2", installedVersion: null, updateAvailable: false },
+          { pluginId: "github", version: "0.1.3", installedVersion: null, updateAvailable: false },
+          { pluginId: "wechat-official", version: "0.1.3", installedVersion: null, updateAvailable: false },
           { pluginId: "design-agent", version: "0.3.0", installedVersion: "0.3.0", updateAvailable: false },
           { pluginId: "video-agent", version: "0.3.0", installedVersion: "0.3.0", updateAvailable: false },
-          { pluginId: "deepseek-harness", version: "0.3.5", installedVersion: null, updateAvailable: false },
+          { pluginId: "deepseek-harness", version: "0.3.7", installedVersion: null, updateAvailable: false },
         ],
       });
 
@@ -1450,7 +1450,7 @@ describe("plugin package lifecycle", () => {
       });
       expect(dshInstallation.status).toBe(200);
       expect(await dshInstallation.json()).toMatchObject({
-        result: { status: "installed", pluginId: "deepseek-harness", version: "0.3.5" },
+        result: { status: "installed", pluginId: "deepseek-harness", version: "0.3.7" },
       });
       const dshCapabilities = await fetch(`${base}/experimental/extensions/call`, {
         method: "POST",
@@ -1532,7 +1532,7 @@ describe("plugin package lifecycle", () => {
       });
       expect(githubInstallation.status).toBe(200);
       expect(await githubInstallation.json()).toMatchObject({
-        result: { status: "installed", pluginId: "github", version: "0.1.2" },
+        result: { status: "installed", pluginId: "github", version: "0.1.3" },
         item: {
           pluginId: "github",
           manifest: {
@@ -1562,7 +1562,7 @@ describe("plugin package lifecycle", () => {
       });
       expect(wechatInstallation.status).toBe(200);
       expect(await wechatInstallation.json()).toMatchObject({
-        result: { status: "installed", pluginId: "wechat-official", version: "0.1.2" },
+        result: { status: "installed", pluginId: "wechat-official", version: "0.1.3" },
         item: {
           pluginId: "wechat-official",
           manifest: {

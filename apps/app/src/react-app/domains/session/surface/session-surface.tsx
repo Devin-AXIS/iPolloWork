@@ -8,7 +8,7 @@ import { toast } from "@/components/ui/sonner";
 
 import { captureAnalyticsEvent } from "@/app/lib/analytics";
 import { createClient, unwrap } from "@/app/lib/opencode";
-import { activePluginEngineCompatibility, isPluginPackageReady } from "@/app/lib/plugin-package-readiness";
+import { isDelegatableExternalAgent, isPluginPackageReady } from "@/app/lib/plugin-package-readiness";
 import { t } from "@/i18n";
 import { readWorkspaceCloudImports, type CloudImportedPlugin } from "@/app/cloud/import-state";
 import type {
@@ -1658,15 +1658,7 @@ export function SessionSurface(props: SessionSurfaceProps) {
   const listExternalAgents = async (): Promise<iPolloWorkPluginPackageItem[]> => {
     const response = await props.client.listPluginPackages(props.workspaceId);
     return response.items
-      .filter((item) =>
-        item.enabled
-        && activePluginEngineCompatibility(item)?.status !== "unsupported"
-        && Boolean(item.manifest.composer?.prompt.trim())
-        && item.manifest.resources.some((resource) =>
-          resource.provides?.includes("service:external-subagent") === true
-          && !item.disabledResourceIds.includes(resource.id)
-        )
-      )
+      .filter(isDelegatableExternalAgent)
       .sort((left, right) => left.name.localeCompare(right.name));
   };
 

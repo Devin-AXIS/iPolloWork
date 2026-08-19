@@ -5,7 +5,8 @@ import type {
   iPolloWorkPluginAuthorizationMethodTranslation,
   iPolloWorkPluginAuthorizationMethod,
 } from "../../../app/extensions";
-import { DEEPSEEK_HARNESS_ENGINE_ID } from "@ipollowork/types/workspace";
+import type { PluginEngineCompatibility } from "@ipollowork/types/plugins";
+import { DEEPSEEK_HARNESS_ENGINE_ID, DEFAULT_ENGINE_ID } from "@ipollowork/types/workspace";
 
 export type PluginPrimaryActionKind = "install" | "connect" | "open" | "update" | "repair";
 
@@ -14,19 +15,68 @@ export type PluginPackageEngineScope =
   | { kind: "engine"; engineId: string }
   | { kind: "multi-engine"; engineIds: string[] };
 
+export type PluginPackageEngineLimitation = {
+  engineId: string;
+  status: "partial" | "unsupported";
+  capabilityLabels: string[];
+  nativeEngineOnly: boolean;
+};
+
 export function pluginPackageEngineScope(
   manifest: iPolloWorkExtensionManifest,
+  engineCompatibility?: readonly PluginEngineCompatibility[],
 ): PluginPackageEngineScope {
-  // Built-in Harness packages installed before engine ownership metadata was
-  // introduced still carry this stable package ID in their immutable manifest.
+  // Older installed Harness packages described their delegated target as the
+  // owning engine. The package is an OpenCode bridge, so keep their display
+  // scope aligned with the corrected catalog manifest until they auto-update.
   if (manifest.id === DEEPSEEK_HARNESS_ENGINE_ID) {
-    return { kind: "engine", engineId: DEEPSEEK_HARNESS_ENGINE_ID };
+    return { kind: "engine", engineId: DEFAULT_ENGINE_ID };
   }
   const engineIds = manifest.package?.engines;
   const [engineId] = engineIds ?? [];
-  if (!engineId) return { kind: "universal" };
   if (engineIds?.length === 1) return { kind: "engine", engineId };
+
+  if (engineCompatibility?.length) {
+    const declaredEngines = engineIds ? new Set(engineIds) : null;
+    const fullySupportedEngineIds = engineCompatibility
+      .filter((entry) => entry.status === "ready" && (!declaredEngines || declaredEngines.has(entry.engineId)))
+      .map((entry) => entry.engineId);
+    const [fullySupportedEngineId] = fullySupportedEngineIds;
+    if (fullySupportedEngineIds.length === engineCompatibility.length) return { kind: "universal" };
+    if (fullySupportedEngineIds.length === 1 && fullySupportedEngineId) return { kind: "engine", engineId: fullySupportedEngineId };
+    if (fullySupportedEngineIds.length > 1) return { kind: "multi-engine", engineIds: fullySupportedEngineIds };
+  }
+
+  if (!engineId) return { kind: "universal" };
   return { kind: "multi-engine", engineIds: [...(engineIds ?? [])] };
+}
+
+export function pluginPackageEngineLimitations(
+  manifest: iPolloWorkExtensionManifest,
+  engineCompatibility?: readonly PluginEngineCompatibility[],
+): PluginPackageEngineLimitation[] {
+  const capabilityLabels = new Map(
+    manifest.resources.map((resource) => [resource.id, resource.label ?? resource.id]),
+  );
+  manifest.engineBindings?.forEach((binding) => {
+    binding.capabilities.forEach((capability) => {
+      capabilityLabels.set(capability.id, capability.label ?? capability.id);
+    });
+  });
+
+  return (engineCompatibility ?? []).flatMap((compatibility): PluginPackageEngineLimitation[] => {
+    if (compatibility.status === "ready") return [];
+    const unsupportedIds = new Set([
+      ...compatibility.unsupportedResourceIds,
+      ...compatibility.unsupportedCapabilityIds,
+    ]);
+    return [{
+      engineId: compatibility.engineId,
+      status: compatibility.status,
+      capabilityLabels: [...unsupportedIds].map((id) => capabilityLabels.get(id) ?? id),
+      nativeEngineOnly: compatibility.nativeEngineOnly,
+    }];
+  });
 }
 
 type PluginPackageRelationshipSource = { manifest: iPolloWorkExtensionManifest };
