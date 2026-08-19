@@ -65,8 +65,8 @@
   },
   "devDependencies": {
     "cross-env": "^10.1.0",
-    "knip": "6.29.0",
-    "opencc-js": "^1.4.0"
+    "knip": "6.32.2",
+    "opencc-js": "^1.4.1"
   },
   "engines": {
     "pnpm": ">=11.4.0 <12"

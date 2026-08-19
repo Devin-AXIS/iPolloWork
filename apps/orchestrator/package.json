@@ -43,21 +43,21 @@
     "access": "public"
   },
   "dependencies": {
-    "@opencode-ai/sdk": "^1.18.16",
-    "@opentui/core": "0.1.77",
-    "@opentui/solid": "0.1.77",
+    "@opencode-ai/sdk": "^1.18.18",
+    "@opentui/core": "0.5.3",
+    "@opentui/solid": "0.5.3",
     "ipollowork-server": "0.21.1",
-    "solid-js": "1.9.9"
+    "solid-js": "1.9.14"
   },
   "devDependencies": {
-    "@opentui/core-darwin-arm64": "0.1.77",
-    "@opentui/core-darwin-x64": "0.1.77",
-    "@opentui/core-linux-arm64": "0.1.77",
-    "@opentui/core-linux-x64": "0.1.77",
-    "@opentui/core-win32-arm64": "0.1.77",
-    "@opentui/core-win32-x64": "0.1.77",
-    "@types/node": "^22.10.2",
-    "bun-types": "^1.3.6",
-    "typescript": "^5.6.3"
+    "@opentui/core-darwin-arm64": "0.5.3",
+    "@opentui/core-darwin-x64": "0.5.3",
+    "@opentui/core-linux-arm64": "0.5.3",
+    "@opentui/core-linux-x64": "0.5.3",
+    "@opentui/core-win32-arm64": "0.5.3",
+    "@opentui/core-win32-x64": "0.5.3",
+    "@types/node": "^26.2.0",
+    "bun-types": "^1.3.14",
+    "typescript": "^7.0.2"
   }
 }

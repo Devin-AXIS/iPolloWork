@@ -18,15 +18,15 @@
     "build": "tsup --config tsup.config.react.ts"
   },
   "dependencies": {
-    "@paper-design/shaders": "0.0.72",
-    "@paper-design/shaders-react": "0.0.72"
+    "@paper-design/shaders": "0.0.80",
+    "@paper-design/shaders-react": "0.0.80"
   },
   "peerDependencies": {
     "react": "^18 || ^19"
   },
   "devDependencies": {
-    "@types/react": "^19.2.14",
+    "@types/react": "^19.2.18",
     "tsup": "^8.5.0",
-    "typescript": "^5.6.3"
+    "typescript": "^7.0.2"
   }
 }
