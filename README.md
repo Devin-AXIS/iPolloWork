@@ -203,6 +203,25 @@ git diff --check
 
 See `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, and `SECURITY.md` for contribution, community, and security policies.
 
+## Compliance and SBOM support
+
+iPolloWork keeps release compliance evidence for dependency review and
+redistribution decisions. Maintainers should generate a dependency license
+report and an SBOM from the locked dependency graph before publishing official
+release artifacts.
+
+- Supported SBOM formats: SPDX and CycloneDX.
+- Generate SBOM artifacts from the same checkout, lockfile, operating system,
+  and architecture used for the release build.
+- Store SBOM artifacts with release evidence or attach them to release notes
+  when they are not committed to the repository.
+- Review unknown, missing, copyleft, custom, vendored, media, font, dataset,
+  and model-file licenses before release.
+
+See [docs/compliance/sbom.md](docs/compliance/sbom.md) for the maintained SBOM
+process. These records do not replace the controlling license text in
+`LICENSE`, third-party license terms, or legal review for release decisions.
+
 ## License
 
 iPolloWork uses the **iPolloWork Source Available License 1.0**:
