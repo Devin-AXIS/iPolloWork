@@ -26,6 +26,11 @@
 - code-related failures:
 - external/env/auth blockers:
 
+## License compliance
+- dependency/license/asset changes: yes/no
+- if yes, reviewed against `docs/compliance/open-source-policy.md`: yes/no/N/A
+- `THIRD_PARTY_NOTICES.md` updated if needed: yes/no/N/A
+
 ## Manual verification
 1.
 2.
