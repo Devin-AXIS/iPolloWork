@@ -924,6 +924,35 @@ jobs:
       RELEASE_TAG: ${{ needs.resolve-release.outputs.release_tag }}
       RELEASE_PRERELEASE: ${{ needs.resolve-release.outputs.prerelease }}
     steps:
+      - name: Publish release checksums
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          release_dir="$RUNNER_TEMP/release-assets"
+          rm -rf "$release_dir"
+          mkdir -p "$release_dir"
+
+          gh release download "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --dir "$release_dir"
+          find "$release_dir" -type f \( -name 'SHA256SUMS*' -o -name '*.sha256' \) -delete
+
+          if ! find "$release_dir" -type f -print -quit | grep -q .; then
+            echo "No release assets found for checksum generation." >&2
+            exit 1
+          fi
+
+          (
+            cd "$release_dir"
+            find . -type f -printf '%P\n' | sort | while IFS= read -r asset; do
+              sha256sum "$asset"
+            done > SHA256SUMS.txt
+          )
+
+          gh release upload "$RELEASE_TAG" "$release_dir/SHA256SUMS.txt" \
+            --repo "$GITHUB_REPOSITORY" --clobber
+
       - name: Publish release after assets are ready
         env:
           GH_TOKEN: ${{ github.token }}
