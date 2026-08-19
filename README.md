@@ -212,6 +212,24 @@ git diff --check
 
 See `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, and `SECURITY.md` for contribution, community, and security policies.
 
+## Compliance
+
+iPolloWork keeps repository-level license compliance materials for GitHub
+review and release preparation:
+
+- `NOTICE` records repository-level copyright, attribution, and trademark
+  notices.
+- [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) summarizes the current third-party dependency
+  license posture and review-required items.
+- [docs/compliance/](docs/compliance/) documents the open source policy, license compliance
+  process, SBOM process, and self-certification record.
+- `.github/workflows/dependency-review.yml` runs GitHub Dependency Review on
+  pull requests that change workspace dependencies.
+
+These materials are process and evidence records. They do not replace the
+controlling license text in `LICENSE`, third-party license terms, or legal
+review for release decisions.
+
 ## License
 
 iPolloWork uses the **iPolloWork Source Available License 1.0**:
