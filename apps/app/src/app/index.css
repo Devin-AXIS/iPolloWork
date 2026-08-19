@@ -185,13 +185,12 @@
   --dls-text-primary: var(--slate-12);
   --dls-text-secondary: var(--slate-11);
   --dls-hover: var(--slate-3);
-  --dls-active: var(--slate-5);
+  --dls-active: var(--slate-4);
   --dls-radius: 16px;
   --dls-radius-lg: 24px;
   --dls-shell-shadow: 0 10px 30px rgba(15, 23, 42, 0.06);
   --dls-card-shadow: 0 8px 24px rgba(15, 23, 42, 0.05);
   --project-dialog-accent: #1fbac0;
-  --project-dialog-accent-strong: #087b82;
   --project-dialog-notice: #f4f4ee;
   --project-dialog-option-border: #e7e7e8;
   --background: var(--slate-1);
@@ -247,7 +246,7 @@
   --dls-text-primary: var(--slate-12);
   --dls-text-secondary: var(--slate-11);
   --dls-hover: var(--slate-3);
-  --dls-active: var(--slate-5);
+  --dls-active: var(--slate-4);
   --dls-shell-shadow: 0 18px 48px rgba(0, 0, 0, 0.32);
   --dls-card-shadow: 0 14px 36px rgba(0, 0, 0, 0.24);
 }
@@ -577,7 +576,6 @@ select:disabled {
 .dark,
 [data-theme="dark"] {
   --project-dialog-accent: #1fbac0;
-  --project-dialog-accent-strong: #a9e7ea;
   --project-dialog-notice: var(--slate-3);
   --project-dialog-option-border: var(--slate-6);
   --background: var(--slate-1);

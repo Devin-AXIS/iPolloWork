@@ -46,6 +46,11 @@ describe("startup session loading", () => {
     expect(sessionRouteSource).toContain(
       'if (startupConversationPhase !== "pending") return;',
     );
+    expect(sessionRouteSource).toContain(
+      "workspaces.find((workspace) => workspace.id === selectedWorkspaceId)?.isDefault !== false",
+    );
+    expect(sessionRouteSource).toContain("if (pendingInitialProjectTask) return;");
+    expect(sessionRouteSource).toMatch(/if \(selectedSessionId\) \{\s+startupConversationPhase = "done";\s+return;/);
     expect(sessionRouteSource).not.toContain("const targetSessionId = remembered");
   });
 

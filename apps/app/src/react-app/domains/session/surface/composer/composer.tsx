@@ -4,6 +4,7 @@ import { AppWindowMac, ArrowUp, Check, ChevronDown, ChevronRight, Code2, FileTex
 import fuzzysort from "fuzzysort";
 import { toast } from "@/components/ui/sonner";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { IPOLLOWORK_EXTENSION_CATALOG, type McpDirectoryInfo } from "@/app/constants";
 import type { CloudImportedPlugin, CloudImportedPluginFile } from "@/app/cloud/import-state";
 import type { iPolloWorkPluginPackageItem } from "@/app/lib/ipollowork-server";
@@ -105,8 +106,10 @@ type ComposerProps = {
   draftScopeKey?: string;
   placeholder?: string;
   layout?: "dock" | "inline";
+  inlineAppearance?: "default" | "engine-selected";
   compactTopSpacing?: boolean;
   topAccessory?: ReactNode;
+  endAccessory?: ReactNode;
 };
 
 const FLUSH_PROMPT_EVENT = "ipollowork:flushPromptDraft";
@@ -300,6 +303,8 @@ export function ReactSessionComposer(props: ComposerProps) {
   const [plusMenuSection, setPlusMenuSection] = useState<PlusMenuSection | null>(null);
   const [toolMenuOpen, setToolMenuOpen] = useState(false);
   const [workModeOpen, setWorkModeOpen] = useState(false);
+  const engineSelectedAppearance = props.layout === "inline" && props.inlineAppearance === "engine-selected";
+  const canSend = props.draft.trim().length > 0 || props.attachments.length > 0 || props.hasPromptContext;
   const [workModes, setWorkModes] = useState<ConversationMode[]>([]);
   const [toolMenuSection, setToolMenuSection] = useState<ToolMenuSection>("commands");
   const [mentionItems, setMentionItems] = useState<MentionItem[]>([]);
@@ -351,6 +356,17 @@ export function ReactSessionComposer(props: ComposerProps) {
   //   a second Escape within that window stops the agent.
   const [escapeArmed, setEscapeArmed] = useState(false);
   const escapeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [emptySubmitHintOpen, setEmptySubmitHintOpen] = useState(false);
+  const emptySubmitHintTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const showEmptySubmitHint = useCallback(() => {
+    if (emptySubmitHintTimerRef.current) clearTimeout(emptySubmitHintTimerRef.current);
+    setEmptySubmitHintOpen(true);
+    emptySubmitHintTimerRef.current = setTimeout(() => {
+      emptySubmitHintTimerRef.current = null;
+      setEmptySubmitHintOpen(false);
+    }, 2_500);
+  }, []);
 
   const disarmEscape = useCallback(() => {
     if (escapeTimerRef.current) {
@@ -381,21 +397,28 @@ export function ReactSessionComposer(props: ComposerProps) {
     }
   }, [props.draft]);
 
+  useEffect(() => {
+    if (canSend) setEmptySubmitHintOpen(false);
+  }, [canSend]);
+
   useEffect(() => () => {
     if (escapeTimerRef.current) clearTimeout(escapeTimerRef.current);
+    if (emptySubmitHintTimerRef.current) clearTimeout(emptySubmitHintTimerRef.current);
   }, []);
 
   // Editor submit (Enter). While idle this sends normally; while busy every
   // submit is queued. Only the explicit Stop control may interrupt a run.
   const handleEditorSubmit = useCallback(() => {
-    const hasContent = props.draft.trim().length > 0 || props.attachments.length > 0 || props.hasPromptContext;
-    if (!hasContent) return;
+    if (!canSend) {
+      showEmptySubmitHint();
+      return;
+    }
     if (props.busy) {
       void props.onQueue();
       return;
     }
     void props.onSend();
-  }, [props.busy, props.draft, props.attachments, props.hasPromptContext, props.onSend, props.onQueue]);
+  }, [canSend, props.busy, props.onSend, props.onQueue, showEmptySubmitHint]);
 
   const slashCommandQuery = getSlashCommandQuery(props.draft);
   const slashOpenNext = slashCommandQuery !== null;
@@ -786,8 +809,6 @@ export function ReactSessionComposer(props: ComposerProps) {
     !builtInExtensionsDisabled &&
     !isiPolloWorkExtensionHidden(entry) && isComposerExtensionAvailable(entry)
   );
-  const canSend = props.draft.trim().length > 0 || props.attachments.length > 0 || props.hasPromptContext;
-
   useEffect(() => {
     if (!toolMenuSection.startsWith("plugin:")) return;
     if (activePlugin) return;
@@ -1227,8 +1248,8 @@ export function ReactSessionComposer(props: ComposerProps) {
       <div className="max-w-[800px] mx-auto">
         {/* Main composer panel */}
         <div
-          className={`relative overflow-visible rounded-[18px] border border-transparent bg-dls-surface shadow-[0_4px_12.9px_rgba(80,130,222,0.20)] transition-all ${props.layout === "inline" ? "new-conversation-composer dark:bg-[#343434] dark:shadow-[0_4px_9.5px_rgba(113,156,234,0.53)]" : ""} ${panelRoundedClass}`}
-          style={{
+          className={`relative overflow-visible rounded-[18px] border bg-dls-surface transition-all ${engineSelectedAppearance ? "border-sky-8 shadow-[var(--dls-card-shadow)]" : "border-transparent shadow-[0_4px_12.9px_rgba(80,130,222,0.20)]"} ${props.layout === "inline" ? `new-conversation-composer dark:bg-[#343434] ${engineSelectedAppearance ? "" : "dark:shadow-[0_4px_9.5px_rgba(113,156,234,0.53)]"}` : ""} ${panelRoundedClass}`}
+          style={engineSelectedAppearance ? undefined : {
             backgroundImage: `linear-gradient(${props.layout === "inline" ? "var(--new-conversation-composer-surface, var(--dls-surface))" : "var(--dls-surface)"}, ${props.layout === "inline" ? "var(--new-conversation-composer-surface, var(--dls-surface))" : "var(--dls-surface)"}), linear-gradient(90deg, #7FCDFF 0%, #FFE67D 100%)`,
             backgroundOrigin: "border-box",
             backgroundClip: "padding-box, border-box",
@@ -1376,7 +1397,7 @@ export function ReactSessionComposer(props: ComposerProps) {
 
             {/* Action row — attachments, quick actions, model controls, and send */}
             <div className="mt-2 flex min-w-0 items-end justify-between gap-2">
-              <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5 overflow-visible">
+              <div className="flex min-w-0 flex-1 flex-wrap items-center gap-0 overflow-visible">
                 <input
                   ref={(element) => {
                     fileInput = element ?? undefined;
@@ -1390,10 +1411,10 @@ export function ReactSessionComposer(props: ComposerProps) {
                     event.currentTarget.value = "";
                   }}
                 />
-                <div ref={plusMenuRef} className="relative">
+                <div ref={plusMenuRef} className="relative me-1.5">
                   <button
                     type="button"
-                    className={`inline-flex h-9 max-h-9 w-9 items-center justify-center rounded-md transition-colors ${plusMenuOpen ? "bg-gray-3 text-gray-12" : "text-gray-10 hover:bg-gray-3"}`}
+                    className={`inline-flex items-center justify-center rounded-md transition-colors ${props.layout === "inline" ? "h-8 px-2" : "h-9 max-h-9 w-9"} ${plusMenuOpen ? "bg-gray-3 text-gray-12" : "bg-transparent text-gray-10 hover:bg-gray-3"}`}
                     onClick={() => {
                       setWorkModeOpen(false);
                       setToolMenuOpen(false);
@@ -1713,9 +1734,9 @@ export function ReactSessionComposer(props: ComposerProps) {
                     type="button"
                     disabled={props.busy || props.modeSelectionDisabled}
                     aria-label={`${t("composer.work_mode_label")}: ${activeWorkMode.label}`}
-                    className="inline-flex items-center gap-1.5 rounded-full bg-gray-2 px-3 py-1.5 text-sm text-gray-11 transition-colors hover:bg-gray-3 hover:text-gray-12 disabled:pointer-events-none disabled:opacity-60"
+                    className="inline-flex h-8 items-center gap-1.5 rounded-full bg-transparent px-2 text-[12px] leading-[18px] text-gray-10 transition-colors hover:bg-gray-3 hover:text-gray-12 data-[state=open]:bg-gray-3 data-[state=open]:text-gray-12 disabled:pointer-events-none disabled:opacity-60"
                   >
-                    <WorkModeIcon icon={activeWorkMode.icon} className="size-3.5 shrink-0" />
+                    {props.layout === "inline" ? null : <WorkModeIcon icon={activeWorkMode.icon} className="size-3.5 shrink-0" />}
                     <span>{activeWorkMode.label}</span>
                     <ChevronDown className="size-4 shrink-0" />
                   </PopoverTrigger>
@@ -1746,7 +1767,7 @@ export function ReactSessionComposer(props: ComposerProps) {
                 {props.modelUnavailable ? (
                   <button
                     type="button"
-                    className="text-xs font-medium text-red-10 underline-offset-2 hover:underline"
+                    className="ms-1.5 text-xs font-medium text-red-10 underline-offset-2 hover:underline"
                     onClick={() => props.onModelPickerOpenChange(true)}
                   >
                     {t("composer.model_unavailable")}
@@ -1763,6 +1784,7 @@ export function ReactSessionComposer(props: ComposerProps) {
                   Escape arms a "Hit Escape again to stop the agent" prompt.
               */}
               <div className="ml-auto flex min-w-0 shrink-0 items-end gap-1.5">
+                {props.endAccessory}
                 {props.busy ? (
                   <>
                     {escapeArmed ? (
@@ -1800,21 +1822,37 @@ export function ReactSessionComposer(props: ComposerProps) {
                     </button>
                   </>
                 ) : (
-                  <button
-                    type="button"
-                    onClick={canSend ? props.onSend : undefined}
-                    disabled={props.disabled || !canSend}
-                    className={`inline-flex h-8 max-h-8 w-8 items-center justify-center rounded-full transition-colors ${
-                      !canSend || props.disabled
-                        ? "bg-gray-2 text-gray-10"
-                        : props.layout === "inline"
-                          ? "bg-[var(--dls-accent)] text-[var(--dls-accent-fg)] hover:bg-[var(--dls-accent-hover)] dark:bg-white dark:text-black dark:hover:bg-white/90"
-                          : "bg-[var(--dls-accent)] text-[var(--dls-accent-fg)] hover:bg-[var(--dls-accent-hover)]"
-                    }`}
-                    title={t("composer.run_task")}
-                  >
-                    <ArrowUp size={15} />
-                  </button>
+                  <Tooltip open={emptySubmitHintOpen}>
+                    <TooltipTrigger
+                      render={(
+                        <button
+                          type="button"
+                          onClick={canSend ? props.onSend : showEmptySubmitHint}
+                          disabled={props.disabled}
+                          className={`inline-flex h-8 max-h-8 w-8 items-center justify-center rounded-full transition-colors ${
+                            props.disabled
+                              ? "bg-gray-2 text-gray-10"
+                              : !canSend
+                                ? "bg-gray-9 text-white hover:bg-gray-10"
+                                : props.layout === "inline"
+                                  ? "bg-[var(--dls-accent)] text-[var(--dls-accent-fg)] hover:bg-[var(--dls-accent-hover)] dark:bg-white dark:text-black dark:hover:bg-white/90"
+                                  : "bg-[var(--dls-accent)] text-[var(--dls-accent-fg)] hover:bg-[var(--dls-accent-hover)]"
+                          }`}
+                          title={t("composer.run_task")}
+                        >
+                          <ArrowUp size={15} />
+                        </button>
+                      )}
+                    />
+                    <TooltipContent
+                      side="top"
+                      sideOffset={10}
+                      className="max-w-none whitespace-nowrap rounded-2xl px-4 py-3 text-sm font-medium"
+                      data-testid="composer-empty-submit-hint"
+                    >
+                      {t("composer.empty_submit_hint")}
+                    </TooltipContent>
+                  </Tooltip>
                 )}
               </div>
             </div>

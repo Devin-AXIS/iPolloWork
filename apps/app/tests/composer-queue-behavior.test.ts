@@ -44,6 +44,19 @@ describe("composer queue behavior", () => {
     expect(composerSource).not.toContain("onSteer:");
   });
 
+  test("keeps the empty idle submit actionable and explains why it cannot send", () => {
+    const idleAction = composerSource.slice(
+      composerSource.indexOf('<Tooltip open={emptySubmitHintOpen}>'),
+      composerSource.indexOf('<Tooltip open={emptySubmitHintOpen}>') + 3000,
+    );
+
+    expect(idleAction).toContain("onClick={canSend ? props.onSend : showEmptySubmitHint}");
+    expect(idleAction).toContain("disabled={props.disabled}");
+    expect(idleAction).not.toContain("disabled={props.disabled || !canSend}");
+    expect(idleAction).toContain('"bg-gray-9 text-white hover:bg-gray-10"');
+    expect(idleAction).toContain('t("composer.empty_submit_hint")');
+  });
+
   test("drains queued drafts one at a time", () => {
     expect(sessionSurfaceSource).not.toContain("function mergeDrafts(");
     expect(sessionSurfaceSource).toContain("const next = queuedDrafts[0]");

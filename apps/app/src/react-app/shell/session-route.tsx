@@ -208,6 +208,12 @@ function focusPromptSoon() {
 let firstRunLoaderPhase: "unarmed" | "armed" | "done" = "unarmed";
 let startupConversationPhase: "pending" | "creating" | "done" = "pending";
 
+type PendingInitialProjectTask = {
+  workspaceId: string;
+  sessionId: string | null;
+  draft: ComposerDraft;
+};
+
 export function SessionRoute() {
   const navigate = useNavigate();
   const denAuth = useDenAuth();
@@ -217,6 +223,9 @@ export function SessionRoute() {
   const [ipolloworkServerHostInfoState, setiPolloWorkServerHostInfoState] = useState<iPolloWorkServerInfo | null>(null);
   const [, setiPolloWorkServerSettingsVersion] = useState(0);
   const [activeWorkContextId, setActiveWorkContextId] = useState(() => readActiveWorkContextId());
+  const [pendingInitialProjectTask, setPendingInitialProjectTask] = useState<PendingInitialProjectTask | null>(null);
+  const initialProjectSessionCreatingRef = useRef(false);
+  const initialProjectDraftSendingRef = useRef(false);
   const {
     navigateToWorkspaceSession,
     selectedSessionId,
@@ -502,14 +511,7 @@ export function SessionRoute() {
       void endpoint.client.activateWorkspace(endpoint.workspaceId, { persist: true }).catch(() => undefined);
     }
 
-    const rememberedSessionId = readLastSessionFor(workspaceId);
-    const loadedSessions = sessionsByWorkspaceIdRef.current[workspaceId];
-    const restoredSessionId = rememberedSessionId && (
-      loadedSessions === undefined || loadedSessions.some((session) => session.id === rememberedSessionId)
-    )
-      ? rememberedSessionId
-      : null;
-    navigateToWorkspaceSession(workspaceId, restoredSessionId);
+    navigateToWorkspaceSession(workspaceId);
     return true;
   }, [
     activeWorkContextId,
@@ -517,7 +519,6 @@ export function SessionRoute() {
     loadWorkspaceSessionsInBackground,
     navigateToWorkspaceSession,
     sessionsByWorkspaceId,
-    sessionsByWorkspaceIdRef,
     setLegacySelectedWorkspaceId,
     setRetryingWorkspaceIds,
     workspaces,
@@ -586,6 +587,7 @@ export function SessionRoute() {
     rememberProjectForWorkContext(activeWorkContextId, project.id);
     await refreshRouteState();
     navigateToWorkspaceSession(project.id);
+    return project.id;
   }, [activeWorkContextId, client, navigateToWorkspaceSession, refreshRouteState, setLegacySelectedWorkspaceId, workspaces]);
 
   const renameProject = useCallback(async (workspaceId: string, name: string) => {
@@ -606,7 +608,8 @@ export function SessionRoute() {
 
   const deleteProject = useCallback(async (workspaceId: string) => {
     if (workspaces.length <= 1) throw new Error(t("projects.keep_one"));
-    const fallback = workspaces.find((workspace) => workspace.id !== workspaceId);
+    const fallback = workspaces.find((workspace) => workspace.id !== workspaceId && !workspace.isDefault)
+      ?? workspaces.find((workspace) => workspace.id !== workspaceId);
     if (!fallback) throw new Error(t("projects.keep_one"));
     if (client) await client.deleteWorkspace(workspaceId);
     if (isDesktopRuntime()) await workspaceForget(workspaceId);
@@ -954,7 +957,7 @@ export function SessionRoute() {
   }, [selectedWorkspaceEndpoint]);
 
   const surfaceProps = useMemo(() => {
-    if (!client || !selectedWorkspaceId || !selectedSessionId || !opencodeBaseUrl || !token || !conversation) {
+    if (!client || !selectedWorkspaceId || !opencodeBaseUrl || !token || !conversation) {
       return null;
     }
     // Transient-safety: when the user switches workspaces the URL-driven
@@ -1535,13 +1538,75 @@ export function SessionRoute() {
     }
   }, [baseUrl, loading, navigateToWorkspaceSession, refreshRouteState, rememberPendingCreatedSession, token, workspaces]);
 
+  const handleCreateInitialProjectTask = useCallback(async (draft: ComposerDraft) => {
+    if (pendingInitialProjectTask) return false;
+    try {
+      const workspaceId = await createProject({
+        name: t("session.untitled"),
+        folderPath: "",
+        engineId: DEFAULT_ENGINE_ID,
+      });
+      if (!workspaceId) return false;
+      setPendingInitialProjectTask({ workspaceId, sessionId: null, draft });
+      return true;
+    } catch (error) {
+      toast.error(t("projects.create_failed"), {
+        description: error instanceof Error ? error.message : t("app.unknown_error"),
+      });
+      return false;
+    }
+  }, [createProject, pendingInitialProjectTask]);
+
+  useEffect(() => {
+    const pending = pendingInitialProjectTask;
+    if (!pending || pending.sessionId || initialProjectSessionCreatingRef.current) return;
+    if (!workspaces.some((workspace) => workspace.id === pending.workspaceId)) return;
+    initialProjectSessionCreatingRef.current = true;
+    void handleCreateTaskInWorkspace(pending.workspaceId).then((sessionId) => {
+      if (!sessionId) {
+        setPendingInitialProjectTask(null);
+        return;
+      }
+      saveSessionDraft(pending.workspaceId, sessionId, {
+        text: pending.draft.text,
+        mode: pending.draft.mode,
+      });
+      setPendingInitialProjectTask((current) => current?.workspaceId === pending.workspaceId
+        ? { ...current, sessionId }
+        : current);
+    }).finally(() => {
+      initialProjectSessionCreatingRef.current = false;
+    });
+  }, [handleCreateTaskInWorkspace, pendingInitialProjectTask, workspaces]);
+
+  useEffect(() => {
+    const pending = pendingInitialProjectTask;
+    if (
+      !pending?.sessionId
+      || selectedWorkspaceId !== pending.workspaceId
+      || selectedSessionId !== pending.sessionId
+      || !surfaceProps
+      || initialProjectDraftSendingRef.current
+    ) return;
+    initialProjectDraftSendingRef.current = true;
+    void Promise.resolve(surfaceProps.onSendDraft(pending.draft, pending.sessionId))
+      .catch((error) => {
+        toast.error(error instanceof Error ? error.message : t("app.unknown_error"));
+      })
+      .finally(() => {
+        initialProjectDraftSendingRef.current = false;
+        setPendingInitialProjectTask(null);
+      });
+  }, [pendingInitialProjectTask, selectedSessionId, selectedWorkspaceId, surfaceProps]);
+
   // Full-screen first-run loader. Armed once per app launch from the very
   // first render of a brand-new profile (no active-workspace memory yet) and
   // held through all boot-state churn AND route remounts — recomputing
   // visibility from volatile route state made it flicker, and a remount
   // would reset component state. It drops only when the first session is
-  // selected, on error (retry toast must be reachable), when state settles
-  // and this turns out not to be a first run, or after a safety timeout.
+  // selected, when the project-first starter is ready, on error (retry toast
+  // must be reachable), when state settles and this turns out not to be a
+  // first run, or after a safety timeout.
   const [firstRunLoaderActive, setFirstRunLoaderActive] = useState(() => {
     if (firstRunLoaderPhase === "unarmed") {
       firstRunLoaderPhase = isDesktopRuntime() && !readActiveWorkspaceId() ? "armed" : "done";
@@ -1571,6 +1636,14 @@ export function SessionRoute() {
       dismissFirstRunLoader();
       return;
     }
+    if (
+      !loading
+      && selectedWorkspaceId
+      && !workspaces.some((workspace) => !workspace.isDefault)
+    ) {
+      dismissFirstRunLoader();
+      return;
+    }
     // State settled and this profile already has sessions or last-session
     // memory (not a first run): hand back to the normal UI. Skipped once the
     // auto-create below has latched — our own just-created session briefly
@@ -1584,19 +1657,25 @@ export function SessionRoute() {
     ) {
       dismissFirstRunLoader();
     }
-  }, [sessionsByWorkspaceId, firstRunLoaderActive, dismissFirstRunLoader, selectedSessionId, routeError, selectedWorkspaceError, errorsByWorkspaceId, loading, selectedWorkspaceId]);
+  }, [sessionsByWorkspaceId, firstRunLoaderActive, dismissFirstRunLoader, selectedSessionId, routeError, selectedWorkspaceError, errorsByWorkspaceId, loading, selectedWorkspaceId, workspaces]);
 
   // Every desktop launch starts in a fresh conversation. Historical session
   // resources remain idle until the user explicitly opens that session.
   useEffect(() => {
     if (!canCreateSession || !isDesktopRuntime()) return;
-    if (loading || selectedSessionId || !selectedWorkspaceId) return;
+    if (selectedSessionId) {
+      startupConversationPhase = "done";
+      return;
+    }
+    if (loading || !selectedWorkspaceId) return;
+    if (pendingInitialProjectTask) return;
+    if (workspaces.find((workspace) => workspace.id === selectedWorkspaceId)?.isDefault !== false) return;
     if (startupConversationPhase !== "pending") return;
     startupConversationPhase = "creating";
     void handleCreateTaskInWorkspace(selectedWorkspaceId).then((createdSessionId) => {
       startupConversationPhase = createdSessionId ? "done" : "pending";
     });
-  }, [canCreateSession, loading, selectedSessionId, selectedWorkspaceId, handleCreateTaskInWorkspace]);
+  }, [canCreateSession, loading, pendingInitialProjectTask, selectedSessionId, selectedWorkspaceId, handleCreateTaskInWorkspace, workspaces]);
 
   const {
     commandPaletteOpen,
@@ -1979,6 +2058,7 @@ export function SessionRoute() {
         },
         onSelectProject: selectProject,
         onCreateProject: createProject,
+        onCreateInitialProjectTask: handleCreateInitialProjectTask,
         onRenameProject: renameProject,
         onRevealProject: revealProject,
         onDeleteProject: deleteProject,

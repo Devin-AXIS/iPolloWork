@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { formatProcessDuration } from "../src/components/chat/utils";
 
 describe("session output issue regressions", () => {
-  test("shows the active workspace engine in the centered session header badge", () => {
+  test("shows the active workspace engine beside the session composer", () => {
     const sessionPageSource = readFileSync(
       new URL("../src/react-app/domains/session/chat/session-page.tsx", import.meta.url),
       "utf8",
@@ -13,12 +13,13 @@ describe("session output issue regressions", () => {
       "utf8",
     );
 
-    expect(sessionPageSource).toContain("function SessionEngineBadge");
+    expect(sessionPageSource).toContain("function ProjectEngineBadge");
     expect(sessionPageSource).toContain("data-engine-id={isDeepSeekHarness ? DEEPSEEK_HARNESS_ENGINE_ID : DEFAULT_ENGINE_ID}");
     expect(sessionPageSource).toContain('t(isDeepSeekHarness ? "projects.engine_dsh" : "projects.engine_opencode")');
-    expect(sessionPageSource).toContain("<SessionEngineBadge engineId={props.selectedWorkspaceDisplay.engineId} />");
-    expect(sessionPageSource).toContain("md:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)]");
-    expect(sessionPageSource).toContain('className="pointer-events-none hidden md:flex md:justify-self-center"');
+    expect(sessionPageSource).toContain("composerEndAccessory={(");
+    expect(sessionPageSource).toContain('testId="session-composer-engine-badge"');
+    expect(sessionPageSource).not.toContain("SessionEngineBadge");
+    expect(sessionPageSource).not.toContain('className="pointer-events-none hidden md:flex md:justify-self-center"');
     expect(sessionRouteSource).toContain("engineId: activeEngineId");
   });
 

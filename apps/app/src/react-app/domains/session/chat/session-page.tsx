@@ -30,6 +30,7 @@ import { getDisplaySessionTitle } from "../../../../app/lib/session-title";
 import type { BootPhase } from "../../../../app/lib/startup-boot";
 import { openDesktopPath, pickDirectory, revealDesktopItemInDir, saveFile, type WorkspaceInfo } from "../../../../app/lib/desktop";
 import type {
+  ComposerAttachment,
   ComposerDraft,
   ProviderListItem,
   TodoItem,
@@ -47,7 +48,6 @@ import {
   getArtifactsFromMessages,
 } from "@/lib/artifacts";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import {
@@ -71,6 +71,13 @@ import { AppSidebar } from "../sidebar/app-sidebar";
 import type { iPolloWorkSessionType, iPolloWorkTemplateId } from "../sidebar/app-sidebar-provider";
 import { readSessionType, sessionTypeForTemplate, setSessionType } from "../sidebar/session-type";
 import { SessionSurface, type SessionSurfaceProps } from "../surface/session-surface";
+import { ReactSessionComposer } from "../surface/composer/composer";
+import {
+  NewConversationStarter,
+  newConversationPlaceholder,
+  type NewConversationMode,
+  type StarterCapability,
+} from "@/components/chat/new-conversation-starter";
 import { replaceDesignSelectionToken } from "../surface/composer/composer-draft";
 import { getComposerDraft, useComposerStateStore } from "../surface/composer-state-store";
 import {
@@ -138,6 +145,8 @@ import { cn } from "@/lib/utils";
 import { useActiveEnterpriseConnection } from "@/react-app/domains/enterprise/use-active-enterprise-connection";
 import { useInstalledPluginContributions } from "@/react-app/plugin-ui/plugin-ui-contributions";
 import type { WorkspaceAppModelContext } from "@/react-app/plugin-ui/workspace-app-frame";
+import projectEngineDeepSeekIcon from "./assets/project-engine-deepseek.png";
+import projectEngineOpenCodeIcon from "./assets/project-engine-opencode.svg";
 import projectEngineSelectedIcon from "./assets/project-engine-selected.svg";
 import projectEngineUnselectedIcon from "./assets/project-engine-unselected.svg";
 
@@ -167,26 +176,146 @@ type TemplateSessionData = {
   hasBrief: boolean;
 };
 
-function SessionEngineBadge({ engineId }: { engineId?: string | null }) {
+function ProjectEngineBadge({
+  engineId,
+  testId,
+}: {
+  engineId?: string | null;
+  testId?: string;
+}) {
   const isDeepSeekHarness = engineId?.trim() === DEEPSEEK_HARNESS_ENGINE_ID;
   const label = t(isDeepSeekHarness ? "projects.engine_dsh" : "projects.engine_opencode");
-  const Icon = isDeepSeekHarness ? Zap : Code2;
   return (
-    <Badge
-      variant="outline"
-      data-engine-id={isDeepSeekHarness ? DEEPSEEK_HARNESS_ENGINE_ID : DEFAULT_ENGINE_ID}
-      aria-label={label}
-      title={label}
-      className={cn(
-        "h-6 gap-1.5 rounded-full px-2.5 text-[11px] font-semibold tracking-[-0.01em] shadow-[0_1px_2px_rgb(0_0_0/0.04),inset_0_1px_0_rgb(255_255_255/0.35)] backdrop-blur-md",
-        isDeepSeekHarness
-          ? "border-[rgba(124,58,237,0.24)] bg-[linear-gradient(90deg,rgba(139,92,246,0.13),rgba(99,102,241,0.11),rgba(59,130,246,0.09))] text-[#6d28d9] dark:border-[rgba(167,139,250,0.28)] dark:text-[#ddd6fe]"
-          : "border-[rgba(5,150,105,0.24)] bg-[linear-gradient(90deg,rgba(16,185,129,0.13),rgba(20,184,166,0.11),rgba(6,182,212,0.09))] text-[#047857] dark:border-[rgba(52,211,153,0.28)] dark:text-[#a7f3d0]",
-      )}
+    <Tooltip>
+      <TooltipTrigger
+        render={(
+          <div
+            data-testid={testId}
+            data-engine-id={isDeepSeekHarness ? DEEPSEEK_HARNESS_ENGINE_ID : DEFAULT_ENGINE_ID}
+            aria-label={`${label} · ${t("projects.engine_running")}`}
+            tabIndex={0}
+            className="inline-flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-full bg-dls-canvas px-4 py-2 text-[13px] font-medium leading-[18px] text-dls-text transition-colors hover:bg-dls-surface-muted focus-visible:bg-dls-surface-muted focus-visible:outline-none"
+          >
+            <span className="size-1.5 rounded-full bg-green-9" aria-hidden="true" />
+            <span className="whitespace-nowrap">{label}</span>
+          </div>
+        )}
+      />
+      <TooltipContent>{t("projects.engine_running")}</TooltipContent>
+    </Tooltip>
+  );
+}
+
+function ProjectHeaderButton({ projectName }: { projectName: string }) {
+  const [tooltipOpen, setTooltipOpen] = useState(false);
+
+  return (
+    <Tooltip open={tooltipOpen} onOpenChange={setTooltipOpen}>
+      <TooltipTrigger
+        render={(
+          <button
+            type="button"
+            data-testid="session-header-project"
+            aria-label={projectName}
+            className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-dls-canvas text-dls-text transition-colors hover:bg-dls-surface-muted focus-visible:bg-dls-surface-muted focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none mac:titlebar-no-drag"
+            onClick={() => {
+              window.setTimeout(() => setTooltipOpen(true), 0);
+            }}
+          >
+            <span className="flex size-4 items-center justify-center" aria-hidden="true">
+              <img
+                src={publicAssetUrl("sidebar-icon/figma-folder-closed.svg")}
+                alt=""
+                className="h-auto w-3.5 dark:invert"
+              />
+            </span>
+          </button>
+        )}
+      />
+      <TooltipContent side="bottom" align="start">{projectName}</TooltipContent>
+    </Tooltip>
+  );
+}
+
+function ProjectEngineOptions({
+  value,
+  onValueChange,
+  disabled = false,
+}: {
+  value: BuiltInWorkspaceEngineId;
+  onValueChange: (engineId: BuiltInWorkspaceEngineId) => void;
+  disabled?: boolean;
+}) {
+  return (
+    <RadioGroup
+      value={value}
+      onValueChange={(engineId) => {
+        if (engineId === DEFAULT_ENGINE_ID || engineId === DEEPSEEK_HARNESS_ENGINE_ID) {
+          onValueChange(engineId);
+        }
+      }}
+      disabled={disabled}
+      aria-label={t("projects.default_engine")}
+      className="grid w-full grid-cols-1 gap-4 sm:grid-cols-2"
     >
-      <Icon className="size-3.5" aria-hidden="true" />
-      <span>{label}</span>
-    </Badge>
+      {[
+        {
+          id: DEFAULT_ENGINE_ID,
+          name: t("projects.engine_opencode"),
+          description: t("projects.engine_opencode_description"),
+          icon: projectEngineOpenCodeIcon,
+          iconClassName: "h-6 w-[19px] dark:invert",
+        },
+        {
+          id: DEEPSEEK_HARNESS_ENGINE_ID,
+          name: t("projects.engine_dsh"),
+          description: t("projects.engine_dsh_description"),
+          icon: projectEngineDeepSeekIcon,
+          iconClassName: "h-6 w-[33px]",
+        },
+      ].map((engine) => {
+        const selected = value === engine.id;
+        return (
+          <label
+            key={engine.id}
+            data-testid="project-engine-option"
+            data-engine-id={engine.id}
+            data-state={selected ? "selected" : "default"}
+            className={cn(
+              "relative flex min-h-[120px] w-full cursor-pointer flex-col gap-2 rounded-lg border-2 bg-transparent p-4 text-left transition-colors has-focus-visible:ring-3 has-focus-visible:ring-ring/30",
+              selected
+                ? "border-[var(--project-dialog-accent)]"
+                : "border-[var(--project-dialog-option-border)] hover:bg-dls-canvas",
+              disabled && "pointer-events-none opacity-50",
+            )}
+          >
+            <RadioGroupItem
+              value={engine.id}
+              disabled={disabled}
+              className="absolute inset-0 z-10 size-full cursor-pointer opacity-0"
+            />
+            <span className="flex items-start justify-between gap-3">
+              <span className="flex flex-col items-start gap-1.5">
+                <img
+                  src={engine.icon}
+                  alt=""
+                  className={cn("shrink-0 object-contain", engine.iconClassName)}
+                />
+                <span className="text-sm font-semibold leading-6 text-foreground">
+                  {engine.name}
+                </span>
+              </span>
+              <img
+                src={selected ? projectEngineSelectedIcon : projectEngineUnselectedIcon}
+                alt=""
+                className={cn("size-4 shrink-0", selected && "dark:invert")}
+              />
+            </span>
+            <span className="text-xs leading-[22px] text-muted-foreground">{engine.description}</span>
+          </label>
+        );
+      })}
+    </RadioGroup>
   );
 }
 
@@ -215,7 +344,8 @@ export type SessionPageSidebarProps = {
     name: string;
     folderPath: string;
     engineId: BuiltInWorkspaceEngineId;
-  }) => Promise<void> | void;
+  }) => Promise<string | null> | string | null | void;
+  onCreateInitialProjectTask: (draft: ComposerDraft) => Promise<boolean>;
   onRenameProject: (workspaceId: string, name: string) => Promise<void> | void;
   onRevealProject: (workspaceId: string) => Promise<void> | void;
   onDeleteProject: (workspaceId: string) => Promise<void> | void;
@@ -302,6 +432,175 @@ export type SessionPageProps = {
   terminalOpen?: boolean;
   onTerminalOpenChange?: (open: boolean) => void;
 };
+
+function InitialProjectTaskStarter({
+  surface,
+  onSubmit,
+}: {
+  surface: SessionPageSurfaceProps;
+  onSubmit: (draft: ComposerDraft) => Promise<boolean>;
+}) {
+  const [draft, setDraft] = useState("");
+  const [attachments, setAttachments] = useState<ComposerAttachment[]>([]);
+  const attachmentsRef = useRef<ComposerAttachment[]>([]);
+  const [starterMode, setStarterMode] = useState<NewConversationMode>("work");
+  const [starterCapability, setStarterCapability] = useState<StarterCapability | null>(null);
+  const [sending, setSending] = useState(false);
+
+  useEffect(() => {
+    attachmentsRef.current = attachments;
+  }, [attachments]);
+
+  useEffect(() => () => {
+    attachmentsRef.current.forEach((attachment) => {
+      if (attachment.previewUrl) URL.revokeObjectURL(attachment.previewUrl);
+    });
+  }, []);
+
+  const clearSubmittedDraft = (submittedAttachments: ComposerAttachment[]) => {
+    submittedAttachments.forEach((attachment) => {
+      if (attachment.previewUrl) URL.revokeObjectURL(attachment.previewUrl);
+    });
+    setDraft("");
+    setAttachments([]);
+    setStarterCapability(null);
+  };
+
+  const submitDraft = async (composerDraft: ComposerDraft) => {
+    setSending(true);
+    try {
+      const created = await onSubmit(composerDraft);
+      if (!created) return false;
+      clearSubmittedDraft(composerDraft.attachments);
+      return true;
+    } finally {
+      setSending(false);
+    }
+  };
+
+  const submit = async () => {
+    const text = draft.trim();
+    if (!text && attachments.length === 0 && !starterCapability) return;
+    const parts: ComposerDraft["parts"] = text ? [{ type: "text", text }] : [];
+    const composerDraft: ComposerDraft = {
+      mode: "prompt",
+      parts,
+      attachments,
+      text,
+      resolvedText: text,
+      capability: starterCapability
+        ? { id: starterCapability.id, instruction: starterCapability.instruction }
+        : undefined,
+    };
+    await submitDraft(composerDraft);
+  };
+
+  const attachFiles = (files: File[]) => {
+    const next = files
+      .filter((file) => file.size <= 25 * 1024 * 1024)
+      .map((file): ComposerAttachment => {
+        const image = file.type.startsWith("image/");
+        return {
+          id: `${file.name}-${file.lastModified}-${Math.random().toString(36).slice(2)}`,
+          name: file.name,
+          mimeType: file.type || "application/octet-stream",
+          size: file.size,
+          kind: image ? "image" : "file",
+          file,
+          previewUrl: image ? URL.createObjectURL(file) : undefined,
+        };
+      });
+    setAttachments((current) => [...current, ...next]);
+  };
+
+  const removeAttachment = (id: string) => {
+    setAttachments((current) => {
+      const target = current.find((attachment) => attachment.id === id);
+      if (target?.previewUrl) URL.revokeObjectURL(target.previewUrl);
+      return current.filter((attachment) => attachment.id !== id);
+    });
+  };
+
+  return (
+    <div className="flex h-full min-h-0 justify-center overflow-y-auto bg-background px-5" data-testid="initial-project-task-starter">
+      <div className="flex min-h-full w-full max-w-[800px] flex-col justify-center pb-[max(64px,env(safe-area-inset-bottom))] pt-8 has-[[data-testid=new-conversation-template-strip]]:justify-start">
+        <div data-testid="new-conversation-starter-slot" className="shrink-0">
+          <NewConversationStarter
+            selectedMode={starterMode}
+            selectedCapabilityId={starterCapability?.id}
+            onSelectMode={(mode) => {
+              setStarterMode(mode);
+              setStarterCapability(null);
+            }}
+            onSelectPrompt={(prompt, capability) => {
+              setStarterCapability(capability ?? null);
+              if (prompt) setDraft(prompt);
+              window.dispatchEvent(new Event("ipollowork:focusPrompt"));
+            }}
+          />
+        </div>
+        <div data-testid="new-conversation-starter-composer-shell" className="mt-6 w-full max-w-[616px] shrink-0">
+          <ReactSessionComposer
+            draft={draft}
+            mentions={{}}
+            onDraftChange={setDraft}
+            onSend={submit}
+            onQueue={submit}
+            onStop={() => {}}
+            busy={sending}
+            queuedCount={0}
+            disabled={sending || Boolean(surface.modelUnavailable)}
+            modelUnavailable={Boolean(surface.modelUnavailable)}
+            statusLabel=""
+            modelPickerOpen={surface.modelPickerOpen}
+            selectedModel={surface.selectedModel}
+            onModelPickerOpenChange={surface.onModelPickerOpenChange}
+            onModelChange={surface.onModelChange}
+            onConfigureModels={surface.onConfigureModels}
+            onConfigureTokenStar={surface.onConfigureTokenStar}
+            attachments={attachments}
+            hasPromptContext={Boolean(starterCapability)}
+            onAttachFiles={attachFiles}
+            onRemoveAttachment={removeAttachment}
+            modelVariantLabel={surface.modelVariantLabel}
+            modelVariant={surface.modelVariant}
+            modelBehaviorOptions={surface.modelBehaviorOptions}
+            onModelVariantChange={surface.onModelVariantChange}
+            selectedMode={surface.selectedMode}
+            listModes={surface.listModes}
+            onSelectMode={surface.onSelectMode}
+            listAgents={surface.listAgents}
+            onSelectAgent={surface.onSelectAgent}
+            listCommands={surface.listCommands}
+            listExternalAgents={() => Promise.resolve([])}
+            onOpenSettingsSection={surface.onOpenSettingsSection}
+            recentFiles={[]}
+            searchFiles={() => Promise.resolve([])}
+            onInsertMention={(_kind, value) => setDraft((current) => `${current}@${value} `)}
+            onPasteText={(text) => setDraft((current) => `${current}${text}`)}
+            onUnsupportedFileLinks={(links) => setDraft((current) => `${current}${links.join("\n")}`)}
+            pastedText={[]}
+            onExpandPastedText={() => {}}
+            onRemovePastedText={() => {}}
+            isRemoteWorkspace={false}
+            isSandboxWorkspace={false}
+            onUploadInboxFiles={null}
+            draftScopeKey="initial-project-task"
+            layout="inline"
+            inlineAppearance="engine-selected"
+            placeholder={newConversationPlaceholder()}
+            endAccessory={(
+              <ProjectEngineBadge
+                engineId={DEFAULT_ENGINE_ID}
+                testId="initial-project-engine-badge"
+              />
+            )}
+          />
+        </div>
+      </div>
+    </div>
+  );
+}
 
 function getSidebarInitialLoading(props: SessionPageSidebarProps) {
   if (props.projectSessionLists.some((project) => project.sessions.length > 0)) {
@@ -653,6 +952,9 @@ export function SessionPage(props: SessionPageProps) {
     () => sessionTitleForId(props.sidebar.projectSessionLists, props.selectedSessionId),
     [props.selectedSessionId, props.sidebar.projectSessionLists],
   );
+  const selectedProjectName = props.selectedWorkspaceDisplay.displayName?.trim()
+    || props.selectedWorkspaceDisplay.name?.trim()
+    || t("workspace_list.workspace_fallback");
   const [templateSessionRevision, setTemplateSessionRevision] = useState(0);
   const [templateCatalog, setTemplateCatalog] = useState<TemplateCatalogItem[]>([]);
   const [templateResourceScope, setTemplateResourceScope] = useState<WorkContextId>(() => readActiveWorkContextId());
@@ -2368,6 +2670,8 @@ export function SessionPage(props: SessionPageProps) {
     () => sessionTitleForId(props.sidebar.projectSessionLists, sessionActionId),
     [props.sidebar.projectSessionLists, sessionActionId],
   );
+  const hasNamedProject = props.sidebar.projectSessionLists.some((project) => !project.workspace.isDefault);
+  const showInitialProjectTaskStarter = !hasNamedProject && !props.selectedSessionId && Boolean(props.surface);
   const showWorkspaceSetupEmptyState = props.workspaces.length === 0 && !props.selectedSessionId;
   const showNewConversationChrome = !props.selectedSessionId && !showWorkspaceSetupEmptyState;
   const showStartupSkeleton =
@@ -2434,10 +2738,9 @@ export function SessionPage(props: SessionPageProps) {
   const showHeaderMenu = Boolean(
     props.selectedSessionId || props.developerMode,
   );
-  const selectedSessionIsDefaultTitle = selectedSessionTitle === t("session.default_title");
   const showMainHeaderTitle = Boolean(
     !rightWorkspaceExpanded &&
-      (showWorkspaceSetupEmptyState || (props.selectedSessionId && !selectedSessionIsDefaultTitle)),
+      (showWorkspaceSetupEmptyState || props.selectedSessionId),
   );
   const showMainHeaderMenu = showHeaderMenu && showMainHeaderTitle;
   const mainHeaderHidden = mainWorkspaceView === "extensions" || (showNewConversationChrome && !sidebarVisuallyCollapsed);
@@ -2683,11 +2986,14 @@ export function SessionPage(props: SessionPageProps) {
             ) : null}
             <div className="relative z-10 flex min-w-0 max-w-full items-center gap-1 md:justify-self-start">
               {showMainHeaderTitle ? (
-                <h1 className="truncate text-[14px] font-medium text-dls-text">
-                  {showWorkspaceSetupEmptyState
-                    ? t("workspace.empty_state_body")
-                    : selectedSessionTitle || t("session.default_title")}
-                </h1>
+                <>
+                  {props.selectedSessionId ? <ProjectHeaderButton projectName={selectedProjectName} /> : null}
+                  <h1 className="truncate text-[14px] font-medium text-dls-text">
+                    {showWorkspaceSetupEmptyState
+                      ? t("workspace.empty_state_body")
+                      : selectedSessionTitle || t("session.default_title")}
+                  </h1>
+                </>
               ) : null}
               {showMainHeaderMenu ? (
                 <DropdownMenu>
@@ -2758,13 +3064,7 @@ export function SessionPage(props: SessionPageProps) {
               ) : null}
             </div>
 
-            {props.selectedSessionId ? (
-              <div className="pointer-events-none hidden md:flex md:justify-self-center">
-                <SessionEngineBadge engineId={props.selectedWorkspaceDisplay.engineId} />
-              </div>
-            ) : null}
-
-            <div className="relative z-10 flex items-center gap-1.5 text-gray-10 md:justify-self-end mac:titlebar-no-drag">
+            <div data-testid="session-header-actions" className="relative z-10 flex items-center gap-1.5 text-gray-10 md:col-start-3 md:justify-self-end mac:titlebar-no-drag">
               <ConversationOutputTrigger
                 active={activeSidePanel === "outputs"}
                 disabled={!conversationMessages.length && !designTemplateEntryPath}
@@ -2844,7 +3144,14 @@ export function SessionPage(props: SessionPageProps) {
                 </div>
               ) : null}
 
-              {mainWorkspaceView === null && showDelayedSessionLoadingState ? (
+              {mainWorkspaceView === null && showInitialProjectTaskStarter && props.surface ? (
+                <InitialProjectTaskStarter
+                  surface={props.surface}
+                  onSubmit={props.sidebar.onCreateInitialProjectTask}
+                />
+              ) : null}
+
+              {mainWorkspaceView === null && !showInitialProjectTaskStarter && showDelayedSessionLoadingState ? (
                 <div className="px-6 py-16">
                   <div
                     className="mx-auto flex max-w-[320px] flex-col items-center gap-3 text-center"
@@ -2859,7 +3166,7 @@ export function SessionPage(props: SessionPageProps) {
                 </div>
               ) : null}
 
-              {mainWorkspaceView === null && !showDelayedSessionLoadingState && canRenderReactSurface ? (
+              {mainWorkspaceView === null && !showInitialProjectTaskStarter && !showDelayedSessionLoadingState && canRenderReactSurface ? (
                 <div className="flex h-full min-h-0 flex-col lg:flex-row">
                   <div className="min-h-0 min-w-0 flex-1">
                       {isDesignSession && designWorkspaceEnabled && templateSessionLoading ? (
@@ -2910,6 +3217,12 @@ export function SessionPage(props: SessionPageProps) {
                         templateEntryPath={templateEntryPathForArtifacts}
                         artifactFiles={artifactFiles}
                         artifactContext={artifactContext}
+                        composerEndAccessory={(
+                          <ProjectEngineBadge
+                            engineId={props.selectedWorkspaceDisplay.engineId}
+                            testId="session-composer-engine-badge"
+                          />
+                        )}
                         artifactCompletionRequirement={pendingVideoArtifactCompletion?.sessionId === props.selectedSessionId
                           ? pendingVideoArtifactCompletion.requirement
                           : undefined}
@@ -2965,7 +3278,7 @@ export function SessionPage(props: SessionPageProps) {
                 </div>
               ) : null}
 
-              {mainWorkspaceView === null && !showDelayedSessionLoadingState && !canRenderReactSurface && !showStartupSkeleton ? (
+              {mainWorkspaceView === null && !showInitialProjectTaskStarter && !showDelayedSessionLoadingState && !canRenderReactSurface && !showStartupSkeleton ? (
                 <div className={`mx-auto max-w-[800px] px-6 ${showWorkspaceSetupEmptyState ? "pt-20" : "pt-10"}`}>
                   {props.notFoundMessage ? (
                     <div className="px-6 py-16 text-center">
@@ -3301,66 +3614,11 @@ export function SessionPage(props: SessionPageProps) {
 
             <fieldset className="space-y-2">
               <legend className="mb-1.5 text-[13px] font-medium leading-5 text-foreground">{t("projects.default_engine")}</legend>
-              <RadioGroup
+              <ProjectEngineOptions
                 value={createProjectEngineId}
-                onValueChange={(engineId) => {
-                  if (engineId === DEFAULT_ENGINE_ID || engineId === DEEPSEEK_HARNESS_ENGINE_ID) {
-                    setCreateProjectEngineId(engineId);
-                  }
-                }}
+                onValueChange={setCreateProjectEngineId}
                 disabled={createProjectBusy}
-                aria-label={t("projects.default_engine")}
-                className="grid grid-cols-2 gap-4"
-              >
-                {[
-                  {
-                    id: DEFAULT_ENGINE_ID,
-                    name: t("projects.engine_opencode"),
-                    description: t("projects.engine_opencode_description"),
-                  },
-                  {
-                    id: DEEPSEEK_HARNESS_ENGINE_ID,
-                    name: t("projects.engine_dsh"),
-                    description: t("projects.engine_dsh_description"),
-                  },
-                ].map((engine) => {
-                  const selected = createProjectEngineId === engine.id;
-                  return (
-                    <label
-                      key={engine.id}
-                      data-testid="project-engine-option"
-                      data-state={selected ? "selected" : "default"}
-                      className={cn(
-                        "relative flex min-h-[90px] cursor-pointer flex-col gap-2 rounded-lg border-2 bg-transparent p-4 text-left transition-colors has-focus-visible:ring-3 has-focus-visible:ring-ring/30",
-                        selected
-                          ? "border-[var(--project-dialog-accent)]"
-                          : "border-[var(--project-dialog-option-border)] hover:border-foreground/20 hover:bg-muted/40",
-                        createProjectBusy && "pointer-events-none opacity-50",
-                      )}
-                    >
-                      <RadioGroupItem
-                        value={engine.id}
-                        disabled={createProjectBusy}
-                        className="absolute inset-0 z-10 size-full cursor-pointer opacity-0"
-                      />
-                      <span className="flex items-center justify-between gap-3">
-                        <span className={cn(
-                          "text-sm font-semibold leading-[22px]",
-                          selected ? "text-[var(--project-dialog-accent-strong)]" : "text-foreground",
-                        )}>
-                          {engine.name}
-                        </span>
-                        <img
-                          src={selected ? projectEngineSelectedIcon : projectEngineUnselectedIcon}
-                          alt=""
-                          className="size-4 shrink-0"
-                        />
-                      </span>
-                      <span className="text-xs leading-[18px] text-muted-foreground">{engine.description}</span>
-                    </label>
-                  );
-                })}
-              </RadioGroup>
+              />
               <div className="flex min-h-9 items-center gap-2 rounded-lg bg-[var(--project-dialog-notice)] px-4 py-2 text-[11px] leading-4 text-muted-foreground">
                 <Lock className="size-4 shrink-0" />
                 <span>{t("projects.engine_locked_notice")}</span>
