@@ -238,7 +238,7 @@ describe("plugin package manifest", () => {
     }]);
   });
 
-  test("accepts the official Design and Video workspace packages without owning related global skills", async () => {
+  test("accepts the official Design and Video workspace packages with managed skills", async () => {
     const { validatePluginPackageManifest } = await import("./plugin-package-manifest.js");
     const designManifest = await Bun.file(new URL("../../../examples/plugin-packages/design-agent/ipollowork.plugin.json", import.meta.url)).json();
     const videoManifest = await Bun.file(new URL("../../../examples/plugin-packages/video-agent/ipollowork.plugin.json", import.meta.url)).json();
@@ -250,11 +250,23 @@ describe("plugin package manifest", () => {
     if (!design.success) throw new Error(JSON.stringify(design.issues));
     expect(video.success).toBe(true);
     if (!video.success) throw new Error(JSON.stringify(video.issues));
+    expect(design.manifest.name).toBe("iPollo Design");
+    expect(video.manifest.name).toBe("iPollo Video");
     expect(design.manifest.resources.map((resource) => resource.type)).toEqual(["skill", "skill"]);
-    expect(video.manifest.resources.map((resource) => resource.type)).toEqual(["skill", "skill"]);
-    expect(video.manifest.relatedSkills).toContain("hyperframes-cli");
-    expect(video.manifest.relatedSkills).toContain("media-use");
-    expect(video.manifest.resources.map((resource) => resource.id)).not.toContain("hyperframes-cli");
+    expect(video.manifest.resources).toHaveLength(11);
+    expect(video.manifest.resources.every((resource) => resource.type === "skill")).toBe(true);
+    expect(video.manifest.relatedSkills).toBeUndefined();
+    expect(video.manifest.resources.map((resource) => resource.id)).toEqual(expect.arrayContaining([
+      "hyperframes",
+      "hyperframes-animation",
+      "hyperframes-cli",
+      "hyperframes-core",
+      "hyperframes-creative",
+      "hyperframes-keyframes",
+      "hyperframes-registry",
+      "media-use",
+      "product-launch-video",
+    ]));
     expect(design.manifest.defaultEnabled).toBe(true);
     expect(video.manifest.defaultEnabled).toBe(true);
     expect(design.manifest.contributions).toMatchObject([{

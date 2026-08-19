@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "test": "bun test --isolate tests/",
+    "coverage": "bun test --isolate --coverage --coverage-reporter=text --coverage-reporter=lcov --coverage-dir=coverage/app tests/",
     "dev": "cross-env IPOLLOWORK_DEV_MODE=1 vite",
     "build": "vite build",
     "dev:web": "cross-env IPOLLOWORK_DEV_MODE=1 vite",
@@ -62,7 +63,7 @@
     "boring-avatars": "^2.0.4",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
-    "dompurify": "^3.4.5",
+    "dompurify": "^3.4.13",
     "emojilib": "^4.0.3",
     "fuzzysort": "^3.1.0",
     "html2canvas-pro": "2.2.4",
