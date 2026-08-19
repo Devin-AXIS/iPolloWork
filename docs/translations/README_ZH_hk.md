@@ -174,6 +174,18 @@ iPolloWork 桌面/UI ──> iPolloWork Server ──> OpenCode
 - 不連接 Cloud 時，iPolloWork 仍可完整本地運行。
 - iPolloWork 不修改 OpenCode，OpenCode 可以繼續獨立升級。
 
+## Star 增長趨勢
+
+<p align="center">
+  <a href="https://www.star-history.com/?repos=Devin-AXIS%2FiPolloWork&amp;type=date&amp;legend=top-left">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/Devin-AXIS/iPolloWork/star-history/docs/star-history/star-history-dark.svg" />
+      <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/Devin-AXIS/iPolloWork/star-history/docs/star-history/star-history-light.svg" />
+      <img alt="iPolloWork Star 增長趨勢" src="https://raw.githubusercontent.com/Devin-AXIS/iPolloWork/star-history/docs/star-history/star-history-light.svg" width="900" />
+    </picture>
+  </a>
+</p>
+
 ## 使用許可
 
 - 僅個人自己使用免費；少於 3 名總用户的小規模內部使用免費。

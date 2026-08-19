@@ -199,6 +199,18 @@ git diff --check
 
 コントリビューション、コミュニティ、セキュリティに関する方針は、`CONTRIBUTING.md`、`CODE_OF_CONDUCT.md`、`SECURITY.md` を参照してください。
 
+## Star の推移
+
+<p align="center">
+  <a href="https://www.star-history.com/?repos=Devin-AXIS%2FiPolloWork&amp;type=date&amp;legend=top-left">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/Devin-AXIS/iPolloWork/star-history/docs/star-history/star-history-dark.svg" />
+      <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/Devin-AXIS/iPolloWork/star-history/docs/star-history/star-history-light.svg" />
+      <img alt="iPolloWork Star の推移" src="https://raw.githubusercontent.com/Devin-AXIS/iPolloWork/star-history/docs/star-history/star-history-light.svg" width="900" />
+    </picture>
+  </a>
+</p>
+
 ## ライセンス
 
 iPolloWork は **iPolloWork Source Available License 1.0** を使用します。
