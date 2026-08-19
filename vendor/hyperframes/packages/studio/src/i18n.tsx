@@ -18,12 +18,17 @@ type TranslationKey =
   | "header.edit"
   | "header.preview"
   | "header.previewComingSoon"
-  | "header.aiEditingWarning"
+  | "preview.aiEditingWarning"
   | "header.undo"
   | "header.redo"
   | "header.capture"
   | "header.capturing"
   | "header.captureCurrentFrame"
+  | "header.saveAsTemplate"
+  | "header.templates"
+  | "header.askAi"
+  | "header.openRepository"
+  | "header.reloadStudio"
   | "header.inspector"
   | "header.renderInProgress"
   | "header.renderExport"
@@ -55,6 +60,31 @@ type TranslationKey =
   | "assets.categoryImages"
   | "assets.categoryVideo"
   | "assets.categoryFonts"
+  | "animation.searchPlaceholder"
+  | "animation.searchLabel"
+  | "animation.selected"
+  | "animation.filterAll"
+  | "animation.filterBoxAutomation"
+  | "animation.filterText"
+  | "animation.used"
+  | "animation.unused"
+  | "animation.inUse"
+  | "animation.apply"
+  | "animation.edit"
+  | "animation.remove"
+  | "animation.close"
+  | "animation.start"
+  | "animation.end"
+  | "animation.speed"
+  | "animation.loop"
+  | "animation.done"
+  | "animation.saving"
+  | "animation.saveError"
+  | "animation.noMatches"
+  | "animation.selectElement"
+  | "animation.applied"
+  | "animation.updated"
+  | "animation.removed"
   | "sidebar.selectFile"
   | "sidebar.lint"
   | "sidebar.linting"
@@ -68,8 +98,6 @@ type TranslationKey =
   | "right.styleTooltip"
   | "right.assets"
   | "right.assetsTooltip"
-  | "right.illustration"
-  | "right.illustrationTooltip"
   | "right.animation"
   | "right.animationTooltip"
   | "right.animationTemplates"
@@ -113,12 +141,17 @@ const messages: Record<StudioLocale, Record<TranslationKey, string>> = {
     "header.edit": "Edit",
     "header.preview": "Preview",
     "header.previewComingSoon": "Preview is coming soon",
-    "header.aiEditingWarning": "AI is editing the video · Avoid manual edits",
+    "preview.aiEditingWarning": "AI is editing the video · Avoid manual edits",
     "header.undo": "Undo",
     "header.redo": "Redo",
     "header.capture": "Capture",
     "header.capturing": "Capturing...",
     "header.captureCurrentFrame": "Capture current frame",
+    "header.saveAsTemplate": "Save as work template",
+    "header.templates": "Templates",
+    "header.askAi": "Ask AI",
+    "header.openRepository": "Open project repository",
+    "header.reloadStudio": "Reload Video Studio",
     "header.inspector": "Properties",
     "header.renderInProgress": "A render is already in progress",
     "header.renderExport": "Open export settings",
@@ -150,6 +183,31 @@ const messages: Record<StudioLocale, Record<TranslationKey, string>> = {
     "assets.categoryImages": "Images",
     "assets.categoryVideo": "Video",
     "assets.categoryFonts": "Fonts",
+    "animation.searchPlaceholder": "Search animations...",
+    "animation.searchLabel": "Search animations",
+    "animation.selected": "Selected: {label}",
+    "animation.filterAll": "All",
+    "animation.filterBoxAutomation": "Box & Automation",
+    "animation.filterText": "Text",
+    "animation.used": "In use",
+    "animation.unused": "Unused",
+    "animation.inUse": "In Use",
+    "animation.apply": "Apply",
+    "animation.edit": "Edit",
+    "animation.remove": "Remove",
+    "animation.close": "Close",
+    "animation.start": "Start",
+    "animation.end": "End",
+    "animation.speed": "Speed",
+    "animation.loop": "Loop",
+    "animation.done": "Done",
+    "animation.saving": "Saving...",
+    "animation.saveError": "The animation couldn't be saved. Please try again.",
+    "animation.noMatches": "No matching animations",
+    "animation.selectElement": "Select an element in the video preview first",
+    "animation.applied": "Animation applied",
+    "animation.updated": "Animation updated",
+    "animation.removed": "Animation removed",
     "sidebar.selectFile": "Select a file to edit",
     "sidebar.lint": "Lint",
     "sidebar.linting": "Linting...",
@@ -163,8 +221,6 @@ const messages: Record<StudioLocale, Record<TranslationKey, string>> = {
     "right.styleTooltip": "Video design system",
     "right.assets": "Assets",
     "right.assetsTooltip": "Videos, images, audio, and fonts",
-    "right.illustration": "Illustrations",
-    "right.illustrationTooltip": "Generate video assets with HTML illustrations",
     "right.animation": "Animation",
     "right.animationTooltip": "Browse templates and edit selected-element animation",
     "right.animationTemplates": "Animation templates",
@@ -208,12 +264,17 @@ const messages: Record<StudioLocale, Record<TranslationKey, string>> = {
     "header.edit": "编辑",
     "header.preview": "预览",
     "header.previewComingSoon": "预览功能即将开放",
-    "header.aiEditingWarning": "AI 修改视频中，建议不要手动修改",
+    "preview.aiEditingWarning": "AI 修改视频中，建议不要手动修改",
     "header.undo": "撤销",
     "header.redo": "重做",
     "header.capture": "截图",
     "header.capturing": "截图中...",
     "header.captureCurrentFrame": "截取当前帧",
+    "header.saveAsTemplate": "保存为作品模板",
+    "header.templates": "模板",
+    "header.askAi": "交给 AI",
+    "header.openRepository": "打开项目仓库",
+    "header.reloadStudio": "重新加载视频工作室",
     "header.inspector": "属性",
     "header.renderInProgress": "已有渲染任务正在进行",
     "header.renderExport": "打开导出设置",
@@ -245,6 +306,31 @@ const messages: Record<StudioLocale, Record<TranslationKey, string>> = {
     "assets.categoryImages": "图片",
     "assets.categoryVideo": "视频",
     "assets.categoryFonts": "字体",
+    "animation.searchPlaceholder": "搜索动画...",
+    "animation.searchLabel": "搜索动画",
+    "animation.selected": "已选中：{label}",
+    "animation.filterAll": "全部",
+    "animation.filterBoxAutomation": "盒子与自动化",
+    "animation.filterText": "文字动画",
+    "animation.used": "已使用",
+    "animation.unused": "未使用",
+    "animation.inUse": "已应用",
+    "animation.apply": "应用",
+    "animation.edit": "编辑",
+    "animation.remove": "取消应用",
+    "animation.close": "关闭",
+    "animation.start": "开始",
+    "animation.end": "结束",
+    "animation.speed": "倍速",
+    "animation.loop": "循环播放",
+    "animation.done": "完成",
+    "animation.saving": "保存中...",
+    "animation.saveError": "动画未能保存，请重试。",
+    "animation.noMatches": "没有匹配的动画",
+    "animation.selectElement": "请先在视频播放区选中元素",
+    "animation.applied": "动画已应用",
+    "animation.updated": "动画已更新",
+    "animation.removed": "动画已取消应用",
     "sidebar.selectFile": "选择一个文件进行编辑",
     "sidebar.lint": "检查",
     "sidebar.linting": "检查中...",
@@ -258,8 +344,6 @@ const messages: Record<StudioLocale, Record<TranslationKey, string>> = {
     "right.styleTooltip": "视频设计系统",
     "right.assets": "素材",
     "right.assetsTooltip": "视频、图片、音频和字体",
-    "right.illustration": "插画",
-    "right.illustrationTooltip": "使用 HTML 插画能力生成视频素材",
     "right.animation": "动画",
     "right.animationTooltip": "浏览模板并编辑所选元素动画",
     "right.animationTemplates": "动画模板",
@@ -446,7 +530,7 @@ const studioLiteralZh: Record<string, string> = {
   "Applied cutout": "抠图已应用",
   balanced: "均衡",
   best: "最佳",
-  "Ask AI": "交给 AI",
+  "Ask AI": "交给AI",
   "Ask AI about selected element": "让 AI 处理所选元素",
   "Copy prompt to AI agent": "将提示词复制给 AI Agent",
   "Describe what you want to change…": "描述你想修改的内容…",
@@ -745,7 +829,6 @@ const studioLiteralZh: Record<string, string> = {
   "Ungroup (⌘⇧G)": "取消组合（⌘⇧G）",
   "Copy element info to clipboard": "将元素信息复制到剪贴板",
   "Copied!": "已复制！",
-  "Describe a change to the agent": "向 Agent 描述修改",
   "Hide all": "全部隐藏",
   "Select a single element to edit its properties": "请选择单个元素以编辑属性",
   "shift-click to add or remove": "按住 Shift 单击可添加或移除",
@@ -862,6 +945,7 @@ const studioLiteralZh: Record<string, string> = {
   "Back (Esc, or double-click empty timeline)": "返回（按 Esc 或双击时间轴空白处）",
   "Back to parent composition": "返回上一级合成",
   "Resize timeline (arrow keys)": "调整时间轴高度（方向键）",
+  "Resize layer panel (arrow keys)": "调整图层面板宽度（方向键）",
   "Close preview": "关闭预览",
   none: "无",
   fade: "淡入淡出",

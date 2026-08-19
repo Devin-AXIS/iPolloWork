@@ -6,12 +6,15 @@
 import { useEffect, useMemo, useState } from "react";
 
 import { isDesktopProviderBlocked } from "@/app/cloud/desktop-app-restrictions";
-import type { Client, ModelOption } from "@/app/types";
+import type { ModelOption } from "@/app/types";
 import { modelSupportsVision } from "@/app/utils/model-capabilities";
 import { useCheckDesktopRestriction } from "@/react-app/domains/cloud/desktop-config-provider";
 import {
+  ensureMergedProviderListQuery,
   ensureProviderListQuery,
   getSelectableChatProviderItems,
+  isModelAvailableInConnectedProviders,
+  type ProviderListQueryInput,
 } from "@/react-app/infra/provider-list-query";
 import { getReactQueryClient } from "@/react-app/infra/query-client";
 import {
@@ -21,15 +24,17 @@ import {
 import { t } from "@/i18n";
 
 export type UseModelPickerInput = {
-  client: Client | null;
+  client: unknown | null;
+  engineId?: string | null;
   baseUrl: string;
   workspaceRoot: string;
+  catalogSources?: readonly ProviderListQueryInput[];
   /** Optional: surface option-load failures (settings shows a toast; the session route stays silent). */
   onLoadError?: (error: unknown) => void;
 };
 
 export function useModelPicker(input: UseModelPickerInput) {
-  const { client, baseUrl, workspaceRoot, onLoadError } = input;
+  const { client, engineId, baseUrl, workspaceRoot, catalogSources = [], onLoadError } = input;
   const checkDesktopRestriction = useCheckDesktopRestriction();
 
   const [open, setOpen] = useState(false);
@@ -74,19 +79,28 @@ export function useModelPicker(input: UseModelPickerInput) {
     }
   }, []);
 
-  // Load the picker list lazily the first time the modal opens. Uses the
-  // cached catalog when available, otherwise re-fetches.
+  // Load the picker list lazily when either presentation opens. The composer
+  // uses the compact picker, while settings uses the full modal; both consume
+  // the same model options and must work on their first open.
   useEffect(() => {
-    if (!open || !client) return;
+    if ((!open && !compactOpen) || !client) return;
     let cancelled = false;
     void (async () => {
       try {
-        const data = await ensureProviderListQuery(getReactQueryClient(), {
+        const activeSource = {
           client,
+          engineId,
           baseUrl,
           directory: workspaceRoot || undefined,
-        });
-        if (cancelled || !data?.all) return;
+        } satisfies ProviderListQueryInput;
+        const [data, active] = await Promise.all([
+          ensureMergedProviderListQuery(
+            getReactQueryClient(),
+            catalogSources.length ? catalogSources : [activeSource],
+          ),
+          ensureProviderListQuery(getReactQueryClient(), activeSource),
+        ]);
+        if (cancelled || !data.all) return;
         // Flag models from recently-added providers so they appear in
         // the "Recently added" section at the top of the picker.
         // Two sources: (1) providers not yet in the localStorage seen-set,
@@ -115,6 +129,11 @@ export function useModelPicker(input: UseModelPickerInput) {
               behaviorValue: null,
               isFree: false,
               isConnected: true,
+              disabled: !isModelAvailableInConnectedProviders(active, {
+                providerID: provider.id,
+                modelID: id,
+              }),
+              footer: t("model_picker.engine_unavailable"),
               isRecommended: isNew,
               supportsVision: modelSupportsVision(model),
               source: /^lpr_/i.test(provider.id) ? "cloud" as const : undefined,
@@ -131,7 +150,7 @@ export function useModelPicker(input: UseModelPickerInput) {
     return () => {
       cancelled = true;
     };
-  }, [open, baseUrl, client, recentProviderIds, workspaceRoot]);
+  }, [open, compactOpen, baseUrl, catalogSources, client, engineId, recentProviderIds, workspaceRoot]);
 
   // Apply org-level restrictions (dev #1505) on top of the raw model list
   // so the picker never surfaces blocked options:

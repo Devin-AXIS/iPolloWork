@@ -1,0 +1,6 @@
+GreenSock Standard License
+
+Copyright 2025, GreenSock. All rights reserved.
+
+This software is subject to the GreenSock standard license terms:
+https://gsap.com/standard-license/

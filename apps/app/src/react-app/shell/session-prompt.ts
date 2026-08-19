@@ -1,16 +1,12 @@
-import type {
-  AgentPartInput,
-  FilePartInput,
-  TextPartInput,
-} from "@opencode-ai/sdk/v2/client";
-
 import type { ComposerAttachment, ComposerDraft } from "@/app/types";
+import type { ConversationPromptPart } from "@/react-app/domains/session/engine/conversation-engine";
 import {
   designAiSelectionInstruction,
   type DesignAiSelectionContext,
-} from "@/react-app/domains/session/design/design-ai-selection";
+} from "@ipollowork/design-studio";
 import { useDesignAiSelectionStore } from "@/react-app/domains/session/design/design-ai-selection-store";
 import { firstLineLocalFileParts } from "@/react-app/domains/session/sync/prompt-file-parts";
+import { attachmentRequiresNativeModelSupport } from "@/react-app/domains/session/sync/attachment-support";
 import { appMentionInstruction } from "@/react-app/domains/session/surface/composer/app-mentions";
 
 type DesignSelectionScope = {
@@ -24,6 +20,10 @@ type DesignSelectionWorkspaceClient = {
 };
 
 type DesignSelectionStore = Pick<typeof useDesignAiSelectionStore, "getState">;
+
+type DraftToPartsOptions = {
+  supportsNativeAttachments?: boolean;
+};
 
 export function serializeSDKError(error: unknown): string {
   if (error instanceof Error) return error.message;
@@ -88,7 +88,7 @@ export function designSelectionContextsForDraft(
 export async function promptDesignSelectionContexts(input: {
   contexts: DesignAiSelectionContext[];
   workspaceClient: DesignSelectionWorkspaceClient;
-  prompt: () => Promise<{ error?: unknown }>;
+  prompt: () => Promise<void | { error?: unknown }>;
   designSelectionStore?: DesignSelectionStore;
 }) {
   const designSelectionStore = input.designSelectionStore ?? useDesignAiSelectionStore;
@@ -108,7 +108,7 @@ export async function promptDesignSelectionContexts(input: {
       designSelectionStore.getState().markRunning(context.id);
     }
     const result = await input.prompt();
-    if (result.error) throw new Error(serializeSDKError(result.error));
+    if (result?.error) throw new Error(serializeSDKError(result.error));
     return result;
   } catch (error) {
     for (const context of input.contexts) designSelectionStore.getState().fail(context.id);
@@ -121,8 +121,9 @@ export async function draftToParts(
   workspaceRoot: string,
   designSelectionStore: DesignSelectionStore = useDesignAiSelectionStore,
   scope?: DesignSelectionScope,
+  options: DraftToPartsOptions = {},
 ) {
-  const parts: Array<TextPartInput | FilePartInput | AgentPartInput> = [];
+  const parts: ConversationPromptPart[] = [];
   const root = workspaceRoot.trim();
 
   const toAbsolutePath = (path: string) => {
@@ -197,6 +198,16 @@ export async function draftToParts(
   parts.push(
     ...(await Promise.all(
       draft.attachments.map(async (attachment) => {
+        if (options.supportsNativeAttachments === false) {
+          if (attachmentRequiresNativeModelSupport(attachment.mimeType)) {
+            throw new Error("The selected model cannot read image or PDF attachments.");
+          }
+          return {
+            type: "text" as const,
+            text: `Attached file: ${attachment.name}\n\n${await attachment.file.text()}`,
+            synthetic: true,
+          };
+        }
         const mime = attachmentMime(attachment);
         return {
           type: "file" as const,

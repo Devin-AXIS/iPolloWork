@@ -15,6 +15,7 @@ import {
   templateSourceTypeSchema,
   templateStyleSchema,
   sortTemplatesForCatalog,
+  isCustomerVisibleBundledTemplate,
   isTemplateAuthoringManifest,
   TEMPLATE_AUTHORING_ID_PREFIX,
   type PptxCompatibility,
@@ -41,33 +42,7 @@ const WITHDRAWN_BUNDLED_TEMPLATE_IDS = new Set([
   "ipollowork.html-anything.deck-xhs-post",
   "ipollowork.html-anything.social-x-post-card",
 ]);
-const CUSTOMER_VISIBLE_CURATED_CATEGORY_TEMPLATE_IDS = new Set([
-  "ipollowork.html-anything.prototype-web",
-  "ipollowork.site-afterglow-festival",
-  "ipollowork.html-anything.web-proto-soft",
-  "ipollowork.site-signal-workspace",
-  "ipollowork.site-orbit-data",
-  "ipollowork.html-anything.wireframe-sketch",
-  "ipollowork.site-atelier-architecture",
-  "ipollowork.hyperframes.agent-command-center",
-  "ipollowork.hyperframes.multi-agent-relay",
-  "ipollowork.hyperframes.course-journey",
-  "ipollowork.html-anything.motion-frames",
-  "ipollowork.hyperframes.permission-vault",
-  "ipollowork.hyperframes.code-explainer",
-  "ipollowork.pptx-brand-narrative",
-  "ipollowork.html-anything.deck-blueprint",
-  "ipollowork.html-anything.deck-xhs-pastel",
-  "ipollowork.html-anything.deck-hermes-cyber",
-  "ipollowork.html-anything.deck-presenter-mode",
-]);
-const CUSTOMER_CURATED_TEMPLATE_CATEGORIES = new Set<TemplateCategory>(["site", "video", "slides"]);
-
-export function isCustomerVisibleBundledTemplate(manifest: TemplateManifestV1): boolean {
-  return CUSTOMER_CURATED_TEMPLATE_CATEGORIES.has(manifest.category)
-    ? CUSTOMER_VISIBLE_CURATED_CATEGORY_TEMPLATE_IDS.has(manifest.id)
-    : true;
-}
+export { isCustomerVisibleBundledTemplate };
 // The market is opened from the account menu, so local templates belong to
 // the signed-in desktop profile rather than an individual workstation. The
 // workspace route remains the authorization and materialization boundary.
@@ -146,6 +121,7 @@ type TemplateDb = {
   getSession(workspaceId: string, sessionId: string): TemplateSessionRow | undefined;
   listSessions(workspaceId: string): TemplateSessionRow[];
   upsertSession(row: TemplateSessionRow): void;
+  close(): void;
 };
 
 type ZipEntry = { name: string; data: Buffer };
@@ -231,6 +207,7 @@ async function openTemplateDb(path: string): Promise<TemplateDb> {
       getSession: (workspaceId, sessionId) => getSession.get(workspaceId, sessionId) as TemplateSessionRow | undefined,
       listSessions: (workspaceId) => listSessions.all(workspaceId) as TemplateSessionRow[],
       upsertSession: (row) => { upsertSession.run(row.workspaceId, row.sessionId, row.surface, row.templateId, row.version, row.sourceType, row.entry, row.briefPath, row.manifestJson, row.createdAt); },
+      close: () => sqlite.close(),
     };
   }
   const { DatabaseSync } = await importNodeSqlite();
@@ -251,7 +228,17 @@ async function openTemplateDb(path: string): Promise<TemplateDb> {
     getSession: (workspaceId, sessionId) => getSession.get(workspaceId, sessionId) as unknown as TemplateSessionRow | undefined,
     listSessions: (workspaceId) => listSessions.all(workspaceId) as unknown as TemplateSessionRow[],
     upsertSession: (row) => { upsertSession.run(row.workspaceId, row.sessionId, row.surface, row.templateId, row.version, row.sourceType, row.entry, row.briefPath, row.manifestJson, row.createdAt); },
+    close: () => sqlite.close(),
   };
+}
+
+export async function disposeTemplateStore(config: ServerConfig): Promise<void> {
+  const path = runtimeDbPath(config);
+  const pending = dbByPath.get(path);
+  if (!pending) return;
+  dbByPath.delete(path);
+  const db = await pending;
+  db.close();
 }
 
 async function templateDb(config: ServerConfig) {

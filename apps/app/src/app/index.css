@@ -153,12 +153,23 @@
     BlinkMacSystemFont,
     "Segoe UI",
     "PingFang SC",
+    "Hiragino Sans GB",
     "Microsoft YaHei",
+    "Noto Sans SC",
     "Noto Sans",
     Arial,
     sans-serif,
     "Apple Color Emoji",
     "Segoe UI Emoji";
+  --ipollowork-font-mono:
+    ui-monospace,
+    "SFMono-Regular",
+    "Cascadia Code",
+    Menlo,
+    Monaco,
+    Consolas,
+    "Liberation Mono",
+    monospace;
   --dls-surface: var(--slate-1);
   --dls-sidebar: #fcfcfc;
   --dls-app-bg: var(--slate-1);
@@ -179,6 +190,10 @@
   --dls-radius-lg: 24px;
   --dls-shell-shadow: 0 10px 30px rgba(15, 23, 42, 0.06);
   --dls-card-shadow: 0 8px 24px rgba(15, 23, 42, 0.05);
+  --project-dialog-accent: #1fbac0;
+  --project-dialog-accent-strong: #087b82;
+  --project-dialog-notice: #f4f4ee;
+  --project-dialog-option-border: #e7e7e8;
   --background: var(--slate-1);
   --foreground: var(--slate-12);
   --card: var(--slate-1);
@@ -241,14 +256,6 @@
   --new-conversation-composer-surface: #343434;
 }
 
-html[lang="zh"][data-theme="dark"] [data-settings-content] {
-  font-weight: 450;
-}
-
-html[lang="zh"][data-theme="dark"] [data-settings-content] .font-normal {
-  font-weight: 450;
-}
-
 html,
 body {
   height: 100%;
@@ -272,6 +279,28 @@ body {
   color: var(--dls-text-primary);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
+
+.dark body,
+[data-theme="dark"] body {
+  -webkit-font-smoothing: auto;
+  -moz-osx-font-smoothing: auto;
+}
+
+html:lang(zh) .settings-description {
+  font-weight: 500;
+}
+
+[data-settings-shell] :where(
+  button:not([role="switch"]):not([role="checkbox"]):not([role="radio"]),
+  [role="button"]:not([role="switch"]):not([role="checkbox"]):not([role="radio"]),
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]),
+  textarea,
+  select,
+  [role="combobox"],
+  [data-slot="table-container"]
+) {
+  border-radius: 8px !important;
 }
 
 *::-webkit-scrollbar {
@@ -426,10 +455,9 @@ body {
 .ow-input {
   appearance: none;
   width: 100%;
-  border: 0;
+  border: 1px solid var(--slate-6);
   border-radius: 0.9rem;
   background: var(--slate-1);
-  box-shadow: inset 0 0 0 1px var(--slate-6);
   color: var(--dls-text-primary);
 }
 
@@ -438,8 +466,8 @@ body {
 }
 
 .ow-input:focus {
-  outline: none;
-  box-shadow: inset 0 0 0 1px rgba(var(--dls-accent-rgb), 0.28), 0 0 0 3px rgba(var(--dls-accent-rgb), 0.08);
+  border-color: rgba(var(--dls-accent-rgb), 0.28);
+  outline: 3px solid rgba(var(--dls-accent-rgb), 0.08);
 }
 
 /* Global clickable elements pointer */
@@ -548,6 +576,10 @@ select:disabled {
 
 .dark,
 [data-theme="dark"] {
+  --project-dialog-accent: #1fbac0;
+  --project-dialog-accent-strong: #a9e7ea;
+  --project-dialog-notice: var(--slate-3);
+  --project-dialog-option-border: var(--slate-6);
   --background: var(--slate-1);
   --foreground: var(--slate-12);
   --card: var(--slate-2);
@@ -560,7 +592,7 @@ select:disabled {
   --secondary: var(--slate-3);
   --secondary-foreground: var(--slate-12);
   --muted: var(--slate-3);
-  --muted-foreground: var(--slate-10);
+  --muted-foreground: var(--slate-11);
   --accent: var(--slate-3);
   --accent-foreground: var(--slate-12);
   --destructive: var(--red-9);
@@ -586,6 +618,23 @@ select:disabled {
 @theme inline {
   --font-sans: var(--ipollowork-font-sans);
   --font-heading: var(--ipollowork-font-sans);
+  --font-mono: var(--ipollowork-font-mono);
+  --text-ui-micro: 0.625rem;
+  --text-ui-micro--line-height: 0.875rem;
+  --text-ui-caption: 0.6875rem;
+  --text-ui-caption--line-height: 1rem;
+  --text-ui-compact: 0.75rem;
+  --text-ui-compact--line-height: 1.125rem;
+  --text-ui-control: 0.8125rem;
+  --text-ui-control--line-height: 1.125rem;
+  --text-ui-body: 0.875rem;
+  --text-ui-body--line-height: 1.25rem;
+  --text-ui-title-sm: 1rem;
+  --text-ui-title-sm--line-height: 1.5rem;
+  --text-ui-title: 1.25rem;
+  --text-ui-title--line-height: 1.75rem;
+  --text-ui-page-title: 1.5rem;
+  --text-ui-page-title--line-height: 2rem;
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);

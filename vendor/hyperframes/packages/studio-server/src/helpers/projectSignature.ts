@@ -47,6 +47,17 @@ interface ProjectSignatureCacheEntry {
 }
 
 const projectSignatureCache = new Map<string, ProjectSignatureCacheEntry>();
+const MAX_PROJECT_SIGNATURE_CACHE_ENTRIES = 128;
+
+function cacheProjectSignature(projectDir: string, entry: ProjectSignatureCacheEntry): void {
+  projectSignatureCache.delete(projectDir);
+  projectSignatureCache.set(projectDir, entry);
+  while (projectSignatureCache.size > MAX_PROJECT_SIGNATURE_CACHE_ENTRIES) {
+    const oldest = projectSignatureCache.keys().next().value;
+    if (oldest === undefined) break;
+    projectSignatureCache.delete(oldest);
+  }
+}
 
 function isPathWithin(parentDir: string, childPath: string): boolean {
   const childRelativePath = relative(parentDir, childPath);
@@ -190,6 +201,6 @@ export function createProjectSignature(projectDir: string): string {
     hash.update("\0");
   }
   const signature = hash.digest("hex").slice(0, 24);
-  projectSignatureCache.set(normalizedProjectDir, { fingerprint, signature });
+  cacheProjectSignature(normalizedProjectDir, { fingerprint, signature });
   return signature;
 }

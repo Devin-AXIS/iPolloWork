@@ -31,7 +31,7 @@ describe("managed brand header", () => {
     expect(source).toContain("DEFAULT_BRAND_LOGO_URL");
     expect(source).toContain("mac:bg-sidebar/15");
     expect(source).toContain("mac:backdrop-blur-2xl");
-    expect(source).toContain('SidebarHeader className="gap-4 px-2 pb-8 pt-1');
+    expect(source).toContain('SidebarHeader className="gap-3 px-2 pb-3 pt-1');
     expect(brandThemeSource).toContain('publicAssetUrl("default-brand-avatar.jpg")');
     expect(existsSync(new URL("../public/default-brand-avatar.jpg", import.meta.url))).toBe(true);
   });

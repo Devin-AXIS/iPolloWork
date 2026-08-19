@@ -1,8 +1,9 @@
 /** @jsxImportSource react */
 import type * as React from "react";
-import { ChevronDown, X } from "lucide-react";
+import { ChevronDown, PanelsTopLeft, X } from "lucide-react";
 
-import { Button } from "@/components/ui/button";
+import { Button, ButtonStyleScopeProvider } from "@/components/ui/button";
+import { SelectStyleScopeProvider } from "@/components/ui/select";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -16,7 +17,9 @@ import {
   SidebarInset,
   SidebarProvider,
   SidebarTrigger,
+  useSidebar,
 } from "@/components/ui/sidebar";
+import { publicAssetUrl } from "@/app/lib/public-asset";
 import { t } from "../../../../i18n";
 import { NotificationBell } from "../../../shell/notification-center";
 import type { SettingsTab } from "../../../../app/types";
@@ -26,10 +29,10 @@ import {
   SettingsSidebar,
   getCloudSettingsTabs,
   getGlobalSettingsTabs,
-  getSettingsTabIcon,
   getSettingsTabLabel,
   getWorkspaceSettingsTabs,
   isSettingsTabBeta,
+  SettingsTabIcon,
 } from "./settings-page";
 import { useFeatureFlagsPreferences } from "../state/feature-flags-preferences";
 
@@ -39,99 +42,81 @@ export type SettingsShellProps = SettingsPageFrameProps & {
   headerStatus?: string;
   busyHint?: string | null;
   onClose: () => void;
-  headerLeadingSlot?: React.ReactNode;
+  headerTitle?: React.ReactNode;
+  headerActions?: React.ReactNode;
+  showNotifications?: boolean;
   children: React.ReactNode;
   modalSlot?: React.ReactNode;
   footer?: React.ReactNode;
   compact?: boolean;
   hideShellHeader?: boolean;
+  hideCloseButton?: boolean;
 };
 
+function SettingsControlStyleScope({ children }: { children: React.ReactNode }) {
+  return (
+    <SelectStyleScopeProvider value="settings">
+      <ButtonStyleScopeProvider value="settings">{children}</ButtonStyleScopeProvider>
+    </SelectStyleScopeProvider>
+  );
+}
+
+function EmbeddedSidebarRestoreTrigger() {
+  const { state } = useSidebar();
+  if (state !== "collapsed") return null;
+
+  return (
+    <SidebarTrigger
+      data-testid="embedded-sidebar-restore"
+      className="size-8 shrink-0 rounded-lg border-none text-muted-foreground hover:bg-muted hover:text-foreground mac:ml-16 mac:titlebar-no-drag"
+      icon={<img src={publicAssetUrl("sidebar-left-expand.svg")} alt="" className="h-3 w-4 shrink-0 dark:invert" />}
+      aria-label={t("sidebar.expand")}
+      title={t("sidebar.expand")}
+    />
+  );
+}
+
 export function SettingsShell(props: SettingsShellProps) {
-  const title = getSettingsTabLabel(props.activeTab);
+  const activePluginPage = props.pluginPages?.find((page) => page.id === props.activePluginPageId);
+  const title = activePluginPage?.label ?? getSettingsTabLabel(props.activeTab);
 
   if (props.compact) {
     return (
-      <div className="flex h-full min-h-0 w-full flex-col overflow-hidden bg-background">
-        <header className="flex h-11 shrink-0 items-center justify-between gap-2 border-b border-dls-border px-3 mac:titlebar-drag">
-          <div className="flex min-w-0 items-center gap-2 mac:titlebar-no-drag">
-            <SettingsSectionMenu
-              activeTab={props.activeTab}
-              developerMode={props.developerMode}
-              onSelectTab={props.onSelectTab}
-            />
-          </div>
-          <div className="flex shrink-0 items-center gap-1 mac:titlebar-no-drag">
-            <Button
-              variant="ghost"
-              type="button"
-              className="flex size-8 shrink-0 items-center justify-center rounded-md text-gray-10 transition-colors hover:bg-gray-2/70 hover:text-dls-text"
-              onClick={props.onClose}
-              title={t("dashboard.close_settings")}
-              aria-label={t("dashboard.close_settings")}
-            >
-              <X size={17} />
-            </Button>
-          </div>
-        </header>
+      <SettingsControlStyleScope>
+        <div data-settings-shell className="flex h-full min-h-0 w-full flex-col overflow-hidden bg-white dark:bg-background">
+          <header className="flex h-11 shrink-0 items-center justify-between gap-2 px-3 mac:titlebar-drag">
+            <div className="flex min-w-0 items-center gap-2 mac:titlebar-no-drag">
+              <EmbeddedSidebarRestoreTrigger />
+              {props.headerTitle ?? (
+                <SettingsSectionMenu
+                  activeTab={props.activeTab}
+                  developerMode={props.developerMode}
+                  onSelectTab={props.onSelectTab}
+                  pluginPages={props.pluginPages}
+                  activePluginPageId={props.activePluginPageId}
+                  onSelectPluginPage={props.onSelectPluginPage}
+                />
+              )}
+            </div>
+            <div className="flex shrink-0 items-center gap-1 mac:titlebar-no-drag">
+              {props.headerActions}
+              {props.hideCloseButton ? null : (
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  type="button"
+                  className="shrink-0 text-gray-10 transition-colors hover:text-dls-text"
+                  onClick={props.onClose}
+                  title={t("dashboard.close_settings")}
+                  aria-label={t("dashboard.close_settings")}
+                >
+                  <X size={17} />
+                </Button>
+              )}
+            </div>
+          </header>
 
-        <main className="flex min-h-0 flex-1 flex-col overflow-hidden">
-          <div className="flex min-h-0 flex-1 flex-col">
-            <SettingsPage {...props}>{props.children}</SettingsPage>
-
-            {props.modalSlot}
-          </div>
-
-          {props.footer}
-        </main>
-      </div>
-    );
-  }
-
-  return (
-    <div className="flex h-dvh min-h-screen w-full overflow-hidden">
-      <SidebarProvider open={true} className="relative min-h-0 flex-1">
-        <SettingsSidebar
-          activeTab={props.activeTab}
-          onSelectTab={props.onSelectTab}
-          developerMode={props.developerMode}
-          onClose={props.onClose}
-        />
-        <SidebarInset className="min-h-0 overflow-hidden bg-background mac:bg-background/80 mac:[&_header]:transition-[padding-left] mac:[&_header]:duration-200 mac:[&_header]:ease-linear mac:peer-data-[state=collapsed]:[&_header]:pl-16 [&_header]:pl-16 md:[&_header]:pl-6">
-          <main className="flex min-w-0 flex-1 flex-col overflow-hidden">
-            {!props.hideShellHeader ? (
-              <header className="shrink-0 flex h-10 items-center justify-between border-b border-dls-border px-4 md:px-6 mac:titlebar-drag">
-                <div className="flex min-w-0 items-center gap-3">
-                  <SidebarTrigger className="mac:titlebar-no-drag md:hidden" />
-                  {props.headerLeadingSlot}
-                  <h1 className="truncate text-[15px] font-semibold text-dls-text">{title}</h1>
-                  {props.developerMode && props.headerStatus ? (
-                    <span className="hidden text-[12px] text-dls-secondary lg:inline">
-                      {props.headerStatus}
-                    </span>
-                  ) : null}
-                  {props.busyHint ? (
-                    <span className="hidden text-[12px] text-dls-secondary lg:inline">
-                      {props.busyHint}
-                    </span>
-                  ) : null}
-                </div>
-                <div className="flex items-center gap-1.5 text-gray-10 mac:titlebar-no-drag">
-                  <NotificationBell />
-                  <Button
-                    variant="ghost"
-                    type="button"
-                    className="flex size-9 items-center justify-center rounded-md text-gray-10 transition-colors hover:bg-gray-2/70 hover:text-dls-text md:hidden"
-                    onClick={props.onClose}
-                    title={t("dashboard.close_settings")}
-                    aria-label={t("dashboard.close_settings")}
-                  >
-                    <X size={18} />
-                  </Button>
-                </div>
-              </header>
-            ) : null}
-
+          <main className="flex min-h-0 flex-1 flex-col overflow-hidden">
             <div className="flex min-h-0 flex-1 flex-col">
               <SettingsPage {...props}>{props.children}</SettingsPage>
 
@@ -140,29 +125,97 @@ export function SettingsShell(props: SettingsShellProps) {
 
             {props.footer}
           </main>
-        </SidebarInset>
-      </SidebarProvider>
-    </div>
+        </div>
+      </SettingsControlStyleScope>
+    );
+  }
+
+  return (
+    <SettingsControlStyleScope>
+      <div data-settings-shell className="flex h-dvh min-h-screen w-full overflow-hidden">
+        <SidebarProvider open={true} className="relative min-h-0 flex-1">
+          <SettingsSidebar
+            activeTab={props.activeTab}
+            onSelectTab={props.onSelectTab}
+            developerMode={props.developerMode}
+            pluginPages={props.pluginPages}
+            activePluginPageId={props.activePluginPageId}
+            onSelectPluginPage={props.onSelectPluginPage}
+            onClose={props.onClose}
+          />
+          <SidebarInset className="min-h-0 overflow-hidden bg-white dark:bg-background mac:[&_header]:transition-[padding-left] mac:[&_header]:duration-200 mac:[&_header]:ease-linear mac:peer-data-[state=collapsed]:[&_header]:pl-16 [&_header]:pl-8 min-[1600px]:[&_header]:pl-12 min-[1920px]:[&_header]:pl-16">
+            <main className="flex min-w-0 flex-1 flex-col overflow-hidden">
+              {!props.hideShellHeader ? (
+                <header data-testid="settings-shell-header" className="h-10 shrink-0 px-8 min-[1600px]:px-12 min-[1920px]:px-16 mac:titlebar-drag">
+                  <div data-settings-header-safe-area className="mx-auto flex h-full w-full max-w-[1280px] items-center justify-between">
+                    <div className="flex min-w-0 items-center gap-3">
+                      <SidebarTrigger className="mac:titlebar-no-drag md:hidden" />
+                      {props.headerTitle ?? <h1 className="truncate text-ui-body font-semibold text-dls-text">{title}</h1>}
+                      {props.developerMode && props.headerStatus ? (
+                        <span className="hidden text-ui-compact text-dls-secondary lg:inline">
+                          {props.headerStatus}
+                        </span>
+                      ) : null}
+                      {props.busyHint ? (
+                        <span className="hidden text-ui-compact text-dls-secondary lg:inline">
+                          {props.busyHint}
+                        </span>
+                      ) : null}
+                    </div>
+                    <div className="flex items-center gap-1.5 text-gray-10 mac:titlebar-no-drag">
+                      {props.headerActions}
+                      {props.showNotifications === false ? null : <NotificationBell />}
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        type="button"
+                        className="text-gray-10 transition-colors hover:text-dls-text md:hidden"
+                        onClick={props.onClose}
+                        title={t("dashboard.close_settings")}
+                        aria-label={t("dashboard.close_settings")}
+                      >
+                        <X size={18} />
+                      </Button>
+                    </div>
+                  </div>
+                </header>
+              ) : null}
+
+              <div className="flex min-h-0 flex-1 flex-col">
+                <SettingsPage {...props}>{props.children}</SettingsPage>
+
+                {props.modalSlot}
+              </div>
+
+              {props.footer}
+            </main>
+          </SidebarInset>
+        </SidebarProvider>
+      </div>
+    </SettingsControlStyleScope>
   );
 }
 
-function SettingsSectionMenu(props: Pick<SettingsPageFrameProps, "activeTab" | "developerMode" | "onSelectTab">) {
+function SettingsSectionMenu(props: Pick<SettingsPageFrameProps, "activeTab" | "developerMode" | "onSelectTab" | "pluginPages" | "activePluginPageId" | "onSelectPluginPage">) {
   const { memoryEnabled } = useFeatureFlagsPreferences();
   const sections: Array<{ label: string | null; tabs: SettingsTab[] }> = [
     { label: t("settings.group_workspace"), tabs: getWorkspaceSettingsTabs() },
     { label: t("settings.group_global"), tabs: getGlobalSettingsTabs(props.developerMode) },
     { label: t("settings.group_cloud"), tabs: getCloudSettingsTabs(memoryEnabled) },
   ];
-  const ActiveIcon = getSettingsTabIcon(props.activeTab);
-
+  const activePluginPage = props.pluginPages?.find((page) => page.id === props.activePluginPageId);
   return (
     <DropdownMenu>
       <DropdownMenuTrigger
         render={(
           <Button variant="outline" size="sm" className="min-w-0 max-w-46 justify-start gap-2">
-            <ActiveIcon className="size-4 shrink-0" />
-            <span className="truncate">{getSettingsTabLabel(props.activeTab)}</span>
-            {isSettingsTabBeta(props.activeTab) ? <SettingsBetaBadge /> : null}
+            {activePluginPage ? (
+              activePluginPage.iconSrc
+                ? <img src={activePluginPage.iconSrc} alt="" className="size-4 rounded-sm object-contain" />
+                : <PanelsTopLeft className="size-4 shrink-0" />
+            ) : <SettingsTabIcon tab={props.activeTab} />}
+            <span className="truncate">{activePluginPage?.label ?? getSettingsTabLabel(props.activeTab)}</span>
+            {!activePluginPage && isSettingsTabBeta(props.activeTab) ? <SettingsBetaBadge /> : null}
             <ChevronDown className="ml-auto size-4 shrink-0" />
           </Button>
         )}
@@ -173,19 +226,28 @@ function SettingsSectionMenu(props: Pick<SettingsPageFrameProps, "activeTab" | "
             {index > 0 ? <DropdownMenuSeparator /> : null}
             {section.label ? <DropdownMenuLabel>{section.label}</DropdownMenuLabel> : null}
             {section.tabs.map((tab) => {
-              const Icon = getSettingsTabIcon(tab);
               return (
                 <DropdownMenuItem
                   key={tab}
                   onClick={() => props.onSelectTab(tab)}
-                  className={props.activeTab === tab ? "bg-foreground/10 text-accent-foreground" : undefined}
+                  className={!props.activePluginPageId && props.activeTab === tab ? "bg-foreground/10 text-accent-foreground" : undefined}
                 >
-                  <Icon />
+                  <SettingsTabIcon tab={tab} />
                   <span>{getSettingsTabLabel(tab)}</span>
                   {isSettingsTabBeta(tab) ? <SettingsBetaBadge className="ml-auto" /> : null}
                 </DropdownMenuItem>
               );
             })}
+            {index === 0 ? props.pluginPages?.map((page) => (
+              <DropdownMenuItem
+                key={page.id}
+                onClick={() => props.onSelectPluginPage?.(page.id)}
+                className={props.activePluginPageId === page.id ? "bg-foreground/10 text-accent-foreground" : undefined}
+              >
+                {page.iconSrc ? <img src={page.iconSrc} alt="" className="size-4 rounded-sm object-contain" /> : <PanelsTopLeft />}
+                <span>{page.label}</span>
+              </DropdownMenuItem>
+            )) : null}
           </DropdownMenuGroup>
         ))}
       </DropdownMenuContent>

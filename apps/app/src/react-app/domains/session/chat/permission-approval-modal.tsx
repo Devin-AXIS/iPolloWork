@@ -19,7 +19,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { t } from "@/i18n";
-import type { PendingPermission } from "@/app/types";
+import type { ConversationPermission } from "../engine/conversation-engine";
 import { cn } from "@/lib/utils";
 
 type PermissionPresentation = {
@@ -40,7 +40,7 @@ type PermissionDetail = {
 };
 
 type PermissionApprovalModalProps = {
-  permission: PendingPermission;
+  permission: ConversationPermission;
   busy?: boolean;
   respondPermission?: (requestID: string, reply: "once" | "always" | "reject") => void;
   safeStringify?: (value: unknown) => string;
@@ -214,9 +214,9 @@ function isFocusableElement(element: HTMLElement) {
   return style.display !== "none" && style.visibility !== "hidden";
 }
 
-function describePermissionRequest(permission: PendingPermission): PermissionPresentation {
-  const patterns = permission.patterns.filter((pattern) => pattern.trim().length > 0);
-  if (permission.permission === "doom_loop") {
+function describePermissionRequest(permission: ConversationPermission): PermissionPresentation {
+  const patterns = permission.resources.filter((pattern) => pattern.trim().length > 0);
+  if (permission.kind === "doom_loop") {
     const tool =
       permission.metadata && typeof permission.metadata === "object" && typeof permission.metadata.tool === "string"
         ? permission.metadata.tool
@@ -234,12 +234,12 @@ function describePermissionRequest(permission: PendingPermission): PermissionPre
     };
   }
 
-  const copy = permissionCopy(permission.permission);
-  const isExternalDirectory = permission.permission === "external_directory";
+  const copy = permissionCopy(permission.kind);
+  const isExternalDirectory = permission.kind === "external_directory";
   return {
     title: copy.title,
     message: copy.message,
-    permissionLabel: readablePermissionLabel(permission.permission),
+    permissionLabel: readablePermissionLabel(permission.kind),
     scopeLabel: isExternalDirectory ? t("session.permission_detail_path") : t("session.scope_label"),
     scopeValue: patterns.join(", ") || t("session.permission_scope_empty"),
     isDoomLoop: false,

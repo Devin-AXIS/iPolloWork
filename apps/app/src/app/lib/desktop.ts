@@ -567,7 +567,6 @@ const {
   writeOpencodeConfig,
   resetiPolloWorkState,
   resetOpencodeCache,
-  opencodeMcpAuth,
   setWindowDecorations,
 } = desktopBridge;
 
@@ -624,6 +623,5 @@ export {
   writeOpencodeConfig,
   resetiPolloWorkState,
   resetOpencodeCache,
-  opencodeMcpAuth,
   setWindowDecorations,
 };

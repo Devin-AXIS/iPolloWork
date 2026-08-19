@@ -1,0 +1,19 @@
+{
+  "compilerOptions": {
+    "target": "ES2024",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "jsx": "react-jsx",
+    "baseUrl": ".",
+    "paths": {
+      "@deepseek-ai/*": ["node_modules/@deepseek-ai/*"],
+      "@ipollowork/types/hyperframes-project": ["../../../packages/types/src/hyperframes-project.ts"],
+      "zod": ["node_modules/zod"]
+    },
+    "strict": true,
+    "skipLibCheck": true,
+    "noEmit": true,
+    "types": ["node"]
+  },
+  "include": ["src", "../../../../packages/video-studio/src", "../studio-host/src"]
+}

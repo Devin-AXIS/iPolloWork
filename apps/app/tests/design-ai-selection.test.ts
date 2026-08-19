@@ -8,7 +8,7 @@ import {
   parseDesignAiSelectionDisplayMetadata,
   parseDesignAiSelectionToken,
   type DesignAiSelectionContext,
-} from "../src/react-app/domains/session/design/design-ai-selection";
+} from "@ipollowork/design-studio";
 import { useDesignAiSelectionStore } from "../src/react-app/domains/session/design/design-ai-selection-store";
 
 const context: DesignAiSelectionContext = {

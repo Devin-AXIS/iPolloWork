@@ -29,6 +29,7 @@ type AddMcpState = {
   name: string;
   serverType: "remote" | "local";
   url: string;
+  authentication: "oauth" | "none";
   oauthExpanded: boolean;
   oauthClientId: string;
   oauthClientSecret: string;
@@ -42,6 +43,7 @@ const initialAddMcpState: AddMcpState = {
   name: "",
   serverType: "remote",
   url: "",
+  authentication: "oauth",
   oauthExpanded: false,
   oauthClientId: "",
   oauthClientSecret: "",
@@ -89,12 +91,12 @@ export function AddMcpModal(props: AddMcpModalProps) {
         dispatch({ error: t("mcp.url_or_command_required"), submitting: false });
         return;
       }
-      if (!oauthClientId && (oauthClientSecret || oauthScope)) {
+      if (state.authentication === "oauth" && !oauthClientId && (oauthClientSecret || oauthScope)) {
         dispatch({ error: t("mcp.oauth_client_id_required"), submitting: false });
         return;
       }
 
-      const oauthConfig = oauthClientId
+      const oauthConfig = state.authentication === "oauth" && oauthClientId
         ? {
             clientId: oauthClientId,
             ...(oauthClientSecret ? { clientSecret: oauthClientSecret } : {}),
@@ -109,7 +111,7 @@ export function AddMcpModal(props: AddMcpModalProps) {
             description: "",
             type: "remote",
             url: trimmedUrl,
-            oauth: Boolean(oauthConfig),
+            oauth: state.authentication === "oauth",
             ...(oauthConfig ? { oauthConfig } : {}),
           }),
         );
@@ -219,10 +221,29 @@ export function AddMcpModal(props: AddMcpModalProps) {
                 value={state.url}
                 onChange={(event) => dispatch({ url: event.currentTarget.value })}
               />
-              <div className="text-[11px] text-dls-secondary">
-                {t("mcp.oauth_autodetect_hint")}
+              <div>
+                <div className="mb-1 text-xs font-medium text-dls-secondary">{t("mcp.authentication")}</div>
+                <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    className={`rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${state.authentication === "oauth" ? "bg-dls-active text-dls-text" : "text-dls-secondary hover:bg-dls-hover hover:text-dls-text"}`}
+                    onClick={() => dispatch({ authentication: "oauth" })}
+                  >
+                    {t("mcp.authentication_oauth")}
+                  </button>
+                  <button
+                    type="button"
+                    className={`rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${state.authentication === "none" ? "bg-dls-active text-dls-text" : "text-dls-secondary hover:bg-dls-hover hover:text-dls-text"}`}
+                    onClick={() => dispatch({ authentication: "none", oauthExpanded: false })}
+                  >
+                    {t("mcp.authentication_none")}
+                  </button>
+                </div>
               </div>
-              <div className="rounded-xl border border-dls-border bg-dls-hover/30">
+              {state.authentication === "oauth" ? <div className="text-[11px] text-dls-secondary">
+                {t("mcp.oauth_autodetect_hint")}
+              </div> : null}
+              {state.authentication === "oauth" ? <div className="rounded-xl border border-dls-border bg-dls-hover/30">
                 <button
                   type="button"
                   className="flex w-full items-center justify-between px-3 py-2 text-left text-xs font-medium text-dls-text"
@@ -260,7 +281,7 @@ export function AddMcpModal(props: AddMcpModalProps) {
                     </div>
                   </div>
                 ) : null}
-              </div>
+              </div> : null}
             </div>
           ) : null}
 

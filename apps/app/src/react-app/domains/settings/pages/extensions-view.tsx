@@ -1,11 +1,9 @@
 /** @jsxImportSource react */
 import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { Building2, Cpu, Loader2, Package } from "lucide-react";
+import { Building2, Cpu, Loader2, Package, RefreshCw } from "lucide-react";
 
 import { t } from "../../../../i18n";
 import { Button } from "@/components/ui/button";
-import { useConnectEnabled } from "@/react-app/domains/cloud/desktop-config-provider";
-import { shouldShowExtensionsMarketplacePane } from "@/react-app/domains/settings/connect-delivery";
 import { toast } from "@/components/ui/sonner";
 import { readActiveWorkContextId, type WorkContextId } from "@/app/lib/work-context";
 import {
@@ -42,7 +40,6 @@ type SuggestedPlugin = {
 export type ExtensionsViewProps = {
   busy: boolean;
   selectedWorkspaceRoot: string;
-  isRemoteWorkspace: boolean;
   canEditPlugins: boolean;
   canUseGlobalScope: boolean;
   accessHint?: string | null;
@@ -50,22 +47,12 @@ export type ExtensionsViewProps = {
   extensions: PluginsExtensionsStore;
   client: iPolloWorkServerClient | null;
   workspaceId: string | null;
-  mcpConnectedAppsCount: number;
-  /** The MCP view (quick-connect grid + configured servers). Skills are injected into it. */
-  mcpView: ReactNode;
-  /** Independently packaged plugins and their plugin-owned authorization. */
-  pluginPackagesView?: ReactNode;
-  /** Organization marketplace content, rendered in the same Extensions pane. */
-  cloudMarketplaceView?: ReactNode;
-  onRefresh: () => void;
-  onOpenConnect?: () => void;
-  initialSection?: ExtensionsSection;
-  setSectionRoute?: (tab: "mcp" | "skills" | "plugins") => void;
-  showHeader?: boolean;
+  pluginPackagesView: ReactNode;
+  skillsView: ReactNode;
+  activeTab: "plugins" | "skills";
 };
 
 export function ExtensionsView(props: ExtensionsViewProps) {
-  const [view, setView] = useState<"my" | "marketplace">("my");
   const activeEnterprise = useActiveEnterpriseConnection();
   const [resourceScope, setResourceScope] = useState<WorkContextId>(() => readActiveWorkContextId());
   const [enterpriseResources, setEnterpriseResources] = useState<EnterpriseResource[]>([]);
@@ -74,16 +61,12 @@ export function ExtensionsView(props: ExtensionsViewProps) {
   const [enterpriseError, setEnterpriseError] = useState<string | null>(null);
   const [enterpriseBusyId, setEnterpriseBusyId] = useState<string | null>(null);
   const [enterpriseRefreshRevision, setEnterpriseRefreshRevision] = useState(0);
-  const connectEnabled = useConnectEnabled();
-  const showMarketplacePane = shouldShowExtensionsMarketplacePane(connectEnabled);
-  const activeView = showMarketplacePane ? view : "my";
-  const pluginCount = useMemo(
-    () => props.extensions.pluginList().length,
-    [props.extensions],
-  );
+  const pluginCount = useMemo(() => props.extensions.pluginList().length, [props.extensions]);
+
   useEffect(() => {
     setResourceScope(readActiveWorkContextId());
   }, [activeEnterprise?.id]);
+
   useEffect(() => {
     if (!activeEnterprise || resourceScope === "personal") {
       setEnterpriseResources([]);
@@ -100,7 +83,7 @@ export function ExtensionsView(props: ExtensionsViewProps) {
       ? props.client.listPluginPackages(props.workspaceId).catch(() => ({ items: [] }))
       : Promise.resolve({ items: [] });
     void Promise.all([
-      listEnterpriseResources(activeEnterprise, "extension"),
+      listEnterpriseResources("extension"),
       installedPackages,
     ]).then(([items, packages]) => {
       if (!current) return;
@@ -113,11 +96,12 @@ export function ExtensionsView(props: ExtensionsViewProps) {
     });
     return () => { current = false; };
   }, [activeEnterprise, enterpriseRefreshRevision, props.client, props.workspaceId, resourceScope]);
+
   const installEnterpriseExtension = async (resource: EnterpriseResource) => {
     if (!activeEnterprise || !props.client || !props.workspaceId || !resource.latestVersion) return;
     setEnterpriseBusyId(resource.id);
     try {
-      const file = await downloadEnterpriseResource(activeEnterprise, resource);
+      const file = await downloadEnterpriseResource(resource);
       const upload = await readPluginPackageArchive(file);
       await props.client.validatePluginPackageUpload(props.workspaceId, upload);
       const result = await props.client.importPluginPackage(props.workspaceId, upload);
@@ -135,98 +119,70 @@ export function ExtensionsView(props: ExtensionsViewProps) {
   };
 
   return (
-    <section className="space-y-6 max-w-3xl w-full animate-in fade-in duration-300">
-      <div className="flex items-center justify-between">
-        <div className="flex flex-wrap items-center gap-2">
-          <WorkResourceScopeSwitch enterprise={activeEnterprise} value={resourceScope} onChange={setResourceScope} />
-          {props.mcpConnectedAppsCount > 0 ? (
-            <div className="inline-flex items-center gap-2 rounded-full bg-green-3 px-3 py-1">
-              <div className="size-2 rounded-full bg-green-9" />
-              <span className="text-xs font-medium text-green-11">
-                {t("extensions.app_count", { count: props.mcpConnectedAppsCount })}
-              </span>
-            </div>
-          ) : null}
+    <section className="mx-auto w-full max-w-[1280px] animate-in space-y-5 fade-in duration-300">
+      {activeEnterprise ? (
+        <div className="flex justify-end">
+          <div className="flex items-center gap-2">
+            <WorkResourceScopeSwitch enterprise={activeEnterprise} value={resourceScope} onChange={setResourceScope} />
+            {resourceScope !== "personal" ? (
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                aria-label={t("common.refresh")}
+                title={t("common.refresh")}
+                onClick={() => setEnterpriseRefreshRevision((revision) => revision + 1)}
+              >
+                <RefreshCw size={15} />
+              </Button>
+            ) : null}
+          </div>
         </div>
-        <Button variant="outline" onClick={() => {
-          if (resourceScope === "personal") props.onRefresh();
-          else setEnterpriseRefreshRevision((revision) => revision + 1);
-        }}>
-          {t("common.refresh")}
-        </Button>
-      </div>
+      ) : null}
 
       {resourceScope !== "personal" ? (
         enterpriseLoading ? (
-          <div className="grid gap-3 sm:grid-cols-2">{Array.from({ length: 4 }, (_, index) => <div key={index} className="h-36 animate-pulse rounded-2xl bg-dls-hover" />)}</div>
+          <div className="grid gap-3 sm:grid-cols-2">
+            {Array.from({ length: 4 }, (_, index) => <div key={index} className="h-36 animate-pulse rounded-2xl bg-dls-hover" />)}
+          </div>
         ) : enterpriseError ? (
           <div role="alert" className="rounded-xl border border-red-6 bg-red-2 px-4 py-3 text-sm text-red-11">{enterpriseError}</div>
         ) : enterpriseResources.length ? (
           <div className="grid gap-3 sm:grid-cols-2">
             {enterpriseResources.map((resource) => {
-              const installedVersion = installedEnterpriseExtensionVersions.get(resource.slug);
+              const installedVersion = installedEnterpriseExtensionVersions.get(resource.manifestId ?? resource.slug);
               const currentVersionInstalled = Boolean(installedVersion && installedVersion === resource.latestVersion?.version);
               const actionLabel = currentVersionInstalled
                 ? t("plugin_platform.status.installed")
                 : installedVersion ? t("template_market.update") : t("enterprise_connection.install_from_enterprise");
               return (
                 <article key={resource.id} className="rounded-2xl border border-dls-border bg-dls-surface p-4 shadow-sm">
-                  <div className="flex items-start gap-3"><div className="grid size-10 shrink-0 place-items-center rounded-xl bg-primary/10 text-primary"><Package size={17} /></div><div className="min-w-0 flex-1"><h3 className="truncate text-sm font-semibold text-dls-text">{resource.name}</h3><p className="mt-1 line-clamp-2 text-xs leading-5 text-dls-secondary">{resource.description}</p></div></div>
-                  <div className="mt-4 flex items-center justify-between gap-3"><span className="truncate text-[11px] text-dls-secondary">{resource.enterpriseCategory}{resource.latestVersion ? ` · v${resource.latestVersion.version}` : ""}</span><Button variant={currentVersionInstalled ? "outline" : "default"} size="sm" disabled={currentVersionInstalled || !resource.latestVersion || enterpriseBusyId !== null || !props.client || !props.workspaceId} onClick={() => void installEnterpriseExtension(resource)}>{enterpriseBusyId === resource.id ? <Loader2 size={14} className="animate-spin" /> : null}{actionLabel}</Button></div>
+                  <div className="flex items-start gap-3">
+                    <div className="grid size-10 shrink-0 place-items-center rounded-xl bg-primary/10 text-primary"><Package size={17} /></div>
+                    <div className="min-w-0 flex-1">
+                      <h3 className="truncate text-sm font-semibold text-dls-text">{resource.name}</h3>
+                      <p className="mt-1 line-clamp-2 text-xs leading-5 text-dls-secondary">{resource.description}</p>
+                    </div>
+                  </div>
+                  <div className="mt-4 flex items-center justify-between gap-3">
+                    <span className="truncate text-[11px] text-dls-secondary">{resource.enterpriseCategory}{resource.latestVersion ? ` · v${resource.latestVersion.version}` : ""}</span>
+                    <Button variant={currentVersionInstalled ? "outline" : "default"} size="sm" disabled={currentVersionInstalled || !resource.latestVersion || enterpriseBusyId !== null || !props.client || !props.workspaceId} onClick={() => void installEnterpriseExtension(resource)}>
+                      {enterpriseBusyId === resource.id ? <Loader2 size={14} className="animate-spin" /> : null}{actionLabel}
+                    </Button>
+                  </div>
                 </article>
               );
             })}
           </div>
         ) : (
-          <div className="rounded-2xl border border-dashed border-dls-border px-5 py-10 text-center text-sm text-dls-secondary"><Building2 className="mx-auto mb-3 size-5" />{t("enterprise_connection.enterprise_extensions_empty")}</div>
+          <div className="rounded-2xl border border-dashed border-dls-border px-5 py-10 text-center text-sm text-dls-secondary">
+            <Building2 className="mx-auto mb-3 size-5" />{t("enterprise_connection.enterprise_extensions_empty")}
+          </div>
         )
-      ) : <>
-
-      {connectEnabled === true ? (
-        <div className="flex flex-col gap-2 rounded-xl border border-dls-border bg-dls-surface px-4 py-3 text-sm text-dls-secondary sm:flex-row sm:items-center sm:justify-between">
-          <span>{t("extensions.connect_marketplace_split_hint")}</span>
-          <Button size="sm" variant="outline" className="w-fit" onClick={props.onOpenConnect}>
-            {t("extensions.open_connect")}
-          </Button>
-        </div>
-      ) : null}
-
-      {showMarketplacePane ? (
-        <div className="flex w-fit rounded-xl border border-dls-border bg-dls-surface p-1">
-          <Button
-            variant={view === "my" ? "secondary" : "ghost"}
-            size="sm"
-            onClick={() => setView("my")}
-          >
-            {t("extensions.my_extensions_tab")}
-          </Button>
-          <Button
-            variant={view === "marketplace" ? "secondary" : "ghost"}
-            size="sm"
-            onClick={() => setView("marketplace")}
-          >
-            {t("extensions.marketplace_tab")}
-          </Button>
-        </div>
-      ) : (
-        <div className="flex flex-col gap-2 rounded-xl border border-dls-border bg-dls-surface px-4 py-3 text-sm text-dls-secondary sm:flex-row sm:items-center sm:justify-between">
-          <span>{t("extensions.connect_marketplace_hint")}</span>
-          <Button size="sm" variant="outline" className="w-fit" onClick={props.onOpenConnect}>
-            {t("extensions.open_connect")}
-          </Button>
-        </div>
-      )}
-
-      {activeView === "my" ? (
-        <>
+      ) : props.activeTab === "skills" ? props.skillsView : (
+        <div className="space-y-8">
           {props.pluginPackagesView}
-
-          {/* Runtime extensions: MCPs + skills + marketplace imports in one view */}
-          {props.mcpView}
-
-          {/* OpenCode plugins -- advanced, collapsed */}
           {pluginCount > 0 ? (
-            <details className="group">
+            <details className="group border-t border-dls-border pt-5">
               <summary className="flex cursor-pointer items-center gap-2 rounded-lg px-1 py-2 text-sm font-medium text-dls-secondary transition-colors hover:text-dls-text">
                 <Cpu size={14} />
                 <span>{t("settings.extensions.opencode_plugins")}</span>
@@ -245,13 +201,8 @@ export function ExtensionsView(props: ExtensionsViewProps) {
               </div>
             </details>
           ) : null}
-        </>
-      ) : props.cloudMarketplaceView ?? (
-        <div className="rounded-xl border border-dashed border-dls-border px-5 py-10 text-center text-sm text-dls-secondary">
-          {t("extensions.marketplace_unavailable")}
         </div>
       )}
-      </>}
     </section>
   );
 }

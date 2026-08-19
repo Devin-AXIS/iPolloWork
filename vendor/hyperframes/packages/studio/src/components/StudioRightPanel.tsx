@@ -4,23 +4,18 @@ import {
   useCallback,
   useEffect,
   useRef,
-  useState,
   type MutableRefObject,
 } from "react";
 import { PanelTabButton } from "./PanelTabButton";
 import { usePreviewVariablesStore } from "../hooks/previewVariablesStore";
 import type { RenderJob } from "./renders/useRenderQueue";
 import type { BlockParam } from "@hyperframes/core/registry";
-import { readMotionInstanceFromExtras } from "@hyperframes/core/motion-presets";
-import {
-  STUDIO_ILLUSTRATION_PANEL_ENABLED,
-  STUDIO_INSPECTOR_PANELS_ENABLED,
-} from "./editor/manualEditingAvailability";
+import { STUDIO_INSPECTOR_PANELS_ENABLED } from "./editor/manualEditingAvailability";
 import type { Composition } from "@hyperframes/sdk";
 import type { EditHistoryKind } from "../utils/editHistory";
 import type { UseSlideshowPersistParams } from "../hooks/useSlideshowPersist";
 import type { EffectInsertIntent } from "../utils/blockInstaller";
-import type { AnimationTemplateDraft } from "./sidebar/AnimationTemplatesTab";
+import type { IllustrationEffectData, IllustrationEffectId } from "../utils/illustrationEffect";
 
 import { useStudioPlaybackContext, useStudioShellContext } from "../contexts/StudioContext";
 import { usePanelLayoutContext } from "../contexts/PanelLayoutContext";
@@ -76,18 +71,9 @@ const loadAnimationTemplatesTab = () =>
   }));
 const AnimationTemplatesTab = lazy(loadAnimationTemplatesTab);
 export const preloadStudioAnimationPanel = () => loadAnimationTemplatesTab();
-const AnimationPropertiesPanel = lazy(() =>
-  import("./editor/SemanticMotionPanel").then((module) => ({
-    default: module.AnimationPropertiesPanel,
-  })),
-);
 const AssetsTab = lazy(() =>
   import("./sidebar/AssetsTab").then((module) => ({ default: module.AssetsTab })),
 );
-const IllustrationTab = lazy(() =>
-  import("./sidebar/IllustrationTab").then((module) => ({ default: module.IllustrationTab })),
-);
-
 export interface StudioRightPanelProps {
   designPanelActive: boolean;
   activeBlockParams?: {
@@ -125,14 +111,10 @@ export interface StudioRightPanelProps {
   }) => Promise<void>;
   onToggleElementHidden?: ToggleHiddenHandler;
   onAddBlock?: (blockName: string, intent?: EffectInsertIntent) => Promise<boolean>;
-}
-
-function animationSelectionKey(
-  selection: AnimationTemplateDraft["selection"] | null | undefined,
-): string | null {
-  if (!selection) return null;
-  const locator = selection.hfId ?? selection.id ?? selection.selector;
-  return locator ? `${selection.compositionPath}:${selection.sourceFile}:${locator}` : null;
+  onInsertIllustration?: (
+    effectId: IllustrationEffectId,
+    data: IllustrationEffectData,
+  ) => Promise<boolean>;
 }
 
 // fallow-ignore-next-line complexity
@@ -151,6 +133,7 @@ export function StudioRightPanel({
   recordEdit,
   onToggleElementHidden,
   onAddBlock,
+  onInsertIllustration,
 }: StudioRightPanelProps) {
   const {
     rightWidth,
@@ -234,7 +217,6 @@ export function StudioRightPanel({
   } = useFileManagerContext();
 
   const backgroundRemovalAbortRef = useRef<AbortController | null>(null);
-  const [pendingMotionDraft, setPendingMotionDraft] = useState<AnimationTemplateDraft | null>(null);
 
   useEffect(
     () => () => {
@@ -345,8 +327,8 @@ export function StudioRightPanel({
       projectDir={projectDir}
       assets={assets}
       element={singleDomEditSelection}
-      inspectorMode={rightPanelTab === "animation-properties" ? "animation" : "properties"}
-      showInspectorChrome={rightPanelTab !== "animation-properties"}
+      inspectorMode="properties"
+      showInspectorChrome
       multiSelectCount={domEditGroupSelections.length}
       multiSelectedElements={domEditGroupSelections}
       onGroupSelection={handleGroupSelection}
@@ -429,47 +411,26 @@ export function StudioRightPanel({
   );
   const animationPanelActive =
     rightPanelTab === "animation" || rightPanelTab === "animation-properties";
-  const hasSelectedSemanticMotion = selectedGsapAnimations.some(
-    (animation) => readMotionInstanceFromExtras(animation.extras) !== null,
-  );
-  const showAnimationProperties =
-    rightPanelTab === "animation-properties" &&
-    (pendingMotionDraft !== null || hasSelectedSemanticMotion);
-  const selectAnimationTemplate = useCallback(
-    (draft: AnimationTemplateDraft) => {
-      setPendingMotionDraft(draft);
-      setRightPanelTab("animation-properties");
-    },
-    [setRightPanelTab],
-  );
-  const currentAnimationSelectionKey = animationSelectionKey(domEditSelection);
-  const pendingAnimationSelectionKey = animationSelectionKey(pendingMotionDraft?.selection);
-  useEffect(() => {
-    if (
-      pendingMotionDraft &&
-      currentAnimationSelectionKey &&
-      currentAnimationSelectionKey !== pendingAnimationSelectionKey
-    ) {
-      setPendingMotionDraft(null);
-    }
-  }, [currentAnimationSelectionKey, pendingAnimationSelectionKey, pendingMotionDraft]);
 
   const animationPanel = (
     <div className="h-full min-h-0 overflow-hidden">
-      {showAnimationProperties ? (
-        <AnimationPropertiesPanel
-          draft={pendingMotionDraft}
-          element={singleDomEditSelection}
-          animations={selectedGsapAnimations}
-          onMutate={handleMotionMutation}
-          onApplied={() => {
-            setPendingMotionDraft(null);
-            showToast(tx("Animation applied"), "info");
-          }}
-        />
-      ) : (
-        <AnimationTemplatesTab onSelectTemplate={selectAnimationTemplate} />
-      )}
+      <AnimationTemplatesTab
+        onMutate={handleMotionMutation}
+        onStatus={(status) =>
+          showToast(
+            t(
+              status === "applied"
+                ? "animation.applied"
+                : status === "selection-required"
+                  ? "animation.selectElement"
+                : status === "updated"
+                  ? "animation.updated"
+                  : "animation.removed",
+            ),
+            "notice",
+          )
+        }
+      />
     </div>
   );
 
@@ -557,18 +518,11 @@ export function StudioRightPanel({
 
   useEffect(() => () => closeHostPanel(), [closeHostPanel]);
 
-  useEffect(() => {
-    if (!STUDIO_ILLUSTRATION_PANEL_ENABLED && rightPanelTab === "illustration") {
-      setRightPanelTab("assets");
-    }
-  }, [rightPanelTab, setRightPanelTab]);
-
   const selectStudioPanel = (
     panel:
       | "design"
       | "animation"
       | "animation-properties"
-      | "illustration"
       | "assets"
       | "catalog"
       | "effects",
@@ -578,6 +532,7 @@ export function StudioRightPanel({
   };
 
   const exportDrawer = rightPanelTab === "renders";
+  const effectsPanelActive = rightPanelTab === "catalog" || rightPanelTab === "effects";
 
   return (
     <>
@@ -645,9 +600,14 @@ export function StudioRightPanel({
                       tooltip={t("right.animationTooltip")}
                       active={animationPanelActive}
                       onClick={() => {
-                        setPendingMotionDraft(null);
                         selectStudioPanel("animation");
                       }}
+                    />
+                    <PanelTabButton
+                      label={t("right.catalog")}
+                      tooltip={t("right.catalogTooltip")}
+                      active={effectsPanelActive}
+                      onClick={() => selectStudioPanel("catalog")}
                     />
                     <PanelTabButton
                       label={t("right.voice")}
@@ -655,14 +615,6 @@ export function StudioRightPanel({
                       active={rightPanelTab === "voice"}
                       onClick={() => openHostPanel("voice")}
                     />
-                    {STUDIO_ILLUSTRATION_PANEL_ENABLED && (
-                      <PanelTabButton
-                        label={t("right.illustration")}
-                        tooltip={t("right.illustrationTooltip")}
-                        active={rightPanelTab === "illustration"}
-                        onClick={() => selectStudioPanel("illustration")}
-                      />
-                    )}
                     <PanelTabButton
                       label={t("right.assets")}
                       tooltip={t("right.assetsTooltip")}
@@ -700,12 +652,14 @@ export function StudioRightPanel({
                       compositionPath={activeBlockParams.compositionPath}
                       onClose={onCloseBlockParams ?? (() => {})}
                     />
-                  ) : rightPanelTab === "catalog" || rightPanelTab === "effects" ? (
-                    <BlocksTab page="effects" onAddBlock={onAddBlock} />
+                  ) : effectsPanelActive ? (
+                    <BlocksTab
+                      page="effects"
+                      onAddBlock={onAddBlock}
+                      onInsertIllustration={onInsertIllustration}
+                    />
                   ) : animationPanelActive ? (
                     animationPanel
-                  ) : STUDIO_ILLUSTRATION_PANEL_ENABLED && rightPanelTab === "illustration" ? (
-                    <IllustrationTab />
                   ) : rightPanelTab === "assets" ? (
                     <AssetsTab
                       projectId={projectId}

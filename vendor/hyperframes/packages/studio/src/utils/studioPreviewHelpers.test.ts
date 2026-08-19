@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  installEmbeddedHtmlAssetScaling,
   isFullBleedTarget,
   resolveEmbeddedHtmlAssetSelectionTarget,
 } from "./studioPreviewHelpers";
@@ -19,6 +20,45 @@ function rect(left: number, top: number, width: number, height: number): DOMRect
 }
 
 describe("resolveEmbeddedHtmlAssetSelectionTarget", () => {
+  it("upgrades existing illustration iframes to resize-stable scaling", () => {
+    let resize: (() => void) | undefined;
+    let disconnected = false;
+    class FakeResizeObserver {
+      constructor(callback: () => void) {
+        resize = callback;
+      }
+      observe() {}
+      disconnect() {
+        disconnected = true;
+      }
+    }
+    const iframe = {
+      style: { scale: "1", transform: "scale(1)" },
+      __hfResizeObserver: { disconnect: () => (disconnected = true) },
+    };
+    const container = {
+      clientWidth: 480,
+      clientHeight: 270,
+      querySelector: () => iframe,
+    };
+    const doc = {
+      defaultView: {
+        ResizeObserver: FakeResizeObserver,
+        CSS: { supports: () => true },
+      },
+      querySelectorAll: () => [container],
+    } as unknown as Document;
+
+    installEmbeddedHtmlAssetScaling(doc);
+    expect(disconnected).toBe(true);
+    expect(iframe.style.scale).toBe("0.3");
+    expect(iframe.style.transform).toBe("none");
+
+    container.clientHeight = 180;
+    resize?.();
+    expect(iframe.style.scale).toBe("0.2");
+  });
+
   it("promotes an illustration iframe to its resizable clip wrapper", () => {
     const parent = {
       getAttribute: (name: string) =>

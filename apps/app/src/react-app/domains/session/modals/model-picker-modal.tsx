@@ -149,7 +149,9 @@ export function ModelPickerModal(props: ModelPickerModalProps) {
   }, []);
 
   const handleSelect = useCallback(
-    (opt: ModelOption) => props.onSelect({ providerID: opt.providerID, modelID: opt.modelID }),
+    (opt: ModelOption) => {
+      if (!opt.disabled) props.onSelect({ providerID: opt.providerID, modelID: opt.modelID });
+    },
     [props.onSelect],
   );
 
@@ -359,9 +361,15 @@ function DefaultModelRow({
   return (
     <button
       type="button"
+      disabled={opt.disabled}
+      title={opt.disabled ? opt.footer : undefined}
       className={[
         "flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left transition-colors",
-        active ? "bg-green-3/50" : "hover:bg-dls-hover",
+        opt.disabled
+          ? "cursor-not-allowed opacity-50"
+          : active
+            ? "bg-green-3/50"
+            : "hover:bg-dls-hover",
       ].join(" ")}
       onClick={() => onSelect(opt)}
     >
@@ -375,7 +383,9 @@ function DefaultModelRow({
             </span>
           ) : null}
         </div>
-        <span className="block truncate font-mono text-[10px] text-dls-secondary/60">{opt.modelID}</span>
+        <span className="block truncate font-mono text-[10px] text-dls-secondary/60">
+          {opt.disabled ? opt.footer : opt.modelID}
+        </span>
       </div>
       {active ? <Check size={14} className="shrink-0 text-green-11" /> : null}
     </button>

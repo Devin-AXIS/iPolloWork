@@ -9,6 +9,7 @@ apps/*/node_modules/
 .next/
 out/
 dist/
+coverage/
 packages/*/dist/
 apps/*/dist/
 tmp/

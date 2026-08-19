@@ -305,10 +305,11 @@ export type DesktopFetchResult = {
 };
 
 export type WorkspaceCreateInput = {
-  folderPath: string;
+  folderPath?: string | null;
   name?: string | null;
   preset?: string | null;
   workContextId?: `enterprise:${string}` | null;
+  engineId?: string | null;
 };
 
 export type WorkspaceCreateRemoteInput = {
@@ -516,7 +517,6 @@ export type DesktopCommandMap = {
    */
   resetiPolloWorkState: { args: [mode?: "onboarding" | "all"]; result: unknown };
   resetOpencodeCache: { args: []; result: CacheResetResult };
-  opencodeMcpAuth: { args: [action: string, name: string]; result: ExecResult };
   setWindowDecorations: { args: [decorated: boolean]; result: unknown };
 
   // Window / OS utilities (dunder commands)

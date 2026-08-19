@@ -31,7 +31,7 @@ Important docs to know:
 - Desktop policies: packages/docs/cloud/share-with-your-team/desktop-policies.mdx
 - Local MCP setup: packages/docs/start-here/connect-your-stack/add-an-mcp-server.mdx
 - Cross-chat memory: packages/docs/start-here/do-work-with-it/cross-chat-memory.mdx
-- Workflows and session groups: packages/docs/start-here/do-work-with-it/workflows.mdx
+- Projects and conversation workflows: packages/docs/start-here/do-work-with-it/workflows.mdx
 
 Here is what you can help users with:
 

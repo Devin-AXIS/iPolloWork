@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import { ChevronDown, Settings2 } from "lucide-react";
+import { DEFAULT_ENGINE_ID } from "@ipollowork/types/workspace";
 
 import type { ModelOption, ModelRef } from "@/app/types";
 import { modelSupportsVision } from "@/app/utils/model-capabilities";
@@ -19,7 +20,13 @@ import {
 } from "@/components/ui/tooltip";
 import { useWorkspace } from "@/react-app/shell/workspace-provider";
 import { useCheckDesktopRestriction } from "@/react-app/domains/cloud/desktop-config-provider";
-import { getSelectableChatProviderItems, useProviderListQuery } from "@/react-app/infra/provider-list-query";
+import {
+  ensureMergedProviderListQuery,
+  getSelectableChatProviderItems,
+  isModelAvailableInConnectedProviders,
+  useProviderListQuery,
+} from "@/react-app/infra/provider-list-query";
+import { getReactQueryClient } from "@/react-app/infra/query-client";
 import {
   Command,
   CommandCollection,
@@ -44,41 +51,58 @@ function getProviderDisplayName(providerId: string) {
 }
 
 function useModelOptions(open: boolean) {
-  const { client, opencodeBaseUrl, selectedWorkspaceRoot } = useWorkspace();
+  const {
+    client,
+    engineId,
+    modelCatalogSources,
+    opencodeBaseUrl,
+    selectedWorkspaceRoot,
+  } = useWorkspace();
   const checkDesktopRestriction = useCheckDesktopRestriction();
+  const [catalog, setCatalog] = React.useState<Awaited<ReturnType<typeof ensureMergedProviderListQuery>> | null>(null);
 
   const { data, refetch } = useProviderListQuery({
     client,
+    engineId,
     baseUrl: opencodeBaseUrl,
     directory: selectedWorkspaceRoot,
     enabled: Boolean(client),
   });
 
+  const loadCatalog = React.useCallback(async () => {
+    if (!client) return;
+    await refetch();
+    const sources = modelCatalogSources.length
+      ? modelCatalogSources
+      : [{ client, engineId, baseUrl: opencodeBaseUrl, directory: selectedWorkspaceRoot }];
+    setCatalog(await ensureMergedProviderListQuery(getReactQueryClient(), sources));
+  }, [client, engineId, modelCatalogSources, opencodeBaseUrl, refetch, selectedWorkspaceRoot]);
+
   React.useEffect(() => {
-    if (!open || !client) return;
-    void refetch();
-  }, [client, open, refetch]);
+    if (!open) return;
+    void loadCatalog();
+  }, [loadCatalog, open]);
 
   React.useEffect(() => {
     if (!client) return;
     const handler = () => {
-      void refetch();
+      void loadCatalog();
     };
     window.addEventListener(newProvidersEvent, handler);
     return () => window.removeEventListener(newProvidersEvent, handler);
-  }, [client, refetch]);
+  }, [client, loadCatalog]);
 
   // Apply org-level restrictions (dev #1505) on top of the raw model list
   // so the picker never surfaces blocked options:
   //   - `allowZenModel` hides the built-in OpenCode provider entries when false
   //   - `allowCustomProviders` hides providers that OpenCode does not report
   //     as connected through the provider list endpoint.
-  return React.useMemo(() => {
+  const options = React.useMemo(() => {
     const restrictToCloud = checkDesktopRestriction({
       restriction: "allowCustomProviders",
     });
 
-    const options = getSelectableChatProviderItems(data)
+    const options = getSelectableChatProviderItems(catalog ?? data)
       .flatMap((provider) =>
         Object.entries(provider.models).map(([id, model]) => ({
           providerID: provider.id,
@@ -91,6 +115,11 @@ function useModelOptions(open: boolean) {
           behaviorValue: null,
           isFree: false,
           isConnected: true,
+          disabled: !data || !isModelAvailableInConnectedProviders(data, {
+            providerID: provider.id,
+            modelID: id,
+          }),
+          footer: t("model_picker.engine_unavailable"),
           supportsVision: modelSupportsVision(model),
         })),
       );
@@ -111,7 +140,12 @@ function useModelOptions(open: boolean) {
 
       return true;
     });
-  }, [checkDesktopRestriction, data]);
+  }, [catalog, checkDesktopRestriction, data]);
+
+  return {
+    options,
+    includeTokenStar: (engineId?.trim() || DEFAULT_ENGINE_ID) === DEFAULT_ENGINE_ID,
+  };
 }
 
 type ModelSelectModelItem = {
@@ -132,7 +166,7 @@ type ModelSelectGroup = {
   items: ModelSelectItem[];
 };
 
-function groupByProvider(modelOptions: ModelOption[]): ModelSelectGroup[] {
+function groupByProvider(modelOptions: ModelOption[], includeTokenStar: boolean): ModelSelectGroup[] {
   const groups = new Map<string, ModelSelectModelItem[]>();
 
   for (const option of modelOptions) {
@@ -158,7 +192,7 @@ function groupByProvider(modelOptions: ModelOption[]): ModelSelectGroup[] {
       items: [...options].sort((a, b) => a.option.title.localeCompare(b.option.title)),
     }))
     .sort((a, b) => a.value.localeCompare(b.value));
-  if (!modelOptions.some((option) => option.providerID === "tokenstar")) {
+  if (includeTokenStar && !modelOptions.some((option) => option.providerID === "tokenstar")) {
     const tokenStarEntry: TokenStarEntry = { kind: "tokenstar-connect", id: "tokenstar-connect" };
     grouped.push({ value: "TokenStar", items: [tokenStarEntry] });
     grouped.sort((a, b) => a.value.localeCompare(b.value));
@@ -198,7 +232,7 @@ export function ModelListContent({
 }: ModelListContentProps) {
   const [search, setSearch] = React.useState("");
   const searchInputRef = React.useRef<HTMLInputElement>(null);
-  const modelOptions = useModelOptions(true);
+  const { options: modelOptions, includeTokenStar } = useModelOptions(true);
 
   React.useEffect(() => {
     if (!autoFocus) return;
@@ -209,7 +243,10 @@ export function ModelListContent({
     return () => window.cancelAnimationFrame(frame);
   }, [autoFocus]);
 
-  const groups = React.useMemo(() => groupByProvider(modelOptions), [modelOptions]);
+  const groups = React.useMemo(
+    () => groupByProvider(modelOptions, includeTokenStar),
+    [includeTokenStar, modelOptions],
+  );
 
   const handleSelect = (option: ModelOption) => {
     onChange({ providerID: option.providerID, modelID: option.modelID });
@@ -248,10 +285,13 @@ export function ModelListContent({
                 const visionBadgeLabel = option.supportsVision ? t("model_picker.badge_vision") : null;
                 return (
                   <CommandItem
-                    className="gap-2"
+                    className="gap-2 data-disabled:opacity-50"
                     key={item.id}
                     value={`${option.providerID}:${option.modelID} ${option.title} ${option.description ?? ""}`}
-                    onClick={() => handleSelect(option)}
+                    disabled={option.disabled}
+                    onClick={() => {
+                      if (!option.disabled) handleSelect(option);
+                    }}
                     data-checked={isSameModel(value, option)}
                   >
                     <ProviderIcon providerId={option.providerID} providerName={option.description} className="size-3.5 opacity-70" size={14} />
@@ -265,7 +305,9 @@ export function ModelListContent({
                         ) : null}
                       </span>
                       <span className="block truncate text-xs text-muted-foreground">
-                        {option.description ?? getProviderDisplayName(option.providerID)}
+                        {option.disabled
+                          ? option.footer
+                          : option.description ?? getProviderDisplayName(option.providerID)}
                       </span>
                     </span>
                   </CommandItem>
@@ -305,7 +347,7 @@ export function ModelSelect({
   onConfigureTokenStar,
   disabled = false,
 }: ModelSelectProps) {
-  const modelOptions = useModelOptions(open);
+  const { options: modelOptions } = useModelOptions(open);
   const selectedOption = modelOptions.find((option) => isSameModel(value, option));
 
   return (

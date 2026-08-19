@@ -76,7 +76,7 @@ export function ModelBehaviorMenu({
         type="button"
         disabled={disabled}
         aria-label={`${t("model_picker.change_model")} ${hasBehavior ? `· ${t("composer.behavior_label")}` : ""}`}
-        className="inline-flex max-w-72 items-center gap-1.5 rounded-full bg-gray-3 px-3 py-1.5 text-sm text-gray-11 transition-colors hover:bg-gray-4 hover:text-gray-12 disabled:pointer-events-none disabled:opacity-60"
+        className="inline-flex max-w-72 items-center gap-1.5 rounded-full bg-gray-2 px-3 py-1.5 text-sm text-gray-11 transition-colors hover:bg-gray-3 hover:text-gray-12 disabled:pointer-events-none disabled:opacity-60"
       >
         <span className="truncate">{summary}</span>
         <ChevronDown className="size-4 shrink-0" />

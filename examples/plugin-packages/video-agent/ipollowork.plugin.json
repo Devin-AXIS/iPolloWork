@@ -1,9 +1,10 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "id": "video-agent",
-  "name": "iPolloWork Video Agent",
-  "description": "管理 iPolloWork Video Studio、HyperFrames 与旁白工作流的官方 Agent Skills，不改变内置 Studio、时间线或视频项目。",
-  "category": "创作与设计",
+  "name": "iPollo Video",
+  "description": "提供 iPollo Video、HyperFrames、旁白工作流与配套 Agent Skills。",
+  "category": "AI Agent 与自动化",
+  "defaultEnabled": true,
   "source": {
     "format": "ipollowork-extension-manifest",
     "origin": "builtin",
@@ -14,21 +15,30 @@
     "src": "ipollowork-mark.svg"
   },
   "composer": {
-    "prompt": "使用 iPolloWork Video Agent 在当前会话的 Video Studio 项目中创建或编辑视频。"
+    "prompt": "使用 iPollo Video 在当前会话的视频项目中创建或编辑视频。"
   },
   "localization": {
     "defaultLocale": "zh",
     "translations": {
       "en": {
-        "description": "Official Agent Skills for iPolloWork Video Studio, HyperFrames, and voiceover workflows, without replacing the built-in Studio, timeline, or video project.",
-        "category": "Creative & Design",
-        "composer": { "prompt": "Use iPolloWork Video Agent to create or edit video in the current session's Video Studio project." },
+        "description": "iPollo Video, HyperFrames, voiceover workflows, and official Agent Skills.",
+        "category": "AI Agents & Automation",
+        "composer": { "prompt": "Use iPollo Video to create or edit video in the current session's video project." },
         "resources": {
           "ipollowork-video-studio": { "description": "Safely create and edit HyperFrames video in the current iPolloWork Video Studio session." },
           "ipollowork-video-voiceover": {
             "label": "Video Voiceover",
             "description": "Generate and verify scene-by-scene voiceover using the current Video Studio media capabilities."
-          }
+          },
+          "hyperframes": { "label": "HyperFrames", "description": "Route video creation, editing, validation, preview, and rendering through HyperFrames." },
+          "hyperframes-animation": { "label": "HyperFrames Animation", "description": "Create deterministic HyperFrames animation, transitions, and motion choreography." },
+          "hyperframes-cli": { "label": "HyperFrames CLI", "description": "Use the HyperFrames CLI to inspect, validate, preview, render, and publish video projects." },
+          "hyperframes-core": { "label": "HyperFrames Core", "description": "Apply the core HyperFrames composition, timing, media, and determinism contract." },
+          "hyperframes-creative": { "label": "HyperFrames Creative", "description": "Plan visual direction, typography, pacing, audio, and composition for HyperFrames video." },
+          "hyperframes-keyframes": { "label": "HyperFrames Keyframes", "description": "Build and verify seek-safe keyframe animation for HyperFrames projects." },
+          "hyperframes-registry": { "label": "HyperFrames Registry", "description": "Discover, install, and wire reusable HyperFrames blocks and components." },
+          "media-use": { "label": "Media", "description": "Resolve, generate, process, and reuse media assets for video projects." },
+          "product-launch-video": { "label": "Product Launch Video", "description": "Create product launch and promotional videos from product sources and briefs." }
         },
         "permissions": {
           "workspace-read": { "reason": "Read the current session's HyperFrames project, timeline, media, and voiceover settings." },
@@ -39,17 +49,15 @@
     }
   },
   "package": {
-    "version": "0.1.2",
+    "version": "0.3.0",
     "publisher": {
       "id": "ipollowork",
       "name": "iPolloWork"
     },
     "compatibility": {
-      "ipollowork": ">=0.18.0",
-      "opencode": ">=1.18.0"
+      "ipollowork": ">=0.18.0"
     },
-    "updateId": "ipollowork/video-agent",
-    "entrypoints": {}
+    "updateId": "ipollowork/video-agent"
   },
   "permissions": [
     {
@@ -65,16 +73,14 @@
       "reason": "运行 HyperFrames 对当前会话项目的只读检查和验证命令。"
     }
   ],
-  "relatedSkills": [
-    "hyperframes",
-    "hyperframes-animation",
-    "hyperframes-cli",
-    "hyperframes-core",
-    "hyperframes-creative",
-    "hyperframes-keyframes",
-    "hyperframes-registry",
-    "media-use",
-    "product-launch-video"
+  "contributions": [
+    {
+      "type": "session-side-panel",
+      "ref": "ipollowork.video.panel",
+      "label": "Video",
+      "description": "在当前会话右侧打开 Video Studio。",
+      "location": "session-right-pane"
+    }
   ],
   "resources": [
     {
@@ -82,7 +88,7 @@
       "id": "ipollowork-video-studio",
       "label": "Video Studio",
       "description": "在当前 iPolloWork Video Studio 会话中安全创建和编辑 HyperFrames 视频。",
-      "path": ".opencode/skills/ipollowork-video-studio/SKILL.md",
+      "path": "skills/ipollowork-video-studio/SKILL.md",
       "provides": [
         "workflow:ipollowork-video-studio"
       ],
@@ -93,10 +99,91 @@
       "id": "ipollowork-video-voiceover",
       "label": "视频旁白",
       "description": "使用当前 Video Studio 的媒体能力生成并校验逐场景旁白。",
-      "path": ".opencode/skills/ipollowork-video-voiceover/SKILL.md",
+      "path": "skills/ipollowork-video-voiceover/SKILL.md",
       "provides": [
         "workflow:ipollowork-video-voiceover"
       ],
+      "required": true
+    },
+    {
+      "type": "skill",
+      "id": "hyperframes",
+      "label": "HyperFrames",
+      "description": "统一调度 HyperFrames 视频创建、编辑、检查、预览与渲染。",
+      "path": "skills/hyperframes/SKILL.md",
+      "provides": ["workflow:hyperframes"],
+      "required": true
+    },
+    {
+      "type": "skill",
+      "id": "hyperframes-animation",
+      "label": "HyperFrames 动画",
+      "description": "创建确定性的 HyperFrames 动画、转场和动效编排。",
+      "path": "skills/hyperframes-animation/SKILL.md",
+      "provides": ["workflow:hyperframes-animation"],
+      "required": true
+    },
+    {
+      "type": "skill",
+      "id": "hyperframes-cli",
+      "label": "HyperFrames CLI",
+      "description": "检查、校验、预览、渲染和发布 HyperFrames 视频项目。",
+      "path": "skills/hyperframes-cli/SKILL.md",
+      "provides": ["workflow:hyperframes-cli"],
+      "required": true
+    },
+    {
+      "type": "skill",
+      "id": "hyperframes-core",
+      "label": "HyperFrames 核心",
+      "description": "应用 HyperFrames 的组合、时间、媒体和确定性核心规范。",
+      "path": "skills/hyperframes-core/SKILL.md",
+      "provides": ["workflow:hyperframes-core"],
+      "required": true
+    },
+    {
+      "type": "skill",
+      "id": "hyperframes-creative",
+      "label": "HyperFrames 创作",
+      "description": "规划视频的视觉方向、排版、节奏、音频和构图。",
+      "path": "skills/hyperframes-creative/SKILL.md",
+      "provides": ["workflow:hyperframes-creative"],
+      "required": true
+    },
+    {
+      "type": "skill",
+      "id": "hyperframes-keyframes",
+      "label": "HyperFrames 关键帧",
+      "description": "创建并校验可安全定位的 HyperFrames 关键帧动画。",
+      "path": "skills/hyperframes-keyframes/SKILL.md",
+      "provides": ["workflow:hyperframes-keyframes"],
+      "required": true
+    },
+    {
+      "type": "skill",
+      "id": "hyperframes-registry",
+      "label": "HyperFrames 组件库",
+      "description": "发现、安装并接入可复用的 HyperFrames 区块和组件。",
+      "path": "skills/hyperframes-registry/SKILL.md",
+      "provides": ["workflow:hyperframes-registry"],
+      "required": true
+    },
+    {
+      "type": "skill",
+      "id": "media-use",
+      "label": "媒体能力",
+      "description": "为视频项目查找、生成、处理并复用媒体素材。",
+      "path": "skills/media-use/SKILL.md",
+      "provides": ["workflow:media-use"],
+      "required": true
+    },
+    {
+      "type": "skill",
+      "id": "product-launch-video",
+      "label": "产品发布视频",
+      "description": "根据产品资料和需求制作产品发布与宣传视频。",
+      "path": "skills/product-launch-video/SKILL.md",
+      "provides": ["workflow:product-launch-video"],
       "required": true
     }
   ]

@@ -1,4 +1,5 @@
 import { ApiError } from "../errors.js";
+import { createAuthorizationAccess } from "../authorization-center.js";
 import type { EnvService } from "../env-file.js";
 import {
   googleWorkspaceConnectGuidance,
@@ -83,6 +84,7 @@ export async function callExperimentalExtensionAction(config: ServerConfig, env:
   if (!registered) {
     return callPluginServiceAction({
       config,
+      env,
       workspaceId: workspaceIdForPluginContext(config, context),
       pluginId: extensionId,
       action,
@@ -110,17 +112,17 @@ export async function callExperimentalExtensionAction(config: ServerConfig, env:
   }
 
   if (extensionId === OPENAI_IMAGE_GENERATION_EXTENSION_ID) {
-    const result = await callOpenAiImageGenerationExtensionAction(config, env, action, args, context);
+    const result = await callOpenAiImageGenerationExtensionAction(config, createAuthorizationAccess(config), action, args, context);
     if (result) return result;
   }
 
   if (extensionId === MEDIA_EXTENSION_ID) {
-    const result = await callMediaExtensionAction(config, env, action, args, context);
+    const result = await callMediaExtensionAction(config, createAuthorizationAccess(config), action, args, context);
     if (result) return result;
   }
 
   if (extensionId === STORAGE_EXTENSION_ID) {
-    const result = await callStorageExtensionAction(config, env, action, args, context);
+    const result = await callStorageExtensionAction(config, createAuthorizationAccess(config), action, args, context);
     if (result) return result;
   }
 

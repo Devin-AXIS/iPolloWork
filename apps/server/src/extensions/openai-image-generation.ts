@@ -2,7 +2,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, resolve, sep } from "node:path";
 
 import { ApiError } from "../errors.js";
-import type { EnvService } from "../env-file.js";
+import type { AuthorizationAccess } from "../authorization-center.js";
 import type { ServerConfig, WorkspaceInfo } from "../types.js";
 
 export const OPENAI_IMAGE_GENERATION_EXTENSION_ID = "openai-image-generation";
@@ -52,16 +52,13 @@ function slugifyImageArtifactName(value: string) {
     .slice(0, 48) || "ipollowork-image";
 }
 
-async function resolveOpenAiImageApiKey(env: EnvService): Promise<string> {
-  const records = await env.list();
-  return records.find((entry) => entry.key === "OPENAI_API_KEY")?.value.trim() ||
-    process.env.OPENAI_API_KEY?.trim() ||
-    "";
+async function resolveOpenAiImageApiKey(authorization: AuthorizationAccess): Promise<string> {
+  return (await authorization.read("openai-images")).OPENAI_API_KEY?.trim() ?? "";
 }
 
-export async function openAiImageGenerationStatus(env: EnvService) {
+export async function openAiImageGenerationStatus(authorization: AuthorizationAccess) {
   try {
-    const apiKey = await resolveOpenAiImageApiKey(env);
+    const apiKey = await resolveOpenAiImageApiKey(authorization);
     return {
       configured: Boolean(apiKey),
       connected: Boolean(apiKey),
@@ -149,11 +146,11 @@ function imageDataFromPayload(payload: unknown): Buffer {
   return Buffer.from(b64, "base64");
 }
 
-async function generateOpenAiImageArtifact(config: ServerConfig, env: EnvService, args: Record<string, unknown>, context: Record<string, unknown>) {
+async function generateOpenAiImageArtifact(config: ServerConfig, authorization: AuthorizationAccess, args: Record<string, unknown>, context: Record<string, unknown>) {
   const prompt = readStringField(args, "prompt");
   if (!prompt) throw new ApiError(400, "invalid_payload", "prompt is required");
 
-  const apiKey = await resolveOpenAiImageApiKey(env);
+  const apiKey = await resolveOpenAiImageApiKey(authorization);
   if (!apiKey) {
     throw new ApiError(400, "openai_api_key_missing", "OpenAI API key missing. Configure OpenAI image generation in Authorization Center.");
   }
@@ -176,18 +173,18 @@ async function generateOpenAiImageArtifact(config: ServerConfig, env: EnvService
   };
 }
 
-export async function callOpenAiImageGenerationExtensionAction(config: ServerConfig, env: EnvService, action: string, args: Record<string, unknown>, context: Record<string, unknown>) {
+export async function callOpenAiImageGenerationExtensionAction(config: ServerConfig, authorization: AuthorizationAccess, action: string, args: Record<string, unknown>, context: Record<string, unknown>) {
   if (action === "status") {
     return {
       ok: true,
       extensionId: OPENAI_IMAGE_GENERATION_EXTENSION_ID,
       action,
-      result: await openAiImageGenerationStatus(env),
+      result: await openAiImageGenerationStatus(authorization),
       context,
     };
   }
   if (action === "image_generate") {
-    const result = await generateOpenAiImageArtifact(config, env, args, context);
+    const result = await generateOpenAiImageArtifact(config, authorization, args, context);
     return {
       ok: true,
       extensionId: OPENAI_IMAGE_GENERATION_EXTENSION_ID,

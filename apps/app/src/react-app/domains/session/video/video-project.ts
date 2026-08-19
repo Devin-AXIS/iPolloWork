@@ -1,41 +1,21 @@
 import type { TemplateManifestV1 } from "@ipollowork/types/templates";
 import {
+  hyperframesStudioUrl,
   hyperframesStudioPort,
   videoProjectDirectory,
   videoProjectId,
-} from "@ipollowork/types/hyperframes";
+  videoProjectEntryPath,
+} from "@ipollowork/video-studio/project";
 
-export { hyperframesStudioPort, videoProjectDirectory, videoProjectId };
+export {
+  hyperframesStudioPort,
+  hyperframesStudioUrl,
+  videoProjectDirectory,
+  videoProjectEntryPath,
+  videoProjectId,
+};
 
 export const HYPERFRAMES_STUDIO_LABEL = "Local HyperFrames Studio";
-
-export function hyperframesStudioUrl(
-  port = 3_002,
-  projectId = "video",
-  locale?: string,
-  theme?: "light" | "dark",
-  reloadToken?: number,
-) {
-  // Start on a deterministic, hydrated main-composition frame. HyperFrames can
-  // otherwise restore a panel/playhead state before its preview has mounted,
-  // which leaves the first playback visually empty until a timeline layer is
-  // selected.
-  const params = new URLSearchParams({
-    v: "1",
-    t: "0",
-    tab: "design",
-    rc: "1",
-    tv: "1",
-  });
-  if (locale) params.set("locale", locale);
-  if (theme) params.set("ipolloworkTheme", theme);
-  if (reloadToken != null) params.set("reload", String(reloadToken));
-  return `http://localhost:${port}/#project/${encodeURIComponent(projectId)}?${params.toString()}`;
-}
-
-export function videoProjectEntryPath(sessionId: string) {
-  return `${videoProjectDirectory(sessionId)}/index.html`;
-}
 
 /**
  * Template metadata is authoritative when it exists. Older sessions created
@@ -141,6 +121,41 @@ export function hasVideoDeliveryRequirements(requirements: VideoDeliveryRequirem
     || requirements.bgm
     || requirements.animationReferences.length > 0
     || requirements.targetDurationSeconds != null;
+}
+
+export type VideoArtifactCompletionRequirement = {
+  sourcePath: string;
+  baselineFingerprint: string;
+  assistantMessageBaseline: number;
+};
+
+export function videoArtifactFingerprint(content: string) {
+  let hash = 2_166_136_261;
+  for (let index = 0; index < content.length; index += 1) {
+    hash ^= content.charCodeAt(index);
+    hash = Math.imul(hash, 16_777_619);
+  }
+  return `${content.length}:${(hash >>> 0).toString(16)}`;
+}
+
+export function createVideoArtifactCompletionRequirement(
+  sourcePath: string,
+  content: string,
+  assistantMessageBaseline: number,
+): VideoArtifactCompletionRequirement {
+  return {
+    sourcePath,
+    baselineFingerprint: videoArtifactFingerprint(content),
+    assistantMessageBaseline,
+  };
+}
+
+export function unchangedVideoArtifactIssue(beforeFingerprint: string | null, after: string) {
+  if (beforeFingerprint === null || beforeFingerprint !== videoArtifactFingerprint(after)) return null;
+  return {
+    code: "artifact_unchanged",
+    message: "The video source was not modified before the run ended.",
+  };
 }
 
 export function videoCompositionHasVoiceover(content?: string | null) {

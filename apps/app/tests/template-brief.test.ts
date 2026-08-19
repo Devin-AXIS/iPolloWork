@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, test } from "bun:test";
+import { readFileSync } from "node:fs";
 
 import { setLocale } from "../src/i18n";
 
@@ -94,6 +95,23 @@ describe("template brief", () => {
     expect(prompt).toContain("do not add <script> tags");
     expect(prompt).toContain("The Design panel owns slide navigation");
     expect(prompt).toContain("responsive slide reflow");
+  });
+
+  test("arms the shared artifact completion gate before starting a video template task", () => {
+    const pageSource = readFileSync(
+      new URL("../src/react-app/domains/session/chat/session-page.tsx", import.meta.url),
+      "utf8",
+    );
+    const surfaceSource = readFileSync(
+      new URL("../src/react-app/domains/session/surface/session-surface.tsx", import.meta.url),
+      "utf8",
+    );
+
+    expect(pageSource).toContain("createVideoArtifactCompletionRequirement(");
+    expect(pageSource).toContain("const dispatched = await props.surface?.onSendDraft(");
+    expect(pageSource).toContain("artifactCompletionRequirement={pendingVideoArtifactCompletion");
+    expect(surfaceSource).toContain("unchangedVideoArtifactIssue(");
+    expect(surfaceSource).toContain("Continue the unfinished video delivery.");
   });
 
   test("requires slide generation to retain the selected template's distinct composition", () => {

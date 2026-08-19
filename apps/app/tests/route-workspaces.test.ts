@@ -5,8 +5,9 @@ import {
   buildTaskPaletteSessionOptions,
   mapDesktopWorkspace,
   mergeRouteWorkspaces,
+  orderRouteWorkspaces,
   partitionInitialWorkspaceLoads,
-  toSessionGroups,
+  toProjectSessionLists,
   resolveKnownWorkspaceId,
   userVisibleSessionsByWorkspaceId,
 } from "../src/react-app/shell/route-workspaces";
@@ -56,6 +57,30 @@ describe("route workspaces", () => {
     const desktop = [mapDesktopWorkspace(localWorkspace("ws_local", "/Users/example/local"))];
 
     expect(mergeRouteWorkspaces([], desktop).map((workspace) => workspace.id)).toEqual(["ws_local"]);
+  });
+
+  test("preserves the desktop default-workspace marker when merging a server project", () => {
+    const server = [localWorkspace("ws_default", "/Users/example/iPolloWork")];
+    const desktop = [mapDesktopWorkspace({
+      ...localWorkspace("ws_default", "/Users/example/iPolloWork"),
+      isDefault: true,
+    })];
+
+    expect(mergeRouteWorkspaces(server, desktop)[0]?.isDefault).toBe(true);
+  });
+
+  test("keeps existing project positions stable while placing newly created projects first", () => {
+    const workspaces = [
+      mapDesktopWorkspace(localWorkspace("selected", "/workspace/selected")),
+      mapDesktopWorkspace(localWorkspace("new", "/workspace/new")),
+      mapDesktopWorkspace(localWorkspace("older", "/workspace/older")),
+    ];
+
+    expect(orderRouteWorkspaces(workspaces, ["older", "selected"]).map((workspace) => workspace.id)).toEqual([
+      "new",
+      "older",
+      "selected",
+    ]);
   });
 
   test("falls through from a stale remembered workspace to a current server workspace", () => {
@@ -151,9 +176,9 @@ describe("route workspaces", () => {
     };
     const workspace = mapDesktopWorkspace(localWorkspace("ws", "/Users/example/current"));
     const visible = userVisibleSessionsByWorkspaceId(raw);
-    const groups = toSessionGroups([workspace], visible, {}, new Set());
+    const projects = toProjectSessionLists([workspace], visible, {}, new Set());
 
-    expect(groups[0]?.sessions).toBe(visible.ws);
+    expect(projects[0]?.sessions).toBe(visible.ws);
     expect(visible.ws.map((session) => session.id)).toEqual(["visible"]);
   });
 

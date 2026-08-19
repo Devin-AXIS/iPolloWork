@@ -54,9 +54,12 @@ export function useTimelineAssetDropOps({
       assetPath: string,
       placement: Pick<TimelineElement, "start" | "track">,
       durationOverride?: number,
+      propagateError = false,
     ) => {
       if (isRecordingRef?.current) {
-        showToast("Cannot edit timeline while recording", "error");
+        const message = "Cannot edit timeline while recording";
+        showToast(message, "error");
+        if (propagateError) throw new Error(message);
         return;
       }
       const pid = projectIdRef.current;
@@ -64,7 +67,10 @@ export function useTimelineAssetDropOps({
 
       const kind = getTimelineAssetKind(assetPath);
       if (!kind) {
-        showToast("Only illustration HTML, image, video, and audio assets can be dropped onto the timeline.");
+        const message =
+          "Only illustration HTML, image, video, and audio assets can be dropped onto the timeline.";
+        showToast(message);
+        if (propagateError) throw new Error(message);
         return;
       }
 
@@ -122,6 +128,7 @@ export function useTimelineAssetDropOps({
         const message =
           error instanceof Error ? error.message : "Failed to drop asset onto timeline";
         showToast(message);
+        if (propagateError) throw error;
       }
     },
     [

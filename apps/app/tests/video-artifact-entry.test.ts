@@ -6,10 +6,13 @@ import {
   artifactDirectoryPath,
   artifactPathMatchesTarget,
   canOpenArtifactInContext,
+  getArtifactsFromMessages,
   selectArtifactContextOutputs,
   selectTemplateEntryArtifacts,
 } from "../src/lib/artifacts";
 import {
+  createVideoArtifactCompletionRequirement,
+  unchangedVideoArtifactIssue,
   videoProjectEntryPath,
 } from "../src/react-app/domains/session/video/video-project";
 
@@ -50,6 +53,23 @@ function slidesArtifact(path: string): ArtifactItem {
 describe("video artifact entry routing", () => {
   test("derives one session-owned video entry", () => {
     expect(videoProjectEntryPath("ses/video 1")).toBe("video/ses_video_1/index.html");
+  });
+
+  test("requires a template video source to change before completion", () => {
+    const requirement = createVideoArtifactCompletionRequirement(
+      "video/ses_video/index.html",
+      "<main>Template</main>",
+      2,
+    );
+
+    expect(requirement).toMatchObject({
+      sourcePath: "video/ses_video/index.html",
+      assistantMessageBaseline: 2,
+    });
+    expect(unchangedVideoArtifactIssue(requirement.baselineFingerprint, "<main>Template</main>")).toMatchObject({
+      code: "artifact_unchanged",
+    });
+    expect(unchangedVideoArtifactIssue(requirement.baselineFingerprint, "<main>Finished video</main>")).toBeNull();
   });
 
   test("matches only the current video entry across workspace path prefixes", () => {
@@ -147,5 +167,22 @@ describe("video artifact entry routing", () => {
       [entry, slides, supportFile],
       context,
     )).toEqual([entry, slides]);
+  });
+
+  test("ignores malformed engine tool inputs instead of crashing the conversation", () => {
+    const messages = [{
+      id: "assistant-1",
+      role: "assistant" as const,
+      parts: [{
+        type: "dynamic-tool" as const,
+        toolName: "edit",
+        toolCallId: "edit-1",
+        state: "output-available" as const,
+        input: { file_path: "design/session/entry.html" },
+        output: "done",
+      }],
+    }];
+
+    expect(getArtifactsFromMessages(messages)).toEqual([]);
   });
 });

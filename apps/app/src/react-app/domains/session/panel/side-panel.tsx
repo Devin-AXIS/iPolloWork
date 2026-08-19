@@ -4,10 +4,12 @@ import {
   ArrowLeft,
   ArrowRight,
   Code2,
+  Film,
   Globe,
   Loader2,
   Maximize2,
   Minimize2,
+  PanelsTopLeft,
   Plus,
   RotateCw,
   X,
@@ -40,7 +42,10 @@ import { useControlAction, type iPolloWorkControlAction } from "../../../shell/c
 import type { OpenTarget } from "../artifacts/open-target";
 import { useSidePanelTabs } from "./use-side-panel-tabs";
 import { DesignPanel } from "../design/design-panel";
-import type { DesignAiSelectionContext } from "../design/design-ai-selection";
+import type { DesignAiSelectionContext } from "@ipollowork/design-studio";
+import { VideoPanel } from "../video/video-panel";
+import { WorkspaceAppFrame, type WorkspaceAppModelContext } from "@/react-app/plugin-ui/workspace-app-frame";
+import type { PluginNativeWorkspace } from "@/react-app/plugin-ui/plugin-ui-contributions";
 import {
   computeBounds,
   getElectronBrowser,
@@ -56,9 +61,12 @@ type SidePanelProps = {
   workspaceRoot: string;
   isRemoteWorkspace?: boolean;
   launcherItems?: SidePanelLauncherItem[];
+  enabledNativeWorkspaces?: PluginNativeWorkspace["kind"][];
   onClose: () => void;
   onAskAi?: (context: DesignAiSelectionContext) => void;
+  onSendWorkspaceAppMessage?: (input: { text: string; modelContext: WorkspaceAppModelContext | null }) => boolean | Promise<boolean>;
   onSaveAsTemplate?: () => void;
+  aiEditing?: boolean;
   expanded?: boolean;
   titlebarInset?: boolean;
   onExpandedChange?: (expanded: boolean) => void;
@@ -184,7 +192,7 @@ function SidePanelTab({ tab, active, onSelect, onClose }: SidePanelTabProps) {
               <Globe />
             )
           ) : (
-            tab.type === "design" ? <Code2 /> : <ArtifactIcon type={tab.preview} />
+            tab.type === "design" ? <Code2 /> : tab.type === "video" ? <Film /> : tab.type === "workspace-app" ? <PanelsTopLeft /> : <ArtifactIcon type={tab.preview} />
           )}
           <span className="min-w-0 flex-1 truncate text-left">{tab.label}</span>
         </PanelTab>
@@ -454,8 +462,11 @@ export function SidePanel({
   workspaceRoot,
   isRemoteWorkspace = false,
   launcherItems = [],
+  enabledNativeWorkspaces = ["design", "video"],
   onAskAi,
+  onSendWorkspaceAppMessage,
   onSaveAsTemplate,
+  aiEditing = false,
   expanded = false,
   titlebarInset = false,
   onExpandedChange,
@@ -463,6 +474,8 @@ export function SidePanel({
 }: SidePanelProps) {
   const { tabs } = useSessionPanelState(sessionId);
   const activeTab = useActivePanelTab(sessionId);
+  const designEnabled = enabledNativeWorkspaces.includes("design");
+  const videoEnabled = enabledNativeWorkspaces.includes("video");
   const isBrowserAvailable = Boolean(getElectronBrowser());
 
   const { createTab, closeTab, selectTab, reorderTabs } = useSidePanelTabs(sessionId);
@@ -707,7 +720,7 @@ export function SidePanel({
         {!activeTab ? (
           <PanelEmpty />
         ) : null}
-        {activeTab?.type === "design" ? (
+        {activeTab?.type === "design" && designEnabled ? (
           <DesignPanelErrorBoundary resetKey={`${activeTab.id}:${activeTab.path}`}>
             <DesignPanel
               sessionId={activeTab.sessionId}
@@ -720,8 +733,38 @@ export function SidePanel({
               onSaveAsTemplate={onSaveAsTemplate}
             />
           </DesignPanelErrorBoundary>
+        ) : activeTab?.type === "video" && videoEnabled ? (
+          <VideoPanel
+            key={activeTab.id}
+            title={activeTab.label}
+            sessionId={activeTab.sessionId}
+            workspaceRoot={workspaceRoot}
+            client={client}
+            workspaceId={workspaceId}
+            isRemoteWorkspace={isRemoteWorkspace}
+            aiEditing={aiEditing}
+            expanded={expanded}
+            onExpandedChange={onExpandedChange}
+            onAskAi={onAskAi}
+            onSaveAsTemplate={onSaveAsTemplate}
+          />
         ) : activeTab?.type === "browser" ? (
           <BrowserPanelContent tab={activeTab} onClose={() => closeTab(activeTab)} />
+        ) : activeTab?.type === "workspace-app" && client && workspaceId ? (
+          <div className="min-h-0 flex-1 overflow-hidden">
+            <WorkspaceAppFrame
+              surface={activeTab.surface}
+              client={client}
+              workspaceId={workspaceId}
+              workspaceRoot={workspaceRoot}
+              sessionId={activeTab.sessionId}
+              placement="workspace"
+              displayMode={expanded ? "fullscreen" : "inline"}
+              onDisplayModeChange={(mode) => onExpandedChange?.(mode === "fullscreen")}
+              onSendMessage={onSendWorkspaceAppMessage}
+              onRequestClose={() => closeTab(activeTab)}
+            />
+          </div>
         ) : activeTab?.type === "artifact" ? (
           <div className="min-h-0 flex-1 overflow-hidden">
             <ArtifactPanel

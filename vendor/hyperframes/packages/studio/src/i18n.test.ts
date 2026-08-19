@@ -29,7 +29,7 @@ describe("translateStudioLiteral", () => {
   it("uses the approved AI video-editing warning copy", () => {
     const source = readFileSync(new URL("./i18n.tsx", import.meta.url), "utf8");
     expect(source).toContain(
-      '"header.aiEditingWarning": "AI 修改视频中，建议不要手动修改"',
+      '"preview.aiEditingWarning": "AI 修改视频中，建议不要手动修改"',
     );
   });
 

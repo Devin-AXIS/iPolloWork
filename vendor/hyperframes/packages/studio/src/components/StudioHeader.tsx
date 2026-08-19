@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { FilmSlate, FloppyDisk, GithubLogo, Sparkle, SquaresFour } from "@phosphor-icons/react";
 import {
   STUDIO_INSPECTOR_PANELS_ENABLED,
   STUDIO_MANUAL_EDITING_DISABLED_TITLE,
@@ -8,6 +9,7 @@ import { usePanelLayoutContext } from "../contexts/PanelLayoutContext";
 import { trackStudioEvent } from "../utils/studioTelemetry";
 import { Tooltip } from "./ui";
 import { useStudioI18n } from "../i18n";
+import { RotateCw } from "../icons/SystemIcons";
 import propertiesIconSrc from "../icons/studioHeaderProperties.svg?url";
 import exportIconSrc from "../icons/studioHeaderExport.svg?url";
 
@@ -18,16 +20,21 @@ export interface StudioHeaderProps {
   onPreviewModeChange: (previewMode: boolean) => void;
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
-}
-
-export function parseHostAiEditingMessage(value: unknown, projectId: string): boolean | null {
-  if (!isRecord(value)) return null;
-  if (value.type !== "ipollowork:studio-ai-editing") return null;
-  if (value.projectId !== projectId) return null;
-  return typeof value.active === "boolean" ? value.active : null;
-}
+type StudioHostContext = {
+  title: string;
+  branding: null | {
+    title: string;
+    byline: string;
+    bylineUrl: string;
+    repositoryUrl: string;
+  };
+  actions: {
+    reload: boolean;
+    saveAsTemplate: boolean;
+    openTemplates: boolean;
+    askAi: boolean;
+  };
+};
 
 export function StudioHeader({
   inspectorButtonActive,
@@ -41,7 +48,7 @@ export function StudioHeader({
   const { t } = useStudioI18n();
   const isRendering = renderQueue.isRendering;
   const [compositionTitle, setCompositionTitle] = useState(projectId);
-  const [aiEditing, setAiEditing] = useState(false);
+  const [hostContext, setHostContext] = useState<StudioHostContext | null>(null);
 
   useEffect(() => {
     const preview = previewIframeRef.current;
@@ -55,15 +62,41 @@ export function StudioHeader({
   }, [compositionLoading, previewIframeRef, projectId, refreshKey]);
 
   useEffect(() => {
-    setAiEditing(false);
-    const handleHostMessage = (event: MessageEvent<unknown>) => {
+    const handleHostContext = (event: MessageEvent) => {
       if (event.source !== window.parent) return;
-      const nextAiEditing = parseHostAiEditingMessage(event.data, projectId);
-      if (nextAiEditing !== null) setAiEditing(nextAiEditing);
+      if (event.data?.type !== "ipollowork:studio-host-context") return;
+      if (event.data.projectId !== projectId || typeof event.data.title !== "string") return;
+      setHostContext({
+        title: event.data.title.trim(),
+        branding: event.data.branding && typeof event.data.branding === "object"
+          ? {
+              title: typeof event.data.branding.title === "string" ? event.data.branding.title.trim() : "",
+              byline: typeof event.data.branding.byline === "string" ? event.data.branding.byline.trim() : "",
+              bylineUrl: typeof event.data.branding.bylineUrl === "string" ? event.data.branding.bylineUrl : "",
+              repositoryUrl: typeof event.data.branding.repositoryUrl === "string" ? event.data.branding.repositoryUrl : "",
+            }
+          : null,
+        actions: {
+          reload: event.data.actions?.reload === true,
+          saveAsTemplate: event.data.actions?.saveAsTemplate === true,
+          openTemplates: event.data.actions?.openTemplates === true,
+          askAi: event.data.actions?.askAi === true,
+        },
+      });
     };
-    window.addEventListener("message", handleHostMessage);
-    return () => window.removeEventListener("message", handleHostMessage);
+    window.addEventListener("message", handleHostContext);
+    return () => window.removeEventListener("message", handleHostContext);
   }, [projectId]);
+
+  const displayTitle = hostContext?.title || compositionTitle;
+
+  const requestHostAction = (action: "reload" | "save-as-template" | "open-templates" | "ask-ai") => {
+    if (window.parent === window) return;
+    window.parent.postMessage(
+      { type: "ipollowork:studio-host-action", projectId, action },
+      "*",
+    );
+  };
 
   const toggleProperties = () => {
     if (!STUDIO_INSPECTOR_PANELS_ENABLED) return;
@@ -101,20 +134,26 @@ export function StudioHeader({
   return (
     <header className="hf-studio-header relative flex h-[49px] flex-shrink-0 items-center border-b border-[var(--hf-panel-hairline)] bg-[var(--hf-studio-header-bg)] px-3 text-[var(--hf-panel-text-1)] backdrop-blur-sm">
       <div className="flex min-w-0 flex-1 items-center gap-2 pr-6">
-        <span className="block min-w-0 max-w-64 truncate text-[13px] font-medium text-[var(--hf-panel-text-3)]" title={compositionTitle}>
-          {compositionTitle}
-        </span>
-        {aiEditing ? (
-          <span
-            role="status"
-            aria-live="polite"
-            data-testid="studio-ai-editing-status"
-            className="inline-flex h-6 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border border-[var(--hf-ai-editing-border)] bg-[var(--hf-ai-editing-bg)] px-2.5 text-[11px] font-medium text-[var(--hf-ai-editing-text)]"
-          >
-            <span className="size-1.5 shrink-0 animate-pulse rounded-full bg-[var(--hf-ai-editing-dot)] motion-reduce:animate-none" aria-hidden="true" />
-            {t("header.aiEditingWarning")}
+        {hostContext?.branding ? (
+          <>
+            <span className="grid h-8 w-8 shrink-0 place-items-center rounded-[10px] border border-[var(--hf-panel-border-input)] bg-[var(--hf-studio-button-bg)] text-[var(--hf-panel-text-0)] shadow-[inset_0_1px_rgba(255,255,255,0.08)]">
+              <FilmSlate className="h-[17px] w-[17px]" weight="duotone" />
+            </span>
+            <span className="flex min-w-0 flex-col leading-none">
+              <strong className="truncate text-[13px] font-semibold tracking-[-0.01em] text-[var(--hf-panel-text-0)]">{hostContext.branding.title}</strong>
+              <a className="mt-1 truncate text-[9px] font-medium text-[var(--hf-panel-text-3)] transition-colors hover:text-[var(--hf-panel-text-1)]" href={hostContext.branding.bylineUrl} target="_blank" rel="noreferrer">{hostContext.branding.byline}</a>
+            </span>
+            {hostContext.actions.openTemplates ? (
+              <button type="button" onClick={() => requestHostAction("open-templates")} className="ml-2 flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-xs font-medium text-[var(--hf-panel-text-2)] transition hover:bg-[var(--hf-panel-hover)] hover:text-[var(--hf-panel-text-0)]">
+                <SquaresFour className="h-4 w-4" />{t("header.templates")}
+              </button>
+            ) : null}
+          </>
+        ) : (
+          <span className="block min-w-0 max-w-64 truncate text-[13px] font-medium text-[var(--hf-panel-text-3)]" title={displayTitle}>
+            {displayTitle}
           </span>
-        ) : null}
+        )}
       </div>
 
       <div
@@ -153,6 +192,44 @@ export function StudioHeader({
       <div className="flex flex-1 items-center justify-end gap-4">
         {!previewMode ? (
           <>
+            {hostContext?.branding && hostContext.actions.askAi ? (
+              <div className="flex items-center gap-1">
+                <a href={hostContext.branding.repositoryUrl} target="_blank" rel="noreferrer" aria-label={t("header.openRepository")} className="grid h-8 w-8 place-items-center rounded-lg text-[var(--hf-panel-text-2)] transition hover:bg-[var(--hf-panel-hover)] hover:text-[var(--hf-panel-text-0)]">
+                  <GithubLogo className="h-[17px] w-[17px]" />
+                </a>
+                <button type="button" onClick={() => requestHostAction("ask-ai")} className="flex h-8 items-center gap-1.5 rounded-lg bg-[var(--hf-panel-text-0)] px-3 text-xs font-semibold text-[var(--hf-panel-bg)] shadow-sm transition-[opacity,transform] hover:opacity-90 active:scale-[0.98]">
+                  <Sparkle className="h-4 w-4" weight="fill" />{t("header.askAi")}
+                </button>
+              </div>
+            ) : null}
+            {hostContext?.actions.reload || hostContext?.actions.saveAsTemplate ? (
+              <div className="mr-1 flex items-center gap-2">
+                {hostContext.actions.saveAsTemplate ? (
+                  <Tooltip label={t("header.saveAsTemplate")} side="bottom">
+                    <button
+                      type="button"
+                      onClick={() => requestHostAction("save-as-template")}
+                      className="grid h-8 w-8 shrink-0 place-items-center rounded-lg text-[var(--hf-panel-text-2)] transition-[background-color,color,transform] outline-none hover:bg-[var(--hf-panel-hover)] hover:text-[var(--hf-panel-text-0)] focus-visible:ring-2 focus-visible:ring-black/25 focus-visible:ring-offset-2 active:scale-[0.96]"
+                      aria-label={t("header.saveAsTemplate")}
+                    >
+                      <FloppyDisk className="h-4 w-4" aria-hidden="true" />
+                    </button>
+                  </Tooltip>
+                ) : null}
+                {hostContext.actions.reload ? (
+                  <Tooltip label={t("header.reloadStudio")} side="bottom">
+                    <button
+                      type="button"
+                      onClick={() => requestHostAction("reload")}
+                      className="grid h-8 w-8 shrink-0 place-items-center rounded-lg text-[var(--hf-panel-text-2)] transition-[background-color,color,transform] outline-none hover:bg-[var(--hf-panel-hover)] hover:text-[var(--hf-panel-text-0)] focus-visible:ring-2 focus-visible:ring-black/25 focus-visible:ring-offset-2 active:scale-[0.96]"
+                      aria-label={t("header.reloadStudio")}
+                    >
+                      <RotateCw className="h-4 w-4" />
+                    </button>
+                  </Tooltip>
+                ) : null}
+              </div>
+            ) : null}
             <Tooltip
               label={
                 STUDIO_INSPECTOR_PANELS_ENABLED ? t("header.inspector") : STUDIO_MANUAL_EDITING_DISABLED_TITLE

@@ -3,8 +3,13 @@ import type { CSSProperties } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { UIMessage } from "ai";
 import { useNavigate } from "react-router-dom";
-import { Code2, Ellipsis, Eye, FileText, Film, Globe, Image, LoaderCircle, Mic2, Palette, PanelRightClose, PanelRightOpen, Pencil, Presentation, Search, Settings2, Trash2, Upload, X, Zap } from "lucide-react";
+import { Code2, Ellipsis, Eye, FileText, Film, Folder, FolderPlus, Globe, Image, LoaderCircle, Lock, Mic2, Palette, PanelRightClose, PanelRightOpen, Pencil, Presentation, Search, Settings2, Trash2, Upload, X, Zap } from "lucide-react";
 import { MAX_TEMPLATE_PACKAGE_BYTES, TEMPLATE_PACKAGE_FILE_ACCEPT, isPptxCompatibleTemplate, type PptxCompatibility, type TemplateCatalogItem, type TemplateCategory, type TemplateManifestV1, type TemplateSessionSnapshot, type TemplateSessionState, type TemplateValidationReport } from "@ipollowork/types/templates";
+import {
+  DEEPSEEK_HARNESS_ENGINE_ID,
+  DEFAULT_ENGINE_ID,
+  type BuiltInWorkspaceEngineId,
+} from "@ipollowork/types/workspace";
 
 import { currentLocale, t } from "../../../../i18n";
 import { downloadTextAsFile } from "@/app/lib/download";
@@ -23,16 +28,15 @@ import {
 } from "@/app/lib/enterprise-connections";
 import { getDisplaySessionTitle } from "../../../../app/lib/session-title";
 import type { BootPhase } from "../../../../app/lib/startup-boot";
-import { openDesktopPath, revealDesktopItemInDir, saveFile, type WorkspaceInfo } from "../../../../app/lib/desktop";
+import { openDesktopPath, pickDirectory, revealDesktopItemInDir, saveFile, type WorkspaceInfo } from "../../../../app/lib/desktop";
 import type {
   ComposerDraft,
-  PendingPermission,
-  PendingQuestion,
   ProviderListItem,
   TodoItem,
   WorkspaceConnectionState,
-  WorkspaceSessionGroup,
+  ProjectSessionList,
 } from "../../../../app/types";
+import type { ConversationPermission, ConversationQuestion } from "../engine/conversation-engine";
 import { ConversationOutputPanel, ConversationOutputTrigger } from "@/components/chat/artifact";
 import { buildSessionMarkdown, sessionMarkdownFilename } from "@/components/chat/utils";
 import {
@@ -43,6 +47,7 @@ import {
   getArtifactsFromMessages,
 } from "@/lib/artifacts";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import {
@@ -55,6 +60,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { toast } from "@/components/ui/sonner";
 import { ConfirmModal } from "../../../design-system/modals/confirm-modal";
 import { useDenAuth } from "../../cloud/den-auth-provider";
@@ -64,7 +70,6 @@ import { RenameSessionModal } from "../modals/rename-session-modal";
 import { AppSidebar } from "../sidebar/app-sidebar";
 import type { iPolloWorkSessionType, iPolloWorkTemplateId } from "../sidebar/app-sidebar-provider";
 import { readSessionType, sessionTypeForTemplate, setSessionType } from "../sidebar/session-type";
-import { useSessionManagementStore, useActiveWorkspaceGroupId } from "../sidebar/session-management-store";
 import { SessionSurface, type SessionSurfaceProps } from "../surface/session-surface";
 import { replaceDesignSelectionToken } from "../surface/composer/composer-draft";
 import { getComposerDraft, useComposerStateStore } from "../surface/composer-state-store";
@@ -88,14 +93,16 @@ import { isElectronRuntime } from "../../../../app/utils";
 import { isCollectibleArtifactTarget, isLocalhostBrowserTarget, isOpenableFileTarget, type OpenTarget } from "../artifacts/open-target";
 import type { OpenTargetOptions } from "@/lib/target-provider";
 import { VoicePanel } from "../voice/voice-panel";
-import { DesignPanel } from "../design/design-panel";
-import { designAiSelectionToken, type DesignAiSelectionContext } from "../design/design-ai-selection";
+import { designAiSelectionToken, type DesignAiSelectionContext } from "@ipollowork/design-studio";
 import { useDesignAiSelectionStore } from "../design/design-ai-selection-store";
 import { waitForTemplateEntrySurface } from "../templates/template-entry-route";
 import { loadTemplateSession } from "../templates/template-session-probe";
 import { TemplateSaveDialog, type TemplateSaveInput, type TemplateSaveMode } from "../templates/template-save-dialog";
-import { VideoPanel } from "../video/video-panel";
-import { videoProjectEntryPath } from "../video/video-project";
+import {
+  createVideoArtifactCompletionRequirement,
+  videoProjectEntryPath,
+  type VideoArtifactCompletionRequirement,
+} from "../video/video-project";
 import { isStreamingSessionStatus } from "../sidebar/utils";
 import {
   TEMPLATE_BRIEF_REFERENCE_ACCEPT,
@@ -129,6 +136,10 @@ import { useControlAction, type iPolloWorkControlAction } from "../../../shell/c
 import { getExtensionId, isiPolloWorkExtensionEnabled, IPOLLOWORK_EXTENSION_STATE_CHANGED } from "../../settings/extension-state";
 import { cn } from "@/lib/utils";
 import { useActiveEnterpriseConnection } from "@/react-app/domains/enterprise/use-active-enterprise-connection";
+import { useInstalledPluginContributions } from "@/react-app/plugin-ui/plugin-ui-contributions";
+import type { WorkspaceAppModelContext } from "@/react-app/plugin-ui/workspace-app-frame";
+import projectEngineSelectedIcon from "./assets/project-engine-selected.svg";
+import projectEngineUnselectedIcon from "./assets/project-engine-unselected.svg";
 
 const STARTUP_SKELETON_ROWS = [
   { id: "intro", titleWidth: "42%", bodyWidth: "88%" },
@@ -146,6 +157,7 @@ const NARROW_LAYOUT_WIDTH = 960;
 const VIDEO_PANEL_DEFAULT_WIDTH = 1120;
 const SESSION_SHELL_TRANSITION_MS = 220;
 const SESSION_SHELL_TRANSITION_EASING = "cubic-bezier(0.22, 1, 0.36, 1)";
+const TEMPLATE_REFERENCE_UPLOAD_VISIBLE = false;
 type SessionPanelView = SidePanelItem | "launcher";
 type TemplateSessionData = {
   sessionId: string;
@@ -154,6 +166,29 @@ type TemplateSessionData = {
   manifest: TemplateManifestV1;
   hasBrief: boolean;
 };
+
+function SessionEngineBadge({ engineId }: { engineId?: string | null }) {
+  const isDeepSeekHarness = engineId?.trim() === DEEPSEEK_HARNESS_ENGINE_ID;
+  const label = t(isDeepSeekHarness ? "projects.engine_dsh" : "projects.engine_opencode");
+  const Icon = isDeepSeekHarness ? Zap : Code2;
+  return (
+    <Badge
+      variant="outline"
+      data-engine-id={isDeepSeekHarness ? DEEPSEEK_HARNESS_ENGINE_ID : DEFAULT_ENGINE_ID}
+      aria-label={label}
+      title={label}
+      className={cn(
+        "h-6 gap-1.5 rounded-full px-2.5 text-[11px] font-semibold tracking-[-0.01em] shadow-[0_1px_2px_rgb(0_0_0/0.04),inset_0_1px_0_rgb(255_255_255/0.35)] backdrop-blur-md",
+        isDeepSeekHarness
+          ? "border-[rgba(124,58,237,0.24)] bg-[linear-gradient(90deg,rgba(139,92,246,0.13),rgba(99,102,241,0.11),rgba(59,130,246,0.09))] text-[#6d28d9] dark:border-[rgba(167,139,250,0.28)] dark:text-[#ddd6fe]"
+          : "border-[rgba(5,150,105,0.24)] bg-[linear-gradient(90deg,rgba(16,185,129,0.13),rgba(20,184,166,0.11),rgba(6,182,212,0.09))] text-[#047857] dark:border-[rgba(52,211,153,0.28)] dark:text-[#a7f3d0]",
+      )}
+    >
+      <Icon className="size-3.5" aria-hidden="true" />
+      <span>{label}</span>
+    </Badge>
+  );
+}
 
 export type SessionPageHistoryControls = {
   canUndo: boolean;
@@ -164,7 +199,7 @@ export type SessionPageHistoryControls = {
 };
 
 export type SessionPageSidebarProps = {
-  workspaceSessionGroups: WorkspaceSessionGroup[];
+  projectSessionLists: ProjectSessionList[];
   selectedWorkspaceId: string;
   selectedSessionId: string | null;
   developerMode: boolean;
@@ -175,19 +210,26 @@ export type SessionPageSidebarProps = {
   sidebarHydratedFromCache: boolean;
   startupPhase: BootPhase;
   onOpenSession: (workspaceId: string, sessionId: string) => void;
+  onSelectProject: (workspaceId: string) => Promise<boolean> | boolean | void;
+  onCreateProject: (input: {
+    name: string;
+    folderPath: string;
+    engineId: BuiltInWorkspaceEngineId;
+  }) => Promise<void> | void;
+  onRenameProject: (workspaceId: string, name: string) => Promise<void> | void;
+  onRevealProject: (workspaceId: string) => Promise<void> | void;
+  onDeleteProject: (workspaceId: string) => Promise<void> | void;
   onPrefetchSession?: (workspaceId: string, sessionId: string) => void;
   onCreateTaskInWorkspace: (
     workspaceId: string,
     type?: iPolloWorkSessionType,
     templateId?: iPolloWorkTemplateId,
     templateScope?: WorkContextId,
-    groupId?: string | null,
   ) => Promise<string | null> | string | null | void;
   onCreateTaskWithPrompt?: (workspaceId: string, prompt: string) => void;
   onCreateTemplateAuthoring: (
     workspaceId: string,
     input: { category: TemplateCategory; pptxCompatibility?: PptxCompatibility },
-    groupId?: string | null,
   ) => Promise<string | null> | string | null | void;
   onRecoverWorkspace: (workspaceId: string) => Promise<boolean> | boolean | void;
   onTestWorkspaceConnection: (workspaceId: string) => Promise<boolean> | boolean | void;
@@ -209,6 +251,7 @@ export type SessionPageProps = {
     name?: string;
     displayName?: string;
     workspaceType?: WorkspaceInfo["workspaceType"];
+    engineId?: string | null;
   };
   selectedWorkspaceRoot: string;
   selectedWorkspaceError?: string | null;
@@ -241,11 +284,11 @@ export type SessionPageProps = {
   todos: TodoItem[];
   sessionLoadingById: (sessionId: string | null) => boolean;
   providerAuthModal?: ProviderAuthModalProps | null;
-  activePermission?: PendingPermission | null;
+  activePermission?: ConversationPermission | null;
   permissionReplyBusy?: boolean;
   respondPermission?: (requestID: string, reply: "once" | "always" | "reject") => void;
   safeStringify?: (value: unknown) => string;
-  activeQuestion?: PendingQuestion | null;
+  activeQuestion?: ConversationQuestion | null;
   questionReplyBusy?: boolean;
   respondQuestion?: (requestID: string, answers: string[][]) => void;
   notFoundMessage?: string | null;
@@ -261,7 +304,7 @@ export type SessionPageProps = {
 };
 
 function getSidebarInitialLoading(props: SessionPageSidebarProps) {
-  if (props.workspaceSessionGroups.some((group) => group.sessions.length > 0)) {
+  if (props.projectSessionLists.some((project) => project.sessions.length > 0)) {
     return false;
   }
   if (props.sidebarHydratedFromCache) return false;
@@ -272,14 +315,14 @@ function getSidebarInitialLoading(props: SessionPageSidebarProps) {
   ) {
     return true;
   }
-  return props.workspaceSessionGroups.some(
-    (group) => group.status === "loading" || group.status === "idle",
+  return props.projectSessionLists.some(
+    (project) => project.status === "loading" || project.status === "idle",
   );
 }
 
-function sessionTitleForId(groups: WorkspaceSessionGroup[], id: string | null | undefined) {
+function sessionTitleForId(projects: ProjectSessionList[], id: string | null | undefined) {
   if (!id) return "";
-  const sessionsById = new Map(groups.flatMap((group) => group.sessions.map((session) => [session.id, session] as const)));
+  const sessionsById = new Map(projects.flatMap((project) => project.sessions.map((session) => [session.id, session] as const)));
   const match = sessionsById.get(id);
   return match ? getDisplaySessionTitle(match.title) : "";
 }
@@ -530,7 +573,7 @@ function TemplateBriefCard({ template, onSubmit, onClose }: { template: Template
       </div>
       <div className="space-y-4 p-5">
         {config.fields.map((field) => <label key={field.key} className="block text-sm font-medium">{field.label}{field.optional ? <span className="ml-1 text-xs font-normal text-dls-secondary">{t("common.optional_parens")}</span> : null}<Input value={brief[field.key]} onChange={(event) => { const value = event.currentTarget.value; setBrief((current) => ({ ...current, [field.key]: value })); }} placeholder={field.placeholder} className="mt-2" /></label>)}
-        <div className="rounded-xl border border-dls-border bg-dls-canvas/45 p-3">
+        {TEMPLATE_REFERENCE_UPLOAD_VISIBLE ? <div className="rounded-xl border border-dls-border bg-dls-canvas/45 p-3">
           <div className="flex items-start justify-between gap-3">
             <div><div className="text-sm font-medium">{t("templates.brief.reference_label")}<span className="ml-1 text-xs font-normal text-dls-secondary">{t("common.optional_parens")}</span></div><p className="mt-1 text-xs leading-5 text-dls-secondary">{t("templates.brief.reference_description")}</p></div>
             <Button type="button" variant="outline" size="sm" className="h-8 shrink-0 rounded-lg px-2.5 text-xs" disabled={referenceBusy} onClick={() => referenceInputRef.current?.click()}>{referenceBusy ? <LoaderCircle className="size-3 animate-spin" /> : <Upload className="size-3" />}{t("templates.brief.reference_upload")}</Button>
@@ -546,7 +589,7 @@ function TemplateBriefCard({ template, onSubmit, onClose }: { template: Template
             <Button type="button" variant={reference.sendOriginal ? "secondary" : "ghost"} size="sm" className="h-7 shrink-0 rounded-lg px-2 text-[10px]" disabled={reference.status === "parsing" || !canSendOriginalReference(reference.file)} onClick={() => updateReferences((current) => current.map((item) => item.id === reference.id ? { ...item, sendOriginal: !item.sendOriginal } : item))}>{reference.sendOriginal ? t("templates.brief.reference_send_original_on") : t("templates.brief.reference_send_original_off")}</Button>
             <Button type="button" variant="ghost" size="icon-sm" className="size-7 shrink-0 rounded-lg text-dls-secondary hover:text-dls-text" aria-label={t("templates.brief.reference_remove", { name: reference.fileName })} onClick={() => removeReference(reference.id)}><X className="size-3.5" /></Button>
           </div>)}</div> : null}
-        </div>
+        </div> : null}
         <Button className="w-full" disabled={!brief.title.trim() || !brief.audience.trim() || referenceBusy} onClick={() => onSubmit({ title: brief.title.trim(), audience: brief.audience.trim(), details: brief.details.trim() }, references)}>{config.submitLabel}</Button>
       </div>
     </div>
@@ -575,6 +618,23 @@ export function SessionPage(props: SessionPageProps) {
   ));
   const sessionPanelState = useSessionPanelState(props.selectedSessionId ?? "");
   const activePanelTab = useActivePanelTab(props.selectedSessionId ?? "");
+  const { workspaceApps, nativeWorkspaces, loaded: pluginContributionsLoaded } = useInstalledPluginContributions(
+    props.ipolloworkServerClient,
+    props.runtimeWorkspaceId,
+  );
+  const designWorkspaceEnabled = !pluginContributionsLoaded
+    || nativeWorkspaces.some((workspace) => workspace.kind === "design");
+  const videoWorkspaceEnabled = !pluginContributionsLoaded
+    || nativeWorkspaces.some((workspace) => workspace.kind === "video");
+  useEffect(() => {
+    if (!pluginContributionsLoaded || !props.selectedSessionId) return;
+    for (const tab of sessionPanelState.tabs) {
+      if ((tab.type === "design" && !designWorkspaceEnabled)
+        || (tab.type === "video" && !videoWorkspaceEnabled)) {
+        closeTab(props.selectedSessionId, tab.id);
+      }
+    }
+  }, [closeTab, designWorkspaceEnabled, pluginContributionsLoaded, props.selectedSessionId, sessionPanelState.tabs, videoWorkspaceEnabled]);
   const [hiddenTargetRevision, setHiddenTargetRevision] = useState(0);
   const [, setExtensionStateVersion] = useState(0);
   const hiddenAccessibleTargetIds = useMemo(
@@ -589,6 +649,10 @@ export function SessionPage(props: SessionPageProps) {
   const artifactTargetCount = artifactFileTargets.length;
   const hasArtifactTargets = artifactTargetCount > 0;
   const activeSidePanel = voiceSidePanelOpen ? "voice" : sessionSidePanel;
+  const selectedSessionTitle = useMemo(
+    () => sessionTitleForId(props.sidebar.projectSessionLists, props.selectedSessionId),
+    [props.selectedSessionId, props.sidebar.projectSessionLists],
+  );
   const [templateSessionRevision, setTemplateSessionRevision] = useState(0);
   const [templateCatalog, setTemplateCatalog] = useState<TemplateCatalogItem[]>([]);
   const [templateResourceScope, setTemplateResourceScope] = useState<WorkContextId>(() => readActiveWorkContextId());
@@ -605,6 +669,15 @@ export function SessionPage(props: SessionPageProps) {
   const previousTemplateMarketOpenRef = useRef(false);
   const [cloudSignInComingSoonOpen, setCloudSignInComingSoonOpen] = useState(false);
   const [templateSessionData, setTemplateSessionData] = useState<TemplateSessionData | null>(null);
+  const [pendingVideoArtifactCompletion, setPendingVideoArtifactCompletion] = useState<{
+    sessionId: string;
+    requirement: VideoArtifactCompletionRequirement;
+  } | null>(null);
+  const consumePendingVideoArtifactCompletion = useCallback(() => {
+    setPendingVideoArtifactCompletion((current) =>
+      current?.sessionId === props.selectedSessionId ? null : current,
+    );
+  }, [props.selectedSessionId]);
   const [templateSessionLoading, setTemplateSessionLoading] = useState(false);
   const [templateSaveOpen, setTemplateSaveOpen] = useState(false);
   const [templateValidationReport, setTemplateValidationReport] = useState<TemplateValidationReport | null>(null);
@@ -627,7 +700,6 @@ export function SessionPage(props: SessionPageProps) {
       ? readSessionType(props.selectedSessionId)
       : null
   ), [props.selectedSessionId, sessionTypeRevision]);
-  const activeSessionGroupId = useActiveWorkspaceGroupId(props.selectedWorkspaceId);
   const isDesignSession = selectedSessionType === "design";
   const isVideoSession = selectedSessionType === "video";
   const currentVideoEntryPath = props.selectedSessionId && isVideoSession
@@ -724,6 +796,13 @@ export function SessionPage(props: SessionPageProps) {
         .find((artifact) => artifactPathMatchesTarget(artifact.path, currentVideoEntryPath)) ?? null
       : null
   ), [accessibleTargets, conversationMessages, currentVideoEntryPath]);
+  const availableStarterTemplateCatalog = useMemo(() => (
+    pluginContributionsLoaded
+      ? starterTemplateCatalog.filter((template) => (
+          template.manifest.surface === "design" ? designWorkspaceEnabled : videoWorkspaceEnabled
+        ))
+      : starterTemplateCatalog
+  ), [designWorkspaceEnabled, pluginContributionsLoaded, starterTemplateCatalog, videoWorkspaceEnabled]);
   const autoCollapsedSidebarRef = useRef(false);
   const autoCollapsedSidePanelRef = useRef<SessionPanelView | null>(null);
   const lastRightPanelViewRef = useRef<SessionPanelView>("launcher");
@@ -741,16 +820,24 @@ export function SessionPage(props: SessionPageProps) {
     props.selectedSessionId && dismissedTemplateBriefSessionIds.has(props.selectedSessionId),
   );
   const activateVideoStudio = useCallback((sessionId: string) => {
+    if (!videoWorkspaceEnabled) return;
     // Mark the agent turn as a video task so it receives the session-owned
     // project contract. The Studio itself opens only after an output exists.
     setSessionType(sessionId, "video");
     setSessionTypeRevision((value) => value + 1);
-  }, []);
+  }, [videoWorkspaceEnabled]);
   const openCurrentVideoStudio = useCallback((options?: { auto?: boolean }) => {
-    if (!props.selectedSessionId) return;
+    if (!props.selectedSessionId || !videoWorkspaceEnabled) return;
     if (!options?.auto) prioritizeRightPanel();
-    setSidePanelState(props.selectedSessionId, "video");
-  }, [prioritizeRightPanel, props.selectedSessionId, setSidePanelState]);
+    const videoTabId = `video:${props.selectedSessionId}`;
+    openTab(props.selectedSessionId, {
+      id: videoTabId,
+      type: "video",
+      label: selectedSessionTitle || t("video.title"),
+      sessionId: props.selectedSessionId,
+    });
+    setSidePanelState(props.selectedSessionId, "panel");
+  }, [openTab, prioritizeRightPanel, props.selectedSessionId, selectedSessionTitle, setSidePanelState, videoWorkspaceEnabled]);
   const refreshTemplateCatalog = useCallback(async () => {
     if (!props.ipolloworkServerClient || !props.runtimeWorkspaceId) return;
     const requestId = ++templateCatalogRequestIdRef.current;
@@ -764,7 +851,7 @@ export function SessionPage(props: SessionPageProps) {
         setEnterpriseTemplateResources([]);
       } else if (activeEnterprise) {
         const [enterpriseResources, installedCatalog] = await Promise.all([
-          listEnterpriseResources(activeEnterprise, "template"),
+          listEnterpriseResources("template"),
           props.ipolloworkServerClient.listTemplates(props.runtimeWorkspaceId, templateResourceScope),
         ]);
         if (requestId !== templateCatalogRequestIdRef.current) return;
@@ -1051,7 +1138,7 @@ export function SessionPage(props: SessionPageProps) {
     if (!activeEnterprise || templateResourceScope === "personal") return;
     setTemplateBusyId(resource.id);
     try {
-      const file = await downloadEnterpriseResource(activeEnterprise, resource);
+      const file = await downloadEnterpriseResource(resource);
       await importDesignTemplate(file);
     } catch (error) {
       const message = error instanceof Error ? error.message : "";
@@ -1092,18 +1179,21 @@ export function SessionPage(props: SessionPageProps) {
       }, null, 2),
       baseUpdatedAt: null,
       });
-      setTemplateSessionData((current) => current?.sessionId === props.selectedSessionId ? { ...current, hasBrief: true } : current);
-      setTemplateSessionRevision((value) => value + 1);
-      setDismissedTemplateBriefSessionIds((current) => {
-        if (!props.selectedSessionId || !current.has(props.selectedSessionId)) return current;
-        const next = new Set(current);
-        next.delete(props.selectedSessionId);
-        return next;
-      });
+      if (template.surface === "video") {
+        const source = await props.ipolloworkServerClient.readWorkspaceFile(props.runtimeWorkspaceId, state.entry);
+        setPendingVideoArtifactCompletion({
+          sessionId: props.selectedSessionId,
+          requirement: createVideoArtifactCompletionRequirement(
+            state.entry,
+            source.content,
+            conversationMessages.length,
+          ),
+        });
+      }
       const prompt = templateBriefPrompt({ template, entryPath: state.entry, briefPath: state.briefPath });
       const referencePrompt = referencePayload.contextPack.promptText.trim();
       const visibleTemplateMessage = t("templates.applied", { title: template.title });
-      props.surface?.onSendDraft({
+      const dispatched = await props.surface?.onSendDraft({
         mode: "prompt",
         parts: [
           { type: "text", text: visibleTemplateMessage },
@@ -1114,14 +1204,26 @@ export function SessionPage(props: SessionPageProps) {
         text: visibleTemplateMessage,
         resolvedText: visibleTemplateMessage,
       }, props.selectedSessionId);
+      if (!dispatched) throw new Error("The template task could not be started.");
+      setTemplateSessionData((current) => current?.sessionId === props.selectedSessionId ? { ...current, hasBrief: true } : current);
+      setTemplateSessionRevision((value) => value + 1);
+      setDismissedTemplateBriefSessionIds((current) => {
+        if (!props.selectedSessionId || !current.has(props.selectedSessionId)) return current;
+        const next = new Set(current);
+        next.delete(props.selectedSessionId);
+        return next;
+      });
     } catch (error) {
+      setPendingVideoArtifactCompletion((current) =>
+        current?.sessionId === props.selectedSessionId ? null : current,
+      );
       toast.error(t("templates.brief.submit_failed"), {
         description: error instanceof Error ? error.message : undefined,
       });
     } finally {
       if (referencePayload) revokeTemplateReferenceAttachmentPreviews(referencePayload.attachments);
     }
-  }, [currentTemplateSessionData, props.ipolloworkServerClient, props.runtimeWorkspaceId, props.selectedSessionId, props.surface]);
+  }, [conversationMessages.length, currentTemplateSessionData, props.ipolloworkServerClient, props.runtimeWorkspaceId, props.selectedSessionId, props.surface]);
   const closeTemplateBrief = useCallback(async () => {
     const sessionId = props.selectedSessionId;
     if (!sessionId) return;
@@ -1151,19 +1253,19 @@ export function SessionPage(props: SessionPageProps) {
   const sidePanelOpen = effectiveSidePanelView !== null;
   const panelRailActive = activeSidePanel === "panel";
   const designRailActive = activeSidePanel === "design";
-  const videoRailActive = activeSidePanel === "video";
+  const videoRailActive = panelRailActive && activePanelTab?.type === "video";
   const extensionsRailActive = activeSidePanel === "extensions";
   const voiceRailActive = activeSidePanel === "voice";
+  useEffect(() => {
+    if (activeSidePanel === "video") openCurrentVideoStudio({ auto: true });
+  }, [activeSidePanel, openCurrentVideoStudio]);
   useEffect(() => {
     if (!props.selectedSessionId) return;
     if (isVideoSession) {
       setSidePanelState(GLOBAL_VOICE_SIDE_PANEL_KEY, null);
       return;
     }
-    if (isDesignSession && activeSidePanel === "video") {
-      setSidePanelState(props.selectedSessionId, "panel");
-    }
-  }, [activeSidePanel, isDesignSession, isVideoSession, props.selectedSessionId, setSidePanelState]);
+  }, [isVideoSession, props.selectedSessionId, setSidePanelState]);
   useEffect(() => {
     if (!props.selectedSessionId || !isVideoSession || !videoOutput) return;
     const status = props.sidebar.sessionStatusById[props.selectedSessionId] ?? "idle";
@@ -1215,20 +1317,23 @@ export function SessionPage(props: SessionPageProps) {
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleteBusy, setDeleteBusy] = useState(false);
   const [sessionActionId, setSessionActionId] = useState<string | null>(null);
-  const [createGroupOpen, setCreateGroupOpen] = useState(false);
-  const [createGroupLabel, setCreateGroupLabel] = useState("");
-  const [createGroupWorkspaceId, setCreateGroupWorkspaceId] = useState<string | null>(null);
-  const [renameGroupOpen, setRenameGroupOpen] = useState(false);
-  const [renameGroupLabel, setRenameGroupLabel] = useState("");
-  const [renameGroupOriginalLabel, setRenameGroupOriginalLabel] = useState("");
-  const [renameGroupTarget, setRenameGroupTarget] = useState<{ workspaceId: string; groupId: string } | null>(null);
-  const [removeGroupOpen, setRemoveGroupOpen] = useState(false);
-  const [removeGroupTarget, setRemoveGroupTarget] = useState<{ workspaceId: string; groupId: string; label: string } | null>(null);
+  const [createProjectOpen, setCreateProjectOpen] = useState(false);
+  const [createProjectName, setCreateProjectName] = useState("");
+  const [createProjectFolder, setCreateProjectFolder] = useState("");
+  const [createProjectEngineId, setCreateProjectEngineId] = useState<BuiltInWorkspaceEngineId>(DEFAULT_ENGINE_ID);
+  const [createProjectBusy, setCreateProjectBusy] = useState(false);
+  const [createProjectError, setCreateProjectError] = useState<string | null>(null);
+  const [renameProjectId, setRenameProjectId] = useState<string | null>(null);
+  const [renameProjectName, setRenameProjectName] = useState("");
+  const [renameProjectBusy, setRenameProjectBusy] = useState(false);
+  const [deleteProjectId, setDeleteProjectId] = useState<string | null>(null);
+  const [deleteProjectBusy, setDeleteProjectBusy] = useState(false);
   const [mainWorkspaceView, setMainWorkspaceView] = useState<"extensions" | null>(null);
   const preserveSidePanelOnPanelOpenRef = useRef(false);
 
   const setCurrentSidePanel = useCallback((panel: SidePanelItem | null) => {
     if (panel === "design" && props.selectedSessionId) {
+      if (!designWorkspaceEnabled) return;
       const entryPath = designTemplateEntryPath?.replaceAll("\\", "/").trim() || "";
       const designTabId = entryPath
         ? `design:${props.selectedSessionId}:${encodeURIComponent(entryPath)}`
@@ -1256,10 +1361,10 @@ export function SessionPage(props: SessionPageProps) {
     setSidePanelState(GLOBAL_VOICE_SIDE_PANEL_KEY, panel === "voice" ? "voice" : null);
     if (panel === "voice") return;
     setSidePanelState(props.selectedSessionId, panel);
-  }, [designTemplateEntryPath, openTab, props.selectedSessionId, selectTab, sessionPanelState.tabs, setSidePanelState]);
+  }, [designTemplateEntryPath, designWorkspaceEnabled, openTab, props.selectedSessionId, selectTab, sessionPanelState.tabs, setSidePanelState]);
 
   const openDesignTab = useCallback((path?: string) => {
-    if (!props.selectedSessionId) return;
+    if (!props.selectedSessionId || !designWorkspaceEnabled) return;
     const normalizedPath = path?.replaceAll("\\", "/").trim() || designTemplateEntryPath?.replaceAll("\\", "/").trim() || "";
     if (!normalizedPath) {
       setCurrentSidePanel("panel");
@@ -1282,7 +1387,7 @@ export function SessionPage(props: SessionPageProps) {
       selectTab(props.selectedSessionId, designTabId);
     }
     setCurrentSidePanel("panel");
-  }, [designTemplateEntryPath, openTab, props.selectedSessionId, selectTab, sessionPanelState.tabs, setCurrentSidePanel]);
+  }, [designTemplateEntryPath, designWorkspaceEnabled, openTab, props.selectedSessionId, selectTab, sessionPanelState.tabs, setCurrentSidePanel]);
 
   useEffect(() => {
     if (!props.selectedSessionId || !designTemplateEntryPath) return;
@@ -1321,17 +1426,9 @@ export function SessionPage(props: SessionPageProps) {
         preserveSidePanelOnPanelOpenRef.current = false;
         return;
       }
-      // Browser tools may open pages while an agent is editing a video. Keep
-      // that WebContentsView in the background so it cannot cover the Studio.
-      if (isVideoSession && activeSidePanel !== "panel") {
-        void browser.hide?.();
-        setCurrentSidePanel("video");
-        return;
-      }
       setCurrentSidePanel("panel");
     });
     const unsubClose = browser.onPanelClosed?.(() => {
-      if (isVideoSession && activeSidePanel !== "panel") return;
       const remainingTabs = props.selectedSessionId
         ? usePanelTabStore.getState().sessions[props.selectedSessionId]?.tabs ?? []
         : [];
@@ -1344,7 +1441,7 @@ export function SessionPage(props: SessionPageProps) {
       setCurrentSidePanel(null);
     });
     return () => { unsubOpen?.(); unsubClose?.(); };
-  }, [activeSidePanel, isVideoSession, props.selectedSessionId, setCurrentSidePanel]);
+  }, [props.selectedSessionId, setCurrentSidePanel]);
   const {
     leftSidebarResizing,
     leftSidebarWidth,
@@ -1359,15 +1456,15 @@ export function SessionPage(props: SessionPageProps) {
   const [rightPanelManuallyResized, setRightPanelManuallyResized] = useState(false);
   const [rightPanelResizing, setRightPanelResizing] = useState(false);
   const rightPanelElementRef = useRef<HTMLElement>(null);
-  const [videoStudioExpanded, setVideoStudioExpanded] = useState(false);
   const [rightPanelExpanded, setRightPanelExpanded] = useState(false);
-  const rightWorkspaceExpanded = rightPanelExpanded || videoStudioExpanded;
+  const rightWorkspaceExpanded = rightPanelExpanded;
   const [viewportWidth, setViewportWidth] = useState(() => (
     typeof window === "undefined" ? MAIN_WORKSPACE_MIN_WIDTH : window.innerWidth
   ));
   const narrowLayout = viewportWidth < NARROW_LAYOUT_WIDTH;
   const effectiveLeftSidebarWidth = narrowLayout ? Math.min(leftSidebarWidth, 200) : leftSidebarWidth;
   const designTabActive = effectiveSidePanelView === "panel" && activePanelTab?.type === "design";
+  const videoTabActive = effectiveSidePanelView === "panel" && activePanelTab?.type === "video";
   const desiredRightPanelWidth = designTabActive || effectiveSidePanelView === "design"
     ? MIN_DESIGN_PANEL_WIDTH
     : MIN_RIGHT_PANEL_WIDTH;
@@ -1385,7 +1482,7 @@ export function SessionPage(props: SessionPageProps) {
   const preferredVideoPanelWidth = rightPanelManuallyResized
     ? browserPanelDefaultWidth
     : Math.max(browserPanelDefaultWidth, VIDEO_PANEL_DEFAULT_WIDTH);
-  const preferredBrowserPanelWidth = effectiveSidePanelView === "video"
+  const preferredBrowserPanelWidth = videoTabActive
     ? preferredVideoPanelWidth
     : effectiveSidePanelView === "launcher"
       ? 320
@@ -1491,8 +1588,7 @@ export function SessionPage(props: SessionPageProps) {
   }, []);
   const closeExpandedWorkSurface = useCallback(() => {
     if (rightPanelExpanded) setRightPanelExpanded(false);
-    if (videoStudioExpanded) setVideoStudioExpanded(false);
-  }, [rightPanelExpanded, videoStudioExpanded]);
+  }, [rightPanelExpanded]);
   const handleSidebarOpenSession = useCallback((workspaceId: string, sessionId: string) => {
     closeExpandedWorkSurface();
     props.sidebar.onOpenSession(workspaceId, sessionId);
@@ -1509,7 +1605,7 @@ export function SessionPage(props: SessionPageProps) {
       effectiveRightPanelMinWidth,
       Math.min(
         workspaceWidth - mainWorkspaceMinWidth,
-        workspaceWidth * (effectiveSidePanelView === "video" ? 0.82 : 0.7),
+        workspaceWidth * (videoTabActive ? 0.82 : 0.7),
       ),
     );
     let nextWidth = effectiveBrowserPanelWidth;
@@ -1560,12 +1656,12 @@ export function SessionPage(props: SessionPageProps) {
   }, [
     effectiveBrowserPanelWidth,
     effectiveRightPanelMinWidth,
-    effectiveSidePanelView,
     mainWorkspaceMinWidth,
     rightWorkspaceExpanded,
     setBrowserPanelWidth,
     setRightPanelManuallyResized,
     sidePanelOpen,
+    videoTabActive,
     viewportWidth,
     visibleLeftSidebarWidth,
   ]);
@@ -1580,11 +1676,10 @@ export function SessionPage(props: SessionPageProps) {
       ),
     );
     if (rightPanelExpanded) setRightPanelExpanded(false);
-    if (videoStudioExpanded) setVideoStudioExpanded(false);
     window.requestAnimationFrame(() => {
       window.dispatchEvent(new Event("ipollowork:focusPrompt"));
     });
-  }, [rightPanelExpanded, videoStudioExpanded]);
+  }, [rightPanelExpanded]);
   const browserUrlForTarget = useCallback((target: OpenTarget) => {
     if (/^wss?:\/\//i.test(target.value)) return target.value.replace(/^ws:/i, "http:").replace(/^wss:/i, "https:");
     return target.value;
@@ -1721,7 +1816,6 @@ export function SessionPage(props: SessionPageProps) {
       autoCollapsedSidePanelRef.current = null;
     }
     setRightPanelExpanded(false);
-    setVideoStudioExpanded(false);
     setSessionPanelView(null);
     setCurrentSidePanel(null);
   }, [setCurrentSidePanel]);
@@ -1826,12 +1920,12 @@ export function SessionPage(props: SessionPageProps) {
       closeRightPane();
       return;
     }
-    setCurrentSidePanel("video");
-  }, [closeRightPane, setCurrentSidePanel, videoRailActive]);
+    openCurrentVideoStudio();
+  }, [closeRightPane, openCurrentVideoStudio, videoRailActive]);
   const showVideoRailPane = useCallback(() => {
     userOpenedSidebarWhileNarrowRef.current = false;
-    setCurrentSidePanel("video");
-  }, [setCurrentSidePanel]);
+    openCurrentVideoStudio();
+  }, [openCurrentVideoStudio]);
   const seedDesignHtmlControlAction = useMemo<iPolloWorkControlAction | null>(() => {
     if (!import.meta.env.DEV) return null;
 
@@ -1999,15 +2093,11 @@ export function SessionPage(props: SessionPageProps) {
       if (provider !== "auto" && provider !== "builtin") {
         return { ok: false, error: `Browser provider is not available yet: ${provider}` };
       }
-      if (!isVideoSession) setCurrentSidePanel("panel");
+      setCurrentSidePanel("panel");
       const result = await window.__IPOLLOWORK_ELECTRON__?.browser?.openUrl?.(url, provider);
-      if (isVideoSession) {
-        await window.__IPOLLOWORK_ELECTRON__?.browser?.hide?.();
-        setCurrentSidePanel("video");
-      }
       return result;
     },
-  }), [isVideoSession, setCurrentSidePanel]);
+  }), [setCurrentSidePanel]);
   useControlAction(openBrowserUrlControlAction);
   const setBrowserProxyControlAction = useMemo<iPolloWorkControlAction>(() => ({
     id: "browser.set_proxy",
@@ -2087,6 +2177,37 @@ export function SessionPage(props: SessionPageProps) {
   const openVoiceRailPane = useCallback(() => {
     toggleCurrentSidePanel("voice");
   }, [toggleCurrentSidePanel]);
+  const openWorkspaceApp = useCallback((surface: (typeof workspaceApps)[number]) => {
+    if (!props.selectedSessionId) return;
+    openTab(props.selectedSessionId, {
+      id: `workspace-app:${surface.id}`,
+      type: "workspace-app",
+      label: surface.label,
+      sessionId: props.selectedSessionId,
+      surface,
+    });
+    setCurrentSidePanel("panel");
+  }, [openTab, props.selectedSessionId, setCurrentSidePanel]);
+  const sendWorkspaceAppMessage = useCallback((input: {
+    text: string;
+    modelContext: WorkspaceAppModelContext | null;
+  }) => {
+    if (!props.selectedSessionId || activePanelTab?.type !== "workspace-app") return false;
+    const context = input.modelContext
+      ? `The active Workspace App is ${activePanelTab.label}. Use its available workspace_app tools when the user asks to inspect or edit it. Current app context:\n${JSON.stringify(input.modelContext, null, 2)}`
+      : `The active Workspace App is ${activePanelTab.label}. Use its available workspace_app tools when the user asks to inspect or edit it.`;
+    return props.surface?.onSendDraft({
+      mode: "prompt",
+      parts: [{ type: "text", text: input.text }],
+      attachments: [],
+      text: input.text,
+      resolvedText: input.text,
+      capability: {
+        id: `workspace-app:${activePanelTab.surface.pluginId}:${activePanelTab.surface.resource.id}`,
+        instruction: context,
+      },
+    }, props.selectedSessionId) ?? false;
+  }, [activePanelTab, props.selectedSessionId, props.surface?.onSendDraft]);
   const sidePanelLauncherItems = useMemo<SidePanelLauncherItem[]>(() => [
     {
       id: "web",
@@ -2097,14 +2218,14 @@ export function SessionPage(props: SessionPageProps) {
       onClick: addBrowserPanelTab,
       disabled: !isElectronRuntime(),
     },
-    {
+    ...(designWorkspaceEnabled ? [{
       id: "design",
       label: "Design",
       iconSrc: publicAssetUrl("sidebar-entry-code.svg"),
       active: panelRailActive && activePanelTab?.type === "design",
       onClick: showDesignRailPane,
       disabled: !props.selectedSessionId || props.selectedWorkspaceDisplay.workspaceType === "remote",
-    },
+    }] : []),
     {
       id: "files",
       label: t("session.side_panel.files"),
@@ -2114,15 +2235,25 @@ export function SessionPage(props: SessionPageProps) {
       onClick: showArtifactRailPane,
       disabled: !hasArtifactTargets,
     },
-    {
+    ...(videoWorkspaceEnabled ? [{
       id: "video",
       label: t("session.side_panel.video"),
       iconSrc: publicAssetUrl("sidebar-entry-video.svg"),
       active: videoRailActive,
       onClick: showVideoRailPane,
       disabled: !props.selectedSessionId || props.selectedWorkspaceDisplay.workspaceType === "remote",
-    },
-  ], [activePanelTab?.type, addBrowserPanelTab, hasArtifactTargets, locale, panelRailActive, props.selectedSessionId, props.selectedWorkspaceDisplay.workspaceType, showArtifactRailPane, showDesignRailPane, showVideoRailPane, videoRailActive]);
+    }] : []),
+    ...workspaceApps.map((surface) => ({
+      id: `workspace-app:${surface.id}`,
+      label: surface.label,
+      iconSrc: surface.iconSrc ?? publicAssetUrl("ipollowork-mark.svg"),
+      active: panelRailActive
+        && activePanelTab?.type === "workspace-app"
+        && activePanelTab.surface.id === surface.id,
+      onClick: () => openWorkspaceApp(surface),
+      disabled: !props.selectedSessionId,
+    })),
+  ], [activePanelTab, addBrowserPanelTab, designWorkspaceEnabled, hasArtifactTargets, locale, openWorkspaceApp, panelRailActive, props.selectedSessionId, props.selectedWorkspaceDisplay.workspaceType, showArtifactRailPane, showDesignRailPane, showVideoRailPane, videoRailActive, videoWorkspaceEnabled, workspaceApps]);
   const removeAccessibleTarget = useCallback((target: OpenTarget) => {
     const nextHiddenIds = new Set(hiddenAccessibleTargetIds);
     nextHiddenIds.add(target.id);
@@ -2205,10 +2336,6 @@ export function SessionPage(props: SessionPageProps) {
     setSettledSessionId(sessionId);
   }, []);
 
-  const selectedSessionTitle = useMemo(
-    () => sessionTitleForId(props.sidebar.workspaceSessionGroups, props.selectedSessionId),
-    [props.selectedSessionId, props.sidebar.workspaceSessionGroups],
-  );
   const canSavePromptTemplate = Boolean(props.selectedSessionId && conversationMessages.some((message) => message.role === "user"));
   const exportSessionMarkdown = useCallback(() => {
     if (!props.selectedSessionId || conversationMessages.length === 0) return;
@@ -2238,8 +2365,8 @@ export function SessionPage(props: SessionPageProps) {
     }
   }, [canSavePromptTemplate, conversationMessages, props.selectedSessionId, selectedSessionTitle]);
   const sessionActionTitle = useMemo(
-    () => sessionTitleForId(props.sidebar.workspaceSessionGroups, sessionActionId),
-    [props.sidebar.workspaceSessionGroups, sessionActionId],
+    () => sessionTitleForId(props.sidebar.projectSessionLists, sessionActionId),
+    [props.sidebar.projectSessionLists, sessionActionId],
   );
   const showWorkspaceSetupEmptyState = props.workspaces.length === 0 && !props.selectedSessionId;
   const showNewConversationChrome = !props.selectedSessionId && !showWorkspaceSetupEmptyState;
@@ -2256,22 +2383,22 @@ export function SessionPage(props: SessionPageProps) {
   // panes can never disagree. We check (in priority order):
   // 1. selectedWorkspaceError (errorsByWorkspaceId[selectedWorkspaceId])
   // 2. workspaceConnectionStateById[selectedWorkspaceId].message (covers test/recover paths)
-  // 3. group.error from workspaceSessionGroups (the same source the sidebar reads)
+  // 3. Project load errors from the same source the sidebar reads.
   const selectedWorkspaceConnectionMessage = (() => {
     const state = props.sidebar.workspaceConnectionStateById[props.selectedWorkspaceId];
     if (state?.status === "error") return state.message?.trim() ?? "";
     return "";
   })();
-  const selectedWorkspaceGroupError = (() => {
-    const group = props.sidebar.workspaceSessionGroups.find(
+  const selectedWorkspaceProjectError = (() => {
+    const project = props.sidebar.projectSessionLists.find(
       (item) => item.workspace.id === props.selectedWorkspaceId,
     );
-    return group?.error?.trim() ?? "";
+    return project?.error?.trim() ?? "";
   })();
   const selectedWorkspaceErrorMessage =
     props.selectedWorkspaceError?.trim() ||
     selectedWorkspaceConnectionMessage ||
-    selectedWorkspaceGroupError ||
+    selectedWorkspaceProjectError ||
     "";
   const showSelectedWorkspaceError = Boolean(selectedWorkspaceErrorMessage);
   const selectedWorkspaceErrorTitle =
@@ -2342,7 +2469,7 @@ export function SessionPage(props: SessionPageProps) {
   const openRenameModal = (sessionId: string) => {
     if (!props.onRenameSession) return;
     setSessionActionId(sessionId);
-    setRenameTitle(sessionTitleForId(props.sidebar.workspaceSessionGroups, sessionId));
+    setRenameTitle(sessionTitleForId(props.sidebar.projectSessionLists, sessionId));
     setRenameOpen(true);
   };
 
@@ -2371,6 +2498,65 @@ export function SessionPage(props: SessionPageProps) {
     }
   };
 
+  const openRenameProject = (workspaceId: string) => {
+    const project = props.workspaces.find((workspace) => workspace.id === workspaceId);
+    if (!project) return;
+    setRenameProjectId(workspaceId);
+    setRenameProjectName(project.displayName?.trim() || project.name?.trim() || "");
+  };
+
+  const pickProjectFolder = async () => {
+    const selected = await pickDirectory({ title: t("projects.choose_folder") });
+    if (typeof selected !== "string" || !selected.trim()) return;
+    const folderPath = selected.trim();
+    setCreateProjectFolder(folderPath);
+    if (!createProjectName.trim()) {
+      const folderName = folderPath.replaceAll("\\", "/").split("/").filter(Boolean).pop() ?? "";
+      setCreateProjectName(folderName);
+    }
+  };
+
+  const submitCreateProject = async () => {
+    const name = createProjectName.trim();
+    const folderPath = createProjectFolder.trim();
+    if (!name) return;
+    setCreateProjectBusy(true);
+    setCreateProjectError(null);
+    try {
+      await props.sidebar.onCreateProject({ name, folderPath, engineId: createProjectEngineId });
+      setCreateProjectOpen(false);
+    } catch (error) {
+      setCreateProjectError(error instanceof Error ? error.message : t("app.unknown_error"));
+    } finally {
+      setCreateProjectBusy(false);
+    }
+  };
+
+  const submitRenameProject = async () => {
+    const workspaceId = renameProjectId;
+    const name = renameProjectName.trim();
+    if (!workspaceId || !name) return;
+    setRenameProjectBusy(true);
+    try {
+      await props.sidebar.onRenameProject(workspaceId, name);
+      setRenameProjectId(null);
+    } finally {
+      setRenameProjectBusy(false);
+    }
+  };
+
+  const confirmDeleteProject = async () => {
+    const workspaceId = deleteProjectId;
+    if (!workspaceId) return;
+    setDeleteProjectBusy(true);
+    try {
+      await props.sidebar.onDeleteProject(workspaceId);
+      setDeleteProjectId(null);
+    } finally {
+      setDeleteProjectBusy(false);
+    }
+  };
+
   return (
     <div className="flex h-full min-h-0 flex-col bg-[radial-gradient(circle_at_top,rgba(74,111,255,0.12),transparent_42%),var(--app-bg,#0b1020)] text-dls-text mac:bg-transparent">
       <SidebarProvider
@@ -2385,7 +2571,7 @@ export function SessionPage(props: SessionPageProps) {
         style={sidebarProviderStyle}
       >
         <AppSidebar
-          workspaceSessionGroups={props.sidebar.workspaceSessionGroups}
+          projectSessionLists={props.sidebar.projectSessionLists}
           selectedWorkspaceId={props.sidebar.selectedWorkspaceId}
           developerMode={props.sidebar.developerMode}
           selectedSessionId={props.sidebar.selectedSessionId}
@@ -2396,6 +2582,17 @@ export function SessionPage(props: SessionPageProps) {
           workspaceConnectionStateById={props.sidebar.workspaceConnectionStateById}
           newTaskDisabled={props.sidebar.newTaskDisabled}
           onOpenSession={handleSidebarOpenSession}
+          onSelectProject={props.sidebar.onSelectProject}
+          onOpenCreateProject={isElectronRuntime() ? () => {
+            setCreateProjectName("");
+            setCreateProjectFolder("");
+            setCreateProjectEngineId(DEFAULT_ENGINE_ID);
+            setCreateProjectError(null);
+            setCreateProjectOpen(true);
+          } : undefined}
+          onOpenRenameProject={openRenameProject}
+          onRevealProject={(workspaceId) => void props.sidebar.onRevealProject(workspaceId)}
+          onOpenDeleteProject={setDeleteProjectId}
           onPrefetchSession={props.sidebar.onPrefetchSession}
           onCreateTaskInWorkspace={props.sidebar.onCreateTaskInWorkspace}
           onOpenRenameSession={props.onRenameSession ? openRenameModal : undefined}
@@ -2406,21 +2603,6 @@ export function SessionPage(props: SessionPageProps) {
           onArchiveSession={props.onArchiveSession ? (sessionId, archived) => {
             void props.onArchiveSession?.(sessionId, archived);
           } : undefined}
-          onOpenCreateGroupModal={(workspaceId) => {
-            setCreateGroupWorkspaceId(workspaceId);
-            setCreateGroupLabel("");
-            setCreateGroupOpen(true);
-          }}
-          onOpenRenameGroupModal={(workspaceId, groupId, label) => {
-            setRenameGroupTarget({ workspaceId, groupId });
-            setRenameGroupLabel(label);
-            setRenameGroupOriginalLabel(label);
-            setRenameGroupOpen(true);
-          }}
-          onOpenRemoveGroupModal={(workspaceId, groupId, label) => {
-            setRemoveGroupTarget({ workspaceId, groupId, label });
-            setRemoveGroupOpen(true);
-          }}
           onRecoverWorkspace={props.sidebar.onRecoverWorkspace}
           onTestWorkspaceConnection={props.sidebar.onTestWorkspaceConnection}
           onEditWorkspaceConnection={props.sidebar.onEditWorkspaceConnection}
@@ -2442,8 +2624,8 @@ export function SessionPage(props: SessionPageProps) {
         />
         <SidebarInset className="relative min-h-0 overflow-hidden bg-background mac:bg-background/80">
           <div className="flex min-h-0 flex-1">
-          <div className="relative flex min-h-0 flex-1">
-            {mainHeaderHidden ? (
+          <div className="relative flex min-h-0 min-w-0 flex-1">
+            {mainHeaderHidden && mainWorkspaceView !== "extensions" ? (
               <Tooltip>
                 <TooltipTrigger
                   render={
@@ -2481,8 +2663,8 @@ export function SessionPage(props: SessionPageProps) {
             >
               <main className="flex h-full min-w-0 flex-col overflow-hidden border-r border-border/40 dark:border-white/[0.055]">
           <header className={cn(
-            "relative z-10 h-10 shrink-0 items-center justify-between border-b border-border px-4 [border-bottom-width:0.5px] md:px-6 mac:titlebar-drag mac:backdrop-blur-2xl mac:backdrop-saturate-150 @container/titlebar",
-            mainHeaderHidden ? "hidden" : "flex",
+            "relative z-10 h-10 shrink-0 items-center justify-between border-b border-border px-4 [border-bottom-width:0.5px] md:grid md:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] md:px-6 mac:titlebar-drag mac:backdrop-blur-2xl mac:backdrop-saturate-150 @container/titlebar",
+            mainHeaderHidden ? "hidden!" : "flex",
             sidebarVisuallyCollapsed && shellConfig.sidebar ? "!pl-16 mac:!pl-32" : "",
           )}>
             {shellConfig.sidebar && sidebarVisuallyCollapsed ? (
@@ -2499,7 +2681,7 @@ export function SessionPage(props: SessionPageProps) {
                 <img src={publicAssetUrl("sidebar-left-expand.svg")} alt="" className="h-3 w-4 shrink-0 dark:invert" />
               </Button>
             ) : null}
-            <div className="flex min-w-0 items-center gap-1">
+            <div className="relative z-10 flex min-w-0 max-w-full items-center gap-1 md:justify-self-start">
               {showMainHeaderTitle ? (
                 <h1 className="truncate text-[14px] font-medium text-dls-text">
                   {showWorkspaceSetupEmptyState
@@ -2576,7 +2758,13 @@ export function SessionPage(props: SessionPageProps) {
               ) : null}
             </div>
 
-            <div className="flex items-center gap-1.5 text-gray-10 mac:titlebar-no-drag">
+            {props.selectedSessionId ? (
+              <div className="pointer-events-none hidden md:flex md:justify-self-center">
+                <SessionEngineBadge engineId={props.selectedWorkspaceDisplay.engineId} />
+              </div>
+            ) : null}
+
+            <div className="relative z-10 flex items-center gap-1.5 text-gray-10 md:justify-self-end mac:titlebar-no-drag">
               <ConversationOutputTrigger
                 active={activeSidePanel === "outputs"}
                 disabled={!conversationMessages.length && !designTemplateEntryPath}
@@ -2674,9 +2862,9 @@ export function SessionPage(props: SessionPageProps) {
               {mainWorkspaceView === null && !showDelayedSessionLoadingState && canRenderReactSurface ? (
                 <div className="flex h-full min-h-0 flex-col lg:flex-row">
                   <div className="min-h-0 min-w-0 flex-1">
-                      {isDesignSession && templateSessionLoading ? (
+                      {isDesignSession && designWorkspaceEnabled && templateSessionLoading ? (
                         <div className="flex h-full items-center justify-center gap-2 text-sm text-dls-secondary"><LoaderCircle className="size-4 animate-spin" />{t("templates.preparing")}</div>
-                      ) : isDesignSession && !hasTemplateSession && props.ipolloworkServerClient && props.runtimeWorkspaceId ? (
+                      ) : isDesignSession && designWorkspaceEnabled && !hasTemplateSession && props.ipolloworkServerClient && props.runtimeWorkspaceId ? (
                         <DesignStarter
                           client={props.ipolloworkServerClient}
                           workspaceId={props.runtimeWorkspaceId}
@@ -2722,15 +2910,20 @@ export function SessionPage(props: SessionPageProps) {
                         templateEntryPath={templateEntryPathForArtifacts}
                         artifactFiles={artifactFiles}
                         artifactContext={artifactContext}
-                        onOpenVideoStudio={openCurrentVideoStudio}
+                        artifactCompletionRequirement={pendingVideoArtifactCompletion?.sessionId === props.selectedSessionId
+                          ? pendingVideoArtifactCompletion.requirement
+                          : undefined}
+                        onArtifactCompletionRequirementConsumed={consumePendingVideoArtifactCompletion}
+                        onOpenVideoStudio={videoWorkspaceEnabled ? openCurrentVideoStudio : undefined}
                         onCreateSession={(type, templateId) => props.sidebar.onCreateTaskInWorkspace(
                           props.selectedWorkspaceId,
                           type,
                           templateId,
                           PERSONAL_WORK_CONTEXT_ID,
-                          activeSessionGroupId,
                         )}
                         onMaterializeTemplate={async (templateId, surface) => {
+                          if ((surface === "design" && !designWorkspaceEnabled)
+                            || (surface === "video" && !videoWorkspaceEnabled)) return;
                           if (!props.ipolloworkServerClient || !props.runtimeWorkspaceId || !props.selectedSessionId) return;
                           const result = await props.ipolloworkServerClient.materializeTemplate(
                             props.runtimeWorkspaceId,
@@ -2759,10 +2952,10 @@ export function SessionPage(props: SessionPageProps) {
                             setSidePanelState(props.selectedSessionId, "design");
                             return;
                           }
-                          setSidePanelState(props.selectedSessionId, "video");
+                          openCurrentVideoStudio();
                         }}
-                        onActivateVideoStudio={activateVideoStudio}
-                        designTemplates={starterTemplateCatalog}
+                        onActivateVideoStudio={videoWorkspaceEnabled ? activateVideoStudio : undefined}
+                        designTemplates={availableStarterTemplateCatalog}
                         designTemplatesLoading={starterTemplateCatalogLoading}
                         designTemplateBusyId={templateBusyId}
                         onInstallDesignTemplate={(templateId) => void installStarterTemplate(templateId)}
@@ -2915,33 +3108,6 @@ export function SessionPage(props: SessionPageProps) {
                       sessionId={props.selectedSessionId}
                       onClose={closeRightPane}
                     />
-                  ) : sidePanelOpen && activeSidePanel === "video" && props.selectedSessionId ? (
-                    <div
-                      className={cn(
-                        "h-full min-h-0",
-                        videoStudioExpanded ? "fixed inset-y-0 right-0 z-[60] bg-background" : "w-full",
-                        videoStudioExpanded && (!shellConfig.sidebar || !sidebarOpen) && "mac:[&_header]:!pl-20",
-                      )}
-                      style={videoStudioExpanded ? {
-                        left: shellConfig.sidebar && sidebarOpen ? `${effectiveLeftSidebarWidth}px` : "0",
-                      } : undefined}
-                    >
-                      <VideoPanel
-                        key={`${props.selectedWorkspaceId}:${props.selectedSessionId}`}
-                        sessionId={props.selectedSessionId}
-                        workspaceRoot={props.selectedWorkspaceRoot}
-                        client={props.ipolloworkServerClient}
-                        workspaceId={props.runtimeWorkspaceId}
-                        isRemoteWorkspace={props.selectedWorkspaceDisplay.workspaceType === "remote"}
-                        launcherItems={sidePanelLauncherItems}
-                        aiEditing={isStreamingSessionStatus(props.sidebar.sessionStatusById[props.selectedSessionId])}
-                        expanded={videoStudioExpanded}
-                        onExpandedChange={setVideoStudioExpanded}
-                        onAskAi={handleDesignAskAi}
-                        onSaveAsTemplate={hasTemplateSession && props.selectedWorkspaceDisplay.workspaceType === "local" ? openTemplateSave : undefined}
-                        onClose={closeRightPane}
-                      />
-                    </div>
                   ) : sidePanelOpen && activeSidePanel === "outputs" ? (
                     <ConversationOutputPanel
                       messages={conversationMessages}
@@ -2970,7 +3136,13 @@ export function SessionPage(props: SessionPageProps) {
                         workspaceRoot={props.selectedWorkspaceRoot}
                         isRemoteWorkspace={props.surface?.isRemoteWorkspace ?? false}
                         launcherItems={sidePanelLauncherItems}
+                        enabledNativeWorkspaces={[
+                          ...(designWorkspaceEnabled ? ["design" as const] : []),
+                          ...(videoWorkspaceEnabled ? ["video" as const] : []),
+                        ]}
+                        aiEditing={isStreamingSessionStatus(props.sidebar.sessionStatusById[props.selectedSessionId])}
                         onAskAi={handleDesignAskAi}
+                        onSendWorkspaceAppMessage={sendWorkspaceAppMessage}
                         onSaveAsTemplate={hasTemplateSession && props.selectedWorkspaceDisplay.workspaceType === "local" ? openTemplateSave : undefined}
                         expanded={rightPanelExpanded}
                         titlebarInset={rightPanelExpanded && (!shellConfig.sidebar || !sidebarOpen)}
@@ -3016,7 +3188,7 @@ export function SessionPage(props: SessionPageProps) {
         onExport={(template) => void exportPersonalTemplate(template)}
         onImport={importDesignTemplate}
         canCreate={props.selectedWorkspaceDisplay.workspaceType === "local"}
-        onCreate={(input) => props.sidebar.onCreateTemplateAuthoring(props.selectedWorkspaceId, input, activeSessionGroupId)}
+        onCreate={(input) => props.sidebar.onCreateTemplateAuthoring(props.selectedWorkspaceId, input)}
         onUse={(template) => {
           if (template.manifest.surface === "video" && props.selectedWorkspaceDisplay.workspaceType === "remote") {
             toast.error(t("templates.video_local_only"));
@@ -3028,7 +3200,6 @@ export function SessionPage(props: SessionPageProps) {
             sessionTypeForTemplate(template.manifest),
             template.manifest.id,
             templateResourceScope,
-            activeSessionGroupId,
           );
         }}
       /> : null}
@@ -3068,68 +3239,179 @@ export function SessionPage(props: SessionPageProps) {
         />
       ) : null}
 
-      <Dialog open={createGroupOpen} onOpenChange={(open) => { if (!open) setCreateGroupOpen(false); }}>
-        <DialogContent className="sm:max-w-lg">
-          <DialogHeader>
-            <DialogTitle>{t("session_management.new_group")}</DialogTitle>
+      <Dialog open={createProjectOpen} onOpenChange={(open) => { if (!open && !createProjectBusy) setCreateProjectOpen(false); }}>
+        <DialogContent
+          data-testid="create-project-dialog"
+          className="max-h-[calc(100dvh-32px)] w-[calc(100%-32px)] max-w-[516px] gap-4 overflow-y-auto rounded-[16px] p-6 ring-0 dark:ring-1 dark:ring-border"
+        >
+          <DialogHeader className="gap-1.5">
+            <DialogTitle className="pe-8 text-base leading-6">{t("projects.create")}</DialogTitle>
+            <DialogDescription className="text-[13px] leading-5">
+              {t("projects.create_description")}
+            </DialogDescription>
           </DialogHeader>
-          <Input
-            type="text"
-            value={createGroupLabel}
-            onChange={(e) => setCreateGroupLabel(e.currentTarget.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && createGroupLabel.trim()) {
-                if (createGroupWorkspaceId) useSessionManagementStore.getState().createGroup(createGroupWorkspaceId, createGroupLabel.trim());
-                setCreateGroupOpen(false);
-              }
-            }}
-            placeholder={t("session_management.new_group_prompt")}
-          />
-          <DialogFooter>
-            <DialogClose render={<Button variant="outline" type="button" />}>{t("common.cancel")}</DialogClose>
+
+          <div className="space-y-4">
+            <div className="space-y-1.5">
+              <label htmlFor="create-project-name" className="block text-[13px] font-medium leading-5 text-foreground">
+                {t("projects.name")}
+              </label>
+              <div className="relative">
+                <span data-testid="project-name-icon" aria-hidden="true" className="pointer-events-none absolute start-3 top-1/2 z-10 flex size-6 -translate-y-1/2 items-center justify-center text-muted-foreground">
+                  <Folder className="size-4" />
+                </span>
+                <Input
+                  id="create-project-name"
+                  value={createProjectName}
+                  onChange={(event) => setCreateProjectName(event.currentTarget.value)}
+                  onKeyDown={(event) => { if (event.key === "Enter") void submitCreateProject(); }}
+                  placeholder={t("projects.name_example")}
+                  disabled={createProjectBusy}
+                  className="h-10 rounded-lg px-4 ps-12 text-sm leading-[22px] placeholder-shown:text-[13px] placeholder-shown:leading-5 placeholder:text-slate-9 focus-visible:ring-0! has-focus-visible:ring-0! dark:placeholder:text-slate-11"
+                />
+              </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <p className="text-[13px] font-medium leading-5 text-foreground">{t("projects.source_folder")}</p>
+              <button
+                type="button"
+                data-testid="project-folder-picker"
+                className="flex h-10 w-full items-center gap-3 rounded-lg border border-border bg-background px-3 text-left text-sm leading-[22px] text-muted-foreground transition-colors hover:border-foreground/20 hover:bg-muted/50 hover:text-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/30 focus-visible:outline-hidden disabled:pointer-events-none disabled:opacity-50"
+                onClick={() => void pickProjectFolder()}
+                disabled={createProjectBusy}
+                title={createProjectFolder || undefined}
+              >
+                <span data-testid="project-folder-icon" aria-hidden="true" className="flex size-6 shrink-0 items-center justify-center">
+                  <FolderPlus className="size-4" />
+                </span>
+                <span
+                  data-testid="project-folder-label"
+                  className={cn(
+                    "min-w-0 flex-1 truncate font-normal",
+                    createProjectFolder
+                      ? "text-sm leading-[22px] text-foreground"
+                      : "text-[13px] leading-5 text-slate-9 dark:text-slate-11",
+                  )}
+                >
+                  {createProjectFolder || t("projects.choose_folder")}
+                </span>
+              </button>
+            </div>
+
+            <fieldset className="space-y-2">
+              <legend className="mb-1.5 text-[13px] font-medium leading-5 text-foreground">{t("projects.default_engine")}</legend>
+              <RadioGroup
+                value={createProjectEngineId}
+                onValueChange={(engineId) => {
+                  if (engineId === DEFAULT_ENGINE_ID || engineId === DEEPSEEK_HARNESS_ENGINE_ID) {
+                    setCreateProjectEngineId(engineId);
+                  }
+                }}
+                disabled={createProjectBusy}
+                aria-label={t("projects.default_engine")}
+                className="grid grid-cols-2 gap-4"
+              >
+                {[
+                  {
+                    id: DEFAULT_ENGINE_ID,
+                    name: t("projects.engine_opencode"),
+                    description: t("projects.engine_opencode_description"),
+                  },
+                  {
+                    id: DEEPSEEK_HARNESS_ENGINE_ID,
+                    name: t("projects.engine_dsh"),
+                    description: t("projects.engine_dsh_description"),
+                  },
+                ].map((engine) => {
+                  const selected = createProjectEngineId === engine.id;
+                  return (
+                    <label
+                      key={engine.id}
+                      data-testid="project-engine-option"
+                      data-state={selected ? "selected" : "default"}
+                      className={cn(
+                        "relative flex min-h-[90px] cursor-pointer flex-col gap-2 rounded-lg border-2 bg-transparent p-4 text-left transition-colors has-focus-visible:ring-3 has-focus-visible:ring-ring/30",
+                        selected
+                          ? "border-[var(--project-dialog-accent)]"
+                          : "border-[var(--project-dialog-option-border)] hover:border-foreground/20 hover:bg-muted/40",
+                        createProjectBusy && "pointer-events-none opacity-50",
+                      )}
+                    >
+                      <RadioGroupItem
+                        value={engine.id}
+                        disabled={createProjectBusy}
+                        className="absolute inset-0 z-10 size-full cursor-pointer opacity-0"
+                      />
+                      <span className="flex items-center justify-between gap-3">
+                        <span className={cn(
+                          "text-sm font-semibold leading-[22px]",
+                          selected ? "text-[var(--project-dialog-accent-strong)]" : "text-foreground",
+                        )}>
+                          {engine.name}
+                        </span>
+                        <img
+                          src={selected ? projectEngineSelectedIcon : projectEngineUnselectedIcon}
+                          alt=""
+                          className="size-4 shrink-0"
+                        />
+                      </span>
+                      <span className="text-xs leading-[18px] text-muted-foreground">{engine.description}</span>
+                    </label>
+                  );
+                })}
+              </RadioGroup>
+              <div className="flex min-h-9 items-center gap-2 rounded-lg bg-[var(--project-dialog-notice)] px-4 py-2 text-[11px] leading-4 text-muted-foreground">
+                <Lock className="size-4 shrink-0" />
+                <span>{t("projects.engine_locked_notice")}</span>
+              </div>
+            </fieldset>
+
+            {createProjectError ? <p role="alert" className="text-xs text-destructive">{createProjectError}</p> : null}
+          </div>
+
+          <DialogFooter className="mx-0 mb-0 flex-row gap-4 rounded-none border-0 bg-transparent p-0 sm:justify-end">
+            <DialogClose
+              render={(
+                <Button
+                  variant="outline"
+                  type="button"
+                  disabled={createProjectBusy}
+                  className="h-9 rounded-lg bg-background px-4"
+                />
+              )}
+            >
+              {t("common.cancel")}
+            </DialogClose>
             <Button
               type="button"
-              disabled={!createGroupLabel.trim()}
-              onClick={() => {
-                if (createGroupWorkspaceId) useSessionManagementStore.getState().createGroup(createGroupWorkspaceId, createGroupLabel.trim());
-                setCreateGroupOpen(false);
-              }}
+              disabled={createProjectBusy || !createProjectName.trim()}
+              onClick={() => void submitCreateProject()}
+              className="h-9 rounded-lg px-4"
             >
-              {t("common.save")}
+              {createProjectBusy ? <LoaderCircle className="size-4 animate-spin" /> : null}
+              {t("projects.create")}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      <Dialog open={renameGroupOpen} onOpenChange={(open) => { if (!open) setRenameGroupOpen(false); }}>
+      <Dialog open={renameProjectId !== null} onOpenChange={(open) => { if (!open && !renameProjectBusy) setRenameProjectId(null); }}>
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
-            <DialogTitle>{t("session_management.rename_group")}</DialogTitle>
+            <DialogTitle>{t("projects.rename")}</DialogTitle>
           </DialogHeader>
           <Input
-            type="text"
-            value={renameGroupLabel}
-            onChange={(event) => setRenameGroupLabel(event.currentTarget.value)}
-            onKeyDown={(event) => {
-              const label = renameGroupLabel.trim();
-              if (event.key !== "Enter" || !label || label === renameGroupOriginalLabel.trim() || !renameGroupTarget) return;
-              useSessionManagementStore.getState().renameGroup(renameGroupTarget.workspaceId, renameGroupTarget.groupId, label);
-              setRenameGroupOpen(false);
-            }}
-            placeholder={t("session_management.new_group_prompt")}
+            value={renameProjectName}
+            onChange={(event) => setRenameProjectName(event.currentTarget.value)}
+            onKeyDown={(event) => { if (event.key === "Enter") void submitRenameProject(); }}
+            placeholder={t("projects.name_placeholder")}
+            disabled={renameProjectBusy}
           />
           <DialogFooter>
-            <DialogClose render={<Button variant="outline" type="button" />}>{t("common.cancel")}</DialogClose>
-            <Button
-              type="button"
-              disabled={!renameGroupLabel.trim() || renameGroupLabel.trim() === renameGroupOriginalLabel.trim() || !renameGroupTarget}
-              onClick={() => {
-                const label = renameGroupLabel.trim();
-                if (!renameGroupTarget || !label) return;
-                useSessionManagementStore.getState().renameGroup(renameGroupTarget.workspaceId, renameGroupTarget.groupId, label);
-                setRenameGroupOpen(false);
-              }}
-            >
+            <DialogClose render={<Button variant="outline" type="button" disabled={renameProjectBusy} />}>{t("common.cancel")}</DialogClose>
+            <Button type="button" disabled={renameProjectBusy || !renameProjectName.trim()} onClick={() => void submitRenameProject()}>
+              {renameProjectBusy ? <LoaderCircle className="size-4 animate-spin" /> : null}
               {t("common.save")}
             </Button>
           </DialogFooter>
@@ -3137,19 +3419,14 @@ export function SessionPage(props: SessionPageProps) {
       </Dialog>
 
       <ConfirmModal
-        open={removeGroupOpen}
-        title={t("session_management.remove_group_title")}
-        message={t("session_management.remove_group_message", { group: removeGroupTarget?.label ?? "" })}
-        confirmLabel={t("session_management.remove_group")}
+        open={deleteProjectId !== null}
+        title={t("projects.remove_title")}
+        message={t("projects.remove_description")}
+        confirmLabel={deleteProjectBusy ? t("projects.removing") : t("projects.remove")}
         cancelLabel={t("common.cancel")}
         variant="danger"
-        onConfirm={() => {
-          if (removeGroupTarget) {
-            useSessionManagementStore.getState().removeGroup(removeGroupTarget.workspaceId, removeGroupTarget.groupId);
-          }
-          setRemoveGroupOpen(false);
-        }}
-        onCancel={() => setRemoveGroupOpen(false)}
+        onConfirm={() => void confirmDeleteProject()}
+        onCancel={() => { if (!deleteProjectBusy) setDeleteProjectId(null); }}
       />
 
       <CloudSignInComingSoonDialog

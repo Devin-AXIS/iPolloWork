@@ -67,6 +67,13 @@ type NewConversationStarterProps = {
   selectedCapabilityId?: string | null;
   onSelectMode: (mode: NewConversationMode) => void;
   onSelectPrompt: (prompt: string, capability?: StarterCapability) => void;
+  promptTemplates?: Array<{
+    id: string;
+    label: string;
+    description: string;
+    prompt: string;
+    mode: NewConversationMode;
+  }>;
   templates?: TemplateCatalogItem[];
   templatesLoading?: boolean;
   templateBusyId?: string | null;
@@ -972,6 +979,7 @@ export function NewConversationStarter({
   selectedCapabilityId,
   onSelectMode,
   onSelectPrompt,
+  promptTemplates = [],
   templates = [],
   templatesLoading = false,
   templateBusyId,
@@ -1075,6 +1083,22 @@ export function NewConversationStarter({
   const actions = shortcutIds[selectedMode]
     .map((id) => modeDefinitions.find((action) => action.id === id))
     .filter((action): action is StarterAction => Boolean(action));
+  const visiblePromptTemplates = useMemo(() => [
+    ...(selectedMode === "work" ? savedPromptTemplates.map((template) => ({
+      id: `saved:${template.id}`,
+      label: template.title,
+      description: template.prompt,
+      prompt: template.prompt,
+    })) : []),
+    ...promptTemplates
+      .filter((template) => template.mode === selectedMode)
+      .map((template) => ({
+        id: `plugin:${template.id}`,
+        label: template.label,
+        description: template.description || template.prompt,
+        prompt: template.prompt,
+      })),
+  ], [promptTemplates, savedPromptTemplates, selectedMode]);
 
   const toggleShortcut = (id: string) => {
     const definition = modeDefinitions.find((action) => action.id === id);
@@ -1254,21 +1278,21 @@ export function NewConversationStarter({
             onRequestTemplates={onRequestTemplates}
           />
         ) : null}
-        {selectedMode === "work" && savedPromptTemplates.length > 0 ? (
+        {visiblePromptTemplates.length > 0 ? (
           <div className="mt-4 rounded-xl border border-border/80 bg-muted/25 p-3">
             <div className="mb-2 px-0.5">
               <p className="text-[13px] font-medium text-foreground">{t("new_conversation.saved_templates.title")}</p>
             </div>
             <div className="flex flex-wrap gap-2">
-              {savedPromptTemplates.map((template) => (
+              {visiblePromptTemplates.map((template) => (
                 <button
                   key={template.id}
                   type="button"
                   className="max-w-full rounded-lg border border-border bg-background px-3 py-2 text-left text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
                   onClick={() => onSelectPrompt(template.prompt)}
                 >
-                  <span className="block truncate font-medium text-foreground">{template.title}</span>
-                  <span className="mt-0.5 block max-w-[220px] truncate">{template.prompt}</span>
+                  <span className="block truncate font-medium text-foreground">{template.label}</span>
+                  <span className="mt-0.5 block max-w-[220px] truncate">{template.description}</span>
                 </button>
               ))}
             </div>

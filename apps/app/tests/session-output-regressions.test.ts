@@ -3,6 +3,25 @@ import { readFileSync } from "node:fs";
 import { formatProcessDuration } from "../src/components/chat/utils";
 
 describe("session output issue regressions", () => {
+  test("shows the active workspace engine in the centered session header badge", () => {
+    const sessionPageSource = readFileSync(
+      new URL("../src/react-app/domains/session/chat/session-page.tsx", import.meta.url),
+      "utf8",
+    );
+    const sessionRouteSource = readFileSync(
+      new URL("../src/react-app/shell/session-route.tsx", import.meta.url),
+      "utf8",
+    );
+
+    expect(sessionPageSource).toContain("function SessionEngineBadge");
+    expect(sessionPageSource).toContain("data-engine-id={isDeepSeekHarness ? DEEPSEEK_HARNESS_ENGINE_ID : DEFAULT_ENGINE_ID}");
+    expect(sessionPageSource).toContain('t(isDeepSeekHarness ? "projects.engine_dsh" : "projects.engine_opencode")');
+    expect(sessionPageSource).toContain("<SessionEngineBadge engineId={props.selectedWorkspaceDisplay.engineId} />");
+    expect(sessionPageSource).toContain("md:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)]");
+    expect(sessionPageSource).toContain('className="pointer-events-none hidden md:flex md:justify-self-center"');
+    expect(sessionRouteSource).toContain("engineId: activeEngineId");
+  });
+
   test("process duration uses a compact clock format", () => {
     expect(formatProcessDuration(8_400)).toBe("00:08");
     expect(formatProcessDuration(83_000)).toBe("01:23");
@@ -20,6 +39,35 @@ describe("session output issue regressions", () => {
     expect(source).toContain('t("session.export_markdown")');
     expect(source).toContain("downloadTextAsFile(");
     expect(source).toContain("sessionId={props.selectedSessionId ?? undefined}");
+  });
+
+  test("DeepSeek Harness sessions expose archive instead of permanent delete", () => {
+    const routeSource = readFileSync(
+      new URL("../src/react-app/shell/session-route.tsx", import.meta.url),
+      "utf8",
+    );
+    const sidebarSource = readFileSync(
+      new URL("../src/react-app/domains/session/sidebar/app-sidebar.tsx", import.meta.url),
+      "utf8",
+    );
+    const deleteBinding = routeSource.slice(
+      routeSource.indexOf("onDeleteSession={"),
+      routeSource.indexOf("onArchiveSession={"),
+    );
+
+    expect(deleteBinding).toContain("activeEngineId !== DEEPSEEK_HARNESS_ENGINE_ID");
+    expect(routeSource).toContain("onArchiveSession={conversation ? handleArchiveSession : undefined}");
+    expect(sidebarSource).toContain('t("session_management.archive_session")');
+  });
+
+  test("template brief keeps the reference upload entry hidden", () => {
+    const source = readFileSync(
+      new URL("../src/react-app/domains/session/chat/session-page.tsx", import.meta.url),
+      "utf8",
+    );
+
+    expect(source).toContain("const TEMPLATE_REFERENCE_UPLOAD_VISIBLE = false;");
+    expect(source).toContain("{TEMPLATE_REFERENCE_UPLOAD_VISIBLE ? <div");
   });
 
   test("output files can seed a follow-up revision prompt", () => {
@@ -105,6 +153,32 @@ describe("session output issue regressions", () => {
     expect(source).toContain("{!isStreaming ? (");
   });
 
+  test("keeps the assistant process in progress while shared session activity is still active", () => {
+    const source = readFileSync(
+      new URL("../src/react-app/domains/session/surface/session-surface.tsx", import.meta.url),
+      "utf8",
+    );
+
+    expect(source).toContain('if (liveStatus.type === "busy" || activityRunActive)');
+    expect(source).toContain("}, [activityRunActive, liveStatus, sending]);");
+  });
+
+  test("the final assistant result enters from the left after a live run", () => {
+    const source = readFileSync(
+      new URL("../src/components/chat/message-list.tsx", import.meta.url),
+      "utf8",
+    );
+    const resultEntry = source.slice(
+      source.indexOf('data-assistant-result="true"'),
+      source.indexOf("message={resultData.item.message}"),
+    );
+
+    expect(source).toContain("const resultEnteredAfterLiveRun = !isLiveGroup && previousLiveGroupRef.current");
+    expect(resultEntry).toContain("slide-in-from-left-2");
+    expect(resultEntry).not.toContain("slide-in-from-right");
+    expect(resultEntry).toContain("motion-reduce:animate-none");
+  });
+
   test("video and presentation sessions show only scoped openable outputs", () => {
     const artifactSource = readFileSync(
       new URL("../src/components/chat/artifact.tsx", import.meta.url),
@@ -183,11 +257,11 @@ describe("session output issue regressions", () => {
     expect(source).toContain("enterpriseMode ? (visibleEnterpriseResources.length");
     expect(source).not.toContain("enterpriseMode ? (visible.length || visibleEnterpriseResources.length");
     expect(sessionSource).toContain('listTemplates(props.runtimeWorkspaceId, "personal")');
-    expect(sessionSource).toContain('listEnterpriseResources(activeEnterprise, "template")');
+    expect(sessionSource).toContain('listEnterpriseResources("template")');
     expect(sessionSource).toContain("item.sourceType === \"local\" && item.installed");
     expect(sessionSource).toContain("requestId !== templateCatalogRequestIdRef.current");
     expect(source).toContain("enterpriseTemplateInstallations");
-    expect(source).toContain("resource.sourceTemplateId");
+    expect(source).toContain("resource.manifestId");
     expect(source).toContain("return <TemplateCard template={installedTemplate}");
     expect(source).toContain("primaryAction={action} primaryLabel={label} sourceLabel={sourceLabel}");
   });
@@ -199,7 +273,7 @@ describe("session output issue regressions", () => {
     );
 
     expect(source).toContain("listPluginPackages(props.workspaceId)");
-    expect(source).toContain("installedEnterpriseExtensionVersions.get(resource.slug)");
+    expect(source).toContain("installedEnterpriseExtensionVersions.get(resource.manifestId ?? resource.slug)");
     expect(source).toContain('t("plugin_platform.status.installed")');
     expect(source).toContain("currentVersionInstalled || !resource.latestVersion");
   });

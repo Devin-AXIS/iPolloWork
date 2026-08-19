@@ -1,56 +1,216 @@
-import { useState } from "react";
+import { useCallback, useMemo, useState, type KeyboardEvent } from "react";
+import { useDomEditSelectionContext } from "../../contexts/DomEditContext";
+import { useStudioShellContext } from "../../contexts/StudioContext";
+import { useStudioI18n } from "../../i18n";
+import { usePlayerStore, type TimelineElement } from "../../player";
+import {
+  ILLUSTRATION_EFFECTS,
+  ILLUSTRATION_EFFECT_SAMPLE,
+  renderIllustrationEffectHtml,
+  selectIllustrationTextCandidates,
+  type IllustrationEffectData,
+  type IllustrationEffectId,
+} from "../../utils/illustrationEffect";
+import { HtmlIllustrationPreview } from "./HtmlIllustrationPreview";
 
-const ILLUSTRATION_SKILLS = [
-  { id: "ian-xiaohei-illustrations", label: "小黑手绘插画", repository: "helloianneo/ian-xiaohei-illustrations" },
-  { id: "html-infographic", label: "信息图插画", repository: "openai/visualize" },
-  { id: "html-concept-explainer", label: "概念解释插画", repository: "ipollowork/faceless-explainer" },
-  { id: "html-kinetic-typography", label: "动态排版插画", repository: "heygen-com/hyperframes" },
-  { id: "html-svg-path", label: "SVG 路径插画", repository: "heygen-com/hyperframes" },
-  { id: "html-3d-space", label: "3D 空间插画", repository: "heygen-com/hyperframes" },
-] as const;
+export const ILLUSTRATION_SKILL_COUNT = ILLUSTRATION_EFFECTS.length;
 
-type IllustrationSkillId = typeof ILLUSTRATION_SKILLS[number]["id"];
+const ILLUSTRATION_EFFECT_PREVIEWS = new Map(
+  ILLUSTRATION_EFFECTS.map((effect) => [
+    effect.id,
+    renderIllustrationEffectHtml(effect.id, ILLUSTRATION_EFFECT_SAMPLE),
+  ]),
+);
 
-export function IllustrationTab() {
-  const [selectedId, setSelectedId] = useState<IllustrationSkillId>(ILLUSTRATION_SKILLS[0].id);
-  const selectedSkill = ILLUSTRATION_SKILLS.find((skill) => skill.id === selectedId) ?? ILLUSTRATION_SKILLS[0];
-  const askAi = () => {
-    window.parent.postMessage(
-      {
-        type: "ipollowork:hyperframes:illustration-reference",
-        illustration: selectedSkill,
-      },
-      "*",
-    );
+interface IllustrationEffectsContentProps {
+  onInsert?: (effectId: IllustrationEffectId, data: IllustrationEffectData) => Promise<boolean>;
+}
+
+function trimText(value: string | null | undefined, maxLength: number): string | null {
+  const compacted = value?.replace(/\s+/g, " ").trim();
+  return compacted ? compacted.slice(0, maxLength) : null;
+}
+
+function selectedTimelineElement(
+  elements: TimelineElement[],
+  selectedId: string | null,
+): TimelineElement | null {
+  if (!selectedId) return null;
+  return (
+    elements.find((element) => (element.key ?? element.id) === selectedId) ??
+    elements.find((element) => element.id === selectedId) ??
+    null
+  );
+}
+
+function buildSelectedClipData(
+  timeline: TimelineElement | null,
+  selection: ReturnType<typeof useDomEditSelectionContext>["domEditSelection"],
+): IllustrationEffectData | null {
+  if (!timeline && !selection) return null;
+
+  const uniqueText = selectIllustrationTextCandidates([
+    ...(selection?.textFields.map((field) => field.value) ?? []),
+    selection?.textContent,
+  ]);
+  const label = trimText(timeline?.clipLabel ?? timeline?.label ?? selection?.label, 48);
+  const sourceFile = selection?.sourceFile || timeline?.sourceFile || "index.html";
+  const sourceLabel =
+    sourceFile
+      .split("/")
+      .pop()
+      ?.replace(/\.html?$/i, "") || "当前片段";
+  const sourceKind =
+    trimText(timeline?.timelineKind ?? selection?.tagName ?? timeline?.tag, 18) ?? "HTML";
+  const title = uniqueText[0] ?? label ?? "当前片段";
+  const subtitle =
+    uniqueText.find((value) => value !== title) ??
+    (label && label !== title ? label : `来自 ${sourceLabel} 的片段内容`);
+  const detail =
+    uniqueText.find((value) => value !== title && value !== subtitle) ??
+    `${sourceKind} · ${Math.max(1, timeline?.duration ?? 5).toFixed(1)} 秒`;
+
+  return {
+    title,
+    subtitle,
+    eyebrow: label ?? "片段插画",
+    detail,
+    sourceLabel,
+    sourceKind,
+    duration: Math.max(1, timeline?.duration ?? 5),
   };
+}
+
+export function IllustrationEffectsContent({ onInsert }: IllustrationEffectsContentProps) {
+  const { locale } = useStudioI18n();
+  const { showToast } = useStudioShellContext();
+  const { domEditSelection } = useDomEditSelectionContext();
+  const selectedElementId = usePlayerStore((state) => state.selectedElementId);
+  const timelineElements = usePlayerStore((state) => state.elements);
+  const timeline = useMemo(
+    () => selectedTimelineElement(timelineElements, selectedElementId),
+    [selectedElementId, timelineElements],
+  );
+  const clipData = useMemo(
+    () => buildSelectedClipData(timeline, domEditSelection),
+    [domEditSelection, timeline],
+  );
+  const [insertingId, setInsertingId] = useState<IllustrationEffectId | null>(null);
+
+  const insert = useCallback(
+    async (effectId: IllustrationEffectId) => {
+      if (!clipData || !onInsert || insertingId) return;
+      setInsertingId(effectId);
+      try {
+        const inserted = await onInsert(effectId, clipData);
+        if (inserted) {
+          showToast(
+            locale === "zh"
+              ? "插画已生成，并插入到当前帧和素材库。"
+              : "Illustration added at the playhead and to Assets.",
+            "notice",
+          );
+        }
+      } finally {
+        setInsertingId(null);
+      }
+    },
+    [clipData, insertingId, locale, onInsert, showToast],
+  );
+
+  const handleCardKeyDown = useCallback(
+    (event: KeyboardEvent<HTMLDivElement>, effectId: IllustrationEffectId) => {
+      if (event.target !== event.currentTarget || (event.key !== "Enter" && event.key !== " "))
+        return;
+      event.preventDefault();
+      void insert(effectId);
+    },
+    [insert],
+  );
+
+  const canInsert = Boolean(clipData && onInsert);
+  const selectedTitle = clipData ? (trimText(clipData.title, 48) ?? clipData.title) : null;
 
   return (
-    <div className="h-full overflow-y-auto px-4 py-4 text-panel-text-1">
-      <label className="grid gap-2 text-xs font-medium">
-        插画能力
-        <select
-          value={selectedId}
-          onChange={(event) => {
-            const next = ILLUSTRATION_SKILLS.find((skill) => skill.id === event.target.value);
-            if (next) setSelectedId(next.id);
-          }}
-          className="h-10 w-full rounded-lg border border-panel-border bg-panel-input px-3 text-[13px] text-panel-text-1 outline-none transition-colors hover:border-panel-text-3 focus:border-panel-accent focus:ring-2 focus:ring-panel-accent/20"
-        >
-          {ILLUSTRATION_SKILLS.map((skill) => (
-            <option key={skill.id} value={skill.id}>{skill.label}</option>
-          ))}
-        </select>
-      </label>
-      <p className="mt-3 text-[11px] leading-5 text-panel-text-3">
-        AI 会读取当前视频内容，按所选能力生成可编辑的 16:9 自包含 HTML 插画，并保存到当前项目素材库。不需要额外下载 Skill 或配置图片 API Key。
-      </p>
-      <button
-        type="button"
-        onClick={askAi}
-        className="mt-4 flex h-10 w-full items-center justify-center rounded-lg border border-panel-text-1/15 bg-panel-text-1 px-4 text-sm font-semibold text-panel-bg shadow-sm transition-[opacity,transform,box-shadow] hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-panel-accent focus-visible:ring-offset-2 focus-visible:ring-offset-panel-bg active:scale-[0.99]"
-      >
-        交给 AI 插画
-      </button>
+    <div className="px-0 pb-1 text-panel-text-1">
+      <div className="mb-3 rounded-lg border border-panel-border bg-panel-input/45 px-3 py-2 text-[10px] leading-4 text-panel-text-3">
+        {clipData
+          ? locale === "zh"
+            ? `将使用“${selectedTitle}”的片段数据，本地生成后插入当前帧。`
+            : `Uses data from “${selectedTitle}” and inserts locally at the playhead.`
+          : locale === "zh"
+            ? "可预览全部插画。选中画布元素或时间轴片段后才可应用。"
+            : "All previews remain available. Select a canvas element or timeline clip to apply one."}
+      </div>
+      <div className="grid min-w-0 grid-cols-2 gap-x-[10px] gap-y-4 overflow-x-hidden">
+        {ILLUSTRATION_EFFECTS.map((effect) => {
+          const previewHtml = ILLUSTRATION_EFFECT_PREVIEWS.get(effect.id) ?? "";
+          const inserting = insertingId === effect.id;
+          return (
+            <div
+              key={effect.id}
+              role="button"
+              tabIndex={canInsert ? 0 : -1}
+              aria-disabled={!canInsert}
+              data-testid="illustration-effect-card"
+              data-illustration-effect={effect.id}
+              className={`group/card min-w-0 rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1FBAC0]/60 ${
+                canInsert ? "cursor-pointer" : "cursor-default"
+              }`}
+              onClick={() => void insert(effect.id)}
+              onKeyDown={(event) => handleCardKeyDown(event, effect.id)}
+            >
+              <div className="relative aspect-[14/9] w-full overflow-hidden rounded-lg border border-panel-border bg-panel-input transition-shadow group-hover/card:shadow-[0_3px_12px_rgba(0,0,0,0.12)]">
+                <HtmlIllustrationPreview
+                  srcDoc={previewHtml}
+                  title={`${effect.title[locale]} preview`}
+                  className="absolute left-0 top-1/2 w-full -translate-y-1/2"
+                />
+                <span className="pointer-events-none absolute left-1 top-1 rounded bg-[#174d42] px-1.5 py-1 text-[7px] font-semibold leading-none text-[#6de0c1]">
+                  {locale === "zh" ? "本地生成" : "Local"}
+                </span>
+                <span className="pointer-events-none absolute right-1 top-1 rounded bg-white/90 px-1.5 py-1 text-[8px] font-semibold leading-none text-[#4d5159] shadow-sm">
+                  16:9
+                </span>
+              </div>
+              <div className="pt-[7px]">
+                <div className="truncate text-[10px] font-medium leading-4 text-panel-text-1">
+                  {effect.title[locale]}
+                </div>
+                <div className="mt-0.5 line-clamp-2 min-h-7 text-[8px] leading-3.5 text-panel-text-3">
+                  {effect.description[locale]}
+                </div>
+                <button
+                  type="button"
+                  disabled={!canInsert || Boolean(insertingId)}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    void insert(effect.id);
+                  }}
+                  title={
+                    canInsert
+                      ? locale === "zh"
+                        ? "用选中片段的数据生成，并插入到当前帧"
+                        : "Generate from the selected clip and insert at the playhead"
+                      : locale === "zh"
+                        ? "请先选中画布元素或时间轴片段"
+                        : "Select a canvas element or timeline clip first"
+                  }
+                  className="mt-1.5 flex h-7 w-full items-center justify-center rounded-md border border-panel-border bg-panel-bg px-1 text-[9px] font-semibold text-panel-text-1 transition-colors hover:bg-panel-input disabled:cursor-not-allowed disabled:opacity-45"
+                >
+                  {inserting
+                    ? locale === "zh"
+                      ? "生成中…"
+                      : "Generating…"
+                    : locale === "zh"
+                      ? "插入当前帧"
+                      : "Insert at playhead"}
+                </button>
+              </div>
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }

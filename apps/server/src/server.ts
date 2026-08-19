@@ -4,11 +4,21 @@ import { homedir, hostname } from "node:os";
 import { dirname, join, relative, resolve, sep } from "node:path";
 import { createOpencodeClient } from "@opencode-ai/sdk/v2/client";
 import { IPOLLOWORK_PACKAGE_EXTENSION, IPOLLOWORK_PACKAGE_MEDIA_TYPE, templateCategorySchema } from "@ipollowork/types/templates";
-import type { ApprovalRequest, Capabilities, ServerConfig, WorkspaceInfo, Actor, ReloadReason, ReloadTrigger, TokenScope } from "./types.js";
+import { DEEPSEEK_HARNESS_ENGINE_ID } from "@ipollowork/types/workspace";
+import { DEFAULT_ENGINE_ID, type ApprovalRequest, type Capabilities, type ServerConfig, type WorkspaceInfo, type Actor, type ReloadReason, type ReloadTrigger, type TokenScope } from "./types.js";
 import { ApprovalService } from "./approvals.js";
 import { addPlugin, listPlugins, normalizePluginSpec, removePlugin } from "./plugins.js";
 import { sanitizePortableOpencodeConfig } from "./portable-opencode.js";
 import { addMcp, listMcp, removeMcp, setMcpEnabled } from "./mcp.js";
+import {
+  completeMcpAuthorization,
+  mcpAuthorizationStatus,
+  migrateLegacyMcpAuthorization,
+  migrateRuntimeMcpAuthorization,
+  proxyMcpRequest,
+  revokeMcpAuthorization,
+  startMcpAuthorization,
+} from "./mcp-authorization.js";
 import { exportExtensions } from "./extensions-export.js";
 import { deleteSkill, listSkills, upsertSkill } from "./skills.js";
 import { installHubSkill, listHubSkills } from "./skill-hub.js";
@@ -26,18 +36,25 @@ import { defaultWorkspaceiPolloWorkConfig, ensureWorkspaceFiles, readRawOpencode
 import { sanitizeCommandName, validateMcpName } from "./validators.js";
 import { TokenService } from "./tokens.js";
 import { EnvService } from "./env-file.js";
+import { migrateLegacyAuthorizationServices } from "./authorization-center.js";
+import { migrateLegacyPluginAuthorization } from "./authorization-migration.js";
+import { DeepSeekHarnessRuntime } from "./deepseek-harness-runtime.js";
 import {
   normalizeResourceSnapshot,
   readDesktopCloudSyncState,
   readWorkspaceCloudImports,
   syncDesktopCloudResources,
 } from "./desktop-cloud-sync.js";
-import { installCloudPlugin, readCloudPluginResolved, readInstalledCloudPlugins, removeCloudPlugin } from "./cloud-plugins.js";
+import { disposeCloudPluginStore, installCloudPlugin, readCloudPluginResolved, readInstalledCloudPlugins, removeCloudPlugin } from "./cloud-plugins.js";
 import {
   assertPluginPackageSafeForImport,
   installPluginPackage,
   listInstalledPluginPackages,
+  listSuppressedDefaultPluginIds,
+  migratePluginPackageLifecycle,
   previewPluginPackage,
+  readInstalledPluginUiResource,
+  reconcilePluginPackagesForWorkspace,
   rollbackPluginPackage,
   setPluginPackageEnabled,
   setPluginPackageResourceEnabled,
@@ -45,7 +62,7 @@ import {
   updatePluginPackage,
 } from "./plugin-package-lifecycle.js";
 import { withMaterializedPluginPackageUpload } from "./plugin-package-upload.js";
-import { bundledPluginPackageIds, resolveBundledPluginPackageRoot } from "./plugin-package-catalog.js";
+import { bundledPluginPackageIds, defaultBundledPluginPackageIds, resolveBundledPluginPackageRoot } from "./plugin-package-catalog.js";
 import {
   cancelPluginAuthorizationFlow,
   completePluginBrowserAuthorization,
@@ -53,11 +70,12 @@ import {
   listPluginAuthorization,
   pollPluginDeviceAuthorization,
   reconcilePluginAuthorization,
+  migratePluginAuthorizationConsumers,
   revokePluginAuthorization,
   savePluginSecretAuthorization,
   startIndependentPluginAuthorization,
 } from "./plugin-platform-runtime.js";
-import { disposeAllPluginServices, disposePluginServices } from "./plugin-service-runtime.js";
+import { deletePluginServiceData, disposeAllPluginServices, disposePluginServices } from "./plugin-service-runtime.js";
 import { resolveClaudePluginBundle } from "./claude-plugin-bundle.js";
 import {
   applyMaterializedBlueprintSessions,
@@ -88,16 +106,20 @@ import { registerFileRoutes } from "./routes/files.js";
 import { registerOperationRoutes } from "./routes/operations.js";
 import { addRoute, matchRoute, type AuthMode, type RequestContext, type Route } from "./routes/registry.js";
 import { registerSessionRoutes } from "./routes/sessions.js";
+import { registerDeepSeekHarnessRoutes } from "./routes/deepseek-harness.js";
 import { registerWorkspaceRoutes } from "./routes/workspaces.js";
 import {
+  disposeRuntimeOpencodeConfigStore,
   mergeOpencodeConfigs,
   mergeRuntimeProviderUpdate,
   readRuntimeOpencodeConfig,
   runtimeMcpMap,
+  runtimeStorageDir,
   type RuntimeOpencodeConfig,
   writeRuntimeOpencodeConfig,
 } from "./runtime-opencode-config-store.js";
 import {
+  disposeiPolloWorkWorkspaceConfigStore,
   hasiPolloWorkWorkspaceConfig,
   mergeiPolloWorkWorkspaceConfigs,
   readiPolloWorkWorkspaceConfig,
@@ -109,6 +131,7 @@ import {
   MAX_TEMPLATE_PACKAGE_BYTES,
   adoptLegacyVideoSession,
   createTemplateAuthoringSession,
+  disposeTemplateStore,
   exportLocalTemplatePackage,
   exportTemplateFromSession,
   importTemplate,
@@ -749,6 +772,70 @@ function isSessionCommandProxyRequest(method: string, proxyPath: string) {
   return method === "POST" && /^\/session\/[^/]+\/command$/.test(normalizeOpencodeProxyPath(proxyPath));
 }
 
+async function ensureDefaultBundledPluginPackages(config: ServerConfig): Promise<void> {
+  const workspaces = config.workspaces.filter((workspace) => workspace.workspaceType === "local");
+  const installWorkspace = workspaces[0];
+  if (!installWorkspace) return;
+
+  const logger = createServerLogger(config);
+  const installedById = new Map(
+    (await listInstalledPluginPackages({ serverConfig: config })).map((item) => [item.pluginId, item]),
+  );
+  const suppressed = new Set(await listSuppressedDefaultPluginIds({ serverConfig: config }));
+
+  for (const pluginId of defaultBundledPluginPackageIds) {
+    try {
+      const packageRoot = await resolveBundledPluginPackageRoot(pluginId);
+      const preview = await previewPluginPackage({
+        packageRoot,
+        workspaceRoot: installWorkspace.path,
+        engineId: installWorkspace.engineId ?? DEFAULT_ENGINE_ID,
+      });
+      if (!preview.manifest.defaultEnabled
+        || preview.manifest.source.origin !== "builtin"
+        || !preview.manifest.source.trusted) continue;
+
+      const installed = installedById.get(pluginId);
+      if (!installed && suppressed.has(pluginId)) continue;
+      if (!installed) {
+        await installPluginPackage({
+          serverConfig: config,
+          workspaceId: installWorkspace.id,
+          packageRoot,
+          workspaceRoot: installWorkspace.path,
+        });
+      } else if (installed.version !== preview.manifest.package?.version) {
+        await updatePluginPackage({
+          serverConfig: config,
+          workspaceId: installWorkspace.id,
+          packageRoot,
+          workspaceRoot: installWorkspace.path,
+        });
+      }
+    } catch (error) {
+      logger.log("warn", `Default plugin package could not be prepared: ${pluginId}`, {
+        pluginId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  for (const workspace of workspaces) {
+    try {
+      await reconcilePluginPackagesForWorkspace({
+        serverConfig: config,
+        workspaceId: workspace.id,
+        workspaceRoot: workspace.path,
+      });
+    } catch (error) {
+      logger.log("warn", `Plugin package projection could not be reconciled: ${workspace.id}`, {
+        workspaceId: workspace.id,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+}
+
 export async function startServer(config: ServerConfig): Promise<ServeResult> {
   // This is a real migration, not a runtime fallback: legacy template.json
   // records are moved into the canonical SQLite table before routes exist.
@@ -757,16 +844,26 @@ export async function startServer(config: ServerConfig): Promise<ServeResult> {
   const reloadEvents = new ReloadEventStore();
   const tokens = new TokenService(config);
   const env = new EnvService();
+  await migratePluginPackageLifecycle(config);
+  await migrateLegacyPluginAuthorization(config);
+  await migratePluginAuthorizationConsumers(config);
+  await migrateLegacyAuthorizationServices(config, env);
+  const deepseekHarness = new DeepSeekHarnessRuntime({ config, env });
   const logger = createServerLogger(config);
   let watcherHandle = startReloadWatchers({ config, reloadEvents, logger });
   const refreshWorkspaceReloadBaseline = (workspaceId: string, reasons?: ReloadReason[]) =>
     watcherHandle.refreshWorkspace(workspaceId, reasons);
   reloadBaselineRefreshers.set(config, refreshWorkspaceReloadBaseline);
-  const restartReloadWatchers = () => {
-    watcherHandle.close();
-    watcherHandle = startReloadWatchers({ config, reloadEvents, logger });
+  let reloadWatcherRestart = Promise.resolve();
+  const restartReloadWatchers = (): Promise<void> => {
+    const restart = async () => {
+      await watcherHandle.close();
+      watcherHandle = startReloadWatchers({ config, reloadEvents, logger });
+    };
+    reloadWatcherRestart = reloadWatcherRestart.then(restart, restart);
+    return reloadWatcherRestart;
   };
-  const routes = createRoutes(config, approvals, tokens, env, restartReloadWatchers);
+  const routes = createRoutes(config, approvals, tokens, env, deepseekHarness, restartReloadWatchers);
 
   const serverOptions: {
     hostname: string;
@@ -912,14 +1009,31 @@ export async function startServer(config: ServerConfig): Promise<ServeResult> {
     ...serverOptions,
     idleTimeout: 120,
   });
+  config.port = server.port;
+  await migrateLegacyMcpAuthorization(config);
+  await migrateRuntimeMcpAuthorization(config);
 
   return {
     ...server,
     stop: async () => {
-      watcherHandle.close();
+      await reloadWatcherRestart;
+      await watcherHandle.close();
       reloadBaselineRefreshers.delete(config);
-      await disposeAllPluginServices(config);
-      await server.stop();
+      try {
+        await deepseekHarness.close();
+        await disposeAllPluginServices(config);
+        await server.stop();
+      } finally {
+        await Promise.all([
+          disposeCloudPluginStore(config),
+          disposeRuntimeOpencodeConfigStore(config),
+          disposeiPolloWorkWorkspaceConfigStore(config),
+          disposeTemplateStore(config),
+        ]);
+        // Bun releases Windows SQLite file handles on the following event-loop
+        // turn even though Database.close() itself is synchronous.
+        await new Promise<void>((resolveClose) => setTimeout(resolveClose, process.platform === "win32" ? 100 : 0));
+      }
     },
   };
 }
@@ -1145,7 +1259,7 @@ async function requireHost(request: Request, config: ServerConfig, tokens: Token
   return { type: "remote", clientId, tokenHash: hashToken(bearer), scope };
 }
 
-function buildCapabilities(config: ServerConfig): Capabilities {
+function buildCapabilities(config: ServerConfig, workspace?: WorkspaceInfo): Capabilities {
   const writeEnabled = !config.readOnly;
   const schemaVersion = 1;
   const sandboxBackend = resolveSandboxBackend();
@@ -1173,6 +1287,17 @@ function buildCapabilities(config: ServerConfig): Capabilities {
     commands: { read: true, write: writeEnabled },
     config: { read: true, write: writeEnabled },
     templates: { read: true, install: writeEnabled, import: writeEnabled, uninstall: writeEnabled },
+    ...(workspace ? {
+      engine: {
+        id: workspace.engineId?.trim() || DEFAULT_ENGINE_ID,
+        sessions: {
+          read: true,
+          create: writeEnabled,
+          prompt: writeEnabled,
+          delete: writeEnabled && workspace.engineId !== DEEPSEEK_HARNESS_ENGINE_ID,
+        },
+      },
+    } : {}),
 
     approvals: { mode: config.approval.mode, timeoutMs: config.approval.timeoutMs },
     sandbox: { enabled: sandboxEnabled, backend: sandboxBackend },
@@ -1415,9 +1540,21 @@ function createRoutes(
   approvals: ApprovalService,
   tokens: TokenService,
   env: EnvService,
-  onWorkspacesChanged: () => void,
+  deepseekHarness: DeepSeekHarnessRuntime,
+  onWorkspacesChanged: () => Promise<void>,
 ): Route[] {
   const routes: Route[] = [];
+  let defaultPluginPreparation: Promise<void> | null = null;
+  const prepareDefaultPlugins = () => {
+    if (!defaultPluginPreparation) {
+      defaultPluginPreparation = ensureDefaultBundledPluginPackages(config)
+        .catch((error) => {
+          defaultPluginPreparation = null;
+          throw error;
+        });
+    }
+    return defaultPluginPreparation;
+  };
   registerCoreRoutes({
     routes,
     config,
@@ -1457,15 +1594,25 @@ function createRoutes(
     routes,
     config,
     jsonResponse,
+    readJsonBody,
     parseOptionalBoolean,
     parseOptionalPositiveInteger,
     parseOptionalNonNegativeInteger,
-    readJsonBody,
     ensureWritable,
     requireClientScope,
     resolveWorkspace,
     createWorkspaceOpencodeClient,
     unwrapOpencodeResult,
+    deepseekHarness,
+  });
+
+  registerDeepSeekHarnessRoutes({
+    routes,
+    config,
+    runtime: deepseekHarness,
+    readJsonBody,
+    requireClientScope,
+    resolveWorkspace,
   });
 
   addRoute(routes, "GET", "/workspace/:id/templates", "client", async (ctx) => {
@@ -1833,13 +1980,26 @@ function createRoutes(
 
   addRoute(routes, "GET", "/workspace/:id/plugin-packages", "client", async (ctx) => {
     const workspace = await resolveWorkspace(config, ctx.params.id);
-    const items = await listInstalledPluginPackages({ serverConfig: config, workspaceId: workspace.id });
+    await prepareDefaultPlugins();
+    await reconcilePluginPackagesForWorkspace({ serverConfig: config, workspaceId: workspace.id, workspaceRoot: workspace.path });
+    const items = await listInstalledPluginPackages({ serverConfig: config });
     return jsonResponse({ items });
+  });
+
+  addRoute(routes, "GET", "/workspace/:id/plugin-packages/:pluginId/ui/:resourceId", "client", async (ctx) => {
+    await resolveWorkspace(config, ctx.params.id);
+    const result = await readInstalledPluginUiResource({
+      serverConfig: config,
+      pluginId: ctx.params.pluginId ?? "",
+      resourceId: ctx.params.resourceId ?? "",
+    });
+    return jsonResponse(result);
   });
 
   addRoute(routes, "GET", "/workspace/:id/plugin-packages/catalog", "client", async (ctx) => {
     const workspace = await resolveWorkspace(config, ctx.params.id);
-    const installed = await listInstalledPluginPackages({ serverConfig: config, workspaceId: workspace.id });
+    await prepareDefaultPlugins();
+    const installed = await listInstalledPluginPackages({ serverConfig: config });
     const installedById = new Map(installed.map((item) => [item.pluginId, item]));
     const items = await Promise.all(bundledPluginPackageIds.map(async (pluginId) => {
       const packageRoot = await resolveBundledPluginPackageRoot(pluginId);
@@ -1864,14 +2024,14 @@ function createRoutes(
     const workspace = await resolveWorkspace(config, ctx.params.id);
     const pluginId = ctx.params.pluginId ?? "";
     const packageRoot = await resolveBundledPluginPackageRoot(pluginId);
-    const preview = await previewPluginPackage({ packageRoot, workspaceRoot: workspace.path });
+    const preview = await previewPluginPackage({ packageRoot, workspaceRoot: workspace.path, engineId: workspace.engineId ?? DEFAULT_ENGINE_ID });
     await requireApproval(ctx, {
       workspaceId: workspace.id,
       action: "plugin_packages.install",
       summary: `Install bundled plugin package ${preview.manifest.name}`,
       paths: preview.writes.map((file) => join(workspace.path, file.path)),
     });
-    const current = (await listInstalledPluginPackages({ serverConfig: config, workspaceId: workspace.id }))
+    const current = (await listInstalledPluginPackages({ serverConfig: config }))
       .find((item) => item.pluginId === pluginId);
     const result = current && current.version !== preview.manifest.package?.version
       ? await updatePluginPackage({ serverConfig: config, workspaceId: workspace.id, packageRoot, workspaceRoot: workspace.path })
@@ -1892,7 +2052,7 @@ function createRoutes(
       name: pluginId,
       action: current ? "updated" : "added",
     });
-    const item = (await listInstalledPluginPackages({ serverConfig: config, workspaceId: workspace.id }))
+    const item = (await listInstalledPluginPackages({ serverConfig: config }))
       .find((entry) => entry.pluginId === pluginId);
     return jsonResponse({ result, item });
   });
@@ -1902,7 +2062,7 @@ function createRoutes(
     const workspace = await resolveWorkspace(config, ctx.params.id);
     const body = await readPluginPackageUploadBody(ctx.request);
     return withMaterializedPluginPackageUpload(body, async ({ packageRoot }) => {
-      const preview = await previewPluginPackage({ packageRoot, workspaceRoot: workspace.path });
+      const preview = await previewPluginPackage({ packageRoot, workspaceRoot: workspace.path, engineId: workspace.engineId ?? DEFAULT_ENGINE_ID });
       const safety = await assertPluginPackageSafeForImport({ packageRoot, preview });
       return jsonResponse({ preview: { ...preview, safety } });
     });
@@ -1914,7 +2074,7 @@ function createRoutes(
     const workspace = await resolveWorkspace(config, ctx.params.id);
     const body = await readPluginPackageUploadBody(ctx.request);
     return withMaterializedPluginPackageUpload(body, async ({ archiveName, packageRoot }) => {
-      const preview = await previewPluginPackage({ packageRoot, workspaceRoot: workspace.path });
+      const preview = await previewPluginPackage({ packageRoot, workspaceRoot: workspace.path, engineId: workspace.engineId ?? DEFAULT_ENGINE_ID });
       const safety = await assertPluginPackageSafeForImport({ packageRoot, preview });
       await requireApproval(ctx, {
         workspaceId: workspace.id,
@@ -1922,7 +2082,7 @@ function createRoutes(
         summary: `Import declarative plugin package ${preview.manifest.name}`,
         paths: preview.writes.map((file) => join(workspace.path, file.path)),
       });
-      const current = (await listInstalledPluginPackages({ serverConfig: config, workspaceId: workspace.id }))
+      const current = (await listInstalledPluginPackages({ serverConfig: config }))
         .find((item) => item.pluginId === preview.manifest.id);
       const result = current && current.version !== preview.manifest.package?.version
         ? await updatePluginPackage({ serverConfig: config, workspaceId: workspace.id, packageRoot, workspaceRoot: workspace.path })
@@ -1941,7 +2101,7 @@ function createRoutes(
         name: preview.manifest.id,
         action: current ? "updated" : "added",
       });
-      const item = (await listInstalledPluginPackages({ serverConfig: config, workspaceId: workspace.id }))
+      const item = (await listInstalledPluginPackages({ serverConfig: config }))
         .find((entry) => entry.pluginId === preview.manifest.id);
       return jsonResponse({ result, item, safety });
     });
@@ -1951,7 +2111,7 @@ function createRoutes(
     const workspace = await resolveWorkspace(config, ctx.params.id);
     const body = await readJsonBody(ctx.request);
     const packageRoot = resolveLocalPluginPackageRoot(workspace.path, body.packageRoot);
-    const preview = await previewPluginPackage({ packageRoot, workspaceRoot: workspace.path });
+    const preview = await previewPluginPackage({ packageRoot, workspaceRoot: workspace.path, engineId: workspace.engineId ?? DEFAULT_ENGINE_ID });
     const safety = await assertPluginPackageSafeForImport({ packageRoot, preview });
     return jsonResponse({ preview: { ...preview, safety } });
   });
@@ -1962,7 +2122,7 @@ function createRoutes(
     const workspace = await resolveWorkspace(config, ctx.params.id);
     const body = await readJsonBody(ctx.request);
     const packageRoot = resolveLocalPluginPackageRoot(workspace.path, body.packageRoot);
-    const preview = await previewPluginPackage({ packageRoot, workspaceRoot: workspace.path });
+    const preview = await previewPluginPackage({ packageRoot, workspaceRoot: workspace.path, engineId: workspace.engineId ?? DEFAULT_ENGINE_ID });
     await assertPluginPackageSafeForImport({ packageRoot, preview });
     await requireApproval(ctx, {
       workspaceId: workspace.id,
@@ -1981,7 +2141,7 @@ function createRoutes(
       timestamp: Date.now(),
     });
     if (result.status === "installed") emitReloadEvent(ctx.reloadEvents, workspace, "plugins", { type: "plugin", name: preview.manifest.id, action: "added" });
-    const item = (await listInstalledPluginPackages({ serverConfig: config, workspaceId: workspace.id })).find((entry) => entry.pluginId === preview.manifest.id);
+    const item = (await listInstalledPluginPackages({ serverConfig: config })).find((entry) => entry.pluginId === preview.manifest.id);
     return jsonResponse({ result, item });
   });
 
@@ -1991,7 +2151,7 @@ function createRoutes(
     const workspace = await resolveWorkspace(config, ctx.params.id);
     const body = await readJsonBody(ctx.request);
     const packageRoot = resolveLocalPluginPackageRoot(workspace.path, body.packageRoot);
-    const preview = await previewPluginPackage({ packageRoot, workspaceRoot: workspace.path });
+    const preview = await previewPluginPackage({ packageRoot, workspaceRoot: workspace.path, engineId: workspace.engineId ?? DEFAULT_ENGINE_ID });
     await assertPluginPackageSafeForImport({ packageRoot, preview });
     if (preview.manifest.id !== ctx.params.pluginId) throw new ApiError(400, "plugin_package_id_mismatch", "Update package ID does not match the installed plugin");
     await requireApproval(ctx, {
@@ -2074,11 +2234,20 @@ function createRoutes(
       workspaceId: workspace.id,
       action: "plugin_packages.remove",
       summary: `Remove plugin package ${pluginId}`,
-      paths: [join(workspace.path, ".opencode")],
+      paths: config.workspaces
+        .filter((entry) => entry.workspaceType === "local")
+        .map((entry) => join(entry.path, (entry.engineId ?? DEFAULT_ENGINE_ID) === DEFAULT_ENGINE_ID ? ".opencode" : ".dsh")),
     });
-    const result = await uninstallPluginPackage({ serverConfig: config, workspaceId: workspace.id, pluginId, workspaceRoot: workspace.path });
-    await disposePluginServices(config, workspace.id, pluginId);
-    await deletePluginAuthorization({ config, workspaceId: workspace.id, pluginId });
+    const result = await uninstallPluginPackage({ serverConfig: config, pluginId });
+    try {
+      await Promise.all(config.workspaces.map((entry) => disposePluginServices(config, entry.id, pluginId)));
+    } finally {
+      try {
+        await Promise.all(config.workspaces.map((entry) => deletePluginServiceData(config, entry.id, pluginId)));
+      } finally {
+        await deletePluginAuthorization({ config, workspaceId: workspace.id, pluginId });
+      }
+    }
     emitReloadEvent(ctx.reloadEvents, workspace, "plugins", { type: "plugin", name: pluginId, action: "removed" });
     return jsonResponse({ result });
   });
@@ -2927,7 +3096,7 @@ function createRoutes(
     const name = String(ctx.params.name ?? "").trim();
     validateMcpName(name);
 
-    const authStorePath = join(homedir(), ".config", "opencode", "mcp-auth.json");
+    const authStorePath = join(runtimeStorageDir(config), "authorization.vault");
     await requireApproval(ctx, {
       workspaceId: workspace.id,
       action: "mcp.auth.remove",
@@ -2935,32 +3104,8 @@ function createRoutes(
       paths: [authStorePath],
     });
 
-    // Best-effort disconnect so any active connection is torn down.
-    try {
-      const opencode = createWorkspaceOpencodeClient(config, workspace);
-      unwrapOpencodeResult(await opencode.mcp.disconnect({ name }), `/mcp/${encodeURIComponent(name)}/disconnect`);
-    } catch {
-      // ignore
-    }
-
-    try {
-      const opencode = createWorkspaceOpencodeClient(config, workspace);
-      unwrapOpencodeResult(await opencode.mcp.auth.remove({ name }), `/mcp/${encodeURIComponent(name)}/auth`);
-    } catch (error) {
-      // Treat missing credentials as a successful logout (idempotent).
-      if (
-        error instanceof ApiError &&
-        error.code === "opencode_request_failed" &&
-        error.details &&
-        typeof error.details === "object" &&
-        "status" in (error.details as Record<string, unknown>) &&
-        (error.details as { status?: unknown }).status === 404
-      ) {
-        // ok
-      } else {
-        throw error;
-      }
-    }
+    await revokeMcpAuthorization(config, workspace.id, name);
+    await disconnectMcpFromOpencodeEngine(config, workspace, name).catch(() => undefined);
 
     await recordAudit(workspace.path, {
       id: shortId(),
@@ -2974,6 +3119,40 @@ function createRoutes(
 
     return jsonResponse({ ok: true });
   });
+
+  addRoute(routes, "POST", "/workspace/:id/mcp/:name/auth/start", "client", async (ctx) => {
+    ensureWritable(config);
+    requireClientScope(ctx, "collaborator");
+    const workspace = await resolveWorkspace(config, ctx.params.id);
+    const name = String(ctx.params.name ?? "").trim();
+    validateMcpName(name);
+    const entry = (await listMcp(config, workspace.id, workspace.path)).find((item) => item.name === name);
+    if (!entry || entry.config.type !== "remote") throw new ApiError(404, "mcp_not_found", `Remote MCP ${name} was not found`);
+    const callbackUrl = new URL("/mcp/oauth/callback", ctx.request.url).toString();
+    const result = await startMcpAuthorization({ config, workspaceId: workspace.id, name, source: entry.config, callbackUrl });
+    await syncRuntimeMcpToOpencodeEngine(config, workspace, [name]).catch(() => undefined);
+    return jsonResponse(result);
+  });
+
+  addRoute(routes, "GET", "/workspace/:id/mcp/:name/auth", "client", async (ctx) => {
+    const workspace = await resolveWorkspace(config, ctx.params.id);
+    const name = String(ctx.params.name ?? "").trim();
+    validateMcpName(name);
+    return jsonResponse(await mcpAuthorizationStatus(config, workspace.id, name));
+  });
+
+  addRoute(routes, "GET", "/mcp/oauth/callback", "none", async (ctx) => {
+    await completeMcpAuthorization(config, ctx.url);
+    return new Response("<!doctype html><meta charset=\"utf-8\"><title>iPolloWork</title><body style=\"font:16px system-ui;padding:48px\">MCP connected. You can close this window.</body>", {
+      headers: { "content-type": "text/html; charset=utf-8" },
+    });
+  });
+
+  for (const method of ["GET", "POST", "DELETE"] as const) {
+    addRoute(routes, method, "/mcp-proxy/:workspaceId/:name", "none", async (ctx) =>
+      proxyMcpRequest(config, ctx.params.workspaceId, ctx.params.name, ctx.request)
+    );
+  }
 
   addRoute(routes, "GET", "/workspace/:id/commands", "client", async (ctx) => {
     const scope = ctx.url.searchParams.get("scope") === "global" ? "global" : "workspace";
@@ -3661,6 +3840,7 @@ export function engineMcpSyncState(workspaceId: string): EngineMcpSyncState | nu
 // something re-syncs them. Best-effort.
 export async function syncAllWorkspacesRuntimeMcpToEngine(config: ServerConfig): Promise<void> {
   for (const workspace of config.workspaces) {
+    if ((workspace.engineId?.trim() || DEFAULT_ENGINE_ID) !== DEFAULT_ENGINE_ID) continue;
     await syncRuntimeMcpToOpencodeEngine(config, workspace).catch(() => undefined);
   }
 }

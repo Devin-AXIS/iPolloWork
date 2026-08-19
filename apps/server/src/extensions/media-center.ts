@@ -1,5 +1,5 @@
 import { ApiError } from "../errors.js";
-import type { EnvService } from "../env-file.js";
+import type { AuthorizationAccess } from "../authorization-center.js";
 import type { ServerConfig } from "../types.js";
 import { link, mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { basename, dirname, extname, posix } from "node:path";
@@ -1354,14 +1354,13 @@ function safeProviderBaseUrl(value: string): string {
   return url.origin;
 }
 
-async function resolveBailianCredentials(env: EnvService): Promise<{ apiKey: string; baseUrl: string }> {
-  const records = await env.list();
-  const values = new Map(records.map((item) => [item.key, item.value.trim()] as const));
-  const apiKey = values.get("DASHSCOPE_API_KEY") || process.env.DASHSCOPE_API_KEY?.trim() || "";
+async function resolveBailianCredentials(authorization: AuthorizationAccess): Promise<{ apiKey: string; baseUrl: string }> {
+  const values = await authorization.read("aliyun-bailian");
+  const apiKey = values.DASHSCOPE_API_KEY?.trim() ?? "";
   if (!apiKey) {
     throw new ApiError(400, "dashscope_api_key_missing", "Model Studio API key missing. Configure Alibaba Model Studio media in Authorization Center.");
   }
-  const configuredBaseUrl = values.get("DASHSCOPE_BASE_URL") || process.env.DASHSCOPE_BASE_URL?.trim() || DEFAULT_ALIYUN_MEDIA_BASE_URL;
+  const configuredBaseUrl = values.DASHSCOPE_BASE_URL?.trim() || DEFAULT_ALIYUN_MEDIA_BASE_URL;
   return { apiKey, baseUrl: safeProviderBaseUrl(configuredBaseUrl) };
 }
 
@@ -1601,9 +1600,9 @@ function asMediaTask(action: string, payload: unknown): JsonRecord {
   };
 }
 
-export async function bailianMediaStatus(env: EnvService) {
+export async function bailianMediaStatus(authorization: AuthorizationAccess) {
   try {
-    const { apiKey, baseUrl } = await resolveBailianCredentials(env);
+    const { apiKey, baseUrl } = await resolveBailianCredentials(authorization);
     return { configured: Boolean(apiKey), connected: Boolean(apiKey), baseUrl, error: null };
   } catch (error) {
     return {
@@ -1617,7 +1616,7 @@ export async function bailianMediaStatus(env: EnvService) {
 
 export async function callMediaExtensionAction(
   config: ServerConfig,
-  env: EnvService,
+  authorization: AuthorizationAccess,
   action: string,
   args: JsonRecord,
   context: JsonRecord,
@@ -1630,7 +1629,7 @@ export async function callMediaExtensionAction(
       result: {
         provider: "aliyun-bailian",
         operation: action,
-        output: await bailianMediaStatus(env),
+        output: await bailianMediaStatus(authorization),
       },
       context,
     };
@@ -1672,7 +1671,7 @@ export async function callMediaExtensionAction(
     };
   }
 
-  const { apiKey, baseUrl } = await resolveBailianCredentials(env);
+  const { apiKey, baseUrl } = await resolveBailianCredentials(authorization);
   let result: unknown;
   switch (action) {
     case "speech_synthesize": {
@@ -1882,7 +1881,7 @@ export async function callMediaExtensionAction(
       try {
         providerResponse = await withTemporaryWorkspaceObject({
           config,
-          env,
+          authorization,
           context,
           sourcePath,
           purpose: "voice-clone",

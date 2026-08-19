@@ -455,8 +455,8 @@ function ConnectPitchPanel() {
     <SettingsSection>
       <SettingsInset className="space-y-4 bg-dls-surface">
         <div className="space-y-2">
-          <div className="text-base font-semibold text-dls-text">{t("connect.pitch_title")}</div>
-          <div className="max-w-[58ch] text-sm text-dls-secondary">{t("connect.pitch_body")}</div>
+          <div className="text-ui-body font-semibold text-dls-text">{t("connect.pitch_title")}</div>
+          <div className="settings-description max-w-[58ch] text-ui-control leading-5 text-dls-secondary">{t("connect.pitch_body")}</div>
         </div>
         <ManageInDenButton />
       </SettingsInset>

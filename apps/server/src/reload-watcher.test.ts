@@ -76,7 +76,7 @@ describe("reload watcher fingerprints", () => {
 
         expect(events.list(workspace.id)).toEqual([]);
       } finally {
-        watcher.close();
+        await watcher.close();
       }
     });
   });
@@ -97,7 +97,7 @@ describe("reload watcher fingerprints", () => {
         expect(event?.reason).toBe("config");
         expect(event?.trigger?.name).toBe("opencode.jsonc");
       } finally {
-        watcher.close();
+        await watcher.close();
       }
     });
   });
@@ -116,7 +116,7 @@ describe("reload watcher fingerprints", () => {
         expect(ensured.reloadReasons.sort()).toEqual([]);
         expect(events.list(workspace.id)).toEqual([]);
       } finally {
-        watcher.close();
+        await watcher.close();
       }
     });
   });
@@ -137,7 +137,7 @@ describe("reload watcher fingerprints", () => {
         expect(event?.reason).toBe("config");
         expect(event?.trigger?.name).toBe("opencode.jsonc");
       } finally {
-        watcher.close();
+        await watcher.close();
       }
     });
   });

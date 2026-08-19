@@ -656,6 +656,13 @@ export function createWorkspaceStore({ app, defaultDenBaseUrl, defaultRequireSig
     return path.join(os.homedir(), "iPolloWork");
   }
 
+  function managedProjectWorkspaceDir() {
+    if (process.env.IPOLLOWORK_DEV_MODE === "1") {
+      return path.join(app.getPath("userData"), "ipollowork-dev-data", "home", ".ipollowork", "projects");
+    }
+    return path.join(os.homedir(), ".ipollowork", "projects");
+  }
+
   // True first run: create the default "iPolloWork" workspace under the user's
   // home directory so the renderer lands directly in a ready workspace — no
   // folder picker, no empty state. Cross-platform (os.homedir + path.join).
@@ -669,6 +676,7 @@ export function createWorkspaceStore({ app, defaultDenBaseUrl, defaultRequireSig
       displayName: "iPolloWork",
       path: folderPath,
       preset: "starter",
+      isDefault: true,
       workspaceType: "local",
     });
   }
@@ -771,6 +779,11 @@ export function createWorkspaceStore({ app, defaultDenBaseUrl, defaultRequireSig
 
   function normalizeWorkspaceEntry(input) {
     const workspacePath = String(input.path ?? "").replace(/\\/g, "/");
+    const workspaceType = input.workspaceType === "remote" ? "remote" : "local";
+    const isDefault = input.isDefault === true || (
+      workspaceType === "local" &&
+      normalizeWorkspacePathKey(workspacePath) === normalizeWorkspacePathKey(firstRunDefaultWorkspaceDir())
+    );
     const enterprisePathMatch = workspacePath.match(/(?:^|\/)\.ipollowork\/work-contexts\/(ent_[A-Za-z0-9_-]+)(?:\/|$)/);
     const workContextId = typeof input.workContextId === "string" && /^enterprise:ent_[A-Za-z0-9_-]+$/.test(input.workContextId.trim())
       ? input.workContextId.trim()
@@ -782,8 +795,10 @@ export function createWorkspaceStore({ app, defaultDenBaseUrl, defaultRequireSig
       name: String(input.name ?? "Workspace"),
       path: String(input.path ?? ""),
       preset: String(input.preset ?? "starter"),
+      isDefault,
       workContextId,
-      workspaceType: input.workspaceType === "remote" ? "remote" : "local",
+      workspaceType,
+      engineId: typeof input.engineId === "string" && input.engineId.trim() ? input.engineId.trim() : "opencode",
       remoteType: input.remoteType ?? null,
       baseUrl: input.baseUrl ?? null,
       directory: input.directory ?? null,
@@ -800,74 +815,24 @@ export function createWorkspaceStore({ app, defaultDenBaseUrl, defaultRequireSig
     };
   }
 
-  function workspaceContextKey(workspace) {
-    return typeof workspace?.workContextId === "string" && workspace.workContextId.startsWith("enterprise:")
-      ? workspace.workContextId
-      : "personal";
-  }
-
-  function isLegacyWorkstationPath(workspacePath) {
-    return /(?:^|[/\\])\.ipollowork[/\\]workstations[/\\]/i.test(String(workspacePath ?? "").trim());
-  }
-
-  function canonicalWorkspaceForContext(workspaces, contextKey, preferredId) {
-    if (workspaces.length === 0) return null;
-    if (contextKey === "personal") {
-      const defaultPathKey = normalizeWorkspacePathKey(firstRunDefaultWorkspaceDir());
-      return workspaces.find((workspace) => normalizeWorkspacePathKey(workspace.path) === defaultPathKey)
-        ?? workspaces.find((workspace) => workspace.id === preferredId && !isLegacyWorkstationPath(workspace.path))
-        ?? workspaces.find((workspace) => workspace.workspaceType !== "remote" && !isLegacyWorkstationPath(workspace.path))
-        ?? workspaces.find((workspace) => !isLegacyWorkstationPath(workspace.path))
-        ?? workspaces.find((workspace) => workspace.id === preferredId)
-        ?? workspaces[0];
-    }
-
-    const enterpriseId = contextKey.slice("enterprise:".length);
-    const dedicatedPath = new RegExp(`(?:^|[/\\\\])\\.ipollowork[/\\\\]work-contexts[/\\\\]${enterpriseId}(?:[/\\\\]|$)`, "i");
-    return workspaces.find((workspace) => workspace.id === preferredId && dedicatedPath.test(workspace.path))
-      ?? workspaces.find((workspace) => dedicatedPath.test(workspace.path))
-      ?? workspaces.find((workspace) => workspace.id === preferredId)
-      ?? workspaces.find((workspace) => workspace.workspaceType !== "remote")
-      ?? workspaces[0];
-  }
-
-  function collapseLegacyWorkspaceIdentities(workspaces, preferredId) {
-    const grouped = new Map();
-    for (const workspace of workspaces) {
-      const contextKey = workspaceContextKey(workspace);
-      const existing = grouped.get(contextKey) ?? [];
-      existing.push(workspace);
-      grouped.set(contextKey, existing);
-    }
-
-    const canonical = [];
-    for (const [contextKey, contextWorkspaces] of grouped) {
-      const workspace = canonicalWorkspaceForContext(contextWorkspaces, contextKey, preferredId);
-      if (!workspace) continue;
-      canonical.push(contextKey === "personal"
-        ? { ...workspace, name: "Personal", displayName: "Personal" }
-        : workspace);
-    }
-    return canonical;
-  }
-
-  async function pruneLegacyWorkspaceTokenEntries(canonicalWorkspaces) {
+  async function pruneWorkspaceTokenEntries(workspaces) {
     const store = await readJsonFile(ipolloworkServerTokenStorePath(), null);
     if (!isRecord(store) || !isRecord(store.workspaces)) return false;
 
-    const canonicalPathKeys = new Set();
-    for (const workspace of canonicalWorkspaces) {
+    const registeredPathKeys = new Set();
+    for (const workspace of workspaces) {
       if (workspace.workspaceType === "remote") continue;
-      const canonicalPath = await normalizeLocalWorkspacePath(workspace.path);
-      const canonicalPathKey = normalizeWorkspacePathKey(canonicalPath);
-      if (canonicalPathKey) canonicalPathKeys.add(canonicalPathKey);
+      const workspacePath = await normalizeLocalWorkspacePath(workspace.path);
+      const pathKey = normalizeWorkspacePathKey(workspacePath);
+      if (pathKey) registeredPathKeys.add(pathKey);
     }
+
     const retainedEntries = [];
     for (const entry of Object.entries(store.workspaces)) {
       const recoveredPath = normalizeRecoveredWorkspacePath(entry[0]);
       if (!recoveredPath) continue;
-      const canonicalPath = await normalizeLocalWorkspacePath(recoveredPath);
-      if (canonicalPathKeys.has(normalizeWorkspacePathKey(canonicalPath))) retainedEntries.push(entry);
+      const workspacePath = await normalizeLocalWorkspacePath(recoveredPath);
+      if (registeredPathKeys.has(normalizeWorkspacePathKey(workspacePath))) retainedEntries.push(entry);
     }
     if (retainedEntries.length === Object.keys(store.workspaces).length) return false;
 
@@ -875,7 +840,7 @@ export function createWorkspaceStore({ app, defaultDenBaseUrl, defaultRequireSig
       ...store,
       workspaces: Object.fromEntries(retainedEntries),
     });
-    console.info("[migration] removed legacy workspace token entries", {
+    console.info("[migration] removed unregistered workspace token entries", {
       removedCount: Object.keys(store.workspaces).length - retainedEntries.length,
     });
     return true;
@@ -978,6 +943,7 @@ export function createWorkspaceStore({ app, defaultDenBaseUrl, defaultRequireSig
       const rawWorkspace = entry && typeof entry === "object" ? entry : {};
       const workspace = normalizeWorkspaceEntry(rawWorkspace);
       if (rawWorkspace.workContextId !== workspace.workContextId) changed = true;
+      if (rawWorkspace.isDefault !== workspace.isDefault) changed = true;
       if (workspace.workspaceType !== "remote" || workspace.remoteType !== "ipollowork") return workspace;
 
       const remoteWorkspaceId = String(workspace.ipolloworkWorkspaceId ?? "").trim()
@@ -1023,37 +989,27 @@ export function createWorkspaceStore({ app, defaultDenBaseUrl, defaultRequireSig
       changed = true;
     }
 
-    const canonicalWorkspaces = collapseLegacyWorkspaceIdentities(dedupedWorkspaces, idMap.get(selectedId) ?? selectedId);
-    if (canonicalWorkspaces.length !== dedupedWorkspaces.length) changed = true;
-    if (canonicalWorkspaces.some((workspace) => {
-      const previous = dedupedWorkspaces.find((entry) => entry.id === workspace.id);
-      return previous?.name !== workspace.name || previous?.displayName !== workspace.displayName;
-    })) changed = true;
-    const canonicalIds = new Set(canonicalWorkspaces.map((workspace) => workspace.id));
-    const canonicalPersonalId = canonicalWorkspaces.find((workspace) => workspaceContextKey(workspace) === "personal")?.id ?? "";
-    const resolveCanonicalId = (workspaceId) => {
+    const workspaceIds = new Set(dedupedWorkspaces.map((workspace) => workspace.id));
+    const fallbackWorkspaceId = dedupedWorkspaces[0]?.id ?? "";
+    const resolveWorkspaceId = (workspaceId) => {
       const migratedId = idMap.get(workspaceId) ?? workspaceId;
-      if (canonicalIds.has(migratedId)) return migratedId;
-      const previous = dedupedWorkspaces.find((workspace) => workspace.id === migratedId);
-      const contextKey = previous ? workspaceContextKey(previous) : "personal";
-      return canonicalWorkspaces.find((workspace) => workspaceContextKey(workspace) === contextKey)?.id
-        ?? canonicalPersonalId;
+      return workspaceIds.has(migratedId) ? migratedId : fallbackWorkspaceId;
     };
 
-    const migratedSelectedId = resolveCanonicalId(selectedId);
-    const migratedWatchedId = watchedId ? resolveCanonicalId(watchedId) || null : null;
-    const migratedActiveId = activeId ? resolveCanonicalId(activeId) || null : null;
+    const migratedSelectedId = resolveWorkspaceId(selectedId);
+    const migratedWatchedId = watchedId ? resolveWorkspaceId(watchedId) || null : null;
+    const migratedActiveId = activeId ? resolveWorkspaceId(activeId) || null : null;
     if (migratedSelectedId !== selectedId || migratedWatchedId !== watchedId || migratedActiveId !== activeId) changed = true;
 
     const nextState = {
       selectedId: migratedSelectedId,
       watchedId: migratedWatchedId,
       activeId: migratedActiveId,
-      workspaces: canonicalWorkspaces,
+      workspaces: dedupedWorkspaces,
     };
 
-    if (canonicalWorkspaces.length > 0) {
-      await pruneLegacyWorkspaceTokenEntries(canonicalWorkspaces);
+    if (dedupedWorkspaces.length > 0) {
+      await pruneWorkspaceTokenEntries(dedupedWorkspaces);
     }
 
     if (changed) {
@@ -1097,27 +1053,40 @@ export function createWorkspaceStore({ app, defaultDenBaseUrl, defaultRequireSig
 
   async function createWorkspace(input = {}) {
     const rawFolderPath = String(input.folderPath ?? "").trim();
-    if (!rawFolderPath) throw new Error("folderPath is required");
-    const folderPath = await normalizeLocalWorkspacePath(rawFolderPath);
-    await mkdir(folderPath, { recursive: true });
-    const preset = String(input.preset ?? "starter");
-    const workspace = normalizeWorkspaceEntry({
-      id: localWorkspaceId(folderPath),
-      name: String(input.name ?? (path.basename(folderPath) || "Workspace")),
-      displayName: String(input.name ?? (path.basename(folderPath) || "Workspace")),
-      path: folderPath,
-      preset,
-      workContextId: input.workContextId,
-      workspaceType: "local",
-    });
-    await mkdir(path.join(folderPath, ".opencode"), { recursive: true });
-    await writeWorkspaceiPolloWorkConfig(folderPath, defaultWorkspaceiPolloWorkConfig(folderPath, preset));
+    const folderPath = rawFolderPath
+      ? await normalizeLocalWorkspacePath(rawFolderPath)
+      : path.join(managedProjectWorkspaceDir(), randomBytes(12).toString("hex"));
+    const folderPathKey = normalizeWorkspacePathKey(folderPath);
 
-    return mutateWorkspaceState((state) => {
-      const key = workspacePathKey(workspace);
-      state.workspaces = state.workspaces.filter(
-        (entry) => entry.id !== workspace.id && normalizeWorkspacePathKey(entry.path) !== key,
+    return mutateWorkspaceState(async (state) => {
+      const existingWorkspace = state.workspaces.find(
+        (entry) => entry?.workspaceType !== "remote" && workspacePathKey(entry) === folderPathKey,
       );
+      if (existingWorkspace) {
+        state.selectedId = existingWorkspace.id;
+        state.activeId = existingWorkspace.id;
+        state.watchedId = existingWorkspace.id;
+        return state;
+      }
+
+      await mkdir(folderPath, { recursive: true });
+      const materializedFolderPath = await normalizeLocalWorkspacePath(folderPath);
+      const preset = String(input.preset ?? "starter");
+      const workspace = normalizeWorkspaceEntry({
+        id: localWorkspaceId(materializedFolderPath),
+        name: String(input.name ?? (path.basename(materializedFolderPath) || "Workspace")),
+        displayName: String(input.name ?? (path.basename(materializedFolderPath) || "Workspace")),
+        path: materializedFolderPath,
+        preset,
+        workContextId: input.workContextId,
+        workspaceType: "local",
+        engineId: input.engineId,
+      });
+      if (workspace.engineId === "opencode") {
+        await mkdir(path.join(materializedFolderPath, ".opencode"), { recursive: true });
+        await writeWorkspaceiPolloWorkConfig(materializedFolderPath, defaultWorkspaceiPolloWorkConfig(materializedFolderPath, preset));
+      }
+
       state.workspaces.push(workspace);
       state.selectedId = workspace.id;
       state.activeId = workspace.id;

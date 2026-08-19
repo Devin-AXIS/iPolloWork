@@ -308,6 +308,62 @@ describe("workspace lifecycle registry", () => {
     expect(authorizedRootsFromConfig(persisted)).toEqual([workspaceRoot]);
   });
 
+  test("returns an existing local workspace without overwriting its metadata", async () => {
+    const configRoot = await createWorkspaceRoot();
+    const workspaceRoot = await createWorkspaceRoot();
+    const configPath = join(configRoot, "server.json");
+    const ipollowork = await startiPolloWorkServerWithWorkspaces({
+      configPath,
+      workspaces: [],
+      authorizedRoots: [],
+    });
+    const base = `http://127.0.0.1:${ipollowork.server.port}`;
+    const headers = { ...hostAuth(ipollowork.hostToken), "Content-Type": "application/json" };
+
+    const createdResponse = await fetch(`${base}/workspaces/local`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        folderPath: workspaceRoot,
+        name: "Original Project",
+        preset: "starter",
+        workContextId: "enterprise:ent_original",
+        engineId: "deepseek-harness",
+      }),
+    });
+    expect(createdResponse.status).toBe(201);
+
+    const existingResponse = await fetch(`${base}/workspaces/local`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        folderPath: workspaceRoot,
+        name: "Replacement Project",
+        preset: "minimal",
+        workContextId: "enterprise:ent_replacement",
+        engineId: "opencode",
+      }),
+    });
+    expect(existingResponse.status).toBe(200);
+    const existingBody = await existingResponse.json();
+    expect(existingBody.workspaces).toHaveLength(1);
+    expect(existingBody.workspaces[0]).toMatchObject({
+      name: "Original Project",
+      preset: "starter",
+      workContextId: "enterprise:ent_original",
+      engineId: "deepseek-harness",
+    });
+
+    const persisted = await readPersistedConfig(configPath);
+    expect(workspacesFromConfig(persisted)).toHaveLength(1);
+    expect(workspacesFromConfig(persisted)[0]).toMatchObject({
+      name: "Original Project",
+      preset: "starter",
+      workContextId: "enterprise:ent_original",
+      engineId: "deepseek-harness",
+    });
+  });
+
   test("does not persist transient local OpenCode runtime fields", async () => {
     const configRoot = await createWorkspaceRoot();
     const workspaceRoot = await createWorkspaceRoot();

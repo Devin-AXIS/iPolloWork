@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, test } from "bun:test";
 
 import type { ComposerDraft } from "../src/app/types";
 import * as sessionPrompt from "../src/react-app/shell/session-prompt";
-import type { DesignAiSelectionContext } from "../src/react-app/domains/session/design/design-ai-selection";
+import type { DesignAiSelectionContext } from "@ipollowork/design-studio";
 import { useDesignAiSelectionStore } from "../src/react-app/domains/session/design/design-ai-selection-store";
 
 const routeUrl = new URL("../src/react-app/shell/session-route.tsx", import.meta.url);

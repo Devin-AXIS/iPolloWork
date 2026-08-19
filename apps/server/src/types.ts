@@ -1,4 +1,6 @@
-import type { WorkspaceWire } from "@ipollowork/types/workspace";
+import { DEFAULT_ENGINE_ID, type WorkspaceWire } from "@ipollowork/types/workspace";
+
+export { DEFAULT_ENGINE_ID };
 
 export type WorkspaceType = "local" | "remote";
 
@@ -21,6 +23,7 @@ export interface WorkspaceConfig {
   preset?: string;
   workContextId?: `enterprise:${string}`;
   workspaceType?: WorkspaceType;
+  engineId?: string;
   remoteType?: RemoteType;
   baseUrl?: string;
   directory?: string;
@@ -43,6 +46,7 @@ export interface WorkspaceInfo {
   preset: string;
   workContextId?: `enterprise:${string}`;
   workspaceType: WorkspaceType;
+  engineId?: string;
   remoteType?: RemoteType;
   baseUrl?: string;
   directory?: string;
@@ -122,6 +126,10 @@ export interface Capabilities {
   commands: { read: boolean; write: boolean };
   config: { read: boolean; write: boolean };
   templates: { read: boolean; install: boolean; import: boolean; uninstall: boolean };
+  engine?: {
+    id: string;
+    sessions: { read: true; create: boolean; prompt: boolean; delete: boolean };
+  };
 
   approvals: { mode: ApprovalMode; timeoutMs: number };
   sandbox: { enabled: boolean; backend: SandboxBackend };

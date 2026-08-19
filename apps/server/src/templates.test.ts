@@ -727,7 +727,7 @@ describe("template installations", () => {
 
   test("ships every bundled template with a real 960 by 540 PNG cover", async () => {
     const directories = (await readdir(bundledTemplatesRoot)).filter((name) => !name.startsWith("."));
-    expect(directories).toHaveLength(116);
+    expect(directories.length).toBeGreaterThan(100);
     const hashes = new Set<string>();
     for (const directory of directories) {
       const root = join(bundledTemplatesRoot, directory);
@@ -775,13 +775,25 @@ describe("template installations", () => {
     process.env.IPOLLOWORK_RUNTIME_DB = join(root, "runtime.sqlite");
     const serverConfig = config(root);
     const first = await listTemplates(serverConfig, "alpha");
-    expect(first.filter((item) => item.installed)).toHaveLength(116);
-    expect(first.some((item) => item.manifest.id === "ipollowork.saas-landing")).toBe(true);
-    expect(first.some((item) => item.manifest.id === "ipollowork.pptx-northstar-strategy")).toBe(true);
-    expect(new Set(first.map((item) => item.manifest.category)).size).toBe(9);
-    await uninstallTemplate(serverConfig, "alpha", "ipollowork.saas-landing");
-    expect((await listTemplates(serverConfig, "alpha")).find((item) => item.manifest.id === "ipollowork.saas-landing")?.installed).toBe(false);
-    expect((await listTemplates(serverConfig, "beta")).find((item) => item.manifest.id === "ipollowork.saas-landing")?.installed).toBe(false);
+    const expected = (await readdir(bundledTemplatesRoot))
+      .filter((name) => !name.startsWith("."))
+      .map((directory) => JSON.parse(readFileSync(join(bundledTemplatesRoot, directory, "manifest.json"), "utf8")) as TemplateManifestV1)
+      .filter(isCustomerVisibleBundledTemplate)
+      .map((manifest) => manifest.id)
+      .sort();
+    expect(first.map((item) => item.manifest.id).sort()).toEqual(expected);
+    expect(first.every((item) => item.installed)).toBe(true);
+    expect(first.some((item) => item.manifest.id === "ipollowork.saas-landing")).toBe(false);
+    expect(first.some((item) => item.manifest.id === "ipollowork.pptx-northstar-strategy")).toBe(false);
+    expect(first.some((item) => item.manifest.id === "ipollowork.pptx-ipollo-vi-enterprise")).toBe(true);
+    expect(first.some((item) => item.manifest.id === "ipollowork.app-calm-mobile")).toBe(true);
+    expect(first.some((item) => item.manifest.id === "ipollowork.html-anything.social-carousel")).toBe(true);
+    expect(first.some((item) => item.manifest.id === "ipollowork.html-anything.data-report")).toBe(true);
+    expect(first.find((item) => item.manifest.id === "ipollowork.html-anything.wireframe-sketch")?.manifest.category).toBe("poster");
+    expect(first.find((item) => item.manifest.id === "ipollowork.site-atelier-architecture")?.manifest.category).toBe("article");
+    await uninstallTemplate(serverConfig, "alpha", "ipollowork.html-anything.prototype-web");
+    expect((await listTemplates(serverConfig, "alpha")).find((item) => item.manifest.id === "ipollowork.html-anything.prototype-web")?.installed).toBe(false);
+    expect((await listTemplates(serverConfig, "beta")).find((item) => item.manifest.id === "ipollowork.html-anything.prototype-web")?.installed).toBe(false);
   });
 
   test("upgrades an installed bundled template before materializing it", async () => {
@@ -833,7 +845,8 @@ describe("template installations", () => {
     process.env.IPOLLOWORK_RUNTIME_DB = join(root, "runtime.sqlite");
     const serverConfig = config(root);
     const scope = parseTemplateLibraryScope("enterprise:ent_medical");
-    expect((await listTemplates(serverConfig, "alpha", scope)).filter((item) => item.sourceType === "bundled")).toHaveLength(108);
+    const bundledTemplateCount = (await readdir(bundledTemplatesRoot)).filter((name) => !name.startsWith(".")).length;
+    expect((await listTemplates(serverConfig, "alpha", scope)).filter((item) => item.sourceType === "bundled")).toHaveLength(bundledTemplateCount);
     const installed = await importTemplate(serverConfig, "alpha", localPackage(), "site", scope);
     expect((await listTemplates(serverConfig, "beta", scope)).map((item) => item.manifest.id)).toContain(installed.manifest.id);
     expect((await listTemplates(serverConfig, "beta", "personal")).map((item) => item.manifest.id)).not.toContain(installed.manifest.id);

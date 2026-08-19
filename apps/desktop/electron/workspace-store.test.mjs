@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, mkdir, readFile, realpath, utimes, writeFile } from "node:fs/promises";
+import { access, mkdtemp, mkdir, readFile, realpath, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { test } from "node:test";
@@ -137,6 +137,103 @@ test("persists an enterprise work context on its dedicated workspace", async () 
   });
 });
 
+test("creates a managed local project folder when no source folder is provided", async () => {
+  await withIsolatedBootstrapStore(async ({ store, root }) => {
+    const created = await store.createWorkspace({
+      name: "Managed Project",
+      preset: "starter",
+    });
+    const workspace = created.workspaces[0];
+    const managedProjectsRoot = path.join(root, "home", ".ipollowork", "projects");
+
+    assert.equal(path.dirname(workspace.path), await realpath(managedProjectsRoot));
+    assert.equal(workspace.name, "Managed Project");
+    await access(workspace.path);
+    await access(path.join(workspace.path, ".opencode"));
+  });
+});
+
+test("migrates the system workspace marker without classifying named projects as ungrouped", async () => {
+  await withIsolatedBootstrapStore(async ({ createStore, root, userDataPath }) => {
+    const defaultPath = path.join(root, "home", "iPolloWork");
+    const projectPath = path.join(root, "named-project");
+    await Promise.all([
+      mkdir(defaultPath, { recursive: true }),
+      mkdir(projectPath, { recursive: true }),
+      mkdir(userDataPath, { recursive: true }),
+    ]);
+    await writeFile(
+      path.join(userDataPath, "ipollowork-workspaces.json"),
+      JSON.stringify({
+        selectedId: "default",
+        activeId: "default",
+        workspaces: [
+          { id: "default", name: "iPolloWork", path: defaultPath, workspaceType: "local" },
+          { id: "project", name: "Project A", path: projectPath, workspaceType: "local" },
+        ],
+      }),
+      "utf8",
+    );
+
+    const state = await createStore().readWorkspaceState();
+
+    assert.equal(state.workspaces[0].isDefault, true);
+    assert.equal(state.workspaces[1].isDefault, false);
+    const persisted = JSON.parse(await readFile(path.join(userDataPath, "ipollowork-workspaces.json"), "utf8"));
+    assert.equal(persisted.workspaces[0].isDefault, true);
+    assert.equal(persisted.workspaces[1].isDefault, false);
+  });
+});
+
+test("persists the selected conversation engine on a local workspace", async () => {
+  await withIsolatedBootstrapStore(async ({ store, root }) => {
+    const folderPath = path.join(root, "deepseek-workspace");
+    const created = await store.createWorkspace({
+      folderPath,
+      name: "Harness Project",
+      preset: "starter",
+      engineId: "deepseek-harness",
+    });
+
+    assert.equal(created.workspaces[0].engineId, "deepseek-harness");
+    await assert.rejects(access(path.join(folderPath, ".opencode")));
+    const reloaded = await store.readWorkspaceState();
+    assert.equal(reloaded.workspaces[0].engineId, "deepseek-harness");
+  });
+});
+
+test("selects an existing local workspace without overwriting its metadata", async () => {
+  await withIsolatedBootstrapStore(async ({ store, root }) => {
+    const folderPath = path.join(root, "existing-workspace");
+    const created = await store.createWorkspace({
+      folderPath,
+      name: "Original Project",
+      preset: "starter",
+      workContextId: "enterprise:ent_original",
+      engineId: "deepseek-harness",
+    });
+    const existingWorkspace = created.workspaces[0];
+
+    const selected = await store.createWorkspace({
+      folderPath,
+      name: "Replacement Project",
+      preset: "minimal",
+      workContextId: "enterprise:ent_replacement",
+      engineId: "opencode",
+    });
+
+    assert.equal(selected.workspaces.length, 1);
+    assert.equal(selected.selectedId, existingWorkspace.id);
+    assert.equal(selected.activeId, existingWorkspace.id);
+    assert.equal(selected.watchedId, existingWorkspace.id);
+    assert.equal(selected.workspaces[0].displayName, "Original Project");
+    assert.equal(selected.workspaces[0].preset, "starter");
+    assert.equal(selected.workspaces[0].workContextId, "enterprise:ent_original");
+    assert.equal(selected.workspaces[0].engineId, "deepseek-harness");
+    await assert.rejects(access(path.join(folderPath, ".opencode")));
+  });
+});
+
 test("migrates an older enterprise workspace from its dedicated context path", async () => {
   await withIsolatedBootstrapStore(async ({ createStore, root, userDataPath }) => {
     const folderPath = path.join(root, ".ipollowork", "work-contexts", "ent_medical");
@@ -163,29 +260,29 @@ test("migrates an older enterprise workspace from its dedicated context path", a
   });
 });
 
-test("collapses historical workstations into one Personal and one Enterprise space", async () => {
+test("preserves multiple projects in Personal and Enterprise spaces", async () => {
   await withIsolatedBootstrapStore(async ({ createStore, root, userDataPath }) => {
-    const personalPath = path.join(root, "personal");
-    const legacyPersonalPath = path.join(personalPath, ".ipollowork", "workstations", "old-personal");
-    const enterprisePath = path.join(root, ".ipollowork", "work-contexts", "ent_medical");
-    const legacyEnterprisePath = path.join(personalPath, ".ipollowork", "workstations", "old-enterprise");
+    const personalPath = path.join(root, "personal-one");
+    const personalSecondPath = path.join(root, "personal-two");
+    const enterprisePath = path.join(root, "enterprise-one");
+    const enterpriseSecondPath = path.join(root, "enterprise-two");
     await Promise.all([
       mkdir(personalPath, { recursive: true }),
-      mkdir(legacyPersonalPath, { recursive: true }),
+      mkdir(personalSecondPath, { recursive: true }),
       mkdir(enterprisePath, { recursive: true }),
-      mkdir(legacyEnterprisePath, { recursive: true }),
+      mkdir(enterpriseSecondPath, { recursive: true }),
       mkdir(userDataPath, { recursive: true }),
     ]);
     await writeFile(
       path.join(userDataPath, "ipollowork-workspaces.json"),
       JSON.stringify({
-        selectedId: "legacy-personal",
-        activeId: "legacy-personal",
+        selectedId: "personal-two",
+        activeId: "personal-two",
         workspaces: [
-          { id: "personal", name: "Personal", path: personalPath, workspaceType: "local" },
-          { id: "legacy-personal", name: "Old Personal", path: legacyPersonalPath, workspaceType: "local" },
-          { id: "enterprise", name: "Medical", path: enterprisePath, workspaceType: "local", workContextId: "enterprise:ent_medical" },
-          { id: "legacy-enterprise", name: "Old Medical", path: legacyEnterprisePath, workspaceType: "local", workContextId: "enterprise:ent_medical" },
+          { id: "personal-one", name: "Personal One", path: personalPath, workspaceType: "local" },
+          { id: "personal-two", name: "Personal Two", path: personalSecondPath, workspaceType: "local" },
+          { id: "enterprise-one", name: "Medical One", path: enterprisePath, workspaceType: "local", workContextId: "enterprise:ent_medical" },
+          { id: "enterprise-two", name: "Medical Two", path: enterpriseSecondPath, workspaceType: "local", workContextId: "enterprise:ent_medical" },
         ],
       }),
       "utf8",
@@ -196,23 +293,31 @@ test("collapses historical workstations into one Personal and one Enterprise spa
         version: 1,
         workspaces: {
           [personalPath]: { token: "personal-token" },
-          [legacyPersonalPath]: { token: "old-personal-token" },
+          [personalSecondPath]: { token: "personal-two-token" },
           [enterprisePath]: { token: "enterprise-token" },
-          [legacyEnterprisePath]: { token: "old-enterprise-token" },
+          [enterpriseSecondPath]: { token: "enterprise-two-token" },
         },
       }),
       "utf8",
     );
 
     const state = await createStore().readWorkspaceState();
-    assert.deepEqual(state.workspaces.map((workspace) => workspace.id), ["personal", "enterprise"]);
-    assert.equal(state.workspaces[0].name, "Personal");
-    assert.equal(state.workspaces[0].displayName, "Personal");
-    assert.equal(state.selectedId, "personal");
-    assert.equal(state.activeId, "personal");
+    assert.deepEqual(state.workspaces.map((workspace) => workspace.id), [
+      "personal-one",
+      "personal-two",
+      "enterprise-one",
+      "enterprise-two",
+    ]);
+    assert.equal(state.selectedId, "personal-two");
+    assert.equal(state.activeId, "personal-two");
 
     const tokenStore = JSON.parse(await readFile(path.join(userDataPath, "ipollowork-server-tokens.json"), "utf8"));
-    assert.deepEqual(Object.keys(tokenStore.workspaces).sort(), [enterprisePath, personalPath].sort());
+    assert.deepEqual(Object.keys(tokenStore.workspaces).sort(), [
+      enterprisePath,
+      enterpriseSecondPath,
+      personalPath,
+      personalSecondPath,
+    ].sort());
   });
 });
 
@@ -254,7 +359,7 @@ test("prefers server config workspaces when desktop state is empty", async () =>
     const state = await store.readWorkspaceState();
     assert.equal(state.workspaces.length, 1);
     assert.equal(state.workspaces[0].path, oldWorkspaceReal);
-    assert.equal(state.workspaces[0].name, "Personal");
+    assert.equal(state.workspaces[0].name, "From Server");
   } finally {
     if (previous === undefined) delete process.env.IPOLLOWORK_SERVER_CONFIG;
     else process.env.IPOLLOWORK_SERVER_CONFIG = previous;

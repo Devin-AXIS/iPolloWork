@@ -3,11 +3,9 @@
 // settings-route was missing the remote-workspace clobber fix in
 // mergeRouteWorkspaces and used older session-status logic. One copy now.
 
-import type { Session } from "@opencode-ai/sdk/v2/client";
-
 import type { iPolloWorkWorkspaceInfo } from "@/app/lib/ipollowork-server";
 import type { WorkspaceInfo } from "@/app/lib/desktop-types";
-import type { WorkspaceSessionGroup } from "@/app/types";
+import type { ProjectSessionList } from "@/app/types";
 import {
   normalizeDirectoryPath,
   normalizeSessionStatus,
@@ -19,6 +17,7 @@ import {
   isGeneratedSessionTitle,
 } from "@/app/lib/session-title";
 import { t } from "@/i18n";
+import type { ConversationSession } from "@/react-app/domains/session/engine/conversation-engine";
 
 export type RouteWorkspace = iPolloWorkWorkspaceInfo & {
   displayNameResolved: string;
@@ -29,7 +28,7 @@ export type RouteWorkspace = iPolloWorkWorkspaceInfo & {
  * ipollowork-server's listSessions, optionally enriched with run-status
  * fields that the sidebar probes defensively via getSessionStatus.
  */
-export type RouteSession = Session & {
+export type RouteSession = ConversationSession & {
   agent?: string;
   status?: unknown;
   state?: unknown;
@@ -151,6 +150,7 @@ export function mergeRouteWorkspaces(
             : match.displayName,
           name: match.name?.trim() ? match.name : workspace.name,
           workContextId: workspace.workContextId ?? match.workContextId,
+          isDefault: workspace.isDefault ?? match.isDefault,
         }
       : workspace;
     return {
@@ -296,8 +296,15 @@ export function orderRouteWorkspaces(workspaces: RouteWorkspace[], orderIds: str
   if (orderIds.length === 0) return workspaces;
 
   const workspaceById = new Map(workspaces.map((workspace) => [workspace.id, workspace]));
+  const orderedIdSet = new Set(orderIds);
   const ordered: RouteWorkspace[] = [];
   const usedIds = new Set<string>();
+
+  for (const workspace of workspaces) {
+    if (orderedIdSet.has(workspace.id)) continue;
+    ordered.push(workspace);
+    usedIds.add(workspace.id);
+  }
 
   for (const id of orderIds) {
     const workspace = workspaceById.get(id);
@@ -306,20 +313,15 @@ export function orderRouteWorkspaces(workspaces: RouteWorkspace[], orderIds: str
     usedIds.add(id);
   }
 
-  for (const workspace of workspaces) {
-    if (usedIds.has(workspace.id)) continue;
-    ordered.push(workspace);
-  }
-
   return ordered;
 }
 
-export function toSessionGroups(
+export function toProjectSessionLists(
   workspaces: RouteWorkspace[],
   sessionsByWorkspaceId: Record<string, RouteSession[]>,
   errorsByWorkspaceId: Record<string, string | null>,
   loadingWorkspaceIds: Set<string>,
-): WorkspaceSessionGroup[] {
+): ProjectSessionList[] {
   return workspaces.map((workspace) => ({
     workspace,
     sessions: sessionsByWorkspaceId[workspace.id] ?? [],

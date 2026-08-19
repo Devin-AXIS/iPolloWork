@@ -13,6 +13,48 @@ interface PreviewLocalPointer {
   viewport: DomEditViewport;
 }
 
+type EmbeddedHtmlAssetIframe = HTMLIFrameElement & {
+  __hfRescale?: () => void;
+  __hfResizeObserver?: { disconnect(): void };
+};
+
+/**
+ * Upgrade both new and already-authored HTML illustration clips to the stable
+ * iframe scaling channel. Older clips stored their fit scale in `transform`,
+ * which preview/GSAP refreshes can replace. The individual `scale` longhand is
+ * independent from that transform channel, so a resized 1600x900 illustration
+ * remains fitted while editing and playing.
+ */
+export function installEmbeddedHtmlAssetScaling(doc: Document): void {
+  const win = doc.defaultView;
+  const ResizeObserverCtor = win?.ResizeObserver;
+  if (!win || !ResizeObserverCtor) return;
+
+  for (const container of doc.querySelectorAll<HTMLElement>('[data-hf-asset-kind="html"]')) {
+    const iframe = container.querySelector<EmbeddedHtmlAssetIframe>(":scope > iframe");
+    if (!iframe) continue;
+
+    const rescale = () => {
+      const scale = String(
+        Math.max(0.001, Math.min(container.clientWidth / 1600, container.clientHeight / 900)),
+      );
+      if (win.CSS?.supports?.("scale", "1")) {
+        iframe.style.scale = scale;
+        iframe.style.transform = "none";
+      } else {
+        iframe.style.transform = `scale(${scale})`;
+      }
+    };
+
+    iframe.__hfResizeObserver?.disconnect();
+    iframe.__hfRescale = rescale;
+    rescale();
+    const observer = new ResizeObserverCtor(rescale);
+    observer.observe(container);
+    iframe.__hfResizeObserver = observer;
+  }
+}
+
 // An element is "full-bleed" when its box spans nearly the whole composition on
 // BOTH axes. Such elements (scene wrappers, backdrops) are excluded from canvas
 // click-picking so a click lands on inner content — or deselects on empty area —

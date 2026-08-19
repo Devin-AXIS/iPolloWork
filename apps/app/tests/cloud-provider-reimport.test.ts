@@ -7,14 +7,15 @@ import type {
 } from "../src/app/lib/den";
 import type { CloudImportedProvider } from "../src/app/cloud/import-state";
 import {
-  buildRuntimeProviderPatch,
   getCloudManagedProviderId,
   getProviderModelIds,
   isCloudManagedProviderKey,
   isCloudProviderOutOfSync,
 } from "../src/react-app/domains/connections/provider-auth/cloud-provider-config";
+import { openCodeProviderEngineAdapter } from "../src/react-app/domains/connections/provider-auth/provider-engine-adapter";
 
 const LPR_ID = "lpr_openrouter";
+const buildProviderPatch = openCodeProviderEngineAdapter.buildCloudProviderPatch;
 
 const makeModel = (id: string, name = id): DenOrgLlmProviderModel => ({
   id,
@@ -68,7 +69,7 @@ const patchModelKeys = (patch: Record<string, unknown>): string[] => {
 describe("cloud provider runtime patch (re-import diff #2346)", () => {
   test("first import upserts the lpr_* entry with the initial model", () => {
     const provider = makeProvider([makeModel("model-x")], "2024-02-01T00:00:00.000Z");
-    const patch = buildRuntimeProviderPatch(provider, LPR_ID);
+    const patch = buildProviderPatch(provider, LPR_ID);
     expect(Object.keys(patch)).toEqual([LPR_ID]);
     expect(patchModelKeys(patch)).toEqual(["model-x"]);
   });
@@ -78,18 +79,18 @@ describe("cloud provider runtime patch (re-import diff #2346)", () => {
       [makeModel("model-x"), makeModel("model-y")],
       "2024-03-01T00:00:00.000Z",
     );
-    expect(patchModelKeys(buildRuntimeProviderPatch(updated, LPR_ID, LPR_ID))).toEqual([
+    expect(patchModelKeys(buildProviderPatch(updated, LPR_ID, LPR_ID))).toEqual([
       "model-x",
       "model-y",
     ]);
 
     const onlyY = makeProvider([makeModel("model-y")], "2024-04-01T00:00:00.000Z");
-    expect(patchModelKeys(buildRuntimeProviderPatch(onlyY, LPR_ID, LPR_ID))).toEqual(["model-y"]);
+    expect(patchModelKeys(buildProviderPatch(onlyY, LPR_ID, LPR_ID))).toEqual(["model-y"]);
   });
 
   test("a renamed provider id deletes the predecessor entry", () => {
     const provider = makeProvider([makeModel("model-x")], "2024-03-01T00:00:00.000Z");
-    const patch = buildRuntimeProviderPatch(provider, LPR_ID, "lpr_previous");
+    const patch = buildProviderPatch(provider, LPR_ID, "lpr_previous");
     expect(patch["lpr_previous"]).toBeNull();
     expect(patchModelKeys(patch)).toEqual(["model-x"]);
   });

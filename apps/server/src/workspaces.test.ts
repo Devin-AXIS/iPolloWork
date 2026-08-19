@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
-import { findManagedEngineWorkspace } from "./workspaces.js";
-import type { WorkspaceInfo } from "./types.js";
+import { buildWorkspaceInfos, findManagedEngineWorkspace } from "./workspaces.js";
+import { DEFAULT_ENGINE_ID, type WorkspaceInfo } from "./types.js";
 
 function ws(fields: {
   id?: string;
@@ -9,6 +9,7 @@ function ws(fields: {
   path: string;
   preset?: string;
   workspaceType: WorkspaceInfo["workspaceType"];
+  engineId?: string;
 }): WorkspaceInfo {
   return {
     id: fields.id ?? "ws_test",
@@ -16,8 +17,21 @@ function ws(fields: {
     path: fields.path,
     preset: fields.preset ?? (fields.workspaceType === "remote" ? "remote" : "starter"),
     workspaceType: fields.workspaceType,
+    engineId: fields.engineId,
   };
 }
+
+describe("workspace engine selection", () => {
+  test("defaults existing workspace configs to OpenCode", () => {
+    const [workspace] = buildWorkspaceInfos([{ path: "./workspace" }], "/tmp");
+    expect(workspace?.engineId).toBe(DEFAULT_ENGINE_ID);
+  });
+
+  test("preserves an explicitly selected engine", () => {
+    const [workspace] = buildWorkspaceInfos([{ path: "./workspace", engineId: "deepseek-harness" }], "/tmp");
+    expect(workspace?.engineId).toBe("deepseek-harness");
+  });
+});
 
 describe("findManagedEngineWorkspace", () => {
   test("selects the local workspace in a typical local + remote config", () => {
@@ -42,6 +56,18 @@ describe("findManagedEngineWorkspace", () => {
 
   test("returns undefined for a remote-only config", () => {
     const workspaces = [ws({ id: "rem_ws", path: "", workspaceType: "remote" })];
+    expect(findManagedEngineWorkspace(workspaces)).toBeUndefined();
+  });
+
+  test("does not boot OpenCode inside a DeepSeek Harness project", () => {
+    const workspaces = [
+      ws({
+        id: "ws_dsh",
+        path: "/home/user/harness",
+        workspaceType: "local",
+        engineId: "deepseek-harness",
+      }),
+    ];
     expect(findManagedEngineWorkspace(workspaces)).toBeUndefined();
   });
 

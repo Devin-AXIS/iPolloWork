@@ -1,0 +1,9 @@
+{
+  "name": "@ipollowork/dsh-runtime",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Packaged DeepSeek Harness CLI runtime for iPolloWork",
+  "dependencies": {
+    "@deepseek-ai/dsh": "0.1.0-rc.6"
+  }
+}

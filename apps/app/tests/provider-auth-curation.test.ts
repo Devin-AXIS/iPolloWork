@@ -29,6 +29,7 @@ const apiMethods: Record<string, ProviderAuthMethod[]> = {
   stepfun: [{ type: "api", label: "API key" }],
   tokenstar: [{ type: "api", label: "API key" }],
   "github-copilot": [{ type: "oauth", label: "Login with GitHub Copilot" }],
+  "deepseek-official": [{ type: "api", label: "API key" }],
 };
 
 const providers: ProviderAuthProvider[] = [
@@ -50,6 +51,7 @@ const providers: ProviderAuthProvider[] = [
   { id: "stepfun", name: "StepFun (China)", env: ["API_KEY"] },
   { id: "tokenstar", name: "TokenStar", env: [] },
   { id: "github-copilot", name: "GitHub Copilot", env: [] },
+  { id: "deepseek-official", name: "DeepSeek Official", env: ["DEEPSEEK_API_KEY"] },
 ];
 
 describe("provider auth curation", () => {
@@ -69,6 +71,7 @@ describe("provider auth curation", () => {
       "kimi-for-coding",
       "minimax-cn",
       "stepfun",
+      "deepseek-official",
       "mistral",
       "github-copilot",
     ]);
@@ -123,5 +126,9 @@ describe("provider auth curation", () => {
   test("white-labels the bundled OpenCode provider as iPolloWork", () => {
     expect(formatProviderAuthName("opencode")).toBe("iPolloWork Built-in Models");
     expect(formatProviderAuthName("opencode", "OpenCode Zen")).toBe("iPolloWork Built-in Models");
+  });
+
+  test("presents the native DeepSeek Harness provider directly", () => {
+    expect(formatProviderAuthName("deepseek-official", "DeepSeek Official")).toBe("DeepSeek");
   });
 });

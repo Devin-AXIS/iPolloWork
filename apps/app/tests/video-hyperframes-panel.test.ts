@@ -14,12 +14,6 @@ import {
   requestedVideoDurationSeconds,
   videoTaskSystemContext,
 } from "../src/react-app/domains/session/video/video-project";
-import {
-  parseVideoIllustrationDisplayMetadata,
-  parseVideoIllustrationReference,
-  videoIllustrationReferenceInstruction,
-} from "../src/react-app/domains/session/video/video-illustration";
-
 describe("HyperFrames Video Studio", () => {
   test("shows a live warning while the current session AI is editing the video", () => {
     const panelSource = readFileSync(
@@ -30,74 +24,68 @@ describe("HyperFrames Video Studio", () => {
       new URL("../src/react-app/domains/session/chat/session-page.tsx", import.meta.url),
       "utf8",
     );
-    const headerSource = readFileSync(
-      new URL("../../../vendor/hyperframes/packages/studio/src/components/StudioHeader.tsx", import.meta.url),
+    const previewSource = readFileSync(
+      new URL("../../../vendor/hyperframes/packages/studio/src/components/nle/PreviewPane.tsx", import.meta.url),
       "utf8",
     );
 
     expect(sessionPageSource).toContain("aiEditing={isStreamingSessionStatus(");
     expect(panelSource).toContain('type: "ipollowork:studio-ai-editing"');
     expect(panelSource).toContain("active: aiEditing");
-    expect(headerSource).toContain('data-testid="studio-ai-editing-status"');
-    expect(headerSource).toContain('t("header.aiEditingWarning")');
+    expect(previewSource).toContain('data-testid="studio-ai-editing-status"');
+    expect(previewSource).toContain('t("preview.aiEditingWarning")');
   });
 
-  test("passes the Ian illustration skill through the composer and asset-library contract", () => {
-    const reference = parseVideoIllustrationReference({
-      id: "ian-xiaohei-illustrations",
-      label: "Ian 小黑正文插画",
-      repository: "helloianneo/ian-xiaohei-illustrations",
-    });
-    expect(reference).not.toBeNull();
-    if (!reference) throw new Error("Expected a valid illustration reference");
-    const instruction = videoIllustrationReferenceInstruction(reference);
-    expect(instruction).toContain("helloianneo/ian-xiaohei-illustrations");
-    expect(instruction).toContain("self-contained HTML file");
-    expect(instruction).toContain("existing workspace file-reading and HTML-authoring capability");
-    expect(instruction).not.toContain("ipollowork_extension_call");
-    expect(instruction).not.toContain("extensionId openai-image-generation");
-    expect(instruction).toContain("current video project's index.html");
-    expect(instruction).toContain("assets/video-illustrations/");
-    expect(instruction).toContain("插画已生成并放入素材库");
-    expect(instruction).toContain("read the file back");
-    expect(parseVideoIllustrationDisplayMetadata(instruction)).toEqual(reference);
+  test("generates illustration effects locally and inserts them at the playhead", () => {
+    const panelSource = readFileSync(
+      new URL("../src/react-app/domains/session/video/video-panel.tsx", import.meta.url),
+      "utf8",
+    );
+    const illustrationSource = readFileSync(
+      new URL("../../../vendor/hyperframes/packages/studio/src/components/sidebar/IllustrationTab.tsx", import.meta.url),
+      "utf8",
+    );
+    const rendererSource = readFileSync(
+      new URL("../../../vendor/hyperframes/packages/studio/src/utils/illustrationEffect.ts", import.meta.url),
+      "utf8",
+    );
+    const studioSource = readFileSync(
+      new URL("../../../vendor/hyperframes/packages/studio/src/App.tsx", import.meta.url),
+      "utf8",
+    );
 
-    const panelSource = readFileSync(new URL("../src/react-app/domains/session/video/video-panel.tsx", import.meta.url), "utf8");
-    const surfaceSource = readFileSync(new URL("../src/react-app/domains/session/surface/session-surface.tsx", import.meta.url), "utf8");
-    expect(panelSource).toContain('ipollowork:hyperframes:illustration-reference');
-    expect(surfaceSource).toContain('ipollowork:add-illustration-reference');
-    expect(surfaceSource).toContain("Every selected reference is a required deliverable");
-    expect(surfaceSource).toContain("data-ipw-animation-reference");
-    expect(surfaceSource).toContain("requirements.animationReferences");
-    expect(surfaceSource).toContain("AI 插画已添加到对话框");
+    expect(panelSource).not.toContain("ipollowork:hyperframes:illustration-reference");
+    expect(illustrationSource).not.toContain("postMessage");
+    expect(illustrationSource).toContain("srcDoc={previewHtml}");
+    expect(illustrationSource).toContain("disabled={!canInsert || Boolean(insertingId)}");
+    expect(rendererSource).toContain("assets/video-illustrations/");
+    expect(rendererSource).toContain('data-ipollowork-renderer="local-v1"');
+    expect(studioSource).toContain("fileManager.writeProjectFile(assetPath");
+    expect(studioSource).toContain("fileManager.refreshFileTree()");
+    expect(studioSource).toContain("start: playerState.currentTime");
+    expect(studioSource).toContain("resolveAvailableVisualTrack(targetElements");
+    expect(studioSource).toContain("timelineEditing.handleTimelineAssetDrop(");
   });
-
-  test("maps all six illustration choices to offline self-contained HTML contracts", () => {
-    const profiles = [
-      ["ian-xiaohei-illustrations", "helloianneo/ian-xiaohei-illustrations", "ian-xiaohei-illustrations"],
-      ["html-infographic", "openai/visualize", "visualize"],
-      ["html-concept-explainer", "ipollowork/faceless-explainer", "faceless-explainer + hyperframes-core"],
-      ["html-kinetic-typography", "heygen-com/hyperframes", "hyperframes-animation"],
-      ["html-svg-path", "heygen-com/hyperframes", "hyperframes-keyframes"],
-      ["html-3d-space", "heygen-com/hyperframes", "hyperframes-keyframes"],
-    ];
-
-    for (const [id, repository, skill] of profiles) {
-      const reference = parseVideoIllustrationReference({ id, label: id, repository });
-      expect(reference).not.toBeNull();
-      if (!reference) throw new Error(`Expected ${id} to be a valid illustration profile`);
-      const instruction = videoIllustrationReferenceInstruction(reference);
-      expect(instruction).toContain(skill);
-      expect(instruction).toContain("exactly one self-contained HTML file");
-      expect(instruction).toContain("editable HTML/CSS/inline SVG");
-      expect(instruction).toContain("no CDN, remote font, network request");
-      expect(instruction).toContain("1600x900");
-      expect(instruction).toContain("complete composition must be visible and meaningful on its first frame");
-      expect(instruction).toContain("prefers-reduced-motion: reduce");
-      expect(instruction).toContain("assets/video-illustrations/");
+  test("keeps all six illustration styles in one offline renderer", () => {
+    const rendererSource = readFileSync(
+      new URL("../../../vendor/hyperframes/packages/studio/src/utils/illustrationEffect.ts", import.meta.url),
+      "utf8",
+    );
+    for (const id of [
+      "ian-xiaohei-illustrations",
+      "html-infographic",
+      "html-concept-explainer",
+      "html-kinetic-typography",
+      "html-svg-path",
+      "html-3d-space",
+    ]) {
+      expect(rendererSource).toContain(`"${id}"`);
     }
-
-    expect(parseVideoIllustrationReference({ id: "unknown", label: "Unknown", repository: "unknown" })).toBeNull();
+    expect(rendererSource).toContain("renderIllustrationEffectHtml");
+    expect(rendererSource).toContain("effectScene(id, data)");
+    expect(rendererSource).not.toContain("<script");
+    expect(rendererSource).not.toContain("http://");
+    expect(rendererSource).not.toContain("https://");
   });
   test("reuses the embedded Design system inspector for the active video composition", () => {
     const panelSource = readFileSync(
@@ -212,7 +200,6 @@ describe("HyperFrames Video Studio", () => {
       new URL("../../../vendor/hyperframes/packages/studio/src/App.tsx", import.meta.url),
       "utf8",
     );
-
     expect(desktopSource).toContain("window.__ipolloworkSimpleVideoListener !== 16");
     expect(desktopSource).toContain("new CustomEvent('ipollowork:studio-apply-selection'");
     expect(desktopSource).toContain("hfId: target.hfId || undefined");
@@ -227,7 +214,10 @@ describe("HyperFrames Video Studio", () => {
     expect(studioSource).toContain("Suspense fallback={<RightPanelLoadingFallback width={panelLayout.rightWidth} />}");
 
     const advancedBranchStart = desktopSource.indexOf("} else if (action === 'advanced') {");
-    const advancedBranchEnd = desktopSource.indexOf("postEditorMessage({\n            type: 'ipollowork:hyperframes:open-advanced'", advancedBranchStart);
+    const advancedBranchEnd = desktopSource.indexOf(
+      "type: 'ipollowork:hyperframes:open-advanced'",
+      advancedBranchStart,
+    );
     expect(advancedBranchStart).toBeGreaterThan(-1);
     expect(advancedBranchEnd).toBeGreaterThan(advancedBranchStart);
     expect(desktopSource.slice(advancedBranchStart, advancedBranchEnd)).toContain("showToolbar(selected)");
@@ -314,15 +304,18 @@ describe("HyperFrames Video Studio", () => {
     expect(voiceSource).not.toContain("flex w-[400px]");
   });
 
-  test("keeps a visible fullscreen control in the iPolloWork Video Studio header", () => {
+  test("keeps fullscreen control in the unified right-panel header", () => {
     const panelSource = readFileSync(
       new URL("../src/react-app/domains/session/video/video-panel.tsx", import.meta.url),
       "utf8",
     );
+    const sidePanelSource = readFileSync(
+      new URL("../src/react-app/domains/session/panel/side-panel.tsx", import.meta.url),
+      "utf8",
+    );
 
-    expect(panelSource).toContain('aria-label={t("video.toggle_fullscreen")}');
-    expect(panelSource.match(/aria-label=\{t\("video\.toggle_fullscreen"\)\}/g)).toHaveLength(1);
-    expect(panelSource).toContain("onExpandedChange?.(!expanded)");
+    expect(panelSource).not.toContain('aria-label={t("video.toggle_fullscreen")}');
+    expect(sidePanelSource).toContain("onClick={() => onExpandedChange(!expanded)}");
     expect(panelSource).not.toContain("requestFullscreen()");
     expect(panelSource).not.toContain("document.exitFullscreen()");
   });
@@ -336,12 +329,17 @@ describe("HyperFrames Video Studio", () => {
       new URL("../../../vendor/hyperframes/packages/studio/src/App.tsx", import.meta.url),
       "utf8",
     );
+    const studioHeaderSource = readFileSync(
+      new URL("../../../vendor/hyperframes/packages/studio/src/components/StudioHeader.tsx", import.meta.url),
+      "utf8",
+    );
 
     expect(panelSource).toContain("const reloadStudio = React.useCallback");
     expect(panelSource).toContain("setRevision((value) => value + 1)");
     expect(panelSource).toContain("}, [revision]);");
     expect(panelSource).toContain("setStudioHostPanel(null);");
-    expect(panelSource).toContain('onClick={reloadStudio} aria-label={t("video.reload")}');
+    expect(panelSource).toContain('event.data.action === "reload"');
+    expect(studioHeaderSource).toContain('requestHostAction("reload")');
     expect(panelSource).toContain('event.data?.type !== "ipollowork:studio-ready"');
     expect(panelSource).not.toContain('<TooltipContent>{t("video.reload")}</TooltipContent>');
     expect(panelSource).not.toContain('type: "ipollowork:studio-refresh-preview"');
@@ -413,10 +411,6 @@ describe("HyperFrames Video Studio", () => {
   });
 
   test("keeps desktop panel titlebars draggable without swallowing control input", () => {
-    const videoPanelSource = readFileSync(
-      new URL("../src/react-app/domains/session/video/video-panel.tsx", import.meta.url),
-      "utf8",
-    );
     const sidePanelSource = readFileSync(
       new URL("../src/react-app/domains/session/panel/side-panel.tsx", import.meta.url),
       "utf8",
@@ -434,10 +428,9 @@ describe("HyperFrames Video Studio", () => {
       "utf8",
     );
 
-    expect(videoPanelSource).toContain("mac:titlebar-drag");
     expect(sidePanelSource).toContain("px-2 mac:titlebar-drag");
     expect(artifactPanelSource).toContain("ps-4 mac:titlebar-drag");
-    expect(sidebarSource).toContain('SidebarHeader className="gap-4 px-2 pb-8 pt-1 mac:titlebar-drag"');
+    expect(sidebarSource).toContain('SidebarHeader className="gap-3 px-2 pb-3 pt-1 mac:titlebar-drag"');
     expect(appStyles).toContain('[data-titlebar-no-drag]');
     expect(appStyles).toContain("[role=\"tab\"]");
     expect(appStyles).toContain("-webkit-app-region: no-drag;");
@@ -449,13 +442,33 @@ describe("HyperFrames Video Studio", () => {
       "utf8",
     );
 
-    expect(panelSource).toContain('t("video.title")');
+    expect(panelSource).toContain("title: string;");
+    expect(panelSource).toContain('type: "ipollowork:studio-host-context"');
     expect(panelSource).toContain("studioStartupTitleKey");
-    expect(panelSource).toContain('t("video.status_failed")');
     expect(panelSource).toContain('t("video.failed_to_start")');
     expect(panelSource).not.toContain(">Video Studio<");
     expect(panelSource).not.toContain("Reload Video Studio");
     expect(panelSource).not.toContain("HyperFrames Studio failed to start</p>");
+  });
+
+  test("removes the duplicate Video Studio row and places host actions before Properties", () => {
+    const panelSource = readFileSync(
+      new URL("../src/react-app/domains/session/video/video-panel.tsx", import.meta.url),
+      "utf8",
+    );
+    const studioHeaderSource = readFileSync(
+      new URL("../../../vendor/hyperframes/packages/studio/src/components/StudioHeader.tsx", import.meta.url),
+      "utf8",
+    );
+
+    expect(panelSource).not.toContain('<header className="flex h-11');
+    expect(panelSource).toContain('event.data?.type !== "ipollowork:studio-host-action"');
+    expect(studioHeaderSource).toContain('className="mr-1 flex items-center gap-2"');
+    expect(studioHeaderSource).toContain('t("header.saveAsTemplate")');
+    expect(studioHeaderSource).toContain('<FloppyDisk className="h-4 w-4" aria-hidden="true" />');
+    expect(studioHeaderSource.indexOf('t("header.saveAsTemplate")')).toBeLessThan(
+      studioHeaderSource.indexOf('t("header.inspector")'),
+    );
   });
 
   test("keeps voice dropdowns aligned to their field edges", () => {
@@ -491,29 +504,29 @@ describe("HyperFrames Video Studio", () => {
       "utf8",
     );
 
-    expect(voicePanelSource).toContain("将使用百炼免费临时存储");
+    expect(voicePanelSource).toContain('t("video.voice.temp_storage_help")');
     expect(voicePanelSource).toContain("disabled={cloning}");
     expect(voicePanelSource).not.toContain("disabled={!storageReady || cloning}");
     expect(voicePanelSource).not.toContain("!mediaReady || !storageReady");
   });
 
-  test("keeps the application sidebar visible while Video Studio is expanded", () => {
+  test("keeps the application sidebar visible while the unified right panel is expanded", () => {
     const sessionPageSource = readFileSync(
       new URL("../src/react-app/domains/session/chat/session-page.tsx", import.meta.url),
       "utf8",
     ).replaceAll("\r\n", "\n");
 
-    expect(sessionPageSource).toContain("videoStudioExpanded");
+    expect(sessionPageSource).toContain("const rightWorkspaceExpanded = rightPanelExpanded");
     expect(sessionPageSource).toContain('rightWorkspaceExpanded && "invisible pointer-events-none"');
     expect(sessionPageSource).toContain("onOpenSession={handleSidebarOpenSession}");
     expect(sessionPageSource).toContain("onOpenSessionSearch={props.sidebar.onOpenSessionSearch ? handleSidebarOpenSessionSearch : undefined}");
     expect(sessionPageSource).toContain('left: shellConfig.sidebar && sidebarOpen ? `${effectiveLeftSidebarWidth}px` : "0"');
-    expect(sessionPageSource).toContain('videoStudioExpanded && (!shellConfig.sidebar || !sidebarOpen) && "mac:[&_header]:!pl-20"');
+    expect(sessionPageSource).toContain('rightPanelExpanded && (!shellConfig.sidebar || !sidebarOpen)');
     expect(sessionPageSource).toContain(
       "!rightWorkspaceExpanded &&\n      (showWorkspaceSetupEmptyState",
     );
     expect(sessionPageSource).not.toContain("mac:peer-data-[state=collapsed]:[&_header]:pl-28");
-    expect(sessionPageSource).toContain("onExpandedChange={setVideoStudioExpanded}");
+    expect(sessionPageSource).toContain("onExpandedChange={setRightPanelExpandedState}");
   });
 
   test("restores expanded work surfaces before focusing an AI annotation", () => {
@@ -543,19 +556,18 @@ describe("HyperFrames Video Studio", () => {
     expect(sessionPageSource).toContain("width: sidePanelOpen ? effectiveBrowserPanelWidth : 0");
   });
 
-  test("freezes resizable panel feedback while Design or Video Studio is expanded", () => {
+  test("freezes resizable panel feedback while the unified work surface is expanded", () => {
     const sessionPageSource = readFileSync(
       new URL("../src/react-app/domains/session/chat/session-page.tsx", import.meta.url),
       "utf8",
     );
 
-    expect(sessionPageSource).toContain("const rightWorkspaceExpanded = rightPanelExpanded || videoStudioExpanded");
+    expect(sessionPageSource).toContain("const rightWorkspaceExpanded = rightPanelExpanded");
     expect(sessionPageSource).toContain(
       '(!sidePanelOpen || rightWorkspaceExpanded) && "pointer-events-none',
     );
     expect(sessionPageSource).not.toContain("disabled={!sidePanelOpen || rightWorkspaceExpanded}");
     expect(sessionPageSource).not.toContain('rightWorkspaceExpanded && "**:data-[slot=sidebar-gap]:!w-0"');
-    expect(sessionPageSource).toContain("setVideoStudioExpanded(false)");
     expect(sessionPageSource).toContain(
       "if (event.button !== 0 || !sidePanelOpen || rightWorkspaceExpanded) return",
     );
@@ -677,7 +689,7 @@ describe("HyperFrames Video Studio", () => {
     );
 
     expect(electronDevSource).toContain('const hyperframesStudioBuild = resolve(hyperframesRoot, "packages", "cli", "dist", "studio", "index.html")');
-    expect(electronDevSource).toContain("newestMtimeMs(studioSourceRoot) > studioBuildTime");
+    expect(electronDevSource).toContain("newestBuildInputTime > studioBuildTime");
     expect(electronDevSource).toContain('runSync(bunCmd, ["run", "build:local-studio"]');
   });
 
@@ -693,16 +705,41 @@ describe("HyperFrames Video Studio", () => {
     expect(electronSource).toContain("runningProjectName === expectedProjectName");
   });
 
-  test("prevents automatic browser activity from replacing Video Studio", () => {
+  test("keeps Video Studio in the unified right-panel tab strip with browser, design, and files", () => {
     const sessionPageSource = readFileSync(
       new URL("../src/react-app/domains/session/chat/session-page.tsx", import.meta.url),
       "utf8",
     );
+    const sidePanelSource = readFileSync(
+      new URL("../src/react-app/domains/session/panel/side-panel.tsx", import.meta.url),
+      "utf8",
+    );
+    const tabStoreSource = readFileSync(
+      new URL("../src/react-app/domains/session/panel/panel-tab-store.ts", import.meta.url),
+      "utf8",
+    );
+    const videoPanelSource = readFileSync(
+      new URL("../src/react-app/domains/session/video/video-panel.tsx", import.meta.url),
+      "utf8",
+    );
+    const studioHeaderSource = readFileSync(
+      new URL("../../../vendor/hyperframes/packages/studio/src/components/StudioHeader.tsx", import.meta.url),
+      "utf8",
+    );
 
-    expect(sessionPageSource).toContain("if (isVideoSession && activeSidePanel !== \"panel\")");
-    expect(sessionPageSource).toContain("void browser.hide?.()");
+    expect(tabStoreSource).toContain('type: "video"');
+    expect(tabStoreSource).toContain('tab.type === "artifact" || tab.type === "design" || tab.type === "video"');
+    expect(sessionPageSource).toContain('id: videoTabId');
+    expect(sessionPageSource).toContain('type: "video"');
+    expect(sessionPageSource).toContain('setSidePanelState(props.selectedSessionId, "panel")');
+    expect(sidePanelSource).toContain('activeTab?.type === "video"');
+    expect(sidePanelSource).toContain("<VideoPanel");
+    expect(sidePanelSource).toContain("title={activeTab.label}");
+    expect(videoPanelSource).toContain('type: "ipollowork:studio-host-context"');
+    expect(studioHeaderSource).toContain('event.data?.type !== "ipollowork:studio-host-context"');
+    expect(sessionPageSource).not.toContain("void browser.hide?.()");
     expect(sessionPageSource).toContain("if (isVideoSession && options?.auto) return;");
-    expect(sessionPageSource).toContain("if (!isVideoSession) setCurrentSidePanel(\"panel\")");
+    expect(sessionPageSource).toContain('setCurrentSidePanel("panel")');
   });
 
   test("keeps a collapsed-sidebar title clear of its expand button", () => {

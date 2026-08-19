@@ -306,6 +306,17 @@ export type iPolloWorkPluginPackageItem = {
   integrity: { sha256: string; status: "verified" | "unsigned" };
 };
 
+export type iPolloWorkPluginUiResource = {
+  pluginId: string;
+  version: string;
+  resource: iPolloWorkExtensionManifest["resources"][number] & {
+    type: "ui";
+    path: string;
+    ui: NonNullable<iPolloWorkExtensionManifest["resources"][number]["ui"]>;
+  };
+  html: string;
+};
+
 export type iPolloWorkPluginPackagePreview = {
   manifest: iPolloWorkExtensionManifest;
   files: Array<{ path: string; sha256: string }>;
@@ -318,7 +329,7 @@ export type iPolloWorkPluginPackageImportSafety =
   | {
       level: "declarative";
       localCode: false;
-      allowedResourceTypes: Array<"skill" | "agent" | "command" | "file" | "mcp">;
+      allowedResourceTypes: Array<"skill" | "agent" | "command" | "file" | "mcp" | "ui">;
     }
   | {
       level: "signed";
@@ -693,27 +704,6 @@ export type iPolloWorkReloadEvent = {
   workspaceId: string;
   reason: "plugins" | "skills" | "mcp" | "config" | "agents" | "commands";
   trigger?: iPolloWorkReloadTrigger;
-  timestamp: number;
-};
-
-export type iPolloWorkSessionGroupDefinition = {
-  id: string;
-  label: string;
-};
-
-export type iPolloWorkSessionGroupState = {
-  groups: iPolloWorkSessionGroupDefinition[];
-  assignments: Record<string, string>;
-};
-
-export type iPolloWorkSessionGroupEvent = {
-  id: string;
-  seq: number;
-  workspaceId: string;
-  type: "session_groups.updated";
-  action: "created" | "updated" | "deleted" | "assigned" | "reordered" | "imported";
-  groupId?: string;
-  sessionId?: string;
   timestamp: number;
 };
 
@@ -1274,6 +1264,7 @@ export function createiPolloWorkServerClient(options: { baseUrl: string; token?:
       name: string;
       preset: string;
       workContextId?: `enterprise:${string}` | null;
+      engineId?: string | null;
     }) =>
       requestJson<WorkspaceList>(baseUrl, "/workspaces/local", {
         token,
@@ -1414,56 +1405,6 @@ export function createiPolloWorkServerClient(options: { baseUrl: string; token?:
         baseUrl,
         `/workspace/${encodeURIComponent(workspaceId)}/sessions${suffix}`,
         { token, hostToken, timeoutMs: timeouts.sessionRead },
-      );
-    },
-    getSessionGroups: (workspaceId: string) =>
-      requestJson<{ state: iPolloWorkSessionGroupState; updatedAt: number | null }>(
-        baseUrl,
-        `/workspace/${encodeURIComponent(workspaceId)}/session-groups`,
-        { token, hostToken, timeoutMs: timeouts.sessionRead },
-      ),
-    putSessionGroups: (workspaceId: string, state: iPolloWorkSessionGroupState) =>
-      requestJson<{ state: iPolloWorkSessionGroupState; updatedAt: number }>(
-        baseUrl,
-        `/workspace/${encodeURIComponent(workspaceId)}/session-groups`,
-        { token, hostToken, method: "PUT", body: { state }, timeoutMs: timeouts.config },
-      ),
-    createSessionGroup: (workspaceId: string, input: { id?: string; label: string }) =>
-      requestJson<{ state: iPolloWorkSessionGroupState; updatedAt: number }>(
-        baseUrl,
-        `/workspace/${encodeURIComponent(workspaceId)}/session-groups`,
-        { token, hostToken, method: "POST", body: input, timeoutMs: timeouts.config },
-      ),
-    reorderSessionGroups: (workspaceId: string, groupIds: string[]) =>
-      requestJson<{ state: iPolloWorkSessionGroupState; updatedAt: number }>(
-        baseUrl,
-        `/workspace/${encodeURIComponent(workspaceId)}/session-groups/reorder`,
-        { token, hostToken, method: "PATCH", body: { groupIds }, timeoutMs: timeouts.config },
-      ),
-    assignSessionGroup: (workspaceId: string, sessionId: string, groupId: string | null) =>
-      requestJson<{ state: iPolloWorkSessionGroupState; updatedAt: number }>(
-        baseUrl,
-        `/workspace/${encodeURIComponent(workspaceId)}/session-groups/assignments/${encodeURIComponent(sessionId)}`,
-        { token, hostToken, method: "PATCH", body: { groupId }, timeoutMs: timeouts.config },
-      ),
-    renameSessionGroup: (workspaceId: string, groupId: string, label: string) =>
-      requestJson<{ state: iPolloWorkSessionGroupState; updatedAt: number }>(
-        baseUrl,
-        `/workspace/${encodeURIComponent(workspaceId)}/session-groups/${encodeURIComponent(groupId)}`,
-        { token, hostToken, method: "PATCH", body: { label }, timeoutMs: timeouts.config },
-      ),
-    removeSessionGroup: (workspaceId: string, groupId: string) =>
-      requestJson<{ state: iPolloWorkSessionGroupState; updatedAt: number }>(
-        baseUrl,
-        `/workspace/${encodeURIComponent(workspaceId)}/session-groups/${encodeURIComponent(groupId)}`,
-        { token, hostToken, method: "DELETE", timeoutMs: timeouts.config },
-      ),
-    listSessionGroupEvents: (workspaceId: string, options?: { since?: number }) => {
-      const query = typeof options?.since === "number" ? `?since=${options.since}` : "";
-      return requestJson<{ items: iPolloWorkSessionGroupEvent[]; cursor?: number }>(
-        baseUrl,
-        `/workspace/${encodeURIComponent(workspaceId)}/session-groups/events${query}`,
-        { token, hostToken },
       );
     },
     getSession: (workspaceId: string, sessionId: string) =>
@@ -1627,6 +1568,12 @@ export function createiPolloWorkServerClient(options: { baseUrl: string; token?:
         hostToken,
         timeoutMs: timeouts.config,
       }),
+    getPluginPackageUiResource: (workspaceId: string, pluginId: string, resourceId: string) =>
+      requestJson<iPolloWorkPluginUiResource>(
+        baseUrl,
+        `/workspace/${encodeURIComponent(workspaceId)}/plugin-packages/${encodeURIComponent(pluginId)}/ui/${encodeURIComponent(resourceId)}`,
+        { token, hostToken, timeoutMs: timeouts.config },
+      ),
     listBundledPluginPackages: (workspaceId: string) =>
       requestJson<{ items: iPolloWorkBundledPluginPackageItem[] }>(baseUrl, `/workspace/${encodeURIComponent(workspaceId)}/plugin-packages/catalog`, {
         token,
@@ -1924,6 +1871,20 @@ export function createiPolloWorkServerClient(options: { baseUrl: string; token?:
         hostToken,
         method: "DELETE",
       }),
+
+    startMcpAuthorization: (workspaceId: string, name: string) =>
+      requestJson<{ authorizationUrl: string; expiresAt: number }>(
+        baseUrl,
+        `/workspace/${workspaceId}/mcp/${encodeURIComponent(name)}/auth/start`,
+        { token, hostToken, method: "POST", body: {} },
+      ),
+
+    getMcpAuthorizationStatus: (workspaceId: string, name: string) =>
+      requestJson<{ connected: boolean }>(
+        baseUrl,
+        `/workspace/${workspaceId}/mcp/${encodeURIComponent(name)}/auth`,
+        { token, hostToken },
+      ),
 
     listCommands: (workspaceId: string, scope: "workspace" | "global" = "workspace") =>
       requestJson<{ items: iPolloWorkCommandItem[] }>(
@@ -2259,6 +2220,19 @@ export function createiPolloWorkServerClient(options: { baseUrl: string; token?:
         hostToken,
         timeoutMs: timeouts.config,
       }),
+
+    saveAuthorizationService: (serviceId: iPolloWorkAuthorizationServiceId, values: Record<string, string>) =>
+      requestJson<{ status: iPolloWorkAuthorizationService }>(
+        baseUrl,
+        `/authorization-services/${encodeURIComponent(serviceId)}/credentials`,
+        {
+          token,
+          hostToken,
+          method: "PUT",
+          body: { values },
+          timeoutMs: timeouts.config,
+        },
+      ),
 
     testAuthorizationService: (serviceId: iPolloWorkAuthorizationServiceId) =>
       requestJson<iPolloWorkAuthorizationServiceTestResult>(

@@ -24,6 +24,7 @@ describe("assistant process collapse sections", () => {
     expect(source).toContain("onClick={() => setIsOpen((open) => !open)}");
     expect(source).toContain("<AssistantProcessDisclosure");
     expect(source).toContain("isStreaming={isLiveGroup}");
+    expect(source).toContain("const isLiveGroup = isStreaming && isLatestAssistantGroup");
     expect(source).toContain("itemRenderData.map(renderProcessItem)");
     expect(source).toContain("hideProcess");
   });

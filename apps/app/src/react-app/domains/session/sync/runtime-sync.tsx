@@ -1,24 +1,24 @@
 /** @jsxImportSource react */
 import { useEffect } from "react";
-import type { SessionStatus } from "@opencode-ai/sdk/v2/client";
 
 import { ensureWorkspaceSessionSync, trackWorkspaceSessionsSync } from "./session-sync";
+import type { ConversationEngineConnection, ConversationStatus } from "../engine/conversation-engine";
 
 type ReactSessionRuntimeProps = {
   workspaceId: string;
   sessionId: string | null;
-  opencodeBaseUrl: string;
-  ipolloworkToken: string;
+  connection: ConversationEngineConnection;
+  connectionKey: string;
   onSessionUpdated?: (update: { sessionId: string; info: Record<string, unknown> }) => void;
-  onSessionStatus?: (update: { sessionId: string; status: SessionStatus }) => void;
+  onSessionStatus?: (update: { sessionId: string; status: ConversationStatus }) => void;
 };
 
 export function ReactSessionRuntime(props: ReactSessionRuntimeProps) {
   useEffect(() => {
     const input = {
       workspaceId: props.workspaceId,
-      baseUrl: props.opencodeBaseUrl,
-      ipolloworkToken: props.ipolloworkToken,
+      connection: props.connection,
+      connectionKey: props.connectionKey,
       onSessionUpdated: props.onSessionUpdated,
       onSessionStatus: props.onSessionStatus,
     };
@@ -28,7 +28,7 @@ export function ReactSessionRuntime(props: ReactSessionRuntimeProps) {
       releaseSessions();
       releaseWorkspace();
     };
-  }, [props.workspaceId, props.sessionId, props.opencodeBaseUrl, props.ipolloworkToken, props.onSessionUpdated, props.onSessionStatus]);
+  }, [props.workspaceId, props.sessionId, props.connection, props.connectionKey, props.onSessionUpdated, props.onSessionStatus]);
 
   return null;
 }

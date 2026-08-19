@@ -59,7 +59,7 @@ describe("composer queue behavior", () => {
     );
 
     expect(abortHandler).not.toContain("clearQueuedDrafts");
-    expect(abortHandler).toContain("await abortSessionSafe(");
+    expect(abortHandler).toContain("await props.conversation.abort(");
     expect(sessionSurfaceSource).toContain('if (chatStreaming || liveStatus.type !== "idle") return;');
   });
 

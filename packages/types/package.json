@@ -27,7 +27,8 @@
     "./workspace": {
       "types": "./src/workspace.ts",
       "development": "./src/workspace.ts",
-      "default": "./src/workspace.ts"
+      "bun": "./src/workspace.ts",
+      "default": "./dist/workspace.js"
     },
     "./desktop-ipc": {
       "types": "./src/desktop-ipc.ts",
@@ -39,6 +40,24 @@
       "development": "./src/hyperframes.ts",
       "bun": "./src/hyperframes.ts",
       "default": "./dist/hyperframes.js"
+    },
+    "./hyperframes-project": {
+      "types": "./src/hyperframes-project.ts",
+      "development": "./src/hyperframes-project.ts",
+      "bun": "./src/hyperframes-project.ts",
+      "default": "./dist/hyperframes-project.js"
+    },
+    "./plugins": {
+      "types": "./src/plugins.ts",
+      "development": "./src/plugins.ts",
+      "bun": "./src/plugins.ts",
+      "default": "./dist/plugins.js"
+    },
+    "./provider-credentials": {
+      "types": "./src/provider-credentials.ts",
+      "development": "./src/provider-credentials.ts",
+      "bun": "./src/provider-credentials.ts",
+      "default": "./dist/provider-credentials.js"
     },
     "./templates": {
       "types": "./src/templates.ts",

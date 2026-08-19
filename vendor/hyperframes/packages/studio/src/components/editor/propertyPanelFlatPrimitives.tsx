@@ -92,7 +92,7 @@ export function FlatRow({
               track("button", `Reset ${label}`);
               onReset();
             }}
-            className="flex-shrink-0 text-panel-text-3 opacity-0 transition-opacity hover:text-panel-text-1 group-hover:opacity-100"
+            className="flex-shrink-0 text-panel-text-3 opacity-0 transition-[color,opacity,transform] hover:text-panel-text-1 active:scale-[0.96] focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-panel-accent/50 group-hover:opacity-100"
           >
             <RotateCcw size={11} />
           </button>
@@ -163,10 +163,10 @@ export function FlatSegmentedRow({
                 if (!option.active) track("segmented", label);
                 onChange(option.key);
               }}
-              className={`flex h-[34px] w-full items-center justify-center rounded-[6px] px-2 text-[13px] transition-colors disabled:cursor-not-allowed ${
+              className={`flex h-[34px] w-full items-center justify-center rounded-[6px] px-2 text-[13px] transition-[color,background-color,box-shadow,transform] active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-panel-accent/50 focus-visible:ring-offset-1 focus-visible:ring-offset-panel-bg disabled:cursor-not-allowed disabled:opacity-60 ${
                 option.active
-                  ? "bg-[#171816] text-white"
-                  : "bg-panel-input text-panel-text-4 hover:text-panel-text-1"
+                  ? "bg-[#171816] text-white dark:bg-panel-accent/15 dark:text-panel-text-0 dark:ring-1 dark:ring-inset dark:ring-panel-accent/40"
+                  : "bg-panel-input text-panel-text-4 hover:text-panel-text-1 dark:text-panel-text-2 dark:hover:bg-panel-hover"
               }`}
             >
               {option.node}
@@ -221,14 +221,14 @@ export function FlatGroupHeader({
         type="button"
         data-flat-group-collapsed="true"
         onClick={onToggleOpen}
-        className={`${animateEntrance ? "hf-flat-group-enter " : ""}flex h-12 w-full items-center justify-between gap-2 border-b-[0.5px] border-[var(--hf-studio-divider)] bg-panel-bg px-[17px] text-left transition-colors hover:bg-panel-input`}
+        className={`${animateEntrance ? "hf-flat-group-enter " : ""}flex h-12 w-full items-center justify-between gap-2 border-b-[0.5px] border-[var(--hf-studio-divider)] bg-panel-bg px-[17px] text-left transition-colors hover:bg-panel-input active:bg-panel-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-panel-accent/50`}
       >
         <span className="flex min-w-0 items-center gap-2">
           <span className="text-[12px] font-medium text-[#2c2d2a] dark:text-panel-text-1">
             {translatedTitle}
           </span>
           {summary && (
-            <span className="min-w-0 truncate font-mono text-[8px] text-panel-text-4">
+            <span className="min-w-0 truncate font-mono text-[8px] text-panel-text-4 dark:text-[10px] dark:leading-[14px] dark:text-panel-text-2">
               {tx(summary)}
             </span>
           )}
@@ -240,12 +240,12 @@ export function FlatGroupHeader({
 
   return (
     <div
-      className={`${animateEntrance ? "hf-flat-group-enter " : ""}flex h-12 items-center justify-between border-b-[0.5px] border-[var(--hf-studio-divider)] bg-panel-bg px-[17px] shadow-[inset_3px_0_0_#20bbc0]`}
+      className={`${animateEntrance ? "hf-flat-group-enter " : ""}flex h-12 items-center justify-between border-b-[0.5px] border-[var(--hf-studio-divider)] bg-panel-bg px-[17px] shadow-[inset_3px_0_0_#1FBAC0]`}
     >
       <button
         type="button"
         onClick={onToggleOpen}
-        className="flex h-full min-w-0 flex-1 items-center text-left"
+        className="flex h-full min-w-0 flex-1 items-center text-left active:bg-panel-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-panel-accent/50"
         aria-label={tx(`Collapse ${title}`)}
       >
         <span className="text-[12px] font-medium text-[#2c2d2a] dark:text-panel-text-1">
@@ -259,7 +259,7 @@ export function FlatGroupHeader({
         type="button"
         onClick={onToggleOpen}
         title={tx("Collapse")}
-        className="flex h-full items-center pl-2 text-[#858a94]"
+        className="flex h-full items-center pl-2 text-[#858a94] transition-[color,transform] hover:text-panel-text-1 active:scale-[0.96] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-panel-accent/50"
       >
         <ChevronDown size={16} className="flex-shrink-0" />
       </button>

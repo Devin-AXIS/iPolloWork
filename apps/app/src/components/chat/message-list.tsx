@@ -86,7 +86,7 @@ import {
   getActiveToolLabel,
 } from "@/lib/tool-activity"
 import { cn } from "@/lib/utils"
-import { assistantResponseMarkdownFilename, buildAssistantResponseMarkdown, buildQuoteFollowUpPrompt, groupMessages, isMessageGroup, getLastTextPart, getAssistantRenderGroups, getFileTitle, getMediaBadge, getMessageCompleted, getMessageCreated, formatMessageTimestamp, formatProcessDuration, type UIMessageWithIndex, getMessagesText, isInternalContinuationMessage, splitAssistantRenderGroups, type AssistantProcessRenderGroup } from "./utils"
+import { assistantResponseMarkdownFilename, buildAssistantResponseMarkdown, buildQuoteFollowUpPrompt, groupMessages, isMessageGroup, getLastTextPart, getAssistantRenderGroups, getFileTitle, getMediaBadge, getMessageCompleted, getMessageCreated, formatMessageTimestamp, formatProcessDuration, type UIMessageWithIndex, getMessagesText, splitAssistantRenderGroups, type AssistantProcessRenderGroup } from "./utils"
 
 const SEARCH_HIGHLIGHT_MARK_CLASS = "rounded px-0.5 bg-amber-4/70 text-current"
 
@@ -1005,9 +1005,14 @@ function MessageGroup({
   // client-side messages (e.g. session errors) don't exist on the server and
   // silently corrupt fork/revert boundaries.
   const lastRealItem = items.findLast((item) => !isSessionErrorMessage(item.message))
-  const isLiveGroup = isStreaming
-    && lastItem !== undefined
-    && messages.slice(lastItem.index + 1).every(isInternalContinuationMessage)
+  const isLatestAssistantGroup = items.some(
+    (item) => item.message.id === latestAssistantMessageId,
+  )
+  // Keep the latest process attached to the active run while a follow-up has
+  // been accepted but has not emitted its first assistant message yet.
+  const isLiveGroup = isStreaming && isLatestAssistantGroup
+  const previousLiveGroupRef = React.useRef(isLiveGroup)
+  const resultEnteredAfterLiveRun = !isLiveGroup && previousLiveGroupRef.current
   const stepsRef = React.useRef<HTMLDivElement>(null)
   const artifactMessages = React.useMemo(
     () => getAssistantGroupArtifactMessages(items),
@@ -1022,6 +1027,10 @@ function MessageGroup({
     }
   })
 
+  React.useEffect(() => {
+    previousLiveGroupRef.current = isLiveGroup
+  }, [isLiveGroup])
+
   if (!lastItem || isMessageEmptyGroup(items)) {
     return null
   }
@@ -1033,9 +1042,6 @@ function MessageGroup({
     const groups = getAssistantRenderGroups(item.message.parts, showThinking)
     return { item, groups, sections: splitAssistantRenderGroups(groups) }
   })
-  const isLatestAssistantGroup = items.some(
-    (item) => item.message.id === latestAssistantMessageId,
-  )
   const textResultItemIndex = itemRenderData.findLastIndex(({ groups }) =>
     groups.some((group) => group.kind === "text" && Boolean(group.text.trim())),
   )
@@ -1100,18 +1106,26 @@ function MessageGroup({
         </AssistantProcessDisclosure>
       ) : null}
       {resultData ? (
-        <MessageComponent
-          message={resultData.item.message}
-          artifactMessages={artifactMessages}
-          isLastMessage={resultData.item.index === messages.length - 1}
-          isStreaming={resultData.item.index === messages.length - 1 && isStreaming}
-          isLastStep
-          hideProcess
-          showLatestArtifactsTitle={isLatestAssistantGroup}
-          templateEntryPath={isLatestAssistantGroup ? templateEntryPath : undefined}
-          artifactFiles={isLatestAssistantGroup ? artifactFiles : undefined}
-          artifactContext={artifactContext}
-        />
+        <div
+          data-assistant-result="true"
+          className={cn(
+            resultEnteredAfterLiveRun
+              && "animate-in fade-in-0 slide-in-from-left-2 duration-200 motion-reduce:animate-none",
+          )}
+        >
+          <MessageComponent
+            message={resultData.item.message}
+            artifactMessages={artifactMessages}
+            isLastMessage={resultData.item.index === messages.length - 1}
+            isStreaming={resultData.item.index === messages.length - 1 && isStreaming}
+            isLastStep
+            hideProcess
+            showLatestArtifactsTitle={isLatestAssistantGroup}
+            templateEntryPath={isLatestAssistantGroup ? templateEntryPath : undefined}
+            artifactFiles={isLatestAssistantGroup ? artifactFiles : undefined}
+            artifactContext={artifactContext}
+          />
+        </div>
       ) : null}
       {lastTextMessage && !isStreaming && (
         <div className="mx-auto flex w-full max-w-[800px] flex-wrap items-center gap-2 px-2 opacity-0 transition-opacity duration-150 group-hover/message-group:opacity-100 md:px-8">

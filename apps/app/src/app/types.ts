@@ -1,10 +1,6 @@
 import type {
   Message,
   Part,
-  PermissionRequest as ApiPermissionRequest,
-  PermissionV2Request,
-  QuestionRequest,
-  ProviderListResponse,
   Session,
 } from "@opencode-ai/sdk/v2/client";
 import type { createClient } from "./lib/opencode";
@@ -12,7 +8,32 @@ import type { OpencodeConfigFile, WorkspaceInfo } from "./lib/desktop-types";
 
 export type Client = ReturnType<typeof createClient>;
 
-export type ProviderListItem = ProviderListResponse["all"][number];
+export type ProviderModel = {
+  id: string;
+  name: string;
+  capabilities: {
+    attachment?: boolean;
+    reasoning?: boolean;
+    input?: {
+      image?: boolean;
+    };
+  };
+  variants?: Record<string, Record<string, unknown>>;
+};
+
+export type ProviderListItem = {
+  id: string;
+  name: string;
+  source: "env" | "config" | "custom" | "api";
+  env: string[];
+  models: Record<string, ProviderModel>;
+};
+
+export type ProviderListResponse = {
+  all: ProviderListItem[];
+  connected: string[];
+  default: Record<string, string>;
+};
 
 export type SidebarSessionItem = {
   id: string;
@@ -30,7 +51,7 @@ export type SidebarSessionItem = {
   directory?: string | null;
 };
 
-export type WorkspaceSessionGroup = {
+export type ProjectSessionList = {
   workspace: WorkspaceInfo;
   sessions: SidebarSessionItem[];
   status: "idle" | "loading" | "ready" | "error";
@@ -378,17 +399,6 @@ export type ReloadTrigger = {
   name?: string;
   action?: "added" | "removed" | "updated";
   path?: string;
-};
-
-export type PendingPermission = Omit<ApiPermissionRequest, "always"> & {
-  always: unknown;
-  receivedAt: number;
-  protocol: "legacy" | "v2";
-  v2?: Pick<PermissionV2Request, "action" | "resources" | "save">;
-};
-
-export type PendingQuestion = QuestionRequest & {
-  receivedAt: number;
 };
 
 export type TodoItem = {
