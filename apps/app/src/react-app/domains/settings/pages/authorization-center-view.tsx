@@ -34,7 +34,7 @@ import type {
 import { t } from "@/i18n";
 import { LayoutSection, LayoutSectionDescription, LayoutSectionHeader, LayoutSectionTitle, LayoutStack } from "@/react-app/domains/settings/settings-layout";
 import { SettingsNotice, SettingsStatusBadge, Spinner } from "@/react-app/domains/settings/settings-section";
-import { AuthorizationFormDialog } from "@/react-app/domains/settings/authorization-form-dialog";
+import { AuthorizationFormDialog } from "@/components/authorization-form-dialog";
 type AuthorizationCenterViewProps = {
   client: iPolloWorkServerClient | null;
   isRemoteWorkspace: boolean;

@@ -1,5 +1,11 @@
 import { appendFile, mkdir } from "node:fs/promises";
-import { dirname } from "node:path";
+import { dirname, resolve } from "node:path";
+import {
+  createDefaultProjectWorkspaceConfig,
+  projectWorkspaceConfigSchema,
+  type ProjectWorkspaceConfig,
+} from "@ipollowork/types/project-workspace";
+import { DEFAULT_ENGINE_ID } from "@ipollowork/types/workspace";
 import { recordAudit } from "../audit.js";
 import {
   getConnectSnapshot,
@@ -30,6 +36,10 @@ import {
 } from "../extensions/google-workspace.js";
 import { callExperimentalExtensionAction, listExperimentalExtensionActions } from "../extensions/index.js";
 import { workspaceIdForPluginContext } from "../plugin-service-runtime.js";
+import {
+  readiPolloWorkWorkspaceConfig,
+  writeiPolloWorkWorkspaceConfig,
+} from "../ipollowork-workspace-config-store.js";
 import { uiControlRequest } from "../ui-control-client.js";
 import type { TokenService } from "../tokens.js";
 import {
@@ -76,6 +86,10 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+function defaultProjectConfig(workspace: WorkspaceInfo): ProjectWorkspaceConfig {
+  return createDefaultProjectWorkspaceConfig({ engineId: workspace.engineId });
+}
+
 export function registerCoreRoutes(options: RegisterCoreRoutesOptions): void {
   const {
     routes,
@@ -99,6 +113,8 @@ export function registerCoreRoutes(options: RegisterCoreRoutesOptions): void {
   } = options;
   const googleWorkspaceConnectFlows = createGoogleWorkspaceConnectFlowManager(config);
   const envPendingChangesByRuntime = new Map<string, boolean>();
+  const projectBuilderSessions = new Set<string>();
+  const projectBuilderSessionKey = (workspaceId: string, sessionId: string) => `${workspaceId}:${sessionId}`;
 
   const callExtensionAction = async (ctx: RequestContext, body: Record<string, unknown>) => {
     if (ctx.actor?.scope === "viewer") {
@@ -146,6 +162,32 @@ export function registerCoreRoutes(options: RegisterCoreRoutesOptions): void {
     return result;
   };
 
+  const resolveEngineToolWorkspace = async (context: Record<string, unknown>): Promise<WorkspaceInfo> => {
+    const workspaceId = typeof context.workspaceId === "string" ? context.workspaceId.trim() : "";
+    if (workspaceId) return resolveWorkspace(config, workspaceId);
+    const directories = [context.directory, context.worktree]
+      .filter((value): value is string => typeof value === "string" && Boolean(value.trim()))
+      .map((value) => value.trim());
+    const workspace = config.workspaces.find((candidate) => {
+      const candidatePath = candidate.path?.trim();
+      if (!candidatePath) return false;
+      return directories.some((directory) => (
+        directory === candidatePath || resolve(directory) === resolve(candidatePath)
+      ));
+    });
+    if (!workspace) {
+      throw new ApiError(400, "project_workspace_context_missing", "Project Builder could not resolve the current iPolloWork workspace");
+    }
+    return resolveWorkspace(config, workspace.id);
+  };
+
+  const requireProjectBuilderSession = (workspace: WorkspaceInfo, context: Record<string, unknown>): void => {
+    const sessionId = typeof context.sessionId === "string" ? context.sessionId.trim() : "";
+    if (!sessionId || !projectBuilderSessions.has(projectBuilderSessionKey(workspace.id, sessionId))) {
+      throw new ApiError(403, "project_builder_not_active", "Open Project Builder from the project menu before using project configuration tools");
+    }
+  };
+
   type EngineHostToolHandler = (
     ctx: RequestContext,
     args: Record<string, unknown>,
@@ -166,6 +208,76 @@ export function registerCoreRoutes(options: RegisterCoreRoutesOptions): void {
       args: isRecord(args.args) ? args.args : {},
       context,
     }),
+    [ENGINE_HOST_TOOL_NAMES.projectRead]: async (_ctx, _args, context) => {
+      const workspace = await resolveEngineToolWorkspace(context);
+      requireProjectBuilderSession(workspace, context);
+      const stored = await readiPolloWorkWorkspaceConfig(config, workspace.id);
+      const parsed = projectWorkspaceConfigSchema.safeParse(stored.project);
+      return {
+        ok: true,
+        workspaceId: workspace.id,
+        source: parsed.success ? "saved" : "default",
+        project: parsed.success ? parsed.data : defaultProjectConfig(workspace),
+      };
+    },
+    [ENGINE_HOST_TOOL_NAMES.projectApply]: async (ctx, args, context) => {
+      if (ctx.actor?.scope === "viewer") {
+        throw new ApiError(403, "forbidden", "Viewer tokens cannot change a project configuration");
+      }
+      ensureWritable(config);
+      const workspace = await resolveEngineToolWorkspace(context);
+      requireProjectBuilderSession(workspace, context);
+      const parsed = projectWorkspaceConfigSchema.safeParse(args.config);
+      if (!parsed.success) {
+        throw new ApiError(400, "invalid_project_config", "Project Builder produced an invalid project configuration", {
+          issues: parsed.error.issues.map((issue) => ({ path: issue.path.join("."), message: issue.message })),
+        });
+      }
+      const projectEngineId = workspace.engineId?.trim() || DEFAULT_ENGINE_ID;
+      const incompatibleAgent = parsed.data.agents.find((agent) => (
+        agent.runtime.engineId !== null && agent.runtime.engineId !== projectEngineId
+      ));
+      if (incompatibleAgent) {
+        throw new ApiError(
+          409,
+          "project_agent_engine_mismatch",
+          `Agent '${incompatibleAgent.name}' must use the project's engine until cross-engine project sessions are supported`,
+        );
+      }
+      const summary = typeof args.summary === "string" && args.summary.trim()
+        ? args.summary.trim().slice(0, 240)
+        : "Apply Project Builder changes";
+      const approval = await ctx.approvals.requestApproval({
+        workspaceId: workspace.id,
+        action: "project.builder.apply",
+        summary,
+        paths: [],
+        actor: ctx.actor ?? { type: "remote" },
+      });
+      if (!approval.allowed) {
+        throw new ApiError(403, "write_denied", "Project Builder change was not approved", {
+          requestId: approval.id,
+          reason: approval.reason,
+        });
+      }
+      const currentConfig = await readiPolloWorkWorkspaceConfig(config, workspace.id);
+      const currentProject = projectWorkspaceConfigSchema.safeParse(currentConfig.project);
+      const project = projectWorkspaceConfigSchema.parse({
+        ...parsed.data,
+        revision: (currentProject.success ? currentProject.data.revision : 0) + 1,
+      });
+      await writeiPolloWorkWorkspaceConfig(config, workspace.id, (current) => ({ ...current, project }));
+      await recordAudit(workspace.path, {
+        id: shortId(),
+        workspaceId: workspace.id,
+        actor: ctx.actor ?? { type: "remote" },
+        action: "project.builder.apply",
+        target: "project",
+        summary,
+        timestamp: Date.now(),
+      });
+      return { ok: true, workspaceId: workspace.id, project, updatedAt: Date.now() };
+    },
     [ENGINE_HOST_TOOL_NAMES.workspaceAppListTools]: async () => uiControlRequest("/execute", {
       method: "POST",
       body: { actionId: "workspace_app.list_tools", args: {} },
@@ -399,6 +511,22 @@ export function registerCoreRoutes(options: RegisterCoreRoutesOptions): void {
 
   addRoute(routes, "GET", "/engine-tools", "client", async () => {
     return jsonResponse({ ok: true, schemaVersion: 1, tools: ENGINE_HOST_TOOLS });
+  });
+
+  addRoute(routes, "POST", "/workspace/:id/project-builder-sessions/:sessionId", "client", async (ctx) => {
+    if (ctx.actor?.scope === "viewer") {
+      throw new ApiError(403, "forbidden", "Viewer tokens cannot activate Project Builder");
+    }
+    const workspace = await resolveWorkspace(config, ctx.params.id);
+    const sessionId = ctx.params.sessionId.trim();
+    if (!sessionId) throw new ApiError(400, "invalid_session", "Project Builder session id is required");
+    projectBuilderSessions.add(projectBuilderSessionKey(workspace.id, sessionId));
+    while (projectBuilderSessions.size > 500) {
+      const oldest = projectBuilderSessions.values().next();
+      if (oldest.done) break;
+      projectBuilderSessions.delete(oldest.value);
+    }
+    return jsonResponse({ ok: true, workspaceId: workspace.id, sessionId });
   });
 
   addRoute(routes, "POST", "/engine-tools/call", "client", async (ctx) => {

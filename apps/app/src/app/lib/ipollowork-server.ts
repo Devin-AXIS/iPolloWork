@@ -22,6 +22,16 @@ import type {
   PluginWorkshopProjectSummary,
   PluginWorkshopSourceBundle,
 } from "@ipollowork/types/plugins";
+import type {
+  WorkBoardConfig,
+  WorkBoardConfigValue,
+  WorkItem,
+  WorkItemCreateInput,
+  WorkItemListResponse,
+  WorkItemUpdateInput,
+  ProjectSessionExecutionFinishInput,
+  ProjectSessionExecutionStartInput,
+} from "@ipollowork/types/work-items";
 
 export type iPolloWorkServerCapabilities = {
   skills: { read: boolean; write: boolean; source: "ipollowork" | "opencode" };
@@ -36,6 +46,7 @@ export type iPolloWorkServerCapabilities = {
   commands: { read: boolean; write: boolean };
   config: { read: boolean; write: boolean };
   templates?: { read: boolean; install: boolean; import: boolean; uninstall: boolean };
+  work?: { read: boolean; write: boolean; board: boolean; schedule: boolean };
   sandbox?: { enabled: boolean; backend: "none" | "docker" | "container" };
   proxy?: { opencode: boolean };
   toolProviders?: {
@@ -1492,6 +1503,108 @@ export function createiPolloWorkServerClient(options: { baseUrl: string; token?:
         hostToken,
         method: "PATCH",
         body: payload,
+      }),
+    activateProjectBuilderSession: (workspaceId: string, sessionId: string) =>
+      requestJson<{ ok: true; workspaceId: string; sessionId: string }>(
+        baseUrl,
+        `/workspace/${encodeURIComponent(workspaceId)}/project-builder-sessions/${encodeURIComponent(sessionId)}`,
+        { token, hostToken, method: "POST", body: {} },
+      ),
+    listWorkItems: (input: {
+      workspaceIds: string[];
+      from?: number;
+      to?: number;
+      status?: string;
+      cursor?: string;
+      limit?: number;
+    }) => {
+      const query = new URLSearchParams();
+      input.workspaceIds.forEach((workspaceId) => query.append("workspaceId", workspaceId));
+      if (input.from !== undefined) query.set("from", String(input.from));
+      if (input.to !== undefined) query.set("to", String(input.to));
+      if (input.status) query.set("status", input.status);
+      if (input.cursor) query.set("cursor", input.cursor);
+      if (input.limit !== undefined) query.set("limit", String(input.limit));
+      return requestJson<WorkItemListResponse>(baseUrl, `/work-items?${query.toString()}`, {
+        token,
+        hostToken,
+        timeoutMs: timeouts.config,
+      });
+    },
+    createWorkItem: (workspaceId: string, input: WorkItemCreateInput) =>
+      requestJson<WorkItem>(baseUrl, `/workspace/${encodeURIComponent(workspaceId)}/work-items`, {
+        token,
+        hostToken,
+        method: "POST",
+        body: input,
+        timeoutMs: timeouts.config,
+      }),
+    startProjectSessionExecution: (
+      workspaceId: string,
+      sessionId: string,
+      input: ProjectSessionExecutionStartInput,
+    ) => requestJson<WorkItem>(
+      baseUrl,
+      `/workspace/${encodeURIComponent(workspaceId)}/project-sessions/${encodeURIComponent(sessionId)}/execution`,
+      {
+        token,
+        hostToken,
+        method: "PUT",
+        body: input,
+        timeoutMs: timeouts.config,
+      },
+    ),
+    finishProjectSessionExecution: (
+      workspaceId: string,
+      sessionId: string,
+      input: ProjectSessionExecutionFinishInput,
+    ) => requestJson<WorkItem>(
+      baseUrl,
+      `/workspace/${encodeURIComponent(workspaceId)}/project-sessions/${encodeURIComponent(sessionId)}/execution`,
+      {
+        token,
+        hostToken,
+        method: "PATCH",
+        body: input,
+        timeoutMs: timeouts.config,
+      },
+    ),
+    updateWorkItem: (workspaceId: string, workItemId: string, input: WorkItemUpdateInput) =>
+      requestJson<WorkItem>(
+        baseUrl,
+        `/workspace/${encodeURIComponent(workspaceId)}/work-items/${encodeURIComponent(workItemId)}`,
+        {
+          token,
+          hostToken,
+          method: "PATCH",
+          body: input,
+          timeoutMs: timeouts.config,
+        },
+      ),
+    deleteWorkItem: (workspaceId: string, workItemId: string, expectedVersion: number) =>
+      requestJson<{ ok: boolean }>(
+        baseUrl,
+        `/workspace/${encodeURIComponent(workspaceId)}/work-items/${encodeURIComponent(workItemId)}?version=${expectedVersion}`,
+        {
+          token,
+          hostToken,
+          method: "DELETE",
+          timeoutMs: timeouts.config,
+        },
+      ),
+    getWorkBoard: (workspaceId: string) =>
+      requestJson<WorkBoardConfig>(baseUrl, `/workspace/${encodeURIComponent(workspaceId)}/work-board`, {
+        token,
+        hostToken,
+        timeoutMs: timeouts.config,
+      }),
+    updateWorkBoard: (workspaceId: string, value: WorkBoardConfigValue, expectedVersion: number) =>
+      requestJson<WorkBoardConfig>(baseUrl, `/workspace/${encodeURIComponent(workspaceId)}/work-board`, {
+        token,
+        hostToken,
+        method: "PATCH",
+        body: { ...value, expectedVersion },
+        timeoutMs: timeouts.config,
       }),
     getDesktopCloudSync: (workspaceId: string) =>
       requestJson<iPolloWorkDesktopCloudSyncState>(baseUrl, `/workspace/${encodeURIComponent(workspaceId)}/desktop-cloud-sync`, {

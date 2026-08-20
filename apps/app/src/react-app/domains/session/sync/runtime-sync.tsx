@@ -11,6 +11,7 @@ type ReactSessionRuntimeProps = {
   connectionKey: string;
   onSessionUpdated?: (update: { sessionId: string; info: Record<string, unknown> }) => void;
   onSessionStatus?: (update: { sessionId: string; status: ConversationStatus }) => void;
+  onSessionError?: (update: { sessionId: string; errorText: string }) => void;
 };
 
 export function ReactSessionRuntime(props: ReactSessionRuntimeProps) {
@@ -21,6 +22,7 @@ export function ReactSessionRuntime(props: ReactSessionRuntimeProps) {
       connectionKey: props.connectionKey,
       onSessionUpdated: props.onSessionUpdated,
       onSessionStatus: props.onSessionStatus,
+      onSessionError: props.onSessionError,
     };
     const releaseWorkspace = ensureWorkspaceSessionSync(input);
     const releaseSessions = trackWorkspaceSessionsSync(input, props.sessionId ? [props.sessionId] : []);
@@ -28,7 +30,7 @@ export function ReactSessionRuntime(props: ReactSessionRuntimeProps) {
       releaseSessions();
       releaseWorkspace();
     };
-  }, [props.workspaceId, props.sessionId, props.connection, props.connectionKey, props.onSessionUpdated, props.onSessionStatus]);
+  }, [props.workspaceId, props.sessionId, props.connection, props.connectionKey, props.onSessionUpdated, props.onSessionStatus, props.onSessionError]);
 
   return null;
 }

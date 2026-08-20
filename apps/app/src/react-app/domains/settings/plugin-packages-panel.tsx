@@ -21,18 +21,16 @@ import { Switch } from "@/components/ui/switch";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { currentLocale, t } from "@/i18n";
 import type {
-  iPolloWorkPluginAuthorizationFlow,
   iPolloWorkPluginAuthorizationState,
   iPolloWorkBundledPluginPackageItem,
   iPolloWorkPluginPackageItem,
   iPolloWorkServerClient,
 } from "@/app/lib/ipollowork-server";
-import type { iPolloWorkPluginAuthorizationMethod } from "@/app/extensions";
 import type { McpStatus, McpStatusMap } from "@/app/types";
 import { pluginPackageAuthorization } from "@/app/lib/plugin-package-readiness";
 import { resolveExtensionIconUrl } from "@/react-app/design-system/extension-icon-src";
 import { notifyPluginUiContributionsChanged } from "@/react-app/plugin-ui/plugin-ui-contributions";
-import { AuthorizationFormDialog } from "@/react-app/domains/settings/authorization-form-dialog";
+import { PluginAuthorizationDialog } from "@/components/plugin-authorization-dialog";
 import { PluginPackageDetail } from "@/react-app/domains/settings/plugin-package-detail";
 import { SettingsListSearchInput } from "@/react-app/domains/settings/settings-list";
 import { SettingsSegmentedTabs } from "@/react-app/domains/settings/settings-segmented-tabs";
@@ -82,10 +80,9 @@ export type PluginPackagesPanelHandle = {
   openImport: () => void;
 };
 
-type SecretAuthorizationEditor = {
+type PluginAuthorizationEditor = {
   item: iPolloWorkPluginPackageItem;
-  method: Extract<iPolloWorkPluginAuthorizationMethod, { kind: "secret-form" }>;
-  values: Record<string, string>;
+  methodId: string;
 };
 
 type McpConnectionFeedback = {
@@ -175,8 +172,7 @@ export const PluginPackagesPanel = forwardRef<PluginPackagesPanelHandle, PluginP
   const [busyKey, setBusyKey] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [importOpen, setImportOpen] = useState(false);
-  const [flows, setFlows] = useState<Record<string, iPolloWorkPluginAuthorizationFlow>>({});
-  const [secretEditor, setSecretEditor] = useState<SecretAuthorizationEditor | null>(null);
+  const [authorizationEditor, setAuthorizationEditor] = useState<PluginAuthorizationEditor | null>(null);
   const [mcpConnectionFeedbacks, setMcpConnectionFeedbacks] = useState<Record<string, McpConnectionFeedback>>({});
   const [loaded, setLoaded] = useState(false);
   const [source, setSource] = useState<"marketplace" | "personal">("marketplace");
@@ -220,10 +216,6 @@ export const PluginPackagesPanel = forwardRef<PluginPackagesPanelHandle, PluginP
           const previous = current[item.pluginId];
           return previous ? [[item.pluginId, previous]] : [];
         })));
-        const connectedPluginIds = new Set(stateResults.flatMap((result) =>
-          result.status === "fulfilled" && result.value.state?.ready === true ? [result.value.pluginId] : []
-        ));
-        setFlows((current) => Object.fromEntries(Object.entries(current).filter(([pluginId]) => !connectedPluginIds.has(pluginId))));
       }
       if (catalogResult.status === "fulfilled") setCatalogItems(catalogResult.value.items);
 
@@ -246,12 +238,6 @@ export const PluginPackagesPanel = forwardRef<PluginPackagesPanelHandle, PluginP
   useEffect(() => {
     void refresh();
   }, [refresh]);
-
-  useEffect(() => {
-    if (Object.keys(flows).length === 0) return;
-    const timer = window.setInterval(() => void refresh(), 2_000);
-    return () => window.clearInterval(timer);
-  }, [flows, refresh]);
 
   const availableCatalogItems = useMemo(
     () => catalogItems.filter((item) => item.installedVersion === null || item.updateAvailable),
@@ -369,42 +355,6 @@ export const PluginPackagesPanel = forwardRef<PluginPackagesPanelHandle, PluginP
     await refresh();
   });
 
-  const saveSecret = (editor: SecretAuthorizationEditor) => run(`${editor.item.pluginId}:${editor.method.id}`, async () => {
-    if (!props.client || !props.workspaceId) return;
-    const fieldValues = Object.fromEntries(editor.method.fields.map((field) => [field.id, editor.values[field.id] ?? ""]));
-    await props.client.savePluginAuthorization(props.workspaceId, editor.item.pluginId, editor.method.id, fieldValues);
-    await refresh();
-  });
-
-  const openSecretEditor = (item: iPolloWorkPluginPackageItem, method: Extract<iPolloWorkPluginAuthorizationMethod, { kind: "secret-form" }>) => {
-    setError(null);
-    setSecretEditor({ item, method, values: {} });
-  };
-
-  const startAuthorization = (item: iPolloWorkPluginPackageItem, method: Exclude<iPolloWorkPluginAuthorizationMethod, { kind: "secret-form" }>) => run(`${item.pluginId}:${method.id}`, async () => {
-    if (!props.client || !props.workspaceId) return;
-    const result = await props.client.startPluginAuthorization(props.workspaceId, item.pluginId, method.id);
-    setFlows((current) => ({ ...current, [item.pluginId]: result.flow }));
-    const url = result.flow.authorizationUrl ?? result.flow.verificationUrl;
-    if (url) props.onOpenUrl(url);
-  });
-
-  const pollDevice = (item: iPolloWorkPluginPackageItem, flow: iPolloWorkPluginAuthorizationFlow) => run(`${item.pluginId}:poll`, async () => {
-    if (!props.client || !props.workspaceId) return;
-    const result = await props.client.pollPluginDeviceAuthorization(props.workspaceId, item.pluginId, flow.flowId);
-    if (result.status.status === "connected") {
-      setFlows((current) => Object.fromEntries(Object.entries(current).filter(([pluginId]) => pluginId !== item.pluginId)));
-      await refresh();
-    }
-  });
-
-  const cancelFlow = (item: iPolloWorkPluginPackageItem, flow: iPolloWorkPluginAuthorizationFlow) => run(`${item.pluginId}:cancel`, async () => {
-    if (!props.client || !props.workspaceId) return;
-    await props.client.cancelPluginAuthorization(props.workspaceId, item.pluginId, flow.flowId);
-    setFlows((current) => Object.fromEntries(Object.entries(current).filter(([pluginId]) => pluginId !== item.pluginId)));
-    await refresh();
-  });
-
   if (!props.client || !props.workspaceId) return null;
 
   const selectedSourceItem = items.find((item) => item.pluginId === props.selectedPluginId);
@@ -432,7 +382,6 @@ export const PluginPackagesPanel = forwardRef<PluginPackagesPanelHandle, PluginP
     const methods = item.manifest.authorization?.methods ?? [];
     const authorization = pluginPackageAuthorization(item, auth, props.mcpStatuses);
     const connected = authorization.connected;
-    const flow = flows[item.pluginId];
     const setupHelpUrl = item.manifest.contributions?.find((contribution) =>
       contribution.type === "setup-instructions"
         && contribution.location === "settings-detail"
@@ -685,24 +634,16 @@ export const PluginPackagesPanel = forwardRef<PluginPackagesPanelHandle, PluginP
                       {method.description ? <p className="mt-1 text-xs leading-5 text-dls-secondary">{method.description}</p> : null}
                       {method.kind === "secret-form" ? (
                         <div className="mt-3">
-                          <Button size="sm" variant={connected ? "outline" : "default"} disabled={busyKey !== null} onClick={() => openSecretEditor(item, method)}>
+                          <Button size="sm" variant={connected ? "outline" : "default"} disabled={busyKey !== null} onClick={() => setAuthorizationEditor({ item, methodId: method.id })}>
                             <KeyRound size={14} />
                             {t("plugin_platform.configure")}
                           </Button>
                         </div>
                       ) : (
-                        <div className="mt-3 flex flex-wrap items-center gap-2">
-                          <Button size="sm" disabled={busyKey === `${item.pluginId}:${method.id}`} onClick={() => void startAuthorization(item, method)}>
-                            {busyKey === `${item.pluginId}:${method.id}` ? <Loader2 size={14} className="animate-spin" /> : null}
+                        <div className="mt-3">
+                          <Button size="sm" disabled={busyKey !== null} onClick={() => setAuthorizationEditor({ item, methodId: method.id })}>
                             {t("plugin_platform.continue")}
                           </Button>
-                          {flow?.kind === "device-code" && flow.methodId === method.id ? (
-                            <>
-                              <span className="rounded-md bg-dls-hover px-2 py-1 font-mono text-xs text-dls-text">{flow.userCode}</span>
-                              <Button size="sm" variant="outline" onClick={() => void pollDevice(item, flow)}>{t("plugin_platform.check_status")}</Button>
-                              <Button size="sm" variant="ghost" onClick={() => void cancelFlow(item, flow)}>{t("plugin_platform.cancel")}</Button>
-                            </>
-                          ) : null}
                         </div>
                       )}
                     </div>
@@ -848,33 +789,18 @@ export const PluginPackagesPanel = forwardRef<PluginPackagesPanelHandle, PluginP
             </div>
           </details>
         {error ? <div role="alert" className="mt-4 rounded-xl border border-red-6 bg-red-2 px-4 py-3 text-xs text-red-11">{error}</div> : null}
-        {secretEditor ? (
-          <AuthorizationFormDialog
-            open
-            title={secretEditor.method.label}
-            description={secretEditor.method.description}
-            fields={secretEditor.method.fields.map((field) => ({
-              id: field.id,
-              label: field.label,
-              placeholder: field.placeholder,
-              secret: field.secret,
-            }))}
-            values={secretEditor.values}
-            saving={busyKey === `${secretEditor.item.pluginId}:${secretEditor.method.id}`}
-            error={error}
-            cancelLabel={t("plugin_platform.cancel")}
-            savedLabel={t("settings.authorization.value_saved")}
-            submitLabel={t("plugin_platform.connect")}
-            savingLabel={t("settings.authorization.saving")}
-            onValuesChange={(values) => setSecretEditor((current) => current ? { ...current, values } : current)}
-            onClose={() => {
-              if (busyKey === null) setSecretEditor(null);
-            }}
-            onSubmit={() => void (async () => {
-              if (await saveSecret(secretEditor)) setSecretEditor(null);
-            })()}
-          />
-        ) : null}
+        <PluginAuthorizationDialog
+          open={authorizationEditor !== null}
+          item={authorizationEditor?.item ?? null}
+          authorization={authorizationEditor ? authorizations[authorizationEditor.item.pluginId] : undefined}
+          client={props.client}
+          workspaceId={props.workspaceId}
+          methodId={authorizationEditor?.methodId}
+          onOpenChange={(open) => {
+            if (!open) setAuthorizationEditor(null);
+          }}
+          onUpdated={refresh}
+        />
       </PluginPackageDetail>
     );
   }

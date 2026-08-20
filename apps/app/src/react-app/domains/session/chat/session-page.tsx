@@ -151,6 +151,7 @@ import { cn } from "@/lib/utils";
 import { useActiveEnterpriseConnection } from "@/react-app/domains/enterprise/use-active-enterprise-connection";
 import { useInstalledPluginContributions, type PluginConversationTemplate } from "@/react-app/plugin-ui/plugin-ui-contributions";
 import type { WorkspaceAppModelContext } from "@/react-app/plugin-ui/workspace-app-frame";
+import { isProjectBuilderSession, ProjectOverview, WorkCenter } from "@/react-app/domains/work";
 import {
   mergePluginWorkshopInstruction,
   nextPluginWorkshopLabel,
@@ -219,11 +220,9 @@ function ProjectEngineBadge({
   );
 }
 
-function ProjectHeaderButton({ projectName }: { projectName: string }) {
-  const [tooltipOpen, setTooltipOpen] = useState(false);
-
+function ProjectHeaderButton({ projectName, onClick }: { projectName: string; onClick: () => void }) {
   return (
-    <Tooltip open={tooltipOpen} onOpenChange={setTooltipOpen}>
+    <Tooltip>
       <TooltipTrigger
         render={(
           <button
@@ -231,9 +230,7 @@ function ProjectHeaderButton({ projectName }: { projectName: string }) {
             data-testid="session-header-project"
             aria-label={projectName}
             className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-dls-canvas text-dls-text transition-colors hover:bg-dls-surface-muted focus-visible:bg-dls-surface-muted focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none mac:titlebar-no-drag"
-            onClick={() => {
-              window.setTimeout(() => setTooltipOpen(true), 0);
-            }}
+            onClick={onClick}
           >
             <span className="flex size-4 items-center justify-center" aria-hidden="true">
               <img
@@ -247,6 +244,69 @@ function ProjectHeaderButton({ projectName }: { projectName: string }) {
       />
       <TooltipContent side="bottom" align="start">{projectName}</TooltipContent>
     </Tooltip>
+  );
+}
+
+function ProjectWorkNavigation({
+  activeView,
+  onOpenConversation,
+  onOpenOverview,
+  onOpenTasks,
+}: {
+  activeView: "conversation" | "overview" | "tasks";
+  onOpenConversation: () => void;
+  onOpenOverview: () => void;
+  onOpenTasks: () => void;
+}) {
+  return (
+    <nav
+      data-testid="session-header-work-navigation"
+      aria-label={t("work.navigation")}
+      className="ml-1 inline-flex h-7 shrink-0 items-center rounded-lg border border-white/35 bg-white/30 p-0.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.48)] backdrop-blur-xl dark:border-white/[0.07] dark:bg-white/[0.045] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.08)] mac:titlebar-no-drag"
+    >
+      <button
+        type="button"
+        data-testid="session-header-work-conversation"
+        aria-current={activeView === "conversation" ? "page" : undefined}
+        className={cn(
+          "h-6 rounded-md px-2.5 text-[11px] font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+          activeView === "conversation"
+            ? "bg-dls-surface/90 text-dls-text shadow-sm"
+            : "text-dls-secondary hover:bg-white/35 hover:text-dls-text dark:hover:bg-white/[0.07]",
+        )}
+        onClick={onOpenConversation}
+      >
+        {t("work.conversation")}
+      </button>
+      <button
+        type="button"
+        data-testid="session-header-project-overview"
+        aria-current={activeView === "overview" ? "page" : undefined}
+        className={cn(
+          "h-6 rounded-md px-2.5 text-[11px] font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+          activeView === "overview"
+            ? "bg-dls-surface/90 text-dls-text shadow-sm"
+            : "text-dls-secondary hover:bg-white/35 hover:text-dls-text dark:hover:bg-white/[0.07]",
+        )}
+        onClick={onOpenOverview}
+      >
+        {t("work.overview")}
+      </button>
+      <button
+        type="button"
+        data-testid="session-header-work-tasks"
+        aria-current={activeView === "tasks" ? "page" : undefined}
+        className={cn(
+          "h-6 rounded-md px-2.5 text-[11px] font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+          activeView === "tasks"
+            ? "bg-dls-surface/90 text-dls-text shadow-sm"
+            : "text-dls-secondary hover:bg-white/35 hover:text-dls-text dark:hover:bg-white/[0.07]",
+        )}
+        onClick={onOpenTasks}
+      >
+        {t("work.tasks")}
+      </button>
+    </nav>
   );
 }
 
@@ -387,6 +447,7 @@ export type SessionPageSidebarProps = {
     templateScope?: WorkContextId,
   ) => Promise<string | null> | string | null | void;
   onCreateTaskWithPrompt?: (workspaceId: string, prompt: string) => void;
+  onCreateProjectBuilder?: (workspaceId: string) => void | Promise<void>;
   onCreateTemplateAuthoring: (
     workspaceId: string,
     input: { category: TemplateCategory; pptxCompatibility?: PptxCompatibility },
@@ -1887,7 +1948,7 @@ export function SessionPage(props: SessionPageProps) {
   const [renameProjectBusy, setRenameProjectBusy] = useState(false);
   const [deleteProjectId, setDeleteProjectId] = useState<string | null>(null);
   const [deleteProjectBusy, setDeleteProjectBusy] = useState(false);
-  const [mainWorkspaceView, setMainWorkspaceView] = useState<"extensions" | null>(null);
+  const [mainWorkspaceView, setMainWorkspaceView] = useState<"extensions" | "schedule" | "project-overview" | "project-board" | null>(null);
   const observedPluginWorkshopSessionRef = useRef<string | null>(null);
   const autoOpenedPluginWorkshopSessionRef = useRef<string | null>(null);
   const preserveSidePanelOnPanelOpenRef = useRef(false);
@@ -2798,7 +2859,19 @@ export function SessionPage(props: SessionPageProps) {
     setCurrentSidePanel(null);
     setMainWorkspaceView("extensions");
   }, [setCurrentSidePanel]);
-  const closeExtensionsRailPane = useCallback(() => {
+  const openGlobalSchedule = useCallback(() => {
+    setCurrentSidePanel(null);
+    setMainWorkspaceView("schedule");
+  }, [setCurrentSidePanel]);
+  const openProjectOverview = useCallback(() => {
+    setCurrentSidePanel(null);
+    setMainWorkspaceView("project-overview");
+  }, [setCurrentSidePanel]);
+  const openProjectBoard = useCallback(() => {
+    setCurrentSidePanel(null);
+    setMainWorkspaceView("project-board");
+  }, [setCurrentSidePanel]);
+  const closeMainWorkspaceView = useCallback(() => {
     setMainWorkspaceView(null);
   }, []);
   const openPluginWorkshopForSession = useCallback((
@@ -3132,19 +3205,26 @@ export function SessionPage(props: SessionPageProps) {
       settledSessionId !== props.selectedSessionId &&
       !templateEntrySurfaceReady,
   );
+  const showSelectedProjectNavigation = Boolean(selectedWorkspaceProject && !selectedWorkspaceProject.workspace.isDefault);
   const showHeaderMenu = Boolean(
-    hasSelectedTask || props.developerMode,
+    hasSelectedTask || props.developerMode || showSelectedProjectNavigation,
   );
   const showMainHeaderTitle = Boolean(
     !rightWorkspaceExpanded &&
-      (showWorkspaceSetupEmptyState || props.selectedSessionId),
+      (showWorkspaceSetupEmptyState || props.selectedSessionId || showSelectedProjectNavigation),
   );
 
   const showMainHeaderMenu = showHeaderMenu && showMainHeaderTitle;
-  const mainHeaderHidden = mainWorkspaceView === "extensions";
-  const floatingHeaderActionClosesExtensions = mainWorkspaceView === "extensions";
-  const floatingHeaderActionLabel = floatingHeaderActionClosesExtensions
-    ? t("plugin_library.close_page")
+  const projectBuilderActive = isProjectBuilderSession(props.selectedWorkspaceId, props.selectedSessionId);
+  const projectWorkActiveView = mainWorkspaceView === "project-overview"
+    ? "overview"
+    : mainWorkspaceView === "project-board"
+      ? "tasks"
+      : "conversation";
+  const mainHeaderHidden = mainWorkspaceView === "extensions" || mainWorkspaceView === "schedule";
+  const floatingHeaderActionClosesWorkspaceView = mainHeaderHidden;
+  const floatingHeaderActionLabel = floatingHeaderActionClosesWorkspaceView
+    ? t("common.close")
     : sidePanelOpen ? t("session.right_panel_close") : t("session.right_panel_open");
   const visibleWorkspaceWidth = viewportWidth - (shellConfig.sidebar && sidebarOpen ? effectiveLeftSidebarWidth : 0);
   const floatingRightPanelToggleOffset = sidePanelOpen
@@ -3300,6 +3380,7 @@ export function SessionPage(props: SessionPageProps) {
             setCreateProjectError(null);
             setCreateProjectOpen(true);
           } : undefined}
+          onCreateProjectBuilder={props.sidebar.onCreateProjectBuilder}
           onOpenRenameProject={openRenameProject}
           onRevealProject={(workspaceId) => void props.sidebar.onRevealProject(workspaceId)}
           onOpenDeleteProject={setDeleteProjectId}
@@ -3324,6 +3405,8 @@ export function SessionPage(props: SessionPageProps) {
           }}
           activePrimaryItem={templateMarketOpen
             ? "template-market"
+            : mainWorkspaceView === "schedule"
+              ? "schedule"
             : mainWorkspaceView === "extensions"
               ? "extensions"
               : activePanelTab?.type === "plugin-studio"
@@ -3333,6 +3416,7 @@ export function SessionPage(props: SessionPageProps) {
           onOpenSettings={props.onOpenSettings}
           onOpenHelp={props.onOpenHelp}
           onOpenTemplateMarket={() => setTemplateMarketOpen(true)}
+          onOpenSchedule={openGlobalSchedule}
           onOpenExtensions={openExtensionsRailPane}
           onOpenPluginWorkshop={openPluginWorkshop}
           onSignIn={openCloudSignIn}
@@ -3353,11 +3437,11 @@ export function SessionPage(props: SessionPageProps) {
                       style={{ right: floatingRightPanelToggleOffset }}
                       aria-label={floatingHeaderActionLabel}
                       title={floatingHeaderActionLabel}
-                      aria-pressed={floatingHeaderActionClosesExtensions ? undefined : sidePanelOpen}
-                      disabled={!floatingHeaderActionClosesExtensions && !props.selectedSessionId && !sidePanelOpen}
-                      onClick={floatingHeaderActionClosesExtensions ? closeExtensionsRailPane : toggleRightPanel}
+                      aria-pressed={floatingHeaderActionClosesWorkspaceView ? undefined : sidePanelOpen}
+                      disabled={!floatingHeaderActionClosesWorkspaceView && !props.selectedSessionId && !sidePanelOpen}
+                      onClick={floatingHeaderActionClosesWorkspaceView ? closeMainWorkspaceView : toggleRightPanel}
                     >
-                      {floatingHeaderActionClosesExtensions ? (
+                      {floatingHeaderActionClosesWorkspaceView ? (
                         <X className="size-4" />
                       ) : (
                         <img
@@ -3384,7 +3468,7 @@ export function SessionPage(props: SessionPageProps) {
             >
               <main className="flex h-full min-w-0 flex-col overflow-hidden border-r border-border/40 dark:border-white/[0.055]">
           <header className={cn(
-            "relative z-10 h-10 shrink-0 items-center justify-between border-b border-border px-4 [border-bottom-width:0.5px] md:grid md:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] md:px-6 mac:titlebar-drag mac:backdrop-blur-2xl mac:backdrop-saturate-150 @container/titlebar",
+            "relative z-10 h-10 shrink-0 items-center justify-between border-b border-white/30 bg-background/80 px-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.4)] backdrop-blur-2xl backdrop-saturate-150 [border-bottom-width:0.5px] dark:border-white/[0.06] dark:bg-background/72 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] md:grid md:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] md:px-6 mac:titlebar-drag @container/titlebar",
             mainHeaderHidden ? "hidden!" : "flex",
             sidebarVisuallyCollapsed && shellConfig.sidebar ? "!pl-16 mac:!pl-32" : "",
           )}>
@@ -3405,12 +3489,21 @@ export function SessionPage(props: SessionPageProps) {
             <div className="relative z-10 flex min-w-0 max-w-full items-center gap-1 md:justify-self-start">
               {showMainHeaderTitle ? (
                 <>
-                  {props.selectedSessionId ? <ProjectHeaderButton projectName={selectedProjectName} /> : null}
+                  {showSelectedProjectNavigation ? (
+                    <ProjectHeaderButton projectName={selectedProjectName} onClick={openProjectOverview} />
+                  ) : null}
                   <h1 className="truncate text-[14px] font-medium text-dls-text">
                     {showWorkspaceSetupEmptyState
                       ? t("workspace.empty_state_body")
-                      : selectedSessionTitle || t("session.default_title")}
+                      : props.selectedSessionId
+                        ? selectedSessionTitle || t("session.default_title")
+                        : selectedProjectName}
                   </h1>
+                  {projectBuilderActive ? (
+                    <span className="shrink-0 rounded-full bg-primary/10 px-2 py-0.5 text-[9px] font-medium text-primary" data-testid="project-builder-badge">
+                      {t("project_builder.title")}
+                    </span>
+                  ) : null}
                 </>
               ) : null}
 
@@ -3481,6 +3574,15 @@ export function SessionPage(props: SessionPageProps) {
                   </DropdownMenuContent>
                 </DropdownMenu>
               ) : null}
+
+              {showSelectedProjectNavigation ? (
+                <ProjectWorkNavigation
+                  activeView={projectWorkActiveView}
+                  onOpenConversation={closeMainWorkspaceView}
+                  onOpenOverview={openProjectOverview}
+                  onOpenTasks={openProjectBoard}
+                />
+              ) : null}
             </div>
 
             <div data-testid="session-header-actions" className="relative z-10 flex items-center gap-1.5 text-gray-10 md:col-start-3 md:justify-self-end mac:titlebar-no-drag">
@@ -3532,7 +3634,28 @@ export function SessionPage(props: SessionPageProps) {
                 </div>
               ) : null}
 
-              {mainWorkspaceView === "extensions" && props.settingsSlot ? (
+              {mainWorkspaceView === "project-overview" ? (
+                <ProjectOverview
+                  projectName={selectedProjectName}
+                  workspaceId={props.runtimeWorkspaceId}
+                  client={props.ipolloworkServerClient}
+                  engineId={props.selectedWorkspaceDisplay.engineId}
+                  providers={props.providers ?? []}
+                  projectModel={props.surface?.selectedModel ?? { providerID: "", modelID: "" }}
+                  onOpenTasks={openProjectBoard}
+                  onConfigureModels={props.surface?.onConfigureModels}
+                  onConfigureTokenStar={props.surface?.onConfigureTokenStar}
+                />
+              ) : mainWorkspaceView === "schedule" || mainWorkspaceView === "project-board" ? (
+                <WorkCenter
+                  mode={mainWorkspaceView === "schedule" ? "global" : "project"}
+                  selectedWorkspaceId={props.selectedWorkspaceId}
+                  runtimeWorkspaceId={props.runtimeWorkspaceId}
+                  selectedClient={props.ipolloworkServerClient}
+                  environmentClient={props.environmentClient ?? null}
+                  workspaces={props.workspaces}
+                />
+              ) : mainWorkspaceView === "extensions" && props.settingsSlot ? (
                 <div className="flex h-full min-h-0 flex-col overflow-y-auto bg-background">
                   {props.settingsSlot}
                 </div>

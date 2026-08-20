@@ -47,6 +47,6 @@ describe("managed brand header", () => {
     expect(source).toContain('ctx.language === "zh" ? "font-medium" : "font-normal"');
     expect(providerSource).toContain("language: Language");
     expect(source).toContain("text-sm font-normal");
-    expect(source.match(/className=\{primarySidebarActionClass\}/g)).toHaveLength(3);
+    expect(source.match(/className=\{primarySidebarActionClass\}/g)).toHaveLength(5);
   });
 });

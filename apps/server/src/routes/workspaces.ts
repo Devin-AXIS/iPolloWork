@@ -8,6 +8,7 @@ import { ensureDir, exists, shortId } from "../utils.js";
 import { defaultWorkspaceiPolloWorkConfig, ensureWorkspaceFiles } from "../workspace-init.js";
 import { seediPolloWorkWorkspaceConfigIfEmpty } from "../ipollowork-workspace-config-store.js";
 import { workspaceIdForPath, workspaceIdForRemote } from "../workspaces.js";
+import { deleteWorkspaceWorkState } from "../work-items.js";
 import { addRoute, type Route } from "./registry.js";
 import { isBuiltInWorkspaceEngineId } from "@ipollowork/types/workspace";
 
@@ -528,6 +529,7 @@ export function registerWorkspaceRoutes(options: RegisterWorkspaceRoutesOptions)
       config.authorizedRoots = config.authorizedRoots.filter((root) => resolve(root) !== resolve(workspace.path));
     }
     const persisted = await persistServerWorkspaceState(config);
+    if (deleted) await deleteWorkspaceWorkState(config, workspace.id);
     await onWorkspacesChanged();
 
     await recordAudit(workspace.path, {

@@ -12,7 +12,7 @@ import type { ComposerDraft } from "../src/app/types";
 
 const modelSelectPath = resolve(import.meta.dir, "../src/components/model-select.tsx");
 const composerPath = resolve(import.meta.dir, "../src/react-app/domains/session/surface/composer/composer.tsx");
-const menuPath = resolve(import.meta.dir, "../src/react-app/domains/session/surface/composer/model-behavior-menu.tsx");
+const menuPath = resolve(import.meta.dir, "../src/components/model-behavior-menu.tsx");
 const modelPickerHookPath = resolve(import.meta.dir, "../src/react-app/domains/session/modals/use-model-picker.ts");
 const sessionRoutePath = resolve(import.meta.dir, "../src/react-app/shell/session-route.tsx");
 
@@ -37,7 +37,7 @@ describe("Composer model and reasoning menu", () => {
 
     expect(route).toContain("supportsNativeAttachments: selectedModelSupportsAttachments");
     expect(route).toContain("attachmentRequiresNativeModelSupport(attachment.mimeType)");
-    expect(route).toContain("{ supportsNativeAttachments: selectedModelSupportsAttachments }");
+    expect(route).toContain("{ supportsNativeAttachments: effectiveModelSupportsAttachments }");
     expect(route).toContain('t("composer.attachments_require_multimodal")');
     expect(composer).not.toContain("attachmentsEnabled");
   });
@@ -91,7 +91,7 @@ describe("Composer model and reasoning menu", () => {
     expect(source).toContain("ensureMergedProviderListQuery");
     expect(source).toContain("catalogSources.length ? catalogSources : [activeSource]");
     expect(source).toContain("const runtime = resolveModelRuntime(active");
-    expect(source).toContain('disabled: runtime.status !== "ready"');
+    expect(source).toContain('disabled: !isConnected || runtime.status !== "ready"');
   });
 
   test("Composer uses one combined model and reasoning menu", () => {
@@ -112,8 +112,8 @@ describe("Composer model and reasoning menu", () => {
     expect(model).toContain('grouped.push({ value: "TokenStar", items: [tokenStarEntry] })');
     expect(model).toContain("includeTokenStar &&");
     expect(model).toContain("ensureMergedProviderListQuery");
-    expect(model).toContain("getSelectableChatProviderItems(catalog ?? data)");
-    expect(model).toContain("disabled={option.disabled && !onConfigureModels}");
+    expect(model).toContain("getChatProviderCatalogItems(catalogValue)");
+    expect(model).toContain("disabled={option.disabled && (option.isConnected || !onConfigureModels)}");
     expect(model).toContain("if (option.disabled)");
     expect(model).toContain("onConfigureModels?.(option.providerID)");
     expect(model).not.toContain('option.providerID === "tokenstar") continue');

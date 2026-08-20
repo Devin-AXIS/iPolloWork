@@ -77,7 +77,7 @@ describe("sidebar projects", () => {
     expect(sidebarSource).toContain('addTestId="new-project-button"');
     expect(sidebarSource).toContain('t("session.new_task")');
     expect(sidebarSource).toContain('t("projects.create")');
-    expect(sidebarSource.match(/className="flex size-4 shrink-0 items-center justify-center"/g)).toHaveLength(4);
+    expect(sidebarSource.match(/className="flex size-4 shrink-0 items-center justify-center"/g)).toHaveLength(5);
     expect(sidebarSource).toContain('primarySidebarActionClassName = "h-8 gap-2 rounded-[8px] px-2');
     expect(sidebarSource).toContain('<SidebarMenu className="gap-1">');
   });
@@ -127,9 +127,10 @@ describe("sidebar projects", () => {
   });
 
   test("matches the project-first starter design in both themes", () => {
-    expect(starterSource).toContain('className="mt-8 flex h-[42px] w-fit max-w-full items-center gap-2 rounded-full bg-muted p-1"');
-    expect(starterSource).toContain('"relative isolate inline-flex h-9 w-[92px]');
-    expect(starterSource).toContain('? "text-foreground"');
+    expect(starterSource).toContain('className="mt-8 flex h-[42px] w-fit max-w-full items-center gap-2 rounded-[40px] bg-[var(--new-conversation-tab-surface)] p-1"');
+    expect(starterSource).toContain('"relative isolate inline-flex w-[92px]');
+    expect(starterSource).toContain('? "h-9 rounded-[40px]');
+    expect(starterSource).toContain('text-[var(--new-conversation-tab-text)]');
     expect(starterSource).toContain('data-testid="new-conversation-mode-indicator"');
     expect(starterSource).not.toContain('{t("new_conversation.subtitle")}');
     expect(starterSource).toContain('return t("new_conversation.placeholder")');
@@ -241,13 +242,24 @@ describe("sidebar projects", () => {
 
   test("keeps header actions right-aligned and exposes the current project", () => {
     expect(sessionPageSource).toContain('data-testid="session-header-project"');
-    expect(sessionPageSource).toContain("<ProjectHeaderButton projectName={selectedProjectName} />");
+    expect(sessionPageSource).toContain("<ProjectHeaderButton projectName={selectedProjectName} onClick={openProjectOverview} />");
     expect(sessionPageSource).toContain('publicAssetUrl("sidebar-icon/figma-folder-closed.svg")');
     expect(sessionPageSource).toContain('className="h-auto w-3.5 dark:invert"');
     expect(sessionPageSource).toContain('<TooltipContent side="bottom" align="start">{projectName}</TooltipContent>');
-    expect(sessionPageSource).toContain("(showWorkspaceSetupEmptyState || props.selectedSessionId)");
+    expect(sessionPageSource).toContain("(showWorkspaceSetupEmptyState || props.selectedSessionId || showSelectedProjectNavigation)");
     expect(sessionPageSource).toContain('data-testid="session-header-actions"');
     expect(sessionPageSource).toContain("md:col-start-3 md:justify-self-end");
+    expect(sessionPageSource).toContain('data-testid="session-header-work-navigation"');
+    expect(sessionPageSource).toContain('data-testid="session-header-project-overview"');
+    expect(sessionPageSource).toContain('data-testid="session-header-work-tasks"');
+    expect(sessionPageSource).toContain("activeView={projectWorkActiveView}");
+    expect(sidebarSource).toContain('data-testid="project-builder-open"');
+    expect(sidebarSource).toContain("onCreateProjectBuilder(workspace.id)");
+    expect(sessionPageSource).not.toContain('data-testid="project-builder-open"');
+    expect(sessionPageSource).toContain('data-testid="project-builder-badge"');
+    expect(sessionPageSource).toContain("props.sidebar.onCreateProjectBuilder");
+    expect(sessionRouteSource).toContain("scopeProjectBuilderDraft(draft");
+    expect(sessionRouteSource).toContain("markProjectBuilderSession(workspaceId, sessionId)");
   });
 
   test("shows nested conversation activity on a collapsed project", () => {

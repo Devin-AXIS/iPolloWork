@@ -117,7 +117,7 @@ describe("new conversation animation catalog", () => {
     expect(surface).toContain('dark:bg-[#131313]');
     expect(starter).toContain('new-conversation-bg.png');
     expect(starter).toContain('max-w-none dark:opacity-20');
-    expect(starter).toContain('rounded-full bg-muted p-1');
+    expect(starter).toContain('rounded-[40px] bg-[var(--new-conversation-tab-surface)] p-1');
     expect(starter).toContain('data-testid="new-conversation-mode-indicator"');
     expect(starter).toContain('layoutId={`new-conversation-mode-indicator-${modeTabIndicatorId}`}');
     expect(starter).toContain('type: "spring"');
@@ -125,13 +125,18 @@ describe("new conversation animation catalog", () => {
     expect(starter).toContain("stiffness: 300");
     expect(starter).toContain("damping: 20");
     expect(starter).toContain("transition={reduceMotion ? { duration: 0 } : MODE_TAB_SPRING}");
-    expect(starter).toContain('className="pointer-events-none absolute inset-0 -z-10 rounded-full bg-background"');
-    expect(starter).toContain('text-muted-foreground hover:bg-background/70 hover:text-foreground');
-    expect(starter).toContain('brightness-0 dark:invert');
-    expect(starter).toContain('dark:text-[#ccc]');
+    expect(starter).toContain('className="pointer-events-none absolute inset-0 -z-10 rounded-[40px] bg-[var(--new-conversation-tab-selected)]"');
+    expect(starter).toContain('text-[var(--new-conversation-tab-muted)] hover:rounded-[40px] hover:bg-[var(--new-conversation-tab-selected)]/70 hover:text-[var(--new-conversation-tab-text)]');
+    expect(starter).toContain('WebkitMaskImage: `url(${iconSrc})`');
+    expect(starter).toContain('dark:text-[#f5f5f5]');
+    expect(starter).toContain('dark:text-[#b0b4ba]');
     expect(starter).toContain('dark:invert dark:opacity-80');
     expect(composer).toContain("new-conversation-composer");
     expect(styles).toContain("--new-conversation-composer-surface: #343434");
+    expect(styles).toContain("--new-conversation-tab-surface: #2a2a2d");
+    expect(styles).toContain("--new-conversation-tab-selected: #3a3a3d");
+    expect(styles).toContain("--new-conversation-tab-text: #f5f5f5");
+    expect(styles).toContain("--new-conversation-tab-muted: #b0b4ba");
     expect(composer).toContain("dark:bg-white dark:text-black");
   });
 

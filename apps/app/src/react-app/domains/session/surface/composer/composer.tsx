@@ -13,7 +13,7 @@ import { formatBytes } from "@/app/utils";
 import { t } from "@/i18n";
 import { resolveExtensionIconUrl } from "@/react-app/design-system/extension-icon-src";
 import { LexicalPromptEditor, type LexicalPromptEditorHandle } from "./editor";
-import { ModelBehaviorMenu } from "./model-behavior-menu";
+import { ModelBehaviorMenu } from "@/components/model-behavior-menu";
 import { listRunningAppsForMention } from "./app-mentions";
 import type { ComposerMentionKind } from "./mention-encoding";
 import { getSlashCommandQuery } from "./slash-command";

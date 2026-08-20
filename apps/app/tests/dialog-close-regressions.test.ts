@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
 const sourceRoot = join(import.meta.dir, "../src/react-app");
+const appSourceRoot = join(import.meta.dir, "../src");
 
 function source(path: string) {
   return readFileSync(join(sourceRoot, path), "utf8");
@@ -13,7 +14,7 @@ describe("ordinary dialog close behavior", () => {
     const addMcp = source("domains/connections/modals/add-mcp-modal.tsx");
     const pluginImport = source("domains/settings/plugin-package-import-modal.tsx");
     const environment = source("domains/settings/pages/environment-view.tsx");
-    const authorization = source("domains/settings/authorization-form-dialog.tsx");
+    const authorization = readFileSync(join(appSourceRoot, "components/authorization-form-dialog.tsx"), "utf8");
 
     expect(addMcp).not.toContain("if (state.submitting) return;\n    reset();");
     expect(pluginImport).not.toContain("if (busy) return;\n    reset();");

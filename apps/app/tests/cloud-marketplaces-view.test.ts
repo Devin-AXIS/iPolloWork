@@ -110,7 +110,7 @@ describe("Cloud marketplace row visibility", () => {
     expect(routeSource).toContain('showNotifications={route.tab !== "extensions"}');
     expect(routeSource).toContain('hideShellHeader={Boolean(route.pluginPackageId)}');
     expect(panelSource).toContain('MARKETPLACE_CATEGORY_IDS.map');
-    expect(panelSource).toContain('props.marketplaceView(search, { category: marketplaceCategory, status: marketplaceStatus })');
+    expect(panelSource).toContain('props.marketplaceView(search, { category: marketplaceCategory, status: marketplaceStatus }, items)');
     expect(marketplaceSource).toContain('statusFilter === "installed"');
     expect(marketplaceSource).toContain('statusFilter === "update"');
     expect(marketplaceSource).toContain('categoryFilter !== "all"');

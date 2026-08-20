@@ -4,6 +4,7 @@ import {
   AlertCircle,
   Archive,
   ArchiveRestore,
+  CalendarDays,
   ChevronRight,
   FolderOpen,
   Loader2,
@@ -16,6 +17,7 @@ import {
   RotateCcw,
   Settings,
   HelpCircle,
+  Sparkles,
   UserRound,
 } from "lucide-react";
 import { LazyMotion, domMax, m } from "motion/react";
@@ -394,6 +396,7 @@ export type AppSidebarProps = {
   onOpenSession: (workspaceId: string, sessionId: string) => void;
   onSelectProject: (workspaceId: string) => Promise<boolean> | boolean | void;
   onOpenCreateProject?: () => void;
+  onCreateProjectBuilder?: (workspaceId: string) => void | Promise<void>;
   onOpenRenameProject: (workspaceId: string) => void;
   onRevealProject: (workspaceId: string) => void;
   onOpenDeleteProject: (workspaceId: string) => void;
@@ -416,11 +419,12 @@ export type AppSidebarProps = {
     name: string | null;
     email: string | null;
   };
-  activePrimaryItem?: "template-market" | "extensions" | "plugin-workshop" | null;
+  activePrimaryItem?: "template-market" | "schedule" | "extensions" | "plugin-workshop" | null;
   onOpenAccount: () => void;
   onOpenSettings: (route?: string) => void;
   onOpenHelp: () => void;
   onOpenTemplateMarket: () => void;
+  onOpenSchedule: () => void;
   onOpenExtensions: () => void;
   onOpenPluginWorkshop: () => void;
   onSignIn: () => void;
@@ -688,6 +692,18 @@ export function AppSidebar(props: AppSidebarProps) {
             </SidebarMenuItem>
             <SidebarMenuItem>
               <SidebarMenuButton
+                onClick={props.onOpenSchedule}
+                isActive={props.activePrimaryItem === "schedule"}
+                className={primarySidebarActionClass}
+              >
+                <span className="flex size-4 shrink-0 items-center justify-center" aria-hidden="true">
+                  <CalendarDays className="size-3.5" />
+                </span>
+                <span className="flex-1 truncate">{t("work.global_title")}</span>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+            <SidebarMenuItem>
+              <SidebarMenuButton
                 onClick={props.onOpenExtensions}
                 isActive={props.activePrimaryItem === "extensions"}
                 className={primarySidebarActionClass}
@@ -737,6 +753,7 @@ export function AppSidebar(props: AppSidebarProps) {
                     className="py-0"
                     showInitialLoading={props.showInitialLoading}
                     onSelectProject={props.onSelectProject}
+                    onCreateProjectBuilder={props.onCreateProjectBuilder}
                     onOpenRenameProject={props.onOpenRenameProject}
                     onRevealProject={props.onRevealProject}
                     onOpenDeleteProject={props.onOpenDeleteProject}
@@ -841,6 +858,7 @@ type ProjectSidebarContentProps = {
   showProjectRow?: boolean;
   showInitialLoading?: boolean;
   onSelectProject: (workspaceId: string) => Promise<boolean> | boolean | void;
+  onCreateProjectBuilder?: (workspaceId: string) => void | Promise<void>;
   onOpenRenameProject: (workspaceId: string) => void;
   onRevealProject: (workspaceId: string) => void;
   onOpenDeleteProject: (workspaceId: string) => void;
@@ -853,6 +871,7 @@ function ProjectSidebarContent({
   showProjectRow = true,
   showInitialLoading,
   onSelectProject,
+  onCreateProjectBuilder,
   onOpenRenameProject,
   onRevealProject,
   onOpenDeleteProject,
@@ -995,6 +1014,8 @@ function ProjectSidebarContent({
                         className="size-7 rounded-md data-popup-open:bg-sidebar-accent"
                         aria-label={t("projects.actions")}
                         title={t("projects.actions")}
+                        data-testid="project-actions-menu"
+                        data-project-id={workspace.id}
                       >
                         <span className="flex size-4 items-center justify-center" aria-hidden="true">
                           <img src={publicAssetUrl("sidebar-icon/figma-section-ellipsis.svg")} alt="" className="h-[2.33333px] w-[11.6667px]" />
@@ -1007,6 +1028,15 @@ function ProjectSidebarContent({
                       <Pencil className="size-4" />
                       {t("projects.rename")}
                     </DropdownMenuItem>
+                    {onCreateProjectBuilder ? (
+                      <DropdownMenuItem
+                        data-testid="project-builder-open"
+                        onClick={() => void onCreateProjectBuilder(workspace.id)}
+                      >
+                        <Sparkles className="size-4" />
+                        {t("project_builder.open")}
+                      </DropdownMenuItem>
+                    ) : null}
                     <DropdownMenuItem
                       onClick={() => onRevealProject(workspace.id)}
                       disabled={workspace.workspaceType === "remote"}

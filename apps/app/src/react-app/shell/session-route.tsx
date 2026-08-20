@@ -97,7 +97,7 @@ import {
   modelSupportsAttachments,
   useModelBehavior,
 } from "@/react-app/domains/session/surface/use-model-behavior";
-import { tokenStarModelSupportsEffort } from "@/react-app/domains/connections/provider-auth/tokenstar-provider";
+import { tokenStarModelSupportsEffort } from "@/app/lib/model-behavior";
 import { useSessionFindStore } from "@/react-app/domains/session/surface/find-store";
 import { useModelPicker } from "@/react-app/domains/session/modals/use-model-picker";
 import { CreateRemoteWorkspaceModal } from "@/react-app/domains/workspace/create-remote-workspace-modal";
@@ -133,6 +133,7 @@ import {
   writeLastSessionFor,
 } from "./session-memory";
 import { saveSessionDraft } from "@/react-app/domains/session/sync/draft-store";
+import { useComposerStateStore } from "@/react-app/domains/session/surface/composer-state-store";
 import { useControlAction, type iPolloWorkControlAction } from "./control/control-provider";
 import { useReactRenderWatchdog } from "./react-render-watchdog";
 
@@ -145,6 +146,14 @@ import { useShellShortcuts } from "./use-shell-shortcuts";
 import { useEngineReload } from "./use-engine-reload";
 import { useWorkspaceRouteState } from "./use-workspace-route-state";
 import { getReactQueryClient } from "@/react-app/infra/query-client";
+import {
+  forgetProjectBuilderSession,
+  isProjectBuilderSession,
+  markProjectBuilderSession,
+  projectBuilderSessionId,
+  scopeProjectBuilderDraft,
+} from "@/react-app/domains/work/project-builder-session";
+import { projectExecutionSystemContext } from "@/react-app/domains/work/project-execution";
 import { useSessionControlActions } from "@/react-app/domains/session/control/session-control-actions";
 import type { ConversationStatus } from "@/react-app/domains/session/engine/conversation-engine";
 import { conversationEngineAdapters } from "@/react-app/domains/session/engine/conversation-engines";
@@ -475,7 +484,12 @@ export function SessionRoute() {
   });
 
   const visibleSessionsByWorkspaceId = useMemo(
-    () => userVisibleSessionsByWorkspaceId(sessionsByWorkspaceId),
+    () => Object.fromEntries(
+      Object.entries(userVisibleSessionsByWorkspaceId(sessionsByWorkspaceId)).map(([workspaceId, sessions]) => [
+        workspaceId,
+        sessions.filter((session) => !isProjectBuilderSession(workspaceId, session.id)),
+      ]),
+    ),
     [sessionsByWorkspaceId],
   );
   const projectSessionLists = useMemo(
@@ -497,7 +511,9 @@ export function SessionRoute() {
       void loadWorkspaceSessionsInBackground([project]);
     }
 
-    const knownSessions = sessionsByWorkspaceId[workspaceId] ?? [];
+    const knownSessions = (sessionsByWorkspaceId[workspaceId] ?? []).filter(
+      (session) => !isProjectBuilderSession(workspaceId, session.id),
+    );
     const rememberedSessionId = readLastSessionFor(workspaceId);
     const targetSessionId = knownSessions.find((session) => session.id === rememberedSessionId)?.id
       ?? knownSessions[0]?.id
@@ -932,8 +948,33 @@ export function SessionRoute() {
     navigate("/help", { state: { returnTo } });
   }, [navigate, selectedSessionId, sidebarActiveWorkspaceId]);
 
+  const invalidateProjectExecutionQueries = useCallback(() => {
+    const queryClient = getReactQueryClient();
+    void Promise.all([
+      queryClient.invalidateQueries({ queryKey: ["work-items"] }),
+      queryClient.invalidateQueries({ queryKey: ["project-overview"] }),
+      queryClient.invalidateQueries({ queryKey: ["project-runtime-metrics"] }),
+    ]);
+  }, []);
+
+  const finishProjectExecution = useCallback((input: {
+    sessionId: string;
+    status: "done" | "failed";
+    error?: string | null;
+  }) => {
+    if (!selectedWorkspaceEndpoint || isProjectBuilderSession(selectedWorkspaceId, input.sessionId)) return;
+    const session = sessionsByWorkspaceIdRef.current[selectedWorkspaceId]?.find((item) => item.id === input.sessionId);
+    const title = session?.title?.trim() || t("session.untitled");
+    void selectedWorkspaceEndpoint.client.finishProjectSessionExecution(
+      selectedWorkspaceEndpoint.workspaceId,
+      input.sessionId,
+      { status: input.status, title, error: input.error ?? null },
+    ).then(invalidateProjectExecutionQueries).catch(() => undefined);
+  }, [invalidateProjectExecutionQueries, selectedWorkspaceEndpoint, selectedWorkspaceId, sessionsByWorkspaceIdRef]);
+
   const handleSessionStatus = useCallback((update: { sessionId: string; status: ConversationStatus }) => {
     if (update.status.type !== "idle" || !selectedWorkspaceEndpoint) return;
+    finishProjectExecution({ sessionId: update.sessionId, status: "done" });
     const { contexts, complete, completeWithoutChange, fail } = useDesignAiSelectionStore.getState();
     const runningContexts = Object.values(contexts).filter((context) => (
       context.sessionId === update.sessionId
@@ -959,7 +1000,11 @@ export function SessionRoute() {
         }
       })();
     }
-  }, [selectedWorkspaceEndpoint]);
+  }, [finishProjectExecution, selectedWorkspaceEndpoint]);
+
+  const handleSessionError = useCallback((update: { sessionId: string; errorText: string }) => {
+    finishProjectExecution({ sessionId: update.sessionId, status: "failed", error: update.errorText });
+  }, [finishProjectExecution]);
 
   const surfaceProps = useMemo(() => {
     if (!client || !selectedWorkspaceId || !opencodeBaseUrl || !token || !conversation) {
@@ -1032,16 +1077,82 @@ export function SessionRoute() {
       onSendDraft: async (draft: ComposerDraft, sessionId: string) => {
         const targetSessionId = sessionId.trim() || selectedSessionId;
         if (!targetSessionId) return false;
+        const projectBuilderActive = isProjectBuilderSession(selectedWorkspaceId, targetSessionId);
+        if (projectBuilderActive) {
+          if (!selectedWorkspaceEndpoint) throw new Error(t("work.project_unavailable"));
+          await selectedWorkspaceEndpoint.client.activateProjectBuilderSession(
+            selectedWorkspaceEndpoint.workspaceId,
+            targetSessionId,
+          );
+          draft = scopeProjectBuilderDraft(draft, selectedWorkspace?.name?.trim() || t("project_overview.title"));
+        }
         const text = (draft.resolvedText ?? draft.text).trim();
         if (!text && draft.attachments.length === 0) return false;
+
+        let effectiveModel = activeSelectedModel;
+        let effectiveMode = selectedMode;
+        let effectiveModelVariant = modelVariantValue;
+        let projectSystemContext: string | null = null;
+        let projectExecutionStarted = false;
+        const finishStartedExecution = async (status: "done" | "failed", error?: string | null) => {
+          if (!projectExecutionStarted || !selectedWorkspaceEndpoint) return;
+          await selectedWorkspaceEndpoint.client.finishProjectSessionExecution(
+            selectedWorkspaceEndpoint.workspaceId,
+            targetSessionId,
+            { status, error: error ?? null },
+          ).catch((finishError) => console.warn("[project-execution] could not persist the send result", finishError));
+          invalidateProjectExecutionQueries();
+        };
+
+        if (!projectBuilderActive && selectedWorkspaceEndpoint) {
+          const session = sessionsByWorkspaceId[selectedWorkspaceId]?.find((item) => item.id === targetSessionId);
+          const item = await selectedWorkspaceEndpoint.client.startProjectSessionExecution(
+            selectedWorkspaceEndpoint.workspaceId,
+            targetSessionId,
+            {
+              title: session?.title?.trim() || t("session.untitled"),
+              runtime: {
+                engineId: activeEngineId,
+                model: activeSelectedModel
+                  ? { providerId: activeSelectedModel.providerID, modelId: activeSelectedModel.modelID }
+                  : null,
+                mode: selectedMode ?? null,
+                modelVariant: modelVariantValue,
+              },
+            },
+          );
+          if (!item.execution) throw new Error("The project task did not return an execution binding");
+          projectExecutionStarted = true;
+          effectiveModel = item.execution.runtime.model
+            ? {
+                providerID: item.execution.runtime.model.providerId,
+                modelID: item.execution.runtime.model.modelId,
+              }
+            : null;
+          effectiveMode = item.execution.runtime.mode;
+          effectiveModelVariant = item.execution.runtime.modelVariant;
+          projectSystemContext = projectExecutionSystemContext(item.execution);
+          invalidateProjectExecutionQueries();
+        }
+
+        const effectiveModelUnavailable = Boolean(
+          providerListQuery.data && (
+            !effectiveModel || !permittedSelectableModels.some((model) => (
+              model.providerID === effectiveModel.providerID && model.modelIDs.includes(effectiveModel.modelID)
+            ))
+          ),
+        );
+        const effectiveModelSupportsAttachments = modelSupportsAttachments(providerCatalog, effectiveModel);
         if (
-          !selectedModelSupportsAttachments
+          !effectiveModelSupportsAttachments
           && draft.attachments.some((attachment) => attachmentRequiresNativeModelSupport(attachment.mimeType))
         ) {
+          await finishStartedExecution("failed", t("composer.attachments_require_multimodal"));
           toast.warning(t("composer.attachments_require_multimodal"));
           return false;
         }
-        if (selectedModelUnavailable) {
+        if (effectiveModelUnavailable) {
+          await finishStartedExecution("failed", "Selected model is unavailable.");
           toast.error("Selected model is unavailable.", {
             description: "Choose another model before sending.",
             action: {
@@ -1067,8 +1178,8 @@ export function SessionRoute() {
           attachment_count: draft.attachments.length,
           text_length: text.length,
           workspace_type: selectedWorkspace?.workspaceType ?? "unknown",
-          provider_id: activeSelectedModel?.providerID ?? null,
-          model_id: activeSelectedModel?.modelID ?? null,
+          provider_id: effectiveModel?.providerID ?? null,
+          model_id: effectiveModel?.modelID ?? null,
         });
         markTaskRunStart(targetSessionId);
         // Den org adoption signals (auth-gated inside; no-op when signed out).
@@ -1085,19 +1196,33 @@ export function SessionRoute() {
         trackTaskStarted(targetSessionId, telemetryDimensions);
 
         if (draft.mode === "shell") {
-          await conversation.shell(targetSessionId, text);
-          return true;
+          try {
+            await conversation.shell(targetSessionId, text);
+            await finishStartedExecution("done");
+            return true;
+          } catch (error) {
+            await finishStartedExecution("failed", describeRouteError(error));
+            throw error;
+          }
         }
 
         if (draft.command) {
-          await conversation.runCommand({
-            sessionId: targetSessionId,
-            command: draft.command.name,
-            arguments: draft.command.arguments,
-          });
-          return true;
+          try {
+            await conversation.runCommand({
+              sessionId: targetSessionId,
+              command: draft.command.name,
+              arguments: draft.command.arguments,
+              model: effectiveModel ?? undefined,
+              reasoningEffort: effectiveModelVariant ?? undefined,
+            });
+            return true;
+          } catch (error) {
+            await finishStartedExecution("failed", describeRouteError(error));
+            throw error;
+          }
         }
 
+        try {
         const designSelectionScope = selectedWorkspaceEndpoint
           ? { sessionId: targetSessionId, workspaceId: selectedWorkspaceEndpoint.workspaceId }
           : undefined;
@@ -1111,7 +1236,7 @@ export function SessionRoute() {
           selectedWorkspaceRoot,
           useDesignAiSelectionStore,
           designSelectionScope,
-          { supportsNativeAttachments: selectedModelSupportsAttachments },
+          { supportsNativeAttachments: effectiveModelSupportsAttachments },
         );
         const capabilitySystemContext = draft.capability?.instruction ?? null;
         // Template-session metadata is authoritative. The in-memory surface
@@ -1186,7 +1311,7 @@ export function SessionRoute() {
         const authoringSystemContext = sessionTemplate
           ? templateAuthoringSystemContext(sessionTemplate, selectedDesignSystemGuide)
           : null;
-        const systemContext = [envSystemContext, videoSystemContext, designSystemContext, authoringSystemContext, capabilitySystemContext]
+        const systemContext = [projectSystemContext, envSystemContext, videoSystemContext, designSystemContext, authoringSystemContext, capabilitySystemContext]
           .filter((value): value is string => Boolean(value?.trim()))
           .join("\n\n");
         // Version history is a site-only workflow. Slides and every other
@@ -1245,18 +1370,22 @@ export function SessionRoute() {
           prompt: () => conversation.sendPrompt({
             sessionId: targetSessionId,
             parts: promptParts,
-            model: activeSelectedModel ?? undefined,
-            mode: selectedMode ?? undefined,
-            reasoningEffort: activeSelectedModel?.providerID === "tokenstar" && modelVariantValue && tokenStarModelSupportsEffort(activeSelectedModel.modelID)
-              ? modelVariantValue
+            model: effectiveModel ?? undefined,
+            mode: effectiveMode ?? undefined,
+            reasoningEffort: effectiveModel?.providerID === "tokenstar" && effectiveModelVariant && tokenStarModelSupportsEffort(effectiveModel.modelID)
+              ? effectiveModelVariant
               : undefined,
-            variant: activeSelectedModel?.providerID === "tokenstar" && tokenStarModelSupportsEffort(activeSelectedModel.modelID)
+            variant: effectiveModel?.providerID === "tokenstar" && tokenStarModelSupportsEffort(effectiveModel.modelID)
               ? undefined
-              : modelVariantValue ?? undefined,
+              : effectiveModelVariant ?? undefined,
             system: systemContext || undefined,
           }),
         });
         return true;
+        } catch (error) {
+          await finishStartedExecution("failed", describeRouteError(error));
+          throw error;
+        }
       },
       onDraftChange: () => {
         // Draft persistence will be wired once the full React shell owns session state.
@@ -1330,6 +1459,7 @@ export function SessionRoute() {
   }, [
     client,
     conversation,
+    activeEngineId,
     modelPicker.compactOpen,
     handleOpenSettings,
     hasUsableModel,
@@ -1342,9 +1472,13 @@ export function SessionRoute() {
     modelLabel,
     modelVariantLabel,
     modelVariantValue,
+    invalidateProjectExecutionQueries,
     navigate,
     opencodeBaseUrl,
     providerConnectedIds,
+    providerCatalog,
+    providerListQuery.data,
+    permittedSelectableModels,
     selectedMode,
     activeSelectedModel,
     selectedSessionId,
@@ -1582,6 +1716,63 @@ export function SessionRoute() {
       return false;
     }
   }, [createProject, pendingInitialProjectTask, workspaces]);
+
+  const handleCreateProjectBuilder = useCallback(async (workspaceId: string) => {
+    const workspace = workspaces.find((item) => item.id === workspaceId);
+    const endpoint = workspace ? resolveWorkspaceEndpoint(workspace, {
+      baseUrl,
+      token,
+      hostToken: ipolloworkServerHostInfoState?.hostToken,
+    }) : null;
+    if (!workspace || !endpoint?.token) return;
+
+    const existingSessionId = projectBuilderSessionId(workspaceId);
+    if (existingSessionId) {
+      const exists = (sessionsByWorkspaceId[workspaceId] ?? []).some((session) => session.id === existingSessionId)
+        || await endpoint.client.getSession(endpoint.workspaceId, existingSessionId).then(() => true).catch(() => false);
+      if (exists) {
+        markProjectBuilderSession(workspaceId, existingSessionId);
+        await endpoint.client.activateProjectBuilderSession(endpoint.workspaceId, existingSessionId);
+        writeActiveWorkspaceId(workspaceId);
+        writeLastSessionFor(workspaceId, existingSessionId);
+        navigateToWorkspaceSession(workspaceId, existingSessionId);
+        focusPromptSoon();
+        return;
+      }
+      forgetProjectBuilderSession(workspaceId, existingSessionId);
+    }
+
+    const sessionId = await handleCreateTaskInWorkspace(workspaceId, "work");
+    if (!sessionId) return;
+    markProjectBuilderSession(workspaceId, sessionId);
+    const starterPrompt = t("project_builder.starter_prompt");
+    saveSessionDraft(workspaceId, sessionId, {
+      text: starterPrompt,
+      mode: "prompt",
+    });
+    useComposerStateStore.getState().setDraft(sessionId, starterPrompt);
+
+    const workspaceConversation = conversationEngineAdapters
+      .get(workspace.engineId)
+      .connect({
+        baseUrl: endpoint.opencodeBaseUrl,
+        token: endpoint.token,
+        directory: workspace.path?.trim() || undefined,
+        serverBaseUrl: endpoint.baseUrl,
+        workspaceId: endpoint.workspaceId,
+      });
+    await workspaceConversation.rename(sessionId, t("project_builder.title"), workspace.path?.trim() || undefined).catch(() => undefined);
+    void refreshRouteState();
+  }, [
+    baseUrl,
+    handleCreateTaskInWorkspace,
+    ipolloworkServerHostInfoState?.hostToken,
+    navigateToWorkspaceSession,
+    refreshRouteState,
+    sessionsByWorkspaceId,
+    token,
+    workspaces,
+  ]);
 
   useEffect(() => {
     const pending = pendingInitialProjectTask;
@@ -1962,6 +2153,7 @@ export function SessionRoute() {
         connectionKey={conversationConnectionKey}
         onSessionUpdated={handleRuntimeSessionUpdated}
         onSessionStatus={handleSessionStatus}
+        onSessionError={handleSessionError}
       />
     ) : null}
     <SessionPage
@@ -2077,6 +2269,7 @@ export function SessionRoute() {
         onPrefetchSession: () => {},
         onCreateTaskInWorkspace: (workspaceId, type, templateId, templateScope) =>
           handleCreateTaskInWorkspace(workspaceId, type, templateId, templateScope),
+        onCreateProjectBuilder: handleCreateProjectBuilder,
         onCreateTemplateAuthoring: (workspaceId, input) =>
           handleCreateTaskInWorkspace(workspaceId, "work", undefined, undefined, input),
         onCreateTaskWithPrompt: (workspaceId, prompt) => {
@@ -2154,6 +2347,7 @@ export function SessionRoute() {
               const endpoint = endpointForWorkspace(selectedWorkspace);
               if (!endpoint) return;
               await endpoint.client.deleteSession(endpoint.workspaceId, sessionId);
+              forgetProjectBuilderSession(selectedWorkspaceId, sessionId);
               useDesignAiSelectionStore.getState().resetSession(sessionId);
               if (selectedSessionId === sessionId) {
                 writeLastSessionFor(selectedWorkspaceId, null);

@@ -4,6 +4,10 @@ import { t } from "../../i18n";
 
 type ProviderModel = ProviderListItem["models"][string];
 
+export function tokenStarModelSupportsEffort(id: string) {
+  return id === "gpt-5.5" || id.startsWith("gpt-5.6-");
+}
+
 const WELL_KNOWN_VARIANT_ORDER = [
   "none",
   "minimal",
