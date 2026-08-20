@@ -62,7 +62,7 @@ import { listSavedPromptTemplates, type SavedPromptTemplate } from "@/react-app/
 export type NewConversationMode = "work" | "code" | "design" | "video";
 
 type Icon = LucideIcon;
-type TemplateCoverLoader = (templateId: string) => Promise<{ data: ArrayBuffer; contentType?: string | null }>;
+export type TemplateCoverLoader = (templateId: string) => Promise<{ data: ArrayBuffer; contentType?: string | null }>;
 
 type NewConversationStarterProps = {
   selectedMode: NewConversationMode;
@@ -1242,7 +1242,14 @@ export function NewConversationStarter({
       </div>
 
       <div data-testid="new-conversation-starter-tasks" className="relative pt-6">
-        <div data-testid="new-conversation-quick-actions" className="flex flex-wrap gap-2" aria-label={t("new_conversation.quick_actions_label")}>
+        <div
+          data-testid="new-conversation-quick-actions"
+          className={cn(
+            "flex flex-wrap gap-2",
+            selectedMode === "video" ? "" : "min-h-[56px] content-start",
+          )}
+          aria-label={t("new_conversation.quick_actions_label")}
+        >
         {actions.map(({ id, label, prompt, templateCategory, icon: ActionIcon }) => {
           const selectedTemplateAction = templateCategory !== undefined && templateCategory === activeTemplateCategory;
           const selectedCapabilityAction = !templateCategory && selectedCapabilityId === id;

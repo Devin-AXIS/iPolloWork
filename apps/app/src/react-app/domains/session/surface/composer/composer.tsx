@@ -36,7 +36,7 @@ type ToolMenuSettingsSection = "commands" | "skills" | "mcps" | "plugins";
 type ToolMenuSection = "commands" | "skills" | "mcps" | "extensions";
 type PlusMenuSection = "tools" | "delegation";
 
-type ComposerProps = {
+export type ComposerProps = {
   draft: string;
   mentions: Record<string, ComposerMentionKind>;
   onDraftChange: (value: string) => void;
@@ -46,6 +46,7 @@ type ComposerProps = {
   busy: boolean;
   queuedCount: number;
   disabled: boolean;
+  inputDisabled?: boolean;
   modelUnavailable?: boolean;
   statusLabel: string;
   modelPickerOpen: boolean;
@@ -76,6 +77,9 @@ type ComposerProps = {
   mcpStatus?: string | null;
   mcpStatuses?: McpStatusMap;
   listInstalledExtensions?: () => Promise<iPolloWorkPluginPackageItem[]>;
+  /** Compatibility alias used by the project-first starter while plugin packages migrate to extensions. */
+  listImportedPlugins?: () => Promise<iPolloWorkPluginPackageItem[]>;
+  importedPlugins?: iPolloWorkPluginPackageItem[];
   onOpenWorkspaceApp?: (pluginId: string) => void;
   listExternalAgents: () => Promise<iPolloWorkPluginPackageItem[]>;
   onOpenSettingsSection?: (section: ToolMenuSettingsSection) => void;
@@ -266,7 +270,7 @@ export function ReactSessionComposer(props: ComposerProps) {
   const [mcpServers, setMcpServers] = useState<McpServerEntry[]>(props.mcpServers ?? []);
   const [mcpStatus, setMcpStatus] = useState<string | null>(props.mcpStatus ?? null);
   const [mcpStatuses, setMcpStatuses] = useState<McpStatusMap>(props.mcpStatuses ?? {});
-  const [installedExtensions, setInstalledExtensions] = useState<iPolloWorkPluginPackageItem[]>([]);
+  const [installedExtensions, setInstalledExtensions] = useState<iPolloWorkPluginPackageItem[]>(props.importedPlugins ?? []);
   const [extensionsLoading, setExtensionsLoading] = useState(false);
   const [slashOpen, setSlashOpen] = useState(false);
   const [plusMenuOpen, setPlusMenuOpen] = useState(false);
@@ -275,6 +279,7 @@ export function ReactSessionComposer(props: ComposerProps) {
   const [workModeOpen, setWorkModeOpen] = useState(false);
   const engineSelectedAppearance = props.layout === "inline" && props.inlineAppearance === "engine-selected";
   const canSend = props.draft.trim().length > 0 || props.attachments.length > 0 || props.hasPromptContext;
+  const editorDisabled = props.inputDisabled ?? props.disabled;
   const [workModes, setWorkModes] = useState<ConversationMode[]>([]);
   const [toolMenuSection, setToolMenuSection] = useState<ToolMenuSection>("commands");
   const [mentionItems, setMentionItems] = useState<MentionItem[]>([]);
@@ -287,7 +292,7 @@ export function ReactSessionComposer(props: ComposerProps) {
   const listCommandsRef = useRef(props.listCommands);
   const listSkillsRef = useRef(props.listSkills);
   const listMcpRef = useRef(props.listMcp);
-  const listInstalledExtensionsRef = useRef(props.listInstalledExtensions);
+  const listInstalledExtensionsRef = useRef(props.listInstalledExtensions ?? props.listImportedPlugins);
   const listExternalAgentsRef = useRef(props.listExternalAgents);
   const toolMenuLoadRef = useRef({
     openId: 0,
@@ -447,8 +452,8 @@ export function ReactSessionComposer(props: ComposerProps) {
   }, [props.busy, props.modeSelectionDisabled]);
 
   useEffect(() => {
-    listInstalledExtensionsRef.current = props.listInstalledExtensions;
-  }, [props.listInstalledExtensions]);
+    listInstalledExtensionsRef.current = props.listInstalledExtensions ?? props.listImportedPlugins;
+  }, [props.listInstalledExtensions, props.listImportedPlugins]);
 
   useEffect(() => {
     listExternalAgentsRef.current = props.listExternalAgents;
@@ -547,7 +552,7 @@ export function ReactSessionComposer(props: ComposerProps) {
     setCommandsLoaded(false);
     setSkillsLoaded(Boolean(props.skills));
     setMcpLoaded(Boolean(props.mcpServers));
-    setExtensionsLoaded(false);
+    setExtensionsLoaded(Boolean(props.importedPlugins));
   }, [toolMenuOpen]);
 
   useEffect(() => {
@@ -1236,7 +1241,8 @@ export function ReactSessionComposer(props: ComposerProps) {
               value={props.draft}
               mentions={props.mentions}
               pastedText={pastedTextTokens}
-              disabled={props.disabled}
+              disabled={editorDisabled}
+              submitDisabled={props.disabled}
               placeholder={props.placeholder ?? t("composer.placeholder")}
               onChange={props.onDraftChange}
               onSubmit={handleEditorSubmit}

@@ -80,6 +80,25 @@ describe("new conversation animation catalog", () => {
     expect(sessionPage).toContain("onRequestDesignTemplates={() => void refreshStarterTemplateCatalog()}");
   });
 
+  test("keeps the project-first starter wired to the same workspace tools as New task", () => {
+    expect(sessionPage).toContain("const listSkills = useCallback");
+    expect(sessionPage).toContain("const listMcp = useCallback");
+    expect(sessionPage).toContain("const listImportedPlugins = useCallback");
+    expect(sessionPage).toContain("const listExternalAgents = useCallback");
+    expect(sessionPage).toContain("surface.recentFiles");
+    expect(sessionPage).toContain("surface.searchFiles");
+    expect(sessionPage).toContain("surface.isRemoteWorkspace");
+    expect(sessionPage).toContain("surface.isSandboxWorkspace");
+    expect(sessionPage).toContain("surface.providerConnectedCount");
+    expect(sessionPage).toContain("onUploadInboxFiles={composerTooling.onUploadInboxFiles}");
+    expect(sessionPage).toContain("listSkills={composerTooling.listSkills}");
+    expect(sessionPage).toContain("listMcp={composerTooling.listMcp}");
+    expect(sessionPage).toContain("listImportedPlugins={composerTooling.listImportedPlugins}");
+    expect(sessionPage).toContain("listExternalAgents={composerTooling.listExternalAgents}");
+    expect(sessionPage).toContain("topAccessory={starterCapability ? (");
+    expect(sessionPage).toContain("<StarterCapabilityChip capability={starterCapability}");
+  });
+
   test("opens a materialized design template in the Design panel", () => {
     expect(sessionPage).toContain("const autoOpenedDesignTemplateRef = useRef<string | null>(null)");
     expect(sessionPage).toContain("const templateKey = `${props.selectedSessionId}:${designTemplateEntryPath}`");
@@ -138,6 +157,7 @@ describe("new conversation animation catalog", () => {
     expect(starter).toContain('data-testid="new-conversation-starter-tasks"');
     expect(starter).toContain('className="relative pt-6"');
     expect(starter).toContain('data-testid="new-conversation-quick-actions"');
+    expect(starter).toContain('selectedMode === "video" ? "" : "min-h-[56px] content-start"');
     expect(sessionPage).toContain('data-testid="new-conversation-starter-slot"');
     expect(surface).toContain('data-testid="new-conversation-starter-slot"');
     expect(sessionPage).toContain('className="shrink-0"');
@@ -150,7 +170,7 @@ describe("new conversation animation catalog", () => {
     expect(surface).toContain('pb-[max(64px,env(safe-area-inset-bottom))]');
     expect(sessionPage).toContain('data-testid="new-conversation-starter-composer-shell"');
     expect(surface).toContain('data-testid="new-conversation-starter-composer-shell"');
-    expect(sessionPage).toContain('mt-6 w-full max-w-[616px] shrink-0');
+    expect(sessionPage).toContain('mt-6 w-full shrink-0');
     expect(surface).toContain('mt-6 w-full shrink-0');
   });
 });

@@ -98,11 +98,11 @@ describe("sidebar projects", () => {
     expect(sessionPageSource).toContain('testId="initial-project-engine-badge"');
     expect(sessionPageSource).not.toContain('data-testid="initial-project-engine-dialog"');
     expect(sessionPageSource).toContain("await onSubmit(composerDraft)");
-    expect(sessionPageSource).toContain('engineId={DEFAULT_ENGINE_ID}');
+    expect(sessionPageSource).toContain('engineId={engineId ?? DEFAULT_ENGINE_ID}');
     expect(sessionPageSource).toContain("<ProjectEngineOptions");
     expect(composerSource).toContain("endAccessory?: ReactNode");
     expect(composerSource).toContain('inlineAppearance?: "default" | "engine-selected"');
-    expect(sessionPageSource).toContain('inlineAppearance="engine-selected"');
+    expect(sessionPageSource).not.toContain('inlineAppearance="engine-selected"');
     expect(sessionPageSource).toContain('testId="session-composer-engine-badge"');
     expect(sessionPageSource).not.toContain('testId="session-engine-badge"');
     expect(sessionSurfaceSource).toContain("composerEndAccessory?: ReactNode");
@@ -113,8 +113,14 @@ describe("sidebar projects", () => {
     expect(sessionRouteSource).not.toMatch(/handleCreateInitialProjectTask[\s\S]{0,500}selectedWorkspace\?\.engineId/);
     expect(sessionRouteSource).toContain('name: t("session.untitled")');
     expect(sessionRouteSource).toContain("surfaceProps.onSendDraft(pending.draft, pending.sessionId)");
-    expect(sessionRouteSource).toContain("workspaces.find((workspace) => workspace.id === selectedWorkspaceId)?.isDefault !== false");
-    expect(sessionRouteSource).toMatch(/if \(pendingInitialProjectTask\) return;[\s\S]*startupConversationPhase !== "pending"/);
+    expect(sessionPageSource).toContain("selectedProjectHasNoTasks");
+    expect(sessionPageSource).toContain("props.sidebar.onCreateInitialProjectTask(");
+    expect(sessionPageSource).toContain("promptTemplates={conversationTemplates}");
+    expect(sessionPageSource).toContain("templates={availableStarterTemplateCatalog}");
+    expect(sessionPageSource).toContain("getTemplateCover={getStarterTemplateCover}");
+    expect(sessionPageSource).toContain("onRequestTemplates={() => void refreshStarterTemplateCatalog()}");
+    expect(sessionRouteSource).toContain("const handleCreateInitialProjectTask = useCallback(async (draft: ComposerDraft, workspaceId?: string)");
+    expect(sessionRouteSource).toContain("navigateToWorkspaceSession(workspaceId, latestSession.id, { replace: true });");
     expect(sessionRouteSource).toMatch(
       /!loading[\s\S]*selectedWorkspaceId[\s\S]*!workspaces\.some\(\(workspace\) => !workspace\.isDefault\)[\s\S]*dismissFirstRunLoader\(\)/,
     );
@@ -128,7 +134,7 @@ describe("sidebar projects", () => {
     expect(starterSource).not.toContain('{t("new_conversation.subtitle")}');
     expect(starterSource).toContain('return t("new_conversation.placeholder")');
     expect(appStyleSource).toContain("--dls-active: var(--slate-4)");
-    expect(composerEditorSource).toContain('text-[15px] leading-6 text-slate-10');
+    expect(composerEditorSource).toContain('text-[15px] leading-6 text-[color:var(--new-conversation-placeholder)]');
     expect(composerEditorSource).toContain('data-testid="composer-placeholder"');
     expect(englishLocaleSource).toContain('"new_conversation.placeholder": "Choose a direction, or describe the work in your own words."');
     expect(chineseLocaleSource).toContain('"new_conversation.placeholder": "选择一个方向，或直接描述你要推进的工作。"');
@@ -142,11 +148,13 @@ describe("sidebar projects", () => {
     expect(chineseLocaleSource).toContain('"session.default_title": "新任务"');
   });
 
-  test("reveals section toggles on hover and supports title double-click", () => {
+  test("reveals section toggles on hover and supports single-click on the full header", () => {
     expect(sidebarSource).toContain("group-hover/section:opacity-100");
     expect(sidebarSource).toContain("group-focus-within/section:opacity-100");
-    expect(sidebarSource).toContain("onDoubleClick={onToggle}");
-    expect(sidebarSource).toContain("event.stopPropagation()");
+    expect(sidebarSource).toContain('type="button"');
+    expect(sidebarSource).toContain("onClick={onToggle}");
+    expect(sidebarSource).toContain('aria-expanded={expanded}');
+    expect(sidebarSource).not.toContain("onDoubleClick={onToggle}");
   });
 
   test("manages project folders without restoring the legacy workspace UI", () => {

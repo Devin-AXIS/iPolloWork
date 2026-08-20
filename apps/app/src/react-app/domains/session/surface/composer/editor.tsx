@@ -41,6 +41,7 @@ type EditorProps = {
   mentions: Record<string, ComposerMentionKind>;
   pastedText?: Array<{ label: string; lines: number }>;
   disabled: boolean;
+  submitDisabled?: boolean;
   placeholder: string;
   onChange: (value: string) => void;
   onSubmit: () => void | Promise<void>;
@@ -1035,7 +1036,7 @@ export const LexicalPromptEditor = forwardRef<LexicalPromptEditorHandle, EditorP
             />
           }
           placeholder={
-            <div data-testid="composer-placeholder" className="pointer-events-none absolute left-0 top-0 text-[15px] leading-6 text-slate-10">
+            <div data-testid="composer-placeholder" className="pointer-events-none absolute left-0 top-0 text-[15px] leading-6 text-[color:var(--new-conversation-placeholder)]">
               {props.placeholder}
             </div>
           }
@@ -1044,7 +1045,7 @@ export const LexicalPromptEditor = forwardRef<LexicalPromptEditorHandle, EditorP
         <OnChangePlugin onChange={syncPromptFromEditorState} />
         <HistoryPlugin />
         <SyncPlugin value={props.value} mentions={props.mentions} pastedText={props.pastedText} disabled={props.disabled} />
-        <SubmitPlugin onSubmit={props.onSubmit} disabled={props.disabled} />
+        <SubmitPlugin onSubmit={props.onSubmit} disabled={props.submitDisabled ?? props.disabled} />
         <PasteChipPlugin onPasteText={props.onPasteText} />
         <MentionChipNavigationPlugin />
         <DesignSelectionDeletePlugin disabled={props.disabled} />

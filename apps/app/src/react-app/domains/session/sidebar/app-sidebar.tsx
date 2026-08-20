@@ -450,30 +450,23 @@ function SidebarSectionHeader({
 }: SidebarSectionHeaderProps) {
   return (
     <div className="group/section flex h-8 shrink-0 items-center gap-1 px-4">
-      <div
-        className="flex h-8 min-w-0 flex-1 select-none items-center gap-2 rounded-md text-left text-sm font-medium text-[#858a94] transition-colors hover:text-sidebar-foreground"
-        onDoubleClick={onToggle}
+      <button
+        type="button"
+        onClick={onToggle}
+        className="flex h-8 min-w-0 flex-1 select-none items-center gap-2 rounded-md text-left text-sm font-medium text-[#858a94] transition-colors hover:text-sidebar-foreground focus-visible:ring-1 focus-visible:ring-sidebar-ring focus-visible:outline-hidden"
+        aria-label={label}
+        aria-expanded={expanded}
+        data-testid={toggleTestId}
       >
         <span className="min-w-0 truncate">{label}</span>
-        <button
-          type="button"
-          onClick={onToggle}
-          onDoubleClick={(event) => {
-            event.stopPropagation();
-            onToggle();
-          }}
-          className="inline-flex size-4 shrink-0 items-center justify-center rounded-sm opacity-0 transition-[opacity,transform] group-hover/section:opacity-100 group-focus-within/section:opacity-100 focus-visible:opacity-100 focus-visible:ring-1 focus-visible:ring-sidebar-ring focus-visible:outline-hidden"
-          aria-label={label}
-          aria-expanded={expanded}
-          data-testid={toggleTestId}
-        >
+        <span className="inline-flex size-4 shrink-0 items-center justify-center rounded-sm opacity-0 transition-[opacity,transform] group-hover/section:opacity-100 group-focus-within/section:opacity-100">
           <img
             src={publicAssetUrl("sidebar-icon/figma-section-chevron-down.svg")}
             alt=""
             className={cn("size-4 transition-transform duration-200", !expanded && "-rotate-90")}
           />
-        </button>
-      </div>
+        </span>
+      </button>
       {onAdd && addLabel ? (
         <button
           type="button"
@@ -705,7 +698,7 @@ export function AppSidebar(props: AppSidebarProps) {
                 isActive={props.activePrimaryItem === "plugin-workshop"}
                 className={primarySidebarActionClass}
               >
-                <span className="flex size-4 shrink-0 items-center justify-center" aria-hidden="true">
+                <span className="grid size-4 shrink-0 place-items-center" aria-hidden="true">
                   <img src={publicAssetUrl("sidebar-icon/plugin.svg")} alt="" className="size-[12px] dark:invert" />
                 </span>
                 <span className="flex-1 truncate">{t("plugin_workshop.title")}</span>

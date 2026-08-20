@@ -57,6 +57,16 @@ describe("composer queue behavior", () => {
     expect(idleAction).toContain('t("composer.empty_submit_hint")');
   });
 
+  test("keeps drafting available while model readiness blocks submission", () => {
+    expect(composerSource).toContain("inputDisabled?: boolean");
+    expect(composerSource).toContain("const editorDisabled = props.inputDisabled ?? props.disabled;");
+    expect(composerSource).toContain("disabled={editorDisabled}");
+    expect(composerSource).toContain("submitDisabled={props.disabled}");
+    expect(editorSource).toContain("submitDisabled?: boolean;");
+    expect(editorSource).toContain("disabled={props.submitDisabled ?? props.disabled}");
+    expect(sessionSurfaceSource).toContain("inputDisabled={false}");
+  });
+
   test("drains queued drafts one at a time", () => {
     expect(sessionSurfaceSource).not.toContain("function mergeDrafts(");
     expect(sessionSurfaceSource).toContain("const next = queuedDrafts[0]");

@@ -186,6 +186,7 @@
   --dls-text-secondary: var(--slate-11);
   --dls-hover: var(--slate-3);
   --dls-active: var(--slate-4);
+  --new-conversation-placeholder: #cccccc;
   --dls-radius: 16px;
   --dls-radius-lg: 24px;
   --dls-shell-shadow: 0 10px 30px rgba(15, 23, 42, 0.06);
@@ -247,6 +248,7 @@
   --dls-text-secondary: var(--slate-11);
   --dls-hover: var(--slate-3);
   --dls-active: var(--slate-4);
+  --new-conversation-placeholder: #333333;
   --dls-shell-shadow: 0 18px 48px rgba(0, 0, 0, 0.32);
   --dls-card-shadow: 0 14px 36px rgba(0, 0, 0, 0.24);
 }
