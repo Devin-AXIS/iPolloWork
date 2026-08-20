@@ -71,8 +71,7 @@ function adapterSupportsResource(
   resource: PluginPackageManifest["resources"][number],
 ): boolean {
   if (APP_MANAGED_PLUGIN_RESOURCE_TYPES.has(resource.type) || PASSIVE_PLUGIN_RESOURCE_TYPES.has(resource.type)) return true;
-  if (!adapter.portableResourceTypes.has(resource.type)) return false;
-  return !(adapter.id === DEEPSEEK_HARNESS_ENGINE_ID && resource.type === "mcp" && resource.oauth === true);
+  return adapter.portableResourceTypes.has(resource.type);
 }
 
 export function pluginEngineCompatibility(
@@ -87,7 +86,15 @@ export function pluginEngineCompatibility(
   const unsupportedCapabilityIds = binding?.capabilities
     .filter((capability) => !adapter.nativeCapabilityKinds.has(capability.kind))
     .map((capability) => capability.id) ?? [];
-  const nativeEngineOnly = Boolean(manifest.package?.engines?.length && !manifest.package.engines.includes(adapter.id));
+  const hasEngineNativeCapabilities = Boolean(
+    manifest.engineBindings?.some((entry) => entry.capabilities.length > 0)
+    || manifest.resources.some((resource) => resource.provides?.includes("service:external-subagent")),
+  );
+  const nativeEngineOnly = Boolean(
+    hasEngineNativeCapabilities
+    && manifest.package?.engines?.length
+    && !manifest.package.engines.includes(adapter.id),
+  );
   const canActivate = supportedResourceIds.length > 0
     || Boolean(binding?.capabilities.some((capability) => adapter.nativeCapabilityKinds.has(capability.kind)));
   const hasLimitations = nativeEngineOnly || unsupportedResources.length > 0 || unsupportedCapabilityIds.length > 0;
@@ -295,7 +302,11 @@ export const openCodePluginEngineAdapter: PluginEngineAdapter = {
 
 export const deepSeekHarnessPluginEngineAdapter: PluginEngineAdapter = {
   id: DEEPSEEK_HARNESS_ENGINE_ID,
-  portableResourceTypes: new Set(["skill", "mcp"]),
+  // Skills and MCPs are projected into the Harness runtime. Commands and
+  // agents are consumed through the server-owned prompt adapter, preserving
+  // one portable package contract without pretending they are native DSH
+  // plugins.
+  portableResourceTypes: new Set(["skill", "agent", "command", "mcp"]),
   nativeCapabilityKinds: new Set(),
   compatibility(manifest) {
     const binding = manifest.engineBindings?.find((entry) => entry.engine === DEEPSEEK_HARNESS_ENGINE_ID);

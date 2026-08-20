@@ -274,6 +274,13 @@ describe("plugin developer and user flow", () => {
       compatibility("opencode", "ready"),
       compatibility("deepseek-harness", "ready"),
     ])).toEqual({ kind: "universal" });
+    expect(pluginPackageEngineScope({
+      ...manifest,
+      package: { ...manifest.package, engines: ["opencode"] },
+    }, [
+      compatibility("opencode", "ready"),
+      compatibility("deepseek-harness", "ready"),
+    ])).toEqual({ kind: "universal" });
     expect(pluginPackageEngineScope(universal, [
       compatibility("opencode", "ready"),
       compatibility("deepseek-harness", "partial"),

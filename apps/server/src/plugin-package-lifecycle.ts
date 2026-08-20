@@ -22,7 +22,12 @@ import {
   type PluginEngineVersion,
   type PluginWorkspaceFile,
 } from "./plugin-engine-adapter.js";
-import { parsePluginPackageManifest, type PluginPackageManifest, type PluginResource } from "./plugin-package-manifest.js";
+import {
+  parsePluginPackageManifest,
+  validatePluginPackageManifest,
+  type PluginPackageManifest,
+  type PluginResource,
+} from "./plugin-package-manifest.js";
 import { parsePluginWorkshopDraftManifest, preparePluginWorkshopSourceBundle } from "./plugin-workshop-package.js";
 import { runtimeStorageDir } from "./runtime-storage.js";
 import { DEFAULT_ENGINE_ID, type ServerConfig } from "./types.js";
@@ -422,6 +427,11 @@ async function writeState(config: ServerConfig, state: LifecycleState): Promise<
 
 function manifestFromVersion(version: InstalledVersion): PluginPackageManifest {
   return parsePluginPackageManifest(version.manifest);
+}
+
+function historicalManifestFromVersion(version: InstalledVersion): PluginPackageManifest | null {
+  const result = validatePluginPackageManifest(version.manifest);
+  return result.success ? result.manifest : null;
 }
 
 function sourceResourcePaths(manifest: PluginPackageManifest): string[] {
@@ -1040,7 +1050,6 @@ export async function listPortablePluginPromptCapabilities(input: {
     const version = installed.versions[installed.currentVersion];
     if (!version) throw new ApiError(500, "plugin_package_state_invalid", `Missing current version for ${installed.pluginId}`);
     const manifest = manifestFromVersion(version);
-    if (manifest.package?.engines && !manifest.package.engines.includes(input.engineId)) continue;
     const projected: PluginEngineVersion = {
       manifest,
       artifactRoot: artifactRoot(input.serverConfig, installed.pluginId, version.version),
@@ -1357,7 +1366,8 @@ async function reconcilePackageProjection(
   );
   for (const version of Object.values(installed.versions)) {
     if (next?.version.version === version.version) continue;
-    if (!pluginEngineCanActivate(adapter, manifestFromVersion(version))) continue;
+    const historicalManifest = historicalManifestFromVersion(version);
+    if (!historicalManifest || !pluginEngineCanActivate(adapter, historicalManifest)) continue;
     for (const file of workspaceActivationFiles(config, workspaceId, installed.pluginId, version)) {
       if (nextPaths.has(file.targetPath)) continue;
       const target = resolveWithin(workspaceRoot, file.targetPath);
@@ -1690,8 +1700,10 @@ async function uninstallPluginPackageUnlocked(input: {
   for (const workspace of localProjectionTargets(input.serverConfig)) {
     const adapter = workspaceEngineAdapter(input.serverConfig, workspace.workspaceId);
     const filesByPath = new Map<string, Set<string>>();
-    const versions = Object.values(installed.versions).filter((version) =>
-      pluginEngineCanActivate(adapter, manifestFromVersion(version)));
+    const versions = Object.values(installed.versions).filter((version) => {
+      const historicalManifest = historicalManifestFromVersion(version);
+      return historicalManifest && pluginEngineCanActivate(adapter, historicalManifest);
+    });
     for (const version of versions) {
       for (const file of workspaceActivationFiles(input.serverConfig, workspace.workspaceId, installed.pluginId, version)) {
         const hashes = filesByPath.get(file.targetPath) ?? new Set<string>();
