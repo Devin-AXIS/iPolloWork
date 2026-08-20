@@ -246,9 +246,9 @@ describe("Design HTML runtime", () => {
     const runtimeSource = await Bun.file(runtimePath).text();
 
     expect(preview).toContain('type: "deselected"');
-    expect(preview).toContain("clearSelection(!0)");
     expect(preview).toContain("ipollowork-design-deck-navigated");
     expect(runtimeSource).toContain("if (isDeckControl) notifyNavigation();");
+    expect(runtimeSource).toContain('document.addEventListener("ipollowork-design-deck-navigated", () => clearSelection(true));');
   });
 
   test("intercepts Ctrl or Meta wheel zoom only for presentation canvases", () => {
