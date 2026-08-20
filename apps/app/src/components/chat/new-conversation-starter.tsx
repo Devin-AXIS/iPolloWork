@@ -155,6 +155,24 @@ const TEMPLATE_CATEGORY_ICONS: Record<TemplateCategory, Icon> = {
   video: Film,
 };
 
+const TEMPLATE_CATEGORY_LABEL_KEYS = {
+  site: "new_conversation.template_category.site",
+  poster: "new_conversation.template_category.poster",
+  cards: "new_conversation.template_category.cards",
+  app: "new_conversation.template_category.app",
+  article: "new_conversation.template_category.article",
+  slides: "new_conversation.template_category.slides",
+  report: "new_conversation.template_category.report",
+  other: "new_conversation.template_category.other",
+  video: "new_conversation.template_category.video",
+} as const satisfies Record<TemplateCategory, string>;
+
+const ANIMATION_UPDATE_LABEL_KEYS = {
+  live: "new_conversation.animations.update_live",
+  rebuild: "new_conversation.animations.update_rebuild",
+  reload: "new_conversation.animations.update_reload",
+} as const;
+
 const MODE_ACTIONS: Record<NewConversationMode, ReadonlyArray<StarterAction>> = {
   work: [
     { id: "auto_computer", label: "new_conversation.action.auto_computer", icon: MonitorCog, prompt: "new_conversation.prompt.auto_computer" },
@@ -238,7 +256,7 @@ function TemplateStrip({
   const categoryTemplates = templates.filter((template) => (
     template.manifest.category === category && (category !== "video" || template.manifest.surface === "video")
   ));
-  const categoryLabel = t(`new_conversation.template_category.${category}`);
+  const categoryLabel = t(TEMPLATE_CATEGORY_LABEL_KEYS[category]);
   const CategoryIcon = TEMPLATE_CATEGORY_ICONS[category];
   const scrollerRef = useRef<HTMLDivElement | null>(null);
   const [scrollProgress, setScrollProgress] = useState(0);
@@ -665,7 +683,7 @@ function AnimationParameterDialog({
                 </div>
               </div>
               <div className="flex min-h-7 items-center justify-between rounded-lg bg-muted/60 px-2.5 text-[10px] text-muted-foreground">
-                <span>{lastUpdate ? t(`new_conversation.animations.update_${lastUpdate}`) : t("new_conversation.animations.preview_defaults")}</span>
+                <span>{lastUpdate ? t(ANIMATION_UPDATE_LABEL_KEYS[lastUpdate]) : t("new_conversation.animations.preview_defaults")}</span>
                 <span>{t("new_conversation.animations.current_time", { time: preservedTimeRef.current.toFixed(1) })}</span>
               </div>
             </div>

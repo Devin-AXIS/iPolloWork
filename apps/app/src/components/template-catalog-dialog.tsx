@@ -31,8 +31,20 @@ export type TemplateCatalogDialogProps<Applied> = {
   onApplied: (result: Applied) => void;
 };
 
+const TEMPLATE_CATEGORY_LABEL_KEYS = {
+  site: "template_market.category.site",
+  video: "template_market.category.video",
+  app: "template_market.category.app",
+  slides: "template_market.category.slides",
+  poster: "template_market.category.poster",
+  cards: "template_market.category.cards",
+  report: "template_market.category.report",
+  article: "template_market.category.article",
+  other: "template_market.category.other",
+} as const satisfies Record<TemplateCategory, string>;
+
 function categoryLabel(category: TemplateCategory) {
-  return t(`template_market.category.${category}`);
+  return t(TEMPLATE_CATEGORY_LABEL_KEYS[category]);
 }
 
 function TemplateCover(props: {

@@ -54,6 +54,22 @@ const categoryResolutionOrder: Exclude<MarketplaceCategoryId, "other">[] = [
   "development-operations",
 ];
 
+const MARKETPLACE_CATEGORY_LABEL_KEYS = {
+  "ai-agents": "plugin_library.category.ai-agents",
+  "development-operations": "plugin_library.category.development-operations",
+  "design-creative": "plugin_library.category.design-creative",
+  "productivity-collaboration": "plugin_library.category.productivity-collaboration",
+  "business-operations": "plugin_library.category.business-operations",
+  finance: "plugin_library.category.finance",
+  other: "plugin_library.category.other",
+} as const satisfies Record<MarketplaceCategoryId, string>;
+
+const MARKETPLACE_STATUS_LABEL_KEYS = {
+  available: "plugin_library.status_available",
+  installed: "plugin_library.status_installed",
+  update: "plugin_library.status_update",
+} as const satisfies Record<Exclude<MarketplaceStatusFilter, "all">, string>;
+
 export type CloudMarketplacesViewProps = {
   client: iPolloWorkServerClient | null;
   workspaceId: string | null;
@@ -85,8 +101,12 @@ export function resolveMarketplaceCategory(item: {
   return "other";
 }
 
-function categoryLabel(categoryId: MarketplaceCategoryId): string {
-  return t(`plugin_library.category.${categoryId}`);
+export function marketplaceCategoryLabel(categoryId: MarketplaceCategoryId): string {
+  return t(MARKETPLACE_CATEGORY_LABEL_KEYS[categoryId]);
+}
+
+export function marketplaceStatusLabel(status: Exclude<MarketplaceStatusFilter, "all">): string {
+  return t(MARKETPLACE_STATUS_LABEL_KEYS[status]);
 }
 
 function resourcePluginId(resource: EnterpriseResource): string {
@@ -314,7 +334,7 @@ export function CloudMarketplacesView({
       {!embedded ? categorySections.map((section) => (
         <MarketplaceSection
           key={section.categoryId}
-          title={categoryLabel(section.categoryId)}
+          title={marketplaceCategoryLabel(section.categoryId)}
           items={section.items}
           installed={installed}
           busyId={busyId}

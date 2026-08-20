@@ -46,6 +46,8 @@ import { PluginPackageImportModal } from "./plugin-package-import-modal";
 import { PluginPackageListItem } from "./plugin-package-list-item";
 import {
   MARKETPLACE_CATEGORY_IDS,
+  marketplaceCategoryLabel,
+  marketplaceStatusLabel,
   type MarketplaceCategoryFilter,
   type MarketplaceStatusFilter,
 } from "./pages/cloud-marketplaces-view";
@@ -904,13 +906,13 @@ export const PluginPackagesPanel = forwardRef<PluginPackagesPanelHandle, PluginP
                     <SelectValue>
                       {marketplaceCategory === "all"
                         ? t("plugin_library.all_categories")
-                        : t(`plugin_library.category.${marketplaceCategory}`)}
+                        : marketplaceCategoryLabel(marketplaceCategory)}
                     </SelectValue>
                   </SelectTrigger>
                   <SelectContent align="end">
                     <SelectItem value="all">{t("plugin_library.all_categories")}</SelectItem>
                     {MARKETPLACE_CATEGORY_IDS.map((categoryId) => (
-                      <SelectItem key={categoryId} value={categoryId}>{t(`plugin_library.category.${categoryId}`)}</SelectItem>
+                      <SelectItem key={categoryId} value={categoryId}>{marketplaceCategoryLabel(categoryId)}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
@@ -919,7 +921,7 @@ export const PluginPackagesPanel = forwardRef<PluginPackagesPanelHandle, PluginP
                     <SelectValue>
                       {marketplaceStatus === "all"
                         ? t("plugin_library.all_statuses")
-                        : t(`plugin_library.status_${marketplaceStatus}`)}
+                        : marketplaceStatusLabel(marketplaceStatus)}
                     </SelectValue>
                   </SelectTrigger>
                   <SelectContent align="end">

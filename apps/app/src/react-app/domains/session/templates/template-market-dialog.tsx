@@ -74,7 +74,27 @@ const AUTHORING_TYPES: AuthoringType[] = CATEGORIES.flatMap((category) => catego
   : [{ ...category, key: category.id }]);
 
 const STYLE_ORDER = Object.keys(TEMPLATE_STYLE_LABELS) as TemplateStyle[];
-const templateStyleLabel = (style: TemplateStyle) => t(`template_market.style.${style}`);
+const TEMPLATE_STYLE_LABEL_KEYS = {
+  minimal: "template_market.style.minimal",
+  editorial: "template_market.style.editorial",
+  newsprint: "template_market.style.newsprint",
+  swiss: "template_market.style.swiss",
+  bold: "template_market.style.bold",
+  soft: "template_market.style.soft",
+  pastel: "template_market.style.pastel",
+  glass: "template_market.style.glass",
+  dark: "template_market.style.dark",
+  cyber: "template_market.style.cyber",
+  technical: "template_market.style.technical",
+  playful: "template_market.style.playful",
+  cinematic: "template_market.style.cinematic",
+  data: "template_market.style.data",
+  brutalist: "template_market.style.brutalist",
+  retro: "template_market.style.retro",
+  sketch: "template_market.style.sketch",
+  custom: "template_market.style.custom",
+} as const satisfies Record<TemplateStyle, string>;
+const templateStyleLabel = (style: TemplateStyle) => t(TEMPLATE_STYLE_LABEL_KEYS[style]);
 const TEMPLATE_COVER_TIMEOUT_MS = 12_000;
 const TEMPLATE_COVER_ROOT_MARGIN = "480px 0px";
 

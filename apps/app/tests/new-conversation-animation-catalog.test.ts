@@ -60,7 +60,7 @@ describe("new conversation animation catalog", () => {
   test("edits validated effect variables and sends structured configuration", () => {
     expect(starter).toContain("function AnimationParameterDialog");
     expect(starter).toContain("updateHyperframesEffectVariableOverride");
-    expect(starter).toContain("new_conversation.animations.update_${lastUpdate}");
+    expect(starter).toContain("ANIMATION_UPDATE_LABEL_KEYS[lastUpdate]");
     expect(surface).toContain("hyperframesSelectionPayload(selection)");
     expect(surface).toContain("data-variable-values/getVariables");
   });
