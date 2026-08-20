@@ -1,6 +1,6 @@
 /** @jsxImportSource react */
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { AppWindowMac, ArrowUp, Check, ChevronDown, ChevronRight, Code2, FileText, ListTodo, Plus, Plug, Settings, Sparkles, Square, Terminal, X, Zap } from "lucide-react";
+import { AppWindowMac, ArrowUp, Bot, Check, ChevronDown, ChevronRight, Code2, FileText, ListTodo, Paperclip, Plus, Plug, Settings, Sparkles, Square, Terminal, Wrench, X, Zap } from "lucide-react";
 import fuzzysort from "fuzzysort";
 import { toast } from "@/components/ui/sonner";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -1361,18 +1361,19 @@ export function ReactSessionComposer(props: ComposerProps) {
                       <div className="w-52 shrink-0 rounded-[16px] border border-dls-border bg-dls-surface p-1.5 shadow-[var(--dls-shell-shadow)]">
                       <button
                         type="button"
-                        className="flex w-full items-center rounded-[12px] px-3 py-2.5 text-left text-sm text-gray-11 hover:bg-gray-2"
+                        className="flex w-full items-center gap-2 rounded-[12px] px-3 py-2.5 text-left text-sm text-gray-11 hover:bg-gray-2"
                         onClick={() => {
                           setPlusMenuOpen(false);
                           setPlusMenuSection(null);
                           fileInput?.click();
                         }}
                       >
-                        {t("composer.plus_attach_files")}
+                        <Paperclip className="size-4 shrink-0 text-gray-9" aria-hidden />
+                        <span>{t("composer.plus_attach_files")}</span>
                       </button>
                       <button
                         type="button"
-                        className={`flex w-full items-center justify-between rounded-[12px] px-3 py-2.5 text-left text-sm ${plusMenuSection === "tools" ? "bg-gray-3 text-gray-12" : "text-gray-11 hover:bg-gray-2"}`}
+                        className={`flex w-full items-center justify-between gap-2 rounded-[12px] px-3 py-2.5 text-left text-sm ${plusMenuSection === "tools" ? "bg-gray-3 text-gray-12" : "text-gray-11 hover:bg-gray-2"}`}
                         onMouseEnter={() => setPlusMenuSection("tools")}
                         onClick={() => {
                           setPlusMenuSection("tools");
@@ -1380,12 +1381,15 @@ export function ReactSessionComposer(props: ComposerProps) {
                           setDelegationMenuOpen(false);
                         }}
                       >
-                        <span>{t("composer.plus_tools")}</span>
+                        <span className="flex min-w-0 items-center gap-2">
+                          <Wrench className="size-4 shrink-0 text-gray-9" aria-hidden />
+                          <span>{t("composer.plus_tools")}</span>
+                        </span>
                         <ChevronRight size={14} className="text-gray-9" />
                       </button>
                       <button
                         type="button"
-                        className={`flex w-full items-center justify-between rounded-[12px] px-3 py-2.5 text-left text-sm ${plusMenuSection === "delegation" ? "bg-gray-3 text-gray-12" : "text-gray-11 hover:bg-gray-2"}`}
+                        className={`flex w-full items-center justify-between gap-2 rounded-[12px] px-3 py-2.5 text-left text-sm ${plusMenuSection === "delegation" ? "bg-gray-3 text-gray-12" : "text-gray-11 hover:bg-gray-2"}`}
                         onMouseEnter={() => setPlusMenuSection("delegation")}
                         onClick={() => {
                           setPlusMenuSection("delegation");
@@ -1393,7 +1397,10 @@ export function ReactSessionComposer(props: ComposerProps) {
                           setToolMenuOpen(false);
                         }}
                       >
-                        <span>{t("composer.delegate_external_agents")}</span>
+                        <span className="flex min-w-0 items-center gap-2">
+                          <Bot className="size-4 shrink-0 text-gray-9" aria-hidden />
+                          <span>{t("composer.delegate_external_agents")}</span>
+                        </span>
                         <ChevronRight size={14} className="text-gray-9" />
                       </button>
                       </div>
