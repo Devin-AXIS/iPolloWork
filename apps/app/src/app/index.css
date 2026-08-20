@@ -187,6 +187,10 @@
   --dls-hover: var(--slate-3);
   --dls-active: var(--slate-4);
   --new-conversation-placeholder: #cccccc;
+  --new-conversation-tab-surface: #efefef;
+  --new-conversation-tab-selected: #ffffff;
+  --new-conversation-tab-text: #161e24;
+  --new-conversation-tab-muted: #8b8d98;
   --dls-radius: 16px;
   --dls-radius-lg: 24px;
   --dls-shell-shadow: 0 10px 30px rgba(15, 23, 42, 0.06);
@@ -249,6 +253,10 @@
   --dls-hover: var(--slate-3);
   --dls-active: var(--slate-4);
   --new-conversation-placeholder: #333333;
+  --new-conversation-tab-surface: #2a2a2d;
+  --new-conversation-tab-selected: #3a3a3d;
+  --new-conversation-tab-text: #f5f5f5;
+  --new-conversation-tab-muted: #b0b4ba;
   --dls-shell-shadow: 0 18px 48px rgba(0, 0, 0, 0.32);
   --dls-card-shadow: 0 14px 36px rgba(0, 0, 0, 0.24);
 }
@@ -292,6 +300,12 @@ html:lang(zh) .settings-description {
   font-weight: 500;
 }
 
+html:lang(zh) .new-conversation-quick-action,
+html:lang(zh) .new-conversation-capability-chip,
+html:lang(zh) .composer-design-selection {
+  font-weight: 500;
+}
+
 [data-settings-shell] :where(
   button:not([role="switch"]):not([role="checkbox"]):not([role="radio"]),
   [role="button"]:not([role="switch"]):not([role="checkbox"]):not([role="radio"]),
@@ -302,6 +316,29 @@ html:lang(zh) .settings-description {
   [data-slot="table-container"]
 ) {
   border-radius: 8px !important;
+}
+
+[data-settings-shell][data-settings-compact] [data-settings-close] {
+  appearance: none !important;
+  border: 0 !important;
+  border-color: transparent !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  border-radius: 8px !important;
+  outline: none !important;
+  padding: 0 !important;
+}
+
+[data-settings-shell][data-settings-compact] [data-settings-close]:hover {
+  background: color-mix(in oklab, var(--foreground) 6%, transparent) !important;
+  box-shadow: none !important;
+}
+
+[data-settings-shell][data-settings-compact] [data-settings-close]::before,
+[data-settings-shell][data-settings-compact] [data-settings-close]::after {
+  display: none !important;
+  content: none !important;
+  box-shadow: none !important;
 }
 
 *::-webkit-scrollbar {

@@ -34,7 +34,7 @@ import {
   isRemoteConnectionWorkspace,
   isMacPlatform,
 } from "../../../../app/utils";
-import { currentLocale, setLocale, t, type Language } from "../../../../i18n";
+import { currentLocale, localeChangedEvent, setLocale, t, type Language } from "../../../../i18n";
 import { DEFAULT_BRAND_LOGO_URL, useBrandAppName, useBrandLogoUrl } from "../../cloud/brand-theme";
 
 import {
@@ -518,6 +518,12 @@ export function AppSidebar(props: AppSidebarProps) {
     setLocale(nextLanguage);
   }, []);
 
+  React.useEffect(() => {
+    const syncLanguage = () => setLanguage(currentLocale());
+    window.addEventListener(localeChangedEvent, syncLanguage);
+    return () => window.removeEventListener(localeChangedEvent, syncLanguage);
+  }, []);
+
   const createConversationInSelectedProject = React.useCallback(async () => {
     if (!selectedProject) {
       window.dispatchEvent(new Event("ipollowork:focusPrompt"));
@@ -699,7 +705,7 @@ export function AppSidebar(props: AppSidebarProps) {
                 className={primarySidebarActionClass}
               >
                 <span className="grid size-4 shrink-0 place-items-center" aria-hidden="true">
-                  <img src={publicAssetUrl("sidebar-icon/plugin.svg")} alt="" className="size-[12px] dark:invert" />
+                  <img src={publicAssetUrl("sidebar-icon/tool-case.svg")} alt="" className="size-3.5 dark:invert" />
                 </span>
                 <span className="flex-1 truncate">{t("plugin_workshop.title")}</span>
               </SidebarMenuButton>

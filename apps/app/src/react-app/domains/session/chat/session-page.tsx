@@ -2923,7 +2923,7 @@ export function SessionPage(props: SessionPageProps) {
     {
       id: "plugin-workshop",
       label: t("plugin_workshop.title"),
-      iconSrc: publicAssetUrl("sidebar-icon/plugin.svg"),
+      iconSrc: publicAssetUrl("sidebar-icon/tool-case.svg"),
       active: panelRailActive && activePanelTab?.type === "plugin-studio",
       onClick: openPluginWorkshop,
       disabled: !props.selectedWorkspaceId,
@@ -3861,7 +3861,7 @@ export function SessionPage(props: SessionPageProps) {
                               onClick={item.onClick}
                               disabled={item.disabled}
                             >
-                              <img src={item.iconSrc} alt="" className="size-4 shrink-0" />
+                              <img src={item.iconSrc} alt="" className={cn("size-4 shrink-0", item.id === "plugin-workshop" && "dark:invert")} />
                               <span className="min-w-0 flex-1 truncate">{item.label}</span>
                             </button>
                           );

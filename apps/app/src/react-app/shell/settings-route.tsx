@@ -2006,12 +2006,13 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
               void connectionsStore.logoutMcpAuth(serverName);
             }}
             onRelationshipsChange={setPluginPackageRelationships}
-            marketplaceView={(search, filters) => (
+            marketplaceView={(search, filters, installedPackages) => (
               <CloudMarketplacesView
                 embedded
                 search={search}
                 categoryFilter={filters.category}
                 statusFilter={filters.status}
+                installedPackages={installedPackages}
                 client={selectedWorkspaceEndpoint?.client ?? ipolloworkClient}
                 workspaceId={runtimeWorkspaceId}
                 onOpenAccount={openCloudAccountSettings}

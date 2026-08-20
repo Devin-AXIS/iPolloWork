@@ -73,6 +73,7 @@ type PluginPackagesPanelProps = {
   marketplaceView: (
     search: string,
     filters: { category: MarketplaceCategoryFilter; status: MarketplaceStatusFilter },
+    installedPackages: iPolloWorkPluginPackageItem[],
   ) => ReactNode;
 };
 
@@ -1035,7 +1036,7 @@ export const PluginPackagesPanel = forwardRef<PluginPackagesPanelHandle, PluginP
         </div>
 
         {source === "marketplace" ? (
-          props.marketplaceView(search, { category: marketplaceCategory, status: marketplaceStatus })
+          props.marketplaceView(search, { category: marketplaceCategory, status: marketplaceStatus }, items)
         ) : (filteredCatalogItems.length > 0 || filteredItems.length > 0) ? (
           <div className="grid gap-x-8 gap-y-2 lg:grid-cols-2">
             {filteredCatalogItems.map((item) => (

@@ -383,12 +383,14 @@ function targetTriple() {
   return null;
 }
 
-function binaryFileNames(baseName) {
+export function binaryFileNames(baseName) {
   const ext = process.platform === "win32" ? ".exe" : "";
   const triple = targetTriple();
+  // Packaging normalizes the selected target to this canonical alias. Keep
+  // target-specific files as a fallback so stale dev artifacts cannot shadow it.
   return [
-    triple ? `${baseName}-${triple}${ext}` : null,
     `${baseName}${ext}`,
+    triple ? `${baseName}-${triple}${ext}` : null,
   ].filter(Boolean);
 }
 

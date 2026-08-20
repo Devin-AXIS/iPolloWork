@@ -512,17 +512,24 @@ function revokeAttachmentPreview(attachment: { previewUrl?: string | undefined }
 
 export function StarterCapabilityChip({ capability, onClear }: { capability: StarterCapability; onClear: () => void }) {
   const CapabilityIcon = capability.icon;
+  const isWebsiteCapability = capability.id === "site";
   return (
-    <div className="inline-flex h-7 max-w-full items-center gap-1.5 rounded-full border border-dls-border bg-dls-hover/70 px-2.5 text-[11px] text-dls-text shadow-sm">
-      <CapabilityIcon className="size-3.5 shrink-0 text-dls-secondary" aria-hidden />
-      <span className="max-w-[13rem] truncate font-medium">{capability.label}</span>
+    <div className="new-conversation-capability-chip inline-flex h-7 max-w-full items-center gap-1.5 rounded-[18px] border border-[#E0DDC3] bg-[#F4F4EE] px-2 py-1 text-[11px] font-normal leading-4 text-[#161E24] dark:border-[#666] dark:bg-[#343434] dark:text-[#f5f5f5]">
+      {isWebsiteCapability ? (
+        <span className="relative size-3.5 shrink-0">
+          <img src={publicAssetUrl("quick-task-globe-selected.svg")} alt="" aria-hidden className="absolute inset-[8.33%] size-[83.34%] dark:invert" />
+        </span>
+      ) : (
+        <CapabilityIcon className="size-3.5 shrink-0" aria-hidden />
+      )}
+      <span className="max-w-[13rem] truncate">{capability.label}</span>
       <button
         type="button"
-        className="inline-flex size-4 shrink-0 items-center justify-center rounded-full text-dls-secondary transition-colors hover:bg-dls-border hover:text-dls-text"
+        className="inline-flex size-3.5 shrink-0 items-center justify-center rounded-full transition-colors hover:bg-[#E0DDC3] dark:hover:bg-[#666]"
         aria-label={t("new_conversation.capability.clear")}
         onClick={onClear}
       >
-        <X className="size-3" aria-hidden />
+        <img src={publicAssetUrl("quick-task-close.svg")} alt="" aria-hidden className="size-3.5" />
       </button>
     </div>
   );

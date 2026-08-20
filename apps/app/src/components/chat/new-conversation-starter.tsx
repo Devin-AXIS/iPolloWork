@@ -119,6 +119,10 @@ const MODES = [
   { id: "video", iconSrc: publicAssetUrl("new-conversation-tabs/video.svg"), label: "new_conversation.mode.video" },
 ] as const satisfies ReadonlyArray<{ id: NewConversationMode; iconSrc: string; label: string }>;
 
+const QUICK_TASK_GLOBE_ASSET = publicAssetUrl("quick-task-globe.svg");
+const QUICK_TASK_GLOBE_SELECTED_ASSET = publicAssetUrl("quick-task-globe-selected.svg");
+const QUICK_TASK_PLUS_ASSET = publicAssetUrl("quick-task-plus.svg");
+
 const MODE_TAB_SPRING = {
   type: "spring",
   mass: 1,
@@ -1013,7 +1017,6 @@ export function NewConversationStarter({
   const modeTabIndicatorId = useId();
   const reduceMotion = useReducedMotion();
   const [activeTemplateCategory, setActiveTemplateCategory] = useState<TemplateCategory | null>(null);
-  const [hoveredMode, setHoveredMode] = useState<NewConversationMode | null>(null);
   const [shortcutEditorOpen, setShortcutEditorOpen] = useState(false);
   const [shortcutEditorPosition, setShortcutEditorPosition] = useState<CSSProperties>({});
   const [shortcutIds, setShortcutIds] = useState<Record<NewConversationMode, string[]>>(DEFAULT_SHORTCUT_IDS);
@@ -1191,7 +1194,7 @@ export function NewConversationStarter({
 
         <LazyMotion features={domAnimation}>
           <div
-            className="mt-8 flex h-[42px] w-fit max-w-full items-center gap-2 rounded-full bg-muted p-1"
+            className="mt-8 flex h-[42px] w-fit max-w-full items-center gap-2 rounded-[40px] bg-[var(--new-conversation-tab-surface)] p-1"
             role="tablist"
             aria-label={t("new_conversation.mode_label")}
           >
@@ -1204,14 +1207,12 @@ export function NewConversationStarter({
                 role="tab"
                 aria-selected={selected}
                 className={cn(
-                  "relative isolate inline-flex h-9 w-[92px] min-w-0 items-center justify-center gap-1 rounded-full px-3 font-sans text-[13px] font-normal leading-5 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+                  "relative isolate inline-flex w-[92px] min-w-0 items-center justify-center gap-1 px-3 font-['PingFang_SC'] text-[13px] font-medium leading-[20px] transition-[background-color,border-radius,color] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
                   selected
-                    ? "text-foreground"
-                    : "text-muted-foreground hover:bg-background/70 hover:text-foreground",
+                    ? "h-9 rounded-[40px] text-[var(--new-conversation-tab-text)]"
+                    : "h-[38px] rounded-[12px] text-[var(--new-conversation-tab-muted)] hover:rounded-[40px] hover:bg-[var(--new-conversation-tab-selected)]/70 hover:text-[var(--new-conversation-tab-text)]",
                 )}
                 onClick={() => selectMode(id)}
-                onMouseEnter={() => setHoveredMode(id)}
-                onMouseLeave={() => setHoveredMode(null)}
               >
                 {selected ? (
                   <m.span
@@ -1220,18 +1221,22 @@ export function NewConversationStarter({
                     aria-hidden="true"
                     initial={false}
                     transition={reduceMotion ? { duration: 0 } : MODE_TAB_SPRING}
-                    className="pointer-events-none absolute inset-0 -z-10 rounded-full bg-background"
+                    className="pointer-events-none absolute inset-0 -z-10 rounded-[40px] bg-[var(--new-conversation-tab-selected)]"
                   />
                 ) : null}
-                <img
-                  src={iconSrc}
-                  alt=""
-                  aria-hidden
-                  className={cn(
-                    "shrink-0 object-contain transition-[filter,opacity] duration-150",
-                    id === "video" ? "h-[14px] w-[18px]" : "size-4",
-                    (selected || hoveredMode === id) && "brightness-0 dark:invert",
-                  )}
+                <span
+                  aria-hidden="true"
+                  className="size-[16px] shrink-0 bg-current transition-opacity duration-150"
+                  style={{
+                    WebkitMaskImage: `url(${iconSrc})`,
+                    maskImage: `url(${iconSrc})`,
+                    WebkitMaskPosition: "center",
+                    maskPosition: "center",
+                    WebkitMaskRepeat: "no-repeat",
+                    maskRepeat: "no-repeat",
+                    WebkitMaskSize: "contain",
+                    maskSize: "contain",
+                  }}
                 />
                 <span className="min-w-0 truncate">{t(label)}</span>
               </button>
@@ -1253,16 +1258,18 @@ export function NewConversationStarter({
         {actions.map(({ id, label, prompt, templateCategory, icon: ActionIcon }) => {
           const selectedTemplateAction = templateCategory !== undefined && templateCategory === activeTemplateCategory;
           const selectedCapabilityAction = !templateCategory && selectedCapabilityId === id;
+          const selected = selectedTemplateAction || selectedCapabilityAction;
+          const isWebsiteAction = id === "site";
           return (
             <button
               key={id}
               type="button"
               aria-pressed={templateCategory !== undefined ? selectedTemplateAction : selectedCapabilityAction}
               className={cn(
-                "inline-flex h-[24px] min-w-[50px] items-center justify-center rounded-[18px] border px-2 text-[12px] font-medium transition-[background-color,border-color,color] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
-                selectedTemplateAction || selectedCapabilityAction
-                  ? "border-[#CCC] bg-[#F5F5F5] text-[#999] dark:border-[#666] dark:bg-[#343434] dark:text-[#ccc]"
-                  : "border-[#CBCBCB] bg-white text-[#999] hover:border-[#CCC] hover:bg-[#F5F5F5] dark:border-[#666] dark:bg-transparent dark:hover:border-[#999] dark:hover:bg-[#343434] dark:hover:text-[#ccc]",
+                "new-conversation-quick-action inline-flex h-7 items-center justify-center gap-1.5 rounded-[18px] border px-2 py-1 text-[11px] font-normal leading-4 transition-[background-color,border-color,color] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+                selected
+                  ? "border-[#E0DDC3] bg-[#F4F4EE] text-[#161E24] dark:border-[#666] dark:bg-[#343434] dark:text-[#f5f5f5]"
+                  : "border-[#EBEBEB] bg-transparent text-[#5A6774] hover:border-[#EBEBEB] hover:bg-[#EFEFEF] dark:border-[#666] dark:text-[#b0b4ba] dark:hover:border-[#999] dark:hover:bg-[#343434] dark:hover:text-[#f5f5f5]",
               )}
               onClick={() => {
                 if (templateCategory) {
@@ -1278,7 +1285,18 @@ export function NewConversationStarter({
                 }
               }}
             >
-              <ActionIcon className="mr-1 size-3.5 shrink-0" aria-hidden />
+              {isWebsiteAction ? (
+                <span className="relative size-3.5 shrink-0">
+                  <img
+                    src={selected ? QUICK_TASK_GLOBE_SELECTED_ASSET : QUICK_TASK_GLOBE_ASSET}
+                    alt=""
+                    aria-hidden
+                    className={cn("absolute inset-[8.33%] size-[83.34%]", selected && "dark:invert")}
+                  />
+                </span>
+              ) : (
+                <ActionIcon className="size-3.5 shrink-0" aria-hidden />
+              )}
               <span className="whitespace-nowrap">{t(label)}</span>
             </button>
           );
@@ -1302,7 +1320,9 @@ export function NewConversationStarter({
                 setShortcutEditorOpen((open) => !open);
               }}
             >
-              <Plus className="size-4 text-[#999]" strokeWidth={1.8} aria-hidden />
+              <span className="relative size-4 shrink-0">
+                <img src={QUICK_TASK_PLUS_ASSET} alt="" aria-hidden className="absolute inset-[20.83%] size-[58.34%]" />
+              </span>
             </button>
           </div>
         ) : null}

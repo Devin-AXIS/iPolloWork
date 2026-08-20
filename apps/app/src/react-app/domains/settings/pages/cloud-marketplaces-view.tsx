@@ -57,6 +57,7 @@ const categoryResolutionOrder: Exclude<MarketplaceCategoryId, "other">[] = [
 export type CloudMarketplacesViewProps = {
   client: iPolloWorkServerClient | null;
   workspaceId: string | null;
+  installedPackages?: iPolloWorkPluginPackageItem[];
   onOpenAccount: () => void;
   onInstalled?: (pluginId: string) => void | Promise<void>;
   onOpenInstalled?: (pluginId: string) => void;
@@ -119,6 +120,7 @@ function actionLabel(resource: EnterpriseResource, installed: iPolloWorkPluginPa
 export function CloudMarketplacesView({
   client,
   workspaceId,
+  installedPackages,
   onOpenAccount,
   onInstalled,
   onOpenInstalled,
@@ -148,7 +150,11 @@ export function CloudMarketplacesView({
     try {
       const [marketplaceResult, localPackagesResult] = await Promise.allSettled([
         listEnterpriseResources("extension"),
-        client && workspaceId ? client.listPluginPackages(workspaceId) : Promise.resolve({ items: [] }),
+        installedPackages !== undefined
+          ? Promise.resolve({ items: installedPackages })
+          : client && workspaceId
+            ? client.listPluginPackages(workspaceId)
+            : Promise.resolve({ items: [] }),
       ]);
       if (marketplaceResult.status === "rejected") throw marketplaceResult.reason;
       setItems(marketplaceResult.value);
@@ -163,7 +169,7 @@ export function CloudMarketplacesView({
     } finally {
       setLoading(false);
     }
-  }, [client, cloud.isSignedIn, workspaceId]);
+  }, [client, cloud.isSignedIn, installedPackages, workspaceId]);
 
   React.useEffect(() => {
     void refresh();
