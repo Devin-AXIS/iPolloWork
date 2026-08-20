@@ -146,6 +146,47 @@ describe("authorization vault isolation", () => {
     });
   });
 
+  test("prunes orphaned plugin credentials but preserves scopes used by another consumer", async () => {
+    const { store } = await fixture();
+    await store.saveCredential({
+      connectionId: "orphaned-service",
+      accountId: "personal",
+      methodId,
+      methodFingerprint,
+      values: { accessToken: "orphaned-token" },
+      secretFields: ["accessToken"],
+    });
+    await store.saveCredential({
+      connectionId: "shared-service",
+      accountId: "personal",
+      methodId,
+      methodFingerprint,
+      values: { accessToken: "shared-token" },
+      secretFields: ["accessToken"],
+    });
+    await store.setActiveAccount({
+      consumerId: "plugin:alpha",
+      connectionId: "orphaned-service",
+      methodId,
+      methodFingerprint,
+      accountId: "personal",
+    });
+    await store.setActiveAccount({
+      consumerId: "plugin:beta",
+      connectionId: "shared-service",
+      methodId,
+      methodFingerprint,
+      accountId: "personal",
+    });
+
+    expect(await store.deleteConsumer("plugin:alpha", [
+      { connectionId: "orphaned-service", methodId, methodFingerprint },
+      { connectionId: "shared-service", methodId, methodFingerprint },
+    ])).toBe(true);
+    expect(await store.listConnections({ connectionId: "orphaned-service", methodId, methodFingerprint })).toEqual([]);
+    expect(await store.listConnections({ connectionId: "shared-service", methodId, methodFingerprint })).toHaveLength(1);
+  });
+
   test("removes stale consumer state without deleting reusable credentials", async () => {
     const { store } = await fixture();
     await store.saveCredential({

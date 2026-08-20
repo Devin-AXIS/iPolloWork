@@ -513,9 +513,9 @@ export function AppSidebar(props: AppSidebarProps) {
   );
   const [language, setLanguage] = React.useState<Language>(() => currentLocale());
   const [projectsExpanded, setProjectsExpanded] = React.useState(true);
-  const [ungroupedExpanded, setUngroupedExpanded] = React.useState(true);
-  const ungroupedProject = props.projectSessionLists.find((project) => project.workspace.isDefault);
   const namedProjects = props.projectSessionLists.filter((project) => !project.workspace.isDefault);
+  const selectedProject = namedProjects.find((project) => project.workspace.id === props.selectedWorkspaceId)
+    ?? namedProjects[0];
   const primarySidebarActionClass = cn(
     primarySidebarActionClassName,
     language === "zh" && "font-medium",
@@ -525,9 +525,12 @@ export function AppSidebar(props: AppSidebarProps) {
     setLocale(nextLanguage);
   }, []);
 
-  const createUngroupedConversation = React.useCallback(async () => {
-    if (!ungroupedProject) return;
-    const workspaceId = ungroupedProject.workspace.id;
+  const createConversationInSelectedProject = React.useCallback(async () => {
+    if (!selectedProject) {
+      window.dispatchEvent(new Event("ipollowork:focusPrompt"));
+      return;
+    }
+    const workspaceId = selectedProject.workspace.id;
     if (props.selectedWorkspaceId !== workspaceId) {
       const selected = await props.onSelectProject(workspaceId);
       if (selected === false) return;
@@ -537,7 +540,7 @@ export function AppSidebar(props: AppSidebarProps) {
     props.onCreateTaskInWorkspace,
     props.onSelectProject,
     props.selectedWorkspaceId,
-    ungroupedProject,
+    selectedProject,
   ]);
 
   const toggleSessionExpanded = React.useCallback((sessionId: string) => {
@@ -663,7 +666,7 @@ export function AppSidebar(props: AppSidebarProps) {
                   disabled={props.newTaskDisabled || !props.selectedWorkspaceId}
                   aria-label={t("session.new_task")}
                   aria-keyshortcuts={isMacPlatform() ? "Meta+N" : "Control+N"}
-                  onClick={() => props.onCreateTaskInWorkspace(props.selectedWorkspaceId)}
+                  onClick={() => void createConversationInSelectedProject()}
                 >
                   <span className="flex size-4 shrink-0 items-center justify-center" aria-hidden="true">
                     <img src={publicAssetUrl("sidebar-icon/figma-square-pen.svg")} alt="" className="size-3.5 dark:invert" />
@@ -743,35 +746,6 @@ export function AppSidebar(props: AppSidebarProps) {
                 ))}
               </CollapsibleContent>
             </Collapsible>
-            {ungroupedProject ? (
-              <Collapsible
-                open={ungroupedExpanded}
-                onOpenChange={setUngroupedExpanded}
-                data-testid="ungrouped-section"
-              >
-                <SidebarSectionHeader
-                  label={t("projects.ungrouped")}
-                  expanded={ungroupedExpanded}
-                  onToggle={() => setUngroupedExpanded((expanded) => !expanded)}
-                  toggleTestId="ungrouped-section-toggle"
-                  onAdd={() => void createUngroupedConversation()}
-                  addLabel={t("projects.new_ungrouped_conversation")}
-                />
-                <CollapsibleContent>
-                  <ProjectSidebarContent
-                    project={ungroupedProject}
-                    className="py-0"
-                    showProjectRow={false}
-                    showInitialLoading={props.showInitialLoading}
-                    onSelectProject={props.onSelectProject}
-                    onOpenRenameProject={props.onOpenRenameProject}
-                    onRevealProject={props.onRevealProject}
-                    onOpenDeleteProject={props.onOpenDeleteProject}
-                    canRemoveProject={false}
-                  />
-                </CollapsibleContent>
-              </Collapsible>
-            ) : null}
           </m.div>
         </LazyMotion>
 
@@ -887,13 +861,14 @@ function ProjectSidebarContent({
 }: ProjectSidebarContentProps) {
   const ctx = useSidebarContext();
   const workspace = project.workspace;
-  const isSelectedProject = ctx.selectedWorkspaceId === workspace.id;
+  const isCurrentProject = ctx.selectedWorkspaceId === workspace.id;
+  const isSelectedProject = isCurrentProject && !ctx.selectedSessionId;
   const [projectExpanded, setProjectExpanded] = React.useState(true);
   const tree = useSessionTree(project.sessions, ctx.sessionStatusById);
 
   React.useEffect(() => {
-    if (isSelectedProject) setProjectExpanded(true);
-  }, [isSelectedProject]);
+    if (isCurrentProject) setProjectExpanded(true);
+  }, [isCurrentProject]);
 
   const forcedExpandedSessionIds = React.useMemo(
     () => new Set(
@@ -944,7 +919,7 @@ function ProjectSidebarContent({
   const remainingSessionCount = Math.max(0, getRootSessions(activeSessions).length - sessionPreviewCount);
   const [archivedExpanded, setArchivedExpanded] = React.useState(false);
   const createConversationInProject = async () => {
-    if (!isSelectedProject) {
+    if (!isCurrentProject) {
       const selected = await onSelectProject(workspace.id);
       if (selected === false) return;
     }
@@ -967,11 +942,15 @@ function ProjectSidebarContent({
                   setProjectExpanded(true);
                   void Promise.resolve(onSelectProject(workspace.id));
                 }}
-                className="flex h-8 w-full min-w-0 items-center gap-2 rounded-lg px-2 pe-16 text-left text-sm text-sidebar-foreground transition-colors hover:bg-sidebar-accent focus-visible:ring-1 focus-visible:ring-sidebar-ring focus-visible:outline-hidden mac:hover:bg-black/5 dark:mac:hover:bg-white/10"
+                className={cn(
+                  "flex h-8 w-full min-w-0 items-center gap-2 rounded-lg px-2 pe-16 text-left text-sm text-sidebar-foreground transition-colors hover:bg-sidebar-accent focus-visible:ring-1 focus-visible:ring-sidebar-ring focus-visible:outline-hidden mac:hover:bg-black/5 dark:mac:hover:bg-white/10",
+                  isSelectedProject && "bg-sidebar-accent font-medium text-sidebar-accent-foreground mac:bg-black/5 dark:mac:bg-white/10",
+                )}
                 title={workspaceLabel(workspace)}
                 data-testid="project-row"
                 data-project-id={workspace.id}
-                aria-current={isSelectedProject ? "page" : undefined}
+                data-selected={isSelectedProject ? "true" : "false"}
+                aria-pressed={isSelectedProject}
                 aria-expanded={projectExpanded}
               >
                 <span className="flex size-4 shrink-0 items-center justify-center" aria-hidden="true">
@@ -1051,7 +1030,7 @@ function ProjectSidebarContent({
             </SidebarMenuItem>
           </SidebarMenu> : null}
           <CollapsibleContent>
-            <SidebarMenuSub className="translate-x-0 gap-1 pb-2">
+            <SidebarMenuSub className="mt-[2px] translate-x-0 gap-1 pb-2">
               {showRemoteConnectionIssue ? (
                 <RemoteConnectionIssueCard
                   message={connectionIssueMessage}

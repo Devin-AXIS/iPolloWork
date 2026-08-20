@@ -8,7 +8,10 @@ import {
   ipolloworkRuntimeConfigFilePath,
   writeiPolloWorkRuntimeConfigFile,
 } from "./ipollowork-runtime-config.js";
-import { writeRuntimeOpencodeConfig } from "./runtime-opencode-config-store.js";
+import {
+  writeRuntimeOpencodeConfig,
+  writeRuntimeProviderChannels,
+} from "./runtime-opencode-config-store.js";
 import type { ServerConfig } from "./types.js";
 
 const roots: string[] = [];
@@ -127,6 +130,32 @@ describe("ipollowork runtime config file", () => {
       await new Promise((resolve) => setTimeout(resolve, 20));
     }
     expect(mcp.stripe?.enabled).toBe(false);
+  });
+
+  test("keepiPolloWorkRuntimeConfigFileFresh projects global provider channel writes", async () => {
+    const { config } = await setup();
+    await writeiPolloWorkRuntimeConfigFile(config, "ws_1");
+    cleanups.push(keepiPolloWorkRuntimeConfigFileFresh(config, "ws_1"));
+
+    await writeRuntimeProviderChannels(config, (current) => ({
+      ...current,
+      shared: {
+        npm: "@ai-sdk/openai-compatible",
+        options: { baseURL: "https://models.example/v1" },
+        models: { shared: { name: "Shared model" } },
+      },
+    }));
+
+    let providers: Record<string, Record<string, unknown>> = {};
+    for (let attempt = 0; attempt < 50; attempt += 1) {
+      const parsed = await readConfigFile(config);
+      providers = (parsed.provider ?? {}) as Record<string, Record<string, unknown>>;
+      if (providers.shared) break;
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+    expect(providers.shared).toMatchObject({
+      options: { baseURL: "https://models.example/v1" },
+    });
   });
 
   test("writes for other workspaces do not rewrite the primary file", async () => {

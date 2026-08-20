@@ -80,6 +80,7 @@ import {
 import { TOKENSTAR_PROVIDER, tokenStarRuntimeModels } from "./tokenstar-provider";
 import {
   modelRuntimeAdapters,
+  type CompatibleProviderProfile,
   type ProviderEngineAuthAuthorization,
   type ProviderEngineAuthMethod,
   type ProviderEngineConfigTarget,
@@ -243,6 +244,55 @@ function cloudSharedProviderProfile(
   });
 }
 
+type CompatibleProviderPreset = {
+  providerId: string;
+  name: string;
+  baseURL: string;
+  models(modelIds?: string[]): CompatibleProviderProfile["models"];
+};
+
+const COMPATIBLE_PROVIDER_PRESETS: CompatibleProviderPreset[] = [
+  {
+    ...DEEPSEEK_OFFICIAL_PROVIDER,
+    models: () => DEEPSEEK_OFFICIAL_PROVIDER.models,
+  },
+  {
+    providerId: QWEN3_CODER_PROVIDER.providerId,
+    name: QWEN3_CODER_PROVIDER.name,
+    baseURL: QWEN3_CODER_PROVIDER.baseURL,
+    models: () => ({
+      [QWEN3_CODER_PROVIDER.modelId]: { name: QWEN3_CODER_PROVIDER.modelName },
+    }),
+  },
+  {
+    providerId: TOKENSTAR_PROVIDER.providerId,
+    name: TOKENSTAR_PROVIDER.name,
+    baseURL: TOKENSTAR_PROVIDER.baseURL,
+    models: (modelIds) => tokenStarRuntimeModels([
+      ...new Set(
+        (modelIds?.length ? modelIds : TOKENSTAR_PROVIDER.fallbackModels.map((model) => model.id))
+          .map((modelId) => modelId.trim())
+          .filter(Boolean),
+      ),
+    ]),
+  },
+];
+
+function compatibleProviderProfile(
+  providerId: string,
+  modelIds?: string[],
+): CompatibleProviderProfile | null {
+  const preset = COMPATIBLE_PROVIDER_PRESETS.find((entry) => entry.providerId === providerId);
+  return preset
+    ? {
+        id: preset.providerId,
+        name: preset.name,
+        baseURL: preset.baseURL,
+        models: preset.models(modelIds),
+      }
+    : null;
+}
+
 export type ProviderAuthStore = ReturnType<typeof createProviderAuthStore>;
 
 export function createProviderAuthStore(options: CreateProviderAuthStoreOptions) {
@@ -343,49 +393,21 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
       }
     }
 
-    if (
-      getProviderEngineAdapter().capabilities.customProviders &&
-      !merged.has(DEEPSEEK_OFFICIAL_PROVIDER.providerId) &&
-      !isDesktopProviderBlocked({
-        providerId: DEEPSEEK_OFFICIAL_PROVIDER.providerId,
-        checkRestriction: options.checkDesktopAppRestriction,
-      })
-    ) {
-      merged.set(DEEPSEEK_OFFICIAL_PROVIDER.providerId, {
-        id: DEEPSEEK_OFFICIAL_PROVIDER.providerId,
-        name: DEEPSEEK_OFFICIAL_PROVIDER.name,
-        env: [],
-      });
-    }
-
-    if (
-      getProviderEngineAdapter().capabilities.customProviders &&
-      !merged.has(QWEN3_CODER_PROVIDER.providerId) &&
-      !isDesktopProviderBlocked({
-        providerId: QWEN3_CODER_PROVIDER.providerId,
-        checkRestriction: options.checkDesktopAppRestriction,
-      })
-    ) {
-      merged.set(QWEN3_CODER_PROVIDER.providerId, {
-        id: QWEN3_CODER_PROVIDER.providerId,
-        name: QWEN3_CODER_PROVIDER.name,
-        env: [],
-      });
-    }
-
-    if (
-      getProviderEngineAdapter().capabilities.customProviders &&
-      !merged.has(TOKENSTAR_PROVIDER.providerId) &&
-      !isDesktopProviderBlocked({
-        providerId: TOKENSTAR_PROVIDER.providerId,
-        checkRestriction: options.checkDesktopAppRestriction,
-      })
-    ) {
-      merged.set(TOKENSTAR_PROVIDER.providerId, {
-        id: TOKENSTAR_PROVIDER.providerId,
-        name: TOKENSTAR_PROVIDER.name,
-        env: [],
-      });
+    if (getProviderEngineAdapter().capabilities.customProviders) {
+      for (const provider of COMPATIBLE_PROVIDER_PRESETS) {
+        if (
+          merged.has(provider.providerId)
+          || isDesktopProviderBlocked({
+            providerId: provider.providerId,
+            checkRestriction: options.checkDesktopAppRestriction,
+          })
+        ) continue;
+        merged.set(provider.providerId, {
+          id: provider.providerId,
+          name: provider.name,
+          env: [],
+        });
+      }
     }
 
     return Array.from(merged.values()).toSorted(compareProviders);
@@ -636,30 +658,6 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
     await getProviderEngineAdapter().patchRuntimeProviders(target, update);
   };
 
-  /**
-   * Best-effort migration: pre-runtime builds wrote cloud provider blocks into
-   * project config. Strip them so the runtime entry remains the single owner.
-   */
-  const stripLegacyCloudProviderBlocks = async (providerIds: Array<string | null | undefined>) => {
-    const ids = [...new Set(providerIds.flatMap((id) => (id?.trim() ? [id.trim()] : [])))];
-    if (ids.length === 0) return;
-    try {
-      await updateProjectConfigFile((raw) => {
-        let next = raw;
-        for (const id of ids) {
-          next = getProviderEngineAdapter().formatProjectWithoutProvider(
-            next,
-            id,
-            options.disabledProviders(),
-          );
-        }
-        return next;
-      });
-    } catch {
-      // Legacy cleanup only — the runtime entry already owns the provider.
-    }
-  };
-
   const updateProjectConfigFile = async (
     updater: (raw: string) => string,
   ) => {
@@ -731,14 +729,11 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
     }
   };
 
-  // Sweep all cloud-managed provider entries (keys matching /^lpr_/) from
-  // both runtime and project engine config, regardless of
-  // importedCloudProviders state. Returns the list of provider IDs that were
-  // removed so callers can also clear their auth credentials.
-  const sweepOrphanCloudProvidersFromConfig = async (): Promise<string[]> => {
+  // Sweep all cloud-managed provider entries (keys matching /^lpr_/) from the
+  // single runtime-owned provider config, regardless of imported state.
+  const sweepOrphanCloudProvidersFromRuntime = async (): Promise<string[]> => {
     const orphanIds = new Set<string>();
 
-    // Runtime-managed orphans (`lpr_*` keys in the workspace runtime config).
     try {
       const target = await resolveProviderEngineConfigTarget("write");
       const runtimeOrphans = (await getProviderEngineAdapter().runtimeProviderIds(target))
@@ -750,29 +745,7 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
         for (const id of runtimeOrphans) orphanIds.add(id);
       }
     } catch {
-      // Best-effort; the legacy file sweep below still runs.
-    }
-
-    // Legacy project-config blocks written by pre-runtime builds.
-    const configFile = await readProjectConfigFile().catch(() => null) as { content?: string } | null;
-    if (configFile?.content?.trim()) {
-      const fileOrphans = getProviderEngineAdapter()
-        .projectProviderIds(configFile.content)
-        .filter((key) => /^lpr_/i.test(key));
-      if (fileOrphans.length > 0) {
-        await updateProjectConfigFile((raw) => {
-          let next = raw;
-          for (const id of fileOrphans) {
-            next = getProviderEngineAdapter().formatProjectWithoutProvider(
-              next,
-              id,
-              options.disabledProviders(),
-            );
-          }
-          return next;
-        });
-        for (const id of fileOrphans) orphanIds.add(id);
-      }
+      // Best-effort cleanup; tracked entries are still removed individually.
     }
 
     return [...orphanIds];
@@ -1516,128 +1489,42 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
     }
     assertProviderAllowedByDesktopPolicy(providerId);
     const resolvedProviderId = providerId.trim().toLowerCase();
-    const isDeepSeekOfficial = resolvedProviderId === DEEPSEEK_OFFICIAL_PROVIDER.providerId;
-    const materializesDeepSeekProvider =
-      isDeepSeekOfficial && getProviderEngineAdapter().capabilities.customProviders;
-    const isQwen3Coder = resolvedProviderId === QWEN3_CODER_PROVIDER.providerId;
-    const isTokenStar = resolvedProviderId === TOKENSTAR_PROVIDER.providerId;
-    const materializesRuntimeProvider = materializesDeepSeekProvider || isQwen3Coder || isTokenStar;
-    let sharedProfile = catalogSharedProviderProfile(options.providers(), resolvedProviderId);
-
-    if (isDeepSeekOfficial) {
-      sharedProfile = buildSharedProviderProfile({
-        providerId: DEEPSEEK_OFFICIAL_PROVIDER.providerId,
-        displayName: DEEPSEEK_OFFICIAL_PROVIDER.name,
-        baseURL: DEEPSEEK_OFFICIAL_PROVIDER.baseURL,
-        models: DEEPSEEK_OFFICIAL_PROVIDER.models,
-      });
-    } else if (isQwen3Coder) {
-      sharedProfile = buildSharedProviderProfile({
-        providerId: QWEN3_CODER_PROVIDER.providerId,
-        displayName: QWEN3_CODER_PROVIDER.name,
-        baseURL: QWEN3_CODER_PROVIDER.baseURL,
-        models: {
-          [QWEN3_CODER_PROVIDER.modelId]: { name: QWEN3_CODER_PROVIDER.modelName },
-        },
-      });
-    } else if (isTokenStar) {
-      sharedProfile = buildSharedProviderProfile({
-        providerId: TOKENSTAR_PROVIDER.providerId,
-        displayName: TOKENSTAR_PROVIDER.name,
-        baseURL: TOKENSTAR_PROVIDER.baseURL,
-        models: Object.fromEntries(
-          TOKENSTAR_PROVIDER.fallbackModels.map((model) => [model.id, { name: model.name }]),
-        ),
-      });
-    }
+    const portableProfile = compatibleProviderProfile(resolvedProviderId, modelIds);
+    const compatibleProfile = getProviderEngineAdapter().capabilities.customProviders
+      ? portableProfile
+      : null;
+    const sharedProfile = portableProfile
+      ? buildSharedProviderProfile({
+          providerId: portableProfile.id,
+          displayName: portableProfile.name,
+          api: portableProfile.api,
+          baseURL: portableProfile.baseURL,
+          npm: portableProfile.npm,
+          models: portableProfile.models,
+        })
+      : catalogSharedProviderProfile(options.providers(), resolvedProviderId);
 
     try {
-      // Persist the engine-neutral credential before touching an engine.
-      // Engine reloads can remount the UI, so doing this last used to leave a
-      // half-installed provider with no shared key.
+      // Save the account-level credential and model profile first. Engine
+      // reloads can remount this store, so persisting it last can leave a
+      // provider configured in one workspace but unavailable everywhere else.
       await mirrorSharedProviderConnection(trimmed, sharedProfile);
-      if (materializesDeepSeekProvider) {
+      if (compatibleProfile) {
         await patchRuntimeProviders(
-          getProviderEngineAdapter().buildCompatibleProviderPatch({
-            id: DEEPSEEK_OFFICIAL_PROVIDER.providerId,
-            name: DEEPSEEK_OFFICIAL_PROVIDER.name,
-            baseURL: DEEPSEEK_OFFICIAL_PROVIDER.baseURL,
-            models: DEEPSEEK_OFFICIAL_PROVIDER.models,
-          }),
+          getProviderEngineAdapter().buildCompatibleProviderPatch(compatibleProfile),
         );
-      }
-      if (isQwen3Coder) {
-        await patchRuntimeProviders(
-          getProviderEngineAdapter().buildCompatibleProviderPatch({
-            id: QWEN3_CODER_PROVIDER.providerId,
-            name: QWEN3_CODER_PROVIDER.name,
-            baseURL: QWEN3_CODER_PROVIDER.baseURL,
-            models: {
-              [QWEN3_CODER_PROVIDER.modelId]: {
-                name: QWEN3_CODER_PROVIDER.modelName,
-              },
-            },
-          }),
-        );
-        try {
-          await updateProjectConfigFile((raw) =>
-            getProviderEngineAdapter().formatProjectWithoutProvider(
-              raw,
-              QWEN3_CODER_PROVIDER.providerId,
-              options.disabledProviders(),
-            ),
-          );
-        } catch {
-          // Runtime config owns this provider; legacy file cleanup is best-effort.
+        if (getProviderEngineAdapter().capabilities.authChangesRequireReload) {
+          await reloadProviderEngine(options.client());
         }
       }
-      if (isTokenStar) {
-        const selectedModelIds = [
-          ...new Set(
-            (modelIds?.length ? modelIds : TOKENSTAR_PROVIDER.fallbackModels.map((model) => model.id))
-              .map((modelId) => modelId.trim())
-              .filter(Boolean),
-          ),
-        ];
-        await patchRuntimeProviders(
-          getProviderEngineAdapter().buildCompatibleProviderPatch({
-            id: TOKENSTAR_PROVIDER.providerId,
-            name: TOKENSTAR_PROVIDER.name,
-            baseURL: TOKENSTAR_PROVIDER.baseURL,
-            models: tokenStarRuntimeModels(selectedModelIds),
-          }),
-        );
-        try {
-          await updateProjectConfigFile((raw) =>
-            getProviderEngineAdapter().formatProjectWithoutProvider(
-              raw,
-              TOKENSTAR_PROVIDER.providerId,
-              options.disabledProviders(),
-            ),
-          );
-        } catch {
-          // Runtime config owns this provider; legacy file cleanup is best-effort.
-        }
-      }
-      // Runtime-defined providers do not exist in the currently running
-      // OpenCode instance until the config patch above has been loaded. Saving
-      // credentials against that stale instance silently leaves the provider
-      // half-installed (config present, key missing), so reload before auth.
-      if (
-        materializesRuntimeProvider
-        && getProviderEngineAdapter().capabilities.authChangesRequireReload
-      ) {
-        await reloadProviderEngine(options.client());
-      }
-      await getProviderEngineConnection().setApiKey(providerId, trimmed);
-      await reloadProviderEngine(options.client());
-      if (materializesRuntimeProvider) {
-        const syntheticProviderId = isTokenStar
-          ? TOKENSTAR_PROVIDER.providerId
-          : isQwen3Coder
-            ? QWEN3_CODER_PROVIDER.providerId
-            : DEEPSEEK_OFFICIAL_PROVIDER.providerId;
-        await refreshProviders({ force: true, skipSharedImport: true });
+      await getProviderEngineConnection().setApiKey(resolvedProviderId, trimmed);
+      await refreshProviders({
+        dispose: getProviderEngineAdapter().capabilities.authChangesRequireReload,
+        force: true,
+        skipSharedImport: true,
+      });
+      if (compatibleProfile) {
+        const syntheticProviderId = compatibleProfile.id;
         const nextConnected = [
           ...options.providerConnectedIds().filter((id) => id !== syntheticProviderId),
           syntheticProviderId,
@@ -1645,8 +1532,6 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
         options.setProviderConnectedIds(nextConnected);
         refreshSnapshot();
         emitChange();
-      } else {
-        await refreshProviders({ force: true, skipSharedImport: true });
       }
       return `${t("status.connected")} ${providerId}`;
     } catch (error) {
@@ -1730,8 +1615,6 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
           existingImported?.providerId ?? null,
         ),
       );
-      await stripLegacyCloudProviderBlocks([localProviderId, existingImported?.providerId]);
-
       const nextImportedProviders = {
         ...state.importedCloudProviders,
         [provider.id]: {
@@ -1793,11 +1676,8 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
           throw error;
         }
       }
-      // Runtime-managed: delete the provider entry via the server's per-key
-      // merge (`null` deletes), then strip any legacy project-config block
-      // left by pre-runtime builds. Both are idempotent.
+      // Runtime-managed providers have one owner; `null` deletes that entry.
       await patchRuntimeProviders({ [imported.providerId]: null });
-      await stripLegacyCloudProviderBlocks([imported.providerId]);
 
       const nextImportedProviders = { ...state.importedCloudProviders };
       delete nextImportedProviders[cloudProviderId];
@@ -2003,23 +1883,16 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
     }
 
     try {
-      const removableRuntimeProviderId = [
-        TOKENSTAR_PROVIDER.providerId,
-        DEEPSEEK_OFFICIAL_PROVIDER.providerId,
-      ].find((providerId) => resolved.toLowerCase() === providerId);
-      if (removableRuntimeProviderId) {
-        await patchRuntimeProviders({ [removableRuntimeProviderId]: null });
-        try {
-          await updateProjectConfigFile((raw) =>
-            getProviderEngineAdapter().formatProjectWithoutProvider(
-              raw,
-              removableRuntimeProviderId,
-              options.disabledProviders(),
-            ),
-          );
-        } catch {
-          // Runtime config owns this provider; legacy file cleanup is best-effort.
-        }
+      let runtimeManagedProviderId: string | null = null;
+      try {
+        const target = await resolveProviderEngineConfigTarget("write");
+        runtimeManagedProviderId = (await getProviderEngineAdapter().runtimeProviderIds(target))
+          .find((providerId) => providerId === resolved) ?? null;
+      } catch {
+        // Credential removal still works when runtime config inspection is unavailable.
+      }
+      if (runtimeManagedProviderId) {
+        await patchRuntimeProviders({ [runtimeManagedProviderId]: null });
       }
       await removeProviderAuthCredentials(resolved);
       const updated = await refreshProviders({ dispose: true });
@@ -2155,11 +2028,9 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
                 // Ignore individual removal failures during sign-out cleanup
               }
             }
-            // Final sweep: remove any orphan `lpr_*` provider keys that remain
-            // in project config but weren't tracked in importedCloudProviders
-            // (e.g. from a previous failed cleanup or external edit).
+            // Final sweep removes runtime entries left by an interrupted cleanup.
             try {
-              const orphans = await sweepOrphanCloudProvidersFromConfig();
+              const orphans = await sweepOrphanCloudProvidersFromRuntime();
               for (const providerId of orphans) {
                 try {
                   await removeProviderAuthCredentials(providerId);
@@ -2210,9 +2081,9 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
               } catch {}
             }
           }
-          // Then: sweep any `lpr_*` keys that remain in project config
+          // Then sweep any untracked runtime-owned `lpr_*` keys.
           try {
-            const orphans = await sweepOrphanCloudProvidersFromConfig();
+            const orphans = await sweepOrphanCloudProvidersFromRuntime();
             for (const providerId of orphans) {
               try {
                 await removeProviderAuthCredentials(providerId);

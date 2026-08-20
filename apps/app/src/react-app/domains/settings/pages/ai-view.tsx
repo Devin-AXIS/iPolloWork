@@ -25,7 +25,7 @@ type ConnectedProvider = {
   id: string;
   name: string;
   displayId?: string;
-  source?: "env" | "api" | "config" | "custom";
+  source?: "env" | "api" | "config" | "custom" | "engine";
 };
 
 export type AiSettingsViewProps = {

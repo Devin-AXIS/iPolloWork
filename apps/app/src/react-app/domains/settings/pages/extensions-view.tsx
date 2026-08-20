@@ -1,6 +1,6 @@
 /** @jsxImportSource react */
 import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { Building2, Cpu, Loader2, Package, RefreshCw } from "lucide-react";
+import { Building2, Loader2, Package, RefreshCw } from "lucide-react";
 
 import { t } from "../../../../i18n";
 import { Button } from "@/components/ui/button";
@@ -16,35 +16,9 @@ import { useActiveEnterpriseConnection } from "@/react-app/domains/enterprise/us
 import { WorkResourceScopeSwitch } from "@/react-app/domains/enterprise/work-resource-scope-switch";
 import { readPluginPackageArchive } from "@/app/lib/plugin-package-archive";
 
-import { PluginsView, type PluginsExtensionsStore } from "./plugins-view";
-
 export type ExtensionsSection = "all" | "mcp" | "skills" | "plugins";
 
-type SuggestedPlugin = {
-  name: string;
-  packageName: string;
-  description: string;
-  tags: string[];
-  aliases?: string[];
-  installMode?: "simple" | "guided";
-  steps?: Array<{
-    title: string;
-    description: string;
-    command?: string;
-    url?: string;
-    path?: string;
-    note?: string;
-  }>;
-};
-
 export type ExtensionsViewProps = {
-  busy: boolean;
-  selectedWorkspaceRoot: string;
-  canEditPlugins: boolean;
-  canUseGlobalScope: boolean;
-  accessHint?: string | null;
-  suggestedPlugins: SuggestedPlugin[];
-  extensions: PluginsExtensionsStore;
   client: iPolloWorkServerClient | null;
   workspaceId: string | null;
   pluginPackagesView: ReactNode;
@@ -61,7 +35,6 @@ export function ExtensionsView(props: ExtensionsViewProps) {
   const [enterpriseError, setEnterpriseError] = useState<string | null>(null);
   const [enterpriseBusyId, setEnterpriseBusyId] = useState<string | null>(null);
   const [enterpriseRefreshRevision, setEnterpriseRefreshRevision] = useState(0);
-  const pluginCount = useMemo(() => props.extensions.pluginList().length, [props.extensions]);
 
   useEffect(() => {
     setResourceScope(readActiveWorkContextId());
@@ -107,7 +80,6 @@ export function ExtensionsView(props: ExtensionsViewProps) {
       const result = await props.client.importPluginPackage(props.workspaceId, upload);
       setInstalledEnterpriseExtensionVersions((versions) => new Map(versions).set(result.result.pluginId, result.result.version));
       toast.success(`${resource.name} v${result.result.version}`);
-      await props.extensions.refreshPlugins();
     } catch (error) {
       const message = error instanceof Error ? error.message : "";
       toast.error(message === "desktop_binary_fetch_requires_restart"
@@ -178,31 +150,7 @@ export function ExtensionsView(props: ExtensionsViewProps) {
             <Building2 className="mx-auto mb-3 size-5" />{t("enterprise_connection.enterprise_extensions_empty")}
           </div>
         )
-      ) : props.activeTab === "skills" ? props.skillsView : (
-        <div className="space-y-8">
-          {props.pluginPackagesView}
-          {pluginCount > 0 ? (
-            <details className="group border-t border-dls-border pt-5">
-              <summary className="flex cursor-pointer items-center gap-2 rounded-lg px-1 py-2 text-sm font-medium text-dls-secondary transition-colors hover:text-dls-text">
-                <Cpu size={14} />
-                <span>{t("settings.extensions.opencode_plugins")}</span>
-                <span className="text-[11px] text-dls-secondary">({pluginCount})</span>
-              </summary>
-              <div className="mt-3">
-                <PluginsView
-                  extensions={props.extensions}
-                  busy={props.busy}
-                  selectedWorkspaceRoot={props.selectedWorkspaceRoot}
-                  canEditPlugins={props.canEditPlugins}
-                  canUseGlobalScope={props.canUseGlobalScope}
-                  accessHint={props.accessHint}
-                  suggestedPlugins={props.suggestedPlugins}
-                />
-              </div>
-            </details>
-          ) : null}
-        </div>
-      )}
+      ) : props.activeTab === "skills" ? props.skillsView : props.pluginPackagesView}
     </section>
   );
 }

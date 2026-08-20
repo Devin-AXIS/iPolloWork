@@ -60,6 +60,9 @@ describe("personal and Enterprise chat entry wiring", () => {
     expect(routeState).not.toContain("canonicalWorkspacesForWorkContext(");
     expect(routeState).not.toContain("pruneServerWorkspacesForWorkContext(");
     expect(routeState).toContain("workContextRef.current === requestedContextId");
+    expect(routeState).toContain("workspaceSetSelected(workspaceId)");
+    expect(routeState).toContain("workspaceSetRuntimeActive(workspaceId)");
+    expect(routeState).toContain("endpoint.client.activateWorkspace(endpoint.workspaceId, { persist: true })");
     expect(sessionRoute).toContain("workContextId: activeWorkContextId");
     expect(sessionRoute).toContain("sessionsByWorkspaceId,");
     expect(sessionRoute).not.toContain("ChatSpace");
@@ -70,7 +73,7 @@ describe("personal and Enterprise chat entry wiring", () => {
   test("keeps market launches scoped while the starter catalog stays personal", () => {
     expect(sessionPage).toMatch(/template\.manifest\.id,\s+templateResourceScope,/);
     expect(sessionPage).toMatch(/props\.selectedSessionId,\s+undefined,\s+PERSONAL_WORK_CONTEXT_ID,/);
-    expect(sessionPage).toContain("designTemplates={starterTemplateCatalog}");
+    expect(sessionPage).toContain("designTemplates={availableStarterTemplateCatalog}");
     expect(sessionRoute).toContain("templateScope ?? readActiveWorkContextId()");
     expect(sessionRoute).toContain("Template unavailable");
     expect(sessionRoute).toContain("deleteSession(endpoint.workspaceId, createdSessionId)");

@@ -10,7 +10,7 @@ import {
   resolveInstalledPluginService,
 } from "./plugin-package-lifecycle.js";
 import type { PluginPackageManifest } from "./plugin-package-manifest.js";
-import { runtimeStorageDir } from "./runtime-opencode-config-store.js";
+import { runtimeStorageDir } from "./runtime-storage.js";
 import type { ServerConfig } from "./types.js";
 
 export type PluginServiceAction = {
@@ -223,7 +223,7 @@ export async function callPluginServiceAction(input: {
   });
   const declared = actionsForManifest(installed.manifest).find((entry) => entry.action === input.action);
   if (!declared) throw new ApiError(404, "plugin_service_action_not_found", "Plugin service action is not declared");
-  const authorization = await bindPluginAuthorizationRuntime(input.config, input.workspaceId, input.pluginId);
+  const authorization = await bindPluginAuthorizationRuntime(input.config, input.pluginId);
   await assertServiceAuthorizationReady(installed.manifest, authorization);
   const dataDir = pluginServiceDataDirectory(input.config, input.workspaceId, input.pluginId);
   const workspace = input.config.workspaces.find((entry) => entry.id === input.workspaceId);

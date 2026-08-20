@@ -19,19 +19,6 @@ export function pluginAuthorizationConsumerId(pluginId: string): string {
   return authorizationConsumerId("plugin", pluginId);
 }
 
-export async function migratePluginAuthorizationConsumers(config: ServerConfig): Promise<number> {
-  const installed = await listInstalledPluginPackages({ serverConfig: config });
-  const store = await authorizationVault(config);
-  let migrated = 0;
-  for (const plugin of installed) {
-    migrated += await store.mergeConsumers(
-      pluginAuthorizationConsumerId(plugin.pluginId),
-      config.workspaces.map((workspace) => authorizationConsumerId("plugin", `${workspace.id}:${plugin.pluginId}`)),
-    );
-  }
-  return migrated;
-}
-
 export type BoundPluginAuthorizationRuntime = {
   listConnections(): Promise<ConnectionStatus[]>;
   getCredential(methodId: string, accountId?: string): Promise<Readonly<Record<string, string>> | null>;
@@ -55,11 +42,10 @@ function isRecord(value: unknown): value is Record<string, unknown> {
  */
 export async function bindPluginAuthorizationRuntime(
   config: ServerConfig,
-  workspaceId: string,
   pluginId: string,
   options: BoundPluginAuthorizationOptions = {},
 ): Promise<BoundPluginAuthorizationRuntime> {
-  const manifest = await installedManifest(config, workspaceId, pluginId);
+  const manifest = await installedManifest(config, pluginId);
   const consumerId = pluginAuthorizationConsumerId(manifest.id);
   const store = await authorizationVault(config);
   const getCredential = async (methodId: string, accountId?: string) => {
@@ -100,7 +86,7 @@ export async function bindPluginAuthorizationRuntime(
   };
 }
 
-async function installedManifest(config: ServerConfig, workspaceId: string, pluginId: string): Promise<PluginPackageManifest> {
+async function installedManifest(config: ServerConfig, pluginId: string): Promise<PluginPackageManifest> {
   const installed = (await listInstalledPluginPackages({ serverConfig: config })).find((entry) => entry.pluginId === pluginId);
   if (!installed) throw new ApiError(404, "plugin_package_not_installed", "Plugin package is not installed");
   return installed.manifest;
@@ -124,8 +110,8 @@ function stringRecord(value: unknown): Record<string, string> {
   return output;
 }
 
-export async function listPluginAuthorization(config: ServerConfig, workspaceId: string, pluginId: string) {
-  const manifest = await installedManifest(config, workspaceId, pluginId);
+export async function listPluginAuthorization(config: ServerConfig, pluginId: string) {
+  const manifest = await installedManifest(config, pluginId);
   const consumerId = pluginAuthorizationConsumerId(pluginId);
   const store = await authorizationVault(config);
   const connections = (await Promise.all((manifest.authorization?.methods ?? []).map((method) =>
@@ -151,13 +137,12 @@ export async function listPluginAuthorization(config: ServerConfig, workspaceId:
 
 export async function savePluginSecretAuthorization(input: {
   config: ServerConfig;
-  workspaceId: string;
   pluginId: string;
   methodId: string;
   accountId: string;
   values: unknown;
 }) {
-  const manifest = await installedManifest(input.config, input.workspaceId, input.pluginId);
+  const manifest = await installedManifest(input.config, input.pluginId);
   const method = authorizationMethod(manifest, input.methodId);
   if (method.kind !== "secret-form") throw new ApiError(400, "plugin_authorization_method_invalid", "This method does not accept a secret form");
   const values = stringRecord(input.values);
@@ -175,18 +160,24 @@ export async function savePluginSecretAuthorization(input: {
     values,
     secretFields: method.fields.filter((field) => field.secret !== false).map((field) => field.id),
   });
+  await store.setActiveAccount({
+    consumerId: pluginAuthorizationConsumerId(input.pluginId),
+    connectionId: method.connectionId,
+    methodId: method.id,
+    methodFingerprint: authorizationMethodFingerprint(method),
+    accountId: input.accountId,
+  });
   return saved.status;
 }
 
 export async function startIndependentPluginAuthorization(input: {
   config: ServerConfig;
-  workspaceId: string;
   pluginId: string;
   methodId: string;
   accountId: string;
   callbackUrl: string;
 }) {
-  const manifest = await installedManifest(input.config, input.workspaceId, input.pluginId);
+  const manifest = await installedManifest(input.config, input.pluginId);
   const method = authorizationMethod(manifest, input.methodId);
   if (method.kind === "secret-form") throw new ApiError(400, "plugin_authorization_method_invalid", "Secret forms are saved directly and cannot be started");
   const consumerId = pluginAuthorizationConsumerId(input.pluginId);
@@ -294,7 +285,6 @@ async function refreshCredentialIfNeeded(input: {
 
 export async function completePluginBrowserAuthorization(input: {
   config: ServerConfig;
-  workspaceId: string;
   pluginId: string;
   state: string;
   code?: string;
@@ -304,7 +294,7 @@ export async function completePluginBrowserAuthorization(input: {
   const store = await authorizationVault(input.config);
   const flow = await store.consumePendingFlow({ consumerId, state: input.state });
   if (!flow) throw new ApiError(400, "plugin_authorization_callback_invalid", "Authorization callback is invalid, expired, or already used");
-  const manifest = await installedManifest(input.config, input.workspaceId, input.pluginId);
+  const manifest = await installedManifest(input.config, input.pluginId);
   const method = authorizationMethod(manifest, flow.methodId);
   let values: Record<string, string>;
   if (method.kind === "oauth-pkce") {
@@ -360,12 +350,18 @@ export async function completePluginBrowserAuthorization(input: {
     values,
     secretFields: Object.keys(values),
   });
+  await store.setActiveAccount({
+    consumerId,
+    connectionId: method.connectionId,
+    methodId: method.id,
+    methodFingerprint: authorizationMethodFingerprint(method),
+    accountId: flow.accountId,
+  });
   return saved.status;
 }
 
 export async function pollPluginDeviceAuthorization(input: {
   config: ServerConfig;
-  workspaceId: string;
   pluginId: string;
   flowId: string;
   fetcher?: typeof fetch;
@@ -374,7 +370,7 @@ export async function pollPluginDeviceAuthorization(input: {
   const store = await authorizationVault(input.config);
   const flow = await store.readPendingFlow({ consumerId, flowId: input.flowId });
   if (!flow) throw new ApiError(400, "plugin_authorization_flow_invalid", "Device authorization is invalid or expired");
-  const manifest = await installedManifest(input.config, input.workspaceId, input.pluginId);
+  const manifest = await installedManifest(input.config, input.pluginId);
   const method = authorizationMethod(manifest, flow.methodId);
   if (method.kind !== "device-code") throw new ApiError(400, "plugin_authorization_method_invalid", "This flow is not device authorization");
   const deviceCode = flow.privateData.deviceCode;
@@ -391,29 +387,50 @@ export async function pollPluginDeviceAuthorization(input: {
     values,
     secretFields: Object.keys(values),
   });
+  await store.setActiveAccount({
+    consumerId,
+    connectionId: method.connectionId,
+    methodId: method.id,
+    methodFingerprint: authorizationMethodFingerprint(method),
+    accountId: flow.accountId,
+  });
   return saved.status;
 }
 
-export async function revokePluginAuthorization(input: { config: ServerConfig; workspaceId: string; pluginId: string; accountId: string }) {
-  const manifest = await installedManifest(input.config, input.workspaceId, input.pluginId);
+export async function revokePluginAuthorization(input: { config: ServerConfig; pluginId: string; accountId: string }) {
+  const manifest = await installedManifest(input.config, input.pluginId);
   const connectionIds = [...new Set((manifest.authorization?.methods ?? []).map((method) => method.connectionId))];
   const store = await authorizationVault(input.config);
   const removed = await Promise.all(connectionIds.map((connectionId) => store.revokeAccount({ connectionId, accountId: input.accountId })));
   return removed.some(Boolean);
 }
 
-export async function cancelPluginAuthorizationFlow(input: { config: ServerConfig; workspaceId: string; pluginId: string; flowId: string }) {
+export async function cancelPluginAuthorizationFlow(input: { config: ServerConfig; pluginId: string; flowId: string }) {
   const store = await authorizationVault(input.config);
   return store.cancelPendingFlow({ consumerId: pluginAuthorizationConsumerId(input.pluginId), flowId: input.flowId });
 }
 
-export async function deletePluginAuthorization(input: { config: ServerConfig; workspaceId: string; pluginId: string }) {
+export async function deletePluginAuthorization(input: {
+  config: ServerConfig;
+  pluginId: string;
+  methods: readonly PluginAuthorizationMethod[];
+}) {
+  const remainingMethodScopes = new Set((await listInstalledPluginPackages({ serverConfig: input.config }))
+    .flatMap((entry) => entry.manifest.authorization?.methods ?? [])
+    .map((method) => `${method.connectionId}\0${method.id}\0${authorizationMethodFingerprint(method)}`));
+  const pruneCredentialScopes = input.methods
+    .map((method) => ({
+      connectionId: method.connectionId,
+      methodId: method.id,
+      methodFingerprint: authorizationMethodFingerprint(method),
+    }))
+    .filter((scope) => !remainingMethodScopes.has(`${scope.connectionId}\0${scope.methodId}\0${scope.methodFingerprint}`));
   const store = await authorizationVault(input.config);
-  return store.deleteConsumer(pluginAuthorizationConsumerId(input.pluginId));
+  return store.deleteConsumer(pluginAuthorizationConsumerId(input.pluginId), pruneCredentialScopes);
 }
 
-export async function reconcilePluginAuthorization(input: { config: ServerConfig; workspaceId: string; pluginId: string }) {
-  const manifest = await installedManifest(input.config, input.workspaceId, input.pluginId);
+export async function reconcilePluginAuthorization(input: { config: ServerConfig; pluginId: string }) {
+  const manifest = await installedManifest(input.config, input.pluginId);
   const methods = new Map((manifest.authorization?.methods ?? []).map((method) => [method.id, method.connectionId]));
   const store = await authorizationVault(input.config);
   return store.retainMethods(pluginAuthorizationConsumerId(input.pluginId), methods);

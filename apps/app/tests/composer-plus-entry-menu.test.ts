@@ -52,11 +52,14 @@ describe("composer plus entry menu", () => {
     expect(composerSource).toContain('<ChevronRight size={14}');
   });
 
-  test("removes the old standalone attachment, tool, and agent entries", () => {
+  test("keeps the plus icon as the unified menu entry", () => {
     const actionRow = actionRowSource();
 
-    expect(actionRow).toContain("<Plus");
+    expect(actionRow).toContain('<Plus size={18} />');
     expect(actionRow).not.toContain("<Paperclip");
+    expect(actionRow).toContain('className="flex min-w-0 flex-1 flex-wrap items-center gap-0 overflow-visible"');
+    expect(actionRow).toContain('className="relative me-1.5"');
+    expect(actionRow).toContain('props.layout === "inline" ? "h-8 px-2"');
     expect(actionRow).not.toContain('title={t("composer.tools_label")}');
     expect(actionRow).not.toContain('title={t("composer.agent_label")}');
     expect(composerSource).not.toContain('["agents", t("composer.agents_label")]');

@@ -5,13 +5,12 @@ import {
   use,
   useEffect,
   useMemo,
-  useRef,
   useState,
   type ReactNode,
 } from "react";
 import { DEFAULT_ENGINE_ID } from "@ipollowork/types/workspace";
 
-import { THINKING_PREF_KEY } from "../../app/constants";
+import { DEFAULT_MODEL } from "../../app/constants";
 import type { ModelRef, SettingsTab, View } from "../../app/types";
 import {
   DEFAULT_DESKTOP_NOTIFICATION_PREFERENCE,
@@ -19,7 +18,6 @@ import {
   type DesktopNotificationPreference,
 } from "./desktop-notification-preferences";
 import { LOCAL_PREFERENCES_KEY } from "./local-preferences-storage";
-import { readStoredDefaultModel } from "./model-config";
 
 export type LocalUIState = {
   view: View;
@@ -28,6 +26,8 @@ export type LocalUIState = {
 
 export type LocalPreferences = {
   showThinking: boolean;
+  model: ModelRef;
+  modelVariant: string | null;
   enginePreferences: Record<string, EnginePreferences>;
   featureFlags: {
     microsandboxCreateSandbox: boolean;
@@ -57,8 +57,6 @@ export type LocalPreferences = {
 };
 
 export type EnginePreferences = {
-  model: ModelRef | null;
-  modelVariant: string | null;
   mode: string | null;
 };
 
@@ -78,6 +76,8 @@ export const DEFAULT_SHOW_THINKING = true;
 const INITIAL_UI: LocalUIState = { view: "settings", tab: "preferences" };
 const INITIAL_PREFS: LocalPreferences = {
   showThinking: DEFAULT_SHOW_THINKING,
+  model: DEFAULT_MODEL,
+  modelVariant: null,
   enginePreferences: {},
   featureFlags: { microsandboxCreateSandbox: true, memory: false },
   hasCompletedOnboarding: false,
@@ -86,8 +86,6 @@ const INITIAL_PREFS: LocalPreferences = {
 };
 
 const EMPTY_ENGINE_PREFERENCES: EnginePreferences = {
-  model: null,
-  modelVariant: null,
   mode: null,
 };
 
@@ -111,8 +109,20 @@ export function updateEnginePreferences(
     ...preferences,
     enginePreferences: {
       ...preferences.enginePreferences,
-      [resolvedEngineId]: next,
+      [resolvedEngineId]: {
+        mode: next.mode,
+      },
     },
+  };
+}
+
+export function updateModelPreferences(
+  preferences: LocalPreferences,
+  updater: (previous: Pick<LocalPreferences, "model" | "modelVariant">) => Pick<LocalPreferences, "model" | "modelVariant">,
+): LocalPreferences {
+  return {
+    ...preferences,
+    ...updater({ model: preferences.model, modelVariant: preferences.modelVariant }),
   };
 }
 
@@ -131,8 +141,6 @@ function normalizeEnginePreferences(value: unknown): Record<string, EnginePrefer
       if (!selection || typeof selection !== "object" || Array.isArray(selection)) return [];
       const record = selection as Partial<EnginePreferences>;
       return [[engineId, {
-        model: normalizeModelRef(record.model),
-        modelVariant: typeof record.modelVariant === "string" ? record.modelVariant : null,
         mode: typeof record.mode === "string" ? record.mode : null,
       }]];
     }),
@@ -172,41 +180,20 @@ export function LocalProvider({ children }: LocalProviderProps) {
     readPersisted(UI_STORAGE_KEY, INITIAL_UI),
   );
   const [prefs, setPrefsRaw] = useState<LocalPreferences>(() => {
-    const persisted = readPersisted(LOCAL_PREFERENCES_KEY, INITIAL_PREFS) as LocalPreferences & {
-      defaultModel?: unknown;
-      modelVariant?: unknown;
-      selectedAgent?: unknown;
-    };
+    const persisted = readPersisted(LOCAL_PREFERENCES_KEY, INITIAL_PREFS);
     delete (persisted as { releaseChannel?: unknown }).releaseChannel;
     delete (persisted as { providerStepCompleted?: unknown }).providerStepCompleted;
     persisted.desktopNotifications = isDesktopNotificationPreference(persisted.desktopNotifications)
       ? persisted.desktopNotifications
       : DEFAULT_DESKTOP_NOTIFICATION_PREFERENCE;
-    const enginePreferences = normalizeEnginePreferences(persisted.enginePreferences);
-    const openCodePreferences = enginePreferences[DEFAULT_ENGINE_ID] ?? EMPTY_ENGINE_PREFERENCES;
-    const firstConfiguredModel = Object.values(enginePreferences).find((selection) => selection.model)?.model
-      ?? null;
-    const firstConfiguredVariant = Object.values(enginePreferences).find(
-      (selection) => selection.modelVariant,
-    )?.modelVariant ?? null;
-    enginePreferences[DEFAULT_ENGINE_ID] = {
-      model: openCodePreferences.model
-        ?? firstConfiguredModel
-        ?? normalizeModelRef(persisted.defaultModel)
-        ?? readStoredDefaultModel(),
-      modelVariant: openCodePreferences.modelVariant
-        ?? firstConfiguredVariant
-        ?? (typeof persisted.modelVariant === "string" ? persisted.modelVariant : null),
-      mode: openCodePreferences.mode
-        ?? (typeof persisted.selectedAgent === "string" ? persisted.selectedAgent : null),
+    return {
+      ...persisted,
+      model: normalizeModelRef(persisted.model) ?? DEFAULT_MODEL,
+      modelVariant: typeof persisted.modelVariant === "string" ? persisted.modelVariant : null,
+      enginePreferences: normalizeEnginePreferences(persisted.enginePreferences),
     };
-    delete persisted.defaultModel;
-    delete persisted.modelVariant;
-    delete persisted.selectedAgent;
-    return { ...persisted, enginePreferences };
   });
   const ready = true;
-  const migratedThinkingRef = useRef(false);
 
   useEffect(() => {
     writePersisted(UI_STORAGE_KEY, ui);
@@ -215,30 +202,6 @@ export function LocalProvider({ children }: LocalProviderProps) {
   useEffect(() => {
     writePersisted(LOCAL_PREFERENCES_KEY, prefs);
   }, [prefs]);
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    if (migratedThinkingRef.current) return;
-    migratedThinkingRef.current = true;
-
-    const raw = window.localStorage.getItem(THINKING_PREF_KEY);
-    if (raw == null) return;
-
-    try {
-      const parsed = JSON.parse(raw);
-      if (typeof parsed === "boolean") {
-        setPrefsRaw((previous) => ({ ...previous, showThinking: parsed }));
-      }
-    } catch {
-      // ignore invalid legacy values
-    }
-
-    try {
-      window.localStorage.removeItem(THINKING_PREF_KEY);
-    } catch {
-      // ignore
-    }
-  }, []);
 
   const setUi = useCallback(
     (updater: (previous: LocalUIState) => LocalUIState) => {

@@ -17,7 +17,6 @@ import {
 } from "@ipollowork/types/workspace";
 
 import { captureAnalyticsEvent, markTaskRunStart } from "@/app/lib/analytics";
-import { DeepSeekHarnessClient } from "@/app/lib/deepseek-harness-client";
 import { createClient } from "@/app/lib/opencode";
 import {
   PERSONAL_WORK_CONTEXT_ID,
@@ -71,6 +70,7 @@ import {
 } from "@/react-app/shell/route-workspaces";
 import {
   getEnginePreferences,
+  updateModelPreferences,
   updateEnginePreferences,
   useLocal,
 } from "@/react-app/kernel/local-provider";
@@ -155,11 +155,10 @@ import { SettingsSurface } from "./settings-route";
 import {
   ensureProviderListQuery,
   getSelectableChatModelSnapshot,
-  isModelAvailableInSelectableChatProviders,
   type ProviderListQueryInput,
   useProviderListQuery,
 } from "@/react-app/infra/provider-list-query";
-import { resolvePreferredSelectableChatModel } from "@/react-app/infra/preferred-chat-model";
+import { resolveEngineSelectableChatModel } from "@/react-app/infra/preferred-chat-model";
 import {
   designSelectionContextsForDraft,
   draftToParts,
@@ -208,6 +207,12 @@ function focusPromptSoon() {
 let firstRunLoaderPhase: "unarmed" | "armed" | "done" = "unarmed";
 let startupConversationPhase: "pending" | "creating" | "done" = "pending";
 
+type PendingInitialProjectTask = {
+  workspaceId: string;
+  sessionId: string | null;
+  draft: ComposerDraft;
+};
+
 export function SessionRoute() {
   const navigate = useNavigate();
   const denAuth = useDenAuth();
@@ -217,6 +222,9 @@ export function SessionRoute() {
   const [ipolloworkServerHostInfoState, setiPolloWorkServerHostInfoState] = useState<iPolloWorkServerInfo | null>(null);
   const [, setiPolloWorkServerSettingsVersion] = useState(0);
   const [activeWorkContextId, setActiveWorkContextId] = useState(() => readActiveWorkContextId());
+  const [pendingInitialProjectTask, setPendingInitialProjectTask] = useState<PendingInitialProjectTask | null>(null);
+  const initialProjectSessionCreatingRef = useRef(false);
+  const initialProjectDraftSendingRef = useRef(false);
   const {
     navigateToWorkspaceSession,
     selectedSessionId,
@@ -276,7 +284,7 @@ export function SessionRoute() {
   const conversationConnectionKey = `${selectedWorkspace?.engineId?.trim() || DEFAULT_ENGINE_ID}:${opencodeBaseUrl}:${selectedWorkspaceServerToken}`;
   const activeEngineId = selectedWorkspace?.engineId?.trim() || DEFAULT_ENGINE_ID;
   const activeEnginePreferences = getEnginePreferences(local.prefs, activeEngineId);
-  const selectedModel = activeEnginePreferences.model;
+  const selectedModel = local.prefs.model;
   const selectedMode = activeEnginePreferences.mode;
   const [modeSelectionLocked, setModeSelectionLocked] = useState(false);
   useEffect(() => {
@@ -284,19 +292,12 @@ export function SessionRoute() {
   }, [activeEngineId, selectedSessionId]);
   const engineProviderClient = useMemo(() => {
     if (activeEngineId === DEFAULT_ENGINE_ID) return opencodeClient;
-    if (
-      activeEngineId !== DEEPSEEK_HARNESS_ENGINE_ID
-      || !selectedWorkspaceEndpoint
-      || !selectedWorkspaceServerToken
-    ) {
-      return null;
-    }
-    return new DeepSeekHarnessClient({
-      serverBaseUrl: selectedWorkspaceEndpoint.baseUrl,
-      workspaceId: selectedWorkspaceEndpoint.workspaceId,
-      token: selectedWorkspaceServerToken,
+    if (!selectedWorkspaceEndpoint || !selectedWorkspaceServerToken) return null;
+    return providerEngineAdapters.createClient(activeEngineId, {
+      endpoint: selectedWorkspaceEndpoint,
+      directory: selectedWorkspace?.path,
     });
-  }, [activeEngineId, opencodeClient, selectedWorkspaceEndpoint, selectedWorkspaceServerToken]);
+  }, [activeEngineId, opencodeClient, selectedWorkspace?.path, selectedWorkspaceEndpoint, selectedWorkspaceServerToken]);
   const sharedProviderWorkspace = useMemo(
     () => selectSharedProviderWorkspace(workspaces, selectedWorkspace),
     [selectedWorkspace, workspaces],
@@ -336,20 +337,18 @@ export function SessionRoute() {
   );
   const sharedProviderClient = useMemo(() => {
     if (!sharedProviderEndpoint?.token) return null;
-    return createClient(
-      sharedProviderEndpoint.opencodeBaseUrl,
-      sharedProviderRoot || undefined,
-      { token: sharedProviderEndpoint.token, mode: "ipollowork" },
-    );
-  }, [sharedProviderEndpoint, sharedProviderRoot]);
+    return providerEngineAdapters.createClient(sharedProviderEngineId, {
+      endpoint: sharedProviderEndpoint,
+      directory: sharedProviderRoot,
+    });
+  }, [sharedProviderEndpoint, sharedProviderEngineId, sharedProviderRoot]);
   const deepSeekHarnessProviderClient = useMemo(() => {
     if (!deepSeekHarnessEndpoint?.token) return null;
-    return new DeepSeekHarnessClient({
-      serverBaseUrl: deepSeekHarnessEndpoint.baseUrl,
-      workspaceId: deepSeekHarnessEndpoint.workspaceId,
-      token: deepSeekHarnessEndpoint.token,
+    return providerEngineAdapters.createClient(DEEPSEEK_HARNESS_ENGINE_ID, {
+      endpoint: deepSeekHarnessEndpoint,
+      directory: deepSeekHarnessWorkspace?.path,
     });
-  }, [deepSeekHarnessEndpoint]);
+  }, [deepSeekHarnessEndpoint, deepSeekHarnessWorkspace?.path]);
   const modelCatalogSources = useMemo<readonly ProviderListQueryInput[]>(() => {
     const sources: ProviderListQueryInput[] = [];
     if (sharedProviderClient) {
@@ -498,24 +497,14 @@ export function SessionRoute() {
       void loadWorkspaceSessionsInBackground([project]);
     }
 
-    if (isDesktopRuntime()) {
-      void workspaceSetSelected(workspaceId).catch(() => undefined);
-      void workspaceSetRuntimeActive(workspaceId).catch(() => undefined);
-    }
-
-    const endpoint = endpointForWorkspace(project);
-    if (endpoint) {
-      void endpoint.client.activateWorkspace(endpoint.workspaceId, { persist: true }).catch(() => undefined);
-    }
-
+    const knownSessions = sessionsByWorkspaceId[workspaceId] ?? [];
     const rememberedSessionId = readLastSessionFor(workspaceId);
-    const loadedSessions = sessionsByWorkspaceIdRef.current[workspaceId];
-    const restoredSessionId = rememberedSessionId && (
-      loadedSessions === undefined || loadedSessions.some((session) => session.id === rememberedSessionId)
-    )
-      ? rememberedSessionId
-      : null;
-    navigateToWorkspaceSession(workspaceId, restoredSessionId);
+    const targetSessionId = knownSessions.find((session) => session.id === rememberedSessionId)?.id
+      ?? knownSessions[0]?.id
+      ?? rememberedSessionId
+      ?? null;
+    if (targetSessionId) writeLastSessionFor(workspaceId, targetSessionId);
+    navigateToWorkspaceSession(workspaceId, targetSessionId);
     return true;
   }, [
     activeWorkContextId,
@@ -523,7 +512,6 @@ export function SessionRoute() {
     loadWorkspaceSessionsInBackground,
     navigateToWorkspaceSession,
     sessionsByWorkspaceId,
-    sessionsByWorkspaceIdRef,
     setLegacySelectedWorkspaceId,
     setRetryingWorkspaceIds,
     workspaces,
@@ -592,6 +580,7 @@ export function SessionRoute() {
     rememberProjectForWorkContext(activeWorkContextId, project.id);
     await refreshRouteState();
     navigateToWorkspaceSession(project.id);
+    return project.id;
   }, [activeWorkContextId, client, navigateToWorkspaceSession, refreshRouteState, setLegacySelectedWorkspaceId, workspaces]);
 
   const renameProject = useCallback(async (workspaceId: string, name: string) => {
@@ -612,7 +601,8 @@ export function SessionRoute() {
 
   const deleteProject = useCallback(async (workspaceId: string) => {
     if (workspaces.length <= 1) throw new Error(t("projects.keep_one"));
-    const fallback = workspaces.find((workspace) => workspace.id !== workspaceId);
+    const fallback = workspaces.find((workspace) => workspace.id !== workspaceId && !workspace.isDefault)
+      ?? workspaces.find((workspace) => workspace.id !== workspaceId);
     if (!fallback) throw new Error(t("projects.keep_one"));
     if (client) await client.deleteWorkspace(workspaceId);
     if (isDesktopRuntime()) await workspaceForget(workspaceId);
@@ -683,13 +673,6 @@ export function SessionRoute() {
     baseUrl: selectedWorkspaceEndpoint?.opencodeBaseUrl,
     directory: selectedWorkspaceRoot || undefined,
   });
-  const { providerCatalog, modelVariantLabel, modelBehaviorOptions, modelVariantValue } =
-    useModelBehavior({
-      providerList: providerListQuery.data,
-      defaultModel: selectedModel,
-      modelVariant: activeEnginePreferences.modelVariant,
-    });
-  const selectedModelSupportsAttachments = modelSupportsAttachments(providerCatalog, selectedModel);
   const modelPicker = useModelPicker({
     client: engineProviderClient,
     engineId: activeEngineId,
@@ -699,11 +682,9 @@ export function SessionRoute() {
     connectedProviderIds: providerConnectedIds,
   });
   const setSelectedModel = useCallback((model: ModelRef) => {
-    local.setPrefs((previous) => updateEnginePreferences(
+    local.setPrefs((previous) => updateModelPreferences(
       previous,
-      activeEngineId,
       (selection) => ({
-        ...selection,
         model,
         modelVariant: selection.model?.providerID === model.providerID
           && selection.model.modelID === model.modelID
@@ -711,54 +692,49 @@ export function SessionRoute() {
           : null,
       }),
     ));
-  }, [activeEngineId, local.setPrefs]);
+  }, [local.setPrefs]);
   const setModelVariant = useCallback((modelVariant: string | null) => {
-    local.setPrefs((previous) => updateEnginePreferences(
+    local.setPrefs((previous) => updateModelPreferences(
       previous,
-      activeEngineId,
       (selection) => ({ ...selection, modelVariant }),
     ));
-  }, [activeEngineId, local.setPrefs]);
-  useEffect(() => {
-    if (!providerListQuery.data) return;
-    const preferredSelectableModel = resolvePreferredSelectableChatModel({
-      providers: getSelectableChatModelSnapshot(providerListQuery.data),
-      defaults: providerListQuery.data.default,
-      current: selectedModel,
-    });
-    const preferredModel = preferredSelectableModel;
-    if (
-      !preferredModel ||
-      (
-        preferredModel.providerID === selectedModel?.providerID &&
-        preferredModel.modelID === selectedModel.modelID
-      )
-    ) {
-      return;
-    }
-    setSelectedModel(preferredModel);
-  }, [providerListQuery.data, selectedModel, setSelectedModel]);
+  }, [local.setPrefs]);
   const selectableModels = getSelectableChatModelSnapshot(providerListQuery.data);
-  const selectedModelUnavailable = Boolean(
-    providerListQuery.data && (
-      !selectedModel ||
-      (
-        isDesktopProviderBlocked({
-          providerId: selectedModel.providerID,
-          checkRestriction: checkDesktopRestriction,
-        }) ||
-        (
-          checkDesktopRestriction({ restriction: "allowCustomProviders" }) &&
-          !providerConnectedIds.some(
-            (providerId) => providerId.trim() === selectedModel.providerID.trim(),
-          )
-        ) ||
-        !isModelAvailableInSelectableChatProviders(providerListQuery.data, selectedModel)
-      ) ||
-      selectableModels.every((provider) => provider.modelIDs.length === 0)
+  const customProvidersRestricted = checkDesktopRestriction({ restriction: "allowCustomProviders" });
+  const permittedSelectableModels = selectableModels.filter((provider) => (
+    !isDesktopProviderBlocked({
+      providerId: provider.providerID,
+      checkRestriction: checkDesktopRestriction,
+    }) && (
+      !customProvidersRestricted ||
+      providerConnectedIds.some((providerId) => providerId.trim() === provider.providerID.trim())
     )
+  ));
+  const activeSelectedModel = providerListQuery.data
+    ? resolveEngineSelectableChatModel({
+        providers: permittedSelectableModels,
+        defaults: providerListQuery.data.default,
+        preferred: selectedModel,
+      })
+    : selectedModel;
+  const usesSharedModelPreference = Boolean(
+    selectedModel &&
+    activeSelectedModel &&
+    selectedModel.providerID === activeSelectedModel.providerID &&
+    selectedModel.modelID === activeSelectedModel.modelID,
   );
-  const hasUsableModel = Boolean(selectedModel && !selectedModelUnavailable);
+  const activeModelVariant = usesSharedModelPreference
+    ? local.prefs.modelVariant
+    : null;
+  const { providerCatalog, modelVariantLabel, modelBehaviorOptions, modelVariantValue } =
+    useModelBehavior({
+      providerList: providerListQuery.data,
+      defaultModel: activeSelectedModel,
+      modelVariant: activeModelVariant,
+    });
+  const selectedModelSupportsAttachments = modelSupportsAttachments(providerCatalog, activeSelectedModel);
+  const selectedModelUnavailable = Boolean(providerListQuery.data && !activeSelectedModel);
+  const hasUsableModel = Boolean(activeSelectedModel && !selectedModelUnavailable);
   // Creating and opening a conversation does not require a usable model.
   // Keeping this separate from `canCreateTask` prevents a first-run workspace
   // from landing on an empty pane when its model setup is still incomplete or
@@ -881,8 +857,8 @@ export function SessionRoute() {
     };
   }, [denSessionVersion, sharedProviderClient, sharedProviderEndpoint?.opencodeBaseUrl, sharedProviderEngineId, sharedProviderRoot]);
 
-  const modelLabel = selectedModel
-    ? resolveModelDisplayName(selectedModel.modelID)
+  const modelLabel = activeSelectedModel
+    ? resolveModelDisplayName(activeSelectedModel.modelID)
     : t("session.default_model");
 
   const listSlashCommands = useCallback(async (): Promise<SlashCommandOption[]> => {
@@ -961,7 +937,7 @@ export function SessionRoute() {
   }, [selectedWorkspaceEndpoint]);
 
   const surfaceProps = useMemo(() => {
-    if (!client || !selectedWorkspaceId || !selectedSessionId || !opencodeBaseUrl || !token || !conversation) {
+    if (!client || !selectedWorkspaceId || !opencodeBaseUrl || !token || !conversation) {
       return null;
     }
     // Transient-safety: when the user switches workspaces the URL-driven
@@ -1000,8 +976,14 @@ export function SessionRoute() {
       },
       modelPickerOpen: modelPicker.compactOpen,
       modelUnavailable: selectedModelUnavailable,
-      selectedModel: selectedModel ?? { providerID: "", modelID: "" },
-      onModelPickerOpenChange: modelPicker.setCompactOpen,
+      selectedModel: activeSelectedModel ?? { providerID: "", modelID: "" },
+      onModelPickerOpenChange: (open: boolean) => {
+        if (open && !hasUsableModel) {
+          void sessionProviderAuthStore.openProviderAuthModal({ returnFocusTarget: "composer" });
+          return;
+        }
+        modelPicker.setCompactOpen(open);
+      },
       onModelChange: (model: ModelRef) => {
         setSelectedModel(model);
         modelPicker.setCompactOpen(false);
@@ -1060,8 +1042,8 @@ export function SessionRoute() {
           attachment_count: draft.attachments.length,
           text_length: text.length,
           workspace_type: selectedWorkspace?.workspaceType ?? "unknown",
-          provider_id: selectedModel?.providerID ?? null,
-          model_id: selectedModel?.modelID ?? null,
+          provider_id: activeSelectedModel?.providerID ?? null,
+          model_id: activeSelectedModel?.modelID ?? null,
         });
         markTaskRunStart(targetSessionId);
         // Den org adoption signals (auth-gated inside; no-op when signed out).
@@ -1238,12 +1220,12 @@ export function SessionRoute() {
           prompt: () => conversation.sendPrompt({
             sessionId: targetSessionId,
             parts: promptParts,
-            model: selectedModel ?? undefined,
+            model: activeSelectedModel ?? undefined,
             mode: selectedMode ?? undefined,
-            reasoningEffort: selectedModel?.providerID === "tokenstar" && modelVariantValue && tokenStarModelSupportsEffort(selectedModel.modelID)
+            reasoningEffort: activeSelectedModel?.providerID === "tokenstar" && modelVariantValue && tokenStarModelSupportsEffort(activeSelectedModel.modelID)
               ? modelVariantValue
               : undefined,
-            variant: selectedModel?.providerID === "tokenstar" && tokenStarModelSupportsEffort(selectedModel.modelID)
+            variant: activeSelectedModel?.providerID === "tokenstar" && tokenStarModelSupportsEffort(activeSelectedModel.modelID)
               ? undefined
               : modelVariantValue ?? undefined,
             system: systemContext || undefined,
@@ -1339,7 +1321,7 @@ export function SessionRoute() {
     opencodeBaseUrl,
     providerConnectedIds,
     selectedMode,
-    selectedModel,
+    activeSelectedModel,
     selectedSessionId,
     selectedModelSupportsAttachments,
     selectedModelUnavailable,
@@ -1552,13 +1534,75 @@ export function SessionRoute() {
     workspaces,
   ]);
 
+  const handleCreateInitialProjectTask = useCallback(async (draft: ComposerDraft) => {
+    if (pendingInitialProjectTask) return false;
+    try {
+      const workspaceId = await createProject({
+        name: t("session.untitled"),
+        folderPath: "",
+        engineId: DEFAULT_ENGINE_ID,
+      });
+      if (!workspaceId) return false;
+      setPendingInitialProjectTask({ workspaceId, sessionId: null, draft });
+      return true;
+    } catch (error) {
+      toast.error(t("projects.create_failed"), {
+        description: error instanceof Error ? error.message : t("app.unknown_error"),
+      });
+      return false;
+    }
+  }, [createProject, pendingInitialProjectTask]);
+
+  useEffect(() => {
+    const pending = pendingInitialProjectTask;
+    if (!pending || pending.sessionId || initialProjectSessionCreatingRef.current) return;
+    if (!workspaces.some((workspace) => workspace.id === pending.workspaceId)) return;
+    initialProjectSessionCreatingRef.current = true;
+    void handleCreateTaskInWorkspace(pending.workspaceId).then((sessionId) => {
+      if (!sessionId) {
+        setPendingInitialProjectTask(null);
+        return;
+      }
+      saveSessionDraft(pending.workspaceId, sessionId, {
+        text: pending.draft.text,
+        mode: pending.draft.mode,
+      });
+      setPendingInitialProjectTask((current) => current?.workspaceId === pending.workspaceId
+        ? { ...current, sessionId }
+        : current);
+    }).finally(() => {
+      initialProjectSessionCreatingRef.current = false;
+    });
+  }, [handleCreateTaskInWorkspace, pendingInitialProjectTask, workspaces]);
+
+  useEffect(() => {
+    const pending = pendingInitialProjectTask;
+    if (
+      !pending?.sessionId
+      || selectedWorkspaceId !== pending.workspaceId
+      || selectedSessionId !== pending.sessionId
+      || !surfaceProps
+      || initialProjectDraftSendingRef.current
+    ) return;
+    initialProjectDraftSendingRef.current = true;
+    void Promise.resolve(surfaceProps.onSendDraft(pending.draft, pending.sessionId))
+      .catch((error) => {
+        toast.error(error instanceof Error ? error.message : t("app.unknown_error"));
+      })
+      .finally(() => {
+        initialProjectDraftSendingRef.current = false;
+        setPendingInitialProjectTask(null);
+      });
+  }, [pendingInitialProjectTask, selectedSessionId, selectedWorkspaceId, surfaceProps]);
+
   // Full-screen first-run loader. Armed once per app launch from the very
   // first render of a brand-new profile (no active-workspace memory yet) and
   // held through all boot-state churn AND route remounts — recomputing
   // visibility from volatile route state made it flicker, and a remount
   // would reset component state. It drops only when the first session is
-  // selected, on error (retry toast must be reachable), when state settles
-  // and this turns out not to be a first run, or after a safety timeout.
+  // selected, when the project-first starter is ready, on error (retry toast
+  // must be reachable), when state settles and this turns out not to be a
+  // first run, or after a safety timeout.
   const [firstRunLoaderActive, setFirstRunLoaderActive] = useState(() => {
     if (firstRunLoaderPhase === "unarmed") {
       firstRunLoaderPhase = isDesktopRuntime() && !readActiveWorkspaceId() ? "armed" : "done";
@@ -1588,6 +1632,14 @@ export function SessionRoute() {
       dismissFirstRunLoader();
       return;
     }
+    if (
+      !loading
+      && selectedWorkspaceId
+      && !workspaces.some((workspace) => !workspace.isDefault)
+    ) {
+      dismissFirstRunLoader();
+      return;
+    }
     // State settled and this profile already has sessions or last-session
     // memory (not a first run): hand back to the normal UI. Skipped once the
     // auto-create below has latched — our own just-created session briefly
@@ -1601,19 +1653,25 @@ export function SessionRoute() {
     ) {
       dismissFirstRunLoader();
     }
-  }, [sessionsByWorkspaceId, firstRunLoaderActive, dismissFirstRunLoader, selectedSessionId, routeError, selectedWorkspaceError, errorsByWorkspaceId, loading, selectedWorkspaceId]);
+  }, [sessionsByWorkspaceId, firstRunLoaderActive, dismissFirstRunLoader, selectedSessionId, routeError, selectedWorkspaceError, errorsByWorkspaceId, loading, selectedWorkspaceId, workspaces]);
 
   // Every desktop launch starts in a fresh conversation. Historical session
   // resources remain idle until the user explicitly opens that session.
   useEffect(() => {
     if (!canCreateSession || !isDesktopRuntime()) return;
-    if (loading || selectedSessionId || !selectedWorkspaceId) return;
+    if (selectedSessionId) {
+      startupConversationPhase = "done";
+      return;
+    }
+    if (loading || !selectedWorkspaceId) return;
+    if (pendingInitialProjectTask) return;
+    if (workspaces.find((workspace) => workspace.id === selectedWorkspaceId)?.isDefault !== false) return;
     if (startupConversationPhase !== "pending") return;
     startupConversationPhase = "creating";
     void handleCreateTaskInWorkspace(selectedWorkspaceId).then((createdSessionId) => {
       startupConversationPhase = createdSessionId ? "done" : "pending";
     });
-  }, [canCreateSession, loading, selectedSessionId, selectedWorkspaceId, handleCreateTaskInWorkspace]);
+  }, [canCreateSession, loading, pendingInitialProjectTask, selectedSessionId, selectedWorkspaceId, handleCreateTaskInWorkspace, workspaces]);
 
   const {
     commandPaletteOpen,
@@ -2001,6 +2059,7 @@ export function SessionRoute() {
         },
         onSelectProject: selectProject,
         onCreateProject: createProject,
+        onCreateInitialProjectTask: handleCreateInitialProjectTask,
         onRenameProject: renameProject,
         onRevealProject: revealProject,
         onDeleteProject: deleteProject,
@@ -2177,7 +2236,7 @@ export function SessionRoute() {
       query={modelPicker.query}
       setQuery={modelPicker.setQuery}
       target="default"
-      current={selectedModel ?? ({ providerID: "", modelID: "" } satisfies ModelRef)}
+      current={activeSelectedModel ?? ({ providerID: "", modelID: "" } satisfies ModelRef)}
       onSelect={(next: ModelRef) => {
         setSelectedModel(next);
         modelPicker.setOpen(false);

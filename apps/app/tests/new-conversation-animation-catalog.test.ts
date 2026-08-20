@@ -19,6 +19,8 @@ describe("new conversation animation catalog", () => {
     expect(starter).toContain('mode === "video" && VIDEO_TEMPLATE_PICKER_ENABLED');
     expect(surface).toContain("if (!VIDEO_ANIMATION_PICKER_ENABLED");
     expect(starter).toContain("function TemplateStrip");
+    expect(starter).toContain('data-testid="new-conversation-template-strip"');
+    expect(starter).toContain('mt-4 min-h-[185px] rounded-xl');
   });
 
   test("separates the GSAP catalog into animation and effect libraries", () => {
@@ -74,7 +76,7 @@ describe("new conversation animation catalog", () => {
     expect(sessionPage).toContain("const refreshStarterTemplateCatalog = useCallback");
     expect(sessionPage).toContain("PERSONAL_WORK_CONTEXT_ID");
     expect(sessionPage).toMatch(/listTemplates\(\s*props\.runtimeWorkspaceId,\s*PERSONAL_WORK_CONTEXT_ID,/);
-    expect(sessionPage).toContain("designTemplates={starterTemplateCatalog}");
+    expect(sessionPage).toContain("designTemplates={availableStarterTemplateCatalog}");
     expect(sessionPage).toContain("onRequestDesignTemplates={() => void refreshStarterTemplateCatalog()}");
   });
 
@@ -92,17 +94,63 @@ describe("new conversation animation catalog", () => {
     expect(sessionPage).toContain("const designTemplateEntryPath = currentTemplateSessionData?.manifest.surface === \"design\"");
   });
 
-  test("matches the Figma dark palette without changing the light theme", () => {
+  test("matches the redesigned tabs with semantic theme colors and spring motion", () => {
     expect(surface).toContain('dark:bg-[#131313]');
     expect(starter).toContain('new-conversation-bg.png');
     expect(starter).toContain('max-w-none dark:opacity-20');
-    expect(starter).toContain('dark:bg-[#333]');
-    expect(starter).toContain('dark:bg-black dark:text-[#ccc]');
-    expect(starter).toContain('brightness-0 dark:invert dark:opacity-80');
+    expect(starter).toContain('rounded-full bg-muted p-1');
+    expect(starter).toContain('data-testid="new-conversation-mode-indicator"');
+    expect(starter).toContain('layoutId={`new-conversation-mode-indicator-${modeTabIndicatorId}`}');
+    expect(starter).toContain('type: "spring"');
+    expect(starter).toContain("mass: 1");
+    expect(starter).toContain("stiffness: 300");
+    expect(starter).toContain("damping: 20");
+    expect(starter).toContain("transition={reduceMotion ? { duration: 0 } : MODE_TAB_SPRING}");
+    expect(starter).toContain('className="pointer-events-none absolute inset-0 -z-10 rounded-full bg-background"');
+    expect(starter).toContain('text-muted-foreground hover:bg-background/70 hover:text-foreground');
+    expect(starter).toContain('brightness-0 dark:invert');
     expect(starter).toContain('dark:text-[#ccc]');
     expect(starter).toContain('dark:invert dark:opacity-80');
     expect(composer).toContain("new-conversation-composer");
     expect(styles).toContain("--new-conversation-composer-surface: #343434");
     expect(composer).toContain("dark:bg-white dark:text-black");
+  });
+
+  test("keeps the shortcut editor inside the main content inset", () => {
+    expect(starter).toContain('data-testid="new-conversation-shortcut-editor"');
+    expect(starter).toContain('createPortal(');
+    expect(starter).toContain('document.body');
+    expect(starter).toContain("button.closest<HTMLElement>('[data-slot=\"sidebar-inset\"]')");
+    expect(starter).toContain("contentRect?.right ?? window.innerWidth");
+    expect(starter).toContain("contentRight - contentLeft - horizontalMargin * 2");
+    expect(starter).toContain("Math.max(rect.right - width, contentLeft + horizontalMargin)");
+    expect(starter).toContain("const availableAbove = Math.max(0, rect.top - gap - verticalMargin)");
+    expect(starter).toContain("const availableBelow = Math.max(0, window.innerHeight - rect.bottom - gap - verticalMargin)");
+    expect(starter).toContain("const maxHeight = Math.min(420, opensAbove ? availableAbove : availableBelow)");
+    expect(starter).toContain("{ left, width, maxHeight, bottom:");
+    expect(starter).toContain("{ left, width, maxHeight, top:");
+  });
+
+  test("lets optional starter modules expand the page while keeping the composer close to the content", () => {
+    expect(starter).toContain('data-testid="new-conversation-starter-layout"');
+    expect(starter).toContain('className="relative w-full overflow-visible');
+    expect(starter).toContain('data-testid="new-conversation-starter-header"');
+    expect(starter).toContain('data-testid="new-conversation-starter-tasks"');
+    expect(starter).toContain('className="relative pt-6"');
+    expect(starter).toContain('data-testid="new-conversation-quick-actions"');
+    expect(sessionPage).toContain('data-testid="new-conversation-starter-slot"');
+    expect(surface).toContain('data-testid="new-conversation-starter-slot"');
+    expect(sessionPage).toContain('className="shrink-0"');
+    expect(surface).toContain('className="shrink-0"');
+    expect(sessionPage).toContain('flex min-h-full w-full max-w-[800px] flex-col justify-center');
+    expect(surface).toContain('flex min-h-full w-full max-w-[800px] flex-col justify-center');
+    expect(sessionPage).toContain('has-[[data-testid=new-conversation-template-strip]]:justify-start');
+    expect(surface).toContain('has-[[data-testid=new-conversation-template-strip]]:justify-start');
+    expect(sessionPage).toContain('pb-[max(64px,env(safe-area-inset-bottom))]');
+    expect(surface).toContain('pb-[max(64px,env(safe-area-inset-bottom))]');
+    expect(sessionPage).toContain('data-testid="new-conversation-starter-composer-shell"');
+    expect(surface).toContain('data-testid="new-conversation-starter-composer-shell"');
+    expect(sessionPage).toContain('mt-6 w-full max-w-[616px] shrink-0');
+    expect(surface).toContain('mt-6 w-full shrink-0');
   });
 });

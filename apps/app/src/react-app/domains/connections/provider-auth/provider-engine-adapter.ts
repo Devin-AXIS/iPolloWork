@@ -1,6 +1,7 @@
 import { DEFAULT_ENGINE_ID } from "@ipollowork/types/workspace";
 
 import type { iPolloWorkServerClient } from "../../../../app/lib/ipollowork-server";
+import type { ResolvedWorkspaceEndpoint } from "../../../../app/lib/workspace-endpoint";
 import type { DenOrgLlmProviderConnection } from "../../../../app/lib/den";
 import type {
   ModelRef,
@@ -42,6 +43,11 @@ export type ProviderEngineConfigTarget = {
   root: string;
 };
 
+export type ProviderEngineClientTarget = {
+  endpoint: ResolvedWorkspaceEndpoint;
+  directory?: string | null;
+};
+
 export type ModelRuntimeConnection = {
   listProviders(directory?: string): Promise<ProviderListResponse>;
   listAuthMethods(): Promise<Record<string, ProviderEngineAuthMethod[]>>;
@@ -54,6 +60,9 @@ export type ModelRuntimeConnection = {
   dispose(): Promise<void>;
   waitUntilHealthy(): Promise<void>;
 };
+
+/** Compatibility name used by provider-management routes. */
+export type ProviderEngineConnection = ModelRuntimeConnection;
 
 export type ModelRuntimeCapabilities = {
   text: boolean;
@@ -94,6 +103,7 @@ export interface ModelRuntimeAdapter {
     disabledProviders: boolean;
     authChangesRequireReload: boolean;
   };
+  createClient(target: ProviderEngineClientTarget): unknown;
   connect(client: unknown): ModelRuntimeConnection;
   emptyProjectConfig(): string;
   readProjectConfig(target: ProviderEngineConfigTarget): Promise<{ content?: string | null } | null>;
@@ -102,7 +112,6 @@ export interface ModelRuntimeAdapter {
   runtimeProviderIds(target: ProviderEngineConfigTarget): Promise<string[]>;
   projectProviderIds(raw: string): string[];
   formatProjectProviderDisabledState(raw: string, providerId: string, disabled: boolean): string;
-  formatProjectWithoutProvider(raw: string, providerId: string, disabledProviders: string[]): string;
   buildCloudProviderPatch(
     provider: DenOrgLlmProviderConnection,
     localProviderId: string,
@@ -169,6 +178,14 @@ export class ModelRuntimeAdapterRegistry {
       status: "ready",
       capabilities: modelRuntimeCapabilities(model),
     };
+  }
+
+  createClient(
+    id: string | null | undefined,
+    target: ProviderEngineClientTarget,
+  ): unknown | null {
+    const resolved = id?.trim() || DEFAULT_ENGINE_ID;
+    return this.#adapters.get(resolved)?.createClient(target) ?? null;
   }
 }
 

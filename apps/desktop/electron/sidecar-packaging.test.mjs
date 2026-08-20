@@ -23,6 +23,8 @@ it("prepares and packages the DSH CLI outside app.asar", async () => {
   assert.match(builderConfig, /from: \.\.\/\.\.\/examples\/plugin-packages\/deepseek-harness/);
   assert.match(mainSource, /process\.resourcesPath, "dsh-runtime"/);
   assert.match(mainSource, /IPOLLOWORK_DSH_CLI/);
+  assert.match(mainSource, /IPOLLOWORK_DSH_HOST_PLUGIN/);
+  assert.match(builderConfig, /ipollowork-host-tools\.mjs/);
   assert.match(buildSource, /prepare-dsh-runtime\.mjs/);
   assert.match(devSource, /prepare-dsh-runtime\.mjs/);
   assert.match(workspaceConfig, /@electron\/osx-sign@1\.3\.1.*@electron__osx-sign@1\.3\.1\.patch/);

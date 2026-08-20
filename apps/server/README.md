@@ -87,9 +87,6 @@ Sandbox advertisement (for capability discovery):
 - `GET /workspace/:id/events`
 - `POST /workspace/:id/engine/reload`
 - `GET /w/:id/capabilities` (includes engine-specific session write support)
-- `GET /workspace/:id/plugins`
-- `POST /workspace/:id/plugins`
-- `DELETE /workspace/:id/plugins/:name`
 - `GET /workspace/:id/skills`
 - `POST /workspace/:id/skills`
 - `GET /workspace/:id/mcp`

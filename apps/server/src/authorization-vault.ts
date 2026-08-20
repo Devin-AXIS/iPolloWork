@@ -82,6 +82,12 @@ export type PendingAuthorizationFlowStatus = {
   expiresAt: number;
 };
 
+export type AuthorizationCredentialScope = {
+  connectionId: string;
+  methodId: string;
+  methodFingerprint: string;
+};
+
 function emptyState(): StoreState {
   return { schemaVersion: 1, credentials: [], pendingFlows: [], selections: [] };
 }
@@ -422,14 +428,33 @@ export class AuthorizationVault {
     });
   }
 
-  async deleteConsumer(consumerId: string): Promise<boolean> {
+  async deleteConsumer(
+    consumerId: string,
+    pruneCredentialScopes: readonly AuthorizationCredentialScope[] = [],
+  ): Promise<boolean> {
     return this.enqueue(async () => {
       const state = await this.readState();
       const flowCount = state.pendingFlows.length;
       const selectionCount = state.selections.length;
       state.pendingFlows = state.pendingFlows.filter((entry) => entry.consumerId !== consumerId);
       state.selections = state.selections.filter((entry) => entry.consumerId !== consumerId);
-      const changed = flowCount !== state.pendingFlows.length || selectionCount !== state.selections.length;
+      const credentialCount = state.credentials.length;
+      state.credentials = state.credentials.filter((credential) => {
+        const shouldPrune = pruneCredentialScopes.some((scope) =>
+          scope.connectionId === credential.connectionId
+          && scope.methodId === credential.methodId
+          && scope.methodFingerprint === credential.methodFingerprint
+        );
+        if (!shouldPrune) return true;
+        return state.selections.some((selection) =>
+          selection.connectionId === credential.connectionId && selection.methodId === credential.methodId
+        ) || state.pendingFlows.some((flow) =>
+          flow.connectionId === credential.connectionId && flow.methodId === credential.methodId
+        );
+      });
+      const changed = flowCount !== state.pendingFlows.length
+        || selectionCount !== state.selections.length
+        || credentialCount !== state.credentials.length;
       if (changed) await this.writeState(state);
       return changed;
     });

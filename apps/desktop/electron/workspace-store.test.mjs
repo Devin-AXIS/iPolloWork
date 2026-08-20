@@ -120,6 +120,35 @@ test("recovers empty desktop workspace state from token store paths", async () =
   }
 });
 
+test("serializes concurrent selected and runtime-active workspace updates", async () => {
+  await withIsolatedBootstrapStore(async ({ store, root }) => {
+    const first = await store.createWorkspace({
+      folderPath: path.join(root, "first-workspace"),
+      name: "First",
+    });
+    const second = await store.createWorkspace({
+      folderPath: path.join(root, "second-workspace"),
+      name: "Second",
+    });
+    const firstWorkspaceId = first.workspaces.find((workspace) => workspace.name === "First")?.id;
+    const secondWorkspaceId = second.workspaces.find((workspace) => workspace.name === "Second")?.id;
+    assert.ok(firstWorkspaceId);
+    assert.ok(secondWorkspaceId);
+
+    await store.setSelectedWorkspace(firstWorkspaceId);
+    await store.setRuntimeActiveWorkspace(firstWorkspaceId);
+    await Promise.all([
+      store.setSelectedWorkspace(secondWorkspaceId),
+      store.setRuntimeActiveWorkspace(secondWorkspaceId),
+    ]);
+
+    const state = await store.readWorkspaceState();
+    assert.equal(state.selectedId, secondWorkspaceId);
+    assert.equal(state.activeId, secondWorkspaceId);
+    assert.equal(state.watchedId, secondWorkspaceId);
+  });
+});
+
 test("persists an enterprise work context on its dedicated workspace", async () => {
   await withIsolatedBootstrapStore(async ({ store, root }) => {
     const folderPath = path.join(root, "enterprise-workspace");

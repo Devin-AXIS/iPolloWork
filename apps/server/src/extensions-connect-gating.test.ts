@@ -213,6 +213,33 @@ afterEach(async () => {
 });
 
 describe("Connect-aware legacy extension gating", () => {
+  test("exposes one engine-neutral host tool catalog and dispatches extension discovery through it", async () => {
+    const { base } = await boot();
+    const catalogResponse = await fetch(`${base}/engine-tools`, { headers: clientHeaders() });
+    expect(catalogResponse.status).toBe(200);
+    const catalog = await catalogResponse.json() as { tools?: Array<{ name?: string }> };
+    expect(catalog.tools?.map((tool) => tool.name)).toEqual([
+      "ipollowork_extension_list_actions",
+      "ipollowork_extension_call",
+      "ipollowork_workspace_app_list_tools",
+      "ipollowork_workspace_app_call_tool",
+    ]);
+
+    const callResponse = await fetch(`${base}/engine-tools/call`, {
+      method: "POST",
+      headers: { ...clientHeaders(), "content-type": "application/json" },
+      body: JSON.stringify({
+        name: "ipollowork_extension_list_actions",
+        args: { extensionId: "storage" },
+        context: { workspaceId: "ws_1" },
+      }),
+    });
+    expect(callResponse.status).toBe(200);
+    const call = await callResponse.json() as { actions?: Array<{ extensionId?: string }> };
+    expect(call.actions?.length).toBeGreaterThan(0);
+    expect(call.actions?.every((action) => action.extensionId === "storage")).toBe(true);
+  });
+
   test("defaults to unchanged legacy extension behavior when no connect state file exists", async () => {
     const { base } = await boot();
 

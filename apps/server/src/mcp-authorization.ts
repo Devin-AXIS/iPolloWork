@@ -1,14 +1,11 @@
 import { createHash, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
-import { readFile, rm, writeFile } from "node:fs/promises";
-import { homedir } from "node:os";
-import { join } from "node:path";
 
 import * as oauth from "oauth4webapi";
 
 import { tokenValues } from "./authorization-protocol.js";
 import { authorizationConsumerId, authorizationVault } from "./authorization-runtime.js";
 import { ApiError } from "./errors.js";
-import { readRuntimeOpencodeConfig, runtimeMcpMap, writeRuntimeOpencodeConfig } from "./runtime-opencode-config-store.js";
+import { readRuntimeMcpConfig, writeRuntimeMcpConfig } from "./runtime-capability-store.js";
 import type { ServerConfig } from "./types.js";
 
 const CLIENT_METHOD_ID = "oauth-client";
@@ -54,13 +51,15 @@ function connectionId(resourceUrl: string): string {
   return `mcp:${createHash("sha256").update(resourceUrl).digest("base64url")}`;
 }
 
-function consumerId(workspaceId: string, name: string): string {
-  return authorizationConsumerId("mcp", `${workspaceId}:${name}`);
+function consumerId(id: string): string {
+  return authorizationConsumerId("mcp", id);
 }
 
-function proxyUrl(config: ServerConfig, workspaceId: string, name: string): string {
+function proxyUrl(config: ServerConfig, workspaceId: string, name: string, id: string): string {
   const host = config.host === "0.0.0.0" || config.host === "::" ? "127.0.0.1" : config.host;
-  return `http://${host}:${config.port}/mcp-proxy/${encodeURIComponent(workspaceId)}/${encodeURIComponent(name)}`;
+  const url = new URL(`http://${host}:${config.port}/mcp-proxy/${encodeURIComponent(workspaceId)}/${encodeURIComponent(name)}`);
+  url.searchParams.set("connection", id);
+  return url.toString();
 }
 
 function isProxyUrl(config: ServerConfig, value: string): boolean {
@@ -71,6 +70,12 @@ function isProxyUrl(config: ServerConfig, value: string): boolean {
   }
 }
 
+function proxyConnectionId(config: ServerConfig, value: string): string | null {
+  if (!isProxyUrl(config, value)) return null;
+  const id = new URL(value).searchParams.get("connection")?.trim() ?? "";
+  return id.startsWith("mcp:") ? id : null;
+}
+
 function oauthConfig(config: Record<string, unknown>): Record<string, unknown> {
   return isRecord(config.oauth) ? config.oauth : {};
 }
@@ -79,34 +84,6 @@ function customFetch(fetcher: typeof fetch) {
   return {
     [oauth.customFetch]: (url: string, init: RequestInit) => fetcher(url, init),
   };
-}
-
-function legacyAuthorizationPaths(): string[] {
-  const paths = [
-    process.env.XDG_DATA_HOME?.trim() ? join(process.env.XDG_DATA_HOME.trim(), "opencode", "mcp-auth.json") : "",
-    join(homedir(), ".local", "share", "opencode", "mcp-auth.json"),
-    process.platform === "darwin" ? join(homedir(), "Library", "Application Support", "opencode", "mcp-auth.json") : "",
-    process.platform === "win32" && process.env.APPDATA?.trim() ? join(process.env.APPDATA.trim(), "opencode", "mcp-auth.json") : "",
-  ];
-  return [...new Set(paths.filter(Boolean))];
-}
-
-function legacyTokenValues(value: Record<string, unknown>, resourceUrl: string, client: oauth.Client | null): Record<string, string> | null {
-  const accessToken = stringValue(value.accessToken);
-  if (!accessToken) return null;
-  const values: Record<string, string> = {
-    accessToken,
-    tokenType: stringValue(value.tokenType) || "Bearer",
-    resourceUrl,
-    ...(client ? { client: JSON.stringify(client) } : {}),
-  };
-  const refreshToken = stringValue(value.refreshToken);
-  const scope = stringValue(value.scope);
-  const expiresAt = Number(value.expiresAt);
-  if (refreshToken) values.refreshToken = refreshToken;
-  if (scope) values.scope = scope;
-  if (Number.isFinite(expiresAt) && expiresAt > 0) values.expiresAt = String(expiresAt < 1_000_000_000_000 ? expiresAt * 1_000 : expiresAt);
-  return values;
 }
 
 function clientAuthentication(client: oauth.Client): oauth.ClientAuth {
@@ -136,22 +113,24 @@ async function readClientValues(config: ServerConfig, resourceUrl: string): Prom
 }
 
 async function readClientValuesForConsumer(config: ServerConfig, workspaceId: string, name: string): Promise<McpOAuthClientValues | null> {
-  const current = runtimeMcpMap(await readRuntimeOpencodeConfig(config, workspaceId))[name];
+  const current = (await readRuntimeMcpConfig(config, workspaceId))[name];
   const url = current && stringValue(current.url);
-  if (!url || !isProxyUrl(config, url)) return null;
-  const active = await (await authorizationVault(config)).readActiveCredentialForConsumer({
-    consumerId: consumerId(workspaceId, name),
+  const id = url ? proxyConnectionId(config, url) : null;
+  if (!id) return null;
+  const values = await (await authorizationVault(config)).readCredentialForAccount({
+    connectionId: id,
+    accountId: ACCOUNT_ID,
     methodId: CLIENT_METHOD_ID,
     methodFingerprint: CLIENT_FINGERPRINT,
   });
-  if (!active?.values.resourceUrl || !active.values.capability) return null;
+  if (!values?.resourceUrl || !values.capability) return null;
   return {
-    connectionId: active.connectionId,
-    resourceUrl: active.values.resourceUrl,
-    capability: active.values.capability,
-    ...(active.values.clientId ? { clientId: active.values.clientId } : {}),
-    ...(active.values.clientSecret ? { clientSecret: active.values.clientSecret } : {}),
-    ...(active.values.scope ? { scope: active.values.scope } : {}),
+    connectionId: id,
+    resourceUrl: values.resourceUrl,
+    capability: values.capability,
+    ...(values.clientId ? { clientId: values.clientId } : {}),
+    ...(values.clientSecret ? { clientSecret: values.clientSecret } : {}),
+    ...(values.scope ? { scope: values.scope } : {}),
   };
 }
 
@@ -183,7 +162,7 @@ export async function secureMcpAuthorizationConfig(
     secretFields: ["capability", ...(values.clientSecret ? ["clientSecret"] : [])],
   });
   await vault.setActiveAccount({
-    consumerId: consumerId(workspaceId, name),
+    consumerId: consumerId(id),
     connectionId: id,
     methodId: CLIENT_METHOD_ID,
     methodFingerprint: CLIENT_FINGERPRINT,
@@ -197,7 +176,7 @@ export async function secureMcpAuthorizationConfig(
   });
   if (reusableToken?.accessToken) {
     await vault.setActiveAccount({
-      consumerId: consumerId(workspaceId, name),
+      consumerId: consumerId(id),
       connectionId: id,
       methodId: TOKEN_METHOD_ID,
       methodFingerprint: TOKEN_FINGERPRINT,
@@ -207,7 +186,7 @@ export async function secureMcpAuthorizationConfig(
   return {
     type: "remote",
     enabled: source.enabled !== false,
-    url: proxyUrl(config, workspaceId, name),
+    url: proxyUrl(config, workspaceId, name, id),
     headers: { Authorization: `Bearer ${values.capability}` },
     oauth: false,
   };
@@ -298,9 +277,9 @@ export async function startMcpAuthorization(input: {
   fetcher?: typeof fetch;
 }) {
   const engineConfig = await secureMcpAuthorizationConfig(input.config, input.workspaceId, input.name, input.source);
-  await writeRuntimeOpencodeConfig(input.config, input.workspaceId, (current) => ({
+  await writeRuntimeMcpConfig(input.config, input.workspaceId, (current) => ({
     ...current,
-    mcp: { ...runtimeMcpMap(current), [input.name]: engineConfig },
+    [input.name]: engineConfig,
   }));
   const values = await readClientValuesForConsumer(input.config, input.workspaceId, input.name);
   if (!values) throw new ApiError(500, "mcp_oauth_client_missing", "MCP OAuth client configuration is unavailable");
@@ -326,7 +305,7 @@ export async function startMcpAuthorization(input: {
   if (scope) authorizationUrl.searchParams.set("scope", scope);
   const expiresAt = Date.now() + FLOW_TTL_MS;
   await (await authorizationVault(input.config)).savePendingFlow({
-    consumerId: consumerId(input.workspaceId, input.name),
+    consumerId: consumerId(values.connectionId),
     connectionId: values.connectionId,
     accountId: ACCOUNT_ID,
     methodId: TOKEN_METHOD_ID,
@@ -395,7 +374,7 @@ export async function mcpAuthorizationStatus(config: ServerConfig, workspaceId: 
   const client = await readClientValuesForConsumer(config, workspaceId, name);
   if (!client) return { connected: false };
   const token = await (await authorizationVault(config)).readActiveCredential({
-    consumerId: consumerId(workspaceId, name),
+    consumerId: consumerId(client.connectionId),
     connectionId: client.connectionId,
     methodId: TOKEN_METHOD_ID,
     methodFingerprint: TOKEN_FINGERPRINT,
@@ -414,7 +393,8 @@ export async function revokeMcpAuthorization(config: ServerConfig, workspaceId: 
 }
 
 export async function forgetMcpAuthorizationConsumer(config: ServerConfig, workspaceId: string, name: string): Promise<boolean> {
-  return (await authorizationVault(config)).deleteConsumer(consumerId(workspaceId, name));
+  const client = await readClientValuesForConsumer(config, workspaceId, name);
+  return client ? (await authorizationVault(config)).deleteConsumer(consumerId(client.connectionId)) : false;
 }
 
 async function activeToken(config: ServerConfig, workspaceId: string, name: string, fetcher: typeof fetch): Promise<Record<string, string>> {
@@ -423,7 +403,7 @@ async function activeToken(config: ServerConfig, workspaceId: string, name: stri
   const id = clientValues.connectionId;
   const vault = await authorizationVault(config);
   const active = await vault.readActiveCredential({
-    consumerId: consumerId(workspaceId, name),
+    consumerId: consumerId(id),
     connectionId: id,
     methodId: TOKEN_METHOD_ID,
     methodFingerprint: TOKEN_FINGERPRINT,
@@ -487,123 +467,4 @@ export async function proxyMcpRequest(config: ServerConfig, workspaceId: string,
   const responseHeaders = new Headers(response.headers);
   for (const header of ["content-length", "content-encoding", "transfer-encoding", "connection"]) responseHeaders.delete(header);
   return new Response(response.body, { status: response.status, statusText: response.statusText, headers: responseHeaders });
-}
-
-export async function migrateRuntimeMcpAuthorization(config: ServerConfig): Promise<number> {
-  let migrated = 0;
-  for (const workspace of config.workspaces) {
-    const runtime = await readRuntimeOpencodeConfig(config, workspace.id);
-    const entries = runtimeMcpMap(runtime);
-    const next = { ...entries };
-    let changed = false;
-    for (const [name, entry] of Object.entries(entries)) {
-      const usesOAuth = entry.oauth === true || isRecord(entry.oauth);
-      if (entry.type !== "remote" || !usesOAuth || isRecord(entry.headers) || !stringValue(entry.url) || isProxyUrl(config, stringValue(entry.url))) continue;
-      next[name] = await secureMcpAuthorizationConfig(config, workspace.id, name, entry);
-      changed = true;
-      migrated += 1;
-    }
-    if (changed) await writeRuntimeOpencodeConfig(config, workspace.id, (current) => ({ ...current, mcp: next }));
-  }
-  return migrated;
-}
-
-export async function migrateLegacyMcpAuthorization(config: ServerConfig, paths = legacyAuthorizationPaths()): Promise<number> {
-  let migrated = 0;
-  for (const path of paths) {
-    let raw: unknown;
-    try {
-      raw = JSON.parse(await readFile(path, "utf8"));
-    } catch (error) {
-      if (error && typeof error === "object" && Reflect.get(error, "code") === "ENOENT") continue;
-      continue;
-    }
-    if (!isRecord(raw)) continue;
-    let migratedFromPath = 0;
-    for (const [name, value] of Object.entries(raw)) {
-      if (!isRecord(value)) continue;
-      const resourceValue = stringValue(value.serverUrl);
-      if (!resourceValue) continue;
-      let resourceUrl: string;
-      try {
-        resourceUrl = canonicalResourceUrl(resourceValue);
-      } catch {
-        continue;
-      }
-      const bindings: Array<{ workspaceId: string; entry: Record<string, unknown> }> = [];
-      for (const workspace of config.workspaces) {
-        const runtime = await readRuntimeOpencodeConfig(config, workspace.id);
-        const entry = runtimeMcpMap(runtime)[name];
-        if (!entry || entry.type !== "remote") continue;
-        const currentUrl = stringValue(entry.url);
-        let currentResourceUrl = currentUrl;
-        if (isProxyUrl(config, currentUrl)) {
-          currentResourceUrl = (await readClientValuesForConsumer(config, workspace.id, name))?.resourceUrl ?? "";
-        } else {
-          try {
-            currentResourceUrl = canonicalResourceUrl(currentUrl);
-          } catch {
-            currentResourceUrl = "";
-          }
-        }
-        if (currentResourceUrl === resourceUrl) bindings.push({ workspaceId: workspace.id, entry });
-      }
-      if (bindings.length === 0) continue;
-      const clientInfo = isRecord(value.clientInfo) ? value.clientInfo : {};
-      const clientId = stringValue(clientInfo.clientId);
-      const clientSecret = stringValue(clientInfo.clientSecret);
-      const client: oauth.Client | null = clientId
-        ? { client_id: clientId, ...(clientSecret ? { client_secret: clientSecret, token_endpoint_auth_method: "client_secret_post" } : { token_endpoint_auth_method: "none" }) }
-        : null;
-      const id = connectionId(resourceUrl);
-      const vault = await authorizationVault(config);
-      const existing = await readClientValues(config, resourceUrl);
-      await vault.saveCredential({
-        connectionId: id,
-        accountId: ACCOUNT_ID,
-        methodId: CLIENT_METHOD_ID,
-        methodFingerprint: CLIENT_FINGERPRINT,
-        values: {
-          resourceUrl,
-          capability: existing?.capability ?? randomBytes(32).toString("base64url"),
-          ...(clientId ? { clientId } : {}),
-          ...(clientSecret ? { clientSecret } : {}),
-        },
-        secretFields: ["capability", ...(clientSecret ? ["clientSecret"] : [])],
-      });
-      const tokens = isRecord(value.tokens) ? legacyTokenValues(value.tokens, resourceUrl, client) : null;
-      if (tokens) {
-        await vault.saveCredential({
-          connectionId: id,
-          accountId: ACCOUNT_ID,
-          methodId: TOKEN_METHOD_ID,
-          methodFingerprint: TOKEN_FINGERPRINT,
-          values: tokens,
-          secretFields: Object.keys(tokens),
-        });
-      }
-      for (const binding of bindings) {
-        const secured = await secureMcpAuthorizationConfig(config, binding.workspaceId, name, {
-          type: "remote",
-          url: resourceUrl,
-          enabled: binding.entry.enabled !== false,
-          oauth: clientId ? { clientId, ...(clientSecret ? { clientSecret } : {}) } : {},
-        });
-        await writeRuntimeOpencodeConfig(config, binding.workspaceId, (current) => ({
-          ...current,
-          mcp: { ...runtimeMcpMap(current), [name]: secured },
-        }));
-      }
-      delete raw[name];
-      migrated += 1;
-      migratedFromPath += 1;
-    }
-    if (migratedFromPath === 0) continue;
-    if (Object.keys(raw).length === 0) {
-      await rm(path, { force: true });
-    } else {
-      await writeFile(path, `${JSON.stringify(raw, null, 2)}\n`, { encoding: "utf8", mode: 0o600 });
-    }
-  }
-  return migrated;
 }

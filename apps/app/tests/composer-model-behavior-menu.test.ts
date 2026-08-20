@@ -105,7 +105,7 @@ describe("Composer model and reasoning menu", () => {
     expect(menu).toContain('type MenuView = "root" | "model" | "behavior"');
     expect(menu).toContain("modelVariantLabel");
     expect(menu).toContain("onModelVariantChange");
-    expect(menu).toContain("rounded-full bg-gray-2 px-3 py-1.5 text-sm");
+    expect(menu).toContain("rounded-full bg-transparent px-2 text-[12px]");
     expect(menu).toContain("hover:bg-gray-3");
     expect(model).toContain('kind: "tokenstar-connect"');
     expect(model).toContain("Connect TokenStar");
@@ -131,7 +131,7 @@ describe("Composer model and reasoning menu", () => {
     expect(modelIndex).toBeGreaterThan(-1);
     expect(modeIndex).toBeGreaterThan(modelIndex);
     expect(composer).toContain("<PopoverTrigger");
-    expect(composer).toContain("rounded-full bg-gray-2 px-3 py-1.5 text-sm");
+    expect(composer).toContain("rounded-full bg-transparent px-2 text-[12px]");
     expect(composer).toContain("hover:bg-gray-3");
     expect(composer).toContain("props.listModes()")
     expect(composer).toContain("workModes.map((mode)");
