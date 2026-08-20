@@ -42,6 +42,7 @@ export const FRIENDLY_PROVIDER_LABELS: Record<string, string> = {
   mistral: "Mistral",
   groq: "Groq",
   openrouter: "OpenRouter",
+  orcarouter: "OrcaRouter",
   minimax: "MiniMax",
   tokenstar: "TokenStar",
   together: "Together AI",

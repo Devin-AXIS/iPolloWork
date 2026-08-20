@@ -78,6 +78,7 @@ import {
   type DesktopAppRestrictionChecker,
 } from "../../../../app/cloud/desktop-app-restrictions";
 import { TOKENSTAR_PROVIDER, tokenStarRuntimeModels } from "./tokenstar-provider";
+import { ORCAROUTER_PROVIDER, orcarouterRuntimeModels } from "./orcarouter-provider";
 import {
   modelRuntimeAdapters,
   type CompatibleProviderProfile,
@@ -271,6 +272,18 @@ const COMPATIBLE_PROVIDER_PRESETS: CompatibleProviderPreset[] = [
     models: (modelIds) => tokenStarRuntimeModels([
       ...new Set(
         (modelIds?.length ? modelIds : TOKENSTAR_PROVIDER.fallbackModels.map((model) => model.id))
+          .map((modelId) => modelId.trim())
+          .filter(Boolean),
+      ),
+    ]),
+  },
+  {
+    providerId: ORCAROUTER_PROVIDER.providerId,
+    name: ORCAROUTER_PROVIDER.name,
+    baseURL: ORCAROUTER_PROVIDER.baseURL,
+    models: (modelIds) => orcarouterRuntimeModels([
+      ...new Set(
+        (modelIds?.length ? modelIds : ORCAROUTER_PROVIDER.fallbackModels.map((model) => model.id))
           .map((modelId) => modelId.trim())
           .filter(Boolean),
       ),
@@ -1242,6 +1255,26 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
             type: "api",
             label: t("providers.api_key_label"),
             description: "Connect TokenStar with an API key and choose the models to expose.",
+          },
+        ];
+      }
+    }
+
+    if (
+      getProviderEngineAdapter().capabilities.customProviders &&
+      !isDesktopProviderBlocked({
+        providerId: ORCAROUTER_PROVIDER.providerId,
+        checkRestriction: options.checkDesktopAppRestriction,
+      })
+    ) {
+      const existing = merged[ORCAROUTER_PROVIDER.providerId] ?? [];
+      if (!existing.some((method) => method.type === "api")) {
+        merged[ORCAROUTER_PROVIDER.providerId] = [
+          ...existing,
+          {
+            type: "api",
+            label: t("providers.api_key_label"),
+            description: "Connect OrcaRouter with an API key and use it from every supported agent engine.",
           },
         ];
       }
