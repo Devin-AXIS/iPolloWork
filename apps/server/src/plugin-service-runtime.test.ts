@@ -231,10 +231,10 @@ createInterface({ input: process.stdin }).on("line", (line) => {
 }
 
 async function createFakeRuntimeWheel(root: string) {
-  const filename = "deepseek_harness_runtime_bin-0.1.0rc6-py3-none-macosx_14_0_arm64.whl";
+  const filename = `deepseek_harness_runtime_bin-0.1.0rc6-py3-none-${process.arch === "arm64" ? "manylinux_2_28_aarch64" : "manylinux_2_28_x86_64"}.whl`;
   const wheelRoot = join(root, "wheel-root");
   const runtimeDirectory = join(wheelRoot, "deepseek_harness_runtime", "runtime");
-  const runtimeName = "dsh-jsonrpc-agent-pkg-macos-arm64";
+  const runtimeName = `dsh-jsonrpc-agent-pkg-linux-${process.arch === "arm64" ? "arm64" : "x64"}`;
   await mkdir(runtimeDirectory, { recursive: true });
   await writeFile(join(runtimeDirectory, runtimeName), "#!/bin/sh\nexit 0\n", "utf8");
   const wheelPath = join(root, filename);
