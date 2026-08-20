@@ -1,20 +1,13 @@
-/**
- * Claude Code plugin bundle compatibility.
- *
- * Resolves a GitHub repo containing a Claude Code plugin
- * (`.claude-plugin/plugin.json` + `.mcp.json` + `skills/` + `commands/` +
- * `agents/`) into the existing CloudPluginResolved shape, so installation
- * reuses installCloudPlugin: namespacing, Claude frontmatter translation,
- * MCP registration, the install registry, uninstall, approvals, and reload
- * events all come for free.
- *
- * Format reference: https://code.claude.com/docs/en/plugins-reference
- */
-import { ApiError } from "./errors.js";
-import { parseFrontmatter } from "./frontmatter.js";
-import type { CloudPluginResolved } from "./cloud-plugins.js";
+import { createHash } from "node:crypto";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { dirname, join } from "node:path";
 
-export type ClaudePluginSource = {
+import { ApiError } from "./errors.js";
+import { buildFrontmatter, parseFrontmatter } from "./frontmatter.js";
+import type { PluginPackageManifest } from "./plugin-package-manifest.js";
+
+export type CompatibleGitHubPluginSource = {
   owner: string;
   repo: string;
   ref: string | null;
@@ -27,26 +20,29 @@ export type ClaudePluginSource = {
   treeSegments: string[] | null;
 };
 
-export type ClaudePluginComponent = {
+export type CompatibleGitHubPluginComponent = {
   type: "mcp" | "skill" | "command" | "agent";
   name: string;
   description: string | null;
 };
 
-export type ClaudePluginPreview = {
+export type CompatibleGitHubPluginPreview = {
   pluginId: string;
   name: string;
   description: string | null;
   version: string | null;
   source: { owner: string; repo: string; ref: string; dir: string | null };
-  components: ClaudePluginComponent[];
+  components: CompatibleGitHubPluginComponent[];
   warnings: string[];
 };
 
-export type ClaudePluginBundle = {
-  resolved: CloudPluginResolved;
-  preview: ClaudePluginPreview;
+export type CompatibleGitHubPluginBundle = {
+  manifest: PluginPackageManifest;
+  files: Array<{ path: string; content: string | Uint8Array }>;
+  preview: CompatibleGitHubPluginPreview;
 };
+
+const SEMVER_RE = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/;
 
 function githubApiBase(): string {
   return (process.env.IPOLLOWORK_GITHUB_API_BASE?.trim() || "https://api.github.com").replace(/\/+$/, "");
@@ -68,7 +64,7 @@ const GITHUB_REPO_RE = /^[A-Za-z0-9._-]+$/;
  * Accepts `https://github.com/owner/repo`, `github.com/owner/repo`,
  * `owner/repo`, with optional `.git` suffix and `/tree/<ref>(/<subdir>)`.
  */
-export function parseClaudePluginSource(input: string): ClaudePluginSource {
+export function parseCompatibleGitHubPluginSource(input: string): CompatibleGitHubPluginSource {
   // Drop query strings and hash fragments (e.g. ?tab=readme-ov-file).
   const trimmed = (input.split(/[?#]/)[0] ?? "").trim();
   if (!trimmed) throw new ApiError(400, "invalid_plugin_url", "GitHub URL is required");
@@ -120,9 +116,21 @@ async function fetchGithubText(url: string): Promise<string> {
   return response.text();
 }
 
+async function fetchGithubBytes(url: string): Promise<Uint8Array> {
+  const response = await fetch(url, {
+    headers: { Accept: "application/octet-stream", "User-Agent": "ipollowork-server" },
+    signal: AbortSignal.timeout(20_000),
+  });
+  if (!response.ok) {
+    const text = await response.text().catch(() => "");
+    throw new ApiError(502, "plugin_fetch_failed", `Failed to fetch plugin file (${response.status}): ${text || url}`);
+  }
+  return new Uint8Array(await response.arrayBuffer());
+}
+
 type TreeEntry = { path: string; sha: string };
 
-async function fetchRepoTree(source: ClaudePluginSource, ref: string): Promise<TreeEntry[]> {
+async function fetchRepoTree(source: CompatibleGitHubPluginSource, ref: string): Promise<TreeEntry[]> {
   const url = `${githubApiBase()}/repos/${encodeURIComponent(source.owner)}/${encodeURIComponent(source.repo)}/git/trees/${encodeURIComponent(ref)}?recursive=1`;
   const tree = await fetchGithubJson(url);
   const entries = isRecord(tree) && Array.isArray(tree.tree) ? tree.tree : [];
@@ -133,7 +141,7 @@ async function fetchRepoTree(source: ClaudePluginSource, ref: string): Promise<T
   });
 }
 
-async function resolveDefaultBranch(source: ClaudePluginSource): Promise<string> {
+async function resolveDefaultBranch(source: CompatibleGitHubPluginSource): Promise<string> {
   const url = `${githubApiBase()}/repos/${encodeURIComponent(source.owner)}/${encodeURIComponent(source.repo)}`;
   try {
     const info = await fetchGithubJson(url);
@@ -146,7 +154,7 @@ async function resolveDefaultBranch(source: ClaudePluginSource): Promise<string>
   return "main";
 }
 
-function rawFileUrl(source: ClaudePluginSource, ref: string, path: string): string {
+function rawFileUrl(source: CompatibleGitHubPluginSource, ref: string, path: string): string {
   const segments = path.split("/").map((segment) => encodeURIComponent(segment)).join("/");
   // Branch names may contain slashes; raw URLs expect them as path segments.
   const refSegments = ref.split("/").map((segment) => encodeURIComponent(segment)).join("/");
@@ -157,7 +165,7 @@ function rawFileUrl(source: ClaudePluginSource, ref: string, path: string): stri
 // ambiguous between ref and subdirectory. Try progressively longer refs
 // against the trees API and use the first that resolves.
 async function resolveRefAndTree(
-  source: ClaudePluginSource,
+  source: CompatibleGitHubPluginSource,
   explicitRef: string | undefined,
 ): Promise<{ ref: string; dir: string | null; tree: TreeEntry[] }> {
   const candidates: Array<{ ref: string; dir: string | null }> = [];
@@ -242,6 +250,74 @@ function normalizeRelative(root: string, path: string): string {
   return `${root}${cleaned}`;
 }
 
+function portableId(value: string, fallback: string): string {
+  const normalized = value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9._-]+/g, "-")
+    .replace(/^[._-]+|[._-]+$/g, "");
+  return normalized || fallback;
+}
+
+function translatedAgentContent(description: string, source: string): string {
+  const { data, body } = parseFrontmatter(source.trim());
+  const tools = typeof data.tools === "string"
+    ? Object.fromEntries(data.tools.split(",").map((entry) => entry.trim().toLowerCase()).filter(Boolean).map((entry) => [entry, true]))
+    : Array.isArray(data.tools)
+      ? Object.fromEntries(data.tools.flatMap((entry) => typeof entry === "string" && entry.trim() ? [[entry.trim().toLowerCase(), true] as const] : []))
+      : isRecord(data.tools)
+        ? Object.fromEntries(Object.entries(data.tools).filter((entry): entry is [string, boolean] => typeof entry[1] === "boolean"))
+        : null;
+  const model = readString(data.model);
+  return `${buildFrontmatter({
+    description: readString(data.description) ?? description,
+    ...(model?.includes("/") ? { model } : {}),
+    ...(tools && Object.keys(tools).length > 0 ? { tools } : {}),
+  })}\n${body.replace(/^\s*\n?/, "")}`;
+}
+
+function translatedCommandContent(name: string, description: string, source: string): string {
+  const { data, body } = parseFrontmatter(source.trim());
+  const model = readString(data.model);
+  const agent = readString(data.agent);
+  return `${buildFrontmatter({
+    name,
+    description: readString(data.description) ?? description,
+    ...(agent ? { agent } : {}),
+    ...(model?.includes("/") ? { model } : {}),
+    ...(typeof data.subtask === "boolean" ? { subtask: data.subtask } : {}),
+  })}\n${body.replace(/^\s*\n?/, "")}`;
+}
+
+function packageVersion(version: string | null, digest: string): string {
+  const base = version && SEMVER_RE.test(version) ? version : "0.0.0";
+  return base.includes("+") ? `${base}.${digest}` : `${base}+${digest}`;
+}
+
+function remoteMcpConfig(name: string, value: unknown, warnings: string[]): Record<string, unknown> | null {
+  if (!isRecord(value)) return null;
+  const url = readString(value.url);
+  if (!url?.startsWith("https://")) {
+    warnings.push(`MCP server "${name}" is not a remote HTTPS server and was skipped.`);
+    return null;
+  }
+  if (value.headers !== undefined || value.command !== undefined || value.env !== undefined || value.environment !== undefined) {
+    warnings.push(`MCP server "${name}" contains local commands or static credentials and was skipped.`);
+    return null;
+  }
+  const oauth = value.oauth === true
+    ? {}
+    : isRecord(value.oauth)
+      ? Object.fromEntries(Object.entries(value.oauth).filter(([key, entry]) => key !== "clientSecret" && ["clientId", "scope"].includes(key) && typeof entry === "string"))
+      : undefined;
+  return {
+    type: "remote",
+    url,
+    enabled: value.enabled !== false && value.disabled !== true,
+    ...(oauth ? { oauth } : {}),
+  };
+}
+
 async function mapWithConcurrency<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
   const results: R[] = new Array(items.length);
   let index = 0;
@@ -264,8 +340,8 @@ function mcpConfigReferencesPluginRoot(config: unknown): boolean {
   return false;
 }
 
-export async function resolveClaudePluginBundle(input: { url: string; ref?: string }): Promise<ClaudePluginBundle> {
-  const source = parseClaudePluginSource(input.url);
+export async function resolveCompatibleGitHubPluginBundle(input: { url: string; ref?: string }): Promise<CompatibleGitHubPluginBundle> {
+  const source = parseCompatibleGitHubPluginSource(input.url);
   const { ref, dir, tree } = await resolveRefAndTree(source, input.ref?.trim() || undefined);
   const root = locatePluginRoot(tree, dir);
   const treeByPath = new Map(tree.map((entry) => [entry.path, entry]));
@@ -273,22 +349,22 @@ export async function resolveClaudePluginBundle(input: { url: string; ref?: stri
 
   const manifestPath = `${root}.claude-plugin/plugin.json`;
   const manifestText = await fetchGithubText(rawFileUrl(source, ref, manifestPath));
-  let manifest: Record<string, unknown>;
+  let sourceManifest: Record<string, unknown>;
   try {
     const parsed: unknown = JSON.parse(manifestText);
     if (!isRecord(parsed)) throw new Error("not an object");
-    manifest = parsed;
+    sourceManifest = parsed;
   } catch {
     throw new ApiError(400, "invalid_plugin_manifest", `${manifestPath} is not valid JSON`);
   }
 
-  const pluginName = readString(manifest.displayName) ?? readString(manifest.name);
+  const pluginName = readString(sourceManifest.displayName) ?? readString(sourceManifest.name);
   if (!pluginName) {
     throw new ApiError(400, "invalid_plugin_manifest", `${manifestPath} is missing a plugin name`);
   }
-  const description = readString(manifest.description);
-  const version = readString(manifest.version);
-  if (manifest.hooks !== undefined) {
+  const description = readString(sourceManifest.description);
+  const version = readString(sourceManifest.version);
+  if (sourceManifest.hooks !== undefined) {
     warnings.push("This plugin declares hooks, which iPolloWork does not support yet. Hooks were skipped.");
   }
 
@@ -313,43 +389,31 @@ export async function resolveClaudePluginBundle(input: { url: string; ref?: stri
     return [...paths].sort();
   };
 
-  const commandPaths = collectMarkdown(readPathList(manifest.commands), "commands");
-  const agentPaths = collectMarkdown(readPathList(manifest.agents), "agents");
+  const commandPaths = collectMarkdown(readPathList(sourceManifest.commands), "commands");
+  const agentPaths = collectMarkdown(readPathList(sourceManifest.agents), "agents");
 
   // Skills are directories containing SKILL.md.
-  const skillRoots = readPathList(manifest.skills).map((entry) => normalizeRelative(root, entry)).filter(Boolean);
+  const skillRoots = readPathList(sourceManifest.skills).map((entry) => normalizeRelative(root, entry)).filter(Boolean);
   const skillPrefixes = skillRoots.length > 0 ? skillRoots.map((entry) => `${entry.replace(/\/+$/, "")}/`) : [`${root}skills/`];
   const skillEntrypoints = [...treeByPath.keys()]
     .filter((path) => skillPrefixes.some((prefix) => path.startsWith(prefix)) && path.endsWith("/SKILL.md"))
     .sort();
-  const skillExtraFiles = new Map<string, number>();
-  for (const entrypoint of skillEntrypoints) {
-    const skillDir = entrypoint.slice(0, -"SKILL.md".length);
-    const extras = [...treeByPath.keys()].filter((path) => path.startsWith(skillDir) && path !== entrypoint);
-    if (extras.length > 0) skillExtraFiles.set(entrypoint, extras.length);
-  }
-  if (skillExtraFiles.size > 0) {
-    warnings.push(
-      `Some skills bundle extra files beyond SKILL.md (${[...skillExtraFiles.keys()].map((path) => path.split("/").at(-2)).join(", ")}). Only SKILL.md is installed for now.`,
-    );
-  }
-
   // --- MCP servers -----------------------------------------------------------
-  const mcpServers: Record<string, unknown> = {};
+  const mcpServers: Record<string, Record<string, unknown>> = {};
   const addMcpServers = (value: unknown) => {
     if (!isRecord(value)) return;
     const record = isRecord(value.mcpServers) ? value.mcpServers : value;
     for (const [name, config] of Object.entries(record)) {
-      if (!isRecord(config)) continue;
       if (mcpConfigReferencesPluginRoot(config)) {
-        warnings.push(`MCP server "${name}" uses \${CLAUDE_PLUGIN_ROOT} (a plugin-local command), which iPolloWork does not support yet. It was skipped.`);
+        warnings.push(`MCP server "${name}" uses \${CLAUDE_PLUGIN_ROOT} and was skipped because imported plugins cannot execute local commands.`);
         continue;
       }
-      mcpServers[name] = config;
+      const normalized = remoteMcpConfig(name, config, warnings);
+      if (normalized) mcpServers[name] = normalized;
     }
   };
 
-  const declaredMcp = manifest.mcpServers;
+  const declaredMcp = sourceManifest.mcpServers;
   if (typeof declaredMcp === "string") {
     const mcpPath = normalizeRelative(root, declaredMcp);
     if (mcpPath && inTree(mcpPath)) {
@@ -380,6 +444,7 @@ export async function resolveClaudePluginBundle(input: { url: string; ref?: stri
     title: string;
     description: string | null;
     content: string;
+    extraFiles: Array<{ path: string; content: Uint8Array }>;
   };
 
   const componentInputs = [
@@ -395,77 +460,112 @@ export async function resolveClaudePluginBundle(input: { url: string; ref?: stri
       ? item.path.split("/").at(-2) ?? "skill"
       : (item.path.split("/").at(-1) ?? "").replace(/\.md$/, "");
     const frontmatterName = readString(data.name);
+    const skillDirectory = item.type === "skill" ? item.path.slice(0, -"SKILL.md".length) : null;
+    const extraPaths = skillDirectory
+      ? [...treeByPath.keys()].filter((path) => path.startsWith(skillDirectory) && path !== item.path)
+      : [];
+    const extraFiles = await mapWithConcurrency(extraPaths, 6, async (path) => ({
+      path: path.slice(skillDirectory?.length ?? 0),
+      content: await fetchGithubBytes(rawFileUrl(source, ref, path)),
+    }));
     return {
       type: item.type,
       path: item.path,
       title: item.type === "skill" && frontmatterName ? frontmatterName : fallbackTitle,
       description: readString(data.description),
       content,
+      extraFiles,
     };
   });
 
-  // --- Assemble CloudPluginResolved -------------------------------------------
-  const dirSuffix = dir ? `#${dir}` : "";
-  const pluginId = `github:${source.owner}/${source.repo}${dirSuffix}`;
-  const memberships: CloudPluginResolved["memberships"] = fetched.map((component) => ({
-    configObjectId: component.path,
-    configObject: {
-      id: component.path,
-      objectType: component.type,
-      title: component.title,
-      description: component.description,
-      currentRelativePath: null,
-      status: "active",
-      updatedAt: null,
-      latestVersion: {
-        id: treeByPath.get(component.path)?.sha ?? component.path,
-        rawSourceText: component.content,
-        normalizedPayloadJson: null,
-      },
-    },
-  }));
-
-  if (Object.keys(mcpServers).length > 0) {
-    memberships.push({
-      configObjectId: `${pluginId}/mcp`,
-      configObject: {
-        id: `${pluginId}/mcp`,
-        objectType: "mcp",
-        title: `${pluginName} MCP`,
-        description: null,
-        currentRelativePath: null,
-        status: "active",
-        updatedAt: null,
-        latestVersion: {
-          id: treeByPath.get(dotMcpPath)?.sha ?? `${pluginId}/mcp`,
-          rawSourceText: null,
-          normalizedPayloadJson: { mcpServers },
-        },
-      },
+  const pluginId = portableId(
+    ["github", source.owner, source.repo, dir].filter(Boolean).join("-"),
+    "github-plugin",
+  );
+  const usedResourceIds = new Set<string>();
+  const uniqueResourceId = (value: string, fallback: string) => {
+    const base = portableId(value, fallback);
+    let candidate = base;
+    let suffix = 2;
+    while (usedResourceIds.has(candidate)) candidate = `${base}-${suffix++}`;
+    usedResourceIds.add(candidate);
+    return candidate;
+  };
+  const files: CompatibleGitHubPluginBundle["files"] = [];
+  const resources: PluginPackageManifest["resources"] = [];
+  for (const component of fetched) {
+    const resourceId = uniqueResourceId(component.title, component.type);
+    if (component.type === "skill") {
+      const directory = `skills/${pluginId}/${resourceId}`;
+      files.push({ path: `${directory}/SKILL.md`, content: component.content });
+      files.push(...component.extraFiles.map((file) => ({ path: `${directory}/${file.path}`, content: file.content })));
+      resources.push({
+        type: "skill",
+        id: resourceId,
+        label: component.title,
+        ...(component.description ? { description: component.description } : {}),
+        path: directory,
+      });
+      continue;
+    }
+    const directory = component.type === "agent" ? "agents" : "commands";
+    const path = `${directory}/${pluginId}/${resourceId}.md`;
+    const descriptionText = component.description ?? component.title;
+    files.push({
+      path,
+      content: component.type === "agent"
+        ? translatedAgentContent(descriptionText, component.content)
+        : translatedCommandContent(resourceId, descriptionText, component.content),
+    });
+    resources.push({
+      type: component.type,
+      id: resourceId,
+      label: component.title,
+      ...(component.description ? { description: component.description } : {}),
+      path,
     });
   }
+  for (const [name, config] of Object.entries(mcpServers)) {
+    const resourceId = uniqueResourceId(name, "mcp");
+    const path = `mcp/${pluginId}/${resourceId}.json`;
+    files.push({ path, content: `${JSON.stringify(config, null, 2)}\n` });
+    resources.push({ type: "mcp", id: resourceId, label: name, path, mcpServerName: name, oauth: config.oauth !== undefined });
+  }
 
-  if (memberships.length === 0) {
+  if (resources.length === 0) {
     throw new ApiError(400, "plugin_empty", "This plugin has no MCP servers, skills, commands, or agents iPolloWork can install.");
   }
 
-  const resolved: CloudPluginResolved = {
-    plugin: {
-      id: pluginId,
-      name: pluginName,
-      description,
-      updatedAt: null,
+  const digest = createHash("sha256");
+  for (const file of files) digest.update(file.path).update("\0").update(file.content).update("\0");
+  const contentDigest = digest.digest("hex").slice(0, 12);
+  const packageManifest: PluginPackageManifest = {
+    schemaVersion: 2,
+    id: pluginId,
+    name: pluginName,
+    description: description ?? `Imported from ${source.owner}/${source.repo}`,
+    source: {
+      format: "github-compatible",
+      trusted: false,
+      origin: "local",
+      reference: `https://github.com/${source.owner}/${source.repo}/tree/${ref}${dir ? `/${dir}` : ""}`,
     },
-    memberships,
+    resources,
+    package: {
+      version: packageVersion(version, contentDigest),
+      updateId: ["github", source.owner, source.repo, dir].filter(Boolean).map((entry) => portableId(entry ?? "", "plugin")).join("/"),
+      publisher: { id: portableId(source.owner, "github"), name: source.owner },
+    },
   };
 
-  const components: ClaudePluginComponent[] = [
+  const components: CompatibleGitHubPluginComponent[] = [
     ...Object.keys(mcpServers).map((name) => ({ type: "mcp" as const, name, description: null })),
     ...fetched.map((component) => ({ type: component.type, name: component.title, description: component.description })),
   ];
 
   return {
-    resolved,
+    manifest: packageManifest,
+    files,
     preview: {
       pluginId,
       name: pluginName,
@@ -476,4 +576,22 @@ export async function resolveClaudePluginBundle(input: { url: string; ref?: stri
       warnings,
     },
   };
+}
+
+export async function withMaterializedCompatibleGitHubPluginBundle<T>(
+  bundle: CompatibleGitHubPluginBundle,
+  operation: (packageRoot: string) => Promise<T>,
+): Promise<T> {
+  const packageRoot = await mkdtemp(join(tmpdir(), "ipollowork-plugin-source-"));
+  try {
+    await writeFile(join(packageRoot, "ipollowork.plugin.json"), `${JSON.stringify(bundle.manifest, null, 2)}\n`, "utf8");
+    for (const file of bundle.files) {
+      const path = join(packageRoot, file.path);
+      await mkdir(dirname(path), { recursive: true });
+      await writeFile(path, file.content);
+    }
+    return await operation(packageRoot);
+  } finally {
+    await rm(packageRoot, { recursive: true, force: true });
+  }
 }

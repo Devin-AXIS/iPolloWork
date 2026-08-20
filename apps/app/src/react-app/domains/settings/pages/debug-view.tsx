@@ -553,7 +553,6 @@ export function DebugView(props: DebugViewProps) {
           {props.ipolloworkServerCapabilities ? (
             <div className="grid gap-2 text-[12px] text-dls-secondary md:grid-cols-2">
               <div>{t("settings.cap_skills", { value: formatCapability(props.ipolloworkServerCapabilities.skills) })}</div>
-              <div>{t("settings.cap_plugins", { value: formatCapability(props.ipolloworkServerCapabilities.plugins) })}</div>
               <div>{t("settings.cap_mcp", { value: formatCapability(props.ipolloworkServerCapabilities.mcp) })}</div>
               <div>{t("settings.cap_commands", { value: formatCapability(props.ipolloworkServerCapabilities.commands) })}</div>
               <div>{t("settings.cap_config", { value: formatCapability(props.ipolloworkServerCapabilities.config) })}</div>

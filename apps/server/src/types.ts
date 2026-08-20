@@ -121,7 +121,6 @@ export interface Capabilities {
       repo: { owner: string; name: string; ref: string };
     };
   };
-  plugins: { read: boolean; write: boolean };
   mcp: { read: boolean; write: boolean };
   commands: { read: boolean; write: boolean };
   config: { read: boolean; write: boolean };
@@ -176,13 +175,6 @@ export interface ApiErrorBody {
   code: string;
   message: string;
   details?: unknown;
-}
-
-export interface PluginItem {
-  spec: string;
-  source: "config" | "dir.project" | "dir.global";
-  scope: "project" | "global";
-  path?: string;
 }
 
 export interface McpItem {

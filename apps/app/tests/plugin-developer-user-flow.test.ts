@@ -245,7 +245,7 @@ describe("plugin developer and user flow", () => {
     expect(upload.files.every((file) => !file.path.startsWith("acme-research/"))).toBe(true);
   });
 
-  test("routes migrated services through the existing MCP directory", async () => {
+  test("routes package services through the existing MCP directory", async () => {
     const { FIGMA_MCP_QUICK_CONNECT, MCP_QUICK_CONNECT } = await import("../src/app/constants");
     const migrated = MCP_QUICK_CONNECT.filter((entry) => entry.pluginPackageId);
 

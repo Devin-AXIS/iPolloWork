@@ -1,8 +1,8 @@
-import { homedir } from "node:os";
-import { dirname, join, resolve } from "node:path";
+import { dirname } from "node:path";
 import { eq } from "drizzle-orm";
 import { integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
 import { importNodeSqlite } from "./node-sqlite.js";
+import { runtimeDbPath } from "./runtime-storage.js";
 import type { ServerConfig } from "./types.js";
 import { ensureDir } from "./utils.js";
 
@@ -23,9 +23,21 @@ const runtimeOpencodeConfigs = sqliteTable("runtime_opencode_configs", {
   updatedAt: integer("updated_at").notNull(),
 });
 
+const runtimeProviderChannels = sqliteTable("runtime_provider_channels", {
+  scope: text("scope").primaryKey(),
+  channelsJson: text("channels_json").notNull(),
+  updatedAt: integer("updated_at").notNull(),
+});
+
+const GLOBAL_PROVIDER_CHANNEL_SCOPE = "global";
+
+export type RuntimeProviderChannels = Record<string, Record<string, unknown>>;
+
 type RuntimeOpencodeDb = {
   get: (workspaceId: string) => { configJson: string } | undefined;
   upsert: (value: { workspaceId: string; configJson: string; updatedAt: number }) => void;
+  getProviderChannels: () => { channelsJson: string } | undefined;
+  upsertProviderChannels: (value: { channelsJson: string; updatedAt: number }) => void;
   close: () => void;
 };
 
@@ -62,22 +74,33 @@ function parseRuntimeOpencodeConfig(configJson: string): RuntimeOpencodeConfig {
   }
 }
 
-function runtimeDbPath(config: ServerConfig): string {
-  const override = process.env.IPOLLOWORK_RUNTIME_DB?.trim();
-  if (override) return resolve(override);
-  const configPath = config.configPath?.trim();
-  const configDir = configPath ? dirname(configPath) : join(homedir(), ".config", "ipollowork");
-  return join(configDir, "runtime.sqlite");
+function normalizeRuntimeProviderChannels(value: unknown): RuntimeProviderChannels {
+  if (!isRecord(value)) return {};
+  return Object.fromEntries(Object.entries(value).flatMap(([providerId, profile]) => {
+    const id = providerId.trim().toLowerCase();
+    return /^[a-z][a-z0-9._-]*$/.test(id) && isRecord(profile)
+      ? [[id, profile]]
+      : [];
+  }));
 }
 
-/** Directory holding runtime state (the SQLite DB and derived files). */
-export function runtimeStorageDir(config: ServerConfig): string {
-  return dirname(runtimeDbPath(config));
+function parseRuntimeProviderChannels(channelsJson: string): RuntimeProviderChannels {
+  try {
+    return normalizeRuntimeProviderChannels(JSON.parse(channelsJson));
+  } catch {
+    return {};
+  }
 }
 
-export type RuntimeOpencodeConfigWriteListener = (config: ServerConfig, workspaceId: string) => void;
+export type RuntimeOpencodeConfigWriteListener = (
+  config: ServerConfig,
+  workspaceId: string,
+  previous: RuntimeOpencodeConfig,
+  next: RuntimeOpencodeConfig,
+) => void;
 
 const writeListeners = new Set<RuntimeOpencodeConfigWriteListener>();
+const providerChannelWriteListeners = new Set<(config: ServerConfig) => void>();
 
 /**
  * Observe runtime config writes. Used to keep derived state (e.g. the
@@ -96,6 +119,7 @@ async function openRuntimeDb(path: string): Promise<RuntimeOpencodeDb> {
     const { drizzle } = await import("drizzle-orm/bun-sqlite");
     const sqlite = new Database(path, { create: true });
     sqlite.run("CREATE TABLE IF NOT EXISTS runtime_opencode_configs (workspace_id TEXT PRIMARY KEY NOT NULL, config_json TEXT NOT NULL, updated_at INTEGER NOT NULL)");
+    sqlite.run("CREATE TABLE IF NOT EXISTS runtime_provider_channels (scope TEXT PRIMARY KEY NOT NULL, channels_json TEXT NOT NULL, updated_at INTEGER NOT NULL)");
     const db = drizzle(sqlite);
     return {
       get: (workspaceId) => db
@@ -113,14 +137,32 @@ async function openRuntimeDb(path: string): Promise<RuntimeOpencodeDb> {
           })
           .run();
       },
+      getProviderChannels: () => db
+        .select()
+        .from(runtimeProviderChannels)
+        .where(eq(runtimeProviderChannels.scope, GLOBAL_PROVIDER_CHANNEL_SCOPE))
+        .get(),
+      upsertProviderChannels: ({ channelsJson, updatedAt }) => {
+        db
+          .insert(runtimeProviderChannels)
+          .values({ scope: GLOBAL_PROVIDER_CHANNEL_SCOPE, channelsJson, updatedAt })
+          .onConflictDoUpdate({
+            target: runtimeProviderChannels.scope,
+            set: { channelsJson, updatedAt },
+          })
+          .run();
+      },
       close: () => sqlite.close(),
     };
   }
   const { DatabaseSync } = await importNodeSqlite();
   const sqlite = new DatabaseSync(path);
   sqlite.exec("CREATE TABLE IF NOT EXISTS runtime_opencode_configs (workspace_id TEXT PRIMARY KEY NOT NULL, config_json TEXT NOT NULL, updated_at INTEGER NOT NULL)");
+  sqlite.exec("CREATE TABLE IF NOT EXISTS runtime_provider_channels (scope TEXT PRIMARY KEY NOT NULL, channels_json TEXT NOT NULL, updated_at INTEGER NOT NULL)");
   const get = sqlite.prepare("SELECT config_json AS configJson FROM runtime_opencode_configs WHERE workspace_id = ?");
   const upsert = sqlite.prepare("INSERT INTO runtime_opencode_configs (workspace_id, config_json, updated_at) VALUES (?, ?, ?) ON CONFLICT(workspace_id) DO UPDATE SET config_json = excluded.config_json, updated_at = excluded.updated_at");
+  const getProviderChannels = sqlite.prepare("SELECT channels_json AS channelsJson FROM runtime_provider_channels WHERE scope = ?");
+  const upsertProviderChannels = sqlite.prepare("INSERT INTO runtime_provider_channels (scope, channels_json, updated_at) VALUES (?, ?, ?) ON CONFLICT(scope) DO UPDATE SET channels_json = excluded.channels_json, updated_at = excluded.updated_at");
   return {
     get: (workspaceId) => {
       const row = get.get(workspaceId);
@@ -130,14 +172,25 @@ async function openRuntimeDb(path: string): Promise<RuntimeOpencodeDb> {
     upsert: ({ workspaceId, configJson, updatedAt }) => {
       upsert.run(workspaceId, configJson, updatedAt);
     },
+    getProviderChannels: () => {
+      const row = getProviderChannels.get(GLOBAL_PROVIDER_CHANNEL_SCOPE);
+      if (!isRecord(row) || typeof row.channelsJson !== "string") return undefined;
+      return { channelsJson: row.channelsJson };
+    },
+    upsertProviderChannels: ({ channelsJson, updatedAt }) => {
+      upsertProviderChannels.run(GLOBAL_PROVIDER_CHANNEL_SCOPE, channelsJson, updatedAt);
+    },
     close: () => sqlite.close(),
   };
 }
 
 const dbByPath = new Map<string, Promise<RuntimeOpencodeDb>>();
+const providerChannelWriteQueueByPath = new Map<string, Promise<unknown>>();
 
 export async function disposeRuntimeOpencodeConfigStore(config: ServerConfig): Promise<void> {
   const path = runtimeDbPath(config);
+  await providerChannelWriteQueueByPath.get(path)?.catch(() => undefined);
+  providerChannelWriteQueueByPath.delete(path);
   const pending = dbByPath.get(path);
   if (!pending) return;
   dbByPath.delete(path);
@@ -174,6 +227,41 @@ export function runtimeExternalDirectory(config: RuntimeOpencodeConfig): Record<
   return externalDirectory ?? {};
 }
 
+export function onRuntimeProviderChannelsWrite(listener: (config: ServerConfig) => void): () => void {
+  providerChannelWriteListeners.add(listener);
+  return () => providerChannelWriteListeners.delete(listener);
+}
+
+export async function readRuntimeProviderChannels(config: ServerConfig): Promise<RuntimeProviderChannels> {
+  const db = await runtimeDb(config);
+  const row = db.getProviderChannels();
+  return row ? parseRuntimeProviderChannels(row.channelsJson) : {};
+}
+
+export async function writeRuntimeProviderChannels(
+  config: ServerConfig,
+  updater: (current: RuntimeProviderChannels) => RuntimeProviderChannels,
+): Promise<{ channels: RuntimeProviderChannels; changed: boolean }> {
+  const path = runtimeDbPath(config);
+  const previous = providerChannelWriteQueueByPath.get(path) ?? Promise.resolve();
+  const mutation = previous.then(async () => {
+    const db = await runtimeDb(config);
+    const row = db.getProviderChannels();
+    const current = row ? parseRuntimeProviderChannels(row.channelsJson) : {};
+    const channels = normalizeRuntimeProviderChannels(updater(current));
+    const channelsJson = JSON.stringify(channels);
+    if (row?.channelsJson === channelsJson) return { channels, changed: false };
+    db.upsertProviderChannels({ channelsJson, updatedAt: Date.now() });
+    for (const listener of providerChannelWriteListeners) listener(config);
+    return { channels, changed: true };
+  });
+  providerChannelWriteQueueByPath.set(path, mutation.then(
+    () => undefined,
+    () => undefined,
+  ));
+  return mutation;
+}
+
 /**
  * Per-provider merge for runtime config patches: record values upsert the
  * provider, explicit `null` deletes it (so clients can remove runtime-managed
@@ -183,8 +271,8 @@ export function runtimeExternalDirectory(config: RuntimeOpencodeConfig): Record<
 export function mergeRuntimeProviderUpdate(
   current: unknown,
   update: Record<string, unknown>,
-): Record<string, unknown> | undefined {
-  const next: Record<string, unknown> = { ...(isRecord(current) ? current : {}) };
+): RuntimeProviderChannels | undefined {
+  const next = normalizeRuntimeProviderChannels(current);
   for (const [providerId, value] of Object.entries(update)) {
     if (value === null) {
       delete next[providerId];
@@ -217,13 +305,14 @@ export async function writeRuntimeOpencodeConfig(
     return { config: next, changed: false };
   }
   db.upsert({ workspaceId, configJson, updatedAt: now });
-  for (const listener of writeListeners) listener(config, workspaceId);
+  for (const listener of writeListeners) listener(config, workspaceId, current, next);
   return { config: next, changed: true };
 }
 
 export function mergeOpencodeConfigs(
   persisted: Record<string, unknown>,
   runtime: RuntimeOpencodeConfig,
+  providerChannels: RuntimeProviderChannels = {},
 ): Record<string, unknown> {
   const persistedPermission = isRecord(persisted.permission) ? persisted.permission : {};
   const persistedExternalDirectory = isRecord(persistedPermission.external_directory)
@@ -250,7 +339,13 @@ export function mergeOpencodeConfigs(
         ...runtimeExternalDirectory(runtime),
       },
     },
-    ...(runtime.provider ? { provider: { ...(isRecord(persisted.provider) ? persisted.provider : {}), ...runtime.provider } } : {}),
+    ...(runtime.provider || Object.keys(providerChannels).length ? {
+      provider: {
+        ...(isRecord(persisted.provider) ? persisted.provider : {}),
+        ...runtime.provider,
+        ...providerChannels,
+      },
+    } : {}),
     ...(runtime.default_agent ? { default_agent: runtime.default_agent } : {}),
   };
 }

@@ -2,7 +2,7 @@ import type { createOpencodeClient } from "@opencode-ai/sdk/v2/client";
 import { DEEPSEEK_HARNESS_ENGINE_ID } from "@ipollowork/types/workspace";
 import {
   DeepSeekHarnessRpcError,
-  type DeepSeekHarnessRuntime,
+  type DeepSeekHarnessRuntimePool,
   DeepSeekHarnessUnavailableError,
 } from "../deepseek-harness-runtime.js";
 import {
@@ -41,7 +41,7 @@ interface RegisterSessionRoutesOptions {
   resolveWorkspace: (config: ServerConfig, id: string) => Promise<WorkspaceInfo>;
   createWorkspaceOpencodeClient: (config: ServerConfig, workspace: WorkspaceInfo) => WorkspaceOpencodeClient;
   unwrapOpencodeResult: UnwrapOpencodeResult;
-  deepseekHarness: DeepSeekHarnessRuntime;
+  deepseekHarness: DeepSeekHarnessRuntimePool;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -135,7 +135,7 @@ export function registerSessionRoutes(options: RegisterSessionRoutesOptions): vo
   ) {
     try {
       if (workspace.engineId === DEEPSEEK_HARNESS_ENGINE_ID) {
-        return await listDeepSeekHarnessSessions(deepseekHarness, workspace, input);
+        return await listDeepSeekHarnessSessions(deepseekHarness.forWorkspace(workspace), workspace, input);
       }
       const opencode = createWorkspaceOpencodeClient(config, workspace);
       return buildSessionList(
@@ -157,7 +157,7 @@ export function registerSessionRoutes(options: RegisterSessionRoutesOptions): vo
   async function readWorkspaceSession(workspace: WorkspaceInfo, sessionId: string) {
     try {
       if (workspace.engineId === DEEPSEEK_HARNESS_ENGINE_ID) {
-        return await readDeepSeekHarnessSession(deepseekHarness, workspace, sessionId);
+        return await readDeepSeekHarnessSession(deepseekHarness.forWorkspace(workspace), workspace, sessionId);
       }
       const opencode = createWorkspaceOpencodeClient(config, workspace);
       return buildSession(
@@ -178,7 +178,7 @@ export function registerSessionRoutes(options: RegisterSessionRoutesOptions): vo
   ) {
     try {
       if (workspace.engineId === DEEPSEEK_HARNESS_ENGINE_ID) {
-        const history = await readDeepSeekHarnessHistory(deepseekHarness, workspace, sessionId, input.limit);
+        const history = await readDeepSeekHarnessHistory(deepseekHarness.forWorkspace(workspace), workspace, sessionId, input.limit);
         return mapDeepSeekHarnessMessages(sessionId, history);
       }
       const opencode = createWorkspaceOpencodeClient(config, workspace);
@@ -200,7 +200,7 @@ export function registerSessionRoutes(options: RegisterSessionRoutesOptions): vo
   ) {
     try {
       if (workspace.engineId === DEEPSEEK_HARNESS_ENGINE_ID) {
-        return await readDeepSeekHarnessSnapshot(deepseekHarness, workspace, sessionId, input.limit);
+        return await readDeepSeekHarnessSnapshot(deepseekHarness.forWorkspace(workspace), workspace, sessionId, input.limit);
       }
       const opencode = createWorkspaceOpencodeClient(config, workspace);
       const [session, messages, todos, statuses] = await Promise.all([
@@ -224,14 +224,15 @@ export function registerSessionRoutes(options: RegisterSessionRoutesOptions): vo
   async function createWorkspaceSession(workspace: WorkspaceInfo, title?: string) {
     try {
       if (workspace.engineId === DEEPSEEK_HARNESS_ENGINE_ID) {
-        const result = await deepseekHarness.call<{ sessionId: string; agentPreset?: string }>("session.create", {
+        const runtime = deepseekHarness.forWorkspace(workspace);
+        const result = await runtime.call<{ sessionId: string; agentPreset?: string }>("session.create", {
           cwd: workspace.path,
         });
         const sessionId = result.sessionId?.trim();
         if (!sessionId) {
           throw new ApiError(502, "deepseek_harness_invalid_response", "DeepSeek Harness returned an invalid session");
         }
-        if (title) await deepseekHarness.call("session.rename", { sessionId, title });
+        if (title) await runtime.call("session.rename", { sessionId, title });
         const now = Date.now();
         return {
           id: sessionId,
@@ -265,21 +266,22 @@ export function registerSessionRoutes(options: RegisterSessionRoutesOptions): vo
   ) {
     try {
       if (workspace.engineId === DEEPSEEK_HARNESS_ENGINE_ID) {
+        const runtime = deepseekHarness.forWorkspace(workspace);
         if (input.mode) {
-          await deepseekHarness.call("agentPreset.select", {
+          await runtime.call("agentPreset.select", {
             sessionId,
             agentPreset: input.mode,
           });
         }
         if (input.model) {
-          await deepseekHarness.call("session.selectModel", {
+          await runtime.call("session.selectModel", {
             sessionId,
             provider: input.model.providerID,
             model: input.model.modelID,
             ...(input.reasoningEffort ? { reasoningEffort: input.reasoningEffort } : {}),
           });
         }
-        await deepseekHarness.call("session.prompt", {
+        await runtime.call("session.prompt", {
           sessionId,
           mode: "queue",
           content: [{ type: "text", text: input.text }],

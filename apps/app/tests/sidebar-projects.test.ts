@@ -64,7 +64,9 @@ describe("sidebar projects", () => {
     expect(sidebarSource).toContain("if (isCurrentProject) setProjectExpanded(true);");
     expect(sidebarSource).toContain('isSelectedProject && "bg-sidebar-accent font-medium text-sidebar-accent-foreground mac:bg-black/5 dark:mac:bg-white/10"');
     expect(sidebarSource).toContain('<SidebarMenuSub className="mt-[2px] translate-x-0 gap-1 pb-2">');
-    expect(sessionRouteSource).toContain("navigateToWorkspaceSession(workspaceId);");
+    expect(sessionRouteSource).toContain("const rememberedSessionId = readLastSessionFor(workspaceId);");
+    expect(sessionRouteSource).toContain("?? rememberedSessionId");
+    expect(sessionRouteSource).toContain("navigateToWorkspaceSession(workspaceId, targetSessionId);");
     expect(sidebarSource).toContain("onSelectProject(workspace.id)");
     expect(sidebarSource).toContain("<ConversationList");
     expect(sidebarSource).not.toContain("group-data-open/project:rotate-90");

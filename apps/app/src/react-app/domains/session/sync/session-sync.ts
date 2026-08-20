@@ -579,6 +579,10 @@ function applyEvent(entry: SyncEntry, workspaceId: string, event: ConversationEv
   if (event.type === "message.upsert") {
     useSessionActivityStore.getState().markMessageRole(workspaceId, event.sessionId, event.message.id, event.message.role);
     if (!isTrackedSession(entry, event.sessionId)) return;
+    // Some engines publish their authoritative assistant message immediately
+    // after the last streamed chunks. Flush those queued deltas first so the
+    // final message replaces the stream instead of receiving it a second time.
+    if (entry.deltaFlushBuffer.length > 0) flushDeltas(entry, workspaceId);
     queryClient.setQueryData<UIMessage[]>(transcriptKey(workspaceId, event.sessionId), (current = []) =>
       upsertMessage(current, event.message),
     );

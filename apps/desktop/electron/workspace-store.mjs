@@ -155,6 +155,8 @@ function normalizeHostedDesktopBootstrapConfig(config) {
 }
 
 export function createWorkspaceStore({ app, defaultDenBaseUrl, defaultRequireSignin, forceRequireSignin }) {
+  let workspaceStateMutationQueue = Promise.resolve();
+
   function desktopBootstrapPath() {
     if (process.env.IPOLLOWORK_DESKTOP_BOOTSTRAP_PATH?.trim()) {
       return process.env.IPOLLOWORK_DESKTOP_BOOTSTRAP_PATH.trim();
@@ -1018,10 +1020,17 @@ export function createWorkspaceStore({ app, defaultDenBaseUrl, defaultRequireSig
     return nextState;
   }
 
-  async function mutateWorkspaceState(mutator) {
-    const current = await readWorkspaceState();
-    const next = await mutator({ ...current, workspaces: [...current.workspaces] });
-    return writeWorkspaceState(next);
+  function mutateWorkspaceState(mutator) {
+    const mutation = workspaceStateMutationQueue.then(async () => {
+      const current = await readWorkspaceState();
+      const next = await mutator({ ...current, workspaces: [...current.workspaces] });
+      return writeWorkspaceState(next);
+    });
+    workspaceStateMutationQueue = mutation.then(
+      () => undefined,
+      () => undefined,
+    );
+    return mutation;
   }
 
   async function listLocalWorkspacePaths() {

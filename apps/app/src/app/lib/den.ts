@@ -1268,10 +1268,7 @@ function parseExtensionSourceFormat(value: unknown): iPolloWorkExtensionSourceFo
   switch (value) {
     case "ipollowork-builtin":
     case "ipollowork-extension-manifest":
-    case "claude-plugin":
-    case "opencode-plugin":
-    case "mcp-directory":
-    case "manual":
+    case "github-compatible":
       return value;
     default:
       return null;

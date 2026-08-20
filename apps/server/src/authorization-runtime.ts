@@ -1,10 +1,10 @@
 import { randomBytes } from "node:crypto";
-import { chmod, mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import { chmod, mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 
 import { ApiError } from "./errors.js";
 import { AuthorizationVault } from "./authorization-vault.js";
-import { runtimeStorageDir } from "./runtime-opencode-config-store.js";
+import { runtimeStorageDir } from "./runtime-storage.js";
 import type { ServerConfig } from "./types.js";
 
 const vaults = new Map<string, Promise<AuthorizationVault>>();
@@ -15,10 +15,6 @@ function vaultPath(config: ServerConfig): string {
 
 function keyPath(config: ServerConfig): string {
   return join(runtimeStorageDir(config), "authorization.key");
-}
-
-function legacyKeyPath(config: ServerConfig): string {
-  return join(runtimeStorageDir(config), "plugin-authorization.key");
 }
 
 async function readKey(path: string): Promise<Buffer | null> {
@@ -36,22 +32,6 @@ export async function authorizationEncryptionKey(config: ServerConfig): Promise<
   const path = keyPath(config);
   const current = await readKey(path);
   if (current) return current;
-
-  const legacyPath = legacyKeyPath(config);
-  const legacy = await readKey(legacyPath);
-  if (legacy) {
-    await mkdir(dirname(path), { recursive: true });
-    try {
-      await rename(legacyPath, path);
-      await chmod(path, 0o600).catch(() => undefined);
-      return legacy;
-    } catch (error) {
-      if (!error || typeof error !== "object" || Reflect.get(error, "code") !== "EEXIST") throw error;
-      const concurrent = await readKey(path);
-      if (!concurrent) throw new ApiError(500, "authorization_key_missing", "Authorization encryption key is unavailable");
-      return concurrent;
-    }
-  }
 
   const key = randomBytes(32);
   await mkdir(dirname(path), { recursive: true });
@@ -80,4 +60,4 @@ export function authorizationConsumerId(scope: string, ownerId: string): string 
   return `${scope}:${ownerId}`;
 }
 
-export const __test__ = { keyPath, legacyKeyPath, vaultPath };
+export const __test__ = { keyPath, vaultPath };

@@ -284,7 +284,7 @@ describe("plugin service runtime", () => {
       { key: "ALLOWED_PLUGIN_KEY", value: "allowed-value" },
       { key: "UNDECLARED_PLUGIN_KEY", value: "hidden-value" },
     ]);
-    await installPluginPackage({ serverConfig, workspaceId: WORKSPACE_ID, packageRoot, workspaceRoot });
+    await installPluginPackage({ serverConfig, packageRoot });
 
     const inspected = await callPluginServiceAction({
       config: serverConfig,
@@ -331,7 +331,7 @@ describe("plugin service runtime", () => {
       { key: "DEEPSEEK_API_KEY", value: "test-deepseek-key" },
     ]);
     const serverConfig = config(workspaceRoot);
-    await installPluginPackage({ serverConfig, workspaceId: WORKSPACE_ID, packageRoot, workspaceRoot });
+    await installPluginPackage({ serverConfig, packageRoot });
 
     const capabilities = await callPluginServiceAction({
       config: serverConfig,
@@ -431,7 +431,7 @@ process.stdout.write("DSH completed the desktop headless task.");
     process.env.IPOLLOWORK_DSH_CLI_VERSION = "test";
     await env.upsertMany([{ key: "DEEPSEEK_API_KEY", value: "test-deepseek-key" }]);
     const serverConfig = config(workspaceRoot);
-    await installPluginPackage({ serverConfig, workspaceId: WORKSPACE_ID, packageRoot, workspaceRoot });
+    await installPluginPackage({ serverConfig, packageRoot });
 
     const capabilities = await callPluginServiceAction({
       config: serverConfig,
@@ -564,7 +564,7 @@ process.stdout.write("DSH completed the desktop headless task.");
     }, originalFetch);
     const env = new EnvService({ path: join(runtimeRoot, "env.json") });
     const serverConfig = config(workspaceRoot);
-    await installPluginPackage({ serverConfig, workspaceId: WORKSPACE_ID, packageRoot, workspaceRoot });
+    await installPluginPackage({ serverConfig, packageRoot });
 
     const installed = await callPluginServiceAction({
       config: serverConfig,
@@ -668,7 +668,7 @@ await service.dispose();
     const serverConfig = config(workspaceRoot);
 
     for (const packageRoot of [alphaRoot, betaRoot]) {
-      await installPluginPackage({ serverConfig, workspaceId: WORKSPACE_ID, packageRoot, workspaceRoot });
+      await installPluginPackage({ serverConfig, packageRoot });
     }
     await expect(callPluginServiceAction({
       config: serverConfig,
@@ -680,7 +680,6 @@ await service.dispose();
     })).rejects.toMatchObject({ code: "plugin_authorization_required" });
     await savePluginSecretAuthorization({
       config: serverConfig,
-      workspaceId: WORKSPACE_ID,
       pluginId: "alpha-service",
       methodId: "api-key",
       accountId: "default",
@@ -688,7 +687,6 @@ await service.dispose();
     });
     await savePluginSecretAuthorization({
       config: serverConfig,
-      workspaceId: WORKSPACE_ID,
       pluginId: "beta-service",
       methodId: "api-key",
       accountId: "default",
@@ -755,7 +753,7 @@ await service.dispose();
       accountId: "default",
     });
     let refreshRequests = 0;
-    const authorization = await bindPluginAuthorizationRuntime(serverConfig, WORKSPACE_ID, "alpha-service", {
+    const authorization = await bindPluginAuthorizationRuntime(serverConfig, "alpha-service", {
       fetcher: async () => {
         refreshRequests += 1;
         return new Response(JSON.stringify({ access_token: "fresh-token", token_type: "Bearer", expires_in: 3600 }), {
@@ -802,10 +800,9 @@ await service.dispose();
       return Response.json({ message: "Not found" }, { status: 404 });
     }, { preconnect: originalFetch.preconnect });
 
-    await installPluginPackage({ serverConfig, workspaceId: WORKSPACE_ID, packageRoot, workspaceRoot });
+    await installPluginPackage({ serverConfig, packageRoot });
     await savePluginSecretAuthorization({
       config: serverConfig,
-      workspaceId: WORKSPACE_ID,
       pluginId: "github",
       methodId: "github-token",
       accountId: "default",
@@ -875,10 +872,9 @@ await service.dispose();
       return Response.json({ errcode: 404, errmsg: "Not found" }, { status: 404 });
     }, { preconnect: originalFetch.preconnect });
 
-    await installPluginPackage({ serverConfig, workspaceId: WORKSPACE_ID, packageRoot, workspaceRoot });
+    await installPluginPackage({ serverConfig, packageRoot });
     await savePluginSecretAuthorization({
       config: serverConfig,
-      workspaceId: WORKSPACE_ID,
       pluginId: "wechat-official",
       methodId: "wechat-official-account",
       accountId: "default",

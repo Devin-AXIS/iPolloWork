@@ -1,3 +1,8 @@
+import type {
+  EnginePluginPromptSelection,
+  PluginPromptCapabilitySummary,
+} from "@ipollowork/types/plugins";
+
 type RpcValue<T> = { value: T };
 
 export type DeepSeekHarnessServerRequest = {
@@ -39,6 +44,24 @@ export class DeepSeekHarnessClient implements DeepSeekHarnessRpcClient {
       method: "POST",
       headers: this.#headers,
       body: JSON.stringify({ rpcId, result }),
+    });
+    if (!response.ok) throw await responseError(response);
+  }
+
+  async pluginCapabilities(): Promise<PluginPromptCapabilitySummary[]> {
+    const response = await fetch(`${this.#baseUrl}/plugin-capabilities`, {
+      headers: this.#headers,
+    });
+    if (!response.ok) throw await responseError(response);
+    const payload = await response.json() as { items?: PluginPromptCapabilitySummary[] };
+    return Array.isArray(payload.items) ? payload.items : [];
+  }
+
+  async prompt(payload: Record<string, unknown>, plugins?: EnginePluginPromptSelection): Promise<void> {
+    const response = await fetch(`${this.#baseUrl}/prompt`, {
+      method: "POST",
+      headers: this.#headers,
+      body: JSON.stringify({ payload, ...(plugins ? { plugins } : {}) }),
     });
     if (!response.ok) throw await responseError(response);
   }

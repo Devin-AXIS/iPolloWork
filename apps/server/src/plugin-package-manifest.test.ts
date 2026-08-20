@@ -173,7 +173,7 @@ describe("plugin package manifest", () => {
     expect(result.manifest.resources.some((resource) => resource.type === "mcp" && resource.mcpServerName === "figma")).toBe(true);
   });
 
-  test("accepts every migrated MCP service package with its managed skills", async () => {
+  test("accepts every bundled MCP service package with its managed skills", async () => {
     const { validatePluginPackageManifest } = await import("./plugin-package-manifest.js");
     const packages = [
       { id: "notion", skills: 4, oauth: true },
@@ -385,7 +385,7 @@ describe("plugin package manifest", () => {
     const { validatePluginPackageManifest } = await import("./plugin-package-manifest.js");
     const minimal = {
       ...minimalManifest,
-      source: { format: "opencode-plugin", origin: "local", trusted: false },
+      source: { format: "ipollowork-extension-manifest", origin: "local", trusted: false },
       package: {
         version: "0.1.0",
         updateId: "local/minimal-plugin",

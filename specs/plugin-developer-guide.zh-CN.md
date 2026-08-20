@@ -389,12 +389,9 @@ acme/acme-research
 
 - `ipollowork-builtin`
 - `ipollowork-extension-manifest`
-- `claude-plugin`
-- `opencode-plugin`
-- `mcp-directory`
-- `manual`
+- `github-compatible`
 
-新开发的完整 iPolloWork 插件应优先使用 `ipollowork-extension-manifest`。
+新开发的完整 iPolloWork 插件必须使用 `ipollowork-extension-manifest`；`github-compatible` 只由 GitHub 来源适配器在转换兼容仓库时写入。
 
 ### 5.3 `package`
 
@@ -821,13 +818,13 @@ OpenCode plugin 与其他原生插件共享本机运行环境。第三方插件�
 
 ### 10.1 授权存储模型
 
-授权按以下维度隔离：
+授权使用全局插件消费者身份，并按以下维度隔离：
 
 ```text
-workspace installation + plugin id + account id + method id
+plugin id + connection id + account id + method id
 ```
 
-凭据使用 AES-256-GCM 加密保存。设置页和公开状态 API 只返回字段是否存在、连接状态和更新时间，不返回原始值。第一个成功保存的账户会成为该授权方法的活动账户；活动账户选择会持久化。
+工作区只作为接口访问与服务执行上下文，不会产生一份独立授权。凭据使用 AES-256-GCM 加密保存。设置页和公开状态 API 只返回字段是否存在、连接状态和更新时间，不返回原始值。第一个成功保存的账户会成为该授权方法的活动账户；活动账户选择会持久化。卸载插件时会清理该插件的流程、选择以及未被其他消费者共享的凭据。
 
 ### 10.2 API Key / Secret Form
 

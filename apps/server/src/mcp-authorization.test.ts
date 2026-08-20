@@ -1,18 +1,17 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { access, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import {
   completeMcpAuthorization,
   mcpAuthorizationStatus,
-  migrateLegacyMcpAuthorization,
-  migrateRuntimeMcpAuthorization,
   proxyMcpRequest,
   publicMcpConfig,
   secureMcpAuthorizationConfig,
   startMcpAuthorization,
 } from "./mcp-authorization.js";
+import { listMcp, listRuntimeMcp } from "./mcp.js";
 import { readRuntimeOpencodeConfig, writeRuntimeOpencodeConfig } from "./runtime-opencode-config-store.js";
 import type { ServerConfig } from "./types.js";
 
@@ -58,12 +57,8 @@ describe("MCP authorization", () => {
       oauth: { clientId: "public-client", clientSecret: "private-client-secret", scope: "mcp.read" },
     });
 
-    expect(secured).toMatchObject({
-      type: "remote",
-      url: "http://127.0.0.1:3210/mcp-proxy/workspace/github",
-      enabled: true,
-      oauth: false,
-    });
+    expect(secured).toMatchObject({ type: "remote", enabled: true, oauth: false });
+    expect(secured.url).toMatch(/^http:\/\/127\.0\.0\.1:3210\/mcp-proxy\/workspace\/github\?connection=mcp%3A/);
     expect((secured.headers as Record<string, unknown>).Authorization).toMatch(/^Bearer [A-Za-z0-9_-]{32,}$/);
     expect(JSON.stringify(secured)).not.toContain("private-client-secret");
     expect(secured.connectionId).toBeUndefined();
@@ -73,6 +68,18 @@ describe("MCP authorization", () => {
       mcp: { github: secured },
     }));
     expect(await publicMcpConfig(config, "workspace", "github", secured)).toEqual({
+      type: "remote",
+      url: "https://mcp.example/rpc",
+      enabled: true,
+      oauth: { clientId: "public-client", scope: "mcp.read" },
+    });
+    const engineItem = (await listRuntimeMcp(config, "workspace")).find((item) => item.name === "github");
+    expect(engineItem?.config).toEqual(secured);
+    expect((engineItem?.config.headers as Record<string, unknown>).Authorization).toMatch(/^Bearer [A-Za-z0-9_-]{32,}$/);
+
+    const publicItem = (await listMcp(config, "workspace", config.workspaces[0]!.path))
+      .find((item) => item.name === "github");
+    expect(publicItem?.config).toEqual({
       type: "remote",
       url: "https://mcp.example/rpc",
       enabled: true,
@@ -143,6 +150,26 @@ describe("MCP authorization", () => {
     expect(await completeMcpAuthorization(config, callback, fetcher)).toEqual({ workspaceId: "workspace", name: "github" });
     expect(await mcpAuthorizationStatus(config, "workspace", "github")).toEqual({ connected: true });
 
+    const secondWorkspaceId = "workspace-two";
+    config.workspaces.push({
+      ...config.workspaces[0]!,
+      id: secondWorkspaceId,
+      name: "Workspace Two",
+    });
+    const secondEngineConfig = await secureMcpAuthorizationConfig(config, secondWorkspaceId, "github-shared", {
+      type: "remote",
+      url: "https://mcp.example/rpc",
+      enabled: true,
+      oauth: {},
+    });
+    await writeRuntimeOpencodeConfig(config, secondWorkspaceId, (current) => ({
+      ...current,
+      mcp: { "github-shared": secondEngineConfig },
+    }));
+    expect(await mcpAuthorizationStatus(config, secondWorkspaceId, "github-shared")).toEqual({ connected: true });
+    expect(new URL(String(secondEngineConfig.url)).searchParams.get("connection"))
+      .toBe(new URL(String((await readRuntimeOpencodeConfig(config, "workspace")).mcp?.github?.url)).searchParams.get("connection"));
+
     const runtime = await readRuntimeOpencodeConfig(config, "workspace");
     const engineConfig = runtime.mcp?.github;
     const capability = (engineConfig?.headers as Record<string, string> | undefined)?.Authorization;
@@ -156,108 +183,4 @@ describe("MCP authorization", () => {
     expect(forwardedBody).toBe("{\"jsonrpc\":\"2.0\"}");
   });
 
-  test("migrates OAuth MCP entries to the proxy without retaining engine-owned secrets", async () => {
-    const config = await testConfig();
-    await writeRuntimeOpencodeConfig(config, "workspace", (current) => ({
-      ...current,
-      mcp: {
-        github: {
-          type: "remote",
-          url: "https://mcp.example/rpc",
-          oauth: { clientId: "client", clientSecret: "secret" },
-          enabled: true,
-        },
-      },
-    }));
-
-    expect(await migrateRuntimeMcpAuthorization(config)).toBe(1);
-    const migrated = (await readRuntimeOpencodeConfig(config, "workspace")).mcp?.github;
-    expect(migrated).toMatchObject({
-      type: "remote",
-      url: "http://127.0.0.1:3210/mcp-proxy/workspace/github",
-      oauth: false,
-      enabled: true,
-    });
-    expect(JSON.stringify(migrated)).not.toContain("secret");
-    expect(migrated?.connectionId).toBeUndefined();
-  });
-
-  test("leaves unauthenticated and header-authenticated MCP entries unchanged", async () => {
-    const config = await testConfig();
-    await writeRuntimeOpencodeConfig(config, "workspace", (current) => ({
-      ...current,
-      mcp: {
-        public: { type: "remote", url: "https://public.example/mcp", enabled: true },
-        private: {
-          type: "remote",
-          url: "https://private.example/mcp",
-          enabled: true,
-          headers: { Authorization: "Bearer static-token" },
-        },
-      },
-    }));
-
-    expect(await migrateRuntimeMcpAuthorization(config)).toBe(0);
-    expect((await readRuntimeOpencodeConfig(config, "workspace")).mcp).toEqual({
-      public: { type: "remote", url: "https://public.example/mcp", enabled: true },
-      private: {
-        type: "remote",
-        url: "https://private.example/mcp",
-        enabled: true,
-        headers: { Authorization: "Bearer static-token" },
-      },
-    });
-  });
-
-  test("moves existing OpenCode MCP credentials into the shared vault and deletes the old file", async () => {
-    const config = await testConfig();
-    const legacyPath = join(config.workspaces[0]!.path, "mcp-auth.json");
-    await writeRuntimeOpencodeConfig(config, "workspace", (current) => ({
-      ...current,
-      mcp: { notion: { type: "remote", url: "https://mcp.example/rpc", oauth: {}, enabled: true } },
-    }));
-    await writeFile(legacyPath, JSON.stringify({
-      notion: {
-        serverUrl: "https://mcp.example/rpc",
-        clientInfo: { clientId: "legacy-public-client" },
-        tokens: {
-          accessToken: "legacy-access-token",
-          refreshToken: "legacy-refresh-token",
-          expiresAt: Date.now() / 1_000 + 3_600,
-          scope: "mcp.read",
-        },
-      },
-    }));
-
-    expect(await migrateLegacyMcpAuthorization(config, [legacyPath])).toBe(1);
-    await expect(access(legacyPath)).rejects.toThrow();
-    expect(await mcpAuthorizationStatus(config, "workspace", "notion")).toEqual({ connected: true });
-    const migrated = (await readRuntimeOpencodeConfig(config, "workspace")).mcp?.notion;
-    expect(migrated).toMatchObject({
-      url: "http://127.0.0.1:3210/mcp-proxy/workspace/notion",
-      oauth: false,
-    });
-    expect(JSON.stringify(migrated)).not.toContain("legacy-access-token");
-  });
-
-  test("preserves standalone OpenCode credentials that are not owned by iPolloWork", async () => {
-    const config = await testConfig();
-    const legacyPath = join(config.workspaces[0]!.path, "mcp-auth.json");
-    await writeFile(legacyPath, JSON.stringify({
-      standalone: {
-        serverUrl: "https://standalone.example/mcp",
-        clientInfo: { clientId: "standalone-client" },
-        tokens: { accessToken: "standalone-token" },
-      },
-    }));
-
-    expect(await migrateLegacyMcpAuthorization(config, [legacyPath])).toBe(0);
-    expect(JSON.parse(await Bun.file(legacyPath).text())).toEqual({
-      standalone: {
-        serverUrl: "https://standalone.example/mcp",
-        clientInfo: { clientId: "standalone-client" },
-        tokens: { accessToken: "standalone-token" },
-      },
-    });
-  });
 });

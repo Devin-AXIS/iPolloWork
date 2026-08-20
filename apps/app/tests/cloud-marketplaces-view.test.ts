@@ -140,6 +140,7 @@ describe("Cloud marketplace row visibility", () => {
     expect(extensionsSource).toContain("pluginPackagesView");
     expect(extensionsSource).toContain("skillsView");
     expect(extensionsSource).not.toContain("mcpView");
+    expect(extensionsSource).not.toContain("PluginsView");
     expect(routeSource).not.toContain("<McpView");
   });
 });

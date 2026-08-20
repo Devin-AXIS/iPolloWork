@@ -3,6 +3,7 @@ import { DEFAULT_ENGINE_ID } from "@ipollowork/types/workspace";
 type ProviderWorkspace = {
   id: string;
   engineId?: string | null;
+  workspaceType?: string | null;
 };
 
 /**
@@ -15,10 +16,11 @@ export function selectSharedProviderWorkspace<T extends ProviderWorkspace>(
   workspaces: readonly T[],
   selectedWorkspace: T | null | undefined,
 ): T | null {
-  if ((selectedWorkspace?.engineId?.trim() || DEFAULT_ENGINE_ID) === DEFAULT_ENGINE_ID) {
-    return selectedWorkspace ?? null;
-  }
-  return workspaces.find(
+  const openCodeWorkspaces = workspaces.filter(
     (workspace) => (workspace.engineId?.trim() || DEFAULT_ENGINE_ID) === DEFAULT_ENGINE_ID,
-  ) ?? selectedWorkspace ?? null;
+  );
+  return openCodeWorkspaces.find((workspace) => workspace.workspaceType !== "remote")
+    ?? openCodeWorkspaces[0]
+    ?? selectedWorkspace
+    ?? null;
 }

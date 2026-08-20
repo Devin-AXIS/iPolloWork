@@ -6,7 +6,7 @@ import { DEEPSEEK_HARNESS_ENGINE_ID } from "@ipollowork/types/workspace";
 import type { PluginPackageManifest } from "./plugin-package-manifest.js";
 import { ApiError } from "./errors.js";
 import { addMcp, removeMcp } from "./mcp.js";
-import { addPlugin, removePlugin } from "./plugins.js";
+import { registerOpencodePluginBinding, unregisterOpencodePluginBinding } from "./opencode-plugin-projection.js";
 import type { ServerConfig } from "./types.js";
 import constants from "../../../constants.json" with { type: "json" };
 
@@ -88,42 +88,15 @@ const DEEPSEEK_HARNESS_TARGETS = {
   skills: ".dsh/skills/",
 } as const;
 
-const LEGACY_SOURCE_PREFIXES = [
-  ["skills/", ".opencode/skills/"],
-  ["agents/", ".opencode/agents/"],
-  ["commands/", ".opencode/commands/"],
-  ["mcp/", ".opencode/mcps/"],
-  ["engines/opencode/plugins/", ".opencode/plugins/"],
-] as const;
-
 function projectedPath(sourcePath: string, targets: Readonly<Record<string, string>>): string | null {
   for (const [directory, target] of Object.entries(targets)) {
-    if (sourcePath.startsWith(target)) return sourcePath;
     if (sourcePath.startsWith(`${directory}/`)) return `${target}${sourcePath.slice(directory.length + 1)}`;
   }
   return null;
 }
 
 export function pluginEngineSourcePath(version: PluginEngineVersion, portablePath: string): string | null {
-  const ownedPaths = new Set(version.files.map((file) => file.path));
-  if (ownedPaths.has(portablePath)) return portablePath;
-  for (const [portablePrefix, legacyPrefix] of LEGACY_SOURCE_PREFIXES) {
-    if (!portablePath.startsWith(portablePrefix)) continue;
-    const legacyPath = `${legacyPrefix}${portablePath.slice(portablePrefix.length)}`;
-    if (ownedPaths.has(legacyPath)) return legacyPath;
-  }
-  if (portablePath.startsWith("service/")) {
-    const legacyPath = portablePath.slice("service/".length);
-    if (ownedPaths.has(legacyPath)) return legacyPath;
-  }
-  return null;
-}
-
-export function pluginEnginePortablePath(sourcePath: string): string {
-  for (const [portablePrefix, legacyPrefix] of LEGACY_SOURCE_PREFIXES) {
-    if (sourcePath.startsWith(legacyPrefix)) return `${portablePrefix}${sourcePath.slice(legacyPrefix.length)}`;
-  }
-  return sourcePath;
+  return version.files.some((file) => file.path === portablePath) ? portablePath : null;
 }
 
 function workspaceFiles(
@@ -185,6 +158,26 @@ async function mcpEntries(
   return entries;
 }
 
+async function syncMcpRuntime(input: PluginEngineContext & {
+  current: PluginEngineVersion | null;
+  next: PluginEngineVersion | null;
+  enabled: boolean;
+}): Promise<void> {
+  const currentEntries = await mcpEntries(input.current, input.resolvePath);
+  const nextEntries = await mcpEntries(input.next, input.resolvePath);
+  const nextNames = new Set(nextEntries.map((entry) => entry.name));
+  for (const entry of currentEntries) {
+    if (!input.enabled || !nextNames.has(entry.name)) {
+      await removeMcp(input.config, input.workspaceId, entry.name);
+    }
+  }
+  if (input.enabled) {
+    for (const entry of nextEntries) {
+      await addMcp(input.config, input.workspaceId, entry.name, entry.config);
+    }
+  }
+}
+
 function pluginSpecs(version: PluginEngineVersion | null, resolvePath: PluginEngineContext["resolvePath"]): string[] {
   const binding = version?.manifest.engineBindings?.find((entry) => entry.engine === "opencode");
   if (!version || !binding) return [];
@@ -220,22 +213,14 @@ export const openCodePluginEngineAdapter: PluginEngineAdapter = {
     const currentSpecs = pluginSpecs(input.current, input.resolvePath);
     const nextSpecs = pluginSpecs(input.next, input.resolvePath);
     const nextSpecSet = new Set(nextSpecs);
-    const currentMcpEntries = await mcpEntries(input.current, input.resolvePath);
-    const nextMcpEntries = await mcpEntries(input.next, input.resolvePath);
-    const nextMcpNames = new Set(nextMcpEntries.map((entry) => entry.name));
 
     for (const spec of currentSpecs) {
-      if (!input.enabled || !nextSpecSet.has(spec)) await removePlugin(input.config, input.workspaceId, spec);
+      if (!input.enabled || !nextSpecSet.has(spec)) await unregisterOpencodePluginBinding(input.config, input.workspaceId, spec);
     }
     if (input.enabled) {
-      for (const spec of nextSpecs) await addPlugin(input.config, input.workspaceId, spec);
+      for (const spec of nextSpecs) await registerOpencodePluginBinding(input.config, input.workspaceId, spec);
     }
-    for (const entry of currentMcpEntries) {
-      if (!input.enabled || !nextMcpNames.has(entry.name)) await removeMcp(input.config, input.workspaceId, entry.name);
-    }
-    if (input.enabled) {
-      for (const entry of nextMcpEntries) await addMcp(input.config, input.workspaceId, entry.name, entry.config);
-    }
+    await syncMcpRuntime(input);
   },
 };
 
@@ -255,7 +240,9 @@ export const deepSeekHarnessPluginEngineAdapter: PluginEngineAdapter = {
   skillTargetPath(version, resourceId) {
     return skillTargetPath(version, resourceId, DEEPSEEK_HARNESS_TARGETS);
   },
-  async syncRuntime() {},
+  async syncRuntime(input) {
+    await syncMcpRuntime(input);
+  },
 };
 
 export const pluginEngineAdapters = new PluginEngineAdapterRegistry([

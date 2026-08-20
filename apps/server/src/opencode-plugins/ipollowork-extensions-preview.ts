@@ -1,6 +1,3 @@
-import { readFile } from "node:fs/promises";
-import { join } from "node:path";
-import { homedir, platform } from "node:os";
 import { z } from "zod";
 import { hyperframesStudioPort, videoProjectId } from "@ipollowork/types/hyperframes";
 import {
@@ -9,6 +6,12 @@ import {
   IPOLLOWORK_EXTENSION_DISCOVERY_INSTRUCTION,
   resolveiPolloWorkExtensionDiscoveryInstruction,
 } from "./ipollowork-extensions-preview-connect-steering.js";
+import {
+  ENGINE_HOST_TOOL_NAMES,
+  engineHostTool,
+  type EngineHostToolName,
+} from "../engine-host-tools.js";
+import { uiControlRequest } from "../ui-control-client.js";
 
 type OpenCodeContext = {
   agent?: string;
@@ -25,6 +28,12 @@ type ExtensionActionPayload = {
   context: ReturnType<typeof contextPayload>;
 };
 
+function engineHostToolDescription(name: EngineHostToolName): string {
+  const descriptor = engineHostTool(name);
+  if (!descriptor) throw new Error(`Missing iPolloWork host tool descriptor: ${name}`);
+  return descriptor.description;
+}
+
 const listActionsArgsSchema = z.object({
   extensionId: z.string().optional().describe("Optional extension id to filter by, such as google-workspace."),
 });
@@ -33,6 +42,11 @@ const callArgsSchema = z.object({
   extensionId: z.string().describe("Extension id, such as google-workspace."),
   action: z.string().describe("Action id from ipollowork_extension_list_actions."),
   args: z.record(z.string(), z.unknown()).optional().describe("JSON arguments for the action."),
+});
+
+const workspaceAppCallArgsSchema = z.object({
+  name: z.string().trim().min(1).describe("Workspace App tool name returned by ipollowork_workspace_app_list_tools."),
+  arguments: z.record(z.string(), z.unknown()).optional().describe("Arguments for the Workspace App tool."),
 });
 
 const uiExecuteArgsSchema = z.object({
@@ -165,14 +179,6 @@ Do not call browser_navigate without a target_id returned by ipollowork_browser_
 const IPOLLOWORK_MOTION_INSTRUCTION = `## Video motion presets
 For ordinary animation on an existing text element in the current Video Studio project, use list_motion_presets and mutate_motion. Generated captions use this exact same compiler: create a stable leaf text child marked data-ipw-caption-text="true", then target that child with mutate_motion instead of hand-writing a caption-specific approximation. Choose a stable preset id and a small parameter set; do not hand-write GSAP for an effect these tools support. Each target has at most one enter, emphasis, and exit preset. The same contract applies when the user's request came from voice transcription. Use custom GSAP only for an explicitly advanced effect outside the preset catalog.`;
 
-// ── UI control bridge discovery ──
-
-type UiBridge = { baseUrl: string; token: string };
-let cachedBridge: UiBridge | null = null;
-let cachedBridgeAt = 0;
-const BRIDGE_CACHE_MS = 2_000;
-const BRIDGE_TIMEOUT_MS = 5_000;
-
 type iPolloWorkWorkspace = z.infer<typeof workspaceSchema>;
 type SessionInfo = z.infer<typeof sessionInfoSchema>;
 type SessionMessage = z.infer<typeof sessionMessageSchema>;
@@ -197,12 +203,6 @@ const SESSION_SEARCH_CONCURRENCY = 6;
 const SESSION_SNIPPET_BEFORE = 36;
 const SESSION_SNIPPET_AFTER = 72;
 
-function userAppDataDir(): string {
-  if (platform() === "darwin") return join(homedir(), "Library", "Application Support");
-  if (platform() === "win32") return process.env.APPDATA || join(homedir(), "AppData", "Roaming");
-  return process.env.XDG_CONFIG_HOME || join(homedir(), ".config");
-}
-
 // The agent-facing UI-control surface (system steering + ipollowork_ui_* tools)
 // is opt-in: it noises every session's prompt/tool list, and the supported way
 // to grant agents UI control is the hidden "iPolloWork UI Control" MCP in
@@ -211,54 +211,6 @@ function userAppDataDir(): string {
 function uiControlToolsEnabled(): boolean {
   const raw = process.env.IPOLLOWORK_UI_CONTROL_TOOLS?.trim().toLowerCase() ?? "";
   return raw === "1" || raw === "true";
-}
-
-function uiControlDiscoveryPaths(): string[] {
-  return [
-    process.env.IPOLLOWORK_UI_CONTROL_DISCOVERY?.trim(),
-    join(userAppDataDir(), "com.differentai.ipollowork", "ipollowork-ui-control.json"),
-    join(userAppDataDir(), "com.differentai.ipollowork.dev", "ipollowork-ui-control.json"),
-  ].filter((p): p is string => Boolean(p));
-}
-
-async function discoverUiBridge(): Promise<UiBridge | null> {
-  if (cachedBridge && Date.now() - cachedBridgeAt < BRIDGE_CACHE_MS) return cachedBridge;
-  for (const candidate of uiControlDiscoveryPaths()) {
-    try {
-      const raw = await readFile(candidate, "utf8");
-      const parsed = JSON.parse(raw) as Record<string, unknown>;
-      if (typeof parsed.baseUrl === "string" && typeof parsed.token === "string") {
-        cachedBridge = { baseUrl: parsed.baseUrl, token: parsed.token };
-        cachedBridgeAt = Date.now();
-        return cachedBridge;
-      }
-    } catch {
-      // Try next
-    }
-  }
-  return null;
-}
-
-async function uiBridgeRequest(path: string, options: { method?: string; body?: unknown } = {}): Promise<unknown> {
-  const bridge = await discoverUiBridge();
-  if (!bridge) return { ok: false, error: "iPolloWork UI bridge not available. The desktop app may not be running." };
-  try {
-    const response = await fetch(`${bridge.baseUrl}${path}`, {
-      method: options.method || "GET",
-      signal: AbortSignal.timeout(BRIDGE_TIMEOUT_MS),
-      headers: {
-        Authorization: `Bearer ${bridge.token}`,
-        ...(options.body ? { "Content-Type": "application/json" } : {}),
-      },
-      ...(options.body ? { body: JSON.stringify(options.body) } : {}),
-    });
-    const text = await response.text();
-    try { return JSON.parse(text); } catch { return { ok: false, error: text || `HTTP ${response.status}` }; }
-  } catch (error) {
-    cachedBridge = null;
-    cachedBridgeAt = 0;
-    return { ok: false, error: `UI bridge unreachable: ${error instanceof Error ? error.message : String(error)}` };
-  }
 }
 
 async function serverGet(path: string): Promise<unknown> {
@@ -574,13 +526,6 @@ function getStringProperty(value: unknown, key: string): string | null {
   return typeof property === "string" ? property : null;
 }
 
-function addContext(payload: unknown, context: OpenCodeContext): object {
-  if (typeof payload === "object" && payload !== null && !Array.isArray(payload)) {
-    return Object.assign({}, payload, { context: contextPayload(context) });
-  }
-  return { payload, context: contextPayload(context) };
-}
-
 function errorMessage(payload: unknown, fallback: string): string {
   return getStringProperty(payload, "message") ?? getStringProperty(payload, "code") ?? fallback;
 }
@@ -713,32 +658,52 @@ export const iPolloWorkExtensionsPreview = async () => {
         return JSON.stringify(result, null, 2);
       },
     },
-    ipollowork_extension_list_actions: {
-      description: `List extension actions currently exposed by iPolloWork. ${IPOLLOWORK_EXTENSION_DISCOVERY_INSTRUCTION}`,
+    [ENGINE_HOST_TOOL_NAMES.extensionListActions]: {
+      description: `${engineHostToolDescription(ENGINE_HOST_TOOL_NAMES.extensionListActions)} ${IPOLLOWORK_EXTENSION_DISCOVERY_INSTRUCTION}`,
       args: listActionsArgsSchema.shape,
       async execute(rawArgs: unknown, context: OpenCodeContext) {
         const args = listActionsArgsSchema.parse(rawArgs);
-        const query = new URLSearchParams();
-        if (args.extensionId) query.set("extensionId", args.extensionId);
-        if (context.directory) query.set("directory", context.directory);
-        const { url, token } = requireiPolloWorkServer();
-        const response = await fetch(`${url}/experimental/extensions/actions?${query.toString()}`, {
-          headers: { Authorization: `Bearer ${token}` },
+        const payload = await postJson("/engine-tools/call", {
+          name: ENGINE_HOST_TOOL_NAMES.extensionListActions,
+          args,
+          context: contextPayload(context),
         });
-        const payload = await parseResponse(response);
-        if (!response.ok) throw new Error(errorMessage(payload, "iPolloWork extension action listing failed"));
-        return JSON.stringify(addContext(payload, context), null, 2);
+        return JSON.stringify(payload, null, 2);
       },
     },
-    ipollowork_extension_call: {
-      description: `Call an iPolloWork extension action. Use ipollowork_extension_list_actions first to inspect available actions and schemas. ${IPOLLOWORK_EXTENSION_DISCOVERY_INSTRUCTION}`,
+    [ENGINE_HOST_TOOL_NAMES.extensionCall]: {
+      description: `${engineHostToolDescription(ENGINE_HOST_TOOL_NAMES.extensionCall)} ${IPOLLOWORK_EXTENSION_DISCOVERY_INSTRUCTION}`,
       args: callArgsSchema.shape,
       async execute(rawArgs: unknown, context: OpenCodeContext) {
         const args = callArgsSchema.parse(rawArgs);
-        const payload = await postJson("/experimental/extensions/call", {
-          extensionId: args.extensionId,
-          action: args.action,
-          args: args.args ?? {},
+        const payload = await postJson("/engine-tools/call", {
+          name: ENGINE_HOST_TOOL_NAMES.extensionCall,
+          args,
+          context: contextPayload(context),
+        });
+        return JSON.stringify(payload, null, 2);
+      },
+    },
+    [ENGINE_HOST_TOOL_NAMES.workspaceAppListTools]: {
+      description: engineHostToolDescription(ENGINE_HOST_TOOL_NAMES.workspaceAppListTools),
+      args: {},
+      async execute(_rawArgs: unknown, context: OpenCodeContext) {
+        const payload = await postJson("/engine-tools/call", {
+          name: ENGINE_HOST_TOOL_NAMES.workspaceAppListTools,
+          args: {},
+          context: contextPayload(context),
+        });
+        return JSON.stringify(payload, null, 2);
+      },
+    },
+    [ENGINE_HOST_TOOL_NAMES.workspaceAppCallTool]: {
+      description: engineHostToolDescription(ENGINE_HOST_TOOL_NAMES.workspaceAppCallTool),
+      args: workspaceAppCallArgsSchema.shape,
+      async execute(rawArgs: unknown, context: OpenCodeContext) {
+        const args = workspaceAppCallArgsSchema.parse(rawArgs);
+        const payload = await postJson("/engine-tools/call", {
+          name: ENGINE_HOST_TOOL_NAMES.workspaceAppCallTool,
+          args,
           context: contextPayload(context),
         });
         return JSON.stringify(payload, null, 2);
@@ -749,7 +714,7 @@ export const iPolloWorkExtensionsPreview = async () => {
       description: "Get a snapshot of the current iPolloWork UI state: active route, narration, visible actions, and status. Use this to understand what the user sees before taking action.",
       args: {},
       async execute() {
-        const result = await uiBridgeRequest("/snapshot");
+        const result = await uiControlRequest("/snapshot");
         return JSON.stringify(result, null, 2);
       },
     },
@@ -757,7 +722,7 @@ export const iPolloWorkExtensionsPreview = async () => {
       description: `List all UI control actions currently available in iPolloWork. Each action has an id you can pass to ipollowork_ui_execute_action. ${IPOLLOWORK_UI_CONTROL_INSTRUCTION}`,
       args: {},
       async execute() {
-        const result = await uiBridgeRequest("/actions");
+        const result = await uiControlRequest("/actions");
         return JSON.stringify(result, null, 2);
       },
     },
@@ -766,7 +731,7 @@ export const iPolloWorkExtensionsPreview = async () => {
       args: uiExecuteArgsSchema.shape,
       async execute(rawArgs: unknown) {
         const { actionId, args } = uiExecuteArgsSchema.parse(rawArgs);
-        const result = await uiBridgeRequest("/execute", {
+        const result = await uiControlRequest("/execute", {
           method: "POST",
           body: { actionId, args: args ?? {} },
         });
@@ -807,7 +772,7 @@ export const iPolloWorkExtensionsPreview = async () => {
       args: browserOpenUrlArgsSchema.shape,
       async execute(rawArgs: unknown) {
         const args = browserOpenUrlArgsSchema.parse(rawArgs);
-        const result = await uiBridgeRequest("/execute", {
+        const result = await uiControlRequest("/execute", {
           method: "POST",
           body: {
             actionId: "browser.open_url",
@@ -822,7 +787,7 @@ export const iPolloWorkExtensionsPreview = async () => {
       args: browserSetProxyArgsSchema.shape,
       async execute(rawArgs: unknown) {
         const args = browserSetProxyArgsSchema.parse(rawArgs);
-        const result = await uiBridgeRequest("/execute", {
+        const result = await uiControlRequest("/execute", {
           method: "POST",
           body: { actionId: "browser.set_proxy", args: { proxy: args.proxy } },
         });
@@ -833,7 +798,7 @@ export const iPolloWorkExtensionsPreview = async () => {
       description: "Clear the iPolloWork built-in browser proxy and restore the system network settings.",
       args: {},
       async execute() {
-        const result = await uiBridgeRequest("/execute", {
+        const result = await uiControlRequest("/execute", {
           method: "POST",
           body: { actionId: "browser.set_proxy", args: { proxy: "" } },
         });

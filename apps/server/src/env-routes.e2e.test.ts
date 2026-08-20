@@ -276,25 +276,6 @@ describe("env routes", () => {
     expect(catalog.items.find((item) => item.id === "aliyun-oss")?.configured).toBe(false);
   });
 
-  test("migrates legacy service credentials once and removes storage secrets from env", async () => {
-    await new EnvService().upsertMany([
-      { key: "OPENAI_API_KEY", value: "sk-model-and-image" },
-      { key: "ALIYUN_OSS_ACCESS_KEY_ID", value: "LTAIlegacy" },
-      { key: "ALIYUN_OSS_ACCESS_KEY_SECRET", value: "legacy-secret" },
-      { key: "ALIYUN_OSS_BUCKET", value: "legacy-bucket" },
-      { key: "ALIYUN_OSS_REGION", value: "cn-shanghai" },
-    ]);
-    const { base } = await boot();
-
-    const catalog = await (await fetch(`${base}/authorization-services`, { headers: hostAuth() })).json() as {
-      items: Array<{ id: string; configured: boolean }>;
-    };
-    expect(catalog.items.find((item) => item.id === "openai-images")?.configured).toBe(true);
-    expect(catalog.items.find((item) => item.id === "aliyun-oss")?.configured).toBe(true);
-    const envKeys = await (await fetch(`${base}/env/keys`, { headers: hostAuth() })).json() as { keys: string[] };
-    expect(envKeys.keys).toEqual(["OPENAI_API_KEY"]);
-  });
-
   test("authorization tests keep credentials server-side and return a completed test result", async () => {
     const { base } = await boot();
     await fetch(`${base}/authorization-services/openai-images/credentials`, {

@@ -1,52 +1,30 @@
 import { createHash, createPublicKey, randomUUID, verify } from "node:crypto";
-import type { Dirent } from "node:fs";
 import { chmod, copyFile, lstat, mkdir, readFile, readdir, rename, rm, stat, writeFile } from "node:fs/promises";
-import { dirname, join, resolve, sep } from "node:path";
+import { basename, dirname, join, resolve, sep } from "node:path";
 import { z } from "zod";
+import type { PluginPromptCapabilitySummary } from "@ipollowork/types/plugins";
 
 import { ApiError } from "./errors.js";
 import {
   parsePluginMcpEntries,
   pluginEngineAdapters,
-  pluginEnginePortablePath,
   pluginEngineSourcePath,
   type PluginEngineAdapter,
   type PluginEngineVersion,
   type PluginWorkspaceFile,
 } from "./plugin-engine-adapter.js";
 import { parsePluginPackageManifest, type PluginPackageManifest, type PluginResource } from "./plugin-package-manifest.js";
-import { runtimeStorageDir } from "./runtime-opencode-config-store.js";
+import { runtimeStorageDir } from "./runtime-storage.js";
 import { DEFAULT_ENGINE_ID, type ServerConfig } from "./types.js";
 import serverPackage from "../package.json" with { type: "json" };
 
 const MANIFEST_FILE = "ipollowork.plugin.json";
 const PACKAGE_SIGNATURE_PREFIX = "ipollowork-plugin-package-v1\0";
-const CURRENT_RESOURCE_KEYS = [
-  "type",
-  "id",
-  "label",
-  "description",
-  "command",
-  "envKey",
-  "packageName",
-  "providerId",
-  "mcpServerName",
-  "oauth",
-  "localCommandRef",
-  "actions",
-  "environment",
-  "requires",
-  "provides",
-  "required",
-  "ui",
-] as const;
 const TRUSTED_IMPORT_PUBLISHER_KEYS = new Map([
   [
     "smart-future-school/smart-future-school-2026",
     [
       "MCowBQYDK2VwAyEARwKWW0VeQqnxh1WiOi8+kAutSITD476eRaRguDZkxYk=",
-      // Published v1 marketplace packages used this key before the portable package migration.
-      "MCowBQYDK2VwAyEANqxN7w94IK3NWdYZWtoyz/Y6daP7MEqWnKrJHz+XAyI=",
     ],
   ],
 ]);
@@ -73,31 +51,35 @@ const installedPackageSchema = z.object({
   versions: z.record(z.string(), installedVersionSchema),
 });
 const installedPackagesSchema = z.record(z.string(), installedPackageSchema);
-const lifecycleStateV1Schema = z.object({
-  schemaVersion: z.literal(1),
-  packages: z.record(z.string(), installedPackageSchema),
-});
-const lifecycleStateV2Schema = z.object({
-  schemaVersion: z.literal(2),
-  packages: installedPackagesSchema,
-});
 const lifecycleStateSchema = z.object({
   schemaVersion: z.literal(3),
   packages: installedPackagesSchema,
   suppressedDefaultPluginIds: z.array(z.string()).default([]),
 });
-// Desktop installs created before portable package manifests remain user-owned data.
-// Keep v1 readable until an explicit artifact migration can rewrite those records safely.
-const persistedLifecycleStateSchema = z.discriminatedUnion("schemaVersion", [
-  lifecycleStateV1Schema,
-  lifecycleStateV2Schema,
-  lifecycleStateSchema,
-]);
 
 type OwnedFile = z.infer<typeof ownedFileSchema>;
 type InstalledVersion = z.infer<typeof installedVersionSchema>;
 type InstalledPackage = z.infer<typeof installedPackageSchema>;
 type LifecycleState = z.infer<typeof lifecycleStateSchema>;
+
+const lifecycleMutationQueues = new WeakMap<ServerConfig, Promise<void>>();
+
+async function enqueueLifecycleMutation<T>(config: ServerConfig, operation: () => Promise<T>): Promise<T> {
+  const previous = lifecycleMutationQueues.get(config) ?? Promise.resolve();
+  let release: () => void = () => {};
+  const current = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const queued = previous.then(() => current);
+  lifecycleMutationQueues.set(config, queued);
+  await previous;
+  try {
+    return await operation();
+  } finally {
+    release();
+    if (lifecycleMutationQueues.get(config) === queued) lifecycleMutationQueues.delete(config);
+  }
+}
 
 export type PluginPackagePreview = {
   manifest: PluginPackageManifest;
@@ -143,6 +125,10 @@ export type InstalledPluginService = {
   modulePath: string;
 };
 
+export type PortablePluginPromptCapability = PluginPromptCapabilitySummary & {
+  content: string;
+};
+
 export type InstalledPluginUiResource = {
   pluginId: string;
   version: string;
@@ -178,10 +164,6 @@ function statePath(config: ServerConfig): string {
 
 function artifactRoot(config: ServerConfig, pluginId: string, version: string): string {
   return join(stateDirectory(config), "artifacts", safeSegment(pluginId), safeSegment(version));
-}
-
-function legacyStateDirectory(config: ServerConfig, workspaceId: string): string {
-  return join(stateDirectory(config), safeSegment(workspaceId));
 }
 
 function resolveWithin(root: string, relativePath: string): string {
@@ -359,6 +341,18 @@ function assertRuntimeCompatibility(manifest: PluginPackageManifest, engineAdapt
   }
 }
 
+function assertGlobalRuntimeCompatibility(config: ServerConfig, manifest: PluginPackageManifest): void {
+  assertRuntimeCompatibility(manifest);
+  const supportedEngines = manifest.package?.engines;
+  const engineIds = new Set(config.workspaces
+    .filter((workspace) => workspace.workspaceType === "local" && Boolean(workspace.path))
+    .map((workspace) => workspace.engineId?.trim() || DEFAULT_ENGINE_ID));
+  for (const engineId of engineIds) {
+    if (supportedEngines && !supportedEngines.includes(engineId)) continue;
+    assertRuntimeCompatibility(manifest, pluginEngineAdapters.get(engineId));
+  }
+}
+
 function integrityForManifest(
   manifest: PluginPackageManifest,
   files: OwnedFile[],
@@ -377,10 +371,7 @@ function integrityForManifest(
 
 async function readState(config: ServerConfig): Promise<LifecycleState> {
   try {
-    const state = persistedLifecycleStateSchema.parse(JSON.parse(await readFile(statePath(config), "utf8")));
-    return state.schemaVersion === 3
-      ? state
-      : { schemaVersion: 3, packages: state.packages, suppressedDefaultPluginIds: [] };
+    return lifecycleStateSchema.parse(JSON.parse(await readFile(statePath(config), "utf8")));
   } catch (error) {
     if (errorCode(error) === "ENOENT") return emptyState();
     throw error;
@@ -405,292 +396,14 @@ async function writeState(config: ServerConfig, state: LifecycleState): Promise<
   await writeJsonAtomic(statePath(config), state);
 }
 
-function migrateInstalledManifest(value: unknown, pluginId: string): { manifest: unknown; changed: boolean } {
-  if (isRecord(value) && value.schemaVersion === 1) {
-    compatibleManifest(value);
-    return { manifest: value, changed: false };
-  }
-  if (!isRecord(value) || !isRecord(value.authorization) || !Array.isArray(value.authorization.methods)) {
-    return { manifest: parsePluginPackageManifest(value), changed: false };
-  }
-  let changed = false;
-  const methods = value.authorization.methods.map((method) => {
-    if (!isRecord(method) || typeof method.connectionId === "string") return method;
-    changed = true;
-    return { ...method, connectionId: pluginId };
-  });
-  const manifest = changed
-    ? { ...value, authorization: { ...value.authorization, methods } }
-    : value;
-  return { manifest: parsePluginPackageManifest(manifest), changed };
-}
-
-async function readStateAt(path: string): Promise<LifecycleState | null> {
-  try {
-    const state = persistedLifecycleStateSchema.parse(JSON.parse(await readFile(path, "utf8")));
-    return state.schemaVersion === 3
-      ? state
-      : { schemaVersion: 3, packages: state.packages, suppressedDefaultPluginIds: [] };
-  } catch (error) {
-    if (errorCode(error) === "ENOENT") return null;
-    throw error;
-  }
-}
-
-function pickDefined(value: Record<string, unknown>, keys: readonly string[]): Record<string, unknown> {
-  return Object.fromEntries(keys.flatMap((key) => value[key] === undefined ? [] : [[key, value[key]]]));
-}
-
-function legacyPortablePath(type: unknown, path: string): string {
-  const portablePath = pluginEnginePortablePath(path);
-  if (portablePath !== path) return portablePath;
-  if (type === "local-service" && !path.startsWith("service/")) return `service/${path}`;
-  return path;
-}
-
-function compatibleManifest(value: unknown): PluginPackageManifest {
-  try {
-    return parsePluginPackageManifest(value);
-  } catch (error) {
-    const legacy = legacyManifestSummary(value);
-    if (legacy) return legacy;
-    throw error;
-  }
-}
-
-async function copyArtifactDirectory(sourceRoot: string, destinationRoot: string): Promise<void> {
-  let entries: Dirent[];
-  try {
-    entries = await readdir(sourceRoot, { withFileTypes: true });
-  } catch (error) {
-    if (errorCode(error) === "ENOENT") return;
-    throw error;
-  }
-  for (const entry of entries) {
-    if (entry.name === MANIFEST_FILE) continue;
-    const source = join(sourceRoot, entry.name);
-    const destination = join(destinationRoot, entry.name);
-    if (entry.isDirectory()) {
-      await copyArtifactDirectory(source, destination);
-      continue;
-    }
-    if (!entry.isFile()) throw new ApiError(500, "plugin_package_state_invalid", `Unsupported artifact entry: ${source}`);
-    if (await fileExists(destination)) {
-      if (await sha256(source) !== await sha256(destination)) {
-        throw new ApiError(409, "plugin_package_version_changed", `Immutable plugin artifact changed: ${destination}`);
-      }
-      continue;
-    }
-    await mkdir(dirname(destination), { recursive: true });
-    await copyFile(source, destination);
-  }
-}
-
-function installedAt(installed: InstalledPackage): number {
-  return installed.versions[installed.currentVersion]?.installedAt ?? 0;
-}
-
-function mergeInstalledPackage(current: InstalledPackage | undefined, incoming: InstalledPackage): InstalledPackage {
-  const versions = { ...current?.versions };
-  for (const [versionKey, version] of Object.entries(incoming.versions)) {
-    const existing = versions[versionKey];
-    if (existing?.installedAt === version.installedAt
-      && canonicalJson({ version: existing.version, manifest: existing.manifest, files: existing.files })
-        !== canonicalJson({ version: version.version, manifest: version.manifest, files: version.files })) {
-      throw new ApiError(409, "plugin_package_version_changed", `Immutable package version changed: ${incoming.pluginId}@${versionKey}`);
-    }
-    if (!existing || version.installedAt > existing.installedAt) versions[versionKey] = version;
-  }
-  const selected = !current || installedAt(incoming) > installedAt(current) ? incoming : current;
-  return { ...selected, versions };
-}
-
-async function migratedPackage(
-  config: ServerConfig,
-  sourceRoot: string,
-  installed: InstalledPackage,
-): Promise<{ installed: InstalledPackage; changed: boolean }> {
-  let changed = false;
-  const versions: InstalledPackage["versions"] = {};
-  for (const [versionKey, version] of Object.entries(installed.versions)) {
-    const migrated = migrateInstalledManifest(version.manifest, installed.pluginId);
-    const destination = artifactRoot(config, installed.pluginId, version.version);
-    if (sourceRoot !== stateDirectory(config)) {
-      await copyArtifactDirectory(
-        join(sourceRoot, "artifacts", safeSegment(installed.pluginId), safeSegment(version.version)),
-        destination,
-      );
-    }
-    for (const file of version.files) {
-      const artifact = resolveWithin(destination, file.path);
-      if (!await fileExists(artifact) || await sha256(artifact) !== file.sha256) {
-        throw new ApiError(500, "plugin_package_state_invalid", `Plugin artifact is missing or corrupted: ${installed.pluginId}@${version.version}/${file.path}`);
-      }
-    }
-    changed ||= migrated.changed;
-    if (sourceRoot !== stateDirectory(config) || migrated.changed) {
-      await writeJsonAtomic(join(destination, MANIFEST_FILE), migrated.manifest);
-    }
-    versions[versionKey] = { ...version, manifest: migrated.manifest };
-  }
-  return { installed: { ...installed, versions }, changed };
-}
-
-export async function migratePluginPackageLifecycle(config: ServerConfig): Promise<number> {
-  const inventoryRoot = stateDirectory(config);
-  const globalState = await readStateAt(statePath(config));
-  const legacyRoots = [...new Set(config.workspaces.map((workspace) => legacyStateDirectory(config, workspace.id)))];
-  const legacySources = (await Promise.all(
-    legacyRoots.map(async (root) => ({ root, state: await readStateAt(join(root, "state.json")) })),
-  )).filter((entry): entry is { root: string; state: LifecycleState } => entry.state !== null);
-  const sources = [
-    ...(globalState ? [{ root: inventoryRoot, state: globalState }] : []),
-    ...legacySources,
-  ];
-  if (sources.length === 0) return 0;
-
-  const packages: LifecycleState["packages"] = {};
-  const suppressedDefaultPluginIds = new Set<string>();
-  let manifestChanged = false;
-  for (const source of sources) {
-    source.state.suppressedDefaultPluginIds.forEach((pluginId) => suppressedDefaultPluginIds.add(pluginId));
-    for (const installed of Object.values(source.state.packages)) {
-      const migrated = await migratedPackage(config, source.root, installed);
-      manifestChanged ||= migrated.changed;
-      packages[installed.pluginId] = mergeInstalledPackage(packages[installed.pluginId], migrated.installed);
-    }
-  }
-  if (legacySources.length === 0 && !manifestChanged) return 0;
-  for (const installed of Object.values(packages)) {
-    for (const version of Object.values(installed.versions)) {
-      await writeJsonAtomic(join(artifactRoot(config, installed.pluginId, version.version), MANIFEST_FILE), version.manifest);
-    }
-  }
-  await writeState(config, lifecycleStateSchema.parse({
-    schemaVersion: 3,
-    packages,
-    suppressedDefaultPluginIds: [...suppressedDefaultPluginIds].sort(),
-  }));
-  for (const source of legacySources) await rm(source.root, { recursive: true, force: true });
-  return legacySources.length + (manifestChanged ? 1 : 0);
-}
-
-function legacyManifestSummary(value: unknown): PluginPackageManifest | null {
-  if (!isRecord(value) || value.schemaVersion !== 1) return null;
-  const source = isRecord(value.source) ? value.source : {};
-  const packageMetadata = isRecord(value.package) ? value.package : null;
-  const legacyCompatibility = packageMetadata && isRecord(packageMetadata.compatibility)
-    ? packageMetadata.compatibility
-    : null;
-  const compatibility = packageMetadata && isRecord(packageMetadata.compatibility)
-    ? pickDefined(packageMetadata.compatibility, ["ipollowork"])
-    : null;
-  const legacyEntrypoints = packageMetadata && isRecord(packageMetadata.entrypoints) ? packageMetadata.entrypoints : null;
-  const legacyPluginResource = Array.isArray(value.resources)
-    ? value.resources.find((resource) => isRecord(resource) && resource.type === "opencode-plugin" && typeof resource.path === "string")
-    : null;
-  const legacyPluginPath = typeof legacyEntrypoints?.opencode === "string"
-    ? legacyEntrypoints.opencode
-    : isRecord(legacyPluginResource) && typeof legacyPluginResource.path === "string"
-      ? legacyPluginResource.path
-      : null;
-  const opencodeCompatibility = typeof legacyCompatibility?.opencode === "string" ? legacyCompatibility.opencode : undefined;
-  const packageSummary = packageMetadata ? {
-    ...pickDefined(packageMetadata, ["version", "publisher", "updateId", "checksum", "signature"]),
-    ...(compatibility && Object.keys(compatibility).length > 0 ? { compatibility } : {}),
-    ...(legacyPluginPath || opencodeCompatibility ? { engines: ["opencode"] } : {}),
-  } : null;
-  const engineBindings = legacyPluginPath || opencodeCompatibility ? [{
-    engine: "opencode",
-    ...(opencodeCompatibility ? { compatibility: opencodeCompatibility } : {}),
-    capabilities: legacyPluginPath ? [{
-      id: isRecord(legacyPluginResource) && typeof legacyPluginResource.id === "string" ? legacyPluginResource.id : "legacy-runtime",
-      kind: "plugin",
-      path: pluginEnginePortablePath(legacyPluginPath),
-      required: isRecord(legacyPluginResource) ? legacyPluginResource.required === true : true,
-    }] : [],
-  }] : undefined;
-  const resources = Array.isArray(value.resources) ? value.resources.flatMap((resource) => {
-    if (!isRecord(resource) || resource.type === "opencode-plugin") return [];
-    const summary = pickDefined(resource, CURRENT_RESOURCE_KEYS);
-    if (typeof resource.path === "string") summary.path = legacyPortablePath(resource.type, resource.path);
-    return [summary];
-  }) : [];
-  const composer = isRecord(value.composer) && typeof value.composer.prompt === "string"
-    ? { prompt: value.composer.prompt }
-    : undefined;
-  const authorization = isRecord(value.authorization) && Array.isArray(value.authorization.methods) && typeof value.id === "string"
-    ? {
-        ...value.authorization,
-        methods: value.authorization.methods.map((method) => isRecord(method) && typeof method.connectionId !== "string"
-          ? { ...method, connectionId: value.id }
-          : method),
-      }
-    : value.authorization;
-  const sourceSummary = {
-    format: typeof source.format === "string" ? source.format : "ipollowork-extension-manifest",
-    trusted: source.trusted === true,
-    ...pickDefined(source, ["origin", "reference"]),
-  };
-  const summary = {
-    schemaVersion: 2,
-    ...pickDefined(value, [
-      "id",
-      "name",
-      "description",
-      "category",
-      "preview",
-      "icon",
-      "setup",
-      "relatedSkills",
-      "defaultEnabled",
-      "defaultHidden",
-      "platform",
-      "localization",
-      "permissions",
-    ]),
-    source: sourceSummary,
-    resources,
-    ...(composer ? { composer } : {}),
-    ...(authorization ? { authorization } : {}),
-    ...(engineBindings ? { engineBindings } : {}),
-    ...(packageSummary ? { package: packageSummary } : {}),
-  };
-  try {
-    return parsePluginPackageManifest(summary);
-  } catch {
-    return parsePluginPackageManifest({
-      schemaVersion: 2,
-      ...pickDefined(value, ["id", "name", "description", "category", "preview"]),
-      source: sourceSummary,
-      resources,
-      ...(composer ? { composer } : {}),
-      ...(authorization ? { authorization } : {}),
-      ...(engineBindings ? { engineBindings } : {}),
-      ...(packageSummary ? { package: packageSummary } : {}),
-    });
-  }
-}
-
 function manifestFromVersion(version: InstalledVersion): PluginPackageManifest {
-  return compatibleManifest(version.manifest);
+  return parsePluginPackageManifest(version.manifest);
 }
 
-function sourceResourcePaths(sourceManifest: unknown, manifest: PluginPackageManifest): string[] {
-  if (!isRecord(sourceManifest) || sourceManifest.schemaVersion !== 1) {
-    return [
-      ...manifest.resources.flatMap((resource) => resource.path ? [resource.path] : []),
-      ...manifest.engineBindings?.flatMap((binding) => binding.capabilities.flatMap((capability) => capability.path ? [capability.path] : [])) ?? [],
-    ];
-  }
-  const resourcePaths = Array.isArray(sourceManifest.resources)
-    ? sourceManifest.resources.flatMap((resource) => isRecord(resource) && typeof resource.path === "string" ? [resource.path] : [])
-    : [];
-  const packageMetadata = isRecord(sourceManifest.package) ? sourceManifest.package : null;
-  const entrypoints = packageMetadata && isRecord(packageMetadata.entrypoints) ? packageMetadata.entrypoints : null;
+function sourceResourcePaths(manifest: PluginPackageManifest): string[] {
   return [
-    ...resourcePaths,
-    ...entrypoints ? Object.values(entrypoints).flatMap((path) => typeof path === "string" ? [path] : []) : [],
+    ...manifest.resources.flatMap((resource) => resource.path ? [resource.path] : []),
+    ...manifest.engineBindings?.flatMap((binding) => binding.capabilities.flatMap((capability) => capability.path ? [capability.path] : [])) ?? [],
   ];
 }
 
@@ -814,49 +527,125 @@ async function snapshotPackage(
   };
 }
 
-async function applyVersion(
+type PackageProjection = {
+  installed: InstalledPackage;
+  version: InstalledVersion;
+};
+
+type WorkspaceProjectionTarget = {
+  workspaceId: string;
+  workspaceRoot: string;
+};
+
+function packageProjection(
+  config: ServerConfig,
+  workspaceId: string,
+  installed: InstalledPackage | null,
+): PackageProjection | null {
+  if (!installed) return null;
+  const version = installed.versions[installed.currentVersion];
+  if (!version) {
+    throw new ApiError(500, "plugin_package_state_invalid", `Missing current version for ${installed.pluginId}`);
+  }
+  const manifest = manifestFromVersion(version);
+  const engineAdapter = workspaceEngineAdapter(config, workspaceId);
+  const engines = manifest.package?.engines;
+  if (engines && !engines.includes(engineAdapter.id)) return null;
+  assertRuntimeCompatibility(manifest, engineAdapter);
+  return { installed, version };
+}
+
+function localProjectionTargets(config: ServerConfig): WorkspaceProjectionTarget[] {
+  return config.workspaces.flatMap((workspace) =>
+    workspace.workspaceType === "local" && workspace.path
+      ? [{ workspaceId: workspace.id, workspaceRoot: workspace.path }]
+      : []
+  );
+}
+
+async function preflightProjection(
   config: ServerConfig,
   workspaceId: string,
   workspaceRoot: string,
   pluginId: string,
-  next: InstalledVersion,
-  current: InstalledVersion | null,
-  installed?: InstalledPackage,
+  current: PackageProjection | null,
+  next: PackageProjection | null,
 ): Promise<void> {
-  const currentInactivePaths = current && installed
-    ? inactiveActivationPaths(config, workspaceId, installed, current)
-    : new Set<string>();
-  const nextInactivePaths = installed
-    ? inactiveActivationPaths(config, workspaceId, installed, next)
+  const currentInactivePaths = current
+    ? inactiveActivationPaths(config, workspaceId, current.installed, current.version)
     : new Set<string>();
   if (current) {
-    await assertOwnedFilesUnchanged(config, workspaceId, pluginId, workspaceRoot, current, currentInactivePaths);
+    await assertOwnedFilesUnchanged(
+      config,
+      workspaceId,
+      pluginId,
+      workspaceRoot,
+      current.version,
+      currentInactivePaths,
+    );
   }
-  const currentEngineVersion = current ? engineVersion(config, workspaceId, pluginId, current) : null;
-  const nextEngineVersion = engineVersion(config, workspaceId, pluginId, next);
   const currentActivationFiles = current
-    ? workspaceActivationFiles(config, workspaceId, pluginId, current)
+    ? workspaceActivationFiles(config, workspaceId, pluginId, current.version)
     : [];
-  const nextActivationFiles = workspaceActivationFiles(config, workspaceId, pluginId, next);
+  const nextActivationFiles = next
+    ? workspaceActivationFiles(config, workspaceId, pluginId, next.version)
+    : [];
   const currentPaths = new Set(currentActivationFiles.map((file) => file.targetPath));
-  const nextPaths = new Set(nextActivationFiles.map((file) => file.targetPath));
-  const adoptedPaths = new Set<string>();
   const conflicts: string[] = [];
   for (const file of nextActivationFiles) {
     if (currentPaths.has(file.targetPath)) continue;
     const target = resolveWithin(workspaceRoot, file.targetPath);
     const status = await activationTargetStatus(target, file.sha256);
-    if (status === "matching") adoptedPaths.add(file.targetPath);
-    else if (status === "conflict") conflicts.push(file.targetPath);
+    if (status === "conflict") conflicts.push(file.targetPath);
   }
   if (conflicts.length > 0) {
-    throw new ApiError(409, "plugin_package_conflict", "Install targets already exist with different content", { paths: conflicts });
+    throw new ApiError(409, "plugin_package_conflict", "Install targets already exist with different content", {
+      workspaceId,
+      paths: conflicts,
+    });
+  }
+}
+
+async function applyProjection(
+  config: ServerConfig,
+  workspaceId: string,
+  workspaceRoot: string,
+  pluginId: string,
+  current: PackageProjection | null,
+  next: PackageProjection | null,
+): Promise<void> {
+  await preflightProjection(config, workspaceId, workspaceRoot, pluginId, current, next);
+  const currentInactivePaths = current
+    ? inactiveActivationPaths(config, workspaceId, current.installed, current.version)
+    : new Set<string>();
+  const nextInactivePaths = next
+    ? inactiveActivationPaths(config, workspaceId, next.installed, next.version)
+    : new Set<string>();
+  const currentEngineVersion = current ? engineVersion(config, workspaceId, pluginId, current.version) : null;
+  const nextEngineVersion = next ? engineVersion(config, workspaceId, pluginId, next.version) : null;
+  const currentActivationFiles = current
+    ? workspaceActivationFiles(config, workspaceId, pluginId, current.version)
+    : [];
+  const nextActivationFiles = next
+    ? workspaceActivationFiles(config, workspaceId, pluginId, next.version)
+    : [];
+  const currentPaths = new Set(currentActivationFiles.map((file) => file.targetPath));
+  const nextPaths = new Set(nextActivationFiles.map((file) => file.targetPath));
+  const adoptedPaths = new Set<string>();
+  for (const file of nextActivationFiles) {
+    if (currentPaths.has(file.targetPath)) continue;
+    if (await activationTargetStatus(resolveWithin(workspaceRoot, file.targetPath), file.sha256) === "matching") {
+      adoptedPaths.add(file.targetPath);
+    }
   }
 
-  const enabled = installed?.enabled !== false;
+  const enabled = next?.installed.enabled === true;
   const engineAdapter = workspaceEngineAdapter(config, workspaceId);
   try {
     for (const file of nextActivationFiles) {
+      if (!nextEngineVersion) {
+        throw new ApiError(500, "plugin_package_state_invalid", "Next engine projection is missing");
+      }
       const source = resolveWithin(nextEngineVersion.artifactRoot, file.sourcePath);
       const target = resolveWithin(workspaceRoot, file.targetPath);
       if (adoptedPaths.has(file.targetPath)) {
@@ -887,7 +676,7 @@ async function applyVersion(
       resolvePath: resolveWithin,
       current: nextEngineVersion,
       next: currentEngineVersion,
-      enabled: Boolean(current) && enabled,
+      enabled: current?.installed.enabled === true,
     }).catch(() => undefined);
     if (current) {
       if (!currentEngineVersion) {
@@ -910,13 +699,73 @@ async function applyVersion(
   }
 }
 
-export async function previewPluginPackage(input: { packageRoot: string; workspaceRoot: string; engineId?: string }): Promise<PluginPackagePreview> {
+async function applyPackageTransition(
+  config: ServerConfig,
+  pluginId: string,
+  currentInstalled: InstalledPackage | null,
+  nextInstalled: InstalledPackage | null,
+): Promise<void> {
+  const transitions = localProjectionTargets(config).map((workspace) => ({
+    ...workspace,
+    current: packageProjection(config, workspace.workspaceId, currentInstalled),
+    next: packageProjection(config, workspace.workspaceId, nextInstalled),
+  }));
+  for (const transition of transitions) {
+    await preflightProjection(
+      config,
+      transition.workspaceId,
+      transition.workspaceRoot,
+      pluginId,
+      transition.current,
+      transition.next,
+    );
+  }
+  const applied: typeof transitions = [];
+  try {
+    for (const transition of transitions) {
+      await applyProjection(
+        config,
+        transition.workspaceId,
+        transition.workspaceRoot,
+        pluginId,
+        transition.current,
+        transition.next,
+      );
+      applied.push(transition);
+    }
+  } catch (error) {
+    const rollbackErrors: string[] = [];
+    for (const transition of applied.reverse()) {
+      try {
+        await applyProjection(
+          config,
+          transition.workspaceId,
+          transition.workspaceRoot,
+          pluginId,
+          transition.next,
+          transition.current,
+        );
+      } catch (rollbackError) {
+        rollbackErrors.push(`${transition.workspaceId}: ${rollbackError instanceof Error ? rollbackError.message : String(rollbackError)}`);
+      }
+    }
+    if (rollbackErrors.length > 0) {
+      throw new ApiError(500, "plugin_package_rollback_failed", "Plugin projection rollback failed", {
+        cause: error instanceof Error ? error.message : String(error),
+        rollbackErrors,
+      });
+    }
+    throw error;
+  }
+}
+
+export async function previewPluginPackage(input: { packageRoot: string; engineId?: string }): Promise<PluginPackagePreview> {
   const manifestPath = resolveWithin(input.packageRoot, MANIFEST_FILE);
   let sourceManifest: unknown;
   let manifest: PluginPackageManifest;
   try {
     sourceManifest = JSON.parse(await readFile(manifestPath, "utf8"));
-    manifest = compatibleManifest(sourceManifest);
+    manifest = parsePluginPackageManifest(sourceManifest);
   } catch (error) {
     if (errorCode(error) === "ENOENT") throw new ApiError(400, "plugin_package_manifest_missing", `${MANIFEST_FILE} is required`);
     throw error;
@@ -924,7 +773,7 @@ export async function previewPluginPackage(input: { packageRoot: string; workspa
   if (!manifest.package) throw new ApiError(400, "plugin_package_metadata_required", "Package metadata is required for installation");
   const engineAdapter = input.engineId ? pluginEngineAdapters.get(input.engineId) : undefined;
   assertRuntimeCompatibility(manifest, engineAdapter);
-  const resourcePaths = [...new Set(sourceResourcePaths(sourceManifest, manifest))];
+  const resourcePaths = [...new Set(sourceResourcePaths(manifest))];
   const paths = new Set<string>();
   for (const resourcePath of resourcePaths) {
     for (const path of await packageResourceFiles(input.packageRoot, resourcePath)) paths.add(path);
@@ -1090,6 +939,44 @@ export async function listInstalledPluginPackages(input: { serverConfig: ServerC
   }).sort((left, right) => left.name.localeCompare(right.name));
 }
 
+export async function listPortablePluginPromptCapabilities(input: {
+  serverConfig: ServerConfig;
+  engineId: string;
+}): Promise<PortablePluginPromptCapability[]> {
+  const state = await readState(input.serverConfig);
+  const capabilities: PortablePluginPromptCapability[] = [];
+  for (const installed of Object.values(state.packages)) {
+    if (!installed.enabled) continue;
+    const version = installed.versions[installed.currentVersion];
+    if (!version) throw new ApiError(500, "plugin_package_state_invalid", `Missing current version for ${installed.pluginId}`);
+    const manifest = manifestFromVersion(version);
+    if (manifest.package?.engines && !manifest.package.engines.includes(input.engineId)) continue;
+    const projected: PluginEngineVersion = {
+      manifest,
+      artifactRoot: artifactRoot(input.serverConfig, installed.pluginId, version.version),
+      files: version.files,
+    };
+    for (const resource of manifest.resources) {
+      if ((resource.type !== "command" && resource.type !== "agent") || !resource.path) continue;
+      if (installed.disabledResourceIds.includes(resource.id)) continue;
+      const sourcePath = pluginEngineSourcePath(projected, resource.path) ?? resource.path;
+      if (!version.files.some((file) => file.path === sourcePath)) continue;
+      const content = await readFile(resolveWithin(projected.artifactRoot, sourcePath), "utf8");
+      capabilities.push({
+        pluginId: installed.pluginId,
+        resourceId: resource.id,
+        type: resource.type,
+        name: basename(resource.path, ".md"),
+        ...(resource.description || resource.label || manifest.description
+          ? { description: resource.description || resource.label || manifest.description }
+          : {}),
+        content,
+      });
+    }
+  }
+  return capabilities.sort((left, right) => left.name.localeCompare(right.name));
+}
+
 export async function listSuppressedDefaultPluginIds(input: { serverConfig: ServerConfig }): Promise<string[]> {
   return (await readState(input.serverConfig)).suppressedDefaultPluginIds;
 }
@@ -1134,19 +1021,19 @@ async function reconcilePackageProjection(
   workspaceRoot: string,
   installed: InstalledPackage,
 ): Promise<void> {
-  const current = installed.versions[installed.currentVersion];
-  if (!current) throw new ApiError(500, "plugin_package_state_invalid", `Missing current version for ${installed.pluginId}`);
   const adapter = workspaceEngineAdapter(config, workspaceId);
-  const manifest = manifestFromVersion(current);
-  if (manifest.package?.engines && !manifest.package.engines.includes(adapter.id)) return;
-
-  const currentFiles = workspaceActivationFiles(config, workspaceId, installed.pluginId, current);
-  const currentByPath = new Map(currentFiles.map((file) => [file.targetPath, file]));
+  const next = packageProjection(config, workspaceId, installed);
+  const nextPaths = new Set(
+    next
+      ? workspaceActivationFiles(config, workspaceId, installed.pluginId, next.version).map((file) => file.targetPath)
+      : [],
+  );
   for (const version of Object.values(installed.versions)) {
-    if (version.version === current.version) continue;
+    if (next?.version.version === version.version) continue;
+    const engines = manifestFromVersion(version).package?.engines;
+    if (engines && !engines.includes(adapter.id)) continue;
     for (const file of workspaceActivationFiles(config, workspaceId, installed.pluginId, version)) {
-      const replacement = currentByPath.get(file.targetPath);
-      if (replacement?.sha256 === file.sha256) continue;
+      if (nextPaths.has(file.targetPath)) continue;
       const target = resolveWithin(workspaceRoot, file.targetPath);
       if (await activationTargetStatus(target, file.sha256) === "matching") await rm(target, { force: true });
     }
@@ -1159,48 +1046,87 @@ async function reconcilePackageProjection(
       enabled: true,
     });
   }
-
-  const inactivePaths = inactiveActivationPaths(config, workspaceId, installed, current);
-  const conflicts: string[] = [];
-  for (const file of currentFiles) {
-    const target = resolveWithin(workspaceRoot, file.targetPath);
-    const status = await activationTargetStatus(target, file.sha256);
-    if (inactivePaths.has(file.targetPath)) {
-      if (status === "matching") await rm(target, { force: true });
-      else if (status === "conflict") conflicts.push(file.targetPath);
-      continue;
-    }
-    if (status === "conflict") {
-      conflicts.push(file.targetPath);
-      continue;
-    }
-    if (status === "missing") {
-      await mkdir(dirname(target), { recursive: true });
-      await copyFile(resolveWithin(artifactRoot(config, installed.pluginId, current.version), file.sourcePath), target);
-    }
-  }
-  if (conflicts.length > 0) {
-    throw new ApiError(409, "plugin_package_conflict", "Plugin-owned files conflict with the installed package", { paths: conflicts });
-  }
-  const currentEngineVersion = engineVersion(config, workspaceId, installed.pluginId, current);
-  await adapter.syncRuntime({
-    config,
-    workspaceId,
-    resolvePath: resolveWithin,
-    current: currentEngineVersion,
-    next: currentEngineVersion,
-    enabled: installed.enabled,
-  });
+  await applyProjection(config, workspaceId, workspaceRoot, installed.pluginId, null, next);
 }
 
-export async function reconcilePluginPackagesForWorkspace(input: {
+async function reconcilePluginPackagesForWorkspaceUnlocked(input: {
   serverConfig: ServerConfig;
   workspaceId: string;
   workspaceRoot: string;
 }): Promise<void> {
   const state = await readState(input.serverConfig);
-  for (const installed of Object.values(state.packages)) {
+  const installedPackages = Object.values(state.packages);
+  for (const installed of installedPackages) {
+    await preflightProjection(
+      input.serverConfig,
+      input.workspaceId,
+      input.workspaceRoot,
+      installed.pluginId,
+      null,
+      packageProjection(input.serverConfig, input.workspaceId, installed),
+    );
+  }
+  for (const installed of installedPackages) {
     await reconcilePackageProjection(input.serverConfig, input.workspaceId, input.workspaceRoot, installed);
+  }
+}
+
+export function reconcilePluginPackagesForWorkspace(input: {
+  serverConfig: ServerConfig;
+  workspaceId: string;
+  workspaceRoot: string;
+}): Promise<void> {
+  return enqueueLifecycleMutation(input.serverConfig, () => reconcilePluginPackagesForWorkspaceUnlocked(input));
+}
+
+async function reconcilePluginPackagesGlobally(config: ServerConfig): Promise<void> {
+  const state = await readState(config);
+  const tasks = localProjectionTargets(config).flatMap((workspace) =>
+    Object.values(state.packages).map((installed) => ({ ...workspace, installed })),
+  );
+  for (const task of tasks) {
+    await preflightProjection(
+      config,
+      task.workspaceId,
+      task.workspaceRoot,
+      task.installed.pluginId,
+      null,
+      packageProjection(config, task.workspaceId, task.installed),
+    );
+  }
+  for (const task of tasks) {
+    await reconcilePackageProjection(
+      config,
+      task.workspaceId,
+      task.workspaceRoot,
+      task.installed,
+    );
+  }
+}
+
+function copyInstalledPackage(installed: InstalledPackage): InstalledPackage {
+  return {
+    ...installed,
+    disabledResourceIds: [...installed.disabledResourceIds],
+    versions: { ...installed.versions },
+  };
+}
+
+async function commitPackageTransition(input: {
+  config: ServerConfig;
+  state: LifecycleState;
+  pluginId: string;
+  current: InstalledPackage | null;
+  next: InstalledPackage | null;
+  updateState(): void;
+}): Promise<void> {
+  await applyPackageTransition(input.config, input.pluginId, input.current, input.next);
+  try {
+    input.updateState();
+    await writeState(input.config, input.state);
+  } catch (error) {
+    await applyPackageTransition(input.config, input.pluginId, input.next, input.current);
+    throw error;
   }
 }
 
@@ -1229,17 +1155,14 @@ export async function resolveInstalledPluginService(input: {
   };
 }
 
-export async function installPluginPackage(input: {
+async function installPluginPackageUnlocked(input: {
   serverConfig: ServerConfig;
-  workspaceId: string;
   packageRoot: string;
-  workspaceRoot: string;
 }): Promise<PluginPackageInstallResult> {
   const preview = await previewPluginPackage({
     packageRoot: input.packageRoot,
-    workspaceRoot: input.workspaceRoot,
-    engineId: workspaceEngineAdapter(input.serverConfig, input.workspaceId).id,
   });
+  assertGlobalRuntimeCompatibility(input.serverConfig, preview.manifest);
   if (!preview.manifest.package) throw new ApiError(400, "plugin_package_metadata_required", "Package metadata is required for installation");
   const state = await readState(input.serverConfig);
   const existing = state.packages[preview.manifest.id];
@@ -1249,12 +1172,7 @@ export async function installPluginPackage(input: {
     }
     const current = existing.versions[existing.currentVersion];
     if (!current) throw new ApiError(500, "plugin_package_state_invalid", "Installed package version is missing");
-    await reconcilePackageProjection(
-      input.serverConfig,
-      input.workspaceId,
-      input.workspaceRoot,
-      existing,
-    );
+    await reconcilePluginPackagesGlobally(input.serverConfig);
     if (state.suppressedDefaultPluginIds.includes(existing.pluginId)) {
       state.suppressedDefaultPluginIds = state.suppressedDefaultPluginIds.filter((pluginId) => pluginId !== existing.pluginId);
       await writeState(input.serverConfig, state);
@@ -1262,8 +1180,7 @@ export async function installPluginPackage(input: {
     return { status: "unchanged", pluginId: existing.pluginId, version: existing.currentVersion };
   }
   const version = await snapshotPackage(input.serverConfig, input.packageRoot, preview);
-  await applyVersion(input.serverConfig, input.workspaceId, input.workspaceRoot, preview.manifest.id, version, null);
-  state.packages[preview.manifest.id] = {
+  const installed: InstalledPackage = {
     pluginId: preview.manifest.id,
     enabled: true,
     disabledResourceIds: [],
@@ -1271,22 +1188,28 @@ export async function installPluginPackage(input: {
     previousVersion: null,
     versions: { [version.version]: version },
   };
-  state.suppressedDefaultPluginIds = state.suppressedDefaultPluginIds.filter((pluginId) => pluginId !== preview.manifest.id);
-  await writeState(input.serverConfig, state);
+  await commitPackageTransition({
+    config: input.serverConfig,
+    state,
+    pluginId: installed.pluginId,
+    current: null,
+    next: installed,
+    updateState() {
+      state.packages[installed.pluginId] = installed;
+      state.suppressedDefaultPluginIds = state.suppressedDefaultPluginIds.filter((pluginId) => pluginId !== installed.pluginId);
+    },
+  });
   return { status: "installed", pluginId: preview.manifest.id, version: version.version };
 }
 
-export async function updatePluginPackage(input: {
+async function updatePluginPackageUnlocked(input: {
   serverConfig: ServerConfig;
-  workspaceId: string;
   packageRoot: string;
-  workspaceRoot: string;
 }): Promise<PluginPackageUpdateResult> {
   const preview = await previewPluginPackage({
     packageRoot: input.packageRoot,
-    workspaceRoot: input.workspaceRoot,
-    engineId: workspaceEngineAdapter(input.serverConfig, input.workspaceId).id,
   });
+  assertGlobalRuntimeCompatibility(input.serverConfig, preview.manifest);
   if (!preview.manifest.package) throw new ApiError(400, "plugin_package_metadata_required", "Package metadata is required for installation");
   const state = await readState(input.serverConfig);
   const installed = state.packages[preview.manifest.id];
@@ -1294,33 +1217,35 @@ export async function updatePluginPackage(input: {
   const current = installed.versions[installed.currentVersion];
   if (!current) throw new ApiError(500, "plugin_package_state_invalid", "Installed package version is missing");
   if (installed.currentVersion === preview.manifest.package.version) {
-    await reconcilePackageProjection(
-      input.serverConfig,
-      input.workspaceId,
-      input.workspaceRoot,
-      installed,
-    );
+    await reconcilePluginPackagesGlobally(input.serverConfig);
     return { status: "unchanged", pluginId: installed.pluginId, version: installed.currentVersion };
   }
   const next = await snapshotPackage(input.serverConfig, input.packageRoot, preview);
-  await applyVersion(input.serverConfig, input.workspaceId, input.workspaceRoot, installed.pluginId, next, current, installed);
-  installed.disabledResourceIds = installed.disabledResourceIds.filter((resourceId) =>
+  const updated = copyInstalledPackage(installed);
+  updated.disabledResourceIds = updated.disabledResourceIds.filter((resourceId) =>
     preview.manifest.resources.some((resource) => resource.type === "skill" && resource.id === resourceId)
   );
   const previousVersion = installed.currentVersion;
-  installed.versions[next.version] = next;
-  installed.currentVersion = next.version;
-  installed.previousVersion = previousVersion;
-  state.suppressedDefaultPluginIds = state.suppressedDefaultPluginIds.filter((pluginId) => pluginId !== installed.pluginId);
-  await writeState(input.serverConfig, state);
+  updated.versions[next.version] = next;
+  updated.currentVersion = next.version;
+  updated.previousVersion = previousVersion;
+  await commitPackageTransition({
+    config: input.serverConfig,
+    state,
+    pluginId: installed.pluginId,
+    current: installed,
+    next: updated,
+    updateState() {
+      state.packages[installed.pluginId] = updated;
+      state.suppressedDefaultPluginIds = state.suppressedDefaultPluginIds.filter((pluginId) => pluginId !== installed.pluginId);
+    },
+  });
   return { status: "updated", pluginId: installed.pluginId, previousVersion, version: next.version };
 }
 
-export async function rollbackPluginPackage(input: {
+async function rollbackPluginPackageUnlocked(input: {
   serverConfig: ServerConfig;
-  workspaceId: string;
   pluginId: string;
-  workspaceRoot: string;
 }): Promise<PluginPackageRollbackResult> {
   const state = await readState(input.serverConfig);
   const installed = state.packages[input.pluginId];
@@ -1329,89 +1254,54 @@ export async function rollbackPluginPackage(input: {
   const current = installed.versions[installed.currentVersion];
   const previous = installed.versions[installed.previousVersion];
   if (!current || !previous) throw new ApiError(500, "plugin_package_state_invalid", "Rollback package version is missing");
-  await applyVersion(input.serverConfig, input.workspaceId, input.workspaceRoot, installed.pluginId, previous, current, installed);
-  installed.disabledResourceIds = installed.disabledResourceIds.filter((resourceId) =>
+  const rolledBack = copyInstalledPackage(installed);
+  rolledBack.disabledResourceIds = rolledBack.disabledResourceIds.filter((resourceId) =>
     manifestFromVersion(previous).resources.some((resource) => resource.type === "skill" && resource.id === resourceId)
   );
   const previousVersion = installed.currentVersion;
-  installed.currentVersion = previous.version;
-  installed.previousVersion = previousVersion;
-  await writeState(input.serverConfig, state);
+  rolledBack.currentVersion = previous.version;
+  rolledBack.previousVersion = previousVersion;
+  await commitPackageTransition({
+    config: input.serverConfig,
+    state,
+    pluginId: installed.pluginId,
+    current: installed,
+    next: rolledBack,
+    updateState() {
+      state.packages[installed.pluginId] = rolledBack;
+    },
+  });
   return { status: "rolled_back", pluginId: installed.pluginId, previousVersion, version: previous.version };
 }
 
-export async function setPluginPackageEnabled(input: {
+async function setPluginPackageEnabledUnlocked(input: {
   serverConfig: ServerConfig;
-  workspaceId: string;
   pluginId: string;
-  workspaceRoot: string;
   enabled: boolean;
 }) {
   const state = await readState(input.serverConfig);
   const installed = state.packages[input.pluginId];
   if (!installed) throw new ApiError(404, "plugin_package_not_installed", "Plugin package is not installed");
   if (installed.enabled === input.enabled) return { pluginId: installed.pluginId, enabled: installed.enabled, changed: false };
-  const current = installed.versions[installed.currentVersion];
-  if (!current) throw new ApiError(500, "plugin_package_state_invalid", "Installed package version is missing");
-  await assertOwnedFilesUnchanged(
-    input.serverConfig,
-    input.workspaceId,
-    installed.pluginId,
-    input.workspaceRoot,
-    current,
-    inactiveActivationPaths(input.serverConfig, input.workspaceId, installed, current),
-  );
-  const currentEngineVersion = engineVersion(input.serverConfig, input.workspaceId, installed.pluginId, current);
-  const engineAdapter = workspaceEngineAdapter(input.serverConfig, input.workspaceId);
-  const activationFiles = workspaceActivationFiles(input.serverConfig, input.workspaceId, installed.pluginId, current);
-  const allActivationPaths = new Set(activationFiles.map((file) => file.targetPath));
-  const disabledSkillPaths = skillActivationPaths(
-    input.serverConfig,
-    input.workspaceId,
-    installed.pluginId,
-    current,
-    new Set(installed.disabledResourceIds),
-  );
-  const activationPathsToRestore = [...allActivationPaths].filter((path) => !disabledSkillPaths.has(path));
-  if (input.enabled) {
-    const conflicts: string[] = [];
-    for (const path of activationPathsToRestore) {
-      if (await fileExists(resolveWithin(input.workspaceRoot, path))) conflicts.push(path);
-    }
-    if (conflicts.length > 0) {
-      throw new ApiError(409, "plugin_package_conflict", "Plugin skill targets already exist", { paths: conflicts });
-    }
-  }
-  await engineAdapter.syncRuntime({
+  const updated = copyInstalledPackage(installed);
+  updated.enabled = input.enabled;
+  await commitPackageTransition({
     config: input.serverConfig,
-    workspaceId: input.workspaceId,
-    resolvePath: resolveWithin,
-    current: input.enabled ? null : currentEngineVersion,
-    next: input.enabled ? currentEngineVersion : null,
-    enabled: true,
+    state,
+    pluginId: installed.pluginId,
+    current: installed,
+    next: updated,
+    updateState() {
+      state.packages[installed.pluginId] = updated;
+    },
   });
-  if (input.enabled) {
-    for (const path of activationPathsToRestore) {
-      const file = activationFiles.find((entry) => entry.targetPath === path);
-      if (!file) throw new ApiError(500, "plugin_package_state_invalid", `Missing activation source for ${path}`);
-      const target = resolveWithin(input.workspaceRoot, path);
-      await mkdir(dirname(target), { recursive: true });
-      await copyFile(resolveWithin(currentEngineVersion.artifactRoot, file.sourcePath), target);
-    }
-  } else {
-    for (const path of allActivationPaths) await rm(resolveWithin(input.workspaceRoot, path), { force: true });
-  }
-  installed.enabled = input.enabled;
-  await writeState(input.serverConfig, state);
-  return { pluginId: installed.pluginId, enabled: installed.enabled, changed: true };
+  return { pluginId: installed.pluginId, enabled: updated.enabled, changed: true };
 }
 
-export async function setPluginPackageResourceEnabled(input: {
+async function setPluginPackageResourceEnabledUnlocked(input: {
   serverConfig: ServerConfig;
-  workspaceId: string;
   pluginId: string;
   resourceId: string;
-  workspaceRoot: string;
   enabled: boolean;
 }) {
   const state = await readState(input.serverConfig);
@@ -1424,51 +1314,38 @@ export async function setPluginPackageResourceEnabled(input: {
   if (!resource || resource.type !== "skill") {
     throw new ApiError(404, "plugin_package_resource_not_found", "Plugin skill resource is not installed");
   }
-  const activationPath = [...skillActivationPaths(
-    input.serverConfig,
-    input.workspaceId,
-    installed.pluginId,
-    current,
-    new Set([input.resourceId]),
-  )][0];
-  if (!activationPath) throw new ApiError(409, "plugin_package_skill_invalid", "Plugin skill does not contain a SKILL.md activation file");
+  const resourcePath = resource.path?.trim() || null;
+  const skillPath = !resourcePath
+    ? null
+    : resourcePath === "SKILL.md" || resourcePath.endsWith("/SKILL.md")
+      ? resourcePath
+      : `${resourcePath.replace(/\/$/, "")}/SKILL.md`;
+  if (!skillPath || !current.files.some((file) => file.path === skillPath)) {
+    throw new ApiError(409, "plugin_package_skill_invalid", "Plugin skill does not contain a SKILL.md activation file");
+  }
   const currentlyEnabled = !installed.disabledResourceIds.includes(input.resourceId);
   if (currentlyEnabled === input.enabled) {
     return { pluginId: installed.pluginId, resourceId: input.resourceId, enabled: currentlyEnabled, changed: false };
   }
 
-  await assertOwnedFilesUnchanged(
-    input.serverConfig,
-    input.workspaceId,
-    installed.pluginId,
-    input.workspaceRoot,
-    current,
-    inactiveActivationPaths(input.serverConfig, input.workspaceId, installed, current),
-  );
-  if (installed.enabled && input.enabled) {
-    const projected = workspaceActivationFiles(input.serverConfig, input.workspaceId, installed.pluginId, current)
-      .find((file) => file.targetPath === activationPath);
-    if (!projected) throw new ApiError(500, "plugin_package_state_invalid", `Missing activation source for ${activationPath}`);
-    const target = resolveWithin(input.workspaceRoot, activationPath);
-    if (await fileExists(target)) {
-      throw new ApiError(409, "plugin_package_conflict", `Install target already exists: ${activationPath}`, { paths: [activationPath] });
-    }
-    await mkdir(dirname(target), { recursive: true });
-    await copyFile(
-      resolveWithin(artifactRoot(input.serverConfig, installed.pluginId, current.version), projected.sourcePath),
-      target,
-    );
-  } else if (installed.enabled) {
-    await rm(resolveWithin(input.workspaceRoot, activationPath), { force: true });
-  }
-  installed.disabledResourceIds = input.enabled
-    ? installed.disabledResourceIds.filter((resourceId) => resourceId !== input.resourceId)
-    : [...installed.disabledResourceIds, input.resourceId];
-  await writeState(input.serverConfig, state);
+  const updated = copyInstalledPackage(installed);
+  updated.disabledResourceIds = input.enabled
+    ? updated.disabledResourceIds.filter((resourceId) => resourceId !== input.resourceId)
+    : [...updated.disabledResourceIds, input.resourceId];
+  await commitPackageTransition({
+    config: input.serverConfig,
+    state,
+    pluginId: installed.pluginId,
+    current: installed,
+    next: updated,
+    updateState() {
+      state.packages[installed.pluginId] = updated;
+    },
+  });
   return { pluginId: installed.pluginId, resourceId: input.resourceId, enabled: input.enabled, changed: true };
 }
 
-export async function uninstallPluginPackage(input: {
+async function uninstallPluginPackageUnlocked(input: {
   serverConfig: ServerConfig;
   pluginId: string;
 }): Promise<PluginPackageUninstallResult> {
@@ -1477,15 +1354,22 @@ export async function uninstallPluginPackage(input: {
   if (!installed) throw new ApiError(404, "plugin_package_not_installed", "Plugin package is not installed");
   const current = installed.versions[installed.currentVersion];
   if (!current) throw new ApiError(500, "plugin_package_state_invalid", "Installed package version is missing");
-  for (const workspace of input.serverConfig.workspaces.filter((entry) => entry.workspaceType === "local")) {
-    const adapter = workspaceEngineAdapter(input.serverConfig, workspace.id);
+  const cleanupPlans: Array<{
+    workspaceId: string;
+    workspaceRoot: string;
+    adapter: PluginEngineAdapter;
+    versions: InstalledVersion[];
+    filesByPath: Map<string, Set<string>>;
+  }> = [];
+  for (const workspace of localProjectionTargets(input.serverConfig)) {
+    const adapter = workspaceEngineAdapter(input.serverConfig, workspace.workspaceId);
     const filesByPath = new Map<string, Set<string>>();
     const versions = Object.values(installed.versions).filter((version) => {
       const engines = manifestFromVersion(version).package?.engines;
       return !engines || engines.includes(adapter.id);
     });
     for (const version of versions) {
-      for (const file of workspaceActivationFiles(input.serverConfig, workspace.id, installed.pluginId, version)) {
+      for (const file of workspaceActivationFiles(input.serverConfig, workspace.workspaceId, installed.pluginId, version)) {
         const hashes = filesByPath.get(file.targetPath) ?? new Set<string>();
         hashes.add(file.sha256);
         filesByPath.set(file.targetPath, hashes);
@@ -1493,33 +1377,75 @@ export async function uninstallPluginPackage(input: {
     }
     const conflicts: string[] = [];
     for (const [path, hashes] of filesByPath) {
-      const target = resolveWithin(workspace.path, path);
+      const target = resolveWithin(workspace.workspaceRoot, path);
       if (!await fileExists(target)) continue;
       if (!hashes.has(await sha256(target))) conflicts.push(path);
     }
     if (conflicts.length > 0) {
       throw new ApiError(409, "plugin_package_conflict", "Plugin-owned files were modified outside the package manager", {
-        workspaceId: workspace.id,
+        workspaceId: workspace.workspaceId,
         paths: conflicts,
       });
     }
-    for (const version of versions) {
-      await adapter.syncRuntime({
-        config: input.serverConfig,
-        workspaceId: workspace.id,
-        resolvePath: resolveWithin,
-        current: engineVersion(input.serverConfig, workspace.id, installed.pluginId, version),
-        next: null,
-        enabled: true,
-      });
+    cleanupPlans.push({
+      workspaceId: workspace.workspaceId,
+      workspaceRoot: workspace.workspaceRoot,
+      adapter,
+      versions,
+      filesByPath,
+    });
+  }
+  await applyPackageTransition(input.serverConfig, installed.pluginId, installed, null);
+  try {
+    for (const plan of cleanupPlans) {
+      for (const version of plan.versions) {
+        if (version.version === current.version) continue;
+        await plan.adapter.syncRuntime({
+          config: input.serverConfig,
+          workspaceId: plan.workspaceId,
+          resolvePath: resolveWithin,
+          current: engineVersion(input.serverConfig, plan.workspaceId, installed.pluginId, version),
+          next: null,
+          enabled: false,
+        });
+      }
+      for (const path of plan.filesByPath.keys()) {
+        await rm(resolveWithin(plan.workspaceRoot, path), { force: true });
+      }
     }
-    for (const path of filesByPath.keys()) await rm(resolveWithin(workspace.path, path), { force: true });
+    delete state.packages[input.pluginId];
+    if (manifestFromVersion(current).defaultEnabled && !state.suppressedDefaultPluginIds.includes(input.pluginId)) {
+      state.suppressedDefaultPluginIds.push(input.pluginId);
+    }
+    await writeState(input.serverConfig, state);
+  } catch (error) {
+    await applyPackageTransition(input.serverConfig, installed.pluginId, null, installed);
+    throw error;
   }
-  delete state.packages[input.pluginId];
-  if (manifestFromVersion(current).defaultEnabled && !state.suppressedDefaultPluginIds.includes(input.pluginId)) {
-    state.suppressedDefaultPluginIds.push(input.pluginId);
-  }
-  await writeState(input.serverConfig, state);
   await rm(join(stateDirectory(input.serverConfig), "artifacts", safeSegment(input.pluginId)), { recursive: true, force: true });
   return { status: "uninstalled", pluginId: input.pluginId, version: current.version };
+}
+
+export function installPluginPackage(input: Parameters<typeof installPluginPackageUnlocked>[0]) {
+  return enqueueLifecycleMutation(input.serverConfig, () => installPluginPackageUnlocked(input));
+}
+
+export function updatePluginPackage(input: Parameters<typeof updatePluginPackageUnlocked>[0]) {
+  return enqueueLifecycleMutation(input.serverConfig, () => updatePluginPackageUnlocked(input));
+}
+
+export function rollbackPluginPackage(input: Parameters<typeof rollbackPluginPackageUnlocked>[0]) {
+  return enqueueLifecycleMutation(input.serverConfig, () => rollbackPluginPackageUnlocked(input));
+}
+
+export function setPluginPackageEnabled(input: Parameters<typeof setPluginPackageEnabledUnlocked>[0]) {
+  return enqueueLifecycleMutation(input.serverConfig, () => setPluginPackageEnabledUnlocked(input));
+}
+
+export function setPluginPackageResourceEnabled(input: Parameters<typeof setPluginPackageResourceEnabledUnlocked>[0]) {
+  return enqueueLifecycleMutation(input.serverConfig, () => setPluginPackageResourceEnabledUnlocked(input));
+}
+
+export function uninstallPluginPackage(input: Parameters<typeof uninstallPluginPackageUnlocked>[0]) {
+  return enqueueLifecycleMutation(input.serverConfig, () => uninstallPluginPackageUnlocked(input));
 }
