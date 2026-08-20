@@ -769,10 +769,10 @@ export function useWorkspaceRouteState(input: UseWorkspaceRouteStateInput) {
   // NOTE: Blueprint seeding was removed from the route.
   // It was firing `materializeBlueprintSessions` + a session re-fetch on every
   // workspace change, which cascaded setState updates and froze the UI after
-  // a few rapid switches. Empty workspaces now simply show "No tasks yet." and
-  // the user creates their first session explicitly via "New task". Seeding
-  // can be reintroduced later as a one-shot triggered from a button or from
-  // the onboarding flow, not from the route effect loop.
+  // a few rapid switches. Empty workspaces now stay session-free until the
+  // user submits the project starter or clicks "New task". Seeding can be
+  // reintroduced later as a one-shot triggered from a button or onboarding,
+  // not from the route effect loop.
   useEffect(() => {
     if (!isDesktopRuntime()) return;
     if (loading) return;

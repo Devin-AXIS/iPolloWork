@@ -221,7 +221,9 @@ export function isBlankDefaultSession(session: RouteSession) {
     !title ||
     title === DEFAULT_SESSION_TITLE ||
     title === t("session.default_title") ||
+    title === "New conversation" ||
     title === "新建会话" ||
+    title === "新会话" ||
     isGeneratedSessionTitle(title);
   if (!hasDefaultTitle) return false;
 

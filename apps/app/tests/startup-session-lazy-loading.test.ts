@@ -35,22 +35,15 @@ const desktopConfigSource = readFileSync(
 ).replaceAll("\r\n", "\n");
 
 describe("startup session loading", () => {
-  test("opens a fresh conversation instead of restoring a historical session", () => {
+  test("keeps historical sessions idle until the user opens or creates a task", () => {
     expect(routeStateSource).not.toContain("readLastSessionFor");
     expect(routeStateSource).toContain(
       "navigateToWorkspaceSession(selectedWorkspaceId, null, { replace: true });",
     );
     expect(sessionRouteSource).toContain(
-      'let startupConversationPhase: "pending" | "creating" | "done" = "pending";',
+      "pendingProjectSelectionRef",
     );
-    expect(sessionRouteSource).toContain(
-      'if (startupConversationPhase !== "pending") return;',
-    );
-    expect(sessionRouteSource).toContain(
-      "workspaces.find((workspace) => workspace.id === selectedWorkspaceId)?.isDefault !== false",
-    );
-    expect(sessionRouteSource).toContain("if (pendingInitialProjectTask) return;");
-    expect(sessionRouteSource).toMatch(/if \(selectedSessionId\) \{\s+startupConversationPhase = "done";\s+return;/);
+    expect(sessionRouteSource).not.toContain("startupConversationPhase");
     expect(sessionRouteSource).not.toContain("const targetSessionId = remembered");
   });
 

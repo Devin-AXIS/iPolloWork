@@ -47,7 +47,7 @@ function isComposerExtensionAvailable(entry: McpDirectoryInfo) {
   return !entry.defaultEnabled || isiPolloWorkExtensionEnabled(entry);
 }
 
-type ComposerProps = {
+export type ComposerProps = {
   draft: string;
   mentions: Record<string, ComposerMentionKind>;
   onDraftChange: (value: string) => void;
@@ -57,6 +57,7 @@ type ComposerProps = {
   busy: boolean;
   queuedCount: number;
   disabled: boolean;
+  inputDisabled?: boolean;
   modelUnavailable?: boolean;
   statusLabel: string;
   modelPickerOpen: boolean;
@@ -305,6 +306,7 @@ export function ReactSessionComposer(props: ComposerProps) {
   const [workModeOpen, setWorkModeOpen] = useState(false);
   const engineSelectedAppearance = props.layout === "inline" && props.inlineAppearance === "engine-selected";
   const canSend = props.draft.trim().length > 0 || props.attachments.length > 0 || props.hasPromptContext;
+  const editorDisabled = props.inputDisabled ?? props.disabled;
   const [workModes, setWorkModes] = useState<ConversationMode[]>([]);
   const [toolMenuSection, setToolMenuSection] = useState<ToolMenuSection>("commands");
   const [mentionItems, setMentionItems] = useState<MentionItem[]>([]);
@@ -1316,7 +1318,8 @@ export function ReactSessionComposer(props: ComposerProps) {
               value={props.draft}
               mentions={props.mentions}
               pastedText={pastedTextTokens}
-              disabled={props.disabled}
+              disabled={editorDisabled}
+              submitDisabled={props.disabled}
               placeholder={props.placeholder ?? t("composer.placeholder")}
               onChange={props.onDraftChange}
               onSubmit={handleEditorSubmit}

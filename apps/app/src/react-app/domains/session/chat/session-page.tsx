@@ -3,6 +3,7 @@ import type { CSSProperties } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { UIMessage } from "ai";
 import { useNavigate } from "react-router-dom";
+import { createClient, unwrap } from "@/app/lib/opencode";
 import { Code2, Ellipsis, Eye, FileText, Film, Folder, FolderPlus, Globe, Image, LoaderCircle, Lock, Mic2, Palette, PanelRightClose, PanelRightOpen, Pencil, Presentation, Search, Settings2, Trash2, Upload, X, Zap } from "lucide-react";
 import { MAX_TEMPLATE_PACKAGE_BYTES, TEMPLATE_PACKAGE_FILE_ACCEPT, isPptxCompatibleTemplate, type PptxCompatibility, type TemplateCatalogItem, type TemplateCategory, type TemplateManifestV1, type TemplateSessionSnapshot, type TemplateSessionState, type TemplateValidationReport } from "@ipollowork/types/templates";
 import {
@@ -15,7 +16,8 @@ import { currentLocale, t } from "../../../../i18n";
 import { downloadTextAsFile } from "@/app/lib/download";
 import { publicAssetUrl } from "../../../../app/lib/public-asset";
 import { IPOLLOWORK_EXTENSION_CATALOG } from "../../../../app/constants";
-import { type iPolloWorkServerClient, type iPolloWorkServerStatus } from "../../../../app/lib/ipollowork-server";
+import { type iPolloWorkPluginPackageItem, type iPolloWorkServerClient, type iPolloWorkServerStatus } from "../../../../app/lib/ipollowork-server";
+import { readWorkspaceCloudImports, type CloudImportedPlugin } from "@/app/cloud/import-state";
 import {
   PERSONAL_WORK_CONTEXT_ID,
   readActiveWorkContextId,
@@ -32,7 +34,10 @@ import { openDesktopPath, pickDirectory, revealDesktopItemInDir, saveFile, type 
 import type {
   ComposerAttachment,
   ComposerDraft,
+  McpServerEntry,
+  McpStatusMap,
   ProviderListItem,
+  SkillCard,
   TodoItem,
   WorkspaceConnectionState,
   ProjectSessionList,
@@ -70,15 +75,16 @@ import { RenameSessionModal } from "../modals/rename-session-modal";
 import { AppSidebar } from "../sidebar/app-sidebar";
 import type { iPolloWorkSessionType, iPolloWorkTemplateId } from "../sidebar/app-sidebar-provider";
 import { readSessionType, sessionTypeForTemplate, setSessionType } from "../sidebar/session-type";
-import { SessionSurface, type SessionSurfaceProps } from "../surface/session-surface";
-import { ReactSessionComposer } from "../surface/composer/composer";
+import { SessionSurface, StarterCapabilityChip, type SessionSurfaceProps } from "../surface/session-surface";
+import { ReactSessionComposer, type ComposerProps } from "../surface/composer/composer";
 import {
   NewConversationStarter,
   newConversationPlaceholder,
   type NewConversationMode,
   type StarterCapability,
+  type TemplateCoverLoader,
 } from "@/components/chat/new-conversation-starter";
-import { replaceDesignSelectionToken } from "../surface/composer/composer-draft";
+import { parseComposerParts, replaceDesignSelectionToken } from "../surface/composer/composer-draft";
 import { getComposerDraft, useComposerStateStore } from "../surface/composer-state-store";
 import {
   SidebarInset,
@@ -143,7 +149,7 @@ import { useControlAction, type iPolloWorkControlAction } from "../../../shell/c
 import { getExtensionId, isiPolloWorkExtensionEnabled, IPOLLOWORK_EXTENSION_STATE_CHANGED } from "../../settings/extension-state";
 import { cn } from "@/lib/utils";
 import { useActiveEnterpriseConnection } from "@/react-app/domains/enterprise/use-active-enterprise-connection";
-import { useInstalledPluginContributions } from "@/react-app/plugin-ui/plugin-ui-contributions";
+import { useInstalledPluginContributions, type PluginConversationTemplate } from "@/react-app/plugin-ui/plugin-ui-contributions";
 import type { WorkspaceAppModelContext } from "@/react-app/plugin-ui/workspace-app-frame";
 import projectEngineDeepSeekIcon from "./assets/project-engine-deepseek.png";
 import projectEngineOpenCodeIcon from "./assets/project-engine-opencode.svg";
@@ -345,7 +351,7 @@ export type SessionPageSidebarProps = {
     folderPath: string;
     engineId: BuiltInWorkspaceEngineId;
   }) => Promise<string | null> | string | null | void;
-  onCreateInitialProjectTask: (draft: ComposerDraft) => Promise<boolean>;
+  onCreateInitialProjectTask: (draft: ComposerDraft, workspaceId?: string) => Promise<boolean>;
   onRenameProject: (workspaceId: string, name: string) => Promise<void> | void;
   onRevealProject: (workspaceId: string) => Promise<void> | void;
   onDeleteProject: (workspaceId: string) => Promise<void> | void;
@@ -372,6 +378,29 @@ export type SessionPageSurfaceProps = Omit<
   SessionSurfaceProps,
   "client" | "workspaceId" | "sessionId" | "opencodeBaseUrl" | "ipolloworkToken"
 >;
+
+type InitialProjectComposerTooling = Pick<
+  ComposerProps,
+  | "listSkills"
+  | "skills"
+  | "listMcp"
+  | "mcpServers"
+  | "mcpStatus"
+  | "mcpStatuses"
+  | "listImportedPlugins"
+  | "importedPlugins"
+  | "listExternalAgents"
+  | "onUploadInboxFiles"
+>;
+type InitialProjectMcpResult = {
+  servers: McpServerEntry[];
+  statuses: McpStatusMap;
+  status: string | null;
+};
+
+function isMcpServerConfig(value: Record<string, unknown>): value is McpServerEntry["config"] {
+  return value.type === "local" || value.type === "remote";
+}
 
 export type SessionPageProps = {
   selectedSessionId: string | null;
@@ -435,9 +464,35 @@ export type SessionPageProps = {
 
 function InitialProjectTaskStarter({
   surface,
+  workspaceClient,
+  workspaceId,
+  opencodeBaseUrl,
+  ipolloworkToken,
+  engineId,
+  promptTemplates,
+  templates,
+  templatesLoading,
+  templateBusyId,
+  getTemplateCover,
+  onUseTemplate,
+  onInstallTemplate,
+  onRequestTemplates,
   onSubmit,
 }: {
   surface: SessionPageSurfaceProps;
+  workspaceClient?: iPolloWorkServerClient | null;
+  workspaceId?: string | null;
+  opencodeBaseUrl?: string | null;
+  ipolloworkToken?: string | null;
+  engineId?: string | null;
+  promptTemplates?: PluginConversationTemplate[];
+  templates?: TemplateCatalogItem[];
+  templatesLoading?: boolean;
+  templateBusyId?: string | null;
+  getTemplateCover?: TemplateCoverLoader;
+  onUseTemplate?: (templateId: string, surface: "design" | "video") => void;
+  onInstallTemplate?: (templateId: string) => void;
+  onRequestTemplates?: () => void;
   onSubmit: (draft: ComposerDraft) => Promise<boolean>;
 }) {
   const [draft, setDraft] = useState("");
@@ -446,6 +501,122 @@ function InitialProjectTaskStarter({
   const [starterMode, setStarterMode] = useState<NewConversationMode>("work");
   const [starterCapability, setStarterCapability] = useState<StarterCapability | null>(null);
   const [sending, setSending] = useState(false);
+  const [toolSkills, setToolSkills] = useState<SkillCard[]>([]);
+  const [toolMcpServers, setToolMcpServers] = useState<McpServerEntry[]>([]);
+  const [toolMcpStatus, setToolMcpStatus] = useState<string | null>(null);
+  const [toolMcpStatuses, setToolMcpStatuses] = useState<McpStatusMap>({});
+  const [toolImportedPlugins, setToolImportedPlugins] = useState<CloudImportedPlugin[]>([]);
+  const [pastedText, setPastedText] = useState<Array<{ id: string; label: string; text: string; lines: number }>>([]);
+
+  const opencodeClient = useMemo(
+    () => opencodeBaseUrl && ipolloworkToken
+      ? createClient(opencodeBaseUrl, undefined, { token: ipolloworkToken, mode: "ipollowork" })
+      : null,
+    [ipolloworkToken, opencodeBaseUrl],
+  );
+
+  const listSkills = useCallback(async (): Promise<SkillCard[]> => {
+    if (!workspaceClient || !workspaceId) return [];
+    const response = await workspaceClient.listSkills(workspaceId, { includeGlobal: true });
+    const next = (response.items ?? []).map((skill) => ({
+      name: skill.name,
+      path: skill.path,
+      description: skill.description,
+      trigger: skill.trigger,
+    } satisfies SkillCard));
+    setToolSkills(next);
+    return next;
+  }, [workspaceClient, workspaceId]);
+
+  const listMcp = useCallback(async (): Promise<InitialProjectMcpResult> => {
+    if (!workspaceClient || !workspaceId) return { servers: [], statuses: {}, status: null };
+    const response = await workspaceClient.listMcp(workspaceId);
+    const servers = (response.items ?? []).flatMap((entry) => {
+      if (!isMcpServerConfig(entry.config)) return [];
+      return [{ name: entry.name, config: entry.config } satisfies McpServerEntry];
+    });
+    let statuses: McpStatusMap = {};
+    try {
+      if (opencodeClient && surface.workspaceRoot.trim()) {
+        statuses = unwrap<McpStatusMap>(await opencodeClient.mcp.status({ directory: surface.workspaceRoot.trim() }));
+      }
+    } catch {
+      statuses = {};
+    }
+    const status = servers.length ? null : "No MCP servers loaded.";
+    setToolMcpServers(servers);
+    setToolMcpStatuses(statuses);
+    setToolMcpStatus(status);
+    return { servers, statuses, status };
+  }, [opencodeClient, surface.workspaceRoot, workspaceClient, workspaceId]);
+
+  const listImportedPlugins = useCallback(async (): Promise<CloudImportedPlugin[]> => {
+    if (!workspaceClient || !workspaceId) return [];
+    const response = await workspaceClient.getConfig(workspaceId);
+    const plugins = Object.values(readWorkspaceCloudImports(response.ipollowork).plugins)
+      .sort((left, right) => left.name.localeCompare(right.name));
+    setToolImportedPlugins(plugins);
+    return plugins;
+  }, [workspaceClient, workspaceId]);
+
+  const listExternalAgents = useCallback(async (): Promise<iPolloWorkPluginPackageItem[]> => {
+    if (!workspaceClient || !workspaceId) return [];
+    const response = await workspaceClient.listPluginPackages(workspaceId);
+    return response.items
+      .filter((item) =>
+        item.enabled
+        && Boolean(item.manifest.composer?.prompt.trim())
+        && item.manifest.resources.some((resource) =>
+          resource.provides?.includes("service:external-subagent") === true
+          && !item.disabledResourceIds.includes(resource.id)
+        )
+      )
+      .sort((left, right) => left.name.localeCompare(right.name));
+  }, [workspaceClient, workspaceId]);
+
+  const uploadInboxFiles = useCallback(async (files: File[]) => {
+    if (surface.onUploadInboxFiles) return surface.onUploadInboxFiles(files);
+    if (!workspaceClient || !workspaceId) return [];
+    return Promise.all(files.filter(Boolean).map((file) => workspaceClient.uploadInbox(workspaceId, file)));
+  }, [surface.onUploadInboxFiles, workspaceClient, workspaceId]);
+
+  const handlePasteText = useCallback((text: string) => {
+    const id = `paste-${Math.random().toString(36).slice(2)}`;
+    const label = `${id.slice(-4)} · ${text.split(/\r?\n/).length} lines`;
+    setPastedText((current) => [...current, { id, label, text, lines: text.split(/\r?\n/).length }]);
+    setDraft((current) => `${current}[pasted text ${label}]`);
+  }, []);
+
+  const handleExpandPastedText = useCallback((id: string) => {
+    setPastedText((current) => {
+      const part = current.find((item) => item.id === id);
+      if (!part) return current;
+      setDraft((draftValue) => draftValue.replace(`[pasted text ${part.label}]`, part.text));
+      return current.filter((item) => item.id !== id);
+    });
+  }, []);
+
+  const handleRemovePastedText = useCallback((id: string) => {
+    setPastedText((current) => {
+      const part = current.find((item) => item.id === id);
+      if (!part) return current;
+      setDraft((draftValue) => draftValue.replace(`[pasted text ${part.label}]`, ""));
+      return current.filter((item) => item.id !== id);
+    });
+  }, []);
+
+  const composerTooling: InitialProjectComposerTooling = {
+    listSkills,
+    skills: toolSkills,
+    listMcp,
+    mcpServers: toolMcpServers,
+    mcpStatus: toolMcpStatus,
+    mcpStatuses: toolMcpStatuses,
+    listImportedPlugins,
+    importedPlugins: toolImportedPlugins,
+    listExternalAgents,
+    onUploadInboxFiles: uploadInboxFiles,
+  };
 
   useEffect(() => {
     attachmentsRef.current = attachments;
@@ -472,6 +643,7 @@ function InitialProjectTaskStarter({
       const created = await onSubmit(composerDraft);
       if (!created) return false;
       clearSubmittedDraft(composerDraft.attachments);
+      setPastedText([]);
       return true;
     } finally {
       setSending(false);
@@ -481,13 +653,21 @@ function InitialProjectTaskStarter({
   const submit = async () => {
     const text = draft.trim();
     if (!text && attachments.length === 0 && !starterCapability) return;
-    const parts: ComposerDraft["parts"] = text ? [{ type: "text", text }] : [];
+    const resolvedText = pastedText.reduce(
+      (current, item) => current.replace(`[pasted text ${item.label}]`, item.text),
+      text,
+    );
+    const parts: ComposerDraft["parts"] = parseComposerParts(text, {
+      mentions: {},
+      pasteParts: pastedText,
+      designSelectionLabel: () => undefined,
+    });
     const composerDraft: ComposerDraft = {
       mode: "prompt",
       parts,
       attachments,
       text,
-      resolvedText: text,
+      resolvedText,
       capability: starterCapability
         ? { id: starterCapability.id, instruction: starterCapability.instruction }
         : undefined,
@@ -528,6 +708,14 @@ function InitialProjectTaskStarter({
           <NewConversationStarter
             selectedMode={starterMode}
             selectedCapabilityId={starterCapability?.id}
+            promptTemplates={promptTemplates}
+            templates={templates}
+            templatesLoading={templatesLoading}
+            templateBusyId={templateBusyId}
+            getTemplateCover={getTemplateCover}
+            onUseTemplate={onUseTemplate}
+            onInstallTemplate={onInstallTemplate}
+            onRequestTemplates={onRequestTemplates}
             onSelectMode={(mode) => {
               setStarterMode(mode);
               setStarterCapability(null);
@@ -539,7 +727,17 @@ function InitialProjectTaskStarter({
             }}
           />
         </div>
-        <div data-testid="new-conversation-starter-composer-shell" className="mt-6 w-full max-w-[616px] shrink-0">
+        <div data-testid="new-conversation-starter-composer-shell" className="mt-6 w-full shrink-0">
+          {(surface.providerConnectedCount ?? 0) === 0 ? (
+            <button
+              type="button"
+              className="mb-2 flex w-full items-center gap-2 rounded-lg border border-amber-7/40 bg-amber-2/30 px-3 py-2 text-left text-xs text-amber-11 transition-colors hover:bg-amber-3/40"
+              onClick={() => surface.onOpenSettingsSection?.("providers")}
+            >
+              <span className="font-medium">{t("session.no_model_connected")}</span>
+              <span className="text-amber-11/70">{t("session.add_provider_hint")}</span>
+            </button>
+          ) : null}
           <ReactSessionComposer
             draft={draft}
             mentions={{}}
@@ -550,6 +748,7 @@ function InitialProjectTaskStarter({
             busy={sending}
             queuedCount={0}
             disabled={sending || Boolean(surface.modelUnavailable)}
+            inputDisabled={sending}
             modelUnavailable={Boolean(surface.modelUnavailable)}
             statusLabel=""
             modelPickerOpen={surface.modelPickerOpen}
@@ -572,26 +771,38 @@ function InitialProjectTaskStarter({
             listAgents={surface.listAgents}
             onSelectAgent={surface.onSelectAgent}
             listCommands={surface.listCommands}
-            listExternalAgents={() => Promise.resolve([])}
+            listSkills={composerTooling.listSkills}
+            skills={composerTooling.skills}
+            listMcp={composerTooling.listMcp}
+            mcpServers={composerTooling.mcpServers}
+            mcpStatus={composerTooling.mcpStatus}
+            mcpStatuses={composerTooling.mcpStatuses}
+            listImportedPlugins={composerTooling.listImportedPlugins}
+            importedPlugins={composerTooling.importedPlugins}
+            listExternalAgents={composerTooling.listExternalAgents}
             onOpenSettingsSection={surface.onOpenSettingsSection}
-            recentFiles={[]}
-            searchFiles={() => Promise.resolve([])}
+            recentFiles={surface.recentFiles}
+            searchFiles={surface.searchFiles}
             onInsertMention={(_kind, value) => setDraft((current) => `${current}@${value} `)}
-            onPasteText={(text) => setDraft((current) => `${current}${text}`)}
+            onPasteText={handlePasteText}
             onUnsupportedFileLinks={(links) => setDraft((current) => `${current}${links.join("\n")}`)}
-            pastedText={[]}
-            onExpandPastedText={() => {}}
-            onRemovePastedText={() => {}}
-            isRemoteWorkspace={false}
-            isSandboxWorkspace={false}
-            onUploadInboxFiles={null}
+            pastedText={pastedText}
+            onExpandPastedText={handleExpandPastedText}
+            onRemovePastedText={handleRemovePastedText}
+            isRemoteWorkspace={surface.isRemoteWorkspace}
+            isSandboxWorkspace={surface.isSandboxWorkspace}
+            onUploadInboxFiles={composerTooling.onUploadInboxFiles}
             draftScopeKey="initial-project-task"
             layout="inline"
-            inlineAppearance="engine-selected"
             placeholder={newConversationPlaceholder()}
+            topAccessory={starterCapability ? (
+              <div className="mx-4 mt-2 flex flex-wrap gap-1.5">
+                <StarterCapabilityChip capability={starterCapability} onClear={() => setStarterCapability(null)} />
+              </div>
+            ) : null}
             endAccessory={(
               <ProjectEngineBadge
-                engineId={DEFAULT_ENGINE_ID}
+                engineId={engineId ?? DEFAULT_ENGINE_ID}
                 testId="initial-project-engine-badge"
               />
             )}
@@ -917,7 +1128,7 @@ export function SessionPage(props: SessionPageProps) {
   ));
   const sessionPanelState = useSessionPanelState(props.selectedSessionId ?? "");
   const activePanelTab = useActivePanelTab(props.selectedSessionId ?? "");
-  const { workspaceApps, nativeWorkspaces, loaded: pluginContributionsLoaded } = useInstalledPluginContributions(
+  const { conversationTemplates, workspaceApps, nativeWorkspaces, loaded: pluginContributionsLoaded } = useInstalledPluginContributions(
     props.ipolloworkServerClient,
     props.runtimeWorkspaceId,
   );
@@ -1201,6 +1412,12 @@ export function SessionPage(props: SessionPageProps) {
     }
     return props.ipolloworkServerClient.getTemplateCover(props.runtimeWorkspaceId, templateId, templateResourceScope);
   }, [props.ipolloworkServerClient, props.runtimeWorkspaceId, templateResourceScope]);
+  const getStarterTemplateCover = useCallback((templateId: string) => {
+    if (!props.ipolloworkServerClient || !props.runtimeWorkspaceId) {
+      return Promise.reject(new Error("Template cover is unavailable."));
+    }
+    return props.ipolloworkServerClient.getTemplateCover(props.runtimeWorkspaceId, templateId, PERSONAL_WORK_CONTEXT_ID);
+  }, [props.ipolloworkServerClient, props.runtimeWorkspaceId]);
   const validateCurrentTemplate = useCallback(async () => {
     if (!props.ipolloworkServerClient || !props.runtimeWorkspaceId || !props.selectedSessionId) return null;
     setTemplateValidationBusy(true);
@@ -2671,9 +2888,19 @@ export function SessionPage(props: SessionPageProps) {
     [props.sidebar.projectSessionLists, sessionActionId],
   );
   const hasNamedProject = props.sidebar.projectSessionLists.some((project) => !project.workspace.isDefault);
-  const showInitialProjectTaskStarter = !hasNamedProject && !props.selectedSessionId && Boolean(props.surface);
+  const selectedProject = props.sidebar.projectSessionLists.find(
+    (project) => project.workspace.id === props.selectedWorkspaceId,
+  );
+  const selectedProjectHasNoTasks = Boolean(
+    selectedProject
+      && !selectedProject.workspace.isDefault
+      && selectedProject.status === "ready"
+      && selectedProject.sessions.length === 0,
+  );
+  const showInitialProjectTaskStarter = !props.selectedSessionId
+    && Boolean(props.surface)
+    && (!hasNamedProject || selectedProjectHasNoTasks);
   const showWorkspaceSetupEmptyState = props.workspaces.length === 0 && !props.selectedSessionId;
-  const showNewConversationChrome = !props.selectedSessionId && !showWorkspaceSetupEmptyState;
   const showStartupSkeleton =
     !props.selectedSessionId &&
     !props.clientConnected &&
@@ -2743,7 +2970,7 @@ export function SessionPage(props: SessionPageProps) {
       (showWorkspaceSetupEmptyState || props.selectedSessionId),
   );
   const showMainHeaderMenu = showHeaderMenu && showMainHeaderTitle;
-  const mainHeaderHidden = mainWorkspaceView === "extensions" || (showNewConversationChrome && !sidebarVisuallyCollapsed);
+  const mainHeaderHidden = mainWorkspaceView === "extensions";
   const visibleWorkspaceWidth = viewportWidth - (shellConfig.sidebar && sidebarOpen ? effectiveLeftSidebarWidth : 0);
   const floatingRightPanelToggleOffset = sidePanelOpen
     ? Math.min(effectiveBrowserPanelWidth, Math.max(0, visibleWorkspaceWidth - 40)) + 8
@@ -3147,7 +3374,30 @@ export function SessionPage(props: SessionPageProps) {
               {mainWorkspaceView === null && showInitialProjectTaskStarter && props.surface ? (
                 <InitialProjectTaskStarter
                   surface={props.surface}
-                  onSubmit={props.sidebar.onCreateInitialProjectTask}
+                  workspaceClient={props.ipolloworkServerClient}
+                  workspaceId={props.runtimeWorkspaceId}
+                  opencodeBaseUrl={props.opencodeBaseUrl}
+                  ipolloworkToken={props.ipolloworkServerToken}
+                  engineId={selectedProject?.workspace.engineId ?? DEFAULT_ENGINE_ID}
+                  promptTemplates={conversationTemplates}
+                  templates={availableStarterTemplateCatalog}
+                  templatesLoading={starterTemplateCatalogLoading}
+                  templateBusyId={templateBusyId}
+                  getTemplateCover={getStarterTemplateCover}
+                  onUseTemplate={(templateId, surface) => {
+                    void props.sidebar.onCreateTaskInWorkspace(
+                      props.selectedWorkspaceId,
+                      surface === "video" ? "video" : "design",
+                      templateId,
+                      PERSONAL_WORK_CONTEXT_ID,
+                    );
+                  }}
+                  onInstallTemplate={(templateId) => void installStarterTemplate(templateId)}
+                  onRequestTemplates={() => void refreshStarterTemplateCatalog()}
+                  onSubmit={(draft) => props.sidebar.onCreateInitialProjectTask(
+                    draft,
+                    selectedProjectHasNoTasks ? props.selectedWorkspaceId : undefined,
+                  )}
                 />
               ) : null}
 

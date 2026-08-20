@@ -84,4 +84,12 @@ describe("workspace resize performance", () => {
       '{mainHeaderHidden && mainWorkspaceView !== "extensions" ? (',
     );
   });
+
+  test("keeps the starter navigation shell while hiding its title", () => {
+    expect(sessionPageSource).toContain("mac:titlebar-drag");
+    expect(sessionPageSource).toContain(
+      'const mainHeaderHidden = mainWorkspaceView === "extensions";',
+    );
+    expect(sessionPageSource).toContain("{showMainHeaderTitle ? (");
+  });
 });
