@@ -318,6 +318,29 @@ html:lang(zh) .composer-design-selection {
   border-radius: 8px !important;
 }
 
+[data-settings-shell][data-settings-compact] [data-settings-close] {
+  appearance: none !important;
+  border: 0 !important;
+  border-color: transparent !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  border-radius: 8px !important;
+  outline: none !important;
+  padding: 0 !important;
+}
+
+[data-settings-shell][data-settings-compact] [data-settings-close]:hover {
+  background: color-mix(in oklab, var(--foreground) 6%, transparent) !important;
+  box-shadow: none !important;
+}
+
+[data-settings-shell][data-settings-compact] [data-settings-close]::before,
+[data-settings-shell][data-settings-compact] [data-settings-close]::after {
+  display: none !important;
+  content: none !important;
+  box-shadow: none !important;
+}
+
 *::-webkit-scrollbar {
   width: 10px;
   height: 10px;
