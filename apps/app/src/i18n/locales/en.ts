@@ -557,7 +557,7 @@ export default {
   "templates.brief.reference_remove": "Remove {name}",
   "templates.brief.reference_supported_formats": "Supported: PDF, DOCX, MD, TXT, PNG, JPG, JPEG, WebP, CSV, JSON.",
   "templates.brief.reference_unsupported_one": "{name} is not a supported reference document.",
-  "templates.brief.reference_unsupported_many": "{count} files are not supported reference documents.",
+  "templates.brief.reference_unsupported_other": "{count} files are not supported reference documents.",
   "templates.brief.reference_prepare_failed": "Could not prepare this reference document.",
   "templates.brief.reference_autofilled": "Filled title, audience, and details from the reference document. You can edit them before sending.",
   "templates.brief.submit_failed": "Could not submit this template brief.",

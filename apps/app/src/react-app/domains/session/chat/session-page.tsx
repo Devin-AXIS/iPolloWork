@@ -818,7 +818,7 @@ function TemplateBriefCard({ template, onSubmit, onClose }: { template: Template
       toast.warning(
         unsupported.length === 1
           ? t("templates.brief.reference_unsupported_one", { name: unsupported[0]?.name ?? "" })
-          : t("templates.brief.reference_unsupported_many", { count: unsupported.length }),
+          : t("templates.brief.reference_unsupported_other", { count: unsupported.length }),
         { description: t("templates.brief.reference_supported_formats") },
       );
     }

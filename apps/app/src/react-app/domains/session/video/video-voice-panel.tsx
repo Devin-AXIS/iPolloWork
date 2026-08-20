@@ -93,10 +93,30 @@ function canSynthesizeCustomVoice(voice: CustomVoice | undefined) {
   return voice?.status === "OK";
 }
 
+const PRESET_VOICE_LABEL_KEYS: Record<string, string> = {
+  longanyang: "video.voice.preset_name.longanyang",
+  longanhuan_v3: "video.voice.preset_name.longanhuan_v3",
+  longanlang_v3: "video.voice.preset_name.longanlang_v3",
+  longyingmu_v3: "video.voice.preset_name.longyingmu_v3",
+};
+
+const PRESET_VOICE_DESCRIPTION_KEYS: Record<string, string> = {
+  longanyang: "video.voice.preset_description.longanyang",
+  longanhuan_v3: "video.voice.preset_description.longanhuan_v3",
+  longanlang_v3: "video.voice.preset_description.longanlang_v3",
+  longyingmu_v3: "video.voice.preset_description.longyingmu_v3",
+};
+
 function presetVoiceLabel(voiceId: string) {
-  return BAILIAN_PRESET_VOICES.some((voice) => voice.id === voiceId)
-    ? t(`video.voice.preset_name.${voiceId}`)
+  const labelKey = PRESET_VOICE_LABEL_KEYS[voiceId];
+  return BAILIAN_PRESET_VOICES.some((voice) => voice.id === voiceId) && labelKey
+    ? t(labelKey)
     : voiceId;
+}
+
+function presetVoiceDescription(voiceId: string) {
+  const descriptionKey = PRESET_VOICE_DESCRIPTION_KEYS[voiceId];
+  return descriptionKey ? t(descriptionKey) : "";
 }
 
 function customVoiceAvailabilityMessage(voice: CustomVoice | undefined) {
@@ -410,7 +430,7 @@ export function VideoVoicePanel({ sessionId, workspaceRoot, client, workspaceId,
               </div>
               <Select value={presetVoiceId} onValueChange={(value) => { if (value) void choosePreset(value); }}>
                 <SelectTrigger className="w-full" aria-label={t("video.voice.official_aria")}><SelectValue placeholder={t("video.voice.choose_official")} /></SelectTrigger>
-                <SelectContent align="start"><SelectGroup><SelectLabel>CosyVoice</SelectLabel>{BAILIAN_PRESET_VOICES.map((voice) => <SelectItem key={voice.id} value={voice.id}>{presetVoiceLabel(voice.id)} · {t(`video.voice.preset_description.${voice.id}`)}</SelectItem>)}</SelectGroup></SelectContent>
+                <SelectContent align="start"><SelectGroup><SelectLabel>CosyVoice</SelectLabel>{BAILIAN_PRESET_VOICES.map((voice) => <SelectItem key={voice.id} value={voice.id}>{presetVoiceLabel(voice.id)} · {presetVoiceDescription(voice.id)}</SelectItem>)}</SelectGroup></SelectContent>
               </Select>
               {activeVoice?.source === "preset" ? <SelectedVoice voiceId={activeVoice.voiceId} label={presetVoiceLabel(activeVoice.voiceId)} /> : null}
               <VoiceAiButton disabled={!activeVoice || activeVoice.source !== "preset"} onClick={sendVoiceToAi} />

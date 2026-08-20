@@ -559,7 +559,7 @@ export default {
   "templates.brief.reference_remove": "移除 {name}",
   "templates.brief.reference_supported_formats": "支持：PDF、DOCX、MD、TXT、PNG、JPG、JPEG、WebP、CSV、JSON。",
   "templates.brief.reference_unsupported_one": "{name} 不是支持的参考文档格式。",
-  "templates.brief.reference_unsupported_many": "{count} 个文件不是支持的参考文档格式。",
+  "templates.brief.reference_unsupported_other": "{count} 个文件不是支持的参考文档格式。",
   "templates.brief.reference_prepare_failed": "无法准备这个参考文档。",
   "templates.brief.reference_autofilled": "已根据参考文档填入标题、受众和信息，可手动修改。",
   "templates.brief.submit_failed": "无法提交模板需求，请重试。",
