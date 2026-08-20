@@ -26,12 +26,14 @@ import {
 import type { ServerConfig } from "./types.js";
 import {
   onRuntimeOpencodeConfigWrite,
+  onRuntimeProviderChannelsWrite,
+  readRuntimeProviderChannels,
   readRuntimeOpencodeConfig,
   runtimeDisabledProviderList,
   runtimeMcpMap,
   runtimePluginList,
-  runtimeStorageDir,
 } from "./runtime-opencode-config-store.js";
+import { runtimeStorageDir } from "./runtime-storage.js";
 
 const IPOLLOWORK_AGENT_PROMPT = `You are iPolloWork.
 
@@ -90,9 +92,13 @@ export async function buildiPolloWorkRuntimeConfigObject(
   workspaceId?: string,
 ): Promise<Record<string, unknown>> {
   const runtimeConfig = config && workspaceId ? await readRuntimeOpencodeConfig(config, workspaceId) : {};
+  const providerChannels = config ? await readRuntimeProviderChannels(config) : {};
   const disabledProviders = runtimeDisabledProviderList(runtimeConfig);
   return {
     ...runtimeConfig,
+    ...(runtimeConfig.provider || Object.keys(providerChannels).length ? {
+      provider: { ...runtimeConfig.provider, ...providerChannels },
+    } : {}),
     default_agent: runtimeConfig.default_agent ?? "ipollowork",
     agent: {
       ipollowork: {
@@ -156,8 +162,16 @@ export async function writeiPolloWorkRuntimeConfigFile(config: ServerConfig, wor
  * Returns an unsubscribe function.
  */
 export function keepiPolloWorkRuntimeConfigFileFresh(config: ServerConfig, workspaceId: string): () => void {
-  return onRuntimeOpencodeConfigWrite((writeConfig, writtenWorkspaceId) => {
+  const disposeWorkspaceConfig = onRuntimeOpencodeConfigWrite((writeConfig, writtenWorkspaceId) => {
     if (writtenWorkspaceId !== workspaceId) return;
     void writeiPolloWorkRuntimeConfigFile(writeConfig, workspaceId).catch(() => undefined);
   });
+  const disposeProviderChannels = onRuntimeProviderChannelsWrite((writeConfig) => {
+    if (writeConfig !== config) return;
+    void writeiPolloWorkRuntimeConfigFile(writeConfig, workspaceId).catch(() => undefined);
+  });
+  return () => {
+    disposeWorkspaceConfig();
+    disposeProviderChannels();
+  };
 }

@@ -445,7 +445,7 @@ export default {
               return Boolean(tab);
             })()`);
             ctx.assert(clicked, "Personal plugin source tab was not found.");
-            await ctx.waitFor(`document.body.innerText.includes('管理当前工作区安装或导入的完整插件能力包。') || document.body.innerText.includes('Manage complete plugin packages installed or imported into this workspace.')`, {
+            await ctx.waitFor(`document.body.innerText.includes('管理全局安装或导入的插件') || document.body.innerText.includes('Manage globally installed or imported plugins.')`, {
               timeoutMs: 30_000,
               label: "personal plugin packages",
             });

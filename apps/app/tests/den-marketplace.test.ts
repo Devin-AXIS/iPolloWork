@@ -13,7 +13,7 @@ const manifest = {
   package: { version: "1.0.0", updateId: "plugin_test", publisher: { id: "ipollowork", name: "iPolloWork" } },
 };
 
-describe("iPolloWork Cloud plugin marketplace", () => {
+describe("iPolloWork Cloud plugin-package source", () => {
   afterEach(() => {
     Object.defineProperty(globalThis, "fetch", { configurable: true, value: originalFetch });
   });

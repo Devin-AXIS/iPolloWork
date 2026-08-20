@@ -2,6 +2,7 @@ import { DEEPSEEK_HARNESS_ENGINE_ID } from "@ipollowork/types/workspace";
 import { providerApiKeyCredentialRef } from "@ipollowork/types/provider-credentials";
 
 import {
+  DeepSeekHarnessClient,
   isDeepSeekHarnessRpcClient,
 } from "@/app/lib/deepseek-harness-client";
 import type { ProviderListItem } from "@/app/types";
@@ -184,6 +185,13 @@ export const deepSeekHarnessProviderEngineAdapter: ProviderEngineAdapter = {
     disabledProviders: false,
     authChangesRequireReload: false,
   },
+  createClient({ endpoint }) {
+    return new DeepSeekHarnessClient({
+      serverBaseUrl: endpoint.baseUrl,
+      workspaceId: endpoint.workspaceId,
+      token: endpoint.token,
+    });
+  },
   connect: connection,
   emptyProjectConfig: () => "{}\n",
   async readProjectConfig() {
@@ -200,7 +208,6 @@ export const deepSeekHarnessProviderEngineAdapter: ProviderEngineAdapter = {
   },
   projectProviderIds: () => [],
   formatProjectProviderDisabledState: (raw) => raw,
-  formatProjectWithoutProvider: (raw) => raw,
   buildCloudProviderPatch: unsupportedProviderConfiguration,
   buildCompatibleProviderPatch: unsupportedProviderConfiguration,
 };

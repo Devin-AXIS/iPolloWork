@@ -43,6 +43,7 @@ extraResources:
     to: dsh-runtime
     filter:
       - package.json
+      - ipollowork-host-tools.mjs
       - node_modules/**/*
   # Templates are installed by copying their full directory into the local
   # library. Electron's virtual ASAR filesystem can read them but Node cannot

@@ -1,7 +1,6 @@
 import { createHash } from "node:crypto";
 
 import { authorizationVault } from "./authorization-runtime.js";
-import type { EnvService } from "./env-file.js";
 import { createAliyunOssV4Request, createS3V4Request } from "./object-storage-signing.js";
 import type { ServerConfig } from "./types.js";
 
@@ -212,35 +211,6 @@ export async function listAuthorizationServices(config: ServerConfig): Promise<A
   return Promise.all(AUTHORIZATION_SERVICES.map(async (service) =>
     authorizationServiceStatus(service, await readAuthorizationServiceValues(config, service.id))
   ));
-}
-
-export async function migrateLegacyAuthorizationServices(config: ServerConfig, env: EnvService): Promise<number> {
-  let records: Awaited<ReturnType<EnvService["list"]>>;
-  try {
-    records = await env.list();
-  } catch {
-    return 0;
-  }
-  const legacy = new Map(records.map((record) => [record.key, record.value.trim()] as const));
-  let migrated = 0;
-  for (const service of AUTHORIZATION_SERVICES) {
-    const current = await readAuthorizationServiceValues(config, service.id);
-    if (Object.keys(current).length) continue;
-    const values = Object.fromEntries([...service.keys, ...(service.optionalKeys ?? [])]
-      .map((key) => [key, legacy.get(key) ?? ""] as const)
-      .filter(([, value]) => Boolean(value)));
-    if (!Object.keys(values).length) continue;
-    await saveAuthorizationServiceValues(config, service, values);
-    migrated += 1;
-  }
-
-  const storageKeys = AUTHORIZATION_SERVICES
-    .filter((service) => service.category === "storage" && service.kind !== "routing")
-    .flatMap((service) => [...service.keys, ...(service.optionalKeys ?? [])]);
-  for (const key of storageKeys) {
-    if (legacy.has(key)) await env.delete(key);
-  }
-  return migrated;
 }
 
 async function fetchAuthorizationTest(url: string, init: RequestInit): Promise<AuthorizationServiceTestResult> {

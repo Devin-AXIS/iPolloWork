@@ -1,8 +1,9 @@
 /** @jsxImportSource react */
 import { useMemo, useRef, useState } from "react";
-import { Archive, Bot, FileText, Loader2, Package, ShieldCheck, Upload } from "lucide-react";
+import { Archive, Bot, FileText, Github, Loader2, Package, Search, ShieldCheck, Upload } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { toast } from "@/components/ui/sonner";
 import {
   Dialog,
@@ -36,7 +37,11 @@ export function PluginPackageImportModal(props: PluginPackageImportModalProps) {
   const locale = currentLocale();
   const inputRef = useRef<HTMLInputElement>(null);
   const operationRef = useRef(0);
+  const [source, setSource] = useState<"file" | "github">("file");
   const [upload, setUpload] = useState<iPolloWorkPluginPackageUpload | null>(null);
+  const [githubUrl, setGithubUrl] = useState("");
+  const [previewedGithubUrl, setPreviewedGithubUrl] = useState<string | null>(null);
+  const [sourceWarnings, setSourceWarnings] = useState<string[]>([]);
   const [preview, setPreview] = useState<iPolloWorkPluginPackagePreview | null>(null);
   const [busy, setBusy] = useState<"preview" | "install" | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -50,6 +55,9 @@ export function PluginPackageImportModal(props: PluginPackageImportModalProps) {
 
   const reset = () => {
     setUpload(null);
+    setGithubUrl("");
+    setPreviewedGithubUrl(null);
+    setSourceWarnings([]);
     setPreview(null);
     setBusy(null);
     setError(null);
@@ -72,6 +80,8 @@ export function PluginPackageImportModal(props: PluginPackageImportModalProps) {
       const response = await props.client.validatePluginPackageUpload(props.workspaceId, nextUpload);
       if (operationRef.current !== operation) return;
       setUpload(nextUpload);
+      setPreviewedGithubUrl(null);
+      setSourceWarnings([]);
       setPreview(response.preview);
     } catch (cause) {
       if (operationRef.current !== operation) return;
@@ -82,13 +92,41 @@ export function PluginPackageImportModal(props: PluginPackageImportModalProps) {
     }
   };
 
+  const previewGithub = async () => {
+    const url = githubUrl.trim();
+    if (!url) return;
+    const operation = ++operationRef.current;
+    setBusy("preview");
+    setError(null);
+    setPreview(null);
+    setUpload(null);
+    setPreviewedGithubUrl(null);
+    try {
+      const response = await props.client.previewGithubPluginPackage(props.workspaceId, { url });
+      if (operationRef.current !== operation) return;
+      setPreview(response.preview);
+      setPreviewedGithubUrl(url);
+      setSourceWarnings(response.source.warnings);
+    } catch (cause) {
+      if (operationRef.current !== operation) return;
+      setError(formatPluginPlatformError(cause, t("plugin_platform.import_error")));
+    } finally {
+      if (operationRef.current === operation) setBusy(null);
+    }
+  };
+
   const install = async () => {
-    if (!upload || !preview) return;
+    if (!preview || (source === "file" ? !upload : !previewedGithubUrl)) return;
     const operation = ++operationRef.current;
     setBusy("install");
     setError(null);
     try {
-      const response = await props.client.importPluginPackage(props.workspaceId, upload);
+      const response = source === "file" && upload
+        ? await props.client.importPluginPackage(props.workspaceId, upload)
+        : previewedGithubUrl
+          ? await props.client.importGithubPluginPackage(props.workspaceId, { url: previewedGithubUrl })
+          : null;
+      if (!response) return;
       await props.onInstalled(response.result.pluginId);
       toast.success(t("plugin_platform.status.installed"));
       if (operationRef.current !== operation) return;
@@ -127,24 +165,42 @@ export function PluginPackageImportModal(props: PluginPackageImportModalProps) {
             }}
           />
 
-          <div className="rounded-2xl border border-dashed border-dls-border bg-dls-hover/30 p-5 text-center">
-            <Archive size={26} className="mx-auto text-dls-secondary" />
-            <p className="mt-3 text-sm font-medium text-dls-text">
-              {upload?.archiveName ?? t("plugin_platform.import_choose_title")}
-            </p>
-            <p className="mt-1 text-xs leading-5 text-dls-secondary">{t("plugin_platform.import_choose_description")}</p>
-            <Button
-              type="button"
-              size="sm"
-              variant="outline"
-              className="mt-4"
-              disabled={busy !== null}
-              onClick={() => inputRef.current?.click()}
-            >
-              {busy === "preview" ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}
-              {preview ? t("plugin_platform.import_choose_another") : t("plugin_platform.import_choose")}
+          <div className="grid grid-cols-2 gap-1 rounded-xl bg-dls-hover p-1">
+            <Button type="button" size="sm" variant={source === "file" ? "secondary" : "ghost"} onClick={() => { reset(); setSource("file"); }}>
+              <Archive size={14} />{t("plugin_platform.import_file")}
+            </Button>
+            <Button type="button" size="sm" variant={source === "github" ? "secondary" : "ghost"} onClick={() => { reset(); setSource("github"); }}>
+              <Github size={14} />GitHub
             </Button>
           </div>
+
+          {source === "file" ? (
+            <div className="rounded-2xl border border-dashed border-dls-border bg-dls-hover/30 p-5 text-center">
+              <Archive size={26} className="mx-auto text-dls-secondary" />
+              <p className="mt-3 text-sm font-medium text-dls-text">
+                {upload?.archiveName ?? t("plugin_platform.import_choose_title")}
+              </p>
+              <p className="mt-1 text-xs leading-5 text-dls-secondary">{t("plugin_platform.import_choose_description")}</p>
+              <Button type="button" size="sm" variant="outline" className="mt-4" disabled={busy !== null} onClick={() => inputRef.current?.click()}>
+                {busy === "preview" ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}
+                {preview ? t("plugin_platform.import_choose_another") : t("plugin_platform.import_choose")}
+              </Button>
+            </div>
+          ) : (
+            <div className="space-y-3 rounded-2xl border border-dls-border bg-dls-hover/30 p-5">
+              <div>
+                <p className="text-sm font-medium text-dls-text">{t("plugin_platform.import_github_title")}</p>
+                <p className="mt-1 text-xs leading-5 text-dls-secondary">{t("plugin_platform.import_github_description")}</p>
+              </div>
+              <div className="flex gap-2">
+                <Input value={githubUrl} onChange={(event) => { setGithubUrl(event.currentTarget.value); setPreview(null); setPreviewedGithubUrl(null); }} placeholder="https://github.com/owner/repository" disabled={busy !== null} />
+                <Button type="button" variant="outline" disabled={busy !== null || !githubUrl.trim()} onClick={() => void previewGithub()}>
+                  {busy === "preview" ? <Loader2 size={14} className="animate-spin" /> : <Search size={14} />}
+                  {t("plugin_platform.import_preview")}
+                </Button>
+              </div>
+            </div>
+          )}
 
           {preview && previewManifest ? (
             <div className="overflow-hidden rounded-2xl border border-dls-border">
@@ -194,6 +250,11 @@ export function PluginPackageImportModal(props: PluginPackageImportModalProps) {
           ) : null}
 
           {error ? <div role="alert" className="rounded-xl border border-red-6 bg-red-2 px-3 py-2 text-xs leading-5 text-red-11">{error}</div> : null}
+          {sourceWarnings.length > 0 ? (
+            <div className="rounded-xl border border-amber-6 bg-amber-2 px-3 py-2 text-xs leading-5 text-amber-11">
+              {sourceWarnings.map((warning) => <div key={warning}>{warning}</div>)}
+            </div>
+          ) : null}
         </div>
 
         <DialogFooter className="shrink-0">

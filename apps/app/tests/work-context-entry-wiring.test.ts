@@ -60,6 +60,9 @@ describe("personal and Enterprise chat entry wiring", () => {
     expect(routeState).not.toContain("canonicalWorkspacesForWorkContext(");
     expect(routeState).not.toContain("pruneServerWorkspacesForWorkContext(");
     expect(routeState).toContain("workContextRef.current === requestedContextId");
+    expect(routeState).toContain("workspaceSetSelected(workspaceId)");
+    expect(routeState).toContain("workspaceSetRuntimeActive(workspaceId)");
+    expect(routeState).toContain("endpoint.client.activateWorkspace(endpoint.workspaceId, { persist: true })");
     expect(sessionRoute).toContain("workContextId: activeWorkContextId");
     expect(sessionRoute).toContain("sessionsByWorkspaceId,");
     expect(sessionRoute).not.toContain("ChatSpace");

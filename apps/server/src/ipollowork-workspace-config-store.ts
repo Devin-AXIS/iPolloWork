@@ -131,9 +131,8 @@ export async function hasiPolloWorkWorkspaceConfig(
 
 /**
  * Seed the DB-backed ipollowork config for a workspace if no row exists yet.
- * Used at workspace creation and as the migrate-on-read landing spot for
- * legacy `.opencode/ipollowork.json` files. No-op when a row is already present,
- * so it never clobbers live provisioning state.
+ * Used at workspace creation and on first access. No-op when a row is already
+ * present, so it never clobbers live provisioning state.
  */
 export async function seediPolloWorkWorkspaceConfigIfEmpty(
   config: ServerConfig,
@@ -144,11 +143,4 @@ export async function seediPolloWorkWorkspaceConfigIfEmpty(
     return readiPolloWorkWorkspaceConfig(config, workspaceId);
   }
   return writeiPolloWorkWorkspaceConfig(config, workspaceId, () => seed);
-}
-
-export function mergeiPolloWorkWorkspaceConfigs(
-  legacy: Record<string, unknown>,
-  stored: Record<string, unknown>,
-): Record<string, unknown> {
-  return { ...legacy, ...stored };
 }

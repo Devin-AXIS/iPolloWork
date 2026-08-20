@@ -1,4 +1,5 @@
 import type { DynamicToolUIPart, UIMessage } from "ai";
+import { DEEPSEEK_HARNESS_INTERNAL_SYSTEM_PREFIX } from "@ipollowork/types/workspace";
 
 import type { TodoItem } from "@/app/types";
 import { t } from "@/i18n";
@@ -39,8 +40,6 @@ type ToolState = {
   toolName: string;
   input: unknown;
 };
-
-export const DEEPSEEK_HARNESS_INTERNAL_SYSTEM_PREFIX = "<system>\n<!-- ipollowork-internal-context -->\n";
 
 const LEGACY_SYSTEM_BLOCK = /^<system>\n[\s\S]*\n<\/system>$/u;
 const INTERNAL_SESSION_TITLE = /^<system(?:>|\s)/iu;

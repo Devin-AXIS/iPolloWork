@@ -14,6 +14,8 @@ import {
   desktopResumeEvent,
   resolveWorkspaceListSelectedId,
   workspaceBootstrap,
+  workspaceSetRuntimeActive,
+  workspaceSetSelected,
   type iPolloWorkServerInfo,
   type WorkspaceList,
 } from "@/app/lib/desktop";
@@ -132,6 +134,28 @@ export function useWorkspaceRouteState(input: UseWorkspaceRouteStateInput) {
       resolveWorkspaceEndpoint(workspace, localServerRef.current),
     [],
   );
+
+  // The canonical route owns workspace selection. Session rows, search,
+  // external controls, and task creation can all navigate directly without
+  // passing through the project-row handler, so synchronizing only inside
+  // individual click handlers leaves Electron and the active engine pointed
+  // at a different workspace than the visible conversation.
+  useEffect(() => {
+    if (loading || !selectedWorkspace) return;
+    const workspaceId = selectedWorkspace.id.trim();
+    if (!workspaceId) return;
+
+    writeActiveWorkspaceId(workspaceId);
+    const endpoint = endpointForWorkspace(selectedWorkspace);
+    if (endpoint) {
+      void endpoint.client.activateWorkspace(endpoint.workspaceId, { persist: true }).catch(() => undefined);
+    }
+    if (!isDesktopRuntime()) return;
+    void workspaceSetSelected(workspaceId)
+      .then(() => workspaceSetRuntimeActive(workspaceId))
+      .catch(() => undefined);
+  }, [endpointForWorkspace, loading, selectedWorkspace]);
+
   const refreshInFlightRef = useRef(false);
   const refreshEpochRef = useRef(0);
   const workContextRef = useRef(workContextId);

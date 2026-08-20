@@ -2,8 +2,7 @@ import type { Message, Part, Session, Todo } from "@opencode-ai/sdk/v2/client";
 import { desktopFetch } from "./desktop";
 import { isDesktopRuntime } from "./runtime-env";
 import type { ExecResult, OpencodeConfigFile, WorkspaceInfo, WorkspaceList } from "./desktop";
-import type { DenOrgMarketplace, DenOrgPluginResolved, DenResourceSnapshot } from "./den-types";
-import type { CloudImportedMarketplace, CloudImportedPlugin } from "../cloud/import-state";
+import type { DenResourceSnapshot } from "./den-types";
 import type { HyperframesCatalogItem } from "@ipollowork/types/hyperframes";
 import {
   templatePackageMediaTypeForFilename,
@@ -26,7 +25,6 @@ export type iPolloWorkServerCapabilities = {
       repo?: { owner: string; name: string; ref: string };
     };
   };
-  plugins: { read: boolean; write: boolean };
   mcp: { read: boolean; write: boolean };
   commands: { read: boolean; write: boolean };
   config: { read: boolean; write: boolean };
@@ -152,13 +150,6 @@ export type iPolloWorkSessionSnapshot = {
 
 export type iPolloWorkResourceScope = "personal" | `enterprise:${string}`;
 
-export type iPolloWorkPluginItem = {
-  spec: string;
-  source: "config" | "dir.project" | "dir.global";
-  scope: "project" | "global";
-  path?: string;
-};
-
 export type iPolloWorkSkillItem = {
   name: string;
   path: string;
@@ -231,15 +222,6 @@ export type iPolloWorkAuthorizedFoldersUpdateResponse = {
   updatedAt: number;
 };
 
-export type iPolloWorkRuntimeConfigMigrationResult = {
-  migrated: boolean;
-  keys: string[];
-  legacyKeys: string[];
-  userOpencodeKeys: string[];
-  updatedAt: number | null;
-  legacyError?: string | null;
-};
-
 export type iPolloWorkRuntimeConfigStatus = {
   runtime: Record<string, unknown>;
   runtimeKeys: string[];
@@ -250,25 +232,12 @@ export type iPolloWorkRuntimeConfigStatus = {
     runtimeDatabase: { keys: string[]; config: Record<string, unknown> };
     injected: { keys: string[]; config: Record<string, unknown> };
   };
-  legacyiPolloWork: {
-    path: string;
-    keys: string[];
-    error: string | null;
-  };
-  userOpencode: {
-    path: string;
-    exists: boolean;
-    keys: string[];
-    migratableKeys: string[];
-  };
 };
 
 export type iPolloWorkDesktopCloudSyncChange = {
   id: string;
   kind: "new" | "modified" | "removed";
-  resourceKind: "llmProvider" | "marketplace" | "plugin" | "configItem";
-  marketplaceId?: string;
-  pluginId?: string;
+  resourceKind: "llmProvider";
   previousLastUpdatedAt: string | null;
   nextLastUpdatedAt: string | null;
   queuedAt: number;
@@ -283,16 +252,6 @@ export type iPolloWorkDesktopCloudSyncState = {
 export type iPolloWorkDesktopCloudSyncResult = {
   changes: iPolloWorkDesktopCloudSyncChange[];
   state: iPolloWorkDesktopCloudSyncState;
-};
-
-export type iPolloWorkCloudPluginInstallResult = {
-  item: CloudImportedPlugin;
-  warnings: string[];
-};
-
-export type iPolloWorkCloudPluginsResult = {
-  marketplaces: Record<string, CloudImportedMarketplace>;
-  plugins: Record<string, CloudImportedPlugin>;
 };
 
 export type iPolloWorkPluginPackageItem = {
@@ -390,19 +349,19 @@ export type iPolloWorkPluginAuthorizationFlow = {
   expiresAt: number;
 };
 
-export type iPolloWorkClaudePluginComponent = {
+export type iPolloWorkGitHubPluginComponent = {
   type: "mcp" | "skill" | "command" | "agent";
   name: string;
   description: string | null;
 };
 
-export type iPolloWorkClaudePluginPreview = {
+export type iPolloWorkGitHubPluginPreview = {
   pluginId: string;
   name: string;
   description: string | null;
   version: string | null;
   source: { owner: string; repo: string; ref: string; dir: string | null };
-  components: iPolloWorkClaudePluginComponent[];
+  components: iPolloWorkGitHubPluginComponent[];
   warnings: string[];
 };
 
@@ -1503,17 +1462,6 @@ export function createiPolloWorkServerClient(options: { baseUrl: string; token?:
           timeoutMs: timeouts.config,
         },
       ),
-    migrateRuntimeConfig: (workspaceId: string) =>
-      requestJson<iPolloWorkRuntimeConfigMigrationResult>(
-        baseUrl,
-        `/workspace/${encodeURIComponent(workspaceId)}/runtime-config/migrate`,
-        {
-          token,
-          hostToken,
-          method: "POST",
-          timeoutMs: timeouts.config,
-        },
-      ),
     getRuntimeConfigStatus: (workspaceId: string) =>
       requestJson<iPolloWorkRuntimeConfigStatus>(
         baseUrl,
@@ -1539,27 +1487,6 @@ export function createiPolloWorkServerClient(options: { baseUrl: string; token?:
         hostToken,
         method: "POST",
         body: { snapshot },
-        timeoutMs: timeouts.config,
-      }),
-    listCloudPlugins: (workspaceId: string) =>
-      requestJson<iPolloWorkCloudPluginsResult>(baseUrl, `/workspace/${encodeURIComponent(workspaceId)}/cloud-plugins`, {
-        token,
-        hostToken,
-        timeoutMs: timeouts.config,
-      }),
-    installCloudPlugin: (workspaceId: string, payload: { marketplaceId: string | null; marketplace?: DenOrgMarketplace | null; resolved: DenOrgPluginResolved }) =>
-      requestJson<iPolloWorkCloudPluginInstallResult>(baseUrl, `/workspace/${encodeURIComponent(workspaceId)}/cloud-plugins`, {
-        token,
-        hostToken,
-        method: "POST",
-        body: payload,
-        timeoutMs: timeouts.config,
-      }),
-    removeCloudPlugin: (workspaceId: string, pluginId: string) =>
-      requestJson<iPolloWorkCloudPluginInstallResult>(baseUrl, `/workspace/${encodeURIComponent(workspaceId)}/cloud-plugins/${encodeURIComponent(pluginId)}`, {
-        token,
-        hostToken,
-        method: "DELETE",
         timeoutMs: timeouts.config,
       }),
     listPluginPackages: (workspaceId: string) =>
@@ -1704,16 +1631,21 @@ export function createiPolloWorkServerClient(options: { baseUrl: string; token?:
         method: "DELETE",
         timeoutMs: timeouts.config,
       }),
-    previewClaudePlugin: (workspaceId: string, payload: { url: string; ref?: string }) =>
-      requestJson<{ preview: iPolloWorkClaudePluginPreview }>(baseUrl, `/workspace/${encodeURIComponent(workspaceId)}/claude-plugins`, {
+    previewGithubPluginPackage: (workspaceId: string, payload: { url: string; ref?: string }) =>
+      requestJson<{ preview: iPolloWorkPluginPackagePreview; source: iPolloWorkGitHubPluginPreview }>(baseUrl, `/workspace/${encodeURIComponent(workspaceId)}/plugin-packages/import/github`, {
         token,
         hostToken,
         method: "POST",
         body: { ...payload, dryRun: true },
         timeoutMs: timeouts.config,
       }),
-    installClaudePlugin: (workspaceId: string, payload: { url: string; ref?: string }) =>
-      requestJson<iPolloWorkCloudPluginInstallResult & { preview: iPolloWorkClaudePluginPreview }>(baseUrl, `/workspace/${encodeURIComponent(workspaceId)}/claude-plugins`, {
+    importGithubPluginPackage: (workspaceId: string, payload: { url: string; ref?: string }) =>
+      requestJson<{
+        result: { status: "installed" | "updated" | "unchanged"; pluginId: string; version: string; previousVersion?: string };
+        item?: iPolloWorkPluginPackageItem;
+        safety: iPolloWorkPluginPackageImportSafety;
+        source: iPolloWorkGitHubPluginPreview;
+      }>(baseUrl, `/workspace/${encodeURIComponent(workspaceId)}/plugin-packages/import/github`, {
         token,
         hostToken,
         method: "POST",
@@ -1749,26 +1681,6 @@ export function createiPolloWorkServerClient(options: { baseUrl: string; token?:
         method: "POST",
         timeoutMs: ENGINE_RELOAD_TIMEOUT_MS,
       }),
-    listPlugins: (workspaceId: string, options?: { includeGlobal?: boolean }) => {
-      const query = options?.includeGlobal ? "?includeGlobal=true" : "";
-      return requestJson<{ items: iPolloWorkPluginItem[]; loadOrder: string[] }>(
-        baseUrl,
-        `/workspace/${workspaceId}/plugins${query}`,
-        { token, hostToken },
-      );
-    },
-    addPlugin: (workspaceId: string, spec: string) =>
-      requestJson<{ items: iPolloWorkPluginItem[]; loadOrder: string[] }>(
-        baseUrl,
-        `/workspace/${workspaceId}/plugins`,
-        { token, hostToken, method: "POST", body: { spec } },
-      ),
-    removePlugin: (workspaceId: string, name: string) =>
-      requestJson<{ items: iPolloWorkPluginItem[]; loadOrder: string[] }>(
-        baseUrl,
-        `/workspace/${workspaceId}/plugins/${encodeURIComponent(name)}`,
-        { token, hostToken, method: "DELETE" },
-      ),
     listSkills: (workspaceId: string, options?: { includeGlobal?: boolean }) => {
       const query = options?.includeGlobal ? "?includeGlobal=true" : "";
       return requestJson<{ items: iPolloWorkSkillItem[] }>(

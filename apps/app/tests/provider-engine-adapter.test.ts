@@ -1,5 +1,4 @@
 import { describe, expect, test } from "bun:test";
-import { parse } from "jsonc-parser";
 
 import {
   deepSeekHarnessProviderEngineAdapter,
@@ -36,6 +35,9 @@ function createOpenCodeProviderClient() {
   return {
     calls,
     client: {
+      global: {
+        health: async () => ({ data: { healthy: true } }),
+      },
       provider: {
         list: async () => ({ data: providerList }),
         auth: async () => ({ data: { openai: [{ type: "oauth", label: "OpenAI" }] } }),
@@ -89,6 +91,7 @@ describe("provider engine adapters", () => {
     expect(() => providerEngineAdapters.get("unknown")).toThrow(
       "Provider engine is not registered: unknown",
     );
+    expect(providerEngineAdapters.createClient("unknown", {} as never)).toBeNull();
   });
 
   test("rejects duplicate provider adapters", () => {
@@ -618,24 +621,70 @@ describe("provider engine adapters", () => {
     expect(connectedIds).toContain("deepseek-official");
   });
 
-  test("removes project provider state without leaving disabled entries", () => {
-    const raw = `{
-  "$schema": "https://opencode.ai/config.json",
-  "provider": {
-    "tokenstar": { "name": "TokenStar" },
-    "other": { "name": "Other" }
-  },
-  "disabled_providers": ["tokenstar", "other"]
-}
-`;
-    const updated = openCodeProviderEngineAdapter.formatProjectWithoutProvider(
-      raw,
-      "tokenstar",
-      ["tokenstar", "other"],
-    );
-    const config = parse(updated);
+  test("disconnects every runtime-managed compatible provider, not only built-ins", async () => {
+    const { calls, client } = createOpenCodeProviderClient();
+    const runtimePatches: unknown[] = [];
+    const deletedEnvKeys: string[] = [];
+    let providers = [{
+      id: "minimax",
+      name: "MiniMax",
+      source: "config" as const,
+      env: [],
+      models: { "MiniMax-M3": { id: "MiniMax-M3", name: "MiniMax-M3", capabilities: {} } },
+    }];
+    let connectedIds = ["minimax"];
+    const serverClient = {
+      getConfig: async () => ({
+        opencode: { provider: { minimax: { name: "MiniMax" } } },
+        ipollowork: {},
+      }),
+      patchConfig: async (_workspaceId: string, patch: unknown) => {
+        runtimePatches.push(patch);
+        return { updatedAt: Date.now() };
+      },
+      deleteUserEnv: async (key: string) => {
+        deletedEnvKeys.push(key);
+        return { deleted: [key] };
+      },
+    };
+    const store = createProviderAuthStore({
+      client: () => client,
+      providers: () => providers,
+      providerDefaults: () => ({}),
+      providerConnectedIds: () => connectedIds,
+      disabledProviders: () => [],
+      checkDesktopAppRestriction: () => false,
+      selectedWorkspaceDisplay: () => ({
+        id: "workspace-a",
+        name: "Workspace A",
+        path: "C:\\workspace",
+        preset: "starter",
+        workspaceType: "local",
+        engineId: DEFAULT_ENGINE_ID,
+      }),
+      providerBaseUrl: () => "http://localhost:43121/opencode",
+      selectedWorkspaceRoot: () => "C:\\workspace",
+      runtimeWorkspaceId: () => "workspace-a",
+      ipolloworkServer: {
+        getSnapshot: () => ({
+          ipolloworkServerStatus: "connected",
+          ipolloworkServerClient: serverClient as never,
+          ipolloworkServerCapabilities: { config: { read: true, write: true } },
+        }),
+      },
+      setProviders: (value) => { providers = value; },
+      setProviderDefaults: () => {},
+      setProviderConnectedIds: (value) => { connectedIds = value; },
+      setDisabledProviders: () => {},
+      markEngineConfigReloadRequired: () => {},
+    });
 
-    expect(config.provider).toEqual({ other: { name: "Other" } });
-    expect(config.disabled_providers).toEqual(["other"]);
+    await store.disconnectProvider("minimax");
+
+    expect(runtimePatches).toEqual([{ opencode: { provider: { minimax: null } } }]);
+    expect(deletedEnvKeys).toEqual([sharedProviderCredentialEnvKey("minimax")]);
+    expect(calls).toContainEqual({ name: "remove", value: { providerID: "minimax" } });
+    expect(connectedIds).not.toContain("minimax");
   });
+
 });

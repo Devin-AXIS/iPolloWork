@@ -25,10 +25,7 @@ const PORTABLE_RESOURCE_DIRECTORIES: Record<string, string> = {
 const sourceFormatSchema = z.enum([
   "ipollowork-builtin",
   "ipollowork-extension-manifest",
-  "claude-plugin",
-  "opencode-plugin",
-  "mcp-directory",
-  "manual",
+  "github-compatible",
 ]);
 
 const resourceTypeSchema = z.enum([
@@ -586,6 +583,17 @@ export type PluginUiHostContextV1 = {
   workspaceId: string;
   workspaceRoot: string;
   sessionId: string | null;
+};
+export type PluginPromptCapabilitySummary = {
+  pluginId: string;
+  resourceId: string;
+  type: "command" | "agent";
+  name: string;
+  description?: string;
+};
+export type EnginePluginPromptSelection = {
+  command?: { name: string; arguments?: string };
+  agents?: string[];
 };
 export type PluginResourceType = PluginResource["type"];
 export type PluginContribution = NonNullable<PluginManifest["contributions"]>[number];

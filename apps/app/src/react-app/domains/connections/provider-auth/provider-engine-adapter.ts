@@ -1,6 +1,7 @@
 import { DEFAULT_ENGINE_ID } from "@ipollowork/types/workspace";
 
 import type { iPolloWorkServerClient } from "../../../../app/lib/ipollowork-server";
+import type { ResolvedWorkspaceEndpoint } from "../../../../app/lib/workspace-endpoint";
 import type { DenOrgLlmProviderConnection } from "../../../../app/lib/den";
 import type { ProviderListResponse } from "../../../../app/types";
 import { deepSeekHarnessProviderEngineAdapter } from "./deepseek-harness-provider-engine-adapter";
@@ -38,6 +39,11 @@ export type ProviderEngineConfigTarget = {
   root: string;
 };
 
+export type ProviderEngineClientTarget = {
+  endpoint: ResolvedWorkspaceEndpoint;
+  directory?: string | null;
+};
+
 export type ProviderEngineConnection = {
   listProviders(directory?: string): Promise<ProviderListResponse>;
   listAuthMethods(): Promise<Record<string, ProviderEngineAuthMethod[]>>;
@@ -60,6 +66,7 @@ export interface ProviderEngineAdapter {
     disabledProviders: boolean;
     authChangesRequireReload: boolean;
   };
+  createClient(target: ProviderEngineClientTarget): unknown;
   connect(client: unknown): ProviderEngineConnection;
   emptyProjectConfig(): string;
   readProjectConfig(target: ProviderEngineConfigTarget): Promise<{ content?: string | null } | null>;
@@ -68,7 +75,6 @@ export interface ProviderEngineAdapter {
   runtimeProviderIds(target: ProviderEngineConfigTarget): Promise<string[]>;
   projectProviderIds(raw: string): string[];
   formatProjectProviderDisabledState(raw: string, providerId: string, disabled: boolean): string;
-  formatProjectWithoutProvider(raw: string, providerId: string, disabledProviders: string[]): string;
   buildCloudProviderPatch(
     provider: DenOrgLlmProviderConnection,
     localProviderId: string,
@@ -102,6 +108,14 @@ export class ProviderEngineAdapterRegistry {
 
   ids(): string[] {
     return [...this.#adapters.keys()];
+  }
+
+  createClient(
+    id: string | null | undefined,
+    target: ProviderEngineClientTarget,
+  ): unknown | null {
+    const resolved = id?.trim() || DEFAULT_ENGINE_ID;
+    return this.#adapters.get(resolved)?.createClient(target) ?? null;
   }
 }
 

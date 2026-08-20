@@ -9,7 +9,6 @@ import { toast } from "@/components/ui/sonner";
 import { captureAnalyticsEvent } from "@/app/lib/analytics";
 import { createClient, unwrap } from "@/app/lib/opencode";
 import { t } from "@/i18n";
-import { readWorkspaceCloudImports, type CloudImportedPlugin } from "@/app/cloud/import-state";
 import type {
   HyperframesAnimationSelection,
   HyperframesCatalogItem,
@@ -641,7 +640,6 @@ export function SessionSurface(props: SessionSurfaceProps) {
   const [toolMcpServers, setToolMcpServers] = useState<McpServerEntry[]>([]);
   const [toolMcpStatus, setToolMcpStatus] = useState<string | null>(null);
   const [toolMcpStatuses, setToolMcpStatuses] = useState<McpStatusMap>({});
-  const [toolImportedPlugins, setToolImportedPlugins] = useState<CloudImportedPlugin[]>([]);
   const [verifiedOpenTargets, setVerifiedOpenTargets] = useState<OpenTarget[]>([]);
   const [newConversationMode, setNewConversationMode] = useState<NewConversationMode>("work");
   const [starterCapability, setStarterCapability] = useState<StarterCapability | null>(null);
@@ -1621,14 +1619,6 @@ export function SessionSurface(props: SessionSurfaceProps) {
     return { servers, statuses, status };
   };
 
-  const listImportedPlugins = async (): Promise<CloudImportedPlugin[]> => {
-    const response = await props.client.getConfig(props.workspaceId);
-    const plugins = Object.values(readWorkspaceCloudImports(response.ipollowork).plugins)
-      .sort((left, right) => left.name.localeCompare(right.name));
-    setToolImportedPlugins(plugins);
-    return plugins;
-  };
-
   const listExternalAgents = async (): Promise<iPolloWorkPluginPackageItem[]> => {
     const response = await props.client.listPluginPackages(props.workspaceId);
     return response.items
@@ -1865,8 +1855,6 @@ export function SessionSurface(props: SessionSurfaceProps) {
           mcpServers={toolMcpServers}
           mcpStatus={toolMcpStatus}
           mcpStatuses={toolMcpStatuses}
-          listImportedPlugins={listImportedPlugins}
-          importedPlugins={toolImportedPlugins}
           listExternalAgents={listExternalAgents}
           onOpenSettingsSection={props.onOpenSettingsSection}
           recentFiles={props.recentFiles}

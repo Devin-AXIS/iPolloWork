@@ -225,6 +225,62 @@ describe("tool part mapper", () => {
     }
   });
 
+  test("session sync does not append buffered deltas after an authoritative final message", () => {
+    const syncInput = { workspaceId: "workspace-a", connectionKey: "test" };
+    const cleanup = __createWorkspaceSessionSyncForTest(syncInput);
+    const release = trackWorkspaceSessionSync(syncInput, "session-a");
+
+    try {
+      __applySessionSyncEventForTest(syncInput, {
+        type: "message.parts",
+        sessionId: "session-a",
+        messageId: "dsh:session-a:assistant:1:1",
+        partId: "dsh:session-a:assistant:1:1:block:0",
+        parts: [{
+          type: "text",
+          text: "",
+          state: "streaming",
+          providerMetadata: { ipollowork: { partId: "dsh:session-a:assistant:1:1:block:0" } },
+        }],
+        messageRole: "assistant",
+        visibleAssistantOutput: true,
+      });
+      for (const delta of ["DS", "H", "_OK"]) {
+        __applySessionSyncEventForTest(syncInput, {
+          type: "message.chunk",
+          sessionId: "session-a",
+          messageId: "dsh:session-a:assistant:1:1",
+          chunk: {
+            type: "text-delta",
+            id: "dsh:session-a:assistant:1:1:block:0",
+            delta,
+          },
+        });
+      }
+      __applySessionSyncEventForTest(syncInput, {
+        type: "message.upsert",
+        sessionId: "session-a",
+        message: {
+          id: "dsh:session-a:assistant:1:1",
+          role: "assistant",
+          parts: [{ type: "text", text: "DSH_OK", state: "done" }],
+        },
+      });
+      __applySessionSyncEventForTest(syncInput, {
+        type: "message.completed",
+        sessionId: "session-a",
+        messageId: "dsh:session-a:assistant:1:1",
+        completedAt: 42,
+      });
+
+      const transcript = getReactQueryClient().getQueryData<UIMessage[]>(transcriptKey("workspace-a", "session-a"));
+      expect(transcript?.[0]?.parts).toEqual([{ type: "text", text: "DSH_OK", state: "done" }]);
+    } finally {
+      release();
+      cleanup();
+    }
+  });
+
   test("session sync keeps consecutive DSH steps on the assistant side", () => {
     const syncInput = { workspaceId: "workspace-a", connectionKey: "test" };
     const cleanup = __createWorkspaceSessionSyncForTest(syncInput);
