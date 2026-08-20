@@ -788,7 +788,10 @@ const BlockCard = memo(function BlockCard({
       onKeyDown={handleCardKeyDown}
       onDragStart={(event) => {
         event.dataTransfer.effectAllowed = "copy";
-        event.dataTransfer.setData(TIMELINE_BLOCK_MIME, JSON.stringify({ name: block.name }));
+        event.dataTransfer.setData(
+          TIMELINE_BLOCK_MIME,
+          JSON.stringify({ name: block.name, dimensions: block.dimensions }),
+        );
         event.dataTransfer.setData("text/plain", block.name);
         handleLeave();
       }}

@@ -24,8 +24,7 @@ describe("provider disconnect confirmation", () => {
     expect(aiView).toContain('t("settings.disconnecting")');
     expect(aiView).toContain("toast.success");
     expect(aiView).toContain("toast.error");
-    expect(settingsRoute).toContain(
-      "onDisconnectProvider={(providerId) => providerAuthStore.disconnectProvider(providerId)}",
-    );
+    expect(settingsRoute).toContain("providerAuthStore.disconnectProvider(providerId)");
+    expect(settingsRoute).toContain("await refreshUserEnvKeys()");
   });
 });

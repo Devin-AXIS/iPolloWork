@@ -28,6 +28,14 @@ function clampIndex(index: number, count: number): number {
   return Math.max(1, Math.min(count, index));
 }
 
+export function storyboardAspectRatio(format?: string): number {
+  const match = format?.match(/(\d+)\s*[x×]\s*(\d+)/i);
+  if (!match) return 16 / 9;
+  const width = Number(match[1]);
+  const height = Number(match[2]);
+  return width > 0 && height > 0 ? width / height : 16 / 9;
+}
+
 /** A storyboard that exists on disk: Board (contact sheet) ↔ Source ↔ frame focus. */
 // fallow-ignore-next-line complexity
 export function StoryboardLoaded({
@@ -40,6 +48,7 @@ export function StoryboardLoaded({
   const [sourceDirty, setSourceDirty] = useState(false);
   const [focusedIndex, setFocusedIndex] = useState<number | null>(null);
   const [feedbackMessageCopied, setFeedbackMessageCopied] = useState(false);
+  const aspectRatio = storyboardAspectRatio(data.globals.format);
   const comments = useFrameComments(data.frames);
   // When the board refreshes off a project change (agent revised frames), the
   // agent has likely consumed the comments file too — re-check so the pending
@@ -115,6 +124,7 @@ export function StoryboardLoaded({
         onFeedbackMessageCopied={() => setFeedbackMessageCopied(true)}
         onSaveFeedback={() => void saveFeedbackAndCopyMessage()}
         posterVersion={data.signature}
+        aspectRatio={aspectRatio}
       />
     );
   }
@@ -157,6 +167,7 @@ export function StoryboardLoaded({
               onCommentDraftChange={comments.setDraft}
               pendingComments={comments.pending}
               posterVersion={data.signature}
+              aspectRatio={aspectRatio}
             />
             {data.script && <StoryboardScriptPanel script={data.script} />}
           </div>

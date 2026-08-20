@@ -18,6 +18,7 @@ export type WorkspaceRemoteKind = "opencode" | "ipollowork";
 
 export const DEFAULT_ENGINE_ID = "opencode";
 export const DEEPSEEK_HARNESS_ENGINE_ID = "deepseek-harness";
+export const DEEPSEEK_HARNESS_INTERNAL_SYSTEM_PREFIX = "<system>\n<!-- ipollowork-internal-context -->\n";
 
 export const BUILT_IN_WORKSPACE_ENGINE_IDS = [
   DEFAULT_ENGINE_ID,

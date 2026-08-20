@@ -90,7 +90,8 @@ describe("Composer model and reasoning menu", () => {
     expect(source).toContain("if ((!open && !compactOpen) || !client) return;");
     expect(source).toContain("ensureMergedProviderListQuery");
     expect(source).toContain("catalogSources.length ? catalogSources : [activeSource]");
-    expect(source).toContain("disabled: !isModelAvailableInConnectedProviders");
+    expect(source).toContain("const runtime = resolveModelRuntime(active");
+    expect(source).toContain('disabled: runtime.status !== "ready"');
   });
 
   test("Composer uses one combined model and reasoning menu", () => {
@@ -112,7 +113,9 @@ describe("Composer model and reasoning menu", () => {
     expect(model).toContain("includeTokenStar &&");
     expect(model).toContain("ensureMergedProviderListQuery");
     expect(model).toContain("getSelectableChatProviderItems(catalog ?? data)");
-    expect(model).toContain("disabled={option.disabled}");
+    expect(model).toContain("disabled={option.disabled && !onConfigureModels}");
+    expect(model).toContain("if (option.disabled)");
+    expect(model).toContain("onConfigureModels?.(option.providerID)");
     expect(model).not.toContain('option.providerID === "tokenstar") continue');
     expect(model).not.toContain('option.modelID.startsWith("gpt-")');
     expect(model).not.toContain('option.modelID.startsWith("kimi-")');

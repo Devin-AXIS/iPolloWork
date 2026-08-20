@@ -118,6 +118,7 @@ const flagshipVideoTemplateIds = [
   "ipollowork.hyperframes.prompt-ab-laboratory",
   "ipollowork.hyperframes.release-spotlight",
   "ipollowork.hyperframes.research-evidence-wall",
+  "ipollowork.hyperframes.vertical-social-story",
 ];
 const novelVideoTemplates = [
   { id: "ipollowork.hyperframes.meeting-action-conveyor", composition: "meeting-action-conveyor", duration: "11", scenes: 4 },
@@ -474,6 +475,19 @@ describe("template installations", () => {
     expect(existsSync(join(bundledTemplatesRoot, flagshipVideoTemplateIds[0], "models", "macbook.glb"))).toBe(true);
   });
 
+  test("ships a customer-visible portrait template with a native 9:16 composition", async () => {
+    const templateId = "ipollowork.hyperframes.vertical-social-story";
+    const root = join(bundledTemplatesRoot, templateId);
+    const manifest = JSON.parse(await readFile(join(root, "manifest.json"), "utf8")) as TemplateManifestV1;
+    const entry = await readFile(join(root, manifest.entry), "utf8");
+
+    expect(isCustomerVisibleBundledTemplate(manifest)).toBe(true);
+    expect(manifest.tags).toContain("9:16");
+    expect(entry).toMatch(/<meta\s+name=["']viewport["']\s+content=["']width=1080, height=1920["']/i);
+    expect(entry).toMatch(/data-composition-id=["']vertical-social-story["'][^>]*data-width=["']1080["'][^>]*data-height=["']1920["']/i);
+    expect(entry).toContain('window.__timelines["vertical-social-story"]');
+  });
+
   test("materializes every flagship video template as an independent session project", async () => {
     const root = await mkdtemp(join(tmpdir(), "ipw-flagship-video-"));
     process.env.IPOLLOWORK_RUNTIME_DB = join(root, "runtime.sqlite");
@@ -786,6 +800,7 @@ describe("template installations", () => {
     expect(first.some((item) => item.manifest.id === "ipollowork.saas-landing")).toBe(false);
     expect(first.some((item) => item.manifest.id === "ipollowork.pptx-northstar-strategy")).toBe(false);
     expect(first.some((item) => item.manifest.id === "ipollowork.pptx-ipollo-vi-enterprise")).toBe(true);
+    expect(first.some((item) => item.manifest.id === "ipollowork.hyperframes.vertical-social-story")).toBe(true);
     expect(first.some((item) => item.manifest.id === "ipollowork.app-calm-mobile")).toBe(true);
     expect(first.some((item) => item.manifest.id === "ipollowork.html-anything.social-carousel")).toBe(true);
     expect(first.some((item) => item.manifest.id === "ipollowork.html-anything.data-report")).toBe(true);

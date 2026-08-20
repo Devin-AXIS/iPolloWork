@@ -133,19 +133,21 @@ plugins/acme-research
 
 绝对路径、`../` 穿越路径以及工作区外目录会被拒绝。
 
-### 2.2 压缩包上传格式
+### 2.2 安装包与源码包
 
-设置页可导入 ZIP 插件包；未来开发者平台继续复用同一契约：
+插件市场和插件库只安装 `.ipollowork-plugin` 分发包；插件工坊只导入 `.zip` 源码包。插件工坊可以从同一份源码分别导出这两种产物：
 
 ```text
-acme-research-1.0.0.zip
+acme-research-1.0.0.ipollowork-plugin
 ├── ipollowork.plugin.json   ← 必须直接位于压缩包根目录
 ├── service/
 ├── skills/
 └── engines/
 ```
 
-不要在 ZIP 里再包一层无意义目录，例如下面这种结构不应作为标准上传物：
+两种格式底层都是 ZIP 容器，并且都必须包含 `ipollowork.plugin.json`。`.ipollowork-plugin` 是经过构建、可直接安装的分发产物；`-source.zip` 保留原始工程文件，用于重新导入插件工坊继续开发。
+
+不要在压缩包里再包一层无意义目录，例如下面这种结构不应作为标准上传物：
 
 ```text
 acme-research-1.0.0.zip
@@ -153,7 +155,7 @@ acme-research-1.0.0.zip
     └── ipollowork.plugin.json
 ```
 
-平台接收 ZIP 后会在受限临时目录中校验，再调用同一安装生命周期。ZIP 只是传输容器，内部仍是本文定义的插件包。
+平台接收 `.ipollowork-plugin` 后会在受限临时目录中校验，再调用同一安装生命周期。该文件底层使用 ZIP 容器，内部仍是本文定义的插件包。
 
 ### 2.3 推荐完整目录
 
@@ -389,12 +391,9 @@ acme/acme-research
 
 - `ipollowork-builtin`
 - `ipollowork-extension-manifest`
-- `claude-plugin`
-- `opencode-plugin`
-- `mcp-directory`
-- `manual`
+- `github-compatible`
 
-新开发的完整 iPolloWork 插件应优先使用 `ipollowork-extension-manifest`。
+新开发的完整 iPolloWork 插件必须使用 `ipollowork-extension-manifest`；`github-compatible` 只由 GitHub 来源适配器在转换兼容仓库时写入。
 
 ### 5.3 `package`
 
@@ -821,13 +820,13 @@ OpenCode plugin 与其他原生插件共享本机运行环境。第三方插件�
 
 ### 10.1 授权存储模型
 
-授权按以下维度隔离：
+授权使用全局插件消费者身份，并按以下维度隔离：
 
 ```text
-workspace installation + plugin id + account id + method id
+plugin id + connection id + account id + method id
 ```
 
-凭据使用 AES-256-GCM 加密保存。设置页和公开状态 API 只返回字段是否存在、连接状态和更新时间，不返回原始值。第一个成功保存的账户会成为该授权方法的活动账户；活动账户选择会持久化。
+工作区只作为接口访问与服务执行上下文，不会产生一份独立授权。凭据使用 AES-256-GCM 加密保存。设置页和公开状态 API 只返回字段是否存在、连接状态和更新时间，不返回原始值。第一个成功保存的账户会成为该授权方法的活动账户；活动账户选择会持久化。卸载插件时会清理该插件的流程、选择以及未被其他消费者共享的凭据。
 
 ### 10.2 API Key / Secret Form
 

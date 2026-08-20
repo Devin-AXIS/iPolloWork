@@ -7,6 +7,7 @@ import { iPolloWorkExtensionsPreview } from "./ipollowork-extensions-preview.js"
 const originalServerUrl = process.env.IPOLLOWORK_SERVER_URL;
 const originalServerToken = process.env.IPOLLOWORK_SERVER_TOKEN;
 const originalUiControlTools = process.env.IPOLLOWORK_UI_CONTROL_TOOLS;
+const originalUiControlDiscovery = process.env.IPOLLOWORK_UI_CONTROL_DISCOVERY;
 const stops: Array<() => void> = [];
 
 const searchResultSchema = z.object({
@@ -40,6 +41,8 @@ afterEach(() => {
   else process.env.IPOLLOWORK_SERVER_TOKEN = originalServerToken;
   if (originalUiControlTools === undefined) delete process.env.IPOLLOWORK_UI_CONTROL_TOOLS;
   else process.env.IPOLLOWORK_UI_CONTROL_TOOLS = originalUiControlTools;
+  if (originalUiControlDiscovery === undefined) delete process.env.IPOLLOWORK_UI_CONTROL_DISCOVERY;
+  else process.env.IPOLLOWORK_UI_CONTROL_DISCOVERY = originalUiControlDiscovery;
 });
 
 async function transformedSystem(plugin: Awaited<ReturnType<typeof iPolloWorkExtensionsPreview>>): Promise<string> {
@@ -219,6 +222,8 @@ describe("iPolloWorkExtensionsPreview UI control tools", () => {
     expect(tools).not.toContain("ipollowork_ui_execute_action");
     expect(tools).toContain("ipollowork_session_search");
     expect(tools).toContain("ipollowork_extension_list_actions");
+    expect(tools).toContain("ipollowork_workspace_app_list_tools");
+    expect(tools).toContain("ipollowork_workspace_app_call_tool");
     expect(tools).toContain("list_motion_presets");
     expect(tools).toContain("mutate_motion");
 
@@ -244,6 +249,7 @@ describe("iPolloWorkExtensionsPreview UI control tools", () => {
     const system = await transformedSystem(plugin);
     expect(system).toContain("ipollowork_ui_execute_action");
   });
+
 });
 
 describe("iPolloWorkExtensionsPreview semantic motion tools", () => {

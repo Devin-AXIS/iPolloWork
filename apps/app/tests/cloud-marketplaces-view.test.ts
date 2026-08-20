@@ -20,7 +20,7 @@ describe("Cloud marketplace row visibility", () => {
     expect(source).toContain('marketplaceResult.status === "rejected"');
     expect(source).toContain('localPackagesResult.status === "fulfilled"');
     expect(source).toContain("downloadEnterpriseResource(resource)");
-    expect(source).toContain("readPluginPackageArchive(file)");
+    expect(source).toContain('readPluginPackageArchive(file, "install")');
     expect(source).toContain("validatePluginPackageUpload(workspaceId, upload)");
     expect(source).toContain("importPluginPackage(workspaceId, upload)");
     expect(source).toContain("<PluginPackageListItem");
@@ -140,6 +140,7 @@ describe("Cloud marketplace row visibility", () => {
     expect(extensionsSource).toContain("pluginPackagesView");
     expect(extensionsSource).toContain("skillsView");
     expect(extensionsSource).not.toContain("mcpView");
+    expect(extensionsSource).not.toContain("PluginsView");
     expect(routeSource).not.toContain("<McpView");
   });
 });

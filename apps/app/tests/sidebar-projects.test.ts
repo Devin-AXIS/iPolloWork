@@ -64,7 +64,9 @@ describe("sidebar projects", () => {
     expect(sidebarSource).toContain("if (isCurrentProject) setProjectExpanded(true);");
     expect(sidebarSource).toContain('isSelectedProject && "bg-sidebar-accent font-medium text-sidebar-accent-foreground mac:bg-black/5 dark:mac:bg-white/10"');
     expect(sidebarSource).toContain('<SidebarMenuSub className="mt-[2px] translate-x-0 gap-1 pb-2">');
-    expect(sessionRouteSource).toContain("navigateToWorkspaceSession(workspaceId);");
+    expect(sessionRouteSource).toContain("const rememberedSessionId = readLastSessionFor(workspaceId);");
+    expect(sessionRouteSource).toContain("?? rememberedSessionId");
+    expect(sessionRouteSource).toContain("navigateToWorkspaceSession(workspaceId, targetSessionId);");
     expect(sidebarSource).toContain("onSelectProject(workspace.id)");
     expect(sidebarSource).toContain("<ConversationList");
     expect(sidebarSource).not.toContain("group-data-open/project:rotate-90");
@@ -195,6 +197,8 @@ describe("sidebar projects", () => {
     expect(sessionPageSource).toContain('data-testid="project-engine-option"');
     expect(sessionPageSource).toContain('max-w-[516px]');
     expect(sessionPageSource).toContain('t("projects.engine_locked_notice")');
+    expect(sessionPageSource).toContain('props.onOpenProviderAuth?.("deepseek-official")');
+    expect(sessionPageSource).toContain('t("projects.configure_deepseek_key")');
     expect(sessionPageSource).toContain("<RadioGroup");
     expect(sessionPageSource).toContain("projectEngineSelectedIcon");
     expect(sessionPageSource).toContain("projectEngineOpenCodeIcon");

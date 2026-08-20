@@ -8,7 +8,6 @@ import { Button } from "@/components/ui/button";
 import {
   getMcpServerName,
   MCP_QUICK_CONNECT,
-  SUGGESTED_PLUGINS,
 } from "@/app/constants";
 import {
   filterWorkspacesForWorkContext,
@@ -26,7 +25,6 @@ import {
   type iPolloWorkServerCapabilities,
   type iPolloWorkServerClient,
 } from "@/app/lib/ipollowork-server";
-import { DeepSeekHarnessClient } from "@/app/lib/deepseek-harness-client";
 import { resolveWorkspaceEndpoint } from "@/app/lib/workspace-endpoint";
 import { buildiPolloWorkEnvRuntimeKey } from "@/app/lib/ipollowork-env-runtime";
 import {
@@ -104,11 +102,7 @@ import { useBootState } from "./boot-state";
 import { SettingsShell } from "@/react-app/domains/settings/shell/settings-shell";
 import { createExtensionsStore, useExtensionsStoreSnapshot } from "@/react-app/domains/settings/state/extensions-store";
 import { usePlatform } from "@/react-app/kernel/platform";
-import {
-  getEnginePreferences,
-  updateEnginePreferences,
-  useLocal,
-} from "@/react-app/kernel/local-provider";
+import { updateModelPreferences, useLocal } from "@/react-app/kernel/local-provider";
 import {
   ipolloworkServerRestart,
   engineStart,
@@ -136,7 +130,10 @@ import {
 import { ModelPickerModal } from "@/react-app/domains/session/modals/model-picker-modal";
 import type { ModelRef } from "@/app/types";
 import { DEEPSEEK_HARNESS_ENGINE_ID, DEFAULT_ENGINE_ID } from "@ipollowork/types/workspace";
-import { sharedProviderCredentialEnvKey } from "@ipollowork/types/provider-credentials";
+import {
+  buildSharedProviderProfile,
+  sharedProviderConnectionEnvEntries,
+} from "@/react-app/domains/connections/provider-auth/shared-provider-profile";
 import { recordInspectorEvent } from "../../app/lib/app-inspector";
 import { ensureDesktopLocaliPolloWorkConnection } from "./desktop-local-ipollowork";
 import { resolveiPolloWorkConnection } from "./ipollowork-connection";
@@ -164,7 +161,6 @@ import { WorkspaceAppFrame } from "@/react-app/plugin-ui/workspace-app-frame";
 
 const ROUTE_IPOLLOWORK_CAPABILITIES: iPolloWorkServerCapabilities = {
   skills: { read: true, write: true, source: "ipollowork" },
-  plugins: { read: true, write: true },
   mcp: { read: true, write: true },
   commands: { read: true, write: true },
   config: { read: true, write: true },
@@ -459,6 +455,18 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
   const [voiceStatus, setVoiceStatus] = useState<string | null>(null);
   const [voiceError, setVoiceError] = useState<string | null>(null);
   const [userEnvKeys, setUserEnvKeys] = useState<string[]>([]);
+  const refreshUserEnvKeys = useCallback(async () => {
+    if (!ipolloworkClient) {
+      setUserEnvKeys([]);
+      return;
+    }
+    try {
+      const response = await ipolloworkClient.listUserEnvKeys();
+      setUserEnvKeys(response.keys);
+    } catch {
+      setUserEnvKeys([]);
+    }
+  }, [ipolloworkClient]);
   const emptyWorkspaceDisplay = useMemo<WorkspaceDisplay>(
     () => ({
       id: "",
@@ -508,7 +516,9 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
     ) ?? null,
     [workspaces],
   );
-  const sharedProviderEngineId = sharedProviderWorkspace?.engineId?.trim() || DEFAULT_ENGINE_ID;
+  // Provider discovery/auth belongs to the application account. Use the
+  // managed OpenCode sidecar as that control plane for every project engine.
+  const sharedProviderEngineId = DEFAULT_ENGINE_ID;
   const activeProviderCapabilities = providerEngineAdapters.get(sharedProviderEngineId).capabilities;
   const selectedWorkspaceRoot = selectedWorkspace?.path?.trim() || "";
   const sharedProviderRoot = sharedProviderWorkspace?.path?.trim() || "";
@@ -536,7 +546,7 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
           path: sharedProviderWorkspace.path ?? "",
           preset: "starter",
           workspaceType: sharedProviderWorkspace.workspaceType ?? "local",
-          engineId: sharedProviderWorkspace.engineId,
+          engineId: DEFAULT_ENGINE_ID,
           displayName: sharedProviderWorkspace.displayNameResolved,
           ipolloworkWorkspaceName: sharedProviderWorkspace.ipolloworkWorkspaceName,
         }
@@ -696,7 +706,6 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
         selectedWorkspaceId: () => routeStateRef.current.selectedWorkspaceId,
         selectedWorkspaceRoot: () => routeStateRef.current.selectedWorkspaceRoot,
         workspaceType: () => routeStateRef.current.selectedWorkspaceType,
-        allowGlobalExtensions: () => readActiveWorkContextId() === PERSONAL_WORK_CONTEXT_ID,
         ipolloworkServer: ipolloworkServerStore,
         ipolloworkServerConnection: () => ({
           ipolloworkServerClient: routeStateRef.current.ipolloworkServerClient,
@@ -841,16 +850,28 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
   });
 
   const selectedWorkspaceEndpoint = useMemo(
-    () => resolveWorkspaceEndpoint(selectedWorkspace, { baseUrl, token }),
-    [baseUrl, selectedWorkspace, token],
+    () => resolveWorkspaceEndpoint(selectedWorkspace, {
+      baseUrl,
+      token,
+      hostToken: ipolloworkServerSnapshot.ipolloworkServerAuth.hostToken,
+    }),
+    [baseUrl, ipolloworkServerSnapshot.ipolloworkServerAuth.hostToken, selectedWorkspace, token],
   );
   const sharedProviderEndpoint = useMemo(
-    () => resolveWorkspaceEndpoint(sharedProviderWorkspace, { baseUrl, token }),
-    [baseUrl, sharedProviderWorkspace, token],
+    () => resolveWorkspaceEndpoint(sharedProviderWorkspace, {
+      baseUrl,
+      token,
+      hostToken: ipolloworkServerSnapshot.ipolloworkServerAuth.hostToken,
+    }),
+    [baseUrl, ipolloworkServerSnapshot.ipolloworkServerAuth.hostToken, sharedProviderWorkspace, token],
   );
   const deepSeekHarnessEndpoint = useMemo(
-    () => resolveWorkspaceEndpoint(deepSeekHarnessWorkspace, { baseUrl, token }),
-    [baseUrl, deepSeekHarnessWorkspace, token],
+    () => resolveWorkspaceEndpoint(deepSeekHarnessWorkspace, {
+      baseUrl,
+      token,
+      hostToken: ipolloworkServerSnapshot.ipolloworkServerAuth.hostToken,
+    }),
+    [baseUrl, deepSeekHarnessWorkspace, ipolloworkServerSnapshot.ipolloworkServerAuth.hostToken, token],
   );
   const opencodeBaseUrl = selectedWorkspaceEndpoint?.opencodeBaseUrl ?? "";
   routeStateRef.current.providerBaseUrl = sharedProviderEndpoint?.opencodeBaseUrl ?? "";
@@ -869,7 +890,6 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
     description: page.description,
     iconSrc: page.iconSrc,
   })), [settingsPages]);
-  const activeEnginePreferences = getEnginePreferences(local.prefs, activeEngineId);
   routeStateRef.current.runtimeWorkspaceId = runtimeWorkspaceId;
 
   const opencodeClient = useMemo(() => {
@@ -898,28 +918,18 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
   );
   const sharedProviderClient = useMemo(() => {
     if (!sharedProviderEndpoint?.token) return null;
-    if (sharedProviderEngineId === DEFAULT_ENGINE_ID) {
-      return createClient(
-        sharedProviderEndpoint.opencodeBaseUrl,
-        sharedProviderRoot || undefined,
-        { token: sharedProviderEndpoint.token, mode: "ipollowork" },
-      );
-    }
-    if (sharedProviderEngineId !== DEEPSEEK_HARNESS_ENGINE_ID) return null;
-    return new DeepSeekHarnessClient({
-      serverBaseUrl: sharedProviderEndpoint.baseUrl,
-      workspaceId: sharedProviderEndpoint.workspaceId,
-      token: sharedProviderEndpoint.token,
+    return providerEngineAdapters.createClient(sharedProviderEngineId, {
+      endpoint: sharedProviderEndpoint,
+      directory: sharedProviderRoot,
     });
   }, [sharedProviderEndpoint, sharedProviderEngineId, sharedProviderRoot]);
   const deepSeekHarnessProviderClient = useMemo(() => {
     if (!deepSeekHarnessEndpoint?.token) return null;
-    return new DeepSeekHarnessClient({
-      serverBaseUrl: deepSeekHarnessEndpoint.baseUrl,
-      workspaceId: deepSeekHarnessEndpoint.workspaceId,
-      token: deepSeekHarnessEndpoint.token,
+    return providerEngineAdapters.createClient(DEEPSEEK_HARNESS_ENGINE_ID, {
+      endpoint: deepSeekHarnessEndpoint,
+      directory: deepSeekHarnessWorkspace?.path,
     });
-  }, [deepSeekHarnessEndpoint]);
+  }, [deepSeekHarnessEndpoint, deepSeekHarnessWorkspace?.path]);
   const deepSeekHarnessProviderQuery = useProviderListQuery({
     client: deepSeekHarnessProviderClient,
     engineId: DEEPSEEK_HARNESS_ENGINE_ID,
@@ -937,11 +947,7 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
         directory: sharedProviderRoot || undefined,
       });
     }
-    if (
-      deepSeekHarnessProviderClient
-      && deepSeekHarnessWorkspace
-      && deepSeekHarnessWorkspace.id !== sharedProviderWorkspace?.id
-    ) {
+    if (deepSeekHarnessProviderClient && deepSeekHarnessWorkspace) {
       sources.push({
         client: deepSeekHarnessProviderClient,
         engineId: DEEPSEEK_HARNESS_ENGINE_ID,
@@ -950,7 +956,7 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
       });
     }
     return sources;
-  }, [deepSeekHarnessEndpoint?.opencodeBaseUrl, deepSeekHarnessProviderClient, deepSeekHarnessWorkspace, sharedProviderClient, sharedProviderEndpoint?.opencodeBaseUrl, sharedProviderEngineId, sharedProviderRoot, sharedProviderWorkspace?.id]);
+  }, [deepSeekHarnessEndpoint?.opencodeBaseUrl, deepSeekHarnessProviderClient, deepSeekHarnessWorkspace, sharedProviderClient, sharedProviderEndpoint?.opencodeBaseUrl, sharedProviderEngineId, sharedProviderRoot]);
   const activeModelProviderClient = activeEngineId === DEEPSEEK_HARNESS_ENGINE_ID
     ? deepSeekHarnessProviderClient
     : sharedProviderClient;
@@ -961,11 +967,9 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
     ? deepSeekHarnessWorkspace?.path?.trim() || ""
     : sharedProviderRoot;
   const setActiveModel = useCallback((model: ModelRef) => {
-    local.setPrefs((previous) => updateEnginePreferences(
+    local.setPrefs((previous) => updateModelPreferences(
       previous,
-      activeEngineId,
       (selection) => ({
-        ...selection,
         model,
         modelVariant: selection.model?.providerID === model.providerID
           && selection.model.modelID === model.modelID
@@ -973,7 +977,7 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
           : null,
       }),
     ));
-  }, [activeEngineId, local.setPrefs]);
+  }, [local.setPrefs]);
 
   useEffect(() => {
     setActiveClient(opencodeClient);
@@ -991,6 +995,7 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
     baseUrl: activeModelProviderEndpoint?.opencodeBaseUrl ?? "",
     workspaceRoot: activeModelProviderRoot,
     catalogSources: modelCatalogSources,
+    connectedProviderIds: providerAuthSnapshot.connectedProviderIds,
     onLoadError: handleModelPickerLoadError,
   });
   // Settings refreshes provider auth whenever the picker opens (the session
@@ -1047,16 +1052,8 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
   }, [ipolloworkClient, selectedWorkspaceEndpoint]);
 
   useEffect(() => {
-    if (!ipolloworkClient) {
-      setUserEnvKeys([]);
-      return;
-    }
-    let cancelled = false;
-    void ipolloworkClient.listUserEnvKeys()
-      .then((response) => { if (!cancelled) setUserEnvKeys(response.keys); })
-      .catch(() => { if (!cancelled) setUserEnvKeys([]); });
-    return () => { cancelled = true; };
-  }, [ipolloworkClient]);
+    void refreshUserEnvKeys();
+  }, [refreshUserEnvKeys]);
 
   const installOpenAiImageExtension = useCallback(async (apiKey: string) => {
     const resolvedApiKey = apiKey.trim();
@@ -1219,10 +1216,17 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
           throw new Error("The shared provider service is not connected.");
         }
         await engineAdapter.connect(sharedProviderClient).setApiKey(input.providerId, input.apiKey.trim());
-        await client.upsertUserEnv([{
-          key: sharedProviderCredentialEnvKey(input.providerId),
-          value: input.apiKey.trim(),
-        }]);
+        await client.upsertUserEnv(sharedProviderConnectionEnvEntries({
+          apiKey: input.apiKey.trim(),
+          profile: buildSharedProviderProfile({
+            providerId: input.providerId,
+            displayName: input.name,
+            api,
+            baseURL,
+            npm: input.npm,
+            models,
+          }),
+        }));
       }
       if (input.setDefault) {
         setActiveModel({ providerID: input.providerId, modelID: modelId });
@@ -1617,23 +1621,30 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
   const isRemoteWorkspace = workspaceType === "remote";
   const canWriteWorkspaceSkills =
     !isRemoteWorkspace || ipolloworkServerSnapshot.ipolloworkServerCanWriteSkills;
-  const canWriteWorkspacePlugins =
-    !isRemoteWorkspace || ipolloworkServerSnapshot.ipolloworkServerCanWritePlugins;
   const skillsAccessHint =
     isRemoteWorkspace && !canWriteWorkspaceSkills ? t("app.skills_hint_readonly") : null;
-  const pluginsAccessHint =
-    isRemoteWorkspace && !canWriteWorkspacePlugins ? t("app.plugins_hint_readonly") : null;
-  const providerConnectedIdSet = new Set(providerConnectedIds);
-  const sharedConnectedProviders = providers.flatMap((provider) =>
-    providerConnectedIdSet.has(provider.id)
-      ? [{
-          id: provider.id,
-          name: formatProviderAuthName(provider.id, provider.name),
-          displayId: provider.id.trim().toLowerCase() === "opencode" ? "ipollowork" : provider.id,
-          source: provider.source,
-        }]
-      : [],
+  const effectiveProviderConnectedIds = providerAuthSnapshot.connectedProviderIds;
+  const effectiveProviderConnectedIdSet = new Set(effectiveProviderConnectedIds);
+  const providerCatalog = new Map(
+    providerAuthSnapshot.providerAuthProviders.map((provider) => [provider.id, provider]),
   );
+  for (const provider of providers) providerCatalog.set(provider.id, provider);
+  const sharedConnectedProviders = effectiveProviderConnectedIds
+    .filter(
+      (providerId) =>
+        providerId !== "deepseek" ||
+        !effectiveProviderConnectedIdSet.has("deepseek-official"),
+    )
+    .map((providerId) => {
+      const provider = providerCatalog.get(providerId);
+      const runtimeProvider = providers.find((entry) => entry.id === providerId);
+      return {
+        id: providerId,
+        name: formatProviderAuthName(providerId, provider?.name),
+        displayId: providerId.trim().toLowerCase() === "opencode" ? "ipollowork" : providerId,
+        source: runtimeProvider?.source,
+      };
+    });
   const sharedConnectedProviderIds = new Set(sharedConnectedProviders.map((provider) => provider.id));
   const deepSeekHarnessConnectedProviders = getConnectedProviderItems(
     deepSeekHarnessProviderQuery.data,
@@ -1665,7 +1676,7 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
   // Build enablement context from all available runtime state.
   const enablementContext = useMemo<EnablementContext>(() => {
     const mcpConfigured = new Set(connectionsSnapshot.mcpServers.map((s) => s.name));
-    const connectedProviders = new Set(providerConnectedIds);
+    const connectedProviders = new Set(effectiveProviderConnectedIds);
     const configuredEnvKeys = new Set(userEnvKeys);
     const loadedPlugins = new Set<string>();
     // Browser plugin detection: check if any configured plugin matches the chrome-devtools name.
@@ -1690,7 +1701,7 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
         return match ? isiPolloWorkExtensionEnabled(match) : false;
       },
     };
-  }, [computerUsePermissions, connectionsSnapshot, extensionStateVersion, providerConnectedIds, userEnvKeys]);
+  }, [computerUsePermissions, connectionsSnapshot, effectiveProviderConnectedIds, extensionStateVersion, userEnvKeys]);
   const restartExtensionLocalServer = useCallback(async () => {
     if (!isDesktopRuntime()) return false;
     try {
@@ -1750,9 +1761,6 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
       installedSkills: extensionsStore.skills(),
       pluginPackageSkillNames: pluginPackageRelationships.skillNames,
       pluginPackageMcpServerNames: pluginPackageRelationships.mcpServerNames,
-      importedCloudPlugins: extensionsStore.importedCloudPlugins(),
-      pendingCloudPluginChanges: extensionsStore.pendingCloudPluginChanges(),
-      cloudMarketplaces: extensionsStore.cloudOrgMarketplaces(),
       orgMcpConnections: orgMcpConnections.connections,
       enablementContext,
       isBuiltInConnected: extensionController.isConnected,
@@ -1881,7 +1889,11 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
             providerDisconnectStatus={configActionStatus}
             providerDisconnectError={null}
             onOpenProviderAuth={handleOpenProviderAuth}
-            onDisconnectProvider={(providerId) => providerAuthStore.disconnectProvider(providerId)}
+            onDisconnectProvider={async (providerId) => {
+              const result = await providerAuthStore.disconnectProvider(providerId);
+              await refreshUserEnvKeys();
+              return result;
+            }}
             canDisconnectProvider={(source) => source !== "env" && source !== "engine"}
             cloudProviderIds={new Set(
               Object.values(providerAuthSnapshot.importedCloudProviders ?? {}).map((p) => p.providerId)
@@ -2012,13 +2024,6 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
         if (route.pluginPackageId) return pluginPackagesView;
         return (
           <ExtensionsView
-            busy={busy}
-            selectedWorkspaceRoot={selectedWorkspaceRoot}
-            canEditPlugins={canWriteWorkspacePlugins}
-            canUseGlobalScope={!isRemoteWorkspace && activeWorkContextId === PERSONAL_WORK_CONTEXT_ID}
-            accessHint={pluginsAccessHint}
-            suggestedPlugins={SUGGESTED_PLUGINS}
-            extensions={extensionsStore}
             client={selectedWorkspaceEndpoint?.client ?? ipolloworkClient}
             workspaceId={runtimeWorkspaceId}
             activeTab={route.extensionsSection === "skills" ? "skills" : "plugins"}
@@ -2039,7 +2044,7 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
           <ConnectView
             developerMode={developerMode}
             session={denSession}
-            marketplaceItems={extensionItems.cloudPluginItems}
+            organizationPlugins={extensionsStore.cloudOrgMarketplaces().flatMap((marketplace) => marketplace.plugins)}
             refreshMarketplaceItems={refreshConnectMarketplaceItems}
           />
         );
@@ -2084,18 +2089,7 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
             opencodeDevModeEnabled={false}
             openDebugDeepLink={async () => ({ ok: false, message: "Debug deep links are not wired into the React settings route yet." })}
             cloudMcpUrl={ipolloworkCloudMcpUrl}
-            canMigrateRuntimeConfig={Boolean(ipolloworkClient && selectedWorkspaceId)}
-            migrateRuntimeConfig={async () => {
-              if (!ipolloworkClient || !selectedWorkspaceId) {
-                throw new Error("Select a workspace before migrating legacy runtime config.");
-              }
-              const result = await ipolloworkClient.migrateRuntimeConfig(selectedWorkspaceId);
-              if (result.migrated) {
-                void connectionsStore.refreshMcpServers();
-                void extensionsStore.refreshPlugins();
-              }
-              return { migrated: result.migrated, keys: result.keys };
-            }}
+            canReadRuntimeConfig={Boolean(ipolloworkClient && selectedWorkspaceId)}
             getRuntimeConfigStatus={async () => {
               if (!ipolloworkClient || !selectedWorkspaceId) {
                 throw new Error("Select a workspace to inspect runtime config.");
@@ -2275,7 +2269,7 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
               checkRestriction: checkDesktopRestriction,
             }),
         )}
-        connectedProviderIds={providerConnectedIds}
+        connectedProviderIds={effectiveProviderConnectedIds}
         authMethods={Object.fromEntries(
           Object.entries(providerAuthSnapshot.providerAuthMethods).filter(
             ([providerId]) =>
@@ -2286,8 +2280,16 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
           ),
         )}
         onSelect={providerAuthStore.startProviderAuth}
-        onSubmitApiKey={providerAuthStore.submitProviderApiKey}
-        onDisconnectProvider={providerAuthStore.disconnectProvider}
+        onSubmitApiKey={async (providerId, apiKey, modelIds) => {
+          const result = await providerAuthStore.submitProviderApiKey(providerId, apiKey, modelIds);
+          await refreshUserEnvKeys();
+          return result;
+        }}
+        onDisconnectProvider={async (providerId) => {
+          const result = await providerAuthStore.disconnectProvider(providerId);
+          await refreshUserEnvKeys();
+          return result;
+        }}
         onConnectCloudProvider={providerAuthStore.connectCloudProvider}
         onSubmitOAuth={providerAuthStore.completeProviderAuthOAuth}
         onRefreshProviders={providerAuthStore.refreshProviders}
@@ -2312,11 +2314,15 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
         setQuery={modelPicker.setQuery}
         target="default"
         current={
-          activeEnginePreferences.model ?? { providerID: "", modelID: "" }
+          local.prefs.model ?? { providerID: "", modelID: "" }
         }
         onSelect={(next: ModelRef) => {
           setActiveModel(next);
           modelPicker.setOpen(false);
+        }}
+        onConnectProvider={(providerId) => {
+          modelPicker.setOpen(false);
+          void providerAuthStore.openProviderAuthModal({ preferredProviderId: providerId });
         }}
         onBehaviorChange={() => {}}
         onOpenSettings={() => {}}

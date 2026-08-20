@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { startServer } from "./server.js";
-import { parseClaudePluginSource } from "./claude-plugin-bundle.js";
+import { parseCompatibleGitHubPluginSource } from "./github-plugin-source.js";
 import type { ServerConfig } from "./types.js";
 
 type Served = { port: number; stop: (closeActiveConnections?: boolean) => void | Promise<void> };
@@ -111,7 +111,7 @@ function startMockOpencode() {
 }
 
 async function startiPolloWork(options?: { branch?: string }) {
-  const workspaceRoot = await mkdtemp(join(tmpdir(), "ipollowork-claude-plugin-"));
+  const workspaceRoot = await mkdtemp(join(tmpdir(), "ipollowork-github-plugin-"));
   roots.push(workspaceRoot);
   setEnv("IPOLLOWORK_RUNTIME_DB", join(workspaceRoot, "runtime.sqlite"));
 
@@ -155,23 +155,23 @@ async function startiPolloWork(options?: { branch?: string }) {
   };
 }
 
-describe("parseClaudePluginSource", () => {
+describe("parseCompatibleGitHubPluginSource", () => {
   test("parses URL variants", () => {
-    expect(parseClaudePluginSource("https://github.com/slackapi/slack-mcp-plugin")).toEqual({
+    expect(parseCompatibleGitHubPluginSource("https://github.com/slackapi/slack-mcp-plugin")).toEqual({
       owner: "slackapi",
       repo: "slack-mcp-plugin",
       ref: null,
       dir: null,
       treeSegments: null,
     });
-    expect(parseClaudePluginSource("github.com/slackapi/slack-mcp-plugin.git")).toEqual({
+    expect(parseCompatibleGitHubPluginSource("github.com/slackapi/slack-mcp-plugin.git")).toEqual({
       owner: "slackapi",
       repo: "slack-mcp-plugin",
       ref: null,
       dir: null,
       treeSegments: null,
     });
-    expect(parseClaudePluginSource("https://github.com/a/b/tree/dev/plugins/x")).toEqual({
+    expect(parseCompatibleGitHubPluginSource("https://github.com/a/b/tree/dev/plugins/x")).toEqual({
       owner: "a",
       repo: "b",
       ref: "dev",
@@ -179,53 +179,56 @@ describe("parseClaudePluginSource", () => {
       treeSegments: ["dev", "plugins", "x"],
     });
     // Query strings and hash fragments are ignored.
-    expect(parseClaudePluginSource("https://github.com/a/b?tab=readme-ov-file#readme")).toEqual({
+    expect(parseCompatibleGitHubPluginSource("https://github.com/a/b?tab=readme-ov-file#readme")).toEqual({
       owner: "a",
       repo: "b",
       ref: null,
       dir: null,
       treeSegments: null,
     });
-    expect(parseClaudePluginSource("https://github.com/a/b/tree/dev/plugins/x?x=1")).toEqual({
+    expect(parseCompatibleGitHubPluginSource("https://github.com/a/b/tree/dev/plugins/x?x=1")).toEqual({
       owner: "a",
       repo: "b",
       ref: "dev",
       dir: "plugins/x",
       treeSegments: ["dev", "plugins", "x"],
     });
-    expect(() => parseClaudePluginSource("https://gitlab.com/a/b")).toThrow();
-    expect(() => parseClaudePluginSource("not a url")).toThrow();
+    expect(() => parseCompatibleGitHubPluginSource("https://gitlab.com/a/b")).toThrow();
+    expect(() => parseCompatibleGitHubPluginSource("not a url")).toThrow();
   });
 });
 
-describe("claude plugin bundles", () => {
+describe("compatible GitHub plugin sources", () => {
   test("dryRun returns the Will-install preview with warnings", async () => {
     const ipollowork = await startiPolloWork();
 
-    const response = await fetch(`${ipollowork.base}/workspace/ws_1/claude-plugins`, {
+    const response = await fetch(`${ipollowork.base}/workspace/ws_1/plugin-packages/import/github`, {
       method: "POST",
       headers: ipollowork.headers,
       body: JSON.stringify({ url: "https://github.com/slackapi/slack-mcp-plugin", dryRun: true }),
     });
     expect(response.status).toBe(200);
-    const body = await response.json() as { preview: { name: string; version: string | null; components: Array<{ type: string; name: string }>; warnings: string[] } };
+    const body = await response.json() as {
+      preview: { manifest: { name: string } };
+      source: { name: string; version: string | null; components: Array<{ type: string; name: string }>; warnings: string[] };
+    };
 
-    expect(body.preview.name).toBe("Slack");
-    expect(body.preview.version).toBe("1.0.0");
-    const byType = (type: string) => body.preview.components.filter((entry) => entry.type === type).map((entry) => entry.name);
+    expect(body.preview.manifest.name).toBe("Slack");
+    expect(body.source.version).toBe("1.0.0");
+    const byType = (type: string) => body.source.components.filter((entry) => entry.type === type).map((entry) => entry.name);
     expect(byType("mcp")).toEqual(["slack"]);
     expect(byType("skill")).toEqual(["slack-search"]);
     expect(byType("command")).toEqual(["standup"]);
     // local-helper uses ${CLAUDE_PLUGIN_ROOT} and must be skipped with a warning.
-    expect(body.preview.warnings.some((warning) => warning.includes("local-helper"))).toBe(true);
+    expect(body.source.warnings.some((warning) => warning.includes("local-helper"))).toBe(true);
     // Nothing installed on dryRun.
-    expect(existsSync(join(ipollowork.workspaceRoot, ".opencode/skills/slack-plugin"))).toBe(false);
+    expect(existsSync(join(ipollowork.workspaceRoot, ".opencode/skills/github-slackapi-slack-mcp-plugin"))).toBe(false);
   });
 
   test("resolves branch names containing slashes in /tree/ URLs", async () => {
     const ipollowork = await startiPolloWork({ branch: "release/v1" });
 
-    const response = await fetch(`${ipollowork.base}/workspace/ws_1/claude-plugins`, {
+    const response = await fetch(`${ipollowork.base}/workspace/ws_1/plugin-packages/import/github`, {
       method: "POST",
       headers: ipollowork.headers,
       body: JSON.stringify({
@@ -234,28 +237,28 @@ describe("claude plugin bundles", () => {
       }),
     });
     expect(response.status).toBe(200);
-    const body = await response.json() as { preview: { name: string; source: { ref: string; dir: string | null } } };
+    const body = await response.json() as { source: { name: string; source: { ref: string; dir: string | null } } };
     // "release" fails as a ref, so the resolver falls through to "release/v1".
-    expect(body.preview.source.ref).toBe("release/v1");
-    expect(body.preview.source.dir).toBeNull();
-    expect(body.preview.name).toBe("Slack");
+    expect(body.source.source.ref).toBe("release/v1");
+    expect(body.source.source.dir).toBeNull();
+    expect(body.source.name).toBe("Slack");
   });
 
   test("installs skills, commands, and MCP servers; uninstall cleans up", async () => {
     const ipollowork = await startiPolloWork();
 
-    const installResponse = await fetch(`${ipollowork.base}/workspace/ws_1/claude-plugins`, {
+    const installResponse = await fetch(`${ipollowork.base}/workspace/ws_1/plugin-packages/import/github`, {
       method: "POST",
       headers: ipollowork.headers,
       body: JSON.stringify({ url: "https://github.com/slackapi/slack-mcp-plugin" }),
     });
     expect(installResponse.status).toBe(200);
-    const installBody = await installResponse.json() as { item: { pluginId: string; files: Array<{ objectType: string; path: string }> } };
-    expect(installBody.item.pluginId).toBe("github:slackapi/slack-mcp-plugin");
+    const installBody = await installResponse.json() as { item: { pluginId: string } };
+    expect(installBody.item.pluginId).toBe("github-slackapi-slack-mcp-plugin");
 
     // Skill and command land namespaced under .opencode/.
-    const skillPath = join(ipollowork.workspaceRoot, ".opencode/skills/slack-plugin/slack-search/SKILL.md");
-    const commandPath = join(ipollowork.workspaceRoot, ".opencode/commands/slack-plugin/standup.md");
+    const skillPath = join(ipollowork.workspaceRoot, ".opencode/skills/github-slackapi-slack-mcp-plugin/slack-search/SKILL.md");
+    const commandPath = join(ipollowork.workspaceRoot, ".opencode/commands/github-slackapi-slack-mcp-plugin/standup.md");
     expect(existsSync(skillPath)).toBe(true);
     expect(existsSync(commandPath)).toBe(true);
     expect(await readFile(skillPath, "utf8")).toContain("Search Slack messages effectively");
@@ -265,11 +268,10 @@ describe("claude plugin bundles", () => {
     const listBody = await listResponse.json() as { items: Array<{ name: string; source: string }> };
     const slackEntry = listBody.items.find((entry) => entry.name === "slack");
     expect(slackEntry?.source).toBe("config.remote");
-    expect(ipollowork.engine.requests.some((entry) => entry.method === "POST" && entry.pathname === "/mcp")).toBe(true);
 
-    // Uninstall through the shared cloud-plugins route.
+    // Uninstall through the one global plugin-package lifecycle.
     const removeResponse = await fetch(
-      `${ipollowork.base}/workspace/ws_1/cloud-plugins/${encodeURIComponent(installBody.item.pluginId)}`,
+      `${ipollowork.base}/workspace/ws_1/plugin-packages/${encodeURIComponent(installBody.item.pluginId)}`,
       { method: "DELETE", headers: ipollowork.headers },
     );
     expect(removeResponse.status).toBe(200);

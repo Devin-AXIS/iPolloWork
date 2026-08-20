@@ -1,0 +1,2 @@
+patchedDependencies:
+  "@deepseek-ai/dsh-subprocess-local@0.1.0-rc.6": "@deepseek-ai__dsh-subprocess-local@0.1.0-rc.6.patch"

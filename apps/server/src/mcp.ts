@@ -7,7 +7,7 @@ import { readJsoncFile } from "./jsonc.js";
 import { opencodeConfigPath } from "./workspace-files.js";
 import { validateMcpConfig, validateMcpName } from "./validators.js";
 import { forgetMcpAuthorizationConsumer, publicMcpConfig, secureMcpAuthorizationConfig } from "./mcp-authorization.js";
-import { readRuntimeOpencodeConfig, runtimeMcpMap, writeRuntimeOpencodeConfig } from "./runtime-opencode-config-store.js";
+import { readRuntimeMcpConfig, writeRuntimeMcpConfig } from "./runtime-capability-store.js";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -49,8 +49,7 @@ export async function listMcp(serverConfig: ServerConfig, workspaceId: string, w
 
   const projectMcpMap = getMcpConfig(config);
   const globalMcpMap = getMcpConfig(globalConfig);
-  const runtimeConfig = await readRuntimeOpencodeConfig(serverConfig, workspaceId);
-  const runtimeMap = runtimeMcpMap(runtimeConfig);
+  const runtimeMap = await readRuntimeMcpConfig(serverConfig, workspaceId);
 
   const items: McpItem[] = [];
 
@@ -78,15 +77,28 @@ export async function listMcp(serverConfig: ServerConfig, workspaceId: string, w
   }
 
   // iPolloWork-owned MCPs are stored by the server and injected at runtime.
-  for (const [name, entry] of Object.entries(runtimeMap)) {
+  const runtimeItems = await listRuntimeMcp(serverConfig, workspaceId);
+  items.push(...await Promise.all(runtimeItems.map(async (item) => ({
+    ...item,
+    config: await publicMcpConfig(serverConfig, workspaceId, item.name, item.config),
+    disabledByTools: isMcpDisabledByTools(config, item.name) || undefined,
+  }))));
+
+  return items;
+}
+
+export async function listRuntimeMcp(serverConfig: ServerConfig, workspaceId: string): Promise<McpItem[]> {
+  const items: McpItem[] = [];
+  for (const [name, entry] of Object.entries(await readRuntimeMcpConfig(serverConfig, workspaceId))) {
     items.push({
       name,
-      config: await publicMcpConfig(serverConfig, workspaceId, name, entry),
+      // Engine adapters need the actual runtime projection. In particular,
+      // OAuth MCPs use the iPolloWork proxy URL plus its scoped capability
+      // header. listMcp() converts this to a safe public representation for UI.
+      config: entry,
       source: "config.remote",
-      disabledByTools: isMcpDisabledByTools(config, name) || undefined,
     });
   }
-
   return items;
 }
 
@@ -98,23 +110,21 @@ export async function addMcp(
 ): Promise<{ action: "added" | "updated" }> {
   validateMcpName(name);
   validateMcpConfig(config);
-  const runtimeConfig = await readRuntimeOpencodeConfig(serverConfig, workspaceId);
-  const mcpMap = { ...runtimeMcpMap(runtimeConfig) };
+  const mcpMap = { ...await readRuntimeMcpConfig(serverConfig, workspaceId) };
   const existed = Object.prototype.hasOwnProperty.call(mcpMap, name);
   const usesWorkAuthorization = config.type === "remote" && (config.oauth === true || isRecord(config.oauth)) && !isRecord(config.headers);
   mcpMap[name] = usesWorkAuthorization
     ? await secureMcpAuthorizationConfig(serverConfig, workspaceId, name, config)
     : config;
-  await writeRuntimeOpencodeConfig(serverConfig, workspaceId, (current) => ({ ...current, mcp: mcpMap }));
+  await writeRuntimeMcpConfig(serverConfig, workspaceId, () => mcpMap);
   return { action: existed ? "updated" : "added" };
 }
 
 export async function removeMcp(serverConfig: ServerConfig, workspaceId: string, name: string): Promise<boolean> {
-  const runtimeConfig = await readRuntimeOpencodeConfig(serverConfig, workspaceId);
-  const mcpMap = { ...runtimeMcpMap(runtimeConfig) };
+  const mcpMap = { ...await readRuntimeMcpConfig(serverConfig, workspaceId) };
   if (!Object.prototype.hasOwnProperty.call(mcpMap, name)) return false;
   delete mcpMap[name];
-  await writeRuntimeOpencodeConfig(serverConfig, workspaceId, (current) => ({ ...current, mcp: mcpMap }));
+  await writeRuntimeMcpConfig(serverConfig, workspaceId, () => mcpMap);
   await forgetMcpAuthorizationConsumer(serverConfig, workspaceId, name);
   return true;
 }
@@ -133,8 +143,7 @@ export async function setMcpEnabled(
   enabled: boolean,
 ): Promise<boolean> {
   validateMcpName(name);
-  const runtimeConfig = await readRuntimeOpencodeConfig(serverConfig, workspaceId);
-  const mcpMap = { ...runtimeMcpMap(runtimeConfig) };
+  const mcpMap = { ...await readRuntimeMcpConfig(serverConfig, workspaceId) };
   if (!Object.prototype.hasOwnProperty.call(mcpMap, name)) return false;
   const current = mcpMap[name];
   if (!current || typeof current !== "object" || Array.isArray(current)) return false;
@@ -144,6 +153,6 @@ export async function setMcpEnabled(
     return false;
   }
   mcpMap[name] = { ...(current as Record<string, unknown>), enabled };
-  await writeRuntimeOpencodeConfig(serverConfig, workspaceId, (currentConfig) => ({ ...currentConfig, mcp: mcpMap }));
+  await writeRuntimeMcpConfig(serverConfig, workspaceId, () => mcpMap);
   return true;
 }

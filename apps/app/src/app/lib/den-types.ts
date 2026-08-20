@@ -138,7 +138,7 @@ export type DenMarketplacePluginDownload = {
 export type DenOrgPluginResolved = {
   plugin: DenOrgPlugin;
   memberships: DenPluginMembership[];
-  /** Future Den extension manifest; absent while Claude plugin imports are resource-only. */
+  /** Canonical package projection when the organization release exposes a version-2 manifest. */
   extension?: DenOrgExtensionProjection | null;
 };
 

@@ -59,11 +59,15 @@ const require = createRequire(import.meta.url);
 const pty = require(["node", "pty"].join("-"));
 
 function configureBundledDshRuntime() {
-  if (process.env.IPOLLOWORK_DSH_CLI?.trim()) return;
   try {
     const runtimeRoot = app.isPackaged
       ? path.join(process.resourcesPath, "dsh-runtime")
       : path.resolve(__dirname, "..", "dsh-runtime");
+    const hostPluginPath = path.join(runtimeRoot, "ipollowork-host-tools.mjs");
+    if (!process.env.IPOLLOWORK_DSH_HOST_PLUGIN?.trim() && existsSync(hostPluginPath)) {
+      process.env.IPOLLOWORK_DSH_HOST_PLUGIN = hostPluginPath;
+    }
+    if (process.env.IPOLLOWORK_DSH_CLI?.trim()) return;
     const packageRoot = path.join(runtimeRoot, "node_modules", "@deepseek-ai", "dsh");
     const manifest = require(path.join(packageRoot, "package.json"));
     const cliPath = path.join(packageRoot, "lib", "bin.js");

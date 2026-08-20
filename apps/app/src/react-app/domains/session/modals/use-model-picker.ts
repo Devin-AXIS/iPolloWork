@@ -7,13 +7,12 @@ import { useEffect, useMemo, useState } from "react";
 
 import { isDesktopProviderBlocked } from "@/app/cloud/desktop-app-restrictions";
 import type { ModelOption } from "@/app/types";
-import { modelSupportsVision } from "@/app/utils/model-capabilities";
 import { useCheckDesktopRestriction } from "@/react-app/domains/cloud/desktop-config-provider";
 import {
   ensureMergedProviderListQuery,
   ensureProviderListQuery,
-  getSelectableChatProviderItems,
-  isModelAvailableInConnectedProviders,
+  getChatProviderCatalogItems,
+  resolveModelRuntime,
   type ProviderListQueryInput,
 } from "@/react-app/infra/provider-list-query";
 import { getReactQueryClient } from "@/react-app/infra/query-client";
@@ -29,12 +28,21 @@ export type UseModelPickerInput = {
   baseUrl: string;
   workspaceRoot: string;
   catalogSources?: readonly ProviderListQueryInput[];
+  connectedProviderIds?: readonly string[];
   /** Optional: surface option-load failures (settings shows a toast; the session route stays silent). */
   onLoadError?: (error: unknown) => void;
 };
 
 export function useModelPicker(input: UseModelPickerInput) {
-  const { client, engineId, baseUrl, workspaceRoot, catalogSources = [], onLoadError } = input;
+  const {
+    client,
+    engineId,
+    baseUrl,
+    workspaceRoot,
+    catalogSources = [],
+    connectedProviderIds = [],
+    onLoadError,
+  } = input;
   const checkDesktopRestriction = useCheckDesktopRestriction();
 
   const [open, setOpen] = useState(false);
@@ -97,8 +105,9 @@ export function useModelPicker(input: UseModelPickerInput) {
           ensureMergedProviderListQuery(
             getReactQueryClient(),
             catalogSources.length ? catalogSources : [activeSource],
+            { force: true },
           ),
-          ensureProviderListQuery(getReactQueryClient(), activeSource),
+          ensureProviderListQuery(getReactQueryClient(), { ...activeSource, force: true }),
         ]);
         if (cancelled || !data.all) return;
         // Flag models from recently-added providers so they appear in
@@ -112,12 +121,21 @@ export function useModelPicker(input: UseModelPickerInput) {
         } catch {
           seenIds = new Set();
         }
+        const accountConnected = new Set([
+          ...data.connected,
+          ...connectedProviderIds,
+        ]);
         const options: ModelOption[] = [];
-        for (const provider of getSelectableChatProviderItems(data)) {
+        for (const provider of getChatProviderCatalogItems(data)) {
           const modelIds = Object.keys(provider.models);
           const isNew = !seenIds.has(provider.id) || recentProviderIds.has(provider.id);
+          const isConnected = accountConnected.has(provider.id);
           for (const id of modelIds) {
             const model = provider.models[id];
+            const runtime = resolveModelRuntime(active, {
+              providerID: provider.id,
+              modelID: id,
+            }, engineId);
             options.push({
               providerID: provider.id,
               modelID: id,
@@ -127,15 +145,14 @@ export function useModelPicker(input: UseModelPickerInput) {
               behaviorLabel: t("settings.provider_default_label"),
               behaviorDescription: "",
               behaviorValue: null,
-              isFree: false,
-              isConnected: true,
-              disabled: !isModelAvailableInConnectedProviders(active, {
-                providerID: provider.id,
-                modelID: id,
-              }),
-              footer: t("model_picker.engine_unavailable"),
+              isFree: provider.id.trim().toLowerCase() === "opencode",
+              isConnected,
+              disabled: !isConnected || runtime.status !== "ready",
+              footer: isConnected
+                ? t("model_picker.engine_unavailable")
+                : t("model_picker.connect_provider_hint"),
               isRecommended: isNew,
-              supportsVision: modelSupportsVision(model),
+              supportsVision: runtime.capabilities?.vision === true,
               source: /^lpr_/i.test(provider.id) ? "cloud" as const : undefined,
             });
           }
@@ -150,7 +167,7 @@ export function useModelPicker(input: UseModelPickerInput) {
     return () => {
       cancelled = true;
     };
-  }, [open, compactOpen, baseUrl, catalogSources, client, engineId, recentProviderIds, workspaceRoot]);
+  }, [open, compactOpen, baseUrl, catalogSources, client, connectedProviderIds, engineId, recentProviderIds, workspaceRoot]);
 
   // Apply org-level restrictions (dev #1505) on top of the raw model list
   // so the picker never surfaces blocked options:

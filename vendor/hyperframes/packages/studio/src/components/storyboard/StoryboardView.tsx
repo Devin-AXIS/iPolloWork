@@ -83,7 +83,7 @@ function handoffPrompt(path: string): string {
 Use this format:
 
 ---
-format: 1920x1080
+format: 1920x1080 or 1080x1920 (match the composition; use 1080x1920 for portrait 9:16)
 message: <the one-line takeaway of the video>
 arc: <the narrative shape, e.g. Problem → Solution>
 audience: <who it's for>

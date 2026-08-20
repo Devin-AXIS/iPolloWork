@@ -7,7 +7,10 @@ import type {
 } from "../../app/types";
 import { dispatchNewProviders } from "../../app/lib/provider-events";
 import { DEFAULT_ENGINE_ID } from "@ipollowork/types/workspace";
-import { providerEngineAdapters } from "../domains/connections/provider-auth/provider-engine-adapter";
+import {
+  modelRuntimeAdapters,
+  type ModelRuntimeResolution,
+} from "../domains/connections/provider-auth/provider-engine-adapter";
 import type { SelectableChatModelSnapshot } from "./preferred-chat-model";
 
 export const PROVIDER_LIST_CACHE_MS = 5 * 60 * 1000;
@@ -70,7 +73,7 @@ export async function fetchProviderList(input: {
   baseUrl?: string | null;
   directory?: string | null;
 }): Promise<ProviderListResponse> {
-  const value = await providerEngineAdapters
+  const value = await modelRuntimeAdapters
     .get(input.engineId)
     .connect(input.client)
     .listProviders(input.directory?.trim() || undefined);
@@ -127,9 +130,13 @@ export function mergeProviderListResponses(
 export async function ensureMergedProviderListQuery(
   queryClient: QueryClient,
   sources: readonly ProviderListQueryInput[],
+  options?: { force?: boolean },
 ): Promise<ProviderListResponse> {
   const values = await Promise.all(
-    sources.map((source) => ensureProviderListQuery(queryClient, source)),
+    sources.map((source) => ensureProviderListQuery(queryClient, {
+      ...source,
+      force: options?.force,
+    })),
   );
   return mergeProviderListResponses(values);
 }
@@ -150,6 +157,19 @@ export function getSelectableChatProviderItems(value: ProviderListResponse | nul
     // The OpenCode provider is the built-in default chat path. Env-sourced
     // providers can be present because the runtime inherited shell variables,
     // but that does not mean the user intentionally configured them for chat.
+    if (provider.id.trim().toLowerCase() === "opencode") return true;
+    return provider.source !== "env";
+  });
+}
+
+/**
+ * The account model directory includes disconnected providers so choosing one
+ * can start its single shared credential flow. Connection and engine-runtime
+ * readiness are evaluated separately by the caller.
+ */
+export function getChatProviderCatalogItems(value: ProviderListResponse | null | undefined) {
+  return (value?.all ?? []).filter((provider) => {
+    if (Object.keys(provider.models ?? {}).length === 0) return false;
     if (provider.id.trim().toLowerCase() === "opencode") return true;
     return provider.source !== "env";
   });
@@ -182,21 +202,32 @@ export function getConnectedProviderSnapshot(
 export function isModelAvailableInConnectedProviders(
   value: ProviderListResponse | null | undefined,
   model: ModelRef | null | undefined,
+  engineId?: string | null,
 ) {
   if (!model?.providerID || !model.modelID) return true;
-  return getConnectedProviderItems(value).some(
-    (provider) => provider.id === model.providerID && Boolean(provider.models?.[model.modelID]),
-  );
+  return resolveModelRuntime(value, model, engineId).status === "ready";
 }
 
 export function isModelAvailableInSelectableChatProviders(
   value: ProviderListResponse | null | undefined,
   model: ModelRef | null | undefined,
+  engineId?: string | null,
 ) {
   if (!model?.providerID || !model.modelID) return true;
-  return getSelectableChatProviderItems(value).some(
-    (provider) => provider.id === model.providerID && Boolean(provider.models?.[model.modelID]),
-  );
+  const all = getSelectableChatProviderItems(value);
+  return resolveModelRuntime(
+    value ? { ...value, all, connected: all.map((provider) => provider.id) } : value,
+    model,
+    engineId,
+  ).status === "ready";
+}
+
+export function resolveModelRuntime(
+  value: ProviderListResponse | null | undefined,
+  model: ModelRef | null | undefined,
+  engineId?: string | null,
+): ModelRuntimeResolution {
+  return modelRuntimeAdapters.resolveModel({ engineId, providers: value, model });
 }
 
 export function getConnectedProviderSnapshotChange(input: {

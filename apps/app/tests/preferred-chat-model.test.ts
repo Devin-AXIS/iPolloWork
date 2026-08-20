@@ -1,6 +1,9 @@
 import { describe, expect, test } from "bun:test";
 
-import { resolvePreferredSelectableChatModel } from "../src/react-app/infra/preferred-chat-model";
+import {
+  resolveEngineSelectableChatModel,
+  resolvePreferredSelectableChatModel,
+} from "../src/react-app/infra/preferred-chat-model";
 
 describe("resolvePreferredSelectableChatModel", () => {
   const providers = [
@@ -44,5 +47,32 @@ describe("resolvePreferredSelectableChatModel", () => {
         current: { providerID: "missing", modelID: "missing-model" },
       }),
     ).toBeNull();
+  });
+});
+
+describe("resolveEngineSelectableChatModel", () => {
+  test("uses an engine fallback without replacing the shared preference", () => {
+    const preferred = { providerID: "tokenstar", modelID: "gpt-5.6-sol" };
+
+    expect(resolveEngineSelectableChatModel({
+      providers: [{ providerID: "deepseek-official", modelIDs: ["deepseek-v4-flash"] }],
+      defaults: { "deepseek-official": "deepseek-v4-flash" },
+      preferred,
+    })).toEqual({ providerID: "deepseek-official", modelID: "deepseek-v4-flash" });
+    expect(preferred).toEqual({ providerID: "tokenstar", modelID: "gpt-5.6-sol" });
+  });
+
+  test("falls back to the built-in engine route when it is the only option", () => {
+    expect(resolveEngineSelectableChatModel({
+      providers: [{ providerID: "opencode", modelIDs: ["big-pickle"] }],
+      preferred: { providerID: "deepseek-official", modelID: "deepseek-v4-flash" },
+    })).toEqual({ providerID: "opencode", modelID: "big-pickle" });
+  });
+
+  test("restores the shared preference on an engine that supports it", () => {
+    expect(resolveEngineSelectableChatModel({
+      providers: [{ providerID: "tokenstar", modelIDs: ["gpt-5.6-sol"] }],
+      preferred: { providerID: "tokenstar", modelID: "gpt-5.6-sol" },
+    })).toEqual({ providerID: "tokenstar", modelID: "gpt-5.6-sol" });
   });
 });

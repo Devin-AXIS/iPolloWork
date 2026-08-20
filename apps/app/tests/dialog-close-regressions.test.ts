@@ -11,13 +11,11 @@ function source(path: string) {
 describe("ordinary dialog close behavior", () => {
   test("keeps close controls available while background work continues", () => {
     const addMcp = source("domains/connections/modals/add-mcp-modal.tsx");
-    const claudeImport = source("domains/connections/modals/claude-plugin-import-modal.tsx");
     const pluginImport = source("domains/settings/plugin-package-import-modal.tsx");
     const environment = source("domains/settings/pages/environment-view.tsx");
     const authorization = source("domains/settings/authorization-form-dialog.tsx");
 
     expect(addMcp).not.toContain("if (state.submitting) return;\n    reset();");
-    expect(claudeImport).not.toContain("if (state.previewing || state.installing) return;");
     expect(pluginImport).not.toContain("if (busy) return;\n    reset();");
     expect(pluginImport).toContain('DialogClose render={<Button variant="outline" />}');
     expect(environment).toContain('if (event.key === "Escape")');

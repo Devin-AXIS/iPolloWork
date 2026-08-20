@@ -14,8 +14,13 @@ export type ProviderModel = {
   capabilities: {
     attachment?: boolean;
     reasoning?: boolean;
+    toolcall?: boolean;
     input?: {
+      text?: boolean;
       image?: boolean;
+    };
+    output?: {
+      text?: boolean;
     };
   };
   variants?: Record<string, Record<string, unknown>>;
@@ -327,27 +332,6 @@ export type DenOrgSkillCard = {
   updatedAt: string | null;
 };
 
-export type PluginInstallStep = {
-  title: string;
-  description: string;
-  command?: string;
-  url?: string;
-  path?: string;
-  note?: string;
-};
-
-export type SuggestedPlugin = {
-  name: string;
-  packageName: string;
-  description: string;
-  tags: string[];
-  aliases?: string[];
-  installMode?: "simple" | "guided";
-  steps?: PluginInstallStep[];
-};
-
-export type PluginScope = "project" | "global";
-
 export type McpServerSource = "config.project" | "config.global" | "config.remote";
 
 export type McpServerConfig = {
@@ -449,12 +433,6 @@ export type WorkspaceState = {
   active: WorkspaceInfo | null;
   path: string;
   root: string;
-};
-
-export type PluginState = {
-  scope: PluginScope;
-  config: OpencodeConfigFile | null;
-  list: string[];
 };
 
 export type WorkspaceDisplay = WorkspaceInfo & {

@@ -40,7 +40,7 @@ function moveSceneReplay(start: string) {
 }
 
 describe("timeline edit patch resolution", () => {
-  test("keeps an inserted effect host parent-owned while its children stay editable", async () => {
+  test("edits an ending effect as one host in master view and exposes children when drilled in", async () => {
     const testWindow = new Window();
     const root = testWindow.document.createElement("main");
     root.setAttribute("data-composition-id", "main");
@@ -78,10 +78,24 @@ describe("timeline edit patch resolution", () => {
       },
     });
     expect(getEditableUnitSelectionTarget(effectVisual)).toBeNull();
+    expect(getEditableUnitSelectionTarget(effectVisual, { isMasterView: true })).toBe(host);
+    expect(getEditableUnitSelectionTarget(effectVisual, { isMasterView: false })).toBeNull();
     await expect(
       resolveDomEditSelection(effectVisual, {
         activeCompositionPath: "index.html",
         isMasterView: true,
+        skipSourceProbe: true,
+      }),
+    ).resolves.toMatchObject({
+      element: host,
+      sourceFile: "index.html",
+      compositionSrc: "compositions/effects/effect-ending-bilibili-triple.html",
+      isCompositionHost: true,
+    });
+    await expect(
+      resolveDomEditSelection(effectVisual, {
+        activeCompositionPath: "compositions/effects/effect-ending-bilibili-triple.html",
+        isMasterView: false,
         skipSourceProbe: true,
       }),
     ).resolves.toMatchObject({
@@ -148,10 +162,10 @@ describe("timeline edit patch resolution", () => {
           skipSourceProbe: true,
         }),
       ).resolves.toMatchObject({
-        element: effectVisual,
-        sourceFile: "compositions/effects/effect-ending-bilibili-triple.html",
-        compositionSrc: undefined,
-        isCompositionHost: false,
+        element: host,
+        sourceFile: "index.html",
+        compositionSrc: "compositions/effects/effect-ending-bilibili-triple.html",
+        isCompositionHost: true,
         capabilities: {
           canEditStyles: true,
           canApplyManualOffset: true,

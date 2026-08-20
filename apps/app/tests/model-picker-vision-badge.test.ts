@@ -18,8 +18,8 @@ const zhSource = readFileSync(resolve(import.meta.dir, "../src/i18n/locales/zh.t
 describe("model picker vision badge", () => {
   test("tracks vision support separately from generic attachment support", () => {
     expect(typesSource).toContain("supportsVision?: boolean");
-    expect(hookSource).toContain('import { modelSupportsVision } from "@/app/utils/model-capabilities"');
-    expect(hookSource).toContain("supportsVision: modelSupportsVision(model)");
+    expect(hookSource).toContain("const runtime = resolveModelRuntime(active");
+    expect(hookSource).toContain("supportsVision: runtime.capabilities?.vision === true");
   });
 
   test("renders the vision badge beside the model title and keeps the model id on its own line", () => {
@@ -31,8 +31,9 @@ describe("model picker vision badge", () => {
   });
 
   test("renders the vision badge in the compact composer model switcher", () => {
-    expect(compactSelectSource).toContain('import { modelSupportsVision } from "@/app/utils/model-capabilities"');
-    expect(compactSelectSource).toContain("supportsVision: modelSupportsVision(model)");
+    expect(compactSelectSource).toContain("const runtime = resolveModelRuntime(data");
+    expect(compactSelectSource).toContain(".filter((provider) => accountConnected.has(provider.id))");
+    expect(compactSelectSource).toContain("supportsVision: runtime.capabilities?.vision === true");
     expect(compactSelectSource).toContain("const visionBadgeLabel = option.supportsVision ? t(\"model_picker.badge_vision\") : null");
     expect(compactSelectSource).toContain("{visionBadgeLabel}");
   });

@@ -191,6 +191,50 @@ describe("addBlockToProject", () => {
     expect(writtenIndex).toContain("z-index: 13");
   });
 
+  it("fits a landscape ending effect into a portrait composition without changing its aspect", async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        written: ["compositions/effects/effect-ending-douyin-follow.html"],
+        block: {
+          name: "effect-ending-douyin-follow",
+          title: "Douyin Follow",
+          type: "hyperframes:block",
+          librarySection: "ending-effect",
+          dimensions: { width: 1920, height: 1080 },
+          duration: 3.2,
+        },
+      }),
+    } as Response);
+
+    let writtenIndex = "";
+    await addBlockToProject({
+      projectId: "project-1",
+      blockName: "effect-ending-douyin-follow",
+      activeCompPath: "index.html",
+      effectIntent: "ending",
+      timelineElements: [],
+      readProjectFile: async () =>
+        '<main data-composition-id="root" data-width="1080" data-height="1920" data-duration="6"></main>',
+      writeProjectFile: async (_path, content) => {
+        writtenIndex = content;
+      },
+      recordEdit: vi.fn(),
+      markStudioWrite: vi.fn(),
+      refreshFileTree: vi.fn(),
+      reloadPreview: vi.fn(),
+      showToast: vi.fn(),
+    });
+
+    expect(writtenIndex).toContain('data-width="1080"');
+    expect(writtenIndex).toContain('data-height="608"');
+    expect(writtenIndex).toContain('data-hf-edit-as-unit=""');
+    expect(writtenIndex).toContain('data-hf-content-fit="contain"');
+    expect(writtenIndex).toContain(
+      "left: 0px; top: 656px; width: 1080px; height: 608px",
+    );
+  });
+
   it("starts the preview reload before refreshing the file tree", async () => {
     globalThis.fetch = vi.fn().mockResolvedValue({
       ok: true,

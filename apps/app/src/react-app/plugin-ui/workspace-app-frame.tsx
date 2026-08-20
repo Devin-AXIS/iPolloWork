@@ -44,6 +44,12 @@ type WorkspaceAppFrameProps = {
     modelContext: WorkspaceAppModelContext | null;
   }) => boolean | Promise<boolean>;
   onRequestClose?: () => void;
+  /** Uses an in-workspace draft resource while Plugin Studio is previewing an uninstalled package. */
+  resourceOverride?: iPolloWorkPluginUiResource;
+  /** Scopes an unpacked draft to the current conversation without adding it to installed plugins. */
+  developmentPreview?: {
+    revision: string;
+  };
   className?: string;
 };
 
@@ -98,10 +104,48 @@ function currentTheme(): "light" | "dark" {
   return document.documentElement.classList.contains("dark") ? "dark" : "light";
 }
 
+function sameWorkspaceAppRuntimeResource(
+  current: iPolloWorkPluginUiResource | null,
+  next: iPolloWorkPluginUiResource,
+): boolean {
+  return current?.pluginId === next.pluginId
+    && current.resource.id === next.resource.id
+    && current.resource.path === next.resource.path
+    && current.html === next.html
+    && JSON.stringify(current.resource.ui) === JSON.stringify(next.resource.ui);
+}
+
+function pluginUiHostContext(
+  props: Pick<
+    WorkspaceAppFrameProps,
+    "surface" | "placement" | "workspaceId" | "workspaceRoot" | "sessionId"
+  >,
+  developmentPreview: WorkspaceAppFrameProps["developmentPreview"],
+): PluginUiHostContextV1 {
+  return {
+    schemaVersion: 1,
+    pluginId: props.surface.pluginId,
+    resourceId: props.surface.resource.id,
+    surface: props.placement,
+    workspaceId: props.workspaceId,
+    workspaceRoot: props.workspaceRoot,
+    sessionId: props.sessionId ?? null,
+    ...(developmentPreview ? {
+      developmentPreview: {
+        mode: "plugin-workshop",
+        revision: developmentPreview.revision,
+      },
+    } : {}),
+  };
+}
+
 export function WorkspaceAppFrame(props: WorkspaceAppFrameProps) {
   const platform = usePlatform();
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const bridgeRef = useRef<AppBridge | null>(null);
+  const resourceRef = useRef<iPolloWorkPluginUiResource | null>(null);
+  const resourceIdentityRef = useRef("");
+  const developmentPreviewRef = useRef(props.developmentPreview);
   const modelContextRef = useRef<WorkspaceAppModelContext | null>(null);
   const onDisplayModeChangeRef = useRef(props.onDisplayModeChange);
   const onSendMessageRef = useRef(props.onSendMessage);
@@ -109,48 +153,59 @@ export function WorkspaceAppFrame(props: WorkspaceAppFrameProps) {
   onDisplayModeChangeRef.current = props.onDisplayModeChange;
   onSendMessageRef.current = props.onSendMessage;
   onRequestCloseRef.current = props.onRequestClose;
+  developmentPreviewRef.current = props.developmentPreview;
   const supportsDisplayModeChange = Boolean(props.onDisplayModeChange);
   const supportsMessage = Boolean(props.onSendMessage);
+  const developmentPreviewActive = Boolean(props.developmentPreview);
   const [resource, setResource] = useState<iPolloWorkPluginUiResource | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [bridgeReady, setBridgeReady] = useState(false);
   const [revision, setRevision] = useState(0);
 
   useEffect(() => {
     let active = true;
-    setLoading(true);
+    const resourceIdentity = `${props.surface.pluginId}:${props.surface.resource.id}`;
+    const replacingResource = resourceIdentityRef.current !== resourceIdentity;
+    if (replacingResource) {
+      resourceIdentityRef.current = resourceIdentity;
+      resourceRef.current = null;
+      setResource(null);
+      setBridgeReady(false);
+    }
+    if (!resourceRef.current) setLoading(true);
     setError(null);
-    setResource(null);
-    void props.client.getPluginPackageUiResource(
-      props.workspaceId,
-      props.surface.pluginId,
-      props.surface.resource.id,
-    ).then((nextResource) => {
-      if (active) setResource(nextResource);
+    const request = props.resourceOverride
+      ? Promise.resolve(props.resourceOverride)
+      : props.client.getPluginPackageUiResource(
+          props.workspaceId,
+          props.surface.pluginId,
+          props.surface.resource.id,
+        );
+    void request.then((nextResource) => {
+      if (!active || sameWorkspaceAppRuntimeResource(resourceRef.current, nextResource)) return;
+      resourceRef.current = nextResource;
+      setBridgeReady(false);
+      setResource(nextResource);
     }).catch((nextError) => {
-      if (active) setError(nextError instanceof Error ? nextError.message : "Workspace App could not be loaded");
+      if (active && !resourceRef.current) {
+        setError(nextError instanceof Error ? nextError.message : "Workspace App could not be loaded");
+      }
     }).finally(() => {
       if (active) setLoading(false);
     });
     return () => {
       active = false;
     };
-  }, [props.client, props.surface.pluginId, props.surface.resource.id, props.workspaceId, revision]);
+  }, [props.client, props.resourceOverride, props.surface.pluginId, props.surface.resource.id, props.workspaceId, revision]);
 
   useEffect(() => {
     const iframe = iframeRef.current;
     if (!resource || !iframe?.contentWindow) return;
+    setBridgeReady(false);
     let disposed = false;
     const transport = new PostMessageTransport(iframe.contentWindow, iframe.contentWindow);
-    const pluginContext: PluginUiHostContextV1 = {
-      schemaVersion: 1,
-      pluginId: props.surface.pluginId,
-      resourceId: props.surface.resource.id,
-      surface: props.placement,
-      workspaceId: props.workspaceId,
-      workspaceRoot: props.workspaceRoot,
-      sessionId: props.sessionId ?? null,
-    };
+    const pluginContext = pluginUiHostContext(props, developmentPreviewRef.current);
     const hostContext: McpUiHostContext = {
       theme: currentTheme(),
       displayMode: props.displayMode ?? "inline",
@@ -159,6 +214,11 @@ export function WorkspaceAppFrame(props: WorkspaceAppFrameProps) {
       timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
       platform: platform.platform === "desktop" ? "desktop" : "web",
       userAgent: navigator.userAgent,
+      // Keep this direct alias for unpacked Studios generated before the
+      // namespaced iPolloWork host-context contract was documented.
+      ...(pluginContext.developmentPreview ? {
+        developmentPreview: pluginContext.developmentPreview,
+      } : {}),
       [PLUGIN_UI_HOST_CONTEXT_KEY]: pluginContext,
     };
     const bridge = new AppBridge(
@@ -181,6 +241,12 @@ export function WorkspaceAppFrame(props: WorkspaceAppFrameProps) {
     bridgeRef.current = bridge;
     bridge.oncalltool = async ({ name, arguments: args }) => {
       try {
+        if (developmentPreviewActive) {
+          throw new Error(
+            "Uninstalled Plugin Workshop previews cannot execute local-service actions. "
+            + "Expose a standard MCP App tools/list + tools/call handler to test Studio behavior before installation.",
+          );
+        }
         if (props.surface.action && name !== props.surface.action) {
           throw new Error(`Workspace App may only call ${props.surface.action}.`);
         }
@@ -246,8 +312,11 @@ export function WorkspaceAppFrame(props: WorkspaceAppFrameProps) {
     });
     themeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ["class"] });
 
+    const connection = bridge.connect(transport);
     iframe.srcdoc = withContentSecurityPolicy(resource);
-    void bridge.connect(transport).catch((nextError) => {
+    void connection.then(() => {
+      if (!disposed) setBridgeReady(true);
+    }).catch((nextError) => {
       if (!disposed) setError(nextError instanceof Error ? nextError.message : "Workspace App bridge failed");
     });
 
@@ -259,7 +328,17 @@ export function WorkspaceAppFrame(props: WorkspaceAppFrameProps) {
       void bridge.teardownResource({}).catch(() => undefined).finally(() => transport.close());
       iframe.srcdoc = "";
     };
-  }, [platform, props.client, props.placement, props.sessionId, props.surface.action, props.surface.pluginId, props.surface.resource.id, props.workspaceId, props.workspaceRoot, resource, supportsDisplayModeChange, supportsMessage]);
+  }, [developmentPreviewActive, platform, props.client, props.placement, props.sessionId, props.surface.action, props.surface.pluginId, props.surface.resource.id, props.workspaceId, props.workspaceRoot, resource, supportsDisplayModeChange, supportsMessage]);
+
+  useEffect(() => {
+    const bridge = bridgeRef.current;
+    if (!bridge || !props.developmentPreview) return;
+    const pluginContext = pluginUiHostContext(props, props.developmentPreview);
+    bridge.setHostContext({
+      developmentPreview: pluginContext.developmentPreview,
+      [PLUGIN_UI_HOST_CONTEXT_KEY]: pluginContext,
+    });
+  }, [props.developmentPreview?.revision, props.placement, props.sessionId, props.surface.pluginId, props.surface.resource.id, props.workspaceId, props.workspaceRoot]);
 
   useEffect(() => {
     bridgeRef.current?.setHostContext({ displayMode: props.displayMode ?? "inline" });
@@ -269,15 +348,30 @@ export function WorkspaceAppFrame(props: WorkspaceAppFrameProps) {
     {
       id: "workspace_app.list_tools",
       label: `List ${props.surface.label} tools`,
-      description: "List standard MCP App tools exposed by the active Workspace App.",
+      description: developmentPreviewActive
+        ? "List standard MCP App tools exposed by the active uninstalled Plugin Workshop draft."
+        : "List standard MCP App tools exposed by the active Workspace App.",
       sideEffect: "none",
-      execute: async () => bridgeRef.current?.listTools({}) ?? { tools: [] },
+      disabled: !bridgeReady,
+      execute: async (args) => {
+        if (isRecord(args) && typeof args.sessionId === "string" && args.sessionId !== props.sessionId) {
+          throw new Error("The active Workspace App belongs to another conversation");
+        }
+        const result = await bridgeRef.current?.listTools({}) ?? { tools: [] };
+        const developmentPreview = developmentPreviewRef.current;
+        return developmentPreview
+          ? { ...result, developmentPreview: { active: true, revision: developmentPreview.revision } }
+          : result;
+      },
     },
     {
       id: "workspace_app.call_tool",
       label: `Edit ${props.surface.label}`,
-      description: "Call a standard MCP App tool exposed by the active Workspace App.",
+      description: developmentPreviewActive
+        ? "Call a standard MCP App tool on the active uninstalled draft; changes stay in this Plugin Workshop conversation."
+        : "Call a standard MCP App tool exposed by the active Workspace App.",
       sideEffect: "mutation",
+      disabled: !bridgeReady,
       requiresArgs: true,
       args: [
         { name: "name", type: "string", required: true, description: "Tool name returned by workspace_app.list_tools." },
@@ -285,6 +379,9 @@ export function WorkspaceAppFrame(props: WorkspaceAppFrameProps) {
       ],
       execute: async (args) => {
         if (!isRecord(args) || typeof args.name !== "string") throw new Error("name is required");
+        if (typeof args.sessionId === "string" && args.sessionId !== props.sessionId) {
+          throw new Error("The active Workspace App belongs to another conversation");
+        }
         const bridge = bridgeRef.current;
         if (!bridge) throw new Error("Workspace App is not ready");
         return bridge.callTool({
@@ -293,7 +390,7 @@ export function WorkspaceAppFrame(props: WorkspaceAppFrameProps) {
         });
       },
     },
-  ], [props.placement, props.surface.label]);
+  ], [bridgeReady, developmentPreviewActive, props.placement, props.sessionId, props.surface.label]);
   useControlActions(controlActions);
 
   if (loading) {
@@ -318,8 +415,10 @@ export function WorkspaceAppFrame(props: WorkspaceAppFrameProps) {
       ref={iframeRef}
       title={props.surface.label}
       className={cn("h-full w-full border-0 bg-background", props.className)}
-      sandbox="allow-scripts"
+      sandbox="allow-scripts allow-same-origin"
       allow={buildAllowAttribute(resource.resource.ui.permissions)}
+      data-development-preview={props.developmentPreview ? "plugin-workshop" : undefined}
+      data-preview-revision={props.developmentPreview?.revision}
     />
   );
 }

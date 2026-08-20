@@ -1,5 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import { DEEPSEEK_HARNESS_ENGINE_ID, DEFAULT_ENGINE_ID } from "@ipollowork/types/workspace";
+import {
+  DEEPSEEK_HARNESS_ENGINE_ID,
+  DEEPSEEK_HARNESS_INTERNAL_SYSTEM_PREFIX,
+  DEFAULT_ENGINE_ID,
+} from "@ipollowork/types/workspace";
 
 import {
   ConversationEngineAdapterRegistry,
@@ -10,7 +14,6 @@ import {
 } from "../src/react-app/domains/session/engine/opencode-conversation-engine";
 import { conversationEngineAdapters } from "../src/react-app/domains/session/engine/conversation-engines";
 import {
-  DEEPSEEK_HARNESS_INTERNAL_SYSTEM_PREFIX,
   mapDeepSeekHarnessEnvelope,
   mapDeepSeekHarnessSnapshot,
   normalizeDeepSeekHarnessErrorText,
@@ -296,9 +299,15 @@ describe("conversation engine adapters", () => {
   test("exposes native DeepSeek Harness modes and applies model selection before prompting", async () => {
     const originalFetch = globalThis.fetch;
     const requests: Array<{ method: string; payload: Record<string, unknown> }> = [];
-    globalThis.fetch = (async (_input, init) => {
-      const body = JSON.parse(String(init?.body)) as { method: string; payload: Record<string, unknown> };
-      requests.push(body);
+    globalThis.fetch = (async (input, init) => {
+      const body = JSON.parse(String(init?.body)) as {
+        method?: string;
+        payload: Record<string, unknown>;
+      };
+      const request = String(input).endsWith("/prompt")
+        ? { method: "session.prompt", payload: body.payload }
+        : { method: body.method ?? "", payload: body.payload };
+      requests.push(request);
       if (body.method === "agentPreset.list") {
         return Response.json({ value: {
           presets: [
@@ -309,7 +318,7 @@ describe("conversation engine adapters", () => {
           ],
         } });
       }
-      return Response.json({ value: {} });
+      return Response.json(String(input).endsWith("/prompt") ? { ok: true } : { value: {} });
     }) as typeof fetch;
 
     try {
@@ -377,6 +386,89 @@ describe("conversation engine adapters", () => {
         text: `${DEEPSEEK_HARNESS_INTERNAL_SYSTEM_PREFIX}Internal runtime instructions\n</system>`,
       },
     ]);
+  });
+
+  test("maps installed plugin commands and agents into DeepSeek Harness prompts", async () => {
+    const originalFetch = globalThis.fetch;
+    const requests: Array<Record<string, unknown>> = [];
+    globalThis.fetch = (async (input, init) => {
+      if (String(input).endsWith("/plugin-capabilities")) {
+        return Response.json({
+          items: [
+            {
+              pluginId: "school-tools",
+              resourceId: "review-command",
+              type: "command",
+              name: "review-labels",
+              description: "Review annotations",
+            },
+            {
+              pluginId: "school-tools",
+              resourceId: "review-agent",
+              type: "agent",
+              name: "annotation-reviewer",
+              description: "Annotation reviewer",
+            },
+          ],
+        });
+      }
+      const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
+      requests.push(body);
+      return Response.json({ ok: true });
+    }) as typeof fetch;
+
+    try {
+      const connection = conversationEngineAdapters.get(DEEPSEEK_HARNESS_ENGINE_ID).connect({
+        baseUrl: "http://unused.test",
+        serverBaseUrl: "http://ipollowork.test",
+        workspaceId: "ws_dsh",
+        token: "token",
+      });
+      expect(await connection.listCommands()).toEqual([
+        expect.objectContaining({ name: "review-labels", description: "Review annotations" }),
+      ]);
+      expect(await connection.listAgents()).toEqual([
+        expect.objectContaining({ name: "annotation-reviewer", description: "Annotation reviewer" }),
+      ]);
+
+      await connection.runCommand({
+        sessionId: "session-1",
+        command: "review-labels",
+        arguments: "project 12",
+      });
+      await connection.sendPrompt({
+        sessionId: "session-1",
+        parts: [
+          { type: "agent", name: "annotation-reviewer" },
+          { type: "text", text: "Review the current batch" },
+        ],
+      });
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+
+    expect(requests).toEqual([
+      {
+        payload: {
+          sessionId: "session-1",
+          mode: "queue",
+          content: [],
+          clientTimeZone: expect.any(String),
+        },
+        plugins: { command: { name: "review-labels", arguments: "project 12" } },
+      },
+      {
+        payload: {
+          sessionId: "session-1",
+          mode: "queue",
+          content: [{ type: "text", text: "Review the current batch" }],
+          clientTimeZone: expect.any(String),
+        },
+        plugins: { agents: ["annotation-reviewer"] },
+      },
+    ]);
+    expect(JSON.stringify(requests)).not.toContain("Check every annotation");
+    expect(JSON.stringify(requests)).not.toContain("Act as a careful annotation quality reviewer");
   });
 
   test("hides DeepSeek Harness synthetic user events from the live conversation", () => {
@@ -672,9 +764,9 @@ describe("conversation engine adapters", () => {
     }
 
     expect(requestBody).toMatchObject({
-      method: "session.prompt",
       payload: {
         sessionId: "session-1",
+        mode: "queue",
         content: [{ type: "text", text: "[Attached file: notes.txt]\nHello DSH" }],
       },
     });

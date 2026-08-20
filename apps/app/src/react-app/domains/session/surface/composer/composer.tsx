@@ -5,15 +5,12 @@ import fuzzysort from "fuzzysort";
 import { toast } from "@/components/ui/sonner";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { IPOLLOWORK_EXTENSION_CATALOG, type McpDirectoryInfo } from "@/app/constants";
-import type { CloudImportedPlugin, CloudImportedPluginFile } from "@/app/cloud/import-state";
 import type { iPolloWorkPluginPackageItem } from "@/app/lib/ipollowork-server";
+import { activePluginEngineCompatibility } from "@/app/lib/plugin-package-readiness";
 import type { ComposerAttachment, McpServerEntry, McpStatusMap, ModelRef, SkillCard, SlashCommandOption } from "@/app/types";
 import type { ConversationAgent, ConversationMode, ConversationModeIcon } from "../../engine/conversation-engine";
 import { formatBytes } from "@/app/utils";
 import { t } from "@/i18n";
-import { isiPolloWorkExtensionEnabled, isiPolloWorkExtensionHidden, IPOLLOWORK_EXTENSION_STATE_CHANGED } from "@/react-app/domains/settings/extension-state";
-import { useDesktopRestriction } from "@/react-app/domains/cloud/desktop-config-provider";
 import { resolveExtensionIconUrl } from "@/react-app/design-system/extension-icon-src";
 import { LexicalPromptEditor, type LexicalPromptEditorHandle } from "./editor";
 import { ModelBehaviorMenu } from "./model-behavior-menu";
@@ -36,16 +33,8 @@ type PastedTextChip = {
 };
 
 type ToolMenuSettingsSection = "commands" | "skills" | "mcps" | "plugins";
-type ToolMenuSection = "commands" | "skills" | "mcps" | "extensions" | `plugin:${string}`;
+type ToolMenuSection = "commands" | "skills" | "mcps" | "extensions";
 type PlusMenuSection = "tools" | "delegation";
-
-function isComposerExtensionAvailable(entry: McpDirectoryInfo) {
-  const hasSessionSurface = entry.extensionManifest?.contributions?.some((contribution) =>
-    contribution.type === "session-side-panel" || contribution.type === "session-rail-item"
-  ) === true;
-  if (hasSessionSurface) return isiPolloWorkExtensionEnabled(entry);
-  return !entry.defaultEnabled || isiPolloWorkExtensionEnabled(entry);
-}
 
 export type ComposerProps = {
   draft: string;
@@ -64,7 +53,7 @@ export type ComposerProps = {
   selectedModel: ModelRef;
   onModelPickerOpenChange: (open: boolean) => void;
   onModelChange: (model: ModelRef) => void;
-  onConfigureModels?: () => void;
+  onConfigureModels?: (providerId?: string) => void;
   onConfigureTokenStar?: () => void;
   attachments: ComposerAttachment[];
   hasPromptContext?: boolean;
@@ -87,8 +76,11 @@ export type ComposerProps = {
   mcpServers?: McpServerEntry[];
   mcpStatus?: string | null;
   mcpStatuses?: McpStatusMap;
-  listImportedPlugins?: () => Promise<CloudImportedPlugin[]>;
-  importedPlugins?: CloudImportedPlugin[];
+  listInstalledExtensions?: () => Promise<iPolloWorkPluginPackageItem[]>;
+  /** Compatibility alias used by the project-first starter while plugin packages migrate to extensions. */
+  listImportedPlugins?: () => Promise<iPolloWorkPluginPackageItem[]>;
+  importedPlugins?: iPolloWorkPluginPackageItem[];
+  onOpenWorkspaceApp?: (pluginId: string) => void;
   listExternalAgents: () => Promise<iPolloWorkPluginPackageItem[]>;
   onOpenSettingsSection?: (section: ToolMenuSettingsSection) => void;
   recentFiles: string[];
@@ -254,37 +246,18 @@ function mcpStatusBadgeClass(status: McpServerStatus) {
   }
 }
 
-function extensionIcon(entry: McpDirectoryInfo, size = 16) {
-  const serviceUrl = typeof entry.url === "string" ? entry.url : undefined;
-  const iconUrl = resolveExtensionIconUrl({ iconSrc: entry.iconSrc, iconSlug: entry.iconSlug, serviceUrl });
+function extensionIcon(entry: iPolloWorkPluginPackageItem, size = 16) {
+  const iconUrl = resolveExtensionIconUrl({
+    iconSrc: entry.manifest.icon?.src,
+    iconSlug: entry.manifest.icon?.simpleIconSlug,
+  });
   if (iconUrl) {
     return <img src={iconUrl} alt="" width={size} height={size} loading="lazy" style={{ display: "block" }} />;
   }
   return <Plug size={size} className="text-gray-9" />;
 }
 
-function formatPluginObjectType(type: string) {
-  const normalized = type.trim().toLowerCase();
-  if (!normalized) return "File";
-  if (normalized === "mcp") return "MCP";
-  return `${normalized.charAt(0).toUpperCase()}${normalized.slice(1)}`;
-}
-
-function pluginSlashCommandName(file: CloudImportedPluginFile) {
-  const path = file.path.trim();
-  if (file.objectType === "command") {
-    const command = path.match(/^\.opencode\/(?:command|commands)\/(.+)\.md$/i)?.[1];
-    return command?.trim() || null;
-  }
-  if (file.objectType === "skill") {
-    const skill = path.match(/^\.opencode\/(?:skill|skills)\/(?:[^/]+\/)?([^/]+)\/SKILL\.md$/i)?.[1];
-    return skill?.trim() || null;
-  }
-  return null;
-}
-
 export function ReactSessionComposer(props: ComposerProps) {
-  const builtInExtensionsDisabled = useDesktopRestriction("allowBuiltInExtensions");
   let fileInput: HTMLInputElement | undefined;
   const [externalAgents, setExternalAgents] = useState<iPolloWorkPluginPackageItem[]>([]);
   const [externalAgentsLoading, setExternalAgentsLoading] = useState(false);
@@ -297,8 +270,8 @@ export function ReactSessionComposer(props: ComposerProps) {
   const [mcpServers, setMcpServers] = useState<McpServerEntry[]>(props.mcpServers ?? []);
   const [mcpStatus, setMcpStatus] = useState<string | null>(props.mcpStatus ?? null);
   const [mcpStatuses, setMcpStatuses] = useState<McpStatusMap>(props.mcpStatuses ?? {});
-  const [importedPlugins, setImportedPlugins] = useState<CloudImportedPlugin[]>(props.importedPlugins ?? []);
-  const [pluginsLoading, setPluginsLoading] = useState(false);
+  const [installedExtensions, setInstalledExtensions] = useState<iPolloWorkPluginPackageItem[]>(props.importedPlugins ?? []);
+  const [extensionsLoading, setExtensionsLoading] = useState(false);
   const [slashOpen, setSlashOpen] = useState(false);
   const [plusMenuOpen, setPlusMenuOpen] = useState(false);
   const [plusMenuSection, setPlusMenuSection] = useState<PlusMenuSection | null>(null);
@@ -319,20 +292,19 @@ export function ReactSessionComposer(props: ComposerProps) {
   const listCommandsRef = useRef(props.listCommands);
   const listSkillsRef = useRef(props.listSkills);
   const listMcpRef = useRef(props.listMcp);
-  const listImportedPluginsRef = useRef(props.listImportedPlugins);
+  const listInstalledExtensionsRef = useRef(props.listInstalledExtensions ?? props.listImportedPlugins);
   const listExternalAgentsRef = useRef(props.listExternalAgents);
   const toolMenuLoadRef = useRef({
     openId: 0,
     commands: false,
     skills: false,
     mcps: false,
-    plugins: false,
+    extensions: false,
   });
   const [commandsLoaded, setCommandsLoaded] = useState(false);
   const [skillsLoaded, setSkillsLoaded] = useState(Boolean(props.skills));
   const [mcpLoaded, setMcpLoaded] = useState(Boolean(props.mcpServers));
-  const [pluginsLoaded, setPluginsLoaded] = useState(Boolean(props.importedPlugins));
-  const [, setExtensionStateVersion] = useState(0);
+  const [extensionsLoaded, setExtensionsLoaded] = useState(false);
   const [delegationMenuIndex, setDelegationMenuIndex] = useState(0);
   const delegationItemRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const [dropzoneActive, setDropzoneActive] = useState(false);
@@ -450,10 +422,6 @@ export function ReactSessionComposer(props: ComposerProps) {
   }, [props.mcpServers, props.mcpStatus, props.mcpStatuses]);
 
   useEffect(() => {
-    setImportedPlugins(props.importedPlugins ?? []);
-  }, [props.importedPlugins]);
-
-  useEffect(() => {
     listCommandsRef.current = props.listCommands;
   }, [props.listCommands]);
 
@@ -484,8 +452,8 @@ export function ReactSessionComposer(props: ComposerProps) {
   }, [props.busy, props.modeSelectionDisabled]);
 
   useEffect(() => {
-    listImportedPluginsRef.current = props.listImportedPlugins;
-  }, [props.listImportedPlugins]);
+    listInstalledExtensionsRef.current = props.listInstalledExtensions ?? props.listImportedPlugins;
+  }, [props.listInstalledExtensions, props.listImportedPlugins]);
 
   useEffect(() => {
     listExternalAgentsRef.current = props.listExternalAgents;
@@ -548,16 +516,6 @@ export function ReactSessionComposer(props: ComposerProps) {
   }, []);
 
   useEffect(() => {
-    const refresh = () => setExtensionStateVersion((value) => value + 1);
-    window.addEventListener(IPOLLOWORK_EXTENSION_STATE_CHANGED, refresh);
-    window.addEventListener("storage", refresh);
-    return () => {
-      window.removeEventListener(IPOLLOWORK_EXTENSION_STATE_CHANGED, refresh);
-      window.removeEventListener("storage", refresh);
-    };
-  }, []);
-
-  useEffect(() => {
     if (!plusMenuOpen) return;
     const handlePointerDown = (event: MouseEvent) => {
       const target = event.target;
@@ -589,12 +547,12 @@ export function ReactSessionComposer(props: ComposerProps) {
       commands: false,
       skills: false,
       mcps: false,
-      plugins: false,
+      extensions: false,
     };
     setCommandsLoaded(false);
     setSkillsLoaded(Boolean(props.skills));
     setMcpLoaded(Boolean(props.mcpServers));
-    setPluginsLoaded(Boolean(props.importedPlugins));
+    setExtensionsLoaded(Boolean(props.importedPlugins));
   }, [toolMenuOpen]);
 
   useEffect(() => {
@@ -689,39 +647,9 @@ export function ReactSessionComposer(props: ComposerProps) {
   useEffect(() => {
     if (!toolMenuOpen) return;
     const openId = toolMenuLoadRef.current.openId;
-    const listImportedPlugins = listImportedPluginsRef.current;
-    if (listImportedPlugins && !toolMenuLoadRef.current.plugins) {
-      let cancelled = false;
-      toolMenuLoadRef.current.plugins = true;
-      setPluginsLoading(true);
-      void listImportedPlugins()
-        .then((next) => {
-          if (!cancelled && toolMenuLoadRef.current.openId === openId) {
-            setImportedPlugins(next);
-            setPluginsLoaded(true);
-          }
-        })
-        .catch(() => {
-          if (!cancelled && toolMenuLoadRef.current.openId === openId) {
-            setImportedPlugins([]);
-            setPluginsLoaded(true);
-          }
-        })
-        .finally(() => {
-          if (!cancelled && toolMenuLoadRef.current.openId === openId) setPluginsLoading(false);
-        });
-      return () => {
-        cancelled = true;
-      };
-    }
-    return undefined;
-  }, [toolMenuOpen]);
-
-  useEffect(() => {
-    if (!toolMenuOpen) return;
-    const openId = toolMenuLoadRef.current.openId;
     const listSkills = listSkillsRef.current;
     const listMcp = listMcpRef.current;
+    const listInstalledExtensions = listInstalledExtensionsRef.current;
     if (toolMenuSection === "skills" && listSkills && !toolMenuLoadRef.current.skills) {
       let cancelled = false;
       toolMenuLoadRef.current.skills = true;
@@ -771,6 +699,28 @@ export function ReactSessionComposer(props: ComposerProps) {
         cancelled = true;
       };
     }
+    if (toolMenuSection === "extensions" && listInstalledExtensions && !toolMenuLoadRef.current.extensions) {
+      let cancelled = false;
+      toolMenuLoadRef.current.extensions = true;
+      setExtensionsLoading(true);
+      void listInstalledExtensions()
+        .then((next) => {
+          if (cancelled || toolMenuLoadRef.current.openId !== openId) return;
+          setInstalledExtensions(next);
+          setExtensionsLoaded(true);
+        })
+        .catch(() => {
+          if (cancelled || toolMenuLoadRef.current.openId !== openId) return;
+          setInstalledExtensions([]);
+          setExtensionsLoaded(true);
+        })
+        .finally(() => {
+          if (!cancelled && toolMenuLoadRef.current.openId === openId) setExtensionsLoading(false);
+        });
+      return () => {
+        cancelled = true;
+      };
+    }
     return undefined;
   }, [toolMenuOpen, toolMenuSection]);
 
@@ -801,22 +751,9 @@ export function ReactSessionComposer(props: ComposerProps) {
   const toolSkillItems = commands.filter((command) => command.source === "skill");
   const toolMcpItems = commands.filter((command) => command.source === "mcp");
   void toolMcpItems;
-  const pluginSections = importedPlugins
-    .filter((plugin) => plugin.files.length > 0)
-    .map((plugin) => ({ section: `plugin:${plugin.pluginId}` as const, plugin }));
-  const activePlugin = toolMenuSection.startsWith("plugin:")
-    ? pluginSections.find((entry) => entry.section === toolMenuSection)?.plugin ?? null
-    : null;
-  const composerExtensions = IPOLLOWORK_EXTENSION_CATALOG.filter((entry) =>
-    !builtInExtensionsDisabled &&
-    !isiPolloWorkExtensionHidden(entry) && isComposerExtensionAvailable(entry)
-  );
-  useEffect(() => {
-    if (!toolMenuSection.startsWith("plugin:")) return;
-    if (activePlugin) return;
-    setToolMenuSection("commands");
-  }, [activePlugin, toolMenuSection]);
-
+  const composerExtensions = installedExtensions.filter((item) => (
+    activePluginEngineCompatibility(item)?.status !== "unsupported"
+  ));
   useEffect(() => {
     if (!activeItems.length) {
       setMenuIndex(0);
@@ -857,21 +794,6 @@ export function ReactSessionComposer(props: ComposerProps) {
     setToolMenuOpen(false);
   };
 
-  const applyPluginFileSelection = (file: CloudImportedPluginFile) => {
-    const commandName = pluginSlashCommandName(file);
-    if (commandName) {
-      if (file.objectType === "skill") applySkillSelection(commandName);
-      else applyCommandSelection({
-        id: `plugin:${file.configObjectId}`,
-        name: commandName,
-        source: "command",
-      });
-      return;
-    }
-    props.onInsertMention("file", file.path);
-    setToolMenuOpen(false);
-  };
-
   const applyExternalAgentSelection = (item: iPolloWorkPluginPackageItem) => {
     const prompt = item.manifest.composer?.prompt;
     if (!prompt) return;
@@ -897,8 +819,9 @@ export function ReactSessionComposer(props: ComposerProps) {
       icon: "execute" as const,
     };
 
-  const applyExtensionSelection = (entry: McpDirectoryInfo) => {
-    props.onDraftChange(entry.composerPrompt ?? `Use ${entry.name} to `);
+  const applyExtensionSelection = (entry: iPolloWorkPluginPackageItem) => {
+    props.onOpenWorkspaceApp?.(entry.pluginId);
+    props.onDraftChange(entry.manifest.composer?.prompt.trim() || `Use ${entry.name} to `);
     setToolMenuOpen(false);
   };
 
@@ -1505,18 +1428,6 @@ export function ReactSessionComposer(props: ComposerProps) {
                               <ChevronRight size={14} className="shrink-0 text-gray-9" />
                             </button>
                           ))}
-                          {pluginSections.length > 0 ? <div className="my-2 border-t border-dls-border" /> : null}
-                          {pluginSections.map(({ section, plugin }) => (
-                            <button
-                              key={plugin.pluginId}
-                              type="button"
-                              className={`mb-1 flex w-full items-center justify-between rounded-[16px] px-3 py-2.5 text-left text-sm transition-colors ${toolMenuSection === section ? "bg-gray-3 text-gray-12" : "text-gray-11 hover:bg-gray-2"}`}
-                              onClick={() => setToolMenuSection(section)}
-                            >
-                              <span className="truncate">{plugin.name}</span>
-                              <ChevronRight size={14} className="shrink-0 text-gray-9" />
-                            </button>
-                          ))}
                         </div>
                         <div className="max-h-72 overflow-y-auto p-2">
                           <div className="mb-2 flex justify-end border-b border-dls-border px-1 pb-2">
@@ -1609,7 +1520,7 @@ export function ReactSessionComposer(props: ComposerProps) {
                               <div className="grid gap-1">
                                 {composerExtensions.map((entry) => (
                                   <button
-                                    key={entry.id ?? entry.serverName ?? entry.name}
+                                    key={entry.pluginId}
                                     type="button"
                                     className="flex w-full items-start gap-3 rounded-[16px] px-3 py-2.5 text-left text-gray-11 transition-colors hover:bg-gray-2/70"
                                     onClick={() => applyExtensionSelection(entry)}
@@ -1620,48 +1531,22 @@ export function ReactSessionComposer(props: ComposerProps) {
                                     <div className="min-w-0 flex-1">
                                       <div className="flex items-center justify-between gap-3">
                                         <div className="truncate text-xs font-semibold text-gray-11">{entry.name}</div>
-                                        {entry.defaultEnabled ? (
+                                        {activePluginEngineCompatibility(entry)?.status === "partial" ? (
+                                          <span className="shrink-0 rounded-full bg-amber-3 px-2 py-0.5 text-[10px] font-medium text-amber-11">{t("plugin_platform.engine.partial")}</span>
+                                        ) : (
                                           <span className="shrink-0 rounded-full bg-green-3 px-2 py-0.5 text-[10px] font-medium text-green-11">{t("composer.enabled")}</span>
-                                        ) : null}
+                                        )}
                                       </div>
-                                      <div className="truncate text-xs text-gray-10">{entry.description}</div>
+                                      <div className="truncate text-xs text-gray-10">{entry.manifest.description}</div>
                                     </div>
                                   </button>
                                 ))}
                               </div>
                             ) : (
-                              <div className="px-3 py-2 text-xs text-gray-10">{t("composer.no_extensions_enabled")}</div>
-                            )
-                          ) : null}
-                          {activePlugin ? (
-                            activePlugin.files.length > 0 ? (
-                              <div className="grid gap-1">
-                                {activePlugin.files.map((file) => (
-                                  <button
-                                    key={`${file.configObjectId}:${file.path}`}
-                                    type="button"
-                                    className="flex w-full items-start gap-3 rounded-[16px] px-3 py-2.5 text-left text-gray-11 transition-colors hover:bg-gray-2/70"
-                                    onClick={() => applyPluginFileSelection(file)}
-                                  >
-                                    <FileText size={14} className="mt-0.5 shrink-0 text-gray-9" />
-                                    <div className="min-w-0 flex-1">
-                                      <div className="flex items-center justify-between gap-3">
-                                        <div className="truncate text-xs font-semibold text-gray-11">{file.title}</div>
-                                        <span className="shrink-0 rounded-full bg-gray-3 px-2 py-0.5 text-[10px] font-medium text-gray-11">
-                                          {formatPluginObjectType(file.objectType)}
-                                        </span>
-                                      </div>
-                                    </div>
-                                  </button>
-                                ))}
+                              <div className="px-3 py-2 text-xs text-gray-10">
+                                {!extensionsLoaded && extensionsLoading ? t("composer.loading_commands") : t("composer.no_extensions_enabled")}
                               </div>
-                            ) : (
-                              <div className="px-3 py-2 text-xs text-gray-10">{t("composer.no_plugin_files")}</div>
                             )
-                          ) : toolMenuSection.startsWith("plugin:") ? (
-                            <div className="px-3 py-2 text-xs text-gray-10">
-                              {!pluginsLoaded && pluginsLoading ? t("composer.loading_commands") : t("composer.plugin_files_unavailable")}
-                            </div>
                           ) : null}
                         </div>
                       </div>

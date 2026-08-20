@@ -6,13 +6,13 @@ import {
   writeOpencodeConfig,
 } from "../../../../app/lib/desktop";
 import type { DenOrgLlmProviderConnection } from "../../../../app/lib/den";
-import { unwrap, waitForHealthy } from "../../../../app/lib/opencode";
+import { createClient, unwrap, waitForHealthy } from "../../../../app/lib/opencode";
 import type { Client } from "../../../../app/types";
 import { isDesktopRuntime } from "../../../../app/utils";
 import { getCloudProviderEnv } from "./cloud-provider-config";
 import type {
-  ProviderEngineAdapter,
-  ProviderEngineConnection,
+  ModelRuntimeAdapter,
+  ModelRuntimeConnection,
 } from "./provider-engine-adapter";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -40,7 +40,7 @@ function isOpenCodeClient(value: unknown): value is Client {
   );
 }
 
-function openCodeConnection(client: unknown): ProviderEngineConnection {
+function openCodeConnection(client: unknown): ModelRuntimeConnection {
   if (!isOpenCodeClient(client)) {
     throw new Error("OpenCode provider client is unavailable");
   }
@@ -128,38 +128,6 @@ function projectProviderIds(raw: string) {
   return Object.keys(config.provider);
 }
 
-function escapeRegExp(value: string) {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
-function formatOpenCodeConfigWithoutProvider(
-  raw: string,
-  providerId: string,
-  disabledProviders: string[],
-) {
-  const commentPattern = new RegExp(
-    `(^[ \\t]*)// iPolloWork Cloud import:.*\\n\\1(?="${escapeRegExp(providerId)}":)`,
-    "m",
-  );
-  let updated = raw.replace(commentPattern, "$1");
-  updated = applyEdits(
-    updated,
-    modify(updated, ["provider", providerId], undefined, {
-      formattingOptions: { insertSpaces: true, tabSize: 2 },
-    }),
-  );
-  updated = applyEdits(
-    updated,
-    modify(
-      updated,
-      ["disabled_providers"],
-      disabledProviders.filter((id) => id !== providerId),
-      { formattingOptions: { insertSpaces: true, tabSize: 2 } },
-    ),
-  );
-  return updated.endsWith("\n") ? updated : `${updated}\n`;
-}
-
 function buildOpenCodeCloudProviderPatch(
   provider: DenOrgLlmProviderConnection,
   localProviderId: string,
@@ -225,7 +193,7 @@ function buildOpenCodeCloudProviderPatch(
   };
 }
 
-export const openCodeProviderEngineAdapter: ProviderEngineAdapter = {
+export const openCodeProviderEngineAdapter: ModelRuntimeAdapter = {
   id: DEFAULT_ENGINE_ID,
   configFileName: "opencode.json",
   capabilities: {
@@ -233,6 +201,13 @@ export const openCodeProviderEngineAdapter: ProviderEngineAdapter = {
     customProviders: true,
     disabledProviders: true,
     authChangesRequireReload: true,
+  },
+  createClient({ endpoint, directory }) {
+    return createClient(
+      endpoint.opencodeBaseUrl,
+      directory?.trim() || undefined,
+      { token: endpoint.token, mode: "ipollowork" },
+    );
   },
   connect: openCodeConnection,
   emptyProjectConfig: () => '{\n  "$schema": "https://opencode.ai/config.json"\n}\n',
@@ -303,7 +278,6 @@ export const openCodeProviderEngineAdapter: ProviderEngineAdapter = {
     const updated = applyEdits(raw, edits);
     return updated.endsWith("\n") ? updated : `${updated}\n`;
   },
-  formatProjectWithoutProvider: formatOpenCodeConfigWithoutProvider,
   buildCloudProviderPatch: buildOpenCodeCloudProviderPatch,
   buildCompatibleProviderPatch(profile) {
     const api = profile.api?.trim();

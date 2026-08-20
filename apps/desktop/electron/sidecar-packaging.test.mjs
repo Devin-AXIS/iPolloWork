@@ -23,11 +23,35 @@ it("prepares and packages the DSH CLI outside app.asar", async () => {
   assert.match(builderConfig, /from: \.\.\/\.\.\/examples\/plugin-packages\/deepseek-harness/);
   assert.match(mainSource, /process\.resourcesPath, "dsh-runtime"/);
   assert.match(mainSource, /IPOLLOWORK_DSH_CLI/);
+  assert.match(mainSource, /IPOLLOWORK_DSH_HOST_PLUGIN/);
+  assert.match(builderConfig, /ipollowork-host-tools\.mjs/);
   assert.match(buildSource, /prepare-dsh-runtime\.mjs/);
   assert.match(devSource, /prepare-dsh-runtime\.mjs/);
   assert.match(workspaceConfig, /@electron\/osx-sign@1\.3\.1.*@electron__osx-sign@1\.3\.1\.patch/);
   assert.match(osxSignPatch, /maxConcurrentFileOperations = 64/);
   assert.match(osxSignPatch, /withFileOperationLimit\(\(\) => getFilePathIfBinary\(filePath\)\)/);
+});
+
+it("hides consoles opened by packaged DSH tool subprocesses on Windows", async () => {
+  const [runtimeWorkspace, patch, prepareSource] = await Promise.all([
+    readFile(new URL("../dsh-runtime/pnpm-workspace.yaml", import.meta.url), "utf8"),
+    readFile(
+      new URL(
+        "../dsh-runtime/@deepseek-ai__dsh-subprocess-local@0.1.0-rc.6.patch",
+        import.meta.url,
+      ),
+      "utf8",
+    ),
+    readFile(new URL("../scripts/prepare-dsh-runtime.mjs", import.meta.url), "utf8"),
+  ]);
+  assert.match(
+    runtimeWorkspace,
+    /@deepseek-ai\/dsh-subprocess-local@0\.1\.0-rc\.6.*"@deepseek-ai__dsh-subprocess-local@0\.1\.0-rc\.6\.patch"/,
+  );
+  assert.match(patch, /windowsHide: platform === "win32"/);
+  assert.match(patch, /stdio: "ignore",\n\+\s+windowsHide: true/);
+  assert.match(prepareSource, /workspacePath, subprocessPatchPath/);
+  assert.doesNotMatch(prepareSource, /--ignore-workspace/);
 });
 
 it("stages constants beside every compiled server module that imports them", async () => {

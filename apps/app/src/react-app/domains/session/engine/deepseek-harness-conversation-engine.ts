@@ -1,4 +1,7 @@
-import { DEEPSEEK_HARNESS_ENGINE_ID } from "@ipollowork/types/workspace";
+import {
+  DEEPSEEK_HARNESS_ENGINE_ID,
+  DEEPSEEK_HARNESS_INTERNAL_SYSTEM_PREFIX,
+} from "@ipollowork/types/workspace";
 
 import { DeepSeekHarnessClient } from "@/app/lib/deepseek-harness-client";
 import { t } from "@/i18n";
@@ -13,7 +16,6 @@ import {
 import {
   deepSeekHarnessForkSeq,
   deepSeekHarnessNativeRpcId,
-  DEEPSEEK_HARNESS_INTERNAL_SYSTEM_PREFIX,
   mapDeepSeekHarnessEnvelope,
   mapDeepSeekHarnessSession,
   mapDeepSeekHarnessSnapshot,
@@ -83,7 +85,10 @@ function internalPromptText(text: string): string {
   return `${DEEPSEEK_HARNESS_INTERNAL_SYSTEM_PREFIX}${text}\n</system>`;
 }
 
-function promptContent(parts: ConversationPromptPart[], system?: string) {
+function promptContent(
+  parts: ConversationPromptPart[],
+  system?: string,
+) {
   const content: Array<
     { type: "text"; text: string }
     | { type: "image"; mediaType: "image/png" | "image/jpeg" | "image/webp" | "image/gif"; data: string; name?: string }
@@ -94,7 +99,6 @@ function promptContent(parts: ConversationPromptPart[], system?: string) {
       continue;
     }
     if (part.type === "agent") {
-      content.push({ type: "text", text: `@${part.name}` });
       continue;
     }
     const match = /^data:(image\/(?:png|jpeg|webp|gif));base64,(.+)$/u.exec(part.url);
@@ -147,6 +151,7 @@ function deepSeekHarnessConnection(input: {
   const questions = new Map<string, ConversationQuestion>();
   const liveState: DeepSeekHarnessLiveState = { parts: new Set(), tools: new Map() };
   let agentPresets: AgentPresetList | null = null;
+  let pluginCapabilitiesCache: { at: number; items: Awaited<ReturnType<typeof client.pluginCapabilities>> } | null = null;
   const selectedModels = new Map<string, string>();
   const selectedModes = new Map<string, string>();
   const mutableModes = new Map<string, boolean>();
@@ -154,6 +159,15 @@ function deepSeekHarnessConnection(input: {
   const listAgentPresets = async () => {
     agentPresets ??= await client.call<AgentPresetList>("agentPreset.list", {});
     return agentPresets;
+  };
+
+  const listPluginCapabilities = async () => {
+    if (pluginCapabilitiesCache && Date.now() - pluginCapabilitiesCache.at < 2_000) {
+      return pluginCapabilitiesCache.items;
+    }
+    const items = await client.pluginCapabilities();
+    pluginCapabilitiesCache = { at: Date.now(), items };
+    return items;
   };
 
   const selectModel = async (request: {
@@ -318,11 +332,16 @@ function deepSeekHarnessConnection(input: {
     async runCommand(request) {
       try {
         await selectModel(request);
-        await client.call("session.prompt", {
+        await client.prompt({
           sessionId: request.sessionId,
           mode: "queue",
-          content: [{ type: "text", text: `/${request.command}${request.arguments ? ` ${request.arguments}` : ""}` }],
+          content: [],
           clientTimeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+        }, {
+          command: {
+            name: request.command,
+            ...(request.arguments ? { arguments: request.arguments } : {}),
+          },
         });
         mutableModes.set(request.sessionId, false);
       } catch (error) {
@@ -333,19 +352,29 @@ function deepSeekHarnessConnection(input: {
       try {
         await selectMode(request.sessionId, request.mode);
         await selectModel(request);
-        await client.call("session.prompt", {
+        const selectedAgents = [...new Set(
+          request.parts.flatMap((part) => part.type === "agent" ? [part.name] : []),
+        )];
+        await client.prompt({
           sessionId: request.sessionId,
           mode: "queue",
           content: promptContent(request.parts, request.system),
           clientTimeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-        });
+        }, selectedAgents.length > 0 ? { agents: selectedAgents } : undefined);
         mutableModes.set(request.sessionId, false);
       } catch (error) {
         throw conversationError(error);
       }
     },
     async listCommands() {
-      return [];
+      return (await listPluginCapabilities())
+        .filter((item) => item.type === "command")
+        .map((item) => ({
+          id: `${item.pluginId}:${item.resourceId}`,
+          name: item.name,
+          description: item.description,
+          source: "command" as const,
+        }));
     },
     async listModes() {
       return (await listAgentPresets()).presets
@@ -361,7 +390,13 @@ function deepSeekHarnessConnection(input: {
         }));
     },
     async listAgents() {
-      return [];
+      return (await listPluginCapabilities())
+        .filter((item) => item.type === "agent")
+        .map((item) => ({
+          name: item.name,
+          description: item.description,
+          mode: "all",
+        }));
     },
     async searchFiles() {
       return [];

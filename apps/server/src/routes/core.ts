@@ -13,6 +13,12 @@ import {
   testAuthorizationService,
 } from "../authorization-center.js";
 import { EnvStoreReadError, InvalidEnvKeyError, isValidEnvKey, type EnvService } from "../env-file.js";
+import {
+  ENGINE_HOST_TOOLS,
+  ENGINE_HOST_TOOL_NAMES,
+  engineHostTool,
+  type EngineHostToolName,
+} from "../engine-host-tools.js";
 import { ApiError } from "../errors.js";
 import {
   createGoogleWorkspaceConnectFlowManager,
@@ -24,6 +30,7 @@ import {
 } from "../extensions/google-workspace.js";
 import { callExperimentalExtensionAction, listExperimentalExtensionActions } from "../extensions/index.js";
 import { workspaceIdForPluginContext } from "../plugin-service-runtime.js";
+import { uiControlRequest } from "../ui-control-client.js";
 import type { TokenService } from "../tokens.js";
 import {
   TOY_UI_CSS,
@@ -37,7 +44,7 @@ import {
 } from "../toy-ui.js";
 import type { Capabilities, ServerConfig, WorkspaceInfo } from "../types.js";
 import { shortId } from "../utils.js";
-import { addRoute, type Route } from "./registry.js";
+import { addRoute, type RequestContext, type Route } from "./registry.js";
 
 type JsonResponse = (data: unknown, status?: number) => Response;
 type ReadJsonBody = (request: Request) => Promise<Record<string, unknown>>;
@@ -92,6 +99,88 @@ export function registerCoreRoutes(options: RegisterCoreRoutesOptions): void {
   } = options;
   const googleWorkspaceConnectFlows = createGoogleWorkspaceConnectFlowManager(config);
   const envPendingChangesByRuntime = new Map<string, boolean>();
+
+  const callExtensionAction = async (ctx: RequestContext, body: Record<string, unknown>) => {
+    if (ctx.actor?.scope === "viewer") {
+      throw new ApiError(403, "forbidden", "Viewer tokens cannot call extension actions");
+    }
+    const extensionId = typeof body.extensionId === "string" ? body.extensionId.trim() : "";
+    const actionId = typeof body.action === "string" ? body.action.trim() : "";
+    const context = isRecord(body.context) ? body.context : {};
+    const connectSnapshot = await getConnectSnapshot(config);
+    const declared = (await listExperimentalExtensionActions(config, extensionId, context, connectSnapshot))
+      .find((action) => action.extensionId === extensionId && action.action === actionId);
+    const effect = declared && "effect" in declared ? declared.effect : "read";
+    const requiresConfirmation = effect === "write" || effect === "destructive";
+    let approvedWorkspace: WorkspaceInfo | null = null;
+    if (requiresConfirmation && declared) {
+      ensureWritable(config);
+      const workspaceId = workspaceIdForPluginContext(config, context);
+      approvedWorkspace = await resolveWorkspace(config, workspaceId);
+      const approval = await ctx.approvals.requestApproval({
+        workspaceId,
+        action: `plugin_service.${extensionId}.${actionId}`,
+        summary: `${declared.title} (${extensionId})`,
+        paths: [],
+        actor: ctx.actor ?? { type: "remote" },
+      });
+      if (!approval.allowed) {
+        throw new ApiError(403, "write_denied", "Plugin write action denied", {
+          requestId: approval.id,
+          reason: approval.reason,
+        });
+      }
+    }
+    const result = await callExperimentalExtensionAction(config, env, body, connectSnapshot);
+    if (approvedWorkspace && declared) {
+      await recordAudit(approvedWorkspace.path, {
+        id: shortId(),
+        workspaceId: approvedWorkspace.id,
+        actor: ctx.actor ?? { type: "remote" },
+        action: `plugin_service.${extensionId}.${actionId}`,
+        target: `${extensionId}:${actionId}`,
+        summary: declared.title,
+        timestamp: Date.now(),
+      });
+    }
+    return result;
+  };
+
+  type EngineHostToolHandler = (
+    ctx: RequestContext,
+    args: Record<string, unknown>,
+    context: Record<string, unknown>,
+  ) => Promise<unknown>;
+  const engineHostToolHandlers = {
+    [ENGINE_HOST_TOOL_NAMES.extensionListActions]: async (_ctx, args, context) => {
+      const extensionId = typeof args.extensionId === "string" ? args.extensionId.trim() : "";
+      const connectSnapshot = await getConnectSnapshot(config);
+      return {
+        ok: true,
+        actions: await listExperimentalExtensionActions(config, extensionId, context, connectSnapshot),
+      };
+    },
+    [ENGINE_HOST_TOOL_NAMES.extensionCall]: async (ctx, args, context) => callExtensionAction(ctx, {
+      extensionId: args.extensionId,
+      action: args.action,
+      args: isRecord(args.args) ? args.args : {},
+      context,
+    }),
+    [ENGINE_HOST_TOOL_NAMES.workspaceAppListTools]: async () => uiControlRequest("/execute", {
+      method: "POST",
+      body: { actionId: "workspace_app.list_tools", args: {} },
+    }),
+    [ENGINE_HOST_TOOL_NAMES.workspaceAppCallTool]: async (_ctx, args) => uiControlRequest("/execute", {
+      method: "POST",
+      body: {
+        actionId: "workspace_app.call_tool",
+        args: {
+          name: typeof args.name === "string" ? args.name : "",
+          arguments: isRecord(args.arguments) ? args.arguments : {},
+        },
+      },
+    }),
+  } satisfies Record<EngineHostToolName, EngineHostToolHandler>;
 
   const healthResponse = () => jsonResponse({
     ok: true,
@@ -304,50 +393,24 @@ export function registerCoreRoutes(options: RegisterCoreRoutesOptions): void {
   });
 
   addRoute(routes, "POST", "/experimental/extensions/call", "client", async (ctx) => {
-    if (ctx.actor?.scope === "viewer") {
-      throw new ApiError(403, "forbidden", "Viewer tokens cannot call extension actions");
-    }
     const body = await readJsonBody(ctx.request);
-    const extensionId = typeof body.extensionId === "string" ? body.extensionId.trim() : "";
-    const actionId = typeof body.action === "string" ? body.action.trim() : "";
+    return jsonResponse(await callExtensionAction(ctx, body));
+  });
+
+  addRoute(routes, "GET", "/engine-tools", "client", async () => {
+    return jsonResponse({ ok: true, schemaVersion: 1, tools: ENGINE_HOST_TOOLS });
+  });
+
+  addRoute(routes, "POST", "/engine-tools/call", "client", async (ctx) => {
+    const body = await readJsonBody(ctx.request);
+    const name = typeof body.name === "string" ? body.name.trim() : "";
+    const args = isRecord(body.args) ? body.args : {};
     const context = isRecord(body.context) ? body.context : {};
-    const connectSnapshot = await getConnectSnapshot(config);
-    const declared = (await listExperimentalExtensionActions(config, extensionId, context, connectSnapshot))
-      .find((action) => action.extensionId === extensionId && action.action === actionId);
-    const effect = declared && "effect" in declared ? declared.effect : "read";
-    const requiresConfirmation = effect === "write" || effect === "destructive";
-    let approvedWorkspace: WorkspaceInfo | null = null;
-    if (requiresConfirmation && declared) {
-      ensureWritable(config);
-      const workspaceId = workspaceIdForPluginContext(config, context);
-      approvedWorkspace = await resolveWorkspace(config, workspaceId);
-      const approval = await ctx.approvals.requestApproval({
-        workspaceId,
-        action: `plugin_service.${extensionId}.${actionId}`,
-        summary: `${declared.title} (${extensionId})`,
-        paths: [],
-        actor: ctx.actor ?? { type: "remote" },
-      });
-      if (!approval.allowed) {
-        throw new ApiError(403, "write_denied", "Plugin write action denied", {
-          requestId: approval.id,
-          reason: approval.reason,
-        });
-      }
+    const descriptor = engineHostTool(name);
+    if (!descriptor) {
+      throw new ApiError(404, "engine_host_tool_not_found", `Engine host tool is not registered: ${name || "missing"}`);
     }
-    const result = await callExperimentalExtensionAction(config, env, body, connectSnapshot);
-    if (approvedWorkspace && declared) {
-      await recordAudit(approvedWorkspace.path, {
-        id: shortId(),
-        workspaceId: approvedWorkspace.id,
-        actor: ctx.actor ?? { type: "remote" },
-        action: `plugin_service.${extensionId}.${actionId}`,
-        target: `${extensionId}:${actionId}`,
-        summary: declared.title,
-        timestamp: Date.now(),
-      });
-    }
-    return jsonResponse(result);
+    return jsonResponse(await engineHostToolHandlers[descriptor.name](ctx, args, context));
   });
 
   addRoute(routes, "GET", "/experimental/google-workspace/status", "client", async () => {

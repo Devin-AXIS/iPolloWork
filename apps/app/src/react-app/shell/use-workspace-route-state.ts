@@ -14,6 +14,8 @@ import {
   desktopResumeEvent,
   resolveWorkspaceListSelectedId,
   workspaceBootstrap,
+  workspaceSetRuntimeActive,
+  workspaceSetSelected,
   type iPolloWorkServerInfo,
   type WorkspaceList,
 } from "@/app/lib/desktop";
@@ -123,15 +125,41 @@ export function useWorkspaceRouteState(input: UseWorkspaceRouteStateInput) {
   // would change on every `setBaseUrl`/`setToken`, which used to cascade up
   // through `loadWorkspaceSessionsInBackground` and `refreshRouteState` and
   // produce a tight render-refresh-setWorkspaces loop.
-  const localServerRef = useRef<{ baseUrl: string; token: string }>({ baseUrl: "", token: "" });
+  const localServerRef = useRef<{ baseUrl: string; token: string; hostToken: string }>({
+    baseUrl: "",
+    token: "",
+    hostToken: "",
+  });
   useEffect(() => {
-    localServerRef.current = { baseUrl, token };
+    localServerRef.current = { ...localServerRef.current, baseUrl, token };
   }, [baseUrl, token]);
   const endpointForWorkspace = useCallback(
     (workspace: RouteWorkspace | null | undefined): ResolvedWorkspaceEndpoint | null =>
       resolveWorkspaceEndpoint(workspace, localServerRef.current),
     [],
   );
+
+  // The canonical route owns workspace selection. Session rows, search,
+  // external controls, and task creation can all navigate directly without
+  // passing through the project-row handler, so synchronizing only inside
+  // individual click handlers leaves Electron and the active engine pointed
+  // at a different workspace than the visible conversation.
+  useEffect(() => {
+    if (loading || !selectedWorkspace) return;
+    const workspaceId = selectedWorkspace.id.trim();
+    if (!workspaceId) return;
+
+    writeActiveWorkspaceId(workspaceId);
+    const endpoint = endpointForWorkspace(selectedWorkspace);
+    if (endpoint) {
+      void endpoint.client.activateWorkspace(endpoint.workspaceId, { persist: true }).catch(() => undefined);
+    }
+    if (!isDesktopRuntime()) return;
+    void workspaceSetSelected(workspaceId)
+      .then(() => workspaceSetRuntimeActive(workspaceId))
+      .catch(() => undefined);
+  }, [endpointForWorkspace, loading, selectedWorkspace]);
+
   const refreshInFlightRef = useRef(false);
   const refreshEpochRef = useRef(0);
   const workContextRef = useRef(workContextId);
@@ -394,7 +422,7 @@ export function useWorkspaceRouteState(input: UseWorkspaceRouteStateInput) {
         // Keep `localServerRef` in lockstep with the disconnected state.
         // Otherwise a previously-cached baseUrl/token would still resolve a
         // (now invalid) endpoint for any callback that consults the ref.
-        localServerRef.current = { baseUrl: "", token: "" };
+        localServerRef.current = { baseUrl: "", token: "", hostToken: "" };
         setClient(null);
         setBaseUrl("");
         setToken("");
@@ -414,7 +442,11 @@ export function useWorkspaceRouteState(input: UseWorkspaceRouteStateInput) {
       // `loadWorkspaceSessionsInBackground` calls that fire later in this
       // function. Stale ref => `resolveWorkspaceEndpoint` returns null for
       // local workspaces => sidebar gets stuck in "loading" forever.
-      localServerRef.current = { baseUrl: normalizedBaseUrl, token: resolvedToken };
+      localServerRef.current = {
+        baseUrl: normalizedBaseUrl,
+        token: resolvedToken,
+        hostToken: resolvedHostToken,
+      };
 
       const ipolloworkClient = createiPolloWorkServerClient({
         baseUrl: normalizedBaseUrl,
@@ -800,7 +832,11 @@ export function useWorkspaceRouteState(input: UseWorkspaceRouteStateInput) {
   // For remote workspaces this is the worker that owns the workspace; for
   // local workspaces it's the user's local iPolloWork server.
   const selectedWorkspaceEndpoint = useMemo(
-    () => resolveWorkspaceEndpoint(selectedWorkspace, { baseUrl, token }),
+    () => resolveWorkspaceEndpoint(selectedWorkspace, {
+      baseUrl,
+      token,
+      hostToken: localServerRef.current.hostToken,
+    }),
     [baseUrl, selectedWorkspace, token],
   );
   const selectedWorkspaceServerToken = selectedWorkspaceEndpoint?.token ?? "";
@@ -935,6 +971,7 @@ export function useWorkspaceRouteState(input: UseWorkspaceRouteStateInput) {
     opencodeClient,
     selectedWorkspaceIsLoading,
     selectedWorkspaceError,
+    selectedSessionKnown,
     routeNotFoundMessage,
     endpointForWorkspace,
     refreshRouteState,

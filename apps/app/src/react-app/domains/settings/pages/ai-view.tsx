@@ -57,7 +57,6 @@ function providerSourceLabel(source?: ConnectedProvider["source"]) {
   if (source === "api") return t("providers.api_key_label");
   if (source === "config") return t("settings.provider_source_config");
   if (source === "custom") return t("settings.provider_source_custom");
-  if (source === "engine") return t("settings.provider_source_dsh");
   return null;
 }
 
@@ -192,24 +191,11 @@ export function AiSettingsView(props: AiSettingsViewProps) {
                           {providerSourceLabel("env")}
                         </span>
                       ) : null}
-                      {provider.source === "engine" ? (
-                        <span className="shrink-0 rounded-full border border-blue-6 bg-blue-2 px-2 py-0.5 text-[10px] font-medium text-blue-11">
-                          {providerSourceLabel("engine")}
-                        </span>
-                      ) : null}
                     </div>
                     <div className="truncate font-mono text-xs text-muted-foreground">{provider.displayId ?? provider.id}</div>
                   </div>
                 </div>
-                {!props.cloudProviderIds?.has(provider.id) ? provider.source === "engine" ? (
-                  <Button
-                    variant="outline"
-                    onClick={() => void props.onOpenProviderAuth(provider.id)}
-                    disabled={props.busy || props.providerAuthBusy}
-                  >
-                    {t("settings.sync_all_engines")}
-                  </Button>
-                ) : (
+                {!props.cloudProviderIds?.has(provider.id) && provider.id !== "opencode" ? (
                   <Button
                     variant="destructive"
                     onClick={() => setDisconnectTarget(provider)}

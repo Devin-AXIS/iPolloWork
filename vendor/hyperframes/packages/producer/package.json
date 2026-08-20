@@ -51,15 +51,15 @@
     "@fontsource/oswald": "^5.2.8",
     "@fontsource/outfit": "^5.2.8",
     "@fontsource/space-mono": "^5.2.9",
-    "@hono/node-server": "^1.13.0",
+    "@hono/node-server": "^2.1.1",
     "@hyperframes/core": "workspace:^",
     "@hyperframes/engine": "workspace:^",
     "@hyperframes/lint": "workspace:^",
     "@hyperframes/parsers": "workspace:^",
     "@hyperframes/studio-server": "workspace:^",
-    "hono": "^4.6.0",
+    "hono": "^4.13.2",
     "linkedom": "^0.18.12",
-    "postcss": "^8.4.0",
+    "postcss": "^8.5.26",
     "puppeteer": "^25.2.1",
     "puppeteer-core": "^25.2.1",
     "wawoff2": "^2.0.1"
@@ -72,12 +72,12 @@
     "@fontsource/poppins": "^5.2.7",
     "@fontsource/roboto": "^5.2.10",
     "@fontsource/source-code-pro": "^5.2.7",
-    "@types/node": "^25.0.10",
-    "@webgpu/types": "^0.1.69",
-    "esbuild": "^0.25.12",
+    "@types/node": "^26.2.0",
+    "@webgpu/types": "^0.1.71",
+    "esbuild": "^0.28.2",
     "tsx": "^4.21.0",
-    "typescript": "^5.7.2",
-    "vitest": "^3.2.4"
+    "typescript": "^7.0.2",
+    "vitest": "^4.1.10"
   },
   "engines": {
     "node": ">=22"
