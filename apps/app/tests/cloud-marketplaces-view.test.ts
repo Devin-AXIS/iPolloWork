@@ -20,7 +20,7 @@ describe("Cloud marketplace row visibility", () => {
     expect(source).toContain('marketplaceResult.status === "rejected"');
     expect(source).toContain('localPackagesResult.status === "fulfilled"');
     expect(source).toContain("downloadEnterpriseResource(resource)");
-    expect(source).toContain("readPluginPackageArchive(file)");
+    expect(source).toContain('readPluginPackageArchive(file, "install")');
     expect(source).toContain("validatePluginPackageUpload(workspaceId, upload)");
     expect(source).toContain("importPluginPackage(workspaceId, upload)");
     expect(source).toContain("<PluginPackageListItem");

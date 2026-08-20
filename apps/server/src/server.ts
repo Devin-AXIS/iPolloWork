@@ -34,6 +34,9 @@ import { sanitizeCommandName, validateMcpName } from "./validators.js";
 import { TokenService } from "./tokens.js";
 import { EnvService } from "./env-file.js";
 import { DeepSeekHarnessRuntimePool } from "./deepseek-harness-runtime.js";
+import { pluginEngineAdapters, pluginEngineCompatibility } from "./plugin-engine-adapter.js";
+import type { PluginPackageManifest } from "./plugin-package-manifest.js";
+
 import {
   normalizeResourceSnapshot,
   readDesktopCloudSyncState,
@@ -44,6 +47,8 @@ import {
   installPluginPackage,
   listInstalledPluginPackages,
   listSuppressedDefaultPluginIds,
+  pluginPackageVersionChange,
+
   previewPluginPackage,
   readInstalledPluginUiResource,
   reconcilePluginPackagesForWorkspace,
@@ -99,6 +104,7 @@ import { addRoute, matchRoute, type AuthMode, type RequestContext, type Route } 
 import { registerSessionRoutes } from "./routes/sessions.js";
 import { registerDeepSeekHarnessRoutes } from "./routes/deepseek-harness.js";
 import { registerWorkspaceRoutes } from "./routes/workspaces.js";
+import { registerPluginWorkshopRoutes } from "./routes/plugin-workshop.js";
 import {
   disposeRuntimeOpencodeConfigStore,
   mergeOpencodeConfigs,
@@ -637,6 +643,16 @@ export function assertOpencodeProxyAllowed(actor: Actor, method: string, proxyPa
 
 function isSessionCommandProxyRequest(method: string, proxyPath: string) {
   return method === "POST" && /^\/session\/[^/]+\/command$/.test(normalizeOpencodeProxyPath(proxyPath));
+}
+
+function pluginPackageEngineState(workspace: WorkspaceInfo, manifest: PluginPackageManifest) {
+  const activeEngineId = workspace.engineId?.trim() || DEFAULT_ENGINE_ID;
+  return {
+    activeEngineId,
+    engineCompatibility: pluginEngineAdapters.ids().map((engineId) => (
+      pluginEngineCompatibility(pluginEngineAdapters.get(engineId), manifest)
+    )),
+  };
 }
 
 async function ensureDefaultBundledPluginPackages(config: ServerConfig): Promise<void> {
@@ -1491,6 +1507,16 @@ function createRoutes(
     resolveWorkspace,
   });
 
+  registerPluginWorkshopRoutes({
+    routes,
+    config,
+    jsonResponse,
+    ensureWritable,
+    readPluginPackageUploadBody,
+    requireClientScope,
+    resolveWorkspace,
+  });
+
   addRoute(routes, "GET", "/workspace/:id/templates", "client", async (ctx) => {
     const workspace = await resolveWorkspace(config, ctx.params.id);
     const scope = parseTemplateLibraryScope(ctx.request.headers.get("x-ipollowork-resource-scope"));
@@ -1697,17 +1723,42 @@ function createRoutes(
     requireClientScope(ctx, "collaborator");
     return withMaterializedCompatibleGitHubPluginBundle(bundle, async (packageRoot) => {
       const preview = await previewPluginPackage({ packageRoot, engineId: workspace.engineId ?? DEFAULT_ENGINE_ID });
-      const safety = await assertPluginPackageSafeForImport({ packageRoot, preview });
-      if (dryRun) return jsonResponse({ preview: { ...preview, safety }, source: bundle.preview });
+      const safety = await assertPluginPackageSafeForImport({ packageRoot, preview, purpose: "install" });
+      const incomingVersion = preview.manifest.package?.version;
+      if (!incomingVersion) {
+        throw new ApiError(400, "plugin_package_metadata_required", "Package metadata is required for installation");
+      }
+      const current = (await listInstalledPluginPackages({ serverConfig: config }))
+        .find((item) => item.pluginId === preview.manifest.id);
+      const installedVersion = current?.version ?? null;
+      const versionChange = pluginPackageVersionChange(installedVersion, incomingVersion);
+      if (dryRun) {
+        return jsonResponse({
+          preview: {
+            ...preview,
+            safety,
+            installedVersion,
+            versionChange,
+            ...pluginPackageEngineState(workspace, preview.manifest),
+          },
+          source: bundle.preview,
+        });
+      }
       ensureWritable(config);
+      if (versionChange === "downgrade" && ctx.url.searchParams.get("allowDowngrade") !== "true") {
+        throw new ApiError(
+          409,
+          "plugin_package_downgrade_confirmation_required",
+          `Importing ${preview.manifest.name} ${incomingVersion} would replace installed version ${installedVersion}`,
+          { installedVersion, incomingVersion },
+        );
+      }
       await requireApproval(ctx, {
         workspaceId: workspace.id,
         action: "plugin_packages.install",
         summary: `Import plugin package ${preview.manifest.name} from GitHub`,
         paths: pluginProjectionRoots(config),
       });
-      const current = (await listInstalledPluginPackages({ serverConfig: config }))
-        .find((item) => item.pluginId === preview.manifest.id);
       const result = current && current.version !== preview.manifest.package?.version
         ? await updatePluginPackage({ serverConfig: config, packageRoot })
         : await installPluginPackage({ serverConfig: config, packageRoot });
@@ -1727,8 +1778,11 @@ function createRoutes(
         name: preview.manifest.id,
         action: current ? "updated" : "added",
       });
-      const item = (await listInstalledPluginPackages({ serverConfig: config }))
+      const installedItem = (await listInstalledPluginPackages({ serverConfig: config }))
         .find((entry) => entry.pluginId === preview.manifest.id);
+      const item = installedItem
+        ? { ...installedItem, ...pluginPackageEngineState(workspace, installedItem.manifest) }
+        : undefined;
       return jsonResponse({ result, item, safety, source: bundle.preview });
     });
   });
@@ -1737,7 +1791,10 @@ function createRoutes(
     const workspace = await resolveWorkspace(config, ctx.params.id);
     await prepareDefaultPlugins();
     await reconcilePluginPackagesForWorkspace({ serverConfig: config, workspaceId: workspace.id, workspaceRoot: workspace.path });
-    const items = await listInstalledPluginPackages({ serverConfig: config });
+    const items = (await listInstalledPluginPackages({ serverConfig: config })).map((item) => ({
+      ...item,
+      ...pluginPackageEngineState(workspace, item.manifest),
+    }));
     return jsonResponse({ items });
   });
 
@@ -1768,6 +1825,7 @@ function createRoutes(
         integrity: preview.integrity,
         installedVersion: current?.version ?? null,
         updateAvailable: Boolean(current && current.version !== preview.manifest.package?.version),
+        ...pluginPackageEngineState(workspace, preview.manifest),
       };
     }));
     return jsonResponse({ items });
@@ -1807,8 +1865,9 @@ function createRoutes(
       name: pluginId,
       action: current ? "updated" : "added",
     });
-    const item = (await listInstalledPluginPackages({ serverConfig: config }))
+    const installedItem = (await listInstalledPluginPackages({ serverConfig: config }))
       .find((entry) => entry.pluginId === pluginId);
+    const item = installedItem ? { ...installedItem, ...pluginPackageEngineState(workspace, installedItem.manifest) } : undefined;
     return jsonResponse({ result, item });
   });
 
@@ -1816,10 +1875,26 @@ function createRoutes(
     requireClientScope(ctx, "collaborator");
     const workspace = await resolveWorkspace(config, ctx.params.id);
     const body = await readPluginPackageUploadBody(ctx.request);
-    return withMaterializedPluginPackageUpload(body, async ({ packageRoot }) => {
+    return withMaterializedPluginPackageUpload(body, "install", async ({ packageRoot }) => {
       const preview = await previewPluginPackage({ packageRoot, engineId: workspace.engineId ?? DEFAULT_ENGINE_ID });
-      const safety = await assertPluginPackageSafeForImport({ packageRoot, preview });
-      return jsonResponse({ preview: { ...preview, safety } });
+      const safety = await assertPluginPackageSafeForImport({ packageRoot, preview, purpose: "install" });
+      const incomingVersion = preview.manifest.package?.version;
+      if (!incomingVersion) {
+        throw new ApiError(400, "plugin_package_metadata_required", "Package metadata is required for installation");
+      }
+      const current = (await listInstalledPluginPackages({ serverConfig: config }))
+        .find((item) => item.pluginId === preview.manifest.id);
+      const installedVersion = current?.version ?? null;
+      return jsonResponse({
+        preview: {
+          ...preview,
+          safety,
+          installedVersion,
+          versionChange: pluginPackageVersionChange(installedVersion, incomingVersion),
+          ...pluginPackageEngineState(workspace, preview.manifest),
+        },
+      });
+
     });
   });
 
@@ -1828,17 +1903,33 @@ function createRoutes(
     requireClientScope(ctx, "collaborator");
     const workspace = await resolveWorkspace(config, ctx.params.id);
     const body = await readPluginPackageUploadBody(ctx.request);
-    return withMaterializedPluginPackageUpload(body, async ({ archiveName, packageRoot }) => {
+    return withMaterializedPluginPackageUpload(body, "install", async ({ archiveName, packageRoot }) => {
       const preview = await previewPluginPackage({ packageRoot, engineId: workspace.engineId ?? DEFAULT_ENGINE_ID });
-      const safety = await assertPluginPackageSafeForImport({ packageRoot, preview });
+      const safety = await assertPluginPackageSafeForImport({ packageRoot, preview, purpose: "install" });
+      const current = (await listInstalledPluginPackages({ serverConfig: config }))
+        .find((item) => item.pluginId === preview.manifest.id);
+      const incomingVersion = preview.manifest.package?.version;
+      if (!incomingVersion) {
+        throw new ApiError(400, "plugin_package_metadata_required", "Package metadata is required for installation");
+      }
+      if (
+        pluginPackageVersionChange(current?.version ?? null, incomingVersion) === "downgrade"
+        && ctx.url.searchParams.get("allowDowngrade") !== "true"
+      ) {
+        throw new ApiError(
+          409,
+          "plugin_package_downgrade_confirmation_required",
+          `Importing ${preview.manifest.name} ${incomingVersion} would replace installed version ${current?.version}`,
+          { installedVersion: current?.version, incomingVersion },
+        );
+      }
+
       await requireApproval(ctx, {
         workspaceId: workspace.id,
         action: "plugin_packages.install",
         summary: `Import declarative plugin package ${preview.manifest.name}`,
         paths: pluginProjectionRoots(config),
       });
-      const current = (await listInstalledPluginPackages({ serverConfig: config }))
-        .find((item) => item.pluginId === preview.manifest.id);
       const result = current && current.version !== preview.manifest.package?.version
         ? await updatePluginPackage({ serverConfig: config, packageRoot })
         : await installPluginPackage({ serverConfig: config, packageRoot });
@@ -1858,8 +1949,9 @@ function createRoutes(
         name: preview.manifest.id,
         action: current ? "updated" : "added",
       });
-      const item = (await listInstalledPluginPackages({ serverConfig: config }))
+      const installedItem = (await listInstalledPluginPackages({ serverConfig: config }))
         .find((entry) => entry.pluginId === preview.manifest.id);
+      const item = installedItem ? { ...installedItem, ...pluginPackageEngineState(workspace, installedItem.manifest) } : undefined;
       return jsonResponse({ result, item, safety });
     });
   });
@@ -1869,8 +1961,9 @@ function createRoutes(
     const body = await readJsonBody(ctx.request);
     const packageRoot = resolveLocalPluginPackageRoot(workspace.path, body.packageRoot);
     const preview = await previewPluginPackage({ packageRoot, engineId: workspace.engineId ?? DEFAULT_ENGINE_ID });
-    const safety = await assertPluginPackageSafeForImport({ packageRoot, preview });
-    return jsonResponse({ preview: { ...preview, safety } });
+    const safety = await assertPluginPackageSafeForImport({ packageRoot, preview, purpose: "install" });
+    return jsonResponse({ preview: { ...preview, safety, ...pluginPackageEngineState(workspace, preview.manifest) } });
+
   });
 
   addRoute(routes, "POST", "/workspace/:id/plugin-packages", "client", async (ctx) => {
@@ -1880,7 +1973,8 @@ function createRoutes(
     const body = await readJsonBody(ctx.request);
     const packageRoot = resolveLocalPluginPackageRoot(workspace.path, body.packageRoot);
     const preview = await previewPluginPackage({ packageRoot, engineId: workspace.engineId ?? DEFAULT_ENGINE_ID });
-    await assertPluginPackageSafeForImport({ packageRoot, preview });
+    await assertPluginPackageSafeForImport({ packageRoot, preview, purpose: "install" });
+
     await requireApproval(ctx, {
       workspaceId: workspace.id,
       action: "plugin_packages.install",
@@ -1899,7 +1993,9 @@ function createRoutes(
       timestamp: Date.now(),
     });
     if (result.status === "installed") emitPluginReloadEvents(ctx.reloadEvents, config, "plugins", { type: "plugin", name: preview.manifest.id, action: "added" });
-    const item = (await listInstalledPluginPackages({ serverConfig: config })).find((entry) => entry.pluginId === preview.manifest.id);
+    const installedItem = (await listInstalledPluginPackages({ serverConfig: config })).find((entry) => entry.pluginId === preview.manifest.id);
+    const item = installedItem ? { ...installedItem, ...pluginPackageEngineState(workspace, installedItem.manifest) } : undefined;
+
     return jsonResponse({ result, item });
   });
 
@@ -1910,7 +2006,8 @@ function createRoutes(
     const body = await readJsonBody(ctx.request);
     const packageRoot = resolveLocalPluginPackageRoot(workspace.path, body.packageRoot);
     const preview = await previewPluginPackage({ packageRoot, engineId: workspace.engineId ?? DEFAULT_ENGINE_ID });
-    await assertPluginPackageSafeForImport({ packageRoot, preview });
+    await assertPluginPackageSafeForImport({ packageRoot, preview, purpose: "install" });
+
     if (preview.manifest.id !== ctx.params.pluginId) throw new ApiError(400, "plugin_package_id_mismatch", "Update package ID does not match the installed plugin");
     await requireApproval(ctx, {
       workspaceId: workspace.id,
@@ -2383,7 +2480,13 @@ function createRoutes(
     readJsonBody,
     requireClientScope,
     resolveWorkspace,
-    reloadOpencodeEngine,
+    reloadWorkspaceEngine: async (serverConfig, workspace) => {
+      if (workspace.engineId === DEEPSEEK_HARNESS_ENGINE_ID) {
+        await deepseekHarness.close();
+        return;
+      }
+      await reloadOpencodeEngine(serverConfig, workspace);
+    },
   });
 
   registerFileRoutes({

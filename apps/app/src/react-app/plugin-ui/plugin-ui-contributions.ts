@@ -4,6 +4,7 @@ import type {
   iPolloWorkPluginPackageItem,
   iPolloWorkServerClient,
 } from "@/app/lib/ipollowork-server";
+import { activePluginEngineCompatibility } from "@/app/lib/plugin-package-readiness";
 import type { PluginContribution, PluginUiResource } from "@ipollowork/types/plugins";
 
 export type PluginUiSurface = {
@@ -99,6 +100,7 @@ export function resolveInstalledPluginContributions(
 
   for (const item of items) {
     if (!item.enabled) continue;
+    if (activePluginEngineCompatibility(item)?.status === "unsupported") continue;
     item.manifest.contributions?.forEach((contribution, index) => {
       const nativeKind = contribution.ref ? NATIVE_WORKSPACE_KINDS.get(contribution.ref) : undefined;
       if (contribution.type === "session-side-panel"

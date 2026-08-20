@@ -8,6 +8,7 @@ import { toast } from "@/components/ui/sonner";
 
 import { captureAnalyticsEvent } from "@/app/lib/analytics";
 import { createClient, unwrap } from "@/app/lib/opencode";
+import { isDelegatableExternalAgent, isPluginPackageReady } from "@/app/lib/plugin-package-readiness";
 import { t } from "@/i18n";
 import type {
   HyperframesAnimationSelection,
@@ -216,7 +217,7 @@ export type SessionSurfaceProps = {
   respondQuestion?: (requestID: string, answers: string[][]) => void;
   safeStringify?: (value: unknown) => string;
   onChangeModel?: (model: { providerID: string; modelID: string }) => void;
-  onConfigureModels?: () => void;
+  onConfigureModels?: (providerId?: string) => void;
   onUploadInboxFiles?: ((files: File[], options?: { notify?: boolean }) => void | Promise<unknown>) | null;
   providerConnectedCount?: number;
   onCreateSession?: (type: NewConversationMode, templateId?: string) => void;
@@ -225,6 +226,8 @@ export type SessionSurfaceProps = {
   onActivateVideoStudio?: (sessionId: string) => void;
   /** Opens the session-owned Video Studio for a generated video artifact. */
   onOpenVideoStudio?: () => void;
+  /** Opens the installed plugin's Workspace App when selected from the extension menu. */
+  onOpenWorkspaceApp?: (pluginId: string) => void;
   designTemplates?: TemplateCatalogItem[];
   designTemplatesLoading?: boolean;
   designTemplateBusyId?: string | null;
@@ -1619,17 +1622,33 @@ export function SessionSurface(props: SessionSurfaceProps) {
     return { servers, statuses, status };
   };
 
+  const listInstalledExtensions = async (): Promise<iPolloWorkPluginPackageItem[]> => {
+    const [packageResponse, mcpState] = await Promise.all([
+      props.client.listPluginPackages(props.workspaceId),
+      listMcp(),
+    ]);
+    const enabledItems = packageResponse.items.filter((item) => item.enabled);
+    const authorizationEntries = await Promise.all(enabledItems.map(async (item) => {
+      if (!(item.manifest.authorization?.methods?.length ?? 0)) {
+        return [item.pluginId, undefined] as const;
+      }
+      try {
+        const state = await props.client.getPluginAuthorization(props.workspaceId, item.pluginId);
+        return [item.pluginId, state] as const;
+      } catch {
+        return [item.pluginId, undefined] as const;
+      }
+    }));
+    const authorizations = new Map(authorizationEntries);
+
+    return enabledItems
+      .filter((item) => isPluginPackageReady(item, authorizations.get(item.pluginId), mcpState.statuses))
+      .sort((left, right) => left.name.localeCompare(right.name));
+  };
   const listExternalAgents = async (): Promise<iPolloWorkPluginPackageItem[]> => {
     const response = await props.client.listPluginPackages(props.workspaceId);
     return response.items
-      .filter((item) =>
-        item.enabled
-        && Boolean(item.manifest.composer?.prompt.trim())
-        && item.manifest.resources.some((resource) =>
-          resource.provides?.includes("service:external-subagent") === true
-          && !item.disabledResourceIds.includes(resource.id)
-        )
-      )
+      .filter(isDelegatableExternalAgent)
       .sort((left, right) => left.name.localeCompare(right.name));
   };
 
@@ -1855,6 +1874,8 @@ export function SessionSurface(props: SessionSurfaceProps) {
           mcpServers={toolMcpServers}
           mcpStatus={toolMcpStatus}
           mcpStatuses={toolMcpStatuses}
+          listInstalledExtensions={listInstalledExtensions}
+          onOpenWorkspaceApp={props.onOpenWorkspaceApp}
           listExternalAgents={listExternalAgents}
           onOpenSettingsSection={props.onOpenSettingsSection}
           recentFiles={props.recentFiles}

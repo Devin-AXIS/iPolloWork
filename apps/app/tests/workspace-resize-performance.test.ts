@@ -79,9 +79,15 @@ describe("workspace resize performance", () => {
     );
   });
 
-  test("hides the right-panel toggle from the embedded Extensions navigation", () => {
+  test("turns the floating right-panel toggle into a close action for Extensions", () => {
     expect(sessionPageSource).toContain(
-      '{mainHeaderHidden && mainWorkspaceView !== "extensions" ? (',
+      'const floatingHeaderActionClosesExtensions = mainWorkspaceView === "extensions";',
+    );
+    expect(sessionPageSource).toContain(
+      "onClick={floatingHeaderActionClosesExtensions ? closeExtensionsRailPane : toggleRightPanel}",
+    );
+    expect(sessionPageSource).toContain(
+      '<X className="size-4" />',
     );
   });
 });

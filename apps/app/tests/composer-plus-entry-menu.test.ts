@@ -10,6 +10,10 @@ const sessionSurfaceSource = readFileSync(
   resolve(import.meta.dir, "../src/react-app/domains/session/surface/session-surface.tsx"),
   "utf8",
 );
+const sessionPageSource = readFileSync(
+  resolve(import.meta.dir, "../src/react-app/domains/session/chat/session-page.tsx"),
+  "utf8",
+);
 const deepSeekManifestSource = readFileSync(
   resolve(import.meta.dir, "../../../examples/plugin-packages/deepseek-harness/ipollowork.plugin.json"),
   "utf8",
@@ -81,15 +85,35 @@ describe("composer plus entry menu", () => {
 
   test("discovers enabled external subagents from plugin package capabilities", () => {
     expect(sessionSurfaceSource).toContain("listPluginPackages(props.workspaceId)");
-    expect(sessionSurfaceSource).toContain('resource.provides?.includes("service:external-subagent")');
-    expect(sessionSurfaceSource).toContain("!item.disabledResourceIds.includes(resource.id)");
+    expect(sessionSurfaceSource).toContain("filter(isDelegatableExternalAgent)");
     expect(composerSource).toContain("item.manifest.composer?.prompt");
     expect(composerSource).toContain("applyExternalAgentSelection(agent)");
   });
 
+  test("loads the extension menu from installed and ready plugin packages", () => {
+    expect(sessionSurfaceSource).toContain("listInstalledExtensions");
+    expect(sessionSurfaceSource).toContain("isPluginPackageReady");
+    expect(composerSource).toContain("props.listInstalledExtensions");
+    expect(composerSource).toContain("installedExtensions");
+    expect(composerSource).not.toContain("IPOLLOWORK_EXTENSION_CATALOG");
+  });
+
+  test("activates an extension Workspace App and scopes the next request to its tools", () => {
+    expect(composerSource).toContain("props.onOpenWorkspaceApp?.(entry.pluginId)");
+    expect(sessionSurfaceSource).toContain("onOpenWorkspaceApp={props.onOpenWorkspaceApp}");
+    expect(sessionPageSource).toContain("openWorkspaceAppForPlugin");
+    expect(sessionPageSource).toContain("entry.pluginId === pluginId");
+    expect(sessionPageSource).toContain("onOpenWorkspaceApp={openWorkspaceAppForPlugin}");
+    expect(sessionPageSource).toContain('activePanelTab?.type === "workspace-app"');
+    expect(sessionPageSource).toContain("You must use its available workspace_app tools");
+    expect(sessionPageSource).toContain("workspace_app.list_tools");
+    expect(sessionPageSource).toContain("workspace_app.call_tool");
+  });
+
   test("presents DeepSeek Harness as collaboration without implementation details", () => {
-    expect(deepSeekManifestSource).toContain("把代码审查、开发和研究任务委派给 DeepSeek Harness 协作完成。");
+    expect(deepSeekManifestSource).toContain("让 OpenCode 把代码审查、开发和研究任务委派给 DeepSeek Harness 协作完成。");
     expect(deepSeekManifestSource).toContain("请使用 DeepSeek Harness 协作完成以下任务：");
+    expect(deepSeekManifestSource).toContain('"engines": ["opencode"]');
     expect(deepSeekManifestSource).toContain('"simpleIconSlug": "deepseek"');
     expect(deepSeekManifestSource).not.toContain("不替换 OpenCode");
     expect(deepSeekManifestSource).not.toContain("隔离运行");

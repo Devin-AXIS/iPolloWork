@@ -1,6 +1,7 @@
 /** @jsxImportSource react */
 import { useMemo, useRef, useState } from "react";
 import { Archive, Bot, FileText, Github, Loader2, Package, Search, ShieldCheck, Upload } from "lucide-react";
+import { PLUGIN_INSTALL_PACKAGE_EXTENSION } from "@ipollowork/types/plugins";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -16,19 +17,19 @@ import {
 } from "@/components/ui/dialog";
 import { currentLocale, t } from "@/i18n";
 import type {
-  iPolloWorkPluginPackagePreview,
+  iPolloWorkPluginPackageImportPreview,
   iPolloWorkPluginPackageUpload,
   iPolloWorkServerClient,
 } from "@/app/lib/ipollowork-server";
 
-import { readPluginPackageArchive } from "./plugin-package-archive";
+import { readPluginPackageArchive } from "@/app/lib/plugin-package-archive";
+import { ConfirmModal } from "@/react-app/design-system/modals/confirm-modal";
 import { formatPluginPlatformError, localizePluginPackageManifest } from "./plugin-platform-state";
 
 type PluginPackageImportModalProps = {
   open: boolean;
   client: iPolloWorkServerClient;
   workspaceId: string;
-  installedPluginIds: string[];
   onClose: () => void;
   onInstalled: (pluginId: string) => void | Promise<void>;
 };
@@ -42,9 +43,10 @@ export function PluginPackageImportModal(props: PluginPackageImportModalProps) {
   const [githubUrl, setGithubUrl] = useState("");
   const [previewedGithubUrl, setPreviewedGithubUrl] = useState<string | null>(null);
   const [sourceWarnings, setSourceWarnings] = useState<string[]>([]);
-  const [preview, setPreview] = useState<iPolloWorkPluginPackagePreview | null>(null);
+  const [preview, setPreview] = useState<iPolloWorkPluginPackageImportPreview | null>(null);
   const [busy, setBusy] = useState<"preview" | "install" | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [downgradeConfirmationOpen, setDowngradeConfirmationOpen] = useState(false);
 
   const counts = useMemo(() => ({
     skills: preview?.manifest.resources.filter((resource) => resource.type === "skill").length ?? 0,
@@ -61,6 +63,7 @@ export function PluginPackageImportModal(props: PluginPackageImportModalProps) {
     setPreview(null);
     setBusy(null);
     setError(null);
+    setDowngradeConfirmationOpen(false);
     if (inputRef.current) inputRef.current.value = "";
   };
 
@@ -76,7 +79,11 @@ export function PluginPackageImportModal(props: PluginPackageImportModalProps) {
     setError(null);
     setPreview(null);
     try {
-      const nextUpload = await readPluginPackageArchive(file);
+      const nextUpload = await readPluginPackageArchive(
+        file,
+        "install",
+        t("plugin_platform.import_invalid_extension"),
+      );
       const response = await props.client.validatePluginPackageUpload(props.workspaceId, nextUpload);
       if (operationRef.current !== operation) return;
       setUpload(nextUpload);
@@ -115,16 +122,20 @@ export function PluginPackageImportModal(props: PluginPackageImportModalProps) {
     }
   };
 
-  const install = async () => {
+  const install = async (allowDowngrade = false) => {
     if (!preview || (source === "file" ? !upload : !previewedGithubUrl)) return;
     const operation = ++operationRef.current;
     setBusy("install");
     setError(null);
     try {
       const response = source === "file" && upload
-        ? await props.client.importPluginPackage(props.workspaceId, upload)
+        ? await props.client.importPluginPackage(props.workspaceId, upload, { allowDowngrade })
         : previewedGithubUrl
-          ? await props.client.importGithubPluginPackage(props.workspaceId, { url: previewedGithubUrl })
+          ? await props.client.importGithubPluginPackage(
+              props.workspaceId,
+              { url: previewedGithubUrl },
+              { allowDowngrade },
+            )
           : null;
       if (!response) return;
       await props.onInstalled(response.result.pluginId);
@@ -141,13 +152,15 @@ export function PluginPackageImportModal(props: PluginPackageImportModalProps) {
     }
   };
 
-  const isUpdate = preview ? props.installedPluginIds.includes(preview.manifest.id) : false;
+  const isUpdate = preview?.installedVersion !== null && preview?.installedVersion !== undefined;
+  const isDowngrade = preview?.versionChange === "downgrade";
   const previewManifest = preview ? localizePluginPackageManifest(preview.manifest, locale) : null;
   const signedSafety = preview?.safety.level === "signed" ? preview.safety : null;
 
   return (
-    <Dialog open={props.open} onOpenChange={(open) => { if (!open) close(); }}>
-      <DialogContent className="flex max-h-[min(650px,calc(100dvh-160px))] min-h-0 w-full max-w-lg flex-col overflow-hidden sm:max-w-lg">
+    <>
+      <Dialog open={props.open} onOpenChange={(open) => { if (!open) close(); }}>
+        <DialogContent className="flex max-h-[min(650px,calc(100dvh-160px))] min-h-0 w-full max-w-lg flex-col overflow-hidden sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>{t("plugin_platform.import_title")}</DialogTitle>
           <DialogDescription>{t("plugin_platform.import_description")}</DialogDescription>
@@ -157,7 +170,7 @@ export function PluginPackageImportModal(props: PluginPackageImportModalProps) {
           <input
             ref={inputRef}
             type="file"
-            accept=".zip,.ipollowork-plugin,application/zip"
+            accept={PLUGIN_INSTALL_PACKAGE_EXTENSION}
             className="sr-only"
             onChange={(event) => {
               const file = event.currentTarget.files?.[0];
@@ -261,12 +274,38 @@ export function PluginPackageImportModal(props: PluginPackageImportModalProps) {
           <DialogClose render={<Button variant="outline" />}>
             {t("common.cancel")}
           </DialogClose>
-          <Button disabled={!preview || busy !== null} onClick={() => void install()}>
+          <Button
+            disabled={!preview || busy !== null}
+            onClick={() => {
+              if (isDowngrade) {
+                setDowngradeConfirmationOpen(true);
+                return;
+              }
+              void install();
+            }}
+          >
             {busy === "install" ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}
             {isUpdate ? t("plugin_platform.action.update") : t("plugin_platform.import_install")}
           </Button>
         </DialogFooter>
-      </DialogContent>
-    </Dialog>
+        </DialogContent>
+      </Dialog>
+      <ConfirmModal
+        open={downgradeConfirmationOpen}
+        title={t("plugin_platform.import_downgrade_title")}
+        message={t("plugin_platform.import_downgrade_description", {
+          currentVersion: preview?.installedVersion ?? "",
+          incomingVersion: preview?.manifest.package?.version ?? "",
+        })}
+        confirmLabel={t("plugin_platform.import_downgrade_confirm")}
+        cancelLabel={t("plugin_platform.import_downgrade_cancel")}
+        variant="warning"
+        onConfirm={() => {
+          setDowngradeConfirmationOpen(false);
+          void install(true);
+        }}
+        onCancel={() => setDowngradeConfirmationOpen(false)}
+      />
+    </>
   );
 }

@@ -255,6 +255,7 @@ export function SessionRoute() {
     opencodeBaseUrl,
     opencodeClient,
     selectedWorkspaceError,
+    selectedSessionKnown,
     routeNotFoundMessage,
     endpointForWorkspace,
     refreshRouteState,
@@ -308,15 +309,32 @@ export function SessionRoute() {
     [workspaces],
   );
   const sharedProviderEndpoint = useMemo(
-    () => resolveWorkspaceEndpoint(sharedProviderWorkspace, { baseUrl, token }),
-    [baseUrl, sharedProviderWorkspace, token],
+    () => resolveWorkspaceEndpoint(sharedProviderWorkspace, {
+      baseUrl,
+      token,
+      hostToken: ipolloworkServerHostInfoState?.hostToken,
+    }),
+    [baseUrl, ipolloworkServerHostInfoState?.hostToken, sharedProviderWorkspace, token],
   );
   const deepSeekHarnessEndpoint = useMemo(
-    () => resolveWorkspaceEndpoint(deepSeekHarnessWorkspace, { baseUrl, token }),
-    [baseUrl, deepSeekHarnessWorkspace, token],
+    () => resolveWorkspaceEndpoint(deepSeekHarnessWorkspace, {
+      baseUrl,
+      token,
+      hostToken: ipolloworkServerHostInfoState?.hostToken,
+    }),
+    [baseUrl, deepSeekHarnessWorkspace, ipolloworkServerHostInfoState?.hostToken, token],
   );
-  const sharedProviderEngineId = sharedProviderWorkspace?.engineId?.trim() || DEFAULT_ENGINE_ID;
+  // Provider discovery/auth is an app-level OpenCode control plane even when
+  // the selected workspace runs another agent engine. Every mounted workspace
+  // exposes the managed OpenCode sidecar through its `/opencode` endpoint.
+  const sharedProviderEngineId = DEFAULT_ENGINE_ID;
   const sharedProviderRoot = sharedProviderWorkspace?.path?.trim() || "";
+  const sharedProviderAuthWorkspace = useMemo(
+    () => sharedProviderWorkspace
+      ? { ...sharedProviderWorkspace, engineId: DEFAULT_ENGINE_ID }
+      : null,
+    [sharedProviderWorkspace],
+  );
   const sharedProviderClient = useMemo(() => {
     if (!sharedProviderEndpoint?.token) return null;
     return providerEngineAdapters.createClient(sharedProviderEngineId, {
@@ -341,11 +359,7 @@ export function SessionRoute() {
         directory: sharedProviderRoot || undefined,
       });
     }
-    if (
-      deepSeekHarnessProviderClient
-      && deepSeekHarnessWorkspace
-      && deepSeekHarnessWorkspace.id !== sharedProviderWorkspace?.id
-    ) {
+    if (deepSeekHarnessProviderClient && deepSeekHarnessWorkspace) {
       sources.push({
         client: deepSeekHarnessProviderClient,
         engineId: DEEPSEEK_HARNESS_ENGINE_ID,
@@ -354,7 +368,7 @@ export function SessionRoute() {
       });
     }
     return sources;
-  }, [deepSeekHarnessEndpoint?.opencodeBaseUrl, deepSeekHarnessProviderClient, deepSeekHarnessWorkspace, sharedProviderClient, sharedProviderEndpoint?.opencodeBaseUrl, sharedProviderEngineId, sharedProviderRoot, sharedProviderWorkspace?.id]);
+  }, [deepSeekHarnessEndpoint?.opencodeBaseUrl, deepSeekHarnessProviderClient, deepSeekHarnessWorkspace, sharedProviderClient, sharedProviderEndpoint?.opencodeBaseUrl, sharedProviderEngineId, sharedProviderRoot]);
   useSessionMcpMaintenance({
     cloudSignedIn: denAuth.isSignedIn && activeWorkContextId === PERSONAL_WORK_CONTEXT_ID,
     client: selectedWorkspaceEndpoint?.client ?? null,
@@ -665,6 +679,7 @@ export function SessionRoute() {
     baseUrl: selectedWorkspaceEndpoint?.opencodeBaseUrl ?? "",
     workspaceRoot: selectedWorkspaceRoot,
     catalogSources: modelCatalogSources,
+    connectedProviderIds: providerConnectedIds,
   });
   const setSelectedModel = useCallback((model: ModelRef) => {
     local.setPrefs((previous) => updateModelPreferences(
@@ -747,11 +762,11 @@ export function SessionRoute() {
       providerDefaults,
       providerConnectedIds,
       disabledProviderIds,
-      selectedWorkspace: sharedProviderWorkspace,
+      selectedWorkspace: sharedProviderAuthWorkspace,
       selectedWorkspaceEndpoint: sharedProviderEndpoint,
       providerBaseUrl: sharedProviderEndpoint?.opencodeBaseUrl ?? "",
       selectedWorkspaceRoot: sharedProviderRoot,
-      selectedWorkspaceId: sharedProviderWorkspace?.id ?? "",
+      selectedWorkspaceId: sharedProviderAuthWorkspace?.id ?? "",
       setProviders,
       setProviderDefaults,
       setProviderConnectedIds,
@@ -973,8 +988,11 @@ export function SessionRoute() {
         setSelectedModel(model);
         modelPicker.setCompactOpen(false);
       },
-      onConfigureModels: () => {
-        void sessionProviderAuthStore.openProviderAuthModal({ returnFocusTarget: "composer" });
+      onConfigureModels: (providerId?: string) => {
+        void sessionProviderAuthStore.openProviderAuthModal({
+          returnFocusTarget: "composer",
+          ...(providerId ? { preferredProviderId: providerId } : {}),
+        });
       },
       onConfigureTokenStar: () => {
         void sessionProviderAuthStore.openProviderAuthModal({
@@ -1371,7 +1389,11 @@ export function SessionRoute() {
     ) {
       return null;
     }
-    const endpoint = resolveWorkspaceEndpoint(workspace, { baseUrl, token });
+    const endpoint = resolveWorkspaceEndpoint(workspace, {
+      baseUrl,
+      token,
+      hostToken: ipolloworkServerHostInfoState?.hostToken,
+    });
     if (!endpoint || !endpoint.token) {
       return null;
     }
@@ -1501,7 +1523,16 @@ export function SessionRoute() {
       }
       return null;
     }
-  }, [baseUrl, loading, navigateToWorkspaceSession, refreshRouteState, rememberPendingCreatedSession, token, workspaces]);
+  }, [
+    baseUrl,
+    ipolloworkServerHostInfoState?.hostToken,
+    loading,
+    navigateToWorkspaceSession,
+    refreshRouteState,
+    rememberPendingCreatedSession,
+    token,
+    workspaces,
+  ]);
 
   const handleCreateInitialProjectTask = useCallback(async (draft: ComposerDraft) => {
     if (pendingInitialProjectTask) return false;
@@ -1906,6 +1937,7 @@ export function SessionRoute() {
       opencodeBaseUrl={opencodeBaseUrl}
       selectedWorkspaceRoot={selectedWorkspaceRoot}
       modelCatalogSources={modelCatalogSources}
+      connectedProviderIds={sessionProviderAuthSnapshot.connectedProviderIds}
     >
     {conversation && selectedWorkspaceEndpoint && opencodeBaseUrl && selectedWorkspaceServerToken ? (
       <ReactSessionRuntime
@@ -1923,6 +1955,7 @@ export function SessionRoute() {
     ) : null}
     <SessionPage
       selectedSessionId={selectedSessionId}
+      selectedSessionKnown={selectedSessionKnown}
       selectedWorkspaceId={selectedWorkspaceId}
       selectedWorkspaceDisplay={selectedWorkspace ? {
         id: selectedWorkspace.id,
@@ -1951,7 +1984,10 @@ export function SessionRoute() {
       mcpConnectedCount={mcpConnectedCount}
       onOpenSettings={() => handleOpenSettings("/settings/preferences")}
       onOpenHelp={handleOpenHelp}
-      onOpenProviderAuth={() => sessionProviderAuthStore.openProviderAuthModal({ returnFocusTarget: "composer" })}
+      onOpenProviderAuth={(preferredProviderId) => sessionProviderAuthStore.openProviderAuthModal({
+        returnFocusTarget: "composer",
+        ...(preferredProviderId ? { preferredProviderId } : {}),
+      })}
       providerAuthModal={sessionProviderAuthSnapshot.providerAuthModalOpen ? {
         open: true,
         loading: false,
@@ -1962,7 +1998,7 @@ export function SessionRoute() {
         providers: sessionProviderAuthSnapshot.providerAuthProviders.filter(
           (provider) => !isDesktopProviderBlocked({ providerId: provider.id, checkRestriction: checkDesktopRestriction }),
         ),
-        connectedProviderIds: providerConnectedIds,
+        connectedProviderIds: sessionProviderAuthSnapshot.connectedProviderIds,
         authMethods: Object.fromEntries(
           Object.entries(sessionProviderAuthSnapshot.providerAuthMethods).filter(
             ([providerId]) => !isDesktopProviderBlocked({ providerId, checkRestriction: checkDesktopRestriction }),
@@ -2036,7 +2072,11 @@ export function SessionRoute() {
           void (async () => {
             const workspace = workspaces.find((item) => item.id === workspaceId);
             if (!workspace) return;
-            const endpoint = resolveWorkspaceEndpoint(workspace, { baseUrl, token });
+            const endpoint = resolveWorkspaceEndpoint(workspace, {
+              baseUrl,
+              token,
+              hostToken: ipolloworkServerHostInfoState?.hostToken,
+            });
             if (!endpoint?.token) return;
             const workspaceConversation = conversationEngineAdapters
               .get(workspace.engineId)
@@ -2201,6 +2241,13 @@ export function SessionRoute() {
         setSelectedModel(next);
         modelPicker.setOpen(false);
         focusPromptSoon();
+      }}
+      onConnectProvider={(providerId) => {
+        modelPicker.setOpen(false);
+        void sessionProviderAuthStore.openProviderAuthModal({
+          returnFocusTarget: "composer",
+          preferredProviderId: providerId,
+        });
       }}
       disabledProviders={disabledProviderIds}
       onBehaviorChange={() => {}}

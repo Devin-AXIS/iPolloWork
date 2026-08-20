@@ -33,10 +33,18 @@ describe("settings provider branding", () => {
   });
 
   test("white-labels connected provider display names and ids in the AI settings page", () => {
-    expect(settingsRouteSource).toContain("formatProviderAuthName(provider.id, provider.name)");
-    expect(settingsRouteSource).toContain('displayId: provider.id.trim().toLowerCase() === "opencode" ? "ipollowork" : provider.id');
+    expect(settingsRouteSource).toContain("formatProviderAuthName(providerId, provider?.name)");
+    expect(settingsRouteSource).toContain('displayId: providerId.trim().toLowerCase() === "opencode" ? "ipollowork" : providerId');
     expect(aiViewSource).toContain("{provider.displayId ?? provider.id}");
     expect(aiViewSource).toContain("providerName={provider.name}");
+    expect(aiViewSource).toContain('provider.id !== "opencode"');
+  });
+
+  test("derives connected providers from the current account as well as the active engine", () => {
+    expect(settingsRouteSource).toContain(
+      "const effectiveProviderConnectedIds = providerAuthSnapshot.connectedProviderIds",
+    );
+    expect(settingsRouteSource).toContain("connectedProviderIds={effectiveProviderConnectedIds}");
   });
 
   test("does not show OpenCode copy in AI provider user-facing strings", () => {

@@ -1,10 +1,12 @@
 ---
 name: deepseek-harness
-description: Delegate code review, development, and research tasks to DeepSeek Harness.
+description: Let the OpenCode host delegate code review, development, and research tasks to DeepSeek Harness.
 disable-model-invocation: false
 ---
 
 # DeepSeek Harness 协作智能体
+
+本技能是 OpenCode 主代理调用 DeepSeek Harness 外部智能体的委派桥梁，不在以 DeepSeek Harness 作为当前会话引擎时再次委派给 DSH。
 
 使用 `ipollowork_extension_call` 调用扩展 `deepseek-harness`。Windows 和 macOS 版软件已经内置官方 DSH 运行环境，不要自行下载或安装系统级 DSH。
 

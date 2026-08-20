@@ -234,14 +234,21 @@ function toOverlayRect(
 
   const elementRect = element.getBoundingClientRect();
   const sourceBoundary = findSourceBoundary(element);
-  const sourceBoundaryRect = sourceBoundary?.getBoundingClientRect();
+  // A composition HOST is positioned in its parent's coordinate system. Its
+  // own data-width/data-height describe the CHILD source mounted inside it,
+  // not the coordinate system used by left/top or GSAP x/y on the host. Using
+  // the child scale here makes an edit-as-unit host (notably ending effects)
+  // travel too far and then persist at a different-looking drop position.
+  // Descendants drilled into the sub-composition still need the child scale.
+  const nestedSourceBoundary = sourceBoundary && sourceBoundary !== element ? sourceBoundary : null;
+  const sourceBoundaryRect = nestedSourceBoundary?.getBoundingClientRect();
   const editScale = resolveDomEditCoordinateScale({
     rootScaleX,
     rootScaleY,
     sourceRectWidth: sourceBoundaryRect?.width,
     sourceRectHeight: sourceBoundaryRect?.height,
-    sourceWidth: readPositiveDimension(sourceBoundary?.getAttribute("data-width") ?? null),
-    sourceHeight: readPositiveDimension(sourceBoundary?.getAttribute("data-height") ?? null),
+    sourceWidth: readPositiveDimension(nestedSourceBoundary?.getAttribute("data-width") ?? null),
+    sourceHeight: readPositiveDimension(nestedSourceBoundary?.getAttribute("data-height") ?? null),
   });
 
   return {

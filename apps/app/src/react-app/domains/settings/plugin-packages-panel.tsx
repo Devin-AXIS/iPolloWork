@@ -29,6 +29,7 @@ import type {
 } from "@/app/lib/ipollowork-server";
 import type { iPolloWorkPluginAuthorizationMethod } from "@/app/extensions";
 import type { McpStatus, McpStatusMap } from "@/app/types";
+import { pluginPackageAuthorization } from "@/app/lib/plugin-package-readiness";
 import { resolveExtensionIconUrl } from "@/react-app/design-system/extension-icon-src";
 import { notifyPluginUiContributionsChanged } from "@/react-app/plugin-ui/plugin-ui-contributions";
 import { AuthorizationFormDialog } from "@/react-app/domains/settings/authorization-form-dialog";
@@ -54,6 +55,8 @@ import {
   derivePluginPrimaryAction,
   formatPluginPlatformError,
   localizePluginPackageManifest,
+  pluginPackageEngineLimitations,
+  pluginPackageEngineScope,
   type PluginPackageRelationships,
 } from "./plugin-platform-state";
 
@@ -91,6 +94,16 @@ type McpConnectionFeedback = {
 
 const INSTALLED_TILE_WIDTH = 48;
 const INSTALLED_TILE_GAP = 8;
+const PLUGIN_PACKAGE_LOAD_RETRY_DELAY_MS = 300;
+
+async function loadPluginPackageData<T>(operation: () => Promise<T>): Promise<T> {
+  try {
+    return await operation();
+  } catch {
+    await new Promise((resolve) => window.setTimeout(resolve, PLUGIN_PACKAGE_LOAD_RETRY_DELAY_MS));
+    return operation();
+  }
+}
 
 function packageAuthorization(
   item: iPolloWorkPluginPackageItem,
@@ -120,6 +133,39 @@ function statusText(state: iPolloWorkPluginAuthorizationState | undefined, requi
   return t("plugin_platform.status.needs_authorization");
 }
 
+function engineName(engineId: string): string {
+  return engineId === "deepseek-harness" ? "DeepSeek Harness" : engineId === "opencode" ? "OpenCode" : engineId;
+}
+
+function engineScopeBadge(item: iPolloWorkPluginPackageItem | iPolloWorkBundledPluginPackageItem): ReactNode {
+  const scope = pluginPackageEngineScope(item.manifest, item.engineCompatibility);
+  if (scope.kind === "universal") {
+    return <span className="inline-flex h-4 items-center rounded-full bg-blue-3 px-1.5 text-[10px] leading-none text-blue-11">{t("plugin_platform.engine_scope.universal")}</span>;
+  }
+  if (scope.kind === "multi-engine") {
+    const engines = scope.engineIds.map(engineName).join(" / ");
+    return <span className="inline-flex h-4 items-center rounded-full bg-violet-3 px-1.5 text-[10px] leading-none text-violet-11">{t("plugin_platform.engine_scope.multiple", { engines })}</span>;
+  }
+  const label = scope.engineId === "deepseek-harness"
+    ? t("plugin_platform.engine_scope.harness")
+    : scope.engineId === "opencode"
+      ? t("plugin_platform.engine_scope.opencode")
+      : t("plugin_platform.engine_scope.specific", { engine: engineName(scope.engineId) });
+  return <span className="inline-flex h-4 items-center rounded-full bg-gray-3 px-1.5 text-[10px] leading-none text-gray-11">{label}</span>;
+}
+
+function pluginPackageBadges(
+  item: iPolloWorkPluginPackageItem | iPolloWorkBundledPluginPackageItem,
+  disabled = false,
+): ReactNode {
+  return (
+    <>
+      {engineScopeBadge(item)}
+      {disabled ? <span className="rounded-full bg-amber-3 px-2 py-0.5 text-[10px] text-amber-11">{t("plugin_platform.status.disabled")}</span> : null}
+    </>
+  );
+}
+
 export const PluginPackagesPanel = forwardRef<PluginPackagesPanelHandle, PluginPackagesPanelProps>(function PluginPackagesPanel(props, ref) {
   const locale = currentLocale();
   const [items, setItems] = useState<iPolloWorkPluginPackageItem[]>([]);
@@ -141,7 +187,9 @@ export const PluginPackagesPanel = forwardRef<PluginPackagesPanelHandle, PluginP
   const installedPreviewRowRef = useRef<HTMLDivElement>(null);
 
   const refresh = useCallback(async () => {
-    if (!props.client || !props.workspaceId) {
+    const client = props.client;
+    const workspaceId = props.workspaceId;
+    if (!client || !workspaceId) {
       setItems([]);
       setCatalogItems([]);
       setAuthorizations({});
@@ -150,20 +198,38 @@ export const PluginPackagesPanel = forwardRef<PluginPackagesPanelHandle, PluginP
     }
     setError(null);
     try {
-      const [response, catalog] = await Promise.all([
-        props.client.listPluginPackages(props.workspaceId),
-        props.client.listBundledPluginPackages(props.workspaceId),
+      const [packagesResult, catalogResult] = await Promise.allSettled([
+        loadPluginPackageData(() => client.listPluginPackages(workspaceId)),
+        loadPluginPackageData(() => client.listBundledPluginPackages(workspaceId)),
       ]);
-      setItems(response.items);
-      notifyPluginUiContributionsChanged();
-      setCatalogItems(catalog.items);
-      const states = await Promise.all(response.items.map(async (item) => ({
-        pluginId: item.pluginId,
-        state: await props.client?.getPluginAuthorization(props.workspaceId ?? "", item.pluginId),
-      })));
-      setAuthorizations(Object.fromEntries(states.flatMap((entry) => entry.state ? [[entry.pluginId, entry.state]] : [])));
-      const connectedPluginIds = new Set(states.filter((entry) => entry.state?.ready === true).map((entry) => entry.pluginId));
-      setFlows((current) => Object.fromEntries(Object.entries(current).filter(([pluginId]) => !connectedPluginIds.has(pluginId))));
+
+      if (packagesResult.status === "fulfilled") {
+        const response = packagesResult.value;
+        setItems(response.items);
+        notifyPluginUiContributionsChanged();
+        const stateResults = await Promise.allSettled(response.items.map(async (item) => ({
+          pluginId: item.pluginId,
+          state: await client.getPluginAuthorization(workspaceId, item.pluginId),
+        })));
+        setAuthorizations((current) => Object.fromEntries(response.items.flatMap((item, index) => {
+          const result = stateResults[index];
+          if (result?.status === "fulfilled" && result.value.state) {
+            return [[item.pluginId, result.value.state]];
+          }
+          const previous = current[item.pluginId];
+          return previous ? [[item.pluginId, previous]] : [];
+        })));
+        const connectedPluginIds = new Set(stateResults.flatMap((result) =>
+          result.status === "fulfilled" && result.value.state?.ready === true ? [result.value.pluginId] : []
+        ));
+        setFlows((current) => Object.fromEntries(Object.entries(current).filter(([pluginId]) => !connectedPluginIds.has(pluginId))));
+      }
+      if (catalogResult.status === "fulfilled") setCatalogItems(catalogResult.value.items);
+
+      const failedResult = [packagesResult, catalogResult].find((result) => result.status === "rejected");
+      if (failedResult?.status === "rejected") {
+        setError(formatPluginPlatformError(failedResult.reason, t("plugin_platform.error.load")));
+      }
     } catch (cause) {
       setError(formatPluginPlatformError(cause, t("plugin_platform.error.load")));
     } finally {
@@ -363,7 +429,7 @@ export const PluginPackagesPanel = forwardRef<PluginPackagesPanelHandle, PluginP
     const item = { ...selectedSourceItem, name: localizedManifest.name, manifest: localizedManifest };
     const auth = authorizations[item.pluginId];
     const methods = item.manifest.authorization?.methods ?? [];
-    const authorization = packageAuthorization(item, auth, props.mcpStatuses);
+    const authorization = pluginPackageAuthorization(item, auth, props.mcpStatuses);
     const connected = authorization.connected;
     const flow = flows[item.pluginId];
     const setupHelpUrl = item.manifest.contributions?.find((contribution) =>
@@ -408,6 +474,7 @@ export const PluginPackagesPanel = forwardRef<PluginPackagesPanelHandle, PluginP
       ?? t("plugin_platform.publisher_unknown");
     const category = item.manifest.category?.trim()
       || (item.pluginId === "figma" ? t("plugin_platform.category_design_development") : t("plugin_platform.default_category"));
+    const engineLimitations = pluginPackageEngineLimitations(item.manifest, item.engineCompatibility);
 
     const toggleKey = `${item.pluginId}:toggle`;
 
@@ -448,6 +515,36 @@ export const PluginPackagesPanel = forwardRef<PluginPackagesPanelHandle, PluginP
           </div>
         )}
       >
+        {engineLimitations.length > 0 ? (
+          <div className="mt-6 rounded-2xl border border-amber-6 bg-amber-2/70 p-4 sm:p-5">
+            <div className="flex items-center gap-2 text-sm font-semibold text-amber-11">
+              <ShieldCheck size={16} />
+              {t("plugin_platform.engine.compatibility_title")}
+            </div>
+            <div className="mt-3 divide-y divide-amber-6/60">
+              {engineLimitations.map((limitation) => (
+                <div key={limitation.engineId} className="py-3 first:pt-0 last:pb-0">
+                  <div className="text-xs font-semibold text-amber-11">
+                    {t(limitation.status === "unsupported"
+                      ? "plugin_platform.engine.unsupported_title"
+                      : "plugin_platform.engine.partial_title", {
+                      engine: engineName(limitation.engineId),
+                    })}
+                  </div>
+                  <p className="mt-1 text-xs leading-5 text-amber-11/90">
+                    {limitation.capabilityLabels.length > 0
+                      ? t("plugin_platform.engine.unavailable_features", {
+                          capabilities: limitation.capabilityLabels.join(locale === "zh" ? "、" : ", "),
+                        })
+                      : limitation.nativeEngineOnly
+                        ? t("plugin_platform.engine.ecosystem_description", { engine: engineName(limitation.engineId) })
+                        : t("plugin_platform.engine.unavailable_description", { engine: engineName(limitation.engineId) })}
+                  </p>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : null}
         {item.manifest.composer?.prompt ? (
             <div className="mt-8 rounded-2xl border border-violet-6/40 bg-gradient-to-r from-blue-3/70 via-violet-3/45 to-dls-hover p-6 sm:p-8">
               <div className="mx-auto flex max-w-3xl items-center gap-3 rounded-2xl border border-dls-border/70 bg-dls-surface/85 px-4 py-3 shadow-sm backdrop-blur">
@@ -948,7 +1045,7 @@ export const PluginPackagesPanel = forwardRef<PluginPackagesPanelHandle, PluginP
                 version={item.version}
                 compact
                 featured
-                badge={<span className="inline-flex h-4 items-center rounded-full bg-green-9 px-[5px] text-[10px] leading-none text-white">{t("plugin_platform.official_bundle")}</span>}
+                badge={pluginPackageBadges(item)}
                 actionBusy={busyKey !== null}
                 actionLabel={<>{busyKey === `catalog:${item.pluginId}` ? <Loader2 size={14} className="animate-spin" /> : null}{item.updateAvailable ? t("plugin_platform.action.update") : t("plugin_platform.action.install")}</>}
                 onAction={() => void installBundledPackage(item)}
@@ -971,7 +1068,7 @@ export const PluginPackagesPanel = forwardRef<PluginPackagesPanelHandle, PluginP
                   manifest={item.manifest}
                   version={item.version}
                   compact
-                  badge={!item.enabled ? <span className="rounded-full bg-amber-3 px-2 py-0.5 text-[10px] text-amber-11">{t("plugin_platform.status.disabled")}</span> : null}
+                  badge={pluginPackageBadges(item, !item.enabled)}
                   status={<span className="inline-flex items-center gap-1.5">{connected || !authorization.required ? <CheckCircle2 size={13} className="text-green-9" /> : <KeyRound size={13} className="text-amber-9" />}{statusText(auth, authorization.required, connected)}</span>}
                   actionBusy={busyKey !== null}
                   actionLabel={t(primaryAction.labelKey)}
@@ -1002,7 +1099,6 @@ export const PluginPackagesPanel = forwardRef<PluginPackagesPanelHandle, PluginP
         open={importOpen}
         client={props.client}
         workspaceId={props.workspaceId}
-        installedPluginIds={items.map((item) => item.pluginId)}
         onClose={() => setImportOpen(false)}
         onInstalled={async (pluginId) => {
           await refresh();

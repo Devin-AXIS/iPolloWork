@@ -1,12 +1,21 @@
 import { createHash, createPublicKey, randomUUID, verify } from "node:crypto";
+import type { Dirent } from "node:fs";
 import { chmod, copyFile, lstat, mkdir, readFile, readdir, rename, rm, stat, writeFile } from "node:fs/promises";
 import { basename, dirname, join, resolve, sep } from "node:path";
 import { z } from "zod";
-import type { PluginPromptCapabilitySummary } from "@ipollowork/types/plugins";
+import type {
+  PluginPromptCapabilitySummary,
+  PluginUiResource,
+  PluginWorkshopExportFormat,
+  PluginWorkshopProjectSnapshot,
+  PluginWorkshopProjectSummary,
+  PluginWorkshopSourceBundle,
+} from "@ipollowork/types/plugins";
 
 import { ApiError } from "./errors.js";
 import {
   parsePluginMcpEntries,
+  pluginEngineCanActivate,
   pluginEngineAdapters,
   pluginEngineSourcePath,
   type PluginEngineAdapter,
@@ -14,11 +23,18 @@ import {
   type PluginWorkspaceFile,
 } from "./plugin-engine-adapter.js";
 import { parsePluginPackageManifest, type PluginPackageManifest, type PluginResource } from "./plugin-package-manifest.js";
+import { parsePluginWorkshopDraftManifest, preparePluginWorkshopSourceBundle } from "./plugin-workshop-package.js";
 import { runtimeStorageDir } from "./runtime-storage.js";
 import { DEFAULT_ENGINE_ID, type ServerConfig } from "./types.js";
 import serverPackage from "../package.json" with { type: "json" };
 
 const MANIFEST_FILE = "ipollowork.plugin.json";
+const PLUGIN_WORKSHOP_DIRECTORY = "plugins";
+const MAX_PLUGIN_WORKSHOP_PROJECTS = 100;
+const MAX_PLUGIN_WORKSHOP_FILES = 512;
+const MAX_PLUGIN_WORKSHOP_BYTES = 10 * 1024 * 1024;
+const MAX_PLUGIN_WORKSHOP_UI_BYTES = 5 * 1024 * 1024;
+const PLUGIN_WORKSHOP_ID_RE = /^[a-z0-9]+(?:[._-][a-z0-9]+)*$/;
 const PACKAGE_SIGNATURE_PREFIX = "ipollowork-plugin-package-v1\0";
 const TRUSTED_IMPORT_PUBLISHER_KEYS = new Map([
   [
@@ -277,6 +293,8 @@ function packageSha256(manifest: unknown, files: OwnedFile[]): string {
 
 type VersionTuple = [major: number, minor: number, patch: number];
 
+export type PluginPackageVersionChange = "install" | "same" | "upgrade" | "downgrade";
+
 function versionTuple(value: string): VersionTuple {
   const match = value.trim().replace(/^v/, "").match(/^(\d+)\.(\d+)\.(\d+)/);
   if (!match) throw new ApiError(500, "plugin_platform_version_invalid", `Runtime version is invalid: ${value}`);
@@ -323,7 +341,12 @@ function satisfiesRange(version: string, range: string): boolean {
 function assertRuntimeCompatibility(manifest: PluginPackageManifest, engineAdapter?: PluginEngineAdapter): void {
   const compatibility = manifest.package?.compatibility;
   const supportedEngines = manifest.package?.engines;
-  if (engineAdapter && supportedEngines && !supportedEngines.includes(engineAdapter.id)) {
+  if (
+    engineAdapter
+    && supportedEngines
+    && !supportedEngines.includes(engineAdapter.id)
+    && !pluginEngineCanActivate(engineAdapter, manifest)
+  ) {
     throw new ApiError(409, "plugin_package_incompatible", `Plugin does not support ${engineAdapter.id}`, {
       engine: engineAdapter.id,
       supportedEngines,
@@ -348,8 +371,9 @@ function assertGlobalRuntimeCompatibility(config: ServerConfig, manifest: Plugin
     .filter((workspace) => workspace.workspaceType === "local" && Boolean(workspace.path))
     .map((workspace) => workspace.engineId?.trim() || DEFAULT_ENGINE_ID));
   for (const engineId of engineIds) {
-    if (supportedEngines && !supportedEngines.includes(engineId)) continue;
-    assertRuntimeCompatibility(manifest, pluginEngineAdapters.get(engineId));
+    const adapter = pluginEngineAdapters.get(engineId);
+    if (supportedEngines && !supportedEngines.includes(engineId) && !pluginEngineCanActivate(adapter, manifest)) continue;
+    assertRuntimeCompatibility(manifest, adapter);
   }
 }
 
@@ -550,7 +574,7 @@ function packageProjection(
   const manifest = manifestFromVersion(version);
   const engineAdapter = workspaceEngineAdapter(config, workspaceId);
   const engines = manifest.package?.engines;
-  if (engines && !engines.includes(engineAdapter.id)) return null;
+  if (engines && !engines.includes(engineAdapter.id) && !pluginEngineCanActivate(engineAdapter, manifest)) return null;
   assertRuntimeCompatibility(manifest, engineAdapter);
   return { installed, version };
 }
@@ -788,10 +812,68 @@ export async function previewPluginPackage(input: { packageRoot: string; engineI
 }
 
 const SAFE_IMPORT_RESOURCE_TYPES = new Set(["skill", "agent", "command", "file", "mcp", "ui"]);
+type PluginPackageImportPurpose = "install" | "workshop-source";
 
 function hasExecutableCapabilities(manifest: PluginPackageManifest): boolean {
   return manifest.resources.some((resource) => resource.type === "local-service" && Boolean(resource.path))
     || Boolean(manifest.engineBindings?.some((binding) => binding.capabilities.some((capability) => capability.path || capability.packageName)));
+}
+
+function compareSemverIdentifiers(left: string, right: string): number {
+  const leftNumeric = /^\d+$/.test(left);
+  const rightNumeric = /^\d+$/.test(right);
+  if (leftNumeric && rightNumeric) return Number(left) - Number(right);
+  if (leftNumeric) return -1;
+  if (rightNumeric) return 1;
+  if (left === right) return 0;
+  return left < right ? -1 : 1;
+}
+
+function comparePackageVersions(left: string, right: string): number {
+  const leftWithoutBuild = left.split("+", 1)[0] ?? "";
+  const rightWithoutBuild = right.split("+", 1)[0] ?? "";
+  const leftPrereleaseIndex = leftWithoutBuild.indexOf("-");
+  const rightPrereleaseIndex = rightWithoutBuild.indexOf("-");
+  const leftVersion = leftPrereleaseIndex < 0 ? leftWithoutBuild : leftWithoutBuild.slice(0, leftPrereleaseIndex);
+  const rightVersion = rightPrereleaseIndex < 0 ? rightWithoutBuild : rightWithoutBuild.slice(0, rightPrereleaseIndex);
+  const leftPrerelease = leftPrereleaseIndex < 0 ? undefined : leftWithoutBuild.slice(leftPrereleaseIndex + 1);
+  const rightPrerelease = rightPrereleaseIndex < 0 ? undefined : rightWithoutBuild.slice(rightPrereleaseIndex + 1);
+  const coreComparison = compareVersions(versionTuple(leftVersion), versionTuple(rightVersion));
+  if (coreComparison !== 0) return coreComparison;
+  if (!leftPrerelease && !rightPrerelease) return 0;
+  if (!leftPrerelease) return 1;
+  if (!rightPrerelease) return -1;
+  const leftIdentifiers = leftPrerelease.split(".");
+  const rightIdentifiers = rightPrerelease.split(".");
+  const identifierCount = Math.max(leftIdentifiers.length, rightIdentifiers.length);
+  for (let index = 0; index < identifierCount; index += 1) {
+    const leftIdentifier = leftIdentifiers[index];
+    const rightIdentifier = rightIdentifiers[index];
+    if (leftIdentifier === undefined) return -1;
+    if (rightIdentifier === undefined) return 1;
+    const comparison = compareSemverIdentifiers(leftIdentifier, rightIdentifier);
+    if (comparison !== 0) return comparison;
+  }
+  return 0;
+}
+
+export function pluginPackageVersionChange(
+  installedVersion: string | null,
+  incomingVersion: string,
+): PluginPackageVersionChange {
+  if (!installedVersion) return "install";
+  const comparison = comparePackageVersions(incomingVersion, installedVersion);
+  if (comparison === 0) return "same";
+  return comparison > 0 ? "upgrade" : "downgrade";
+}
+
+function requestsUiNetworkAccess(manifest: PluginPackageManifest): boolean {
+  return manifest.resources.some((resource) => resource.type === "ui" && [
+    resource.ui?.csp?.connectDomains,
+    resource.ui?.csp?.resourceDomains,
+    resource.ui?.csp?.frameDomains,
+    resource.ui?.csp?.baseUriDomains,
+  ].some((domains) => Boolean(domains?.length)));
 }
 
 function signedImportSafety(manifest: PluginPackageManifest, integrity: PluginPackagePreview["integrity"]): PluginPackageImportSafety | null {
@@ -860,6 +942,7 @@ function unsafeRemoteMcpField(value: unknown): string | null {
 export async function assertPluginPackageSafeForImport(input: {
   packageRoot: string;
   preview: PluginPackagePreview;
+  purpose: PluginPackageImportPurpose;
 }): Promise<PluginPackageImportSafety> {
   const { manifest } = input.preview;
   const reasons: string[] = [];
@@ -871,7 +954,14 @@ export async function assertPluginPackageSafeForImport(input: {
   if (hasExecutableCapabilities(manifest)) {
     reasons.push("Imported packages cannot include executable capabilities");
   }
-  if ((manifest.permissions?.length ?? 0) > 0) reasons.push("Imported packages cannot request native runtime permissions");
+  const blockedPermissions = manifest.permissions?.filter((permission) => !(
+    input.purpose === "workshop-source"
+    && permission.id === "network"
+    && requestsUiNetworkAccess(manifest)
+  )) ?? [];
+  if (blockedPermissions.length > 0) {
+    reasons.push(`Imported packages cannot request native runtime permissions: ${blockedPermissions.map((permission) => permission.id).join(", ")}`);
+  }
   if ((manifest.authorization?.methods.length ?? 0) > 0) {
     reasons.push("Imported packages must use remote MCP OAuth instead of collecting credentials");
   }
@@ -1015,6 +1105,243 @@ export async function readInstalledPluginUiResource(input: {
   };
 }
 
+type PluginWorkshopFile = {
+  path: string;
+  size: number;
+  modifiedAt: number;
+};
+
+function pluginWorkshopProjectRoot(workspaceRoot: string, directoryId: string): string {
+  if (!PLUGIN_WORKSHOP_ID_RE.test(directoryId)) {
+    throw new ApiError(400, "plugin_workshop_id_invalid", "Plugin workshop project ID is invalid");
+  }
+  return resolveWithin(join(workspaceRoot, PLUGIN_WORKSHOP_DIRECTORY), directoryId);
+}
+
+function pluginWorkshopProjectExistsError(directoryId: string): ApiError {
+  return new ApiError(
+    409,
+    "plugin_workshop_project_exists",
+    `A Plugin Workshop project already exists at plugins/${directoryId}`,
+    { directoryId, packageRoot: `${PLUGIN_WORKSHOP_DIRECTORY}/${directoryId}` },
+  );
+}
+
+async function assertPluginWorkshopProjectDirectory(workspaceRoot: string, directoryId: string): Promise<string> {
+  const projectRoot = pluginWorkshopProjectRoot(workspaceRoot, directoryId);
+  const metadata = await lstat(projectRoot);
+  if (metadata.isSymbolicLink() || !metadata.isDirectory()) {
+    throw new ApiError(400, "plugin_workshop_directory_invalid", "Plugin workshop project must be a regular directory");
+  }
+  return projectRoot;
+}
+
+async function readPluginWorkshopProjectSummary(
+  workspaceRoot: string,
+  directoryId: string,
+): Promise<PluginWorkshopProjectSummary> {
+  const packageRoot = `${PLUGIN_WORKSHOP_DIRECTORY}/${directoryId}`;
+  let modifiedAt = 0;
+  try {
+    const projectRoot = await assertPluginWorkshopProjectDirectory(workspaceRoot, directoryId);
+    const manifestPath = resolveWithin(projectRoot, MANIFEST_FILE);
+    modifiedAt = (await stat(manifestPath)).mtimeMs;
+    const manifest = parsePluginWorkshopDraftManifest(JSON.parse(await readFile(manifestPath, "utf8")) as unknown);
+    return {
+      directoryId,
+      packageRoot,
+      manifest,
+      modifiedAt,
+      error: manifest.id === directoryId
+        ? null
+        : `Manifest ID ${manifest.id} must match its plugins/${directoryId} directory`,
+    };
+  } catch (error) {
+    return {
+      directoryId,
+      packageRoot,
+      manifest: null,
+      modifiedAt,
+      error: error instanceof Error ? error.message : "Plugin manifest could not be read",
+    };
+  }
+}
+
+async function collectPluginWorkshopFiles(packageRoot: string): Promise<PluginWorkshopFile[]> {
+  const files: PluginWorkshopFile[] = [];
+  let totalBytes = 0;
+  const visit = async (directoryPath: string): Promise<void> => {
+    const entries = await readdir(resolveWithin(packageRoot, directoryPath), { withFileTypes: true });
+    entries.sort((left, right) => left.name.localeCompare(right.name));
+    for (const entry of entries) {
+      const path = directoryPath ? `${directoryPath}/${entry.name}` : entry.name;
+      if (entry.isSymbolicLink()) {
+        throw new ApiError(400, "plugin_workshop_symlink_blocked", `Plugin workshop projects may not contain symbolic links: ${path}`);
+      }
+      if (entry.isDirectory()) {
+        await visit(path);
+        continue;
+      }
+      if (!entry.isFile()) {
+        throw new ApiError(400, "plugin_workshop_file_invalid", `Plugin workshop projects may only contain regular files: ${path}`);
+      }
+      const metadata = await stat(resolveWithin(packageRoot, path));
+      totalBytes += metadata.size;
+      if (files.length >= MAX_PLUGIN_WORKSHOP_FILES || totalBytes > MAX_PLUGIN_WORKSHOP_BYTES) {
+        throw new ApiError(413, "plugin_workshop_project_too_large", "Plugin workshop projects are limited to 512 files and 10 MB");
+      }
+      files.push({ path, size: metadata.size, modifiedAt: metadata.mtimeMs });
+    }
+  };
+  await visit("");
+  return files;
+}
+
+export async function listPluginWorkshopProjects(input: {
+  workspaceRoot: string;
+}): Promise<PluginWorkshopProjectSummary[]> {
+  const root = join(input.workspaceRoot, PLUGIN_WORKSHOP_DIRECTORY);
+  let entries: Dirent[];
+  try {
+    entries = await readdir(root, { withFileTypes: true });
+  } catch (error) {
+    if (errorCode(error) === "ENOENT") return [];
+    throw error;
+  }
+  const directoryIds = entries
+    .filter((entry) => entry.isDirectory() && PLUGIN_WORKSHOP_ID_RE.test(entry.name))
+    .map((entry) => entry.name)
+    .sort()
+    .slice(0, MAX_PLUGIN_WORKSHOP_PROJECTS);
+  const projects = await Promise.all(directoryIds.map((directoryId) => (
+    readPluginWorkshopProjectSummary(input.workspaceRoot, directoryId)
+  )));
+  return projects.sort((left, right) => right.modifiedAt - left.modifiedAt || left.directoryId.localeCompare(right.directoryId));
+}
+
+export async function readPluginWorkshopProjectSnapshot(input: {
+  workspaceRoot: string;
+  directoryId: string;
+}): Promise<PluginWorkshopProjectSnapshot> {
+  const project = await readPluginWorkshopProjectSummary(input.workspaceRoot, input.directoryId);
+  if (!project.manifest || project.error) {
+    throw new ApiError(400, "plugin_workshop_manifest_invalid", project.error ?? "Plugin manifest is invalid");
+  }
+  const packageRoot = await assertPluginWorkshopProjectDirectory(input.workspaceRoot, input.directoryId);
+  const files = await collectPluginWorkshopFiles(packageRoot);
+  const revision = files
+    .map((file) => `${file.path}:${file.size}:${file.modifiedAt}`)
+    .join("|");
+  const workspaceContribution = project.manifest.contributions?.find((contribution) => contribution.type === "workspace-app");
+  const resource = project.manifest.resources.find((entry) => (
+    entry.type === "ui"
+    && Boolean(entry.path && entry.ui)
+    && (!workspaceContribution?.ref || entry.id === workspaceContribution.ref)
+  ));
+  if (!resource?.path || !resource.ui) {
+    return { project, revision, ui: null };
+  }
+  const html = await readFile(resolveWithin(packageRoot, resource.path), "utf8");
+  if (Buffer.byteLength(html, "utf8") > MAX_PLUGIN_WORKSHOP_UI_BYTES) {
+    throw new ApiError(413, "plugin_workshop_ui_too_large", "Plugin Studio UI exceeds the 5 MB limit");
+  }
+  const uiResource: PluginUiResource = {
+    ...resource,
+    type: "ui",
+    path: resource.path,
+    ui: resource.ui,
+  };
+  return { project, revision, ui: { resource: uiResource, html } };
+}
+
+export async function exportPluginWorkshopProject(input: {
+  workspaceRoot: string;
+  directoryId: string;
+  format?: PluginWorkshopExportFormat;
+}): Promise<PluginWorkshopSourceBundle> {
+  const project = await readPluginWorkshopProjectSummary(input.workspaceRoot, input.directoryId);
+  if (!project.manifest || project.error) {
+    throw new ApiError(400, "plugin_workshop_manifest_invalid", project.error ?? "Plugin manifest is invalid");
+  }
+  const packageRoot = await assertPluginWorkshopProjectDirectory(input.workspaceRoot, input.directoryId);
+  const files = await collectPluginWorkshopFiles(packageRoot);
+  const source = {
+    pluginId: project.manifest.id,
+    version: project.manifest.package?.version ?? "0.0.0",
+    files: await Promise.all(files.map(async (file) => ({
+      path: file.path,
+      contentBase64: (await readFile(resolveWithin(packageRoot, file.path))).toString("base64"),
+    }))),
+    preparation: { localizedUrls: [], removedNetworkPermission: false },
+  };
+  return input.format === "source" ? source : preparePluginWorkshopSourceBundle(source);
+}
+
+export async function importPluginWorkshopProject(input: {
+  workspaceRoot: string;
+  packageRoot: string;
+  engineId?: string;
+  overwrite?: boolean;
+}): Promise<PluginWorkshopProjectSnapshot> {
+  const preview = await previewPluginPackage(input);
+  await assertPluginPackageSafeForImport({ packageRoot: input.packageRoot, preview, purpose: "workshop-source" });
+  const directoryId = preview.manifest.id;
+  const projectsRoot = join(input.workspaceRoot, PLUGIN_WORKSHOP_DIRECTORY);
+  const targetRoot = pluginWorkshopProjectRoot(input.workspaceRoot, directoryId);
+  let targetExists = false;
+  try {
+    await assertPluginWorkshopProjectDirectory(input.workspaceRoot, directoryId);
+    targetExists = true;
+  } catch (error) {
+    if (errorCode(error) !== "ENOENT") throw error;
+  }
+  if (targetExists && !input.overwrite) throw pluginWorkshopProjectExistsError(directoryId);
+
+  const files = await collectPluginWorkshopFiles(input.packageRoot);
+  await mkdir(projectsRoot, { recursive: true });
+  const stagingRoot = resolveWithin(projectsRoot, `.import-${directoryId}-${randomUUID()}`);
+  const backupRoot = targetExists
+    ? resolveWithin(projectsRoot, `.replace-${directoryId}-${randomUUID()}`)
+    : null;
+  await mkdir(stagingRoot);
+  try {
+    for (const file of files) {
+      const target = resolveWithin(stagingRoot, file.path);
+      await mkdir(dirname(target), { recursive: true });
+      await copyFile(resolveWithin(input.packageRoot, file.path), target);
+    }
+    let existingMoved = false;
+    try {
+      if (backupRoot) {
+        await rename(targetRoot, backupRoot);
+        existingMoved = true;
+      }
+      await rename(stagingRoot, targetRoot);
+    } catch (error) {
+      if (backupRoot && existingMoved) {
+        try {
+          await rename(backupRoot, targetRoot);
+        } catch {
+          throw new ApiError(
+            500,
+            "plugin_workshop_overwrite_restore_failed",
+            `Could not restore the previous plugins/${directoryId} project after an overwrite failure`,
+            { directoryId },
+          );
+        }
+      }
+      if (["EEXIST", "ENOTEMPTY"].includes(errorCode(error) ?? "")) {
+        throw pluginWorkshopProjectExistsError(directoryId);
+      }
+      throw error;
+    }
+    if (backupRoot) await rm(backupRoot, { recursive: true, force: true });
+  } finally {
+    await rm(stagingRoot, { recursive: true, force: true });
+  }
+  return readPluginWorkshopProjectSnapshot({ workspaceRoot: input.workspaceRoot, directoryId });
+}
+
 async function reconcilePackageProjection(
   config: ServerConfig,
   workspaceId: string,
@@ -1030,8 +1357,7 @@ async function reconcilePackageProjection(
   );
   for (const version of Object.values(installed.versions)) {
     if (next?.version.version === version.version) continue;
-    const engines = manifestFromVersion(version).package?.engines;
-    if (engines && !engines.includes(adapter.id)) continue;
+    if (!pluginEngineCanActivate(adapter, manifestFromVersion(version))) continue;
     for (const file of workspaceActivationFiles(config, workspaceId, installed.pluginId, version)) {
       if (nextPaths.has(file.targetPath)) continue;
       const target = resolveWithin(workspaceRoot, file.targetPath);
@@ -1364,10 +1690,8 @@ async function uninstallPluginPackageUnlocked(input: {
   for (const workspace of localProjectionTargets(input.serverConfig)) {
     const adapter = workspaceEngineAdapter(input.serverConfig, workspace.workspaceId);
     const filesByPath = new Map<string, Set<string>>();
-    const versions = Object.values(installed.versions).filter((version) => {
-      const engines = manifestFromVersion(version).package?.engines;
-      return !engines || engines.includes(adapter.id);
-    });
+    const versions = Object.values(installed.versions).filter((version) =>
+      pluginEngineCanActivate(adapter, manifestFromVersion(version)));
     for (const version of versions) {
       for (const file of workspaceActivationFiles(input.serverConfig, workspace.workspaceId, installed.pluginId, version)) {
         const hashes = filesByPath.get(file.targetPath) ?? new Set<string>();

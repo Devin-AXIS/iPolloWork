@@ -6,6 +6,8 @@ import { join } from "node:path";
 import {
   providerApiKeyCredentialRef,
   sharedProviderIdFromCredentialEnvKey,
+  sharedProviderProfiles,
+  type SharedProviderProfile,
 } from "@ipollowork/types/provider-credentials";
 
 import { isReservedEnvKey, type EnvService } from "./env-file.js";
@@ -48,13 +50,22 @@ type DeepSeekHarnessDiscoveredModels = {
   }>;
 };
 
+export function deepSeekHarnessWebArgs(
+  configuredCli: string,
+  patchPath: string,
+): string[] {
+  const webArgs = ["--profile", "web", "--patch", patchPath, "--port", "0"];
+  return configuredCli ? [configuredCli, ...webArgs] : webArgs;
+}
+
 type DeepSeekHarnessProviderBridge = {
   providerId: string;
   displayName: string;
-  api?: string;
+  api?: SharedProviderProfile["api"];
   baseURL?: string;
   discoverModels?: boolean;
   models?: DeepSeekHarnessDiscoveredModels["models"];
+
 };
 
 type DeepSeekHarnessProviderCredential = {
@@ -70,6 +81,49 @@ const DASHSCOPE_PROVIDER_BRIDGE: DeepSeekHarnessProviderBridge = {
   discoverModels: true,
 };
 
+const OPENCODE_ZEN_PUBLIC_PROVIDER_BRIDGE: DeepSeekHarnessProviderBridge = {
+  providerId: "opencode",
+  displayName: "iPolloWork Built-in Models",
+  api: "openai-completions",
+  baseURL: "https://opencode.ai/zen/v1",
+  discoverModels: true,
+};
+
+const OPENCODE_ZEN_PUBLIC_API_KEY = "public";
+
+function isOpenCodeZenPublicModel(modelId: string): boolean {
+  return modelId === "big-pickle" || modelId.endsWith("-free");
+}
+
+function providerBridge(
+  providerId: string,
+  profile?: SharedProviderProfile,
+): DeepSeekHarnessProviderBridge | undefined {
+  if (providerId === OPENCODE_ZEN_PUBLIC_PROVIDER_BRIDGE.providerId) {
+    return {
+      ...OPENCODE_ZEN_PUBLIC_PROVIDER_BRIDGE,
+      displayName: profile?.displayName || OPENCODE_ZEN_PUBLIC_PROVIDER_BRIDGE.displayName,
+    };
+  }
+  if (providerId === "alibaba" || providerId === "alibaba-cn") {
+    return {
+      ...DASHSCOPE_PROVIDER_BRIDGE,
+      providerId,
+      displayName: profile?.displayName
+        || (providerId === "alibaba" ? "Alibaba" : DASHSCOPE_PROVIDER_BRIDGE.displayName),
+      ...(profile?.models.length ? { models: profile.models, discoverModels: false } : {}),
+    };
+  }
+  if (!profile?.baseURL || !profile.api || profile.models.length === 0) return undefined;
+  return {
+    providerId: profile.providerId,
+    displayName: profile.displayName,
+    api: profile.api,
+    baseURL: profile.baseURL,
+    models: profile.models,
+  };
+}
+
 // Provider catalogs occasionally use different stable IDs for the same
 // public API channel. Keep those names at this adapter boundary so the app's
 // shared credential remains engine-neutral and neither engine core needs a
@@ -77,12 +131,6 @@ const DASHSCOPE_PROVIDER_BRIDGE: DeepSeekHarnessProviderBridge = {
 const DEEPSEEK_HARNESS_PROVIDER_ID_ALIASES = new Map<string, string>([
   ["kimi-for-coding", "kimi-coding"],
 ]);
-
-function providerBridge(providerId: string): DeepSeekHarnessProviderBridge | undefined {
-  return providerId === "alibaba" || providerId === "alibaba-cn"
-    ? DASHSCOPE_PROVIDER_BRIDGE
-    : undefined;
-}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -98,7 +146,9 @@ function positiveInteger(value: unknown): number | undefined {
     : undefined;
 }
 
-function compatibleProtocol(provider: Record<string, unknown>): string {
+function compatibleProtocol(
+  provider: Record<string, unknown>,
+): "openai-completions" | "openai-responses" | "anthropic-messages" {
   const configuredApi = nonEmptyString(provider.api);
   if (
     configuredApi === "openai-completions"
@@ -187,15 +237,23 @@ export function sharedProviderApiCredentials(
 export function deepSeekHarnessProviderCredentials(
   records: ReadonlyArray<{ key: string; value: string }>,
 ): Map<string, DeepSeekHarnessProviderCredential> {
-  const credentials = new Map<string, DeepSeekHarnessProviderCredential>();
+  const credentials = new Map<string, DeepSeekHarnessProviderCredential>([[
+    OPENCODE_ZEN_PUBLIC_PROVIDER_BRIDGE.providerId,
+    {
+      apiKey: OPENCODE_ZEN_PUBLIC_API_KEY,
+      bridge: OPENCODE_ZEN_PUBLIC_PROVIDER_BRIDGE,
+    },
+  ]]);
+  const profiles = sharedProviderProfiles(records);
   for (const [providerId, apiKey] of sharedProviderApiCredentials(records)) {
-    const bridge = providerBridge(providerId);
+    const bridge = providerBridge(providerId, profiles.get(providerId));
     const targetProviderId = bridge?.providerId
       ?? DEEPSEEK_HARNESS_PROVIDER_ID_ALIASES.get(providerId)
       ?? providerId;
     credentials.set(targetProviderId, {
       apiKey,
       bridge,
+
     });
   }
   return credentials;
@@ -358,6 +416,7 @@ export class DeepSeekHarnessRuntime {
       );
       if (useNativeRoute && route) {
         const ref = providerApiKeyCredentialRef(providerId);
+
         try {
           await this.#callAtBaseUrl(baseUrl, "settings.mutate", {
             ns: route.settingsNs,
@@ -388,6 +447,7 @@ export class DeepSeekHarnessRuntime {
           continue;
         }
         let models = bridge.models;
+
         if (bridge.discoverModels) {
           const discovery = await this.#callAtBaseUrl<DeepSeekHarnessDiscoveredModels>(
             baseUrl,
@@ -400,7 +460,13 @@ export class DeepSeekHarnessRuntime {
               apiKey,
             },
           ).catch(() => null);
-          models = discovery?.models.slice(0, 500);
+          models = discovery?.models
+            .filter((model) => (
+              providerId !== OPENCODE_ZEN_PUBLIC_PROVIDER_BRIDGE.providerId
+              || apiKey !== OPENCODE_ZEN_PUBLIC_API_KEY
+              || isOpenCodeZenPublicModel(model.id)
+            ))
+            .slice(0, 500);
         }
         if (bridge.discoverModels && !models?.length) {
           syncSucceeded = false;
@@ -408,10 +474,10 @@ export class DeepSeekHarnessRuntime {
         }
         try {
           await this.#callAtBaseUrl(baseUrl, "settings.mutate", {
-            ns: "llm-pi-ai",
+            ns: route?.settingsNs ?? "llm-pi-ai",
             ops: [{
               op: "set",
-              path: ["providers", providerId],
+              path: route?.settingsPath ?? ["providers", providerId],
               value: {
                 displayName: bridge.displayName,
                 apiKeyEnv: ref,
@@ -446,6 +512,7 @@ export class DeepSeekHarnessRuntime {
         // Leave that route untouched without blocking every other DSH model.
         syncSucceeded = false;
       }
+
     }
     if (syncSucceeded) {
       this.#syncedCredentialFingerprint = fingerprint;
@@ -544,6 +611,7 @@ export class DeepSeekHarnessRuntime {
       this.#config,
       this.#workspace,
       process.env.IPOLLOWORK_DSH_HOME?.trim(),
+
     );
     await ensureDir(dshHome);
     const patchPath = join(dshHome, ".ipollowork-runtime.patch.yml");
@@ -564,9 +632,8 @@ export class DeepSeekHarnessRuntime {
       ? process.execPath
       : process.env.IPOLLOWORK_NODE_BIN?.trim() || (process.platform === "win32" ? "node.exe" : "node");
     const executable = configuredCli ? nodeExecutable : process.platform === "win32" ? "dsh.cmd" : "dsh";
-    const args = configuredCli
-      ? [configuredCli, "--profile", "web", "--patch", patchPath, "--port", "0"]
-      : ["--profile", "web", "--patch", patchPath, "--port", "0"];
+    const args = deepSeekHarnessWebArgs(configuredCli, patchPath);
+
     const child = spawn(executable, args, {
       cwd: this.#workspace.path,
       windowsHide: true,

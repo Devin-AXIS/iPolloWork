@@ -7,12 +7,25 @@ import { pathToFileURL } from "node:url";
 import { DEEPSEEK_HARNESS_ENGINE_ID } from "@ipollowork/types/workspace";
 
 import { buildDeepSeekHarnessPatch } from "./deepseek-harness-patch.js";
+import { disposeiPolloWorkWorkspaceConfigStore } from "./ipollowork-workspace-config-store.js";
 import { writeRuntimeMcpConfig } from "./runtime-capability-store.js";
+import { disposeRuntimeOpencodeConfigStore } from "./runtime-opencode-config-store.js";
+import { disposeTemplateStore } from "./templates.js";
 import type { ServerConfig } from "./types.js";
 
 const roots: string[] = [];
 const previousRuntimeDb = process.env.IPOLLOWORK_RUNTIME_DB;
 const previousHostPlugin = process.env.IPOLLOWORK_DSH_HOST_PLUGIN;
+
+async function removeTestRoot(root: string): Promise<void> {
+  try {
+    await rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+  } catch (error) {
+    const code = error && typeof error === "object" && "code" in error ? String(error.code) : "";
+    if (process.platform === "win32" && (code === "EBUSY" || code === "EPERM")) return;
+    throw error;
+  }
+}
 
 async function temporaryRoot(prefix: string): Promise<string> {
   const root = await mkdtemp(join(tmpdir(), prefix));
@@ -48,11 +61,20 @@ function serverConfig(workspaceRoot: string): ServerConfig {
 }
 
 afterEach(async () => {
+  for (const root of roots) {
+    process.env.IPOLLOWORK_RUNTIME_DB = join(root, "runtime.sqlite");
+    const config = serverConfig(root);
+    await Promise.all([
+      disposeRuntimeOpencodeConfigStore(config),
+      disposeiPolloWorkWorkspaceConfigStore(config),
+      disposeTemplateStore(config),
+    ]);
+  }
   if (previousRuntimeDb === undefined) delete process.env.IPOLLOWORK_RUNTIME_DB;
   else process.env.IPOLLOWORK_RUNTIME_DB = previousRuntimeDb;
   if (previousHostPlugin === undefined) delete process.env.IPOLLOWORK_DSH_HOST_PLUGIN;
   else process.env.IPOLLOWORK_DSH_HOST_PLUGIN = previousHostPlugin;
-  while (roots.length) await rm(roots.pop()!, { recursive: true, force: true });
+  while (roots.length) await removeTestRoot(roots.pop()!);
 });
 
 describe("DeepSeek Harness runtime patch", () => {

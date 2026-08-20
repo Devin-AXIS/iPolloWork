@@ -6,7 +6,7 @@ import { loadVoiceoverParagraphs } from "../runner/voiceover.mjs";
 
 const vo = await loadVoiceoverParagraphs("plugin-package-detail");
 const SKILL_TOGGLE = '[role="switch"][aria-label="开关设计转代码"]';
-const IMPORT_FIXTURE = join(tmpdir(), "fraimz-community-notes.zip");
+const IMPORT_FIXTURE = join(tmpdir(), "fraimz-community-notes.ipollowork-plugin");
 
 const importManifest = {
   schemaVersion: 1,
@@ -404,14 +404,14 @@ export default {
             await ctx.waitForText("导入完整插件包", { timeoutMs: 30_000 });
           },
           assert: async () => {
-            await ctx.expectText("选择插件压缩包");
+            await ctx.expectText("选择 iPolloWork 插件包");
             await ctx.expectText("选择文件");
             await ctx.expectNoText("工作区内的路径");
             await ctx.expectNoText("Something went wrong");
           },
           screenshot: {
             name: "plugin-import-empty",
-            requireText: ["导入完整插件包", "选择插件压缩包", "选择文件"],
+            requireText: ["导入完整插件包", "选择 iPolloWork 插件包", "选择文件"],
             rejectText: ["工作区内的路径", "Something went wrong"],
           },
         });

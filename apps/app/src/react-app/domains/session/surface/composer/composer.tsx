@@ -5,14 +5,12 @@ import fuzzysort from "fuzzysort";
 import { toast } from "@/components/ui/sonner";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { IPOLLOWORK_EXTENSION_CATALOG, type McpDirectoryInfo } from "@/app/constants";
 import type { iPolloWorkPluginPackageItem } from "@/app/lib/ipollowork-server";
+import { activePluginEngineCompatibility } from "@/app/lib/plugin-package-readiness";
 import type { ComposerAttachment, McpServerEntry, McpStatusMap, ModelRef, SkillCard, SlashCommandOption } from "@/app/types";
 import type { ConversationAgent, ConversationMode, ConversationModeIcon } from "../../engine/conversation-engine";
 import { formatBytes } from "@/app/utils";
 import { t } from "@/i18n";
-import { isiPolloWorkExtensionEnabled, isiPolloWorkExtensionHidden, IPOLLOWORK_EXTENSION_STATE_CHANGED } from "@/react-app/domains/settings/extension-state";
-import { useDesktopRestriction } from "@/react-app/domains/cloud/desktop-config-provider";
 import { resolveExtensionIconUrl } from "@/react-app/design-system/extension-icon-src";
 import { LexicalPromptEditor, type LexicalPromptEditorHandle } from "./editor";
 import { ModelBehaviorMenu } from "./model-behavior-menu";
@@ -38,14 +36,6 @@ type ToolMenuSettingsSection = "commands" | "skills" | "mcps" | "plugins";
 type ToolMenuSection = "commands" | "skills" | "mcps" | "extensions";
 type PlusMenuSection = "tools" | "delegation";
 
-function isComposerExtensionAvailable(entry: McpDirectoryInfo) {
-  const hasSessionSurface = entry.extensionManifest?.contributions?.some((contribution) =>
-    contribution.type === "session-side-panel" || contribution.type === "session-rail-item"
-  ) === true;
-  if (hasSessionSurface) return isiPolloWorkExtensionEnabled(entry);
-  return !entry.defaultEnabled || isiPolloWorkExtensionEnabled(entry);
-}
-
 type ComposerProps = {
   draft: string;
   mentions: Record<string, ComposerMentionKind>;
@@ -62,7 +52,7 @@ type ComposerProps = {
   selectedModel: ModelRef;
   onModelPickerOpenChange: (open: boolean) => void;
   onModelChange: (model: ModelRef) => void;
-  onConfigureModels?: () => void;
+  onConfigureModels?: (providerId?: string) => void;
   onConfigureTokenStar?: () => void;
   attachments: ComposerAttachment[];
   hasPromptContext?: boolean;
@@ -85,6 +75,8 @@ type ComposerProps = {
   mcpServers?: McpServerEntry[];
   mcpStatus?: string | null;
   mcpStatuses?: McpStatusMap;
+  listInstalledExtensions?: () => Promise<iPolloWorkPluginPackageItem[]>;
+  onOpenWorkspaceApp?: (pluginId: string) => void;
   listExternalAgents: () => Promise<iPolloWorkPluginPackageItem[]>;
   onOpenSettingsSection?: (section: ToolMenuSettingsSection) => void;
   recentFiles: string[];
@@ -250,9 +242,11 @@ function mcpStatusBadgeClass(status: McpServerStatus) {
   }
 }
 
-function extensionIcon(entry: McpDirectoryInfo, size = 16) {
-  const serviceUrl = typeof entry.url === "string" ? entry.url : undefined;
-  const iconUrl = resolveExtensionIconUrl({ iconSrc: entry.iconSrc, iconSlug: entry.iconSlug, serviceUrl });
+function extensionIcon(entry: iPolloWorkPluginPackageItem, size = 16) {
+  const iconUrl = resolveExtensionIconUrl({
+    iconSrc: entry.manifest.icon?.src,
+    iconSlug: entry.manifest.icon?.simpleIconSlug,
+  });
   if (iconUrl) {
     return <img src={iconUrl} alt="" width={size} height={size} loading="lazy" style={{ display: "block" }} />;
   }
@@ -260,7 +254,6 @@ function extensionIcon(entry: McpDirectoryInfo, size = 16) {
 }
 
 export function ReactSessionComposer(props: ComposerProps) {
-  const builtInExtensionsDisabled = useDesktopRestriction("allowBuiltInExtensions");
   let fileInput: HTMLInputElement | undefined;
   const [externalAgents, setExternalAgents] = useState<iPolloWorkPluginPackageItem[]>([]);
   const [externalAgentsLoading, setExternalAgentsLoading] = useState(false);
@@ -273,6 +266,8 @@ export function ReactSessionComposer(props: ComposerProps) {
   const [mcpServers, setMcpServers] = useState<McpServerEntry[]>(props.mcpServers ?? []);
   const [mcpStatus, setMcpStatus] = useState<string | null>(props.mcpStatus ?? null);
   const [mcpStatuses, setMcpStatuses] = useState<McpStatusMap>(props.mcpStatuses ?? {});
+  const [installedExtensions, setInstalledExtensions] = useState<iPolloWorkPluginPackageItem[]>([]);
+  const [extensionsLoading, setExtensionsLoading] = useState(false);
   const [slashOpen, setSlashOpen] = useState(false);
   const [plusMenuOpen, setPlusMenuOpen] = useState(false);
   const [plusMenuSection, setPlusMenuSection] = useState<PlusMenuSection | null>(null);
@@ -292,17 +287,19 @@ export function ReactSessionComposer(props: ComposerProps) {
   const listCommandsRef = useRef(props.listCommands);
   const listSkillsRef = useRef(props.listSkills);
   const listMcpRef = useRef(props.listMcp);
+  const listInstalledExtensionsRef = useRef(props.listInstalledExtensions);
   const listExternalAgentsRef = useRef(props.listExternalAgents);
   const toolMenuLoadRef = useRef({
     openId: 0,
     commands: false,
     skills: false,
     mcps: false,
+    extensions: false,
   });
   const [commandsLoaded, setCommandsLoaded] = useState(false);
   const [skillsLoaded, setSkillsLoaded] = useState(Boolean(props.skills));
   const [mcpLoaded, setMcpLoaded] = useState(Boolean(props.mcpServers));
-  const [, setExtensionStateVersion] = useState(0);
+  const [extensionsLoaded, setExtensionsLoaded] = useState(false);
   const [delegationMenuIndex, setDelegationMenuIndex] = useState(0);
   const delegationItemRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const [dropzoneActive, setDropzoneActive] = useState(false);
@@ -450,6 +447,10 @@ export function ReactSessionComposer(props: ComposerProps) {
   }, [props.busy, props.modeSelectionDisabled]);
 
   useEffect(() => {
+    listInstalledExtensionsRef.current = props.listInstalledExtensions;
+  }, [props.listInstalledExtensions]);
+
+  useEffect(() => {
     listExternalAgentsRef.current = props.listExternalAgents;
   }, [props.listExternalAgents]);
 
@@ -510,16 +511,6 @@ export function ReactSessionComposer(props: ComposerProps) {
   }, []);
 
   useEffect(() => {
-    const refresh = () => setExtensionStateVersion((value) => value + 1);
-    window.addEventListener(IPOLLOWORK_EXTENSION_STATE_CHANGED, refresh);
-    window.addEventListener("storage", refresh);
-    return () => {
-      window.removeEventListener(IPOLLOWORK_EXTENSION_STATE_CHANGED, refresh);
-      window.removeEventListener("storage", refresh);
-    };
-  }, []);
-
-  useEffect(() => {
     if (!plusMenuOpen) return;
     const handlePointerDown = (event: MouseEvent) => {
       const target = event.target;
@@ -551,10 +542,12 @@ export function ReactSessionComposer(props: ComposerProps) {
       commands: false,
       skills: false,
       mcps: false,
+      extensions: false,
     };
     setCommandsLoaded(false);
     setSkillsLoaded(Boolean(props.skills));
     setMcpLoaded(Boolean(props.mcpServers));
+    setExtensionsLoaded(false);
   }, [toolMenuOpen]);
 
   useEffect(() => {
@@ -651,6 +644,7 @@ export function ReactSessionComposer(props: ComposerProps) {
     const openId = toolMenuLoadRef.current.openId;
     const listSkills = listSkillsRef.current;
     const listMcp = listMcpRef.current;
+    const listInstalledExtensions = listInstalledExtensionsRef.current;
     if (toolMenuSection === "skills" && listSkills && !toolMenuLoadRef.current.skills) {
       let cancelled = false;
       toolMenuLoadRef.current.skills = true;
@@ -700,6 +694,28 @@ export function ReactSessionComposer(props: ComposerProps) {
         cancelled = true;
       };
     }
+    if (toolMenuSection === "extensions" && listInstalledExtensions && !toolMenuLoadRef.current.extensions) {
+      let cancelled = false;
+      toolMenuLoadRef.current.extensions = true;
+      setExtensionsLoading(true);
+      void listInstalledExtensions()
+        .then((next) => {
+          if (cancelled || toolMenuLoadRef.current.openId !== openId) return;
+          setInstalledExtensions(next);
+          setExtensionsLoaded(true);
+        })
+        .catch(() => {
+          if (cancelled || toolMenuLoadRef.current.openId !== openId) return;
+          setInstalledExtensions([]);
+          setExtensionsLoaded(true);
+        })
+        .finally(() => {
+          if (!cancelled && toolMenuLoadRef.current.openId === openId) setExtensionsLoading(false);
+        });
+      return () => {
+        cancelled = true;
+      };
+    }
     return undefined;
   }, [toolMenuOpen, toolMenuSection]);
 
@@ -730,10 +746,9 @@ export function ReactSessionComposer(props: ComposerProps) {
   const toolSkillItems = commands.filter((command) => command.source === "skill");
   const toolMcpItems = commands.filter((command) => command.source === "mcp");
   void toolMcpItems;
-  const composerExtensions = IPOLLOWORK_EXTENSION_CATALOG.filter((entry) =>
-    !builtInExtensionsDisabled &&
-    !isiPolloWorkExtensionHidden(entry) && isComposerExtensionAvailable(entry)
-  );
+  const composerExtensions = installedExtensions.filter((item) => (
+    activePluginEngineCompatibility(item)?.status !== "unsupported"
+  ));
   useEffect(() => {
     if (!activeItems.length) {
       setMenuIndex(0);
@@ -799,8 +814,9 @@ export function ReactSessionComposer(props: ComposerProps) {
       icon: "execute" as const,
     };
 
-  const applyExtensionSelection = (entry: McpDirectoryInfo) => {
-    props.onDraftChange(entry.composerPrompt ?? `Use ${entry.name} to `);
+  const applyExtensionSelection = (entry: iPolloWorkPluginPackageItem) => {
+    props.onOpenWorkspaceApp?.(entry.pluginId);
+    props.onDraftChange(entry.manifest.composer?.prompt.trim() || `Use ${entry.name} to `);
     setToolMenuOpen(false);
   };
 
@@ -1498,7 +1514,7 @@ export function ReactSessionComposer(props: ComposerProps) {
                               <div className="grid gap-1">
                                 {composerExtensions.map((entry) => (
                                   <button
-                                    key={entry.id ?? entry.serverName ?? entry.name}
+                                    key={entry.pluginId}
                                     type="button"
                                     className="flex w-full items-start gap-3 rounded-[16px] px-3 py-2.5 text-left text-gray-11 transition-colors hover:bg-gray-2/70"
                                     onClick={() => applyExtensionSelection(entry)}
@@ -1509,17 +1525,21 @@ export function ReactSessionComposer(props: ComposerProps) {
                                     <div className="min-w-0 flex-1">
                                       <div className="flex items-center justify-between gap-3">
                                         <div className="truncate text-xs font-semibold text-gray-11">{entry.name}</div>
-                                        {entry.defaultEnabled ? (
+                                        {activePluginEngineCompatibility(entry)?.status === "partial" ? (
+                                          <span className="shrink-0 rounded-full bg-amber-3 px-2 py-0.5 text-[10px] font-medium text-amber-11">{t("plugin_platform.engine.partial")}</span>
+                                        ) : (
                                           <span className="shrink-0 rounded-full bg-green-3 px-2 py-0.5 text-[10px] font-medium text-green-11">{t("composer.enabled")}</span>
-                                        ) : null}
+                                        )}
                                       </div>
-                                      <div className="truncate text-xs text-gray-10">{entry.description}</div>
+                                      <div className="truncate text-xs text-gray-10">{entry.manifest.description}</div>
                                     </div>
                                   </button>
                                 ))}
                               </div>
                             ) : (
-                              <div className="px-3 py-2 text-xs text-gray-10">{t("composer.no_extensions_enabled")}</div>
+                              <div className="px-3 py-2 text-xs text-gray-10">
+                                {!extensionsLoaded && extensionsLoading ? t("composer.loading_commands") : t("composer.no_extensions_enabled")}
+                              </div>
                             )
                           ) : null}
                         </div>

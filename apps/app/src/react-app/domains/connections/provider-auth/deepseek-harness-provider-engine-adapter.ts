@@ -7,8 +7,8 @@ import {
 } from "@/app/lib/deepseek-harness-client";
 import type { ProviderListItem } from "@/app/types";
 import type {
-  ProviderEngineAdapter,
-  ProviderEngineConnection,
+  ModelRuntimeAdapter,
+  ModelRuntimeConnection,
 } from "./provider-engine-adapter";
 
 type DeepSeekHarnessModelList = {
@@ -53,7 +53,7 @@ function readPath(value: unknown, path: readonly string[]): unknown {
   return current;
 }
 
-function connection(client: unknown): ProviderEngineConnection {
+function connection(client: unknown): ModelRuntimeConnection {
   if (!isDeepSeekHarnessRpcClient(client)) {
     throw new Error("DeepSeek Harness provider client is unavailable");
   }
@@ -121,10 +121,10 @@ function connection(client: unknown): ProviderEngineConnection {
       };
     },
     async listAuthMethods() {
-      const models = await listModels();
+      const directory = await listProviderDirectory();
       return Object.fromEntries(
-        models.groups.map((group) => [
-          group.id,
+        directory.providers.map((provider) => [
+          provider.provider,
           [{ type: "api" as const, label: "API key" }],
         ]),
       );
@@ -176,7 +176,7 @@ function unsupportedProviderConfiguration(): never {
   throw new Error("DeepSeek Harness provider configuration is managed by its native runtime");
 }
 
-export const deepSeekHarnessProviderEngineAdapter: ProviderEngineAdapter = {
+export const deepSeekHarnessProviderEngineAdapter: ModelRuntimeAdapter = {
   id: DEEPSEEK_HARNESS_ENGINE_ID,
   configFileName: "DeepSeek Harness",
   capabilities: {

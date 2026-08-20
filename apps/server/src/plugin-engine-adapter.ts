@@ -1,9 +1,13 @@
 import { readFile } from "node:fs/promises";
 import { pathToFileURL } from "node:url";
 
+import type { PluginEngineCompatibility } from "@ipollowork/types/plugins";
 import { DEEPSEEK_HARNESS_ENGINE_ID } from "@ipollowork/types/workspace";
 
-import type { PluginPackageManifest } from "./plugin-package-manifest.js";
+import type {
+  PluginPackageManifest,
+  PluginResourceType,
+} from "./plugin-package-manifest.js";
 import { ApiError } from "./errors.js";
 import { addMcp, removeMcp } from "./mcp.js";
 import { registerOpencodePluginBinding, unregisterOpencodePluginBinding } from "./opencode-plugin-projection.js";
@@ -37,6 +41,10 @@ type PluginEngineContext = {
 
 export interface PluginEngineAdapter {
   readonly id: string;
+  /** Portable package resources this engine can consume through this adapter. */
+  readonly portableResourceTypes: ReadonlySet<PluginResourceType>;
+  /** Native engine-binding capability kinds implemented by this adapter. */
+  readonly nativeCapabilityKinds: ReadonlySet<string>;
   validate?(manifest: PluginPackageManifest): void;
   compatibility(manifest: PluginPackageManifest): PluginCompatibilityCheck[];
   workspaceFiles(version: PluginEngineVersion): PluginWorkspaceFile[];
@@ -46,6 +54,64 @@ export interface PluginEngineAdapter {
     next: PluginEngineVersion | null;
     enabled: boolean;
   }): Promise<void>;
+}
+
+const APP_MANAGED_PLUGIN_RESOURCE_TYPES = new Set<PluginResourceType>([
+  "ui",
+  "local-service",
+]);
+
+const PASSIVE_PLUGIN_RESOURCE_TYPES = new Set<PluginResourceType>([
+  "file",
+  "secret",
+]);
+
+function adapterSupportsResource(
+  adapter: PluginEngineAdapter,
+  resource: PluginPackageManifest["resources"][number],
+): boolean {
+  if (APP_MANAGED_PLUGIN_RESOURCE_TYPES.has(resource.type) || PASSIVE_PLUGIN_RESOURCE_TYPES.has(resource.type)) return true;
+  if (!adapter.portableResourceTypes.has(resource.type)) return false;
+  return !(adapter.id === DEEPSEEK_HARNESS_ENGINE_ID && resource.type === "mcp" && resource.oauth === true);
+}
+
+export function pluginEngineCompatibility(
+  adapter: PluginEngineAdapter,
+  manifest: PluginPackageManifest,
+): PluginEngineCompatibility {
+  const supportedResourceIds = manifest.resources
+    .filter((resource) => adapterSupportsResource(adapter, resource))
+    .map((resource) => resource.id);
+  const unsupportedResources = manifest.resources.filter((resource) => !adapterSupportsResource(adapter, resource));
+  const binding = manifest.engineBindings?.find((entry) => entry.engine === adapter.id);
+  const unsupportedCapabilityIds = binding?.capabilities
+    .filter((capability) => !adapter.nativeCapabilityKinds.has(capability.kind))
+    .map((capability) => capability.id) ?? [];
+  const nativeEngineOnly = Boolean(manifest.package?.engines?.length && !manifest.package.engines.includes(adapter.id));
+  const canActivate = supportedResourceIds.length > 0
+    || Boolean(binding?.capabilities.some((capability) => adapter.nativeCapabilityKinds.has(capability.kind)));
+  const hasLimitations = nativeEngineOnly || unsupportedResources.length > 0 || unsupportedCapabilityIds.length > 0;
+  return {
+    engineId: adapter.id,
+    status: !canActivate ? "unsupported" : hasLimitations ? "partial" : "ready",
+    supportedResourceIds,
+    unsupportedResourceIds: unsupportedResources.map((resource) => resource.id),
+    unsupportedRequiredResourceIds: unsupportedResources.filter((resource) => resource.required).map((resource) => resource.id),
+    unsupportedCapabilityIds,
+    nativeEngineOnly,
+  };
+}
+
+/**
+ * Native engine restrictions apply only to native bindings. Portable and
+ * app-managed resources stay installable wherever an adapter can consume
+ * them, which keeps one package inventory across present and future engines.
+ */
+export function pluginEngineCanActivate(
+  adapter: PluginEngineAdapter,
+  manifest: PluginPackageManifest,
+): boolean {
+  return pluginEngineCompatibility(adapter, manifest).status !== "unsupported";
 }
 
 export class PluginEngineAdapterRegistry {
@@ -146,11 +212,12 @@ export function parsePluginMcpEntries(
 async function mcpEntries(
   version: PluginEngineVersion | null,
   resolvePath: PluginEngineContext["resolvePath"],
+  includeResource: (resource: PluginPackageManifest["resources"][number]) => boolean = () => true,
 ): Promise<Array<{ name: string; config: Record<string, unknown> }>> {
   if (!version) return [];
   const entries: Array<{ name: string; config: Record<string, unknown> }> = [];
   for (const resource of version.manifest.resources) {
-    if (resource.type !== "mcp" || !resource.path) continue;
+    if (resource.type !== "mcp" || !resource.path || !includeResource(resource)) continue;
     const sourcePath = pluginEngineSourcePath(version, resource.path) ?? resource.path;
     const payload: unknown = JSON.parse(await readFile(resolvePath(version.artifactRoot, sourcePath), "utf8"));
     entries.push(...parsePluginMcpEntries(payload, resource.mcpServerName ?? resource.id, sourcePath));
@@ -199,6 +266,8 @@ function pluginSpecs(version: PluginEngineVersion | null, resolvePath: PluginEng
 
 export const openCodePluginEngineAdapter: PluginEngineAdapter = {
   id: "opencode",
+  portableResourceTypes: new Set(["skill", "agent", "command", "mcp"]),
+  nativeCapabilityKinds: new Set(["plugin"]),
   compatibility(manifest) {
     const binding = manifest.engineBindings?.find((entry) => entry.engine === "opencode");
     return [{ name: "OpenCode", version: constants.opencodeVersion, range: binding?.compatibility }];
@@ -226,6 +295,8 @@ export const openCodePluginEngineAdapter: PluginEngineAdapter = {
 
 export const deepSeekHarnessPluginEngineAdapter: PluginEngineAdapter = {
   id: DEEPSEEK_HARNESS_ENGINE_ID,
+  portableResourceTypes: new Set(["skill", "mcp"]),
+  nativeCapabilityKinds: new Set(),
   compatibility(manifest) {
     const binding = manifest.engineBindings?.find((entry) => entry.engine === DEEPSEEK_HARNESS_ENGINE_ID);
     return [{

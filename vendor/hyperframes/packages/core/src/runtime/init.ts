@@ -33,6 +33,7 @@ import { collectRuntimeTimelinePayload } from "./timeline";
 import { createRuntimeStartTimeResolver } from "./startResolver";
 import { createClipTree } from "./clipTree";
 import { loadExternalCompositions, loadInlineTemplateCompositions } from "./compositionLoader";
+import { installAspectFitCompositionHosts } from "./compositionAspectFit";
 import { applyCaptionOverrides } from "./captionOverrides";
 import { applyPositionEdits, installPositionEditsSeekReapply } from "./positionEdits";
 import { applyVariableBindings } from "./applyVariableBindings";
@@ -642,6 +643,14 @@ export function initSandboxRuntimeModular(): void {
     }
   }
   let externalCompositionsReady = !hasExternalCompositions && !hasInlineTemplateCompositions;
+  const aspectFitCleanups: Array<() => void> = [];
+  const refreshAspectFitCompositionHosts = () => {
+    aspectFitCleanups.push(installAspectFitCompositionHosts(document));
+  };
+  refreshAspectFitCompositionHosts();
+  registerRuntimeCleanup(() => {
+    for (const cleanup of aspectFitCleanups.splice(0)) cleanup();
+  });
 
   const getTimelineDurationSeconds = (timeline: RuntimeTimelineLike | null): number | null => {
     if (!timeline || typeof timeline.duration !== "function") return null;
@@ -2135,6 +2144,7 @@ export function initSandboxRuntimeModular(): void {
       .then(() => loadInlineTemplateCompositions(compositionLoaderParams))
       .finally(() => {
         externalCompositionsReady = true;
+        refreshAspectFitCompositionHosts();
         bindMediaMetadataListeners();
         installAssetFailureDiagnostics();
         applyCaptionOverrides();

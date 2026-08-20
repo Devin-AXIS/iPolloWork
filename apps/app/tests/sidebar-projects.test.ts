@@ -189,6 +189,8 @@ describe("sidebar projects", () => {
     expect(sessionPageSource).toContain('data-testid="project-engine-option"');
     expect(sessionPageSource).toContain('max-w-[516px]');
     expect(sessionPageSource).toContain('t("projects.engine_locked_notice")');
+    expect(sessionPageSource).toContain('props.onOpenProviderAuth?.("deepseek-official")');
+    expect(sessionPageSource).toContain('t("projects.configure_deepseek_key")');
     expect(sessionPageSource).toContain("<RadioGroup");
     expect(sessionPageSource).toContain("projectEngineSelectedIcon");
     expect(sessionPageSource).toContain("projectEngineOpenCodeIcon");

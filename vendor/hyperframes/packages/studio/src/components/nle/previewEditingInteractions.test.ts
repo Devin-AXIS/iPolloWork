@@ -317,7 +317,9 @@ describe("preview editing interactions", () => {
     expect(editorShellSource).toContain("onPreviewBlockDrop={onPreviewBlockDrop}");
     expect(assetCardSource).toContain("setData(TIMELINE_ASSET_MIME");
     expect(assetCardSource).toContain("HtmlIllustrationPreview");
-    expect(catalogSource).toContain("setData(TIMELINE_BLOCK_MIME");
+    expect(catalogSource).toContain("event.dataTransfer.setData(");
+    expect(catalogSource).toContain("TIMELINE_BLOCK_MIME,");
+    expect(catalogSource).toContain("dimensions: block.dimensions");
     expect(catalogSource).toContain("src={compositionPlaybackUrl}");
     expect(catalogSource).toContain("setPreviewing(true)");
     expect(previewOverlaySource).not.toContain("blockPreview");

@@ -22,7 +22,7 @@ type ModelBehaviorMenuProps = {
   options?: ModelBehaviorOption[];
   onModelChange: (model: ModelRef) => void;
   onModelVariantChange: (value: string | null) => void;
-  onConfigureModels?: () => void;
+  onConfigureModels?: (providerId?: string) => void;
   onConfigureTokenStar?: () => void;
   disabled?: boolean;
 };
@@ -113,9 +113,9 @@ export function ModelBehaviorMenu({
               <ModelListContent
                 value={selectedModel}
                 onChange={selectModel}
-                onConfigureModels={() => {
+                onConfigureModels={(providerId) => {
                   close();
-                  onConfigureModels?.();
+                  onConfigureModels?.(providerId);
                 }}
                 onConfigureTokenStar={() => {
                   close();

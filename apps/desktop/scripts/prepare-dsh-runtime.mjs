@@ -8,6 +8,11 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const runtimeRoot = resolve(__dirname, "..", "dsh-runtime");
 const manifestPath = resolve(runtimeRoot, "package.json");
 const lockPath = resolve(runtimeRoot, "pnpm-lock.yaml");
+const workspacePath = resolve(runtimeRoot, "pnpm-workspace.yaml");
+const subprocessPatchPath = resolve(
+  runtimeRoot,
+  "@deepseek-ai__dsh-subprocess-local@0.1.0-rc.6.patch",
+);
 const stampPath = resolve(runtimeRoot, ".install-stamp.json");
 const cliPath = resolve(runtimeRoot, "node_modules", "@deepseek-ai", "dsh", "lib", "bin.js");
 const dshManifestPath = resolve(runtimeRoot, "node_modules", "@deepseek-ai", "dsh", "package.json");
@@ -15,7 +20,9 @@ const pnpmCommand = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
 
 function installKey() {
   const hash = createHash("sha256");
-  for (const filePath of [manifestPath, lockPath]) hash.update(readFileSync(filePath));
+  for (const filePath of [manifestPath, lockPath, workspacePath, subprocessPatchPath]) {
+    hash.update(readFileSync(filePath));
+  }
   return hash.digest("hex");
 }
 
@@ -35,7 +42,7 @@ if (existsSync(cliPath) && readJson(stampPath)?.key === key) {
 
 const install = spawnSync(
   pnpmCommand,
-  ["--config.minimum-release-age=0", "install", "--ignore-workspace", "--frozen-lockfile", "--prod", "--node-linker=hoisted", "--ignore-scripts"],
+  ["--config.minimum-release-age=0", "install", "--frozen-lockfile", "--prod", "--node-linker=hoisted", "--ignore-scripts"],
   {
     cwd: runtimeRoot,
     stdio: "inherit",

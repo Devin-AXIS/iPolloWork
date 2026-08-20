@@ -8,9 +8,11 @@ type ProviderWorkspace = {
 
 /**
  * Provider configuration belongs to the app, not to the currently selected
- * agent engine. OpenCode remains the provider control plane because it exposes
- * the complete provider/auth catalog; DSH consumes the same selected model and
- * mirrors supported credentials at its runtime boundary.
+ * agent engine. Prefer an OpenCode workspace as the control-plane mount. When
+ * none exists, any mounted workspace still exposes the managed OpenCode
+ * sidecar at `/opencode`; callers must use that endpoint with the OpenCode
+ * model-runtime adapter rather than replacing the catalog with the project
+ * engine's narrower provider directory.
  */
 export function selectSharedProviderWorkspace<T extends ProviderWorkspace>(
   workspaces: readonly T[],

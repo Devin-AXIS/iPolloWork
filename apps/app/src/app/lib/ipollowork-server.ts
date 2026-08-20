@@ -15,6 +15,13 @@ import {
   type TemplateValidationReport,
 } from "@ipollowork/types/templates";
 import type { iPolloWorkExtensionManifest } from "../extensions";
+import type {
+  PluginEngineCompatibility,
+  PluginWorkshopExportFormat,
+  PluginWorkshopProjectSnapshot,
+  PluginWorkshopProjectSummary,
+  PluginWorkshopSourceBundle,
+} from "@ipollowork/types/plugins";
 
 export type iPolloWorkServerCapabilities = {
   skills: { read: boolean; write: boolean; source: "ipollowork" | "opencode" };
@@ -263,6 +270,8 @@ export type iPolloWorkPluginPackageItem = {
   previousVersion: string | null;
   manifest: iPolloWorkExtensionManifest;
   integrity: { sha256: string; status: "verified" | "unsigned" };
+  activeEngineId?: string;
+  engineCompatibility?: PluginEngineCompatibility[];
 };
 
 export type iPolloWorkPluginUiResource = {
@@ -282,6 +291,13 @@ export type iPolloWorkPluginPackagePreview = {
   writes: Array<{ path: string; sha256: string }>;
   integrity: { sha256: string; status: "verified" | "unsigned" };
   safety: iPolloWorkPluginPackageImportSafety;
+  activeEngineId?: string;
+  engineCompatibility?: PluginEngineCompatibility[];
+};
+
+export type iPolloWorkPluginPackageImportPreview = iPolloWorkPluginPackagePreview & {
+  installedVersion: string | null;
+  versionChange: "install" | "same" | "upgrade" | "downgrade";
 };
 
 export type iPolloWorkPluginPackageImportSafety =
@@ -311,6 +327,8 @@ export type iPolloWorkBundledPluginPackageItem = {
   integrity: { sha256: string; status: "verified" | "unsigned" };
   installedVersion: string | null;
   updateAvailable: boolean;
+  activeEngineId?: string;
+  engineCompatibility?: PluginEngineCompatibility[];
 };
 
 export type iPolloWorkPluginConnectionStatus = {
@@ -1495,6 +1513,38 @@ export function createiPolloWorkServerClient(options: { baseUrl: string; token?:
         hostToken,
         timeoutMs: timeouts.config,
       }),
+    listPluginWorkshopProjects: (workspaceId: string) =>
+      requestJson<{ items: PluginWorkshopProjectSummary[] }>(
+        baseUrl,
+        `/workspace/${encodeURIComponent(workspaceId)}/plugin-workshop/projects`,
+        { token, hostToken, timeoutMs: timeouts.config },
+      ),
+    getPluginWorkshopProject: (workspaceId: string, pluginId: string) =>
+      requestJson<PluginWorkshopProjectSnapshot>(
+        baseUrl,
+        `/workspace/${encodeURIComponent(workspaceId)}/plugin-workshop/projects/${encodeURIComponent(pluginId)}`,
+        { token, hostToken, timeoutMs: timeouts.config },
+      ),
+    exportPluginWorkshopProject: (
+      workspaceId: string,
+      pluginId: string,
+      format: PluginWorkshopExportFormat = "install",
+    ) =>
+      requestJson<PluginWorkshopSourceBundle>(
+        baseUrl,
+        `/workspace/${encodeURIComponent(workspaceId)}/plugin-workshop/projects/${encodeURIComponent(pluginId)}/export?format=${format}`,
+        { token, hostToken, timeoutMs: timeouts.binary },
+      ),
+    importPluginWorkshopProject: (
+      workspaceId: string,
+      upload: iPolloWorkPluginPackageUpload,
+      options?: { overwrite?: boolean },
+    ) =>
+      requestJson<PluginWorkshopProjectSnapshot>(
+        baseUrl,
+        `/workspace/${encodeURIComponent(workspaceId)}/plugin-workshop/import${options?.overwrite ? "?overwrite=true" : ""}`,
+        { token, hostToken, method: "POST", body: upload, timeoutMs: timeouts.binary },
+      ),
     getPluginPackageUiResource: (workspaceId: string, pluginId: string, resourceId: string) =>
       requestJson<iPolloWorkPluginUiResource>(
         baseUrl,
@@ -1523,19 +1573,23 @@ export function createiPolloWorkServerClient(options: { baseUrl: string; token?:
         timeoutMs: timeouts.config,
       }),
     validatePluginPackageUpload: (workspaceId: string, upload: iPolloWorkPluginPackageUpload) =>
-      requestJson<{ preview: iPolloWorkPluginPackagePreview }>(baseUrl, `/workspace/${encodeURIComponent(workspaceId)}/plugin-packages/import/validate`, {
+      requestJson<{ preview: iPolloWorkPluginPackageImportPreview }>(baseUrl, `/workspace/${encodeURIComponent(workspaceId)}/plugin-packages/import/validate`, {
         token,
         hostToken,
         method: "POST",
         body: upload,
         timeoutMs: timeouts.binary,
       }),
-    importPluginPackage: (workspaceId: string, upload: iPolloWorkPluginPackageUpload) =>
+    importPluginPackage: (
+      workspaceId: string,
+      upload: iPolloWorkPluginPackageUpload,
+      options?: { allowDowngrade?: boolean },
+    ) =>
       requestJson<{
         result: { status: "installed" | "updated" | "unchanged"; pluginId: string; version: string; previousVersion?: string };
         item?: iPolloWorkPluginPackageItem;
         safety: iPolloWorkPluginPackageImportSafety;
-      }>(baseUrl, `/workspace/${encodeURIComponent(workspaceId)}/plugin-packages/import`, {
+      }>(baseUrl, `/workspace/${encodeURIComponent(workspaceId)}/plugin-packages/import${options?.allowDowngrade ? "?allowDowngrade=true" : ""}`, {
         token,
         hostToken,
         method: "POST",
@@ -1632,20 +1686,24 @@ export function createiPolloWorkServerClient(options: { baseUrl: string; token?:
         timeoutMs: timeouts.config,
       }),
     previewGithubPluginPackage: (workspaceId: string, payload: { url: string; ref?: string }) =>
-      requestJson<{ preview: iPolloWorkPluginPackagePreview; source: iPolloWorkGitHubPluginPreview }>(baseUrl, `/workspace/${encodeURIComponent(workspaceId)}/plugin-packages/import/github`, {
+      requestJson<{ preview: iPolloWorkPluginPackageImportPreview; source: iPolloWorkGitHubPluginPreview }>(baseUrl, `/workspace/${encodeURIComponent(workspaceId)}/plugin-packages/import/github`, {
         token,
         hostToken,
         method: "POST",
         body: { ...payload, dryRun: true },
         timeoutMs: timeouts.config,
       }),
-    importGithubPluginPackage: (workspaceId: string, payload: { url: string; ref?: string }) =>
+    importGithubPluginPackage: (
+      workspaceId: string,
+      payload: { url: string; ref?: string },
+      options?: { allowDowngrade?: boolean },
+    ) =>
       requestJson<{
         result: { status: "installed" | "updated" | "unchanged"; pluginId: string; version: string; previousVersion?: string };
         item?: iPolloWorkPluginPackageItem;
         safety: iPolloWorkPluginPackageImportSafety;
         source: iPolloWorkGitHubPluginPreview;
-      }>(baseUrl, `/workspace/${encodeURIComponent(workspaceId)}/plugin-packages/import/github`, {
+      }>(baseUrl, `/workspace/${encodeURIComponent(workspaceId)}/plugin-packages/import/github${options?.allowDowngrade ? "?allowDowngrade=true" : ""}`, {
         token,
         hostToken,
         method: "POST",

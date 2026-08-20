@@ -16,6 +16,16 @@ describe("plugin UI contributions", () => {
       previousVersion: null,
       manifest,
       integrity: { sha256: "0".repeat(64), status: "unsigned" },
+      activeEngineId: "opencode",
+      engineCompatibility: [{
+        engineId: "opencode",
+        status: "ready",
+        supportedResourceIds: manifest.resources.map((resource) => resource.id),
+        unsupportedResourceIds: [],
+        unsupportedRequiredResourceIds: [],
+        unsupportedCapabilityIds: [],
+        nativeEngineOnly: false,
+      }],
     };
 
     const result = resolveInstalledPluginContributions([item]);
@@ -43,6 +53,16 @@ describe("plugin UI contributions", () => {
       previousVersion: null,
       manifest,
       integrity: { sha256: "0".repeat(64), status: "unsigned" },
+      activeEngineId: "opencode",
+      engineCompatibility: [{
+        engineId: "opencode",
+        status: "ready",
+        supportedResourceIds: manifest.resources.map((resource) => resource.id),
+        unsupportedResourceIds: [],
+        unsupportedRequiredResourceIds: [],
+        unsupportedCapabilityIds: [],
+        nativeEngineOnly: false,
+      }],
     };
 
     expect(resolveInstalledPluginContributions([item]).nativeWorkspaces).toMatchObject([{
@@ -52,6 +72,10 @@ describe("plugin UI contributions", () => {
     expect(resolveInstalledPluginContributions([{
       ...item,
       manifest: { ...manifest, source: { ...manifest.source, origin: "local", trusted: false } },
+    }]).nativeWorkspaces).toEqual([]);
+    expect(resolveInstalledPluginContributions([{
+      ...item,
+      engineCompatibility: [{ ...item.engineCompatibility[0]!, status: "unsupported" }],
     }]).nativeWorkspaces).toEqual([]);
   });
 });
