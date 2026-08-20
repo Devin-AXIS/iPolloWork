@@ -59,11 +59,23 @@
       "bun": "./src/provider-credentials.ts",
       "default": "./dist/provider-credentials.js"
     },
+    "./project-workspace": {
+      "types": "./src/project-workspace.ts",
+      "development": "./src/project-workspace.ts",
+      "bun": "./src/project-workspace.ts",
+      "default": "./dist/project-workspace.js"
+    },
     "./templates": {
       "types": "./src/templates.ts",
       "development": "./src/templates.ts",
       "bun": "./src/templates.ts",
       "default": "./dist/templates.js"
+    },
+    "./work-items": {
+      "types": "./src/work-items.ts",
+      "development": "./src/work-items.ts",
+      "bun": "./src/work-items.ts",
+      "default": "./dist/work-items.js"
     }
   },
   "files": [

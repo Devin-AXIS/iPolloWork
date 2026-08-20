@@ -44,6 +44,11 @@ const callArgsSchema = z.object({
   args: z.record(z.string(), z.unknown()).optional().describe("JSON arguments for the action."),
 });
 
+const projectApplyArgsSchema = z.object({
+  config: z.record(z.string(), z.unknown()).describe("Complete schema-valid iPolloWork project configuration."),
+  summary: z.string().trim().min(1).max(240).describe("Short summary of the user-confirmed change."),
+});
+
 const workspaceAppCallArgsSchema = z.object({
   name: z.string().trim().min(1).describe("Workspace App tool name returned by ipollowork_workspace_app_list_tools."),
   arguments: z.record(z.string(), z.unknown()).optional().describe("Arguments for the Workspace App tool."),
@@ -605,6 +610,7 @@ function contextPayload(context: OpenCodeContext) {
     messageId: context.messageID,
     directory: context.directory,
     worktree: context.worktree,
+    workspaceId: String(process.env.IPOLLOWORK_WORKSPACE_ID ?? "").trim() || undefined,
   };
 }
 
@@ -678,6 +684,31 @@ export const iPolloWorkExtensionsPreview = async () => {
         const args = callArgsSchema.parse(rawArgs);
         const payload = await postJson("/engine-tools/call", {
           name: ENGINE_HOST_TOOL_NAMES.extensionCall,
+          args,
+          context: contextPayload(context),
+        });
+        return JSON.stringify(payload, null, 2);
+      },
+    },
+    [ENGINE_HOST_TOOL_NAMES.projectRead]: {
+      description: engineHostToolDescription(ENGINE_HOST_TOOL_NAMES.projectRead),
+      args: {},
+      async execute(_rawArgs: unknown, context: OpenCodeContext) {
+        const payload = await postJson("/engine-tools/call", {
+          name: ENGINE_HOST_TOOL_NAMES.projectRead,
+          args: {},
+          context: contextPayload(context),
+        });
+        return JSON.stringify(payload, null, 2);
+      },
+    },
+    [ENGINE_HOST_TOOL_NAMES.projectApply]: {
+      description: engineHostToolDescription(ENGINE_HOST_TOOL_NAMES.projectApply),
+      args: projectApplyArgsSchema.shape,
+      async execute(rawArgs: unknown, context: OpenCodeContext) {
+        const args = projectApplyArgsSchema.parse(rawArgs);
+        const payload = await postJson("/engine-tools/call", {
+          name: ENGINE_HOST_TOOL_NAMES.projectApply,
           args,
           context: contextPayload(context),
         });

@@ -20,7 +20,7 @@ export type DeepSeekHarnessHistory = {
   projections?: { asOfSeq: number; values: Record<string, unknown> };
 };
 
-type DeepSeekHarnessSummary = {
+export type DeepSeekHarnessSummary = {
   sessionId: string;
   updatedAt: number;
   running: boolean;
@@ -42,10 +42,33 @@ export type DeepSeekHarnessSessionInfo = {
   id: string;
   title: string;
   slug: string;
+  agent?: string;
   parentID?: string;
   directory?: string;
   time: { created: number; updated: number; archived?: number };
+  tokens?: {
+    input: number;
+    output: number;
+    reasoning: number;
+    cache: { read: number; write: number };
+  };
   dsh: { running: boolean; agentPreset?: string; blank: boolean };
+};
+
+type DeepSeekHarnessMessage = {
+  info: {
+    id: string;
+    sessionID: string;
+    role: string;
+    time: { created: number; completed: number };
+  };
+  parts: Array<{
+    id: string;
+    messageID: string;
+    sessionID: string;
+    type: string;
+    [key: string]: unknown;
+  }>;
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -68,13 +91,34 @@ function summaryTitle(summary: DeepSeekHarnessSummary): string {
   return INTERNAL_SESSION_TITLE.test(title) ? "New conversation" : title;
 }
 
+function summaryTokens(summary: DeepSeekHarnessSummary): DeepSeekHarnessSessionInfo["tokens"] {
+  const usage = summary.projections?.values.tokenUsage;
+  if (!isRecord(usage)) return undefined;
+  const readNumber = (key: string) => {
+    const value = usage[key];
+    return typeof value === "number" && Number.isFinite(value) ? Math.max(0, value) : 0;
+  };
+  return {
+    input: readNumber("uncachedInputTokens"),
+    output: readNumber("outputTokens"),
+    reasoning: 0,
+    cache: {
+      read: readNumber("cacheReadTokens"),
+      write: readNumber("cacheWriteTokens"),
+    },
+  };
+}
+
 function mapSummary(summary: DeepSeekHarnessSummary, archived: boolean): DeepSeekHarnessSessionInfo {
+  const tokens = summaryTokens(summary);
   return {
     id: summary.sessionId,
     title: summaryTitle(summary),
     slug: summary.sessionId,
+    ...(summary.agentPreset ? { agent: summary.agentPreset } : {}),
     ...(summary.parentSessionId ? { parentID: summary.parentSessionId } : {}),
     ...(summary.cwd ? { directory: summary.cwd } : {}),
+    ...(tokens ? { tokens } : {}),
     time: {
       created: summary.updatedAt,
       updated: summary.updatedAt,
@@ -150,7 +194,7 @@ function visibleUserContent(message: Record<string, unknown>): unknown {
   });
 }
 
-function messageFromEvent(sessionId: string, event: DeepSeekHarnessEvent) {
+function messageFromEvent(sessionId: string, event: DeepSeekHarnessEvent): DeepSeekHarnessMessage | null {
   const data = isRecord(event.data) ? event.data : null;
   const message = data && isRecord(data.message)
     ? data.message
@@ -183,12 +227,124 @@ function messageFromEvent(sessionId: string, event: DeepSeekHarnessEvent) {
   };
 }
 
-export function mapDeepSeekHarnessMessages(sessionId: string, history: DeepSeekHarnessHistory) {
+function parsedObject(value: unknown): Record<string, unknown> | null {
+  if (isRecord(value)) return value;
+  if (typeof value !== "string" || !value.trim()) return null;
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    return isRecord(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function subagentLabel(summary: DeepSeekHarnessSummary): string | null {
+  const projected = summary.projections?.values.subagent;
+  if (!isRecord(projected)) return null;
+  const identity = isRecord(projected.identity) ? projected.identity : projected;
+  return typeof identity.label === "string" && identity.label.trim()
+    ? identity.label.trim()
+    : null;
+}
+
+function toolResultErrors(history: DeepSeekHarnessHistory): Map<string, boolean> {
+  const result = new Map<string, boolean>();
+  for (const { event } of history.events) {
+    if (event.type !== "tool/result" || !isRecord(event.data)) continue;
+    const message = isRecord(event.data.message) ? event.data.message : null;
+    const source = message && isRecord(message.source) ? message.source : null;
+    const callId = source && typeof source.callId === "string" ? source.callId : null;
+    if (!callId) continue;
+    const content = message?.content;
+    const failed = Array.isArray(content) && content.some((block) => (
+      isRecord(block) && block.type === "tool-result" && block.isError === true
+    ));
+    result.set(callId, failed);
+  }
+  return result;
+}
+
+function subagentTaskMessages(
+  sessionId: string,
+  history: DeepSeekHarnessHistory,
+  summaries: DeepSeekHarnessSummary[],
+): DeepSeekHarnessMessage[] {
+  const childrenByLabel = new Map<string, DeepSeekHarnessSummary[]>();
+  for (const summary of summaries) {
+    if (summary.parentSessionId !== sessionId || summary.origin !== "subagent") continue;
+    const label = subagentLabel(summary);
+    if (!label) continue;
+    const children = childrenByLabel.get(label) ?? [];
+    children.push(summary);
+    childrenByLabel.set(label, children);
+  }
+  for (const children of childrenByLabel.values()) {
+    children.sort((left, right) => left.updatedAt - right.updatedAt);
+  }
+
+  const resultErrors = toolResultErrors(history);
   return history.events.flatMap(({ event }) => {
-    if (event.type !== "user/message" && event.type !== "assistant/message") return [];
-    const message = messageFromEvent(sessionId, event);
-    return message ? [message] : [];
+    if (event.type !== "tool/call" || !isRecord(event.data) || event.data.name !== "subagent") return [];
+    const callId = typeof event.data.callId === "string" ? event.data.callId : null;
+    const input = parsedObject(event.data.arguments);
+    const description = input && typeof input.description === "string" ? input.description.trim() : "";
+    const prompt = input && typeof input.prompt === "string" ? input.prompt.trim() : "";
+    if (!callId || !description) return [];
+    const child = childrenByLabel.get(description)?.shift();
+    if (!child) return [];
+
+    const status = resultErrors.get(callId) === true
+      ? "error"
+      : child.running
+        ? "running"
+        : resultErrors.has(callId)
+          ? "completed"
+          : "pending";
+    const messageId = `dsh-subagent:${callId}`;
+    return [{
+      info: {
+        id: messageId,
+        sessionID: sessionId,
+        role: "assistant",
+        time: { created: event.time, completed: child.updatedAt },
+      },
+      parts: [{
+        id: `${messageId}:task`,
+        messageID: messageId,
+        sessionID: sessionId,
+        type: "tool",
+        tool: "task",
+        state: {
+          status,
+          input: { description, prompt },
+          output: `<task id="${child.sessionId}" state="${status}">`,
+        },
+      }],
+    }];
   });
+}
+
+export function mapDeepSeekHarnessMessages(
+  sessionId: string,
+  history: DeepSeekHarnessHistory,
+  summaries: DeepSeekHarnessSummary[] = [],
+) {
+  const taskMessages = new Map(
+    subagentTaskMessages(sessionId, history, summaries).map((message) => [message.info.id, message]),
+  );
+  const messages: DeepSeekHarnessMessage[] = [];
+  for (const { event } of history.events) {
+    if (event.type === "tool/call" && isRecord(event.data) && typeof event.data.callId === "string") {
+      const message = taskMessages.get(`dsh-subagent:${event.data.callId}`);
+      if (message) messages.push(message);
+      continue;
+    }
+    if (event.type === "user/message" || event.type === "assistant/message") {
+      const message = messageFromEvent(sessionId, event);
+      if (message) messages.push(message);
+    }
+  }
+  return messages;
 }
 
 export function mapDeepSeekHarnessTodos(sessionId: string, history: DeepSeekHarnessHistory) {
@@ -216,6 +372,20 @@ export async function readDeepSeekHarnessHistory(
   return readHistory(runtime, sessionId, limit);
 }
 
+export async function readDeepSeekHarnessMessages(
+  runtime: DeepSeekHarnessRuntime,
+  workspace: WorkspaceInfo,
+  sessionId: string,
+  limit?: number,
+) {
+  const entries = await readWorkspaceSummaries(runtime, workspace);
+  if (!entries.some(({ summary }) => summary.sessionId === sessionId)) {
+    throw new ApiError(404, "session_not_found", "Session not found");
+  }
+  const history = await readHistory(runtime, sessionId, limit);
+  return mapDeepSeekHarnessMessages(sessionId, history, entries.map(({ summary }) => summary));
+}
+
 function readHistory(
   runtime: DeepSeekHarnessRuntime,
   sessionId: string,
@@ -233,12 +403,15 @@ export async function readDeepSeekHarnessSnapshot(
   sessionId: string,
   limit?: number,
 ) {
-  const session = await readDeepSeekHarnessSession(runtime, workspace, sessionId);
+  const entries = await readWorkspaceSummaries(runtime, workspace);
+  const entry = entries.find(({ summary }) => summary.sessionId === sessionId);
+  if (!entry) throw new ApiError(404, "session_not_found", "Session not found");
+  const session = mapSummary(entry.summary, entry.archived);
   const history = await readHistory(runtime, sessionId, limit);
   return {
     engineId: DEEPSEEK_HARNESS_ENGINE_ID,
     session,
-    messages: mapDeepSeekHarnessMessages(sessionId, history),
+    messages: mapDeepSeekHarnessMessages(sessionId, history, entries.map(({ summary }) => summary)),
     todos: mapDeepSeekHarnessTodos(sessionId, history),
     status: session.dsh.running ? { type: "busy" as const } : { type: "idle" as const },
     history,

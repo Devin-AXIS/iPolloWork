@@ -222,6 +222,8 @@ describe("iPolloWorkExtensionsPreview UI control tools", () => {
     expect(tools).not.toContain("ipollowork_ui_execute_action");
     expect(tools).toContain("ipollowork_session_search");
     expect(tools).toContain("ipollowork_extension_list_actions");
+    expect(tools).toContain("ipollowork_project_read");
+    expect(tools).toContain("ipollowork_project_apply");
     expect(tools).toContain("ipollowork_workspace_app_list_tools");
     expect(tools).toContain("ipollowork_workspace_app_call_tool");
     expect(tools).toContain("list_motion_presets");

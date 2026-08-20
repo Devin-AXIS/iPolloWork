@@ -7,8 +7,7 @@ import {
 } from "../deepseek-harness-runtime.js";
 import {
   listDeepSeekHarnessSessions,
-  mapDeepSeekHarnessMessages,
-  readDeepSeekHarnessHistory,
+  readDeepSeekHarnessMessages,
   readDeepSeekHarnessSession,
   readDeepSeekHarnessSnapshot,
 } from "../deepseek-harness-session-read-model.js";
@@ -178,8 +177,12 @@ export function registerSessionRoutes(options: RegisterSessionRoutesOptions): vo
   ) {
     try {
       if (workspace.engineId === DEEPSEEK_HARNESS_ENGINE_ID) {
-        const history = await readDeepSeekHarnessHistory(deepseekHarness.forWorkspace(workspace), workspace, sessionId, input.limit);
-        return mapDeepSeekHarnessMessages(sessionId, history);
+        return await readDeepSeekHarnessMessages(
+          deepseekHarness.forWorkspace(workspace),
+          workspace,
+          sessionId,
+          input.limit,
+        );
       }
       const opencode = createWorkspaceOpencodeClient(config, workspace);
       return buildSessionMessages(

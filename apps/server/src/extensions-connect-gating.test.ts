@@ -221,6 +221,8 @@ describe("Connect-aware legacy extension gating", () => {
     expect(catalog.tools?.map((tool) => tool.name)).toEqual([
       "ipollowork_extension_list_actions",
       "ipollowork_extension_call",
+      "ipollowork_project_read",
+      "ipollowork_project_apply",
       "ipollowork_workspace_app_list_tools",
       "ipollowork_workspace_app_call_tool",
     ]);
@@ -238,6 +240,51 @@ describe("Connect-aware legacy extension gating", () => {
     const call = await callResponse.json() as { actions?: Array<{ extensionId?: string }> };
     expect(call.actions?.length).toBeGreaterThan(0);
     expect(call.actions?.every((action) => action.extensionId === "storage")).toBe(true);
+  });
+
+  test("reads and applies a validated project through the shared engine host tools", async () => {
+    const { base } = await boot();
+    const call = (name: string, args: Record<string, unknown>) => fetch(`${base}/engine-tools/call`, {
+      method: "POST",
+      headers: { ...clientHeaders(), "content-type": "application/json" },
+      body: JSON.stringify({ name, args, context: { workspaceId: "ws_1", sessionId: "session_builder" } }),
+    });
+
+    const blockedResponse = await call("ipollowork_project_read", {});
+    expect(blockedResponse.status).toBe(403);
+    const activateResponse = await fetch(`${base}/workspace/ws_1/project-builder-sessions/session_builder`, {
+      method: "POST",
+      headers: clientJsonHeaders(),
+      body: "{}",
+    });
+    expect(activateResponse.status).toBe(200);
+
+    const initialResponse = await call("ipollowork_project_read", {});
+    expect(initialResponse.status).toBe(200);
+    const initial = await initialResponse.json() as { source?: string; project?: { agents?: Array<{ id?: string }> } };
+    expect(initial.source).toBe("default");
+    expect(initial.project?.agents?.[0]?.id).toBe("project-lead");
+
+    const project = {
+      schemaVersion: 1,
+      goal: "Publish the weekly briefing",
+      agents: [{ id: "editor", name: "Editor", avatarSeed: "editor" }],
+      orchestration: { entryAgentId: "editor", relations: [] },
+    };
+    const applyResponse = await call("ipollowork_project_apply", { config: project, summary: "Create editor workflow" });
+    expect(applyResponse.status).toBe(200);
+
+    const savedResponse = await call("ipollowork_project_read", {});
+    expect(savedResponse.status).toBe(200);
+    const saved = await savedResponse.json() as { source?: string; project?: { goal?: string } };
+    expect(saved.source).toBe("saved");
+    expect(saved.project?.goal).toBe("Publish the weekly briefing");
+
+    const invalidResponse = await call("ipollowork_project_apply", {
+      config: { ...project, orchestration: { entryAgentId: "missing", relations: [] } },
+      summary: "Break the project",
+    });
+    expect(invalidResponse.status).toBe(400);
   });
 
   test("defaults to unchanged legacy extension behavior when no connect state file exists", async () => {

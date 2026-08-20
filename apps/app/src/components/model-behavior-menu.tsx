@@ -1,12 +1,13 @@
 import { useState } from "react";
 import { Check, ChevronDown, ChevronLeft, ChevronRight } from "lucide-react";
 
+import { tokenStarModelSupportsEffort } from "@/app/lib/model-behavior";
 import type { ModelRef } from "@/app/types";
 import { resolveModelDisplayName } from "@/app/utils";
-import { t } from "@/i18n";
 import { ModelListContent } from "@/components/model-select";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { tokenStarModelSupportsEffort } from "@/react-app/domains/connections/provider-auth/tokenstar-provider";
+import { t } from "@/i18n";
+import { cn } from "@/lib/utils";
 
 type ModelBehaviorOption = {
   value: string | null;
@@ -15,7 +16,7 @@ type ModelBehaviorOption = {
 
 type MenuView = "root" | "model" | "behavior";
 
-type ModelBehaviorMenuProps = {
+export type ModelBehaviorMenuProps = {
   selectedModel: ModelRef;
   modelVariant: string | null;
   modelVariantLabel: string;
@@ -25,6 +26,7 @@ type ModelBehaviorMenuProps = {
   onConfigureModels?: (providerId?: string) => void;
   onConfigureTokenStar?: () => void;
   disabled?: boolean;
+  appearance?: "composer" | "field";
 };
 
 export function ModelBehaviorMenu({
@@ -37,6 +39,7 @@ export function ModelBehaviorMenu({
   onConfigureModels,
   onConfigureTokenStar,
   disabled = false,
+  appearance = "composer",
 }: ModelBehaviorMenuProps) {
   const [open, setOpen] = useState(false);
   const [view, setView] = useState<MenuView>("root");
@@ -76,12 +79,22 @@ export function ModelBehaviorMenu({
         type="button"
         disabled={disabled}
         aria-label={`${t("model_picker.change_model")} ${hasBehavior ? `· ${t("composer.behavior_label")}` : ""}`}
-        className="me-1.5 inline-flex h-8 max-w-72 items-center gap-1.5 rounded-full bg-transparent px-2 text-[12px] leading-[18px] text-gray-10 transition-colors hover:bg-gray-3 hover:text-gray-12 data-[state=open]:bg-gray-3 data-[state=open]:text-gray-12 disabled:pointer-events-none disabled:opacity-60"
+        className={cn(
+          "inline-flex items-center gap-1.5 transition-colors disabled:pointer-events-none disabled:opacity-60",
+          appearance === "composer"
+            ? "me-1.5 h-8 max-w-72 rounded-full bg-transparent px-2 text-[12px] leading-[18px] text-gray-10 hover:bg-gray-3 hover:text-gray-12 data-[state=open]:bg-gray-3 data-[state=open]:text-gray-12"
+            : "h-9 w-full justify-between rounded-lg border border-border bg-background px-3 text-[13px] text-foreground shadow-xs hover:bg-gray-2 data-[state=open]:border-ring data-[state=open]:ring-3 data-[state=open]:ring-ring/30",
+        )}
       >
         <span className="truncate">{summary}</span>
         <ChevronDown className="size-4 shrink-0" />
       </PopoverTrigger>
-      <PopoverContent side="top" align="start" sideOffset={8} className="w-[min(24rem,calc(100vw-2rem))] gap-0 overflow-hidden p-1.5">
+      <PopoverContent
+        side={appearance === "composer" ? "top" : "bottom"}
+        align="start"
+        sideOffset={appearance === "composer" ? 8 : 6}
+        className="w-[min(24rem,calc(100vw-2rem))] gap-0 overflow-hidden p-1.5"
+      >
         {view === "root" ? (
           <div className="space-y-1">
             <button

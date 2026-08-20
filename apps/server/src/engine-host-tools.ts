@@ -1,6 +1,8 @@
 export const ENGINE_HOST_TOOL_NAMES = {
   extensionListActions: "ipollowork_extension_list_actions",
   extensionCall: "ipollowork_extension_call",
+  projectRead: "ipollowork_project_read",
+  projectApply: "ipollowork_project_apply",
   workspaceAppListTools: "ipollowork_workspace_app_list_tools",
   workspaceAppCallTool: "ipollowork_workspace_app_call_tool",
 } as const;
@@ -42,6 +44,26 @@ export const ENGINE_HOST_TOOLS: readonly EngineHostToolDescriptor[] = [
       action: { type: "string", description: "Action ID returned by the action catalog." },
       args: { type: "object", additionalProperties: true, description: "Action arguments." },
     }, ["extensionId", "action"]),
+  },
+  {
+    name: ENGINE_HOST_TOOL_NAMES.projectRead,
+    description: "Read the schema-validated iPolloWork project configuration for the current workspace. Use only in an explicitly opened Project Builder conversation.",
+    parameters: objectParameters({}),
+  },
+  {
+    name: ENGINE_HOST_TOOL_NAMES.projectApply,
+    description: "Apply one complete schema-validated iPolloWork project configuration after the user explicitly confirms the proposal in Project Builder.",
+    parameters: objectParameters({
+      config: {
+        type: "object",
+        additionalProperties: true,
+        description: "Complete ProjectWorkspaceConfig document returned from a confirmed Project Builder proposal.",
+      },
+      summary: {
+        type: "string",
+        description: "Short human-readable summary of the confirmed project change.",
+      },
+    }, ["config", "summary"]),
   },
   {
     name: ENGINE_HOST_TOOL_NAMES.workspaceAppListTools,

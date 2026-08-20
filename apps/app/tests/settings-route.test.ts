@@ -202,7 +202,8 @@ describe("settings route parsing", () => {
     expect(pluginPanelSource).toContain('data-testid="plugin-installed-expand"');
     expect(pluginPanelSource).toMatch(/data-testid="plugin-installed-expand"[\s\S]*?variant="ghost"[\s\S]*?size="sm"/);
     expect(pluginListItemSource).toContain('<Button size="sm" variant="outline" className="shrink-0"');
-    expect(settingsShellSource.match(/size="icon-sm"/g)).toHaveLength(2);
+    expect(settingsShellSource.match(/data-settings-close=""/g)).toHaveLength(2);
+    expect(settingsShellSource).toContain('className="inline-flex size-7');
     expect(settingsShellSource).toContain('<ButtonStyleScopeProvider value="settings">{children}</ButtonStyleScopeProvider>');
     expect(buttonSource).toContain('"gap-[6px] rounded-[8px] text-[13px] font-medium');
     expect(buttonSource).toContain('const settingsCompactButtonSize = "h-7 px-2');

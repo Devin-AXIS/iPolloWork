@@ -56,7 +56,8 @@ describe("composer plus entry menu", () => {
     const actionRow = actionRowSource();
 
     expect(actionRow).toContain('<Plus size={18} />');
-    expect(actionRow).not.toContain("<Paperclip");
+    expect(actionRow.match(/<Plus size=\{18\} \/>/g)).toHaveLength(1);
+    expect(actionRow).toContain('<Paperclip className="size-4 shrink-0 text-gray-9"');
     expect(actionRow).toContain('className="flex min-w-0 flex-1 flex-wrap items-center gap-0 overflow-visible"');
     expect(actionRow).toContain('className="relative me-1.5"');
     expect(actionRow).toContain('props.layout === "inline" ? "h-8 px-2"');
