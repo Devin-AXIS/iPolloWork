@@ -20,13 +20,13 @@
   <a href="https://trendshift.io/repositories/88012?utm_source=trendshift-badge&amp;utm_medium=badge&amp;utm_campaign=badge-trendshift-88012"><img src="https://trendshift.io/api/badge/trendshift/repositories/88012/weekly?language=TypeScript" alt="#24 TypeScript Repository Of The Week | Trendshift" width="250" height="55" /></a>
 </p>
 
-**A local-first visual AI workbench that turns one goal into editable code, documents, presentations, websites, designs, and videos—an open alternative to Codex and Claude Code.**
+**An enterprise-grade, local-first Agent Workbench for people and agent teams—plan, collaborate, and create editable code, documents, presentations, websites, designs, and videos in one workspace.**
 
 https://github.com/user-attachments/assets/201b561a-22ec-4c8e-a4e8-f34172cf0aa3
 
-iPolloWork gives agents one workspace for repositories, local files, browser tasks, documents, presentations, websites, design, and video. Describe the outcome; the agent plans and executes; you inspect the work, approve actions, and keep editing the result in the same place.
+iPolloWork is the workspace layer for the next agent-native way of working. It brings projects, agents, tasks, schedules, plugins, Skills, MCP tools, and editable outputs into one control surface. Describe the outcome; agents plan and execute; your team reviews progress, approves actions, and keeps editing the result in the same place.
 
-Codex-style coding is only the starting point. When the output is a deck, web page, visual design, or video, iPolloWork keeps it editable instead of handing you a finished file or a chat transcript.
+iPolloWork is not positioned as a replacement for a single coding agent. It is an open workbench that connects [Codex](https://github.com/openai/codex), [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness), OpenCode, and future agent runtimes while preserving the native strengths of each ecosystem. Coding is only the starting point: when the output is a deck, web page, visual design, or video, it remains editable instead of becoming a finished file or a chat transcript.
 
 <div align="center">
   <h3>Join the official iPolloWork WeChat community</h3>
@@ -36,16 +36,28 @@ Codex-style coding is only the starting point. When the output is a deck, web pa
 
 ## What makes it different
 
-- **Agent-first execution** — plan work, use tools, read and modify files, run commands, and continue from the current state.
-- **Editable results** — move from code to documents, websites, presentations, design, and video; keep changing text, images, layout, and scenes after generation.
-- **Local control** — run on your machine, bring your own model or provider, approve permissions, and extend the workspace with Skills, plugins, MCP servers, and browser automation.
-- **Two agent ecosystems, one workflow** — native [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) subagent collaboration is in active development, designed to let iPolloWork delegate focused work to DSH while both sides keep their own Skills and plugins.
+- **Project-native collaboration** — give people and agents one shared project view for responsibilities, tasks, schedules, execution health, and results instead of scattering work across isolated chats.
+- **Runtime-open, not a replacement** — OpenCode powers the default local runtime, DeepSeek Harness can run as an optional native runtime and delegation target, and Codex or any MCP client can operate iPolloWork through its semantic control surface.
+- **One editable creation loop** — move from code to documents, websites, presentations, design, and video while keeping text, images, layouts, timelines, and scenes editable after generation.
+- **Composable by design** — add Skills, plugins, MCP servers, model providers, browser automation, and engine-native capabilities without binding the whole workspace to one agent framework.
+- **Local and enterprise control** — run locally, bring your own model or provider, review permissions and execution, and connect organization services when a team needs them.
 
-## DeepSeek Harness subagent collaboration
+## Agent runtime compatibility
 
-iPolloWork is integrating [DeepSeek Harness (DSH)](https://github.com/deepseek-ai/deepseek-harness) as an optional subagent runtime. The integration is in active development and is not included in the latest stable release yet.
+OpenCode is the default local execution runtime today. [DeepSeek Harness (DSH)](https://github.com/deepseek-ai/deepseek-harness) is integrated as an optional peer runtime and subagent delegation target, while [Codex](https://github.com/openai/codex) and other MCP-compatible clients can connect through the [`ipollowork-ui-mcp`](https://www.npmjs.com/package/ipollowork-ui-mcp) control surface. These paths share the workbench without pretending that every runtime has the same native capabilities.
 
-The collaboration model keeps iPolloWork as the primary workspace: a task can delegate bounded work to DSH subagents when useful, then bring structured results back into the same task. iPolloWork and DSH retain their own Skills and plugin ecosystems, so users can benefit from both without replacing either runtime.
+The collaboration model keeps iPolloWork as the project workspace: a task can delegate bounded work to DSH subagents when useful, then bring structured progress and results back into the same project. Each runtime retains its own agents, Skills, plugins, and execution model.
+
+### Run iPolloWork creative plugins directly in DeepSeek Harness
+
+DeepSeek Harness users can install iPolloWork's native Design, PPT, and Video views into the DSH Web UI and start them from any project directory:
+
+```bash
+npx @deepseek-ai/dsh plugin --profile web add deepseek-idesign deepseek-ippt deepseek-ivideo
+npx @deepseek-ai/dsh web
+```
+
+Open [http://127.0.0.1:3080](http://127.0.0.1:3080), start a conversation, and choose **Design**, **PPT**, or **Video**. If the `dsh` command is already installed, replace `npx @deepseek-ai/dsh` with `dsh`. DeepSeek Harness is currently a developer preview, so plugin compatibility follows its active release line.
 
 ## Install iPolloWork
 
@@ -174,15 +186,19 @@ This command creates an isolated development profile, points authentication and 
 ## Architecture boundary
 
 ```text
-iPolloWork desktop/UI ── local API ──> iPolloWork server ──> OpenCode
-          │
-          └── optional account/control requests ──> iPolloCloud
+Codex / MCP clients ── ipollowork-ui-mcp ──> iPolloWork desktop/UI
+                                                   │
+                                                   ├── local API ──> Engine Protocol ──> OpenCode (default)
+                                                   │                               └──> DeepSeek Harness (optional)
+                                                   └── optional account/control requests ──> iPolloCloud
 ```
 
-- Agent execution and streaming stay on the Work/Worker path.
+- Agent execution, task state, and streaming are normalized at the shared engine boundary while engine-native behavior remains inside its adapter.
+- Portable Skills, plugins, MCP servers, and project capabilities use one lifecycle; engine-specific enhancements stay optional.
+- Codex compatibility currently uses the MCP control surface rather than claiming a native Codex engine adapter.
 - iPolloCloud handles identity, organizations, entitlements, hosted worker lifecycle, administration, and commercial Apps.
 - The Cloud connection is optional. Local iPolloWork works without an account or commercial service.
-- OpenCode remains its own component and can continue to be upgraded independently.
+- OpenCode and DeepSeek Harness remain independent components and can continue to evolve without turning iPolloWork into a fork of either runtime.
 
 ## Repository layout
 

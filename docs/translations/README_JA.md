@@ -20,13 +20,13 @@
   <a href="https://trendshift.io/repositories/88012?utm_source=trendshift-badge&amp;utm_medium=badge&amp;utm_campaign=badge-trendshift-88012"><img src="https://trendshift.io/api/badge/trendshift/repositories/88012/weekly?language=TypeScript" alt="#24 TypeScript Repository Of The Week | Trendshift" width="250" height="55" /></a>
 </p>
 
-**一つの目的から編集可能なコード・文書・プレゼン・Webサイト・デザイン・動画まで作れる、ローカルファーストのビジュアルAIワークベンチであり、CodexとClaude Codeのソースアベイラブルな代替です。**
+**人とエージェントチームのための、エンタープライズ対応・ローカルファーストの Agent Workbench。コード、文書、プレゼン、Webサイト、デザイン、動画を一つのワークスペースで計画・共同作業・継続編集できます。**
 
 https://github.com/user-attachments/assets/201b561a-22ec-4c8e-a4e8-f34172cf0aa3
 
-iPolloWork は、リポジトリ、ローカルファイル、ブラウザ操作、ドキュメント、プレゼンテーション、Web サイト、デザイン、動画を一つのワークスペースで扱える AI エージェント環境です。目的を伝えると、エージェントが計画して実行します。ユーザーは手順を確認し、操作を承認し、同じ場所で成果物を編集し続けられます。
+iPolloWork は、次世代のエージェントネイティブな働き方を支えるワークスペースレイヤーです。プロジェクト、エージェント、タスク、スケジュール、プラグイン、Skills、MCP ツール、編集可能な成果物を一つの操作画面に統合します。目的を伝えるとエージェントが計画して実行し、チームは進捗を確認し、操作を承認し、同じ場所で成果物を編集し続けられます。
 
-Codex のようなコーディングは出発点にすぎません。成果物がスライド、Web ページ、ビジュアルデザイン、動画になっても、完成ファイルやチャットの回答で終わらず、そのまま編集できます。
+iPolloWork は、特定のコーディングエージェントの代替を目指す製品ではありません。[Codex](https://github.com/openai/codex)、[DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)、OpenCode、そして将来のエージェントランタイムを接続しながら、それぞれのエコシステム固有の強みを保つオープンなワークベンチです。コーディングは出発点にすぎず、スライド、Web ページ、ビジュアルデザイン、動画も、完成ファイルやチャット記録で終わらず編集可能なまま残ります。
 
 <div align="center">
   <h3>iPolloWork 公式 WeChat コミュニティに参加</h3>
@@ -36,16 +36,28 @@ Codex のようなコーディングは出発点にすぎません。成果物�
 
 ## iPolloWork の違い
 
-- **エージェント中心の実行** — 作業を計画し、ツールを使い、ファイルを読み書きし、コマンドを実行し、現在の状態から作業を続けます。
-- **編集可能な成果物** — コードからドキュメント、Web サイト、スライド、デザイン、動画まで、生成後もテキスト、画像、レイアウト、シーンを変更できます。
-- **ローカルで管理** — 自分の端末で実行し、任意のモデルやプロバイダーを接続し、権限を承認し、Skills、プラグイン、MCP サーバー、ブラウザ自動化で拡張できます。
-- **2つのエージェントエコシステムを一つのワークフローに** — [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) サブエージェントとのネイティブ連携を開発中です。iPolloWork から DSH に範囲を限定した作業を委任しながら、双方が独自の Skills とプラグインを利用できる形を目指しています。
+- **プロジェクト中心の共同作業** — 人とエージェントが、役割、タスク、スケジュール、実行状態、成果物を同じプロジェクト画面で共有し、孤立したチャットに作業を分散させません。
+- **ランタイムを置き換えずに接続** — OpenCode が標準ローカルランタイムを担い、DeepSeek Harness は任意のネイティブランタイム兼委任先として動作します。Codex や他の MCP クライアントは、セマンティックな制御インターフェースから iPolloWork を操作できます。
+- **一つの編集可能な制作ループ** — コードから文書、Web サイト、プレゼン、デザイン、動画まで、生成後もテキスト、画像、レイアウト、タイムライン、シーンを変更できます。
+- **組み合わせ可能な拡張性** — Skills、プラグイン、MCP サーバー、モデルプロバイダー、ブラウザ自動化、エンジン固有機能を必要に応じて追加できます。
+- **ローカルとエンタープライズの管理** — ローカル実行、モデル選択、権限と実行の確認を保ち、チームで必要なときだけ組織サービスへ接続できます。
 
-## DeepSeek Harness サブエージェント連携
+## エージェントランタイムの互換性
 
-iPolloWork は、[DeepSeek Harness（DSH）](https://github.com/deepseek-ai/deepseek-harness) をオプションのサブエージェントランタイムとしてネイティブ統合する作業を進めています。この機能は現在開発中で、最新の安定版にはまだ含まれていません。
+OpenCode は現在の標準ローカル実行ランタイムです。[DeepSeek Harness（DSH）](https://github.com/deepseek-ai/deepseek-harness) は任意のピアランタイム兼サブエージェント委任先として統合され、[Codex](https://github.com/openai/codex) と他の MCP 対応クライアントは [`ipollowork-ui-mcp`](https://www.npmjs.com/package/ipollowork-ui-mcp) 制御インターフェースから接続できます。すべてが同じワークベンチを利用しますが、各ランタイムのネイティブ機能が同一であるとは扱いません。
 
-連携モデルはシンプルです。iPolloWork を主要なワークスペースとして維持し、必要に応じて範囲を限定した作業を DSH サブエージェントに委任し、その構造化された結果を同じタスクへ戻します。iPolloWork と DSH はそれぞれの Skills とプラグインエコシステムを維持するため、どちらかを置き換えることなく両方の能力を活用できます。
+連携モデルはシンプルです。iPolloWork をプロジェクトワークベンチとして維持し、必要に応じて範囲を限定した作業を DSH サブエージェントに委任し、構造化された進捗と結果を同じプロジェクトへ戻します。各ランタイムは独自のエージェント、Skills、プラグイン、実行モデルを維持します。
+
+### DeepSeek Harness で iPolloWork の制作プラグインを直接起動する
+
+DeepSeek Harness の Web UI に、iPolloWork のネイティブ Design、PPT、Video ビューをインストールし、任意のプロジェクトディレクトリから起動できます。
+
+```bash
+npx @deepseek-ai/dsh plugin --profile web add deepseek-idesign deepseek-ippt deepseek-ivideo
+npx @deepseek-ai/dsh web
+```
+
+[http://127.0.0.1:3080](http://127.0.0.1:3080) を開き、会話を開始して **Design**、**PPT**、**Video** のいずれかを選択します。`dsh` コマンドをインストール済みの場合は、`npx @deepseek-ai/dsh` を `dsh` に置き換えられます。DeepSeek Harness は現在デベロッパープレビューのため、プラグイン互換性はその最新リリース系列に追従します。
 
 ## iPolloWork のインストール
 
@@ -171,15 +183,19 @@ Windows の開発ビルドでは、本番用の `ipollowork://` ハンドラー�
 ## アーキテクチャの境界
 
 ```text
-iPolloWork desktop/UI ── local API ──> iPolloWork server ──> OpenCode
-          │
-          └── optional account/control requests ──> iPolloCloud
+Codex / MCP clients ── ipollowork-ui-mcp ──> iPolloWork desktop/UI
+                                                   │
+                                                   ├── local API ──> Engine Protocol ──> OpenCode (default)
+                                                   │                               └──> DeepSeek Harness (optional)
+                                                   └── optional account/control requests ──> iPolloCloud
 ```
 
-- エージェントの実行とストリーミングは、Work/Worker パス上で行われます。
+- エージェント実行、タスク状態、ストリーミングは共通エンジン境界で正規化し、エンジン固有の挙動は各アダプター内に保持します。
+- ポータブルな Skills、プラグイン、MCP サーバー、プロジェクト機能は一つのライフサイクルを使い、エンジン固有の拡張は任意です。
+- Codex 互換性は現在 MCP 制御インターフェース経由であり、ネイティブ Codex エンジンアダプターが存在すると誤認させません。
 - iPolloCloud は、ID、組織、権限、ホスト型 Worker のライフサイクル、管理機能、商用アプリを担当します。
+- OpenCode と DeepSeek Harness は独立コンポーネントのまま進化でき、iPolloWork がどちらかのフォークになることはありません。
 - Cloud 接続は任意です。ローカルの iPolloWork は、アカウントや商用サービスなしで動作します。
-- OpenCode は独立したコンポーネントのままであり、独立してアップグレードを続けられます。
 
 ## リポジトリ構成
 
