@@ -1159,6 +1159,129 @@ describe("model runtime adapters", () => {
     expect(connectedIds).toContain("deepseek-official");
   });
 
+  test("connects the OrcaRouter compatible provider preset as a callable shared OpenCode provider", async () => {
+    const { calls, client } = createOpenCodeProviderClient();
+    const runtimePatches: unknown[] = [];
+    const mirroredCredentials: Array<{ key: string; value: string }> = [];
+    let providers = [
+      {
+        id: "opencode",
+        name: "OpenCode",
+        source: "api" as const,
+        env: [],
+        models: {},
+      },
+    ];
+    let connectedIds = ["opencode"];
+    const serverClient = {
+      patchConfig: async (_workspaceId: string, patch: unknown) => {
+        calls.push({ name: "patch-config" });
+        runtimePatches.push(patch);
+        return { ok: true };
+      },
+      reloadEngine: async () => {
+        calls.push({ name: "reload-engine" });
+        return { ok: true };
+      },
+      upsertUserEnv: async (entries: Array<{ key: string; value: string }>) => {
+        calls.push({ name: "mirror-shared" });
+        mirroredCredentials.push(...entries);
+        return { updated: entries.map((entry) => entry.key) };
+      },
+    };
+    const store = createProviderAuthStore({
+      client: () => client,
+      providers: () => providers,
+      providerDefaults: () => ({ opencode: "default-model" }),
+      providerConnectedIds: () => connectedIds,
+      disabledProviders: () => [],
+      checkDesktopAppRestriction: () => false,
+      selectedWorkspaceDisplay: () => ({
+        id: "workspace-a",
+        name: "Workspace A",
+        path: "C:\\workspace",
+        preset: "starter",
+        workspaceType: "local",
+        engineId: DEFAULT_ENGINE_ID,
+      }),
+      providerBaseUrl: () => "http://localhost:43121/opencode",
+      selectedWorkspaceRoot: () => "C:\\workspace",
+      runtimeWorkspaceId: () => "workspace-a",
+      ipolloworkServer: {
+        getSnapshot: () => ({
+          ipolloworkServerStatus: "connected",
+          ipolloworkServerClient: serverClient as never,
+          ipolloworkServerCapabilities: { config: { read: true, write: true } },
+        }),
+      },
+      setProviders: (value) => { providers = value; },
+      setProviderDefaults: () => {},
+      setProviderConnectedIds: (value) => { connectedIds = value; },
+      setDisabledProviders: () => {},
+      markEngineConfigReloadRequired: () => {},
+    });
+
+    await store.openProviderAuthModal({ preferredProviderId: "orcarouter" });
+    expect(store.getSnapshot()).toMatchObject({
+      providerAuthModalOpen: true,
+      providerAuthPreferredProviderId: "orcarouter",
+      providerAuthMethods: {
+        orcarouter: [{ type: "api", label: expect.any(String) }],
+      },
+    });
+
+    await store.submitProviderApiKey("orcarouter", "secret");
+
+    expect(runtimePatches).toEqual([{
+      opencode: {
+        provider: {
+          orcarouter: {
+            npm: "@ai-sdk/openai-compatible",
+            name: "OrcaRouter",
+            options: { baseURL: "https://api.orcarouter.ai/v1" },
+            models: {
+              "orcarouter/auto": { name: "OrcaRouter Auto" },
+              "openai/gpt-5.5": { name: "GPT-5.5" },
+              "anthropic/claude-opus-4.8": { name: "Claude Opus 4.8" },
+              "google/gemini-3.5-flash": { name: "Gemini 3.5 Flash" },
+              "deepseek/deepseek-v4-pro": { name: "DeepSeek V4 Pro" },
+              "qwen/qwen3.7-max": { name: "Qwen3.7 Max" },
+              "minimax/minimax-m2.7": { name: "MiniMax M2.7" },
+              "grok/grok-4.3": { name: "Grok 4.3" },
+            },
+          },
+        },
+      },
+    }]);
+    expect(calls).toContainEqual({
+      name: "set",
+      value: {
+        providerID: "orcarouter",
+        auth: { type: "api", key: "secret" },
+      },
+    });
+    expect(calls.findIndex((call) => call.name === "mirror-shared")).toBeLessThan(
+      calls.findIndex((call) => call.name === "patch-config"),
+    );
+    expect(calls.findIndex((call) => call.name === "patch-config")).toBeLessThan(
+      calls.findIndex((call) => call.name === "reload-engine"),
+    );
+    expect(calls.findIndex((call) => call.name === "reload-engine")).toBeLessThan(
+      calls.findIndex((call) => call.name === "set"),
+    );
+    expect(mirroredCredentials[0]).toEqual({
+      key: sharedProviderCredentialEnvKey("orcarouter"),
+      value: "secret",
+    });
+    expect(mirroredCredentials[1]?.key).toBe(sharedProviderProfileEnvKey("orcarouter"));
+    expect(parseSharedProviderProfile(mirroredCredentials[1]?.value ?? "")).toMatchObject({
+      providerId: "orcarouter",
+      api: "openai-completions",
+      baseURL: "https://api.orcarouter.ai/v1",
+    });
+    expect(connectedIds).toContain("orcarouter");
+  });
+
   test("imports a DSH API-key connection into OpenCode", async () => {
     const { calls, client } = createOpenCodeProviderClient();
     const credentialKey = sharedProviderCredentialEnvKey("deepseek-official");

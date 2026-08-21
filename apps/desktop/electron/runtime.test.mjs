@@ -7,6 +7,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 
 import {
   applyEmbeddedServerEnvironment,
+  binaryFileNames,
   commandMatchesPackagedSidecar,
   devModeHomeDirectoryPaths,
   embeddedServerImportUrl,
@@ -18,6 +19,18 @@ import {
   stageBundledOpencodeRuntime,
   windowsProxyEnvFromServer,
 } from "./runtime.mjs";
+
+describe("binaryFileNames", () => {
+  it("prefers the canonical packaged alias before the target-specific fallback", () => {
+    const extension = process.platform === "win32" ? ".exe" : "";
+    const names = binaryFileNames("opencode");
+
+    assert.equal(names[0], `opencode${extension}`);
+    if (names.length > 1) {
+      assert.match(names[1], new RegExp(`^opencode-.+${extension.replace(".", "\\.")}$`));
+    }
+  });
+});
 
 describe("windowsProxyEnvFromServer", () => {
   it("maps a Windows system proxy to child-process proxy variables", () => {

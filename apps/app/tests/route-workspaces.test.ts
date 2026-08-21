@@ -149,6 +149,14 @@ describe("route workspaces", () => {
           title: "新建会话",
           time: { created: 2000, updated: 2000 },
         }),
+        routeSession("blank-legacy-english", {
+          title: "New conversation",
+          time: { created: 2500, updated: 2500 },
+        }),
+        routeSession("blank-legacy-chinese", {
+          title: "新会话",
+          time: { created: 2750, updated: 2750 },
+        }),
         routeSession("active-default", {
           title: "New session - 2026-08-06T04:00:00.000Z",
           time: { created: 3000, updated: 3500 },

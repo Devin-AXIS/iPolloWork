@@ -22,6 +22,7 @@ export function isDefaultSessionTitle(title: string | null | undefined) {
     trimmed === LEGACY_DEFAULT_SESSION_TITLE ||
     trimmed === t("session.default_title") ||
     trimmed === "新建会话" ||
+    trimmed === "新会话" ||
     isGeneratedSessionTitle(trimmed)
   );
 }

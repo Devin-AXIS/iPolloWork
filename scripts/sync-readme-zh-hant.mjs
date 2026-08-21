@@ -26,7 +26,8 @@ const traditionalLanguageBar = `<p align="center">
 
 const generatedNotice = "<!-- Generated from README_ZH.md by `pnpm readme:zh-hant`; do not edit directly. -->";
 const convert = OpenCC.Converter({ from: "cn", to: "hk" });
-const source = await readFile(sourcePath, "utf8");
+const normalizeNewlines = (value) => value.replace(/\r\n/g, "\n");
+const source = normalizeNewlines(await readFile(sourcePath, "utf8"));
 const convertedLanguageBar = convert(sourceLanguageBar);
 
 if (!source.includes(sourceLanguageBar)) {
@@ -41,7 +42,7 @@ if (!converted.includes(convertedLanguageBar)) {
 }
 
 const expected = `${generatedNotice}\n\n${converted.replace(convertedLanguageBar, traditionalLanguageBar)}`;
-const current = await readFile(targetPath, "utf8").catch(() => "");
+const current = normalizeNewlines(await readFile(targetPath, "utf8").catch(() => ""));
 
 if (checkOnly) {
   if (current === expected) {

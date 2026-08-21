@@ -32,7 +32,7 @@ describe("sidebar primary actions", () => {
     expect(sidebarSource).toContain('figma-square-pen.svg")} alt="" className="size-3.5 dark:invert"');
     expect(sidebarSource).toContain('figma-layout-panel-top.svg")} alt="" className="size-3.5 dark:invert"');
     expect(sidebarSource).toContain('toy-brick.svg")} alt="" className="size-3.5 dark:invert"');
-    expect(sidebarSource.match(/className=\{primarySidebarActionClass\}/g)).toHaveLength(3);
+    expect(sidebarSource.match(/className=\{primarySidebarActionClass\}/g)).toHaveLength(5);
   });
 
   test("keeps one-pixel strokes from scaling across sidebar icon viewboxes", () => {

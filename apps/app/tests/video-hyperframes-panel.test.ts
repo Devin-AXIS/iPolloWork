@@ -801,8 +801,8 @@ describe("HyperFrames Video Studio", () => {
     expect(workshopSource).toContain("importPluginWorkshopProject");
     expect(workshopSource).toContain("plugin_workshop_project_exists");
     expect(workshopSource).toContain("<ConfirmModal");
-    expect(workshopSource).toContain('confirmLabel="覆盖导入"');
-    expect(workshopSource).toContain('cancelLabel="取消导入"');
+    expect(workshopSource).toContain('confirmLabel={t("plugin_workshop.overwrite_confirm")}');
+    expect(workshopSource).toContain('cancelLabel={t("plugin_workshop.overwrite_cancel")}');
     expect(serverClientSource).toContain('options?.overwrite ? "?overwrite=true" : ""');
     expect(workshopSource).toContain("snapshotRequestGenerationRef.current += 1");
     expect(workshopSource).toContain("requestGeneration !== snapshotRequestGenerationRef.current");
@@ -814,20 +814,18 @@ describe("HyperFrames Video Studio", () => {
     expect(workshopSource).toContain("AI_REPAIR_DEBOUNCE_MS = 600");
     expect(workshopSource).toContain("repairRequestLockedRef.current");
     expect(workshopSource).toContain("disabled={repairRequestLocked || props.aiEditing}");
-    expect(workshopSource).toContain("把想法变成成果");
-    expect(workshopSource).toContain("导入插件源码");
+    expect(workshopSource).toContain('t("plugin_workshop.blank_description")');
+    expect(workshopSource).toContain('t("plugin_workshop.import_source")');
     expect(workshopSource).toContain('readPluginPackageArchive(file, "source"');
     expect(workshopSource).toContain("accept={PLUGIN_SOURCE_ARCHIVE_EXTENSION}");
-    expect(workshopSource).toContain("选择要试用的插件");
-    expect(selectedToolbarSource).not.toContain("导入");
-    expect(selectedToolbarSource).not.toContain("校验通过");
-    expect(selectedToolbarSource).not.toContain("需要处理");
-    expect(selectedToolbarSource).toContain("导出插件");
+    expect(workshopSource).toContain('t("plugin_workshop.select_plugin")');
+    expect(selectedToolbarSource).not.toContain('t("plugin_workshop.import_source")');
+    expect(selectedToolbarSource).toContain('t("plugin_workshop.export")');
     expect(workshopSource).toContain('exportProject("install")');
     expect(workshopSource).toContain('exportProject("source")');
-    expect(workshopSource).toContain(".ipollowork-plugin · 可直接安装");
-    expect(workshopSource).toContain(".zip · 保留原始插件文件夹");
-    expect(selectedToolbarSource).toContain("安装到软件");
+    expect(workshopSource).toContain('t("plugin_workshop.package_hint")');
+    expect(workshopSource).toContain('t("plugin_workshop.source_hint")');
+    expect(selectedToolbarSource).toContain('t("plugin_workshop.install")');
   });
 
   test("opens independent Plugin Workshop tabs without selecting an old project", () => {
@@ -891,8 +889,8 @@ describe("HyperFrames Video Studio", () => {
     expect(instruction).toContain('hostContext["ai.ipollo/workspace"].developmentPreview');
     expect(instruction).toContain("Do not use ipollowork_extension_call for an uninstalled draft");
     expect(workshopSource).toContain("developmentPreview={developmentPreview}");
-    expect(workshopSource).toContain("未安装 · 当前会话可试用");
-    expect(workshopSource).toContain("已选中 · 对话会自动调用");
+    expect(workshopSource).toContain('t("plugin_workshop.not_installed")');
+    expect(workshopSource).toContain('t("plugin_workshop.selected_hint")');
     expect(workspaceAppSource).toContain("developmentPreview: pluginContext.developmentPreview");
     expect(workspaceAppSource).toContain('data-development-preview={props.developmentPreview ? "plugin-workshop" : undefined}');
     expect(workspaceAppSource).toContain("sameWorkspaceAppRuntimeResource");
@@ -1065,7 +1063,7 @@ describe("HyperFrames Video Studio", () => {
     expect(sessionRouteSource).toContain("shouldInjectVideoTaskContext(");
     expect(sessionRouteSource).toContain("videoTaskSystemContext(");
     expect(sessionRouteSource).toContain("draft.capability?.instruction");
-    expect(sessionRouteSource).toContain("[envSystemContext, videoSystemContext, designSystemContext, authoringSystemContext, capabilitySystemContext]");
+    expect(sessionRouteSource).toContain("[projectSystemContext, envSystemContext, videoSystemContext, designSystemContext, authoringSystemContext, capabilitySystemContext]");
   });
 
   test("gives the agent the same session-scoped project as the Studio", () => {

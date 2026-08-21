@@ -35,18 +35,25 @@ test("registers the engine-neutral catalog and forwards DSH session context", as
     requests.push({ url: String(url), init });
     if (String(url).endsWith("/engine-tools")) {
       return Response.json({
-        tools: [{
-          name: "ipollowork_extension_list_actions",
-          description: "List extension actions",
-          parameters: { type: "object", properties: {}, additionalProperties: false },
-        }],
+        tools: [
+          {
+            name: "ipollowork_extension_list_actions",
+            description: "List extension actions",
+            parameters: { type: "object", properties: {}, additionalProperties: false },
+          },
+          {
+            name: "ipollowork_project_read",
+            description: "Read the current project",
+            parameters: { type: "object", properties: {}, additionalProperties: false },
+          },
+        ],
       });
     }
     return Response.json({ ok: true, actions: [] });
   };
 
-  /** @type {any} */
-  let registered;
+  /** @type {any[]} */
+  const registered = [];
   /** @type {any} */
   let priorityAdapter;
   const ctx = {
@@ -64,7 +71,7 @@ test("registers the engine-neutral catalog and forwards DSH session context", as
     },
     tools: {
       register(definition) {
-        registered = definition;
+        registered.push(definition);
         return () => undefined;
       },
     },
@@ -81,9 +88,11 @@ test("registers the engine-neutral catalog and forwards DSH session context", as
     (await priorityAdapter.listModels(OPENAI_CODEX_PRIORITY_PROVIDER_ID)).map((model) => model.id),
     ["gpt-5.4-fast", "gpt-5.4-mini-fast", "gpt-5.5-fast"],
   );
-  if (!registered) throw new Error("DSH host tool was not registered");
-  assert.equal(registered.name, "ipollowork_extension_list_actions");
-  const result = await registered.execute({}, {
+  assert.deepEqual(registered.map((tool) => tool.name), [
+    "ipollowork_extension_list_actions",
+    "ipollowork_project_read",
+  ]);
+  const result = await registered[1].execute({}, {
     signal: new AbortController().signal,
     agent: {
       id: "session_1",
@@ -92,6 +101,7 @@ test("registers the engine-neutral catalog and forwards DSH session context", as
   });
   assert.deepEqual(result, { ok: true, actions: [] });
   const call = JSON.parse(String(requests[1].init.body));
+  assert.equal(call.name, "ipollowork_project_read");
   assert.deepEqual(call.context, {
     workspaceId: "ws_dsh",
     directory: "/tmp/project",

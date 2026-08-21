@@ -105,6 +105,7 @@ import { registerSessionRoutes } from "./routes/sessions.js";
 import { registerDeepSeekHarnessRoutes } from "./routes/deepseek-harness.js";
 import { registerWorkspaceRoutes } from "./routes/workspaces.js";
 import { registerPluginWorkshopRoutes } from "./routes/plugin-workshop.js";
+import { registerWorkItemRoutes } from "./routes/work-items.js";
 import {
   disposeRuntimeOpencodeConfigStore,
   mergeOpencodeConfigs,
@@ -125,6 +126,7 @@ import {
   writeiPolloWorkWorkspaceConfig,
 } from "./ipollowork-workspace-config-store.js";
 import { buildiPolloWorkRuntimeConfigObject } from "./ipollowork-runtime-config.js";
+import { disposeWorkItemStore } from "./work-items.js";
 import {
   MAX_TEMPLATE_PACKAGE_BYTES,
   adoptLegacyVideoSession,
@@ -902,6 +904,7 @@ export async function startServer(config: ServerConfig): Promise<ServeResult> {
         await Promise.all([
           disposeRuntimeOpencodeConfigStore(config),
           disposeiPolloWorkWorkspaceConfigStore(config),
+          disposeWorkItemStore(config),
           disposeTemplateStore(config),
         ]);
         // Bun releases Windows SQLite file handles on the following event-loop
@@ -1160,6 +1163,7 @@ function buildCapabilities(config: ServerConfig, workspace?: WorkspaceInfo): Cap
     commands: { read: true, write: writeEnabled },
     config: { read: true, write: writeEnabled },
     templates: { read: true, install: writeEnabled, import: writeEnabled, uninstall: writeEnabled },
+    work: { read: true, write: writeEnabled, board: true, schedule: true },
     ...(workspace ? {
       engine: {
         id: workspace.engineId?.trim() || DEFAULT_ENGINE_ID,
@@ -1516,6 +1520,16 @@ function createRoutes(
     jsonResponse,
     ensureWritable,
     readPluginPackageUploadBody,
+    requireClientScope,
+    resolveWorkspace,
+  });
+
+  registerWorkItemRoutes({
+    routes,
+    config,
+    jsonResponse,
+    readJsonBody,
+    ensureWritable,
     requireClientScope,
     resolveWorkspace,
   });

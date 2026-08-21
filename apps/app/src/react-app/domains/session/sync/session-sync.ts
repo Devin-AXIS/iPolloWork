@@ -29,6 +29,7 @@ type SyncOptions = SyncScope & {
   connection: ConversationEngineConnection;
   onSessionUpdated?: (update: { sessionId: string; info: Record<string, unknown> }) => void;
   onSessionStatus?: (update: { sessionId: string; status: ConversationStatus }) => void;
+  onSessionError?: (update: { sessionId: string; errorText: string }) => void;
 };
 
 type PendingDelta = {
@@ -48,6 +49,7 @@ type SyncEntry = {
   retainedSessionTimers: Map<string, ReturnType<typeof setTimeout>>;
   sessionUpdatedListeners: Set<NonNullable<SyncOptions["onSessionUpdated"]>>;
   sessionStatusListeners: Set<NonNullable<SyncOptions["onSessionStatus"]>>;
+  sessionErrorListeners: Set<NonNullable<SyncOptions["onSessionError"]>>;
   pendingDeltas: Map<string, { messageId: string; reasoning: boolean; text: string }>;
   // Coalesce rapid-fire delta events from the SSE stream into one cache
   // commit per animation frame. Without this, a long response produces a
@@ -496,6 +498,7 @@ function applyEvent(entry: SyncEntry, workspaceId: string, event: ConversationEv
         return upsertMessage(current, createSessionErrorUIMessage(turnKey, event.errorText));
       });
     }
+    for (const listener of entry.sessionErrorListeners) listener({ sessionId: event.sessionId, errorText: event.errorText });
     return;
   }
 
@@ -850,6 +853,7 @@ export function ensureWorkspaceSessionSync(input: SyncOptions) {
     }
     if (input.onSessionUpdated) existing.sessionUpdatedListeners.add(input.onSessionUpdated);
     if (input.onSessionStatus) existing.sessionStatusListeners.add(input.onSessionStatus);
+    if (input.onSessionError) existing.sessionErrorListeners.add(input.onSessionError);
     existing.refs += 1;
     return () => releaseWorkspaceSessionSync(input);
   }
@@ -863,6 +867,7 @@ export function ensureWorkspaceSessionSync(input: SyncOptions) {
     retainedSessionTimers: new Map(),
     sessionUpdatedListeners: new Set(input.onSessionUpdated ? [input.onSessionUpdated] : []),
     sessionStatusListeners: new Set(input.onSessionStatus ? [input.onSessionStatus] : []),
+    sessionErrorListeners: new Set(input.onSessionError ? [input.onSessionError] : []),
     pendingDeltas: new Map(),
     deltaFlushBuffer: [],
     deltaFlushScheduled: false,
@@ -874,12 +879,13 @@ export function ensureWorkspaceSessionSync(input: SyncOptions) {
   return () => releaseWorkspaceSessionSync(input);
 }
 
-function releaseWorkspaceSessionSync(input: SyncScope & Pick<SyncOptions, "onSessionUpdated" | "onSessionStatus">) {
+function releaseWorkspaceSessionSync(input: SyncScope & Pick<SyncOptions, "onSessionUpdated" | "onSessionStatus" | "onSessionError">) {
   const key = syncKey(input);
   const existing = syncs.get(key);
   if (!existing) return;
   if (input.onSessionUpdated) existing.sessionUpdatedListeners.delete(input.onSessionUpdated);
   if (input.onSessionStatus) existing.sessionStatusListeners.delete(input.onSessionStatus);
+  if (input.onSessionError) existing.sessionErrorListeners.delete(input.onSessionError);
   existing.refs -= 1;
   if (existing.refs > 0) return;
   if (existing.retainedSessionTimers.size === 0) {
@@ -995,6 +1001,7 @@ export function __createWorkspaceSessionSyncForTest(input: SyncScope) {
     retainedSessionTimers: new Map(),
     sessionUpdatedListeners: new Set(),
     sessionStatusListeners: new Set(),
+    sessionErrorListeners: new Set(),
     pendingDeltas: new Map(),
     deltaFlushBuffer: [],
     deltaFlushScheduled: false,

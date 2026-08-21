@@ -104,13 +104,14 @@ describe("sidebar projects", () => {
     expect(sessionPageSource).toContain('testId="initial-project-engine-badge"');
     expect(sessionPageSource).toContain("engineId={props.selectedWorkspaceDisplay.engineId}");
     expect(sessionPageSource).toContain('key={`${props.selectedWorkspaceId}:${props.selectedWorkspaceDisplay.engineId ?? DEFAULT_ENGINE_ID}`}');
-    expect(sessionPageSource).toContain('draftScopeKey={`new-task:${workspaceId}:${engineId?.trim() || DEFAULT_ENGINE_ID}`}');
+    expect(sessionPageSource).toContain('draftScopeKey={`new-task:${workspaceId ?? "new-project"}:${engineId?.trim() || DEFAULT_ENGINE_ID}`}');
     expect(sessionPageSource).not.toContain('data-testid="initial-project-engine-dialog"');
     expect(sessionPageSource).toContain("await onSubmit(composerDraft)");
+    expect(sessionPageSource).toContain('engineId={engineId ?? DEFAULT_ENGINE_ID}');
     expect(sessionPageSource).toContain("<ProjectEngineOptions");
     expect(composerSource).toContain("endAccessory?: ReactNode");
     expect(composerSource).toContain('inlineAppearance?: "default" | "engine-selected"');
-    expect(sessionPageSource).toContain('inlineAppearance="engine-selected"');
+    expect(sessionPageSource).not.toContain('inlineAppearance="engine-selected"');
     expect(sessionPageSource).toContain('testId="session-composer-engine-badge"');
     expect(sessionPageSource).not.toContain('testId="session-engine-badge"');
     expect(sessionSurfaceSource).toContain("composerEndAccessory?: ReactNode");
@@ -122,6 +123,12 @@ describe("sidebar projects", () => {
     expect(sessionRouteSource).toContain('name: t("session.untitled")');
     expect(sessionRouteSource).toContain("surfaceProps.onSendDraft(pending.draft, pending.sessionId)");
     expect(sessionRouteSource).not.toContain("startupConversationPhase");
+    expect(sessionPageSource).toContain("promptTemplates={conversationTemplates}");
+    expect(sessionPageSource).toContain("templates={starterTemplateCatalog}");
+    expect(sessionPageSource).toContain("getTemplateCover={getStarterTemplateCover}");
+    expect(sessionPageSource).toContain("onRequestTemplates={() => void refreshStarterTemplateCatalog()}");
+    expect(sessionRouteSource).toContain("const handleCreateInitialProjectTask = useCallback(async (draft: ComposerDraft, workspaceId?: string)");
+    expect(sessionRouteSource).toContain("navigateToWorkspaceSession(workspaceId, latestSession.id, { replace: true });");
     expect(sessionRouteSource).toMatch(
       /!loading[\s\S]*selectedWorkspaceId[\s\S]*!workspaces\.some\(\(workspace\) => !workspace\.isDefault\)[\s\S]*dismissFirstRunLoader\(\)/,
     );
@@ -140,14 +147,15 @@ describe("sidebar projects", () => {
   });
 
   test("matches the project-first starter design in both themes", () => {
-    expect(starterSource).toContain('className="mt-8 flex h-[42px] w-fit max-w-full items-center gap-2 rounded-full bg-muted p-1"');
-    expect(starterSource).toContain('"relative isolate inline-flex h-9 w-[92px]');
-    expect(starterSource).toContain('? "text-foreground"');
+    expect(starterSource).toContain('className="mt-8 flex h-[42px] w-fit max-w-full items-center gap-2 rounded-[40px] bg-[var(--new-conversation-tab-surface)] p-1"');
+    expect(starterSource).toContain('"relative isolate inline-flex w-[92px]');
+    expect(starterSource).toContain('? "h-9 rounded-[40px]');
+    expect(starterSource).toContain('text-[var(--new-conversation-tab-text)]');
     expect(starterSource).toContain('data-testid="new-conversation-mode-indicator"');
     expect(starterSource).not.toContain('{t("new_conversation.subtitle")}');
     expect(starterSource).toContain('return t("new_conversation.placeholder")');
     expect(appStyleSource).toContain("--dls-active: var(--slate-4)");
-    expect(composerEditorSource).toContain('text-[15px] leading-6 text-slate-10');
+    expect(composerEditorSource).toContain('text-[15px] leading-6 text-[color:var(--new-conversation-placeholder)]');
     expect(composerEditorSource).toContain('data-testid="composer-placeholder"');
     expect(englishLocaleSource).toContain('"new_conversation.placeholder": "Choose a direction, or describe the work in your own words."');
     expect(chineseLocaleSource).toContain('"new_conversation.placeholder": "选择一个方向，或直接描述你要推进的工作。"');
@@ -161,11 +169,13 @@ describe("sidebar projects", () => {
     expect(chineseLocaleSource).toContain('"session.default_title": "新任务"');
   });
 
-  test("reveals section toggles on hover and supports title double-click", () => {
+  test("reveals section toggles on hover and supports single-click on the full header", () => {
     expect(sidebarSource).toContain("group-hover/section:opacity-100");
     expect(sidebarSource).toContain("group-focus-within/section:opacity-100");
-    expect(sidebarSource).toContain("onDoubleClick={onToggle}");
-    expect(sidebarSource).toContain("event.stopPropagation()");
+    expect(sidebarSource).toContain('type="button"');
+    expect(sidebarSource).toContain("onClick={onToggle}");
+    expect(sidebarSource).toContain('aria-expanded={expanded}');
+    expect(sidebarSource).not.toContain("onDoubleClick={onToggle}");
   });
 
   test("manages project folders without restoring the legacy workspace UI", () => {
@@ -277,13 +287,24 @@ describe("sidebar projects", () => {
 
   test("keeps header actions right-aligned and exposes the current project", () => {
     expect(sessionPageSource).toContain('data-testid="session-header-project"');
-    expect(sessionPageSource).toContain("<ProjectHeaderButton projectName={selectedProjectName} />");
+    expect(sessionPageSource).toContain("<ProjectHeaderButton projectName={selectedProjectName} onClick={openProjectOverview} />");
     expect(sessionPageSource).toContain('publicAssetUrl("sidebar-icon/figma-folder-closed.svg")');
     expect(sessionPageSource).toContain('className="h-auto w-3.5 dark:invert"');
     expect(sessionPageSource).toContain('<TooltipContent side="bottom" align="start">{projectName}</TooltipContent>');
-    expect(sessionPageSource).toContain("(showWorkspaceSetupEmptyState || props.selectedSessionId)");
+    expect(sessionPageSource).toContain("(showWorkspaceSetupEmptyState || props.selectedSessionId || showSelectedProjectNavigation)");
     expect(sessionPageSource).toContain('data-testid="session-header-actions"');
     expect(sessionPageSource).toContain("md:col-start-3 md:justify-self-end");
+    expect(sessionPageSource).toContain('data-testid="session-header-work-navigation"');
+    expect(sessionPageSource).toContain('data-testid="session-header-project-overview"');
+    expect(sessionPageSource).toContain('data-testid="session-header-work-tasks"');
+    expect(sessionPageSource).toContain("activeView={projectWorkActiveView}");
+    expect(sidebarSource).toContain('data-testid="project-builder-open"');
+    expect(sidebarSource).toContain("onCreateProjectBuilder(workspace.id)");
+    expect(sessionPageSource).not.toContain('data-testid="project-builder-open"');
+    expect(sessionPageSource).toContain('data-testid="project-builder-badge"');
+    expect(sessionPageSource).toContain("props.sidebar.onCreateProjectBuilder");
+    expect(sessionRouteSource).toContain("scopeProjectBuilderDraft(draft");
+    expect(sessionRouteSource).toContain("markProjectBuilderSession(workspaceId, sessionId)");
   });
 
   test("shows nested conversation activity on a collapsed project", () => {

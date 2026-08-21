@@ -93,6 +93,25 @@ describe("new conversation animation catalog", () => {
     expect(sessionPage).toContain('surface === "video" ? "video" : "design"');
   });
 
+  test("keeps the project-first starter wired to the same workspace tools as New task", () => {
+    expect(sessionPage).toContain("const listSkills = useCallback");
+    expect(sessionPage).toContain("const listMcp = useCallback");
+    expect(sessionPage).toContain("const listImportedPlugins = useCallback");
+    expect(sessionPage).toContain("const listExternalAgents = useCallback");
+    expect(sessionPage).toContain("surface.recentFiles");
+    expect(sessionPage).toContain("surface.searchFiles");
+    expect(sessionPage).toContain("surface.isRemoteWorkspace");
+    expect(sessionPage).toContain("surface.isSandboxWorkspace");
+    expect(sessionPage).toContain("surface.providerConnectedCount");
+    expect(sessionPage).toContain("onUploadInboxFiles={composerTooling.onUploadInboxFiles}");
+    expect(sessionPage).toContain("listSkills={composerTooling.listSkills}");
+    expect(sessionPage).toContain("listMcp={composerTooling.listMcp}");
+    expect(sessionPage).toContain("listImportedPlugins={composerTooling.listImportedPlugins}");
+    expect(sessionPage).toContain("listExternalAgents={composerTooling.listExternalAgents}");
+    expect(sessionPage).toContain("topAccessory={starterCapability ? (");
+    expect(sessionPage).toContain("<StarterCapabilityChip capability={starterCapability}");
+  });
+
   test("opens a materialized design template in the Design panel", () => {
     expect(sessionPage).toContain("const autoOpenedDesignTemplateRef = useRef<string | null>(null)");
     expect(sessionPage).toContain("const templateKey = `${props.selectedSessionId}:${designTemplateEntryPath}`");
@@ -111,7 +130,7 @@ describe("new conversation animation catalog", () => {
     expect(surface).toContain('dark:bg-[#131313]');
     expect(starter).toContain('new-conversation-bg.png');
     expect(starter).toContain('max-w-none dark:opacity-20');
-    expect(starter).toContain('rounded-full bg-muted p-1');
+    expect(starter).toContain('rounded-[40px] bg-[var(--new-conversation-tab-surface)] p-1');
     expect(starter).toContain('data-testid="new-conversation-mode-indicator"');
     expect(starter).toContain('layoutId={`new-conversation-mode-indicator-${modeTabIndicatorId}`}');
     expect(starter).toContain('type: "spring"');
@@ -119,13 +138,18 @@ describe("new conversation animation catalog", () => {
     expect(starter).toContain("stiffness: 300");
     expect(starter).toContain("damping: 20");
     expect(starter).toContain("transition={reduceMotion ? { duration: 0 } : MODE_TAB_SPRING}");
-    expect(starter).toContain('className="pointer-events-none absolute inset-0 -z-10 rounded-full bg-background"');
-    expect(starter).toContain('text-muted-foreground hover:bg-background/70 hover:text-foreground');
-    expect(starter).toContain('brightness-0 dark:invert');
-    expect(starter).toContain('dark:text-[#ccc]');
+    expect(starter).toContain('className="pointer-events-none absolute inset-0 -z-10 rounded-[40px] bg-[var(--new-conversation-tab-selected)]"');
+    expect(starter).toContain('text-[var(--new-conversation-tab-muted)] hover:rounded-[40px] hover:bg-[var(--new-conversation-tab-selected)]/70 hover:text-[var(--new-conversation-tab-text)]');
+    expect(starter).toContain('WebkitMaskImage: `url(${iconSrc})`');
+    expect(starter).toContain('dark:text-[#f5f5f5]');
+    expect(starter).toContain('dark:text-[#b0b4ba]');
     expect(starter).toContain('dark:invert dark:opacity-80');
     expect(composer).toContain("new-conversation-composer");
     expect(styles).toContain("--new-conversation-composer-surface: #343434");
+    expect(styles).toContain("--new-conversation-tab-surface: #2a2a2d");
+    expect(styles).toContain("--new-conversation-tab-selected: #3a3a3d");
+    expect(styles).toContain("--new-conversation-tab-text: #f5f5f5");
+    expect(styles).toContain("--new-conversation-tab-muted: #b0b4ba");
     expect(composer).toContain("dark:bg-white dark:text-black");
   });
 
@@ -151,6 +175,7 @@ describe("new conversation animation catalog", () => {
     expect(starter).toContain('data-testid="new-conversation-starter-tasks"');
     expect(starter).toContain('className="relative pt-6"');
     expect(starter).toContain('data-testid="new-conversation-quick-actions"');
+    expect(starter).toContain('selectedMode === "video" ? "" : "min-h-[56px] content-start"');
     expect(sessionPage).toContain('data-testid="new-conversation-starter-slot"');
     expect(surface).toContain('data-testid="new-conversation-starter-slot"');
     expect(sessionPage).toContain('className="shrink-0"');
@@ -163,7 +188,7 @@ describe("new conversation animation catalog", () => {
     expect(surface).toContain('pb-[max(64px,env(safe-area-inset-bottom))]');
     expect(sessionPage).toContain('data-testid="new-conversation-starter-composer-shell"');
     expect(surface).toContain('data-testid="new-conversation-starter-composer-shell"');
-    expect(sessionPage).toContain('mt-6 w-full max-w-[616px] shrink-0');
+    expect(sessionPage).toContain('mt-6 w-full shrink-0');
     expect(surface).toContain('mt-6 w-full shrink-0');
   });
 });

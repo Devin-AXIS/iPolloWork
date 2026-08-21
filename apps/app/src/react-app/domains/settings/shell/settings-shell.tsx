@@ -83,7 +83,7 @@ export function SettingsShell(props: SettingsShellProps) {
   if (props.compact) {
     return (
       <SettingsControlStyleScope>
-        <div data-settings-shell className="flex h-full min-h-0 w-full flex-col overflow-hidden bg-white dark:bg-background">
+        <div data-settings-shell data-settings-compact className="flex h-full min-h-0 w-full flex-col overflow-hidden bg-white dark:bg-background">
           <header className="flex h-11 shrink-0 items-center justify-between gap-2 px-3 mac:titlebar-drag">
             <div className="flex min-w-0 items-center gap-2 mac:titlebar-no-drag">
               <EmbeddedSidebarRestoreTrigger />
@@ -101,17 +101,16 @@ export function SettingsShell(props: SettingsShellProps) {
             <div className={`flex shrink-0 items-center gap-1 mac:titlebar-no-drag ${props.hideCloseButton ? "pr-10" : ""}`}>
               {props.headerActions}
               {props.hideCloseButton ? null : (
-                <Button
-                  variant="ghost"
-                  size="icon-sm"
+                <button
                   type="button"
-                  className="shrink-0 text-gray-10 transition-colors hover:text-dls-text"
+                  data-settings-close=""
+                  className="inline-flex size-7 shrink-0 appearance-none items-center justify-center rounded-lg border-0 bg-transparent p-0 text-gray-10 shadow-none outline-none ring-0 transition-colors hover:bg-foreground/[0.06] hover:text-dls-text hover:shadow-none"
                   onClick={props.onClose}
                   title={t("dashboard.close_settings")}
                   aria-label={t("dashboard.close_settings")}
                 >
                   <X size={17} />
-                </Button>
+                </button>
               )}
             </div>
           </header>
@@ -165,17 +164,16 @@ export function SettingsShell(props: SettingsShellProps) {
                     <div className="flex items-center gap-1.5 text-gray-10 mac:titlebar-no-drag">
                       {props.headerActions}
                       {props.showNotifications === false ? null : <NotificationBell />}
-                      <Button
-                        variant="ghost"
-                        size="icon-sm"
+                      <button
                         type="button"
-                        className="text-gray-10 transition-colors hover:text-dls-text md:hidden"
+                        data-settings-close=""
+                        className="inline-flex size-7 items-center justify-center rounded-lg border-0 bg-transparent p-0 text-gray-10 transition-colors hover:bg-foreground/[0.06] hover:text-dls-text md:hidden"
                         onClick={props.onClose}
                         title={t("dashboard.close_settings")}
                         aria-label={t("dashboard.close_settings")}
                       >
                         <X size={18} />
-                      </Button>
+                      </button>
                     </div>
                   </div>
                 </header>

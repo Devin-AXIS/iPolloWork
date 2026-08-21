@@ -79,15 +79,24 @@ describe("workspace resize performance", () => {
     );
   });
 
-  test("turns the floating right-panel toggle into a close action for Extensions", () => {
+  test("turns the floating right-panel toggle into a close action for full workspace views", () => {
     expect(sessionPageSource).toContain(
-      'const floatingHeaderActionClosesExtensions = mainWorkspaceView === "extensions";',
+      "const floatingHeaderActionClosesWorkspaceView = mainHeaderHidden;",
     );
     expect(sessionPageSource).toContain(
-      "onClick={floatingHeaderActionClosesExtensions ? closeExtensionsRailPane : toggleRightPanel}",
+      "onClick={floatingHeaderActionClosesWorkspaceView ? closeMainWorkspaceView : toggleRightPanel}",
     );
     expect(sessionPageSource).toContain(
       '<X className="size-4" />',
     );
+  });
+
+  test("keeps the starter navigation shell while hiding its title", () => {
+    expect(sessionPageSource).toContain("mac:titlebar-drag");
+    expect(sessionPageSource).toContain(
+      'const mainHeaderHidden = mainWorkspaceView === "extensions" || mainWorkspaceView === "schedule";',
+    );
+    expect(sessionPageSource).toContain('const projectWorkActiveView = mainWorkspaceView === "project-overview"');
+    expect(sessionPageSource).toContain("{showMainHeaderTitle ? (");
   });
 });

@@ -12,7 +12,7 @@ import type { ComposerDraft } from "../src/app/types";
 
 const modelSelectPath = resolve(import.meta.dir, "../src/components/model-select.tsx");
 const composerPath = resolve(import.meta.dir, "../src/react-app/domains/session/surface/composer/composer.tsx");
-const menuPath = resolve(import.meta.dir, "../src/react-app/domains/session/surface/composer/model-behavior-menu.tsx");
+const menuPath = resolve(import.meta.dir, "../src/components/model-behavior-menu.tsx");
 const modelPickerHookPath = resolve(import.meta.dir, "../src/react-app/domains/session/modals/use-model-picker.ts");
 const sessionRoutePath = resolve(import.meta.dir, "../src/react-app/shell/session-route.tsx");
 
@@ -37,7 +37,7 @@ describe("Composer model and reasoning menu", () => {
 
     expect(route).toContain("supportsNativeAttachments: selectedModelSupportsAttachments");
     expect(route).toContain("attachmentRequiresNativeModelSupport(attachment.mimeType)");
-    expect(route).toContain("{ supportsNativeAttachments: selectedModelSupportsAttachments }");
+    expect(route).toContain("{ supportsNativeAttachments: effectiveModelSupportsAttachments }");
     expect(route).toContain('t("composer.attachments_require_multimodal")');
     expect(composer).not.toContain("attachmentsEnabled");
   });

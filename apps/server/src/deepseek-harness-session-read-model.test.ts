@@ -30,7 +30,19 @@ function runtimeWithSessions(calls: string[]) {
               running: false,
               blank: false,
               cwd: workspace.path,
-              projections: { asOfSeq: 1, values: { title: "<system> Long-running local process rule" } },
+              agentPreset: "editor",
+              projections: {
+                asOfSeq: 1,
+                values: {
+                  title: "<system> Long-running local process rule",
+                  tokenUsage: {
+                    uncachedInputTokens: 40,
+                    outputTokens: 20,
+                    cacheReadTokens: 10,
+                    cacheWriteTokens: 5,
+                  },
+                },
+              },
             },
             { sessionId: "foreign", updatedAt: 1, running: false, blank: false, cwd: "/projects/other" },
           ],
@@ -49,6 +61,13 @@ describe("DeepSeek Harness session read model", () => {
     const sessions = await listDeepSeekHarnessSessions(runtimeWithSessions(calls), workspace, {});
     expect(sessions.map((session) => session.id)).toEqual(["owned"]);
     expect(sessions[0]?.title).toBe("New conversation");
+    expect(sessions[0]?.agent).toBe("editor");
+    expect(sessions[0]?.tokens).toEqual({
+      input: 40,
+      output: 20,
+      reasoning: 0,
+      cache: { read: 10, write: 5 },
+    });
   });
 
   test("rejects history reads for a session owned by another project", async () => {
@@ -98,5 +117,102 @@ describe("DeepSeek Harness session read model", () => {
       info: expect.objectContaining({ id: "user-1", role: "user" }),
       parts: [expect.objectContaining({ text: "你好啊" })],
     })]);
+  });
+
+  test("normalizes native subagent runs into engine-neutral task parts", () => {
+    const messages = mapDeepSeekHarnessMessages("root", {
+      hasMore: false,
+      events: [
+        {
+          event: {
+            type: "tool/call",
+            seq: 1,
+            time: 10,
+            data: {
+              callId: "call-subagent-1",
+              name: "subagent",
+              arguments: JSON.stringify({
+                description: "阶段一：生成模拟数据集",
+                prompt: "你是新媒体分析工作台的数据采集专员。",
+              }),
+            },
+          },
+        },
+        {
+          event: {
+            type: "tool/result",
+            seq: 2,
+            time: 20,
+            data: {
+              message: {
+                source: { kind: "tool", callId: "call-subagent-1" },
+                content: [{ type: "tool-result", isError: false }],
+              },
+            },
+          },
+        },
+      ],
+    }, [
+      {
+        sessionId: "child-data-collector",
+        parentSessionId: "root",
+        origin: "subagent",
+        updatedAt: 20,
+        running: false,
+        blank: false,
+        projections: {
+          asOfSeq: 2,
+          values: {
+            subagent: {
+              identity: { mode: "one-shot", label: "阶段一：生成模拟数据集" },
+            },
+          },
+        },
+      },
+    ]);
+
+    expect(messages).toEqual([{
+      info: {
+        id: "dsh-subagent:call-subagent-1",
+        sessionID: "root",
+        role: "assistant",
+        time: { created: 10, completed: 20 },
+      },
+      parts: [{
+        id: "dsh-subagent:call-subagent-1:task",
+        messageID: "dsh-subagent:call-subagent-1",
+        sessionID: "root",
+        type: "tool",
+        tool: "task",
+        state: {
+          status: "completed",
+          input: {
+            description: "阶段一：生成模拟数据集",
+            prompt: "你是新媒体分析工作台的数据采集专员。",
+          },
+          output: '<task id="child-data-collector" state="completed">',
+        },
+      }],
+    }]);
+  });
+
+  test("does not invent task records when a subagent call cannot be matched to a child session", () => {
+    const messages = mapDeepSeekHarnessMessages("root", {
+      hasMore: false,
+      events: [{
+        event: {
+          type: "tool/call",
+          seq: 1,
+          time: 10,
+          data: {
+            callId: "call-unmatched",
+            name: "subagent",
+            arguments: JSON.stringify({ description: "不存在的阶段", prompt: "执行任务" }),
+          },
+        },
+      }],
+    }, []);
+
+    expect(messages).toEqual([]);
   });
 });

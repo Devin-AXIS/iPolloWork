@@ -3,6 +3,7 @@ import type { CSSProperties } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { UIMessage } from "ai";
 import { useNavigate } from "react-router-dom";
+import { createClient, unwrap } from "@/app/lib/opencode";
 import { Code2, Ellipsis, Eye, FileText, Film, Folder, FolderPlus, Globe, Image, KeyRound, LoaderCircle, Lock, Mic2, Palette, PanelRightClose, PanelRightOpen, Pencil, Presentation, Search, Settings2, Trash2, Upload, X, Zap } from "lucide-react";
 import { MAX_TEMPLATE_PACKAGE_BYTES, TEMPLATE_PACKAGE_FILE_ACCEPT, isPptxCompatibleTemplate, type PptxCompatibility, type TemplateCatalogItem, type TemplateCategory, type TemplateManifestV1, type TemplateSessionSnapshot, type TemplateSessionState, type TemplateValidationReport } from "@ipollowork/types/templates";
 import {
@@ -15,7 +16,7 @@ import { currentLocale, t } from "../../../../i18n";
 import { downloadTextAsFile } from "@/app/lib/download";
 import { publicAssetUrl } from "../../../../app/lib/public-asset";
 import { IPOLLOWORK_EXTENSION_CATALOG } from "../../../../app/constants";
-import { type iPolloWorkServerClient, type iPolloWorkServerStatus } from "../../../../app/lib/ipollowork-server";
+import { type iPolloWorkPluginPackageItem, type iPolloWorkServerClient, type iPolloWorkServerStatus } from "../../../../app/lib/ipollowork-server";
 import {
   PERSONAL_WORK_CONTEXT_ID,
   readActiveWorkContextId,
@@ -32,8 +33,10 @@ import { openDesktopPath, pickDirectory, revealDesktopItemInDir, saveFile, type 
 import type {
   ComposerAttachment,
   ComposerDraft,
+  McpServerEntry,
+  McpStatusMap,
   ProviderListItem,
-
+  SkillCard,
   TodoItem,
   WorkspaceConnectionState,
   ProjectSessionList,
@@ -72,15 +75,16 @@ import { RenameSessionModal } from "../modals/rename-session-modal";
 import { AppSidebar } from "../sidebar/app-sidebar";
 import type { iPolloWorkSessionType, iPolloWorkTemplateId } from "../sidebar/app-sidebar-provider";
 import { readSessionType, sessionTypeForTemplate, setSessionType, subscribeToSessionType } from "../sidebar/session-type";
-import { SessionSurface, type SessionSurfaceProps } from "../surface/session-surface";
-import { ReactSessionComposer } from "../surface/composer/composer";
+import { SessionSurface, StarterCapabilityChip, type SessionSurfaceProps } from "../surface/session-surface";
+import { ReactSessionComposer, type ComposerProps } from "../surface/composer/composer";
 import {
   NewConversationStarter,
   newConversationPlaceholder,
   type NewConversationMode,
   type StarterCapability,
+  type TemplateCoverLoader,
 } from "@/components/chat/new-conversation-starter";
-import { replaceDesignSelectionToken } from "../surface/composer/composer-draft";
+import { parseComposerParts, replaceDesignSelectionToken } from "../surface/composer/composer-draft";
 import { getComposerDraft, useComposerStateStore } from "../surface/composer-state-store";
 import {
   SidebarInset,
@@ -146,8 +150,9 @@ import { useControlAction, type iPolloWorkControlAction } from "../../../shell/c
 import { getExtensionId, isiPolloWorkExtensionEnabled, IPOLLOWORK_EXTENSION_STATE_CHANGED } from "../../settings/extension-state";
 import { cn } from "@/lib/utils";
 import { useActiveEnterpriseConnection } from "@/react-app/domains/enterprise/use-active-enterprise-connection";
-import { useInstalledPluginContributions } from "@/react-app/plugin-ui/plugin-ui-contributions";
+import { useInstalledPluginContributions, type PluginConversationTemplate } from "@/react-app/plugin-ui/plugin-ui-contributions";
 import type { WorkspaceAppModelContext } from "@/react-app/plugin-ui/workspace-app-frame";
+import { isProjectBuilderSession, ProjectOverview, WorkCenter } from "@/react-app/domains/work";
 import {
   mergePluginWorkshopInstruction,
   nextPluginWorkshopLabel,
@@ -216,11 +221,9 @@ function ProjectEngineBadge({
   );
 }
 
-function ProjectHeaderButton({ projectName }: { projectName: string }) {
-  const [tooltipOpen, setTooltipOpen] = useState(false);
-
+function ProjectHeaderButton({ projectName, onClick }: { projectName: string; onClick: () => void }) {
   return (
-    <Tooltip open={tooltipOpen} onOpenChange={setTooltipOpen}>
+    <Tooltip>
       <TooltipTrigger
         render={(
           <button
@@ -228,9 +231,7 @@ function ProjectHeaderButton({ projectName }: { projectName: string }) {
             data-testid="session-header-project"
             aria-label={projectName}
             className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-dls-canvas text-dls-text transition-colors hover:bg-dls-surface-muted focus-visible:bg-dls-surface-muted focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none mac:titlebar-no-drag"
-            onClick={() => {
-              window.setTimeout(() => setTooltipOpen(true), 0);
-            }}
+            onClick={onClick}
           >
             <span className="flex size-4 items-center justify-center" aria-hidden="true">
               <img
@@ -247,85 +248,163 @@ function ProjectHeaderButton({ projectName }: { projectName: string }) {
   );
 }
 
+function ProjectWorkNavigation({
+  activeView,
+  onOpenConversation,
+  onOpenOverview,
+  onOpenTasks,
+}: {
+  activeView: "conversation" | "overview" | "tasks";
+  onOpenConversation: () => void;
+  onOpenOverview: () => void;
+  onOpenTasks: () => void;
+}) {
+  return (
+    <nav
+      data-testid="session-header-work-navigation"
+      aria-label={t("work.navigation")}
+      className="ml-1 inline-flex h-7 shrink-0 items-center rounded-lg border border-white/35 bg-white/30 p-0.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.48)] backdrop-blur-xl dark:border-white/[0.07] dark:bg-white/[0.045] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.08)] mac:titlebar-no-drag"
+    >
+      <button
+        type="button"
+        data-testid="session-header-work-conversation"
+        aria-current={activeView === "conversation" ? "page" : undefined}
+        className={cn(
+          "h-6 rounded-md px-2.5 text-[11px] font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+          activeView === "conversation"
+            ? "bg-dls-surface/90 text-dls-text shadow-sm"
+            : "text-dls-secondary hover:bg-white/35 hover:text-dls-text dark:hover:bg-white/[0.07]",
+        )}
+        onClick={onOpenConversation}
+      >
+        {t("work.conversation")}
+      </button>
+      <button
+        type="button"
+        data-testid="session-header-project-overview"
+        aria-current={activeView === "overview" ? "page" : undefined}
+        className={cn(
+          "h-6 rounded-md px-2.5 text-[11px] font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+          activeView === "overview"
+            ? "bg-dls-surface/90 text-dls-text shadow-sm"
+            : "text-dls-secondary hover:bg-white/35 hover:text-dls-text dark:hover:bg-white/[0.07]",
+        )}
+        onClick={onOpenOverview}
+      >
+        {t("work.overview")}
+      </button>
+      <button
+        type="button"
+        data-testid="session-header-work-tasks"
+        aria-current={activeView === "tasks" ? "page" : undefined}
+        className={cn(
+          "h-6 rounded-md px-2.5 text-[11px] font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+          activeView === "tasks"
+            ? "bg-dls-surface/90 text-dls-text shadow-sm"
+            : "text-dls-secondary hover:bg-white/35 hover:text-dls-text dark:hover:bg-white/[0.07]",
+        )}
+        onClick={onOpenTasks}
+      >
+        {t("work.tasks")}
+      </button>
+    </nav>
+  );
+}
+
 function ProjectEngineOptions({
   value,
   onValueChange,
+  onConfigureDeepSeek,
   disabled = false,
 }: {
   value: BuiltInWorkspaceEngineId;
   onValueChange: (engineId: BuiltInWorkspaceEngineId) => void;
+  onConfigureDeepSeek?: () => void;
   disabled?: boolean;
 }) {
   return (
-    <RadioGroup
-      value={value}
-      onValueChange={(engineId) => {
-        if (engineId === DEFAULT_ENGINE_ID || engineId === DEEPSEEK_HARNESS_ENGINE_ID) {
-          onValueChange(engineId);
-        }
-      }}
-      disabled={disabled}
-      aria-label={t("projects.default_engine")}
-      className="grid w-full grid-cols-1 gap-4 sm:grid-cols-2"
-    >
-      {[
-        {
-          id: DEFAULT_ENGINE_ID,
-          name: t("projects.engine_opencode"),
-          description: t("projects.engine_opencode_description"),
-          icon: projectEngineOpenCodeIcon,
-          iconClassName: "h-6 w-[19px] dark:invert",
-        },
-        {
-          id: DEEPSEEK_HARNESS_ENGINE_ID,
-          name: t("projects.engine_dsh"),
-          description: t("projects.engine_dsh_description"),
-          icon: projectEngineDeepSeekIcon,
-          iconClassName: "h-6 w-[33px]",
-        },
-      ].map((engine) => {
-        const selected = value === engine.id;
-        return (
-          <label
-            key={engine.id}
-            data-testid="project-engine-option"
-            data-engine-id={engine.id}
-            data-state={selected ? "selected" : "default"}
-            className={cn(
-              "relative flex min-h-[120px] w-full cursor-pointer flex-col gap-2 rounded-lg border-2 bg-transparent p-4 text-left transition-colors has-focus-visible:ring-3 has-focus-visible:ring-ring/30",
-              selected
-                ? "border-[var(--project-dialog-accent)]"
-                : "border-[var(--project-dialog-option-border)] hover:bg-dls-canvas",
-              disabled && "pointer-events-none opacity-50",
-            )}
-          >
-            <RadioGroupItem
-              value={engine.id}
-              disabled={disabled}
-              className="absolute inset-0 z-10 size-full cursor-pointer opacity-0"
-            />
-            <span className="flex items-start justify-between gap-3">
-              <span className="flex flex-col items-start gap-1.5">
-                <img
-                  src={engine.icon}
-                  alt=""
-                  className={cn("shrink-0 object-contain", engine.iconClassName)}
-                />
-                <span className="text-sm font-semibold leading-6 text-foreground">
-                  {engine.name}
-                </span>
-              </span>
-              <img
-                src={selected ? projectEngineSelectedIcon : projectEngineUnselectedIcon}
-                alt=""
-                className={cn("size-4 shrink-0", selected && "dark:invert")}
+    <div className="space-y-2">
+      <RadioGroup
+        value={value}
+        onValueChange={(engineId) => {
+          if (engineId === DEFAULT_ENGINE_ID || engineId === DEEPSEEK_HARNESS_ENGINE_ID) {
+            onValueChange(engineId);
+          }
+        }}
+        disabled={disabled}
+        aria-label={t("projects.default_engine")}
+        className="grid w-full grid-cols-1 gap-4 sm:grid-cols-2"
+      >
+        {[
+          {
+            id: DEFAULT_ENGINE_ID,
+            name: t("projects.engine_opencode"),
+            description: t("projects.engine_opencode_description"),
+            icon: projectEngineOpenCodeIcon,
+            iconClassName: "h-6 w-[19px] dark:invert",
+          },
+          {
+            id: DEEPSEEK_HARNESS_ENGINE_ID,
+            name: t("projects.engine_dsh"),
+            description: t("projects.engine_dsh_description"),
+            icon: projectEngineDeepSeekIcon,
+            iconClassName: "h-6 w-[33px]",
+          },
+        ].map((engine) => {
+          const selected = value === engine.id;
+          return (
+            <label
+              key={engine.id}
+              data-testid="project-engine-option"
+              data-engine-id={engine.id}
+              data-state={selected ? "selected" : "default"}
+              className={cn(
+                "relative flex min-h-[120px] w-full cursor-pointer flex-col gap-2 rounded-lg border-2 bg-transparent p-4 text-left transition-colors has-focus-visible:ring-3 has-focus-visible:ring-ring/30",
+                selected
+                  ? "border-[var(--project-dialog-accent)]"
+                  : "border-[var(--project-dialog-option-border)] hover:bg-dls-canvas",
+                disabled && "pointer-events-none opacity-50",
+              )}
+            >
+              <RadioGroupItem
+                value={engine.id}
+                disabled={disabled}
+                className="absolute inset-0 z-10 size-full cursor-pointer opacity-0"
               />
-            </span>
-            <span className="text-xs leading-[22px] text-muted-foreground">{engine.description}</span>
-          </label>
-        );
-      })}
-    </RadioGroup>
+              <span className="flex items-start justify-between gap-3">
+                <span className="flex flex-col items-start gap-1.5">
+                  <img
+                    src={engine.icon}
+                    alt=""
+                    className={cn("shrink-0 object-contain", engine.iconClassName)}
+                  />
+                  <span className="text-sm font-semibold leading-6 text-foreground">
+                    {engine.name}
+                  </span>
+                </span>
+                <img
+                  src={selected ? projectEngineSelectedIcon : projectEngineUnselectedIcon}
+                  alt=""
+                  className={cn("size-4 shrink-0", selected && "dark:invert")}
+                />
+              </span>
+              <span className="text-xs leading-[22px] text-muted-foreground">{engine.description}</span>
+            </label>
+          );
+        })}
+      </RadioGroup>
+      {value === DEEPSEEK_HARNESS_ENGINE_ID && onConfigureDeepSeek ? (
+        <button
+          type="button"
+          disabled={disabled}
+          onClick={onConfigureDeepSeek}
+          className="inline-flex items-center gap-1.5 text-xs text-primary transition-colors hover:text-primary/80 disabled:pointer-events-none disabled:opacity-50"
+        >
+          <KeyRound className="size-3.5" />
+          {t("projects.configure_deepseek_key")}
+        </button>
+      ) : null}
+    </div>
   );
 }
 
@@ -347,6 +426,7 @@ export type SessionPageSidebarProps = {
   connectingWorkspaceId: string | null;
   workspaceConnectionStateById: Record<string, WorkspaceConnectionState>;
   newTaskDisabled: boolean;
+  sidebarHydratedFromCache?: boolean;
   startupPhase: BootPhase;
   onOpenSession: (workspaceId: string, sessionId: string) => void;
   onSelectProject: (workspaceId: string) => Promise<boolean> | boolean | void;
@@ -355,7 +435,7 @@ export type SessionPageSidebarProps = {
     folderPath: string;
     engineId: BuiltInWorkspaceEngineId;
   }) => Promise<string | null> | string | null | void;
-  onCreateInitialProjectTask: (draft: ComposerDraft) => Promise<boolean>;
+  onCreateInitialProjectTask: (draft: ComposerDraft, workspaceId?: string) => Promise<boolean>;
   onCreateTaskFromDraft: (workspaceId: string, draft: ComposerDraft) => Promise<boolean>;
   onRenameProject: (workspaceId: string, name: string) => Promise<void> | void;
   onRevealProject: (workspaceId: string) => Promise<void> | void;
@@ -369,6 +449,7 @@ export type SessionPageSidebarProps = {
     templateScope?: WorkContextId,
   ) => Promise<string | null> | string | null | void;
   onCreateTaskWithPrompt?: (workspaceId: string, prompt: string) => void;
+  onCreateProjectBuilder?: (workspaceId: string) => void | Promise<void>;
   onCreateTemplateAuthoring: (
     workspaceId: string,
     input: { category: TemplateCategory; pptxCompatibility?: PptxCompatibility },
@@ -384,6 +465,29 @@ export type SessionPageSurfaceProps = Omit<
   SessionSurfaceProps,
   "client" | "workspaceId" | "sessionId" | "opencodeBaseUrl" | "ipolloworkToken"
 >;
+
+type InitialProjectComposerTooling = Pick<
+  ComposerProps,
+  | "listSkills"
+  | "skills"
+  | "listMcp"
+  | "mcpServers"
+  | "mcpStatus"
+  | "mcpStatuses"
+  | "listImportedPlugins"
+  | "importedPlugins"
+  | "listExternalAgents"
+  | "onUploadInboxFiles"
+>;
+type InitialProjectMcpResult = {
+  servers: McpServerEntry[];
+  statuses: McpStatusMap;
+  status: string | null;
+};
+
+function isMcpServerConfig(value: Record<string, unknown>): value is McpServerEntry["config"] {
+  return value.type === "local" || value.type === "remote";
+}
 
 export type SessionPageProps = {
   selectedSessionId: string | null;
@@ -448,9 +552,12 @@ export type SessionPageProps = {
 
 function InitialProjectTaskStarter({
   surface,
-  engineId,
+  workspaceClient,
   workspaceId,
-  onSubmit,
+  opencodeBaseUrl,
+  ipolloworkToken,
+  engineId,
+  promptTemplates,
   templates,
   templatesLoading,
   templateBusyId,
@@ -458,18 +565,23 @@ function InitialProjectTaskStarter({
   onUseTemplate,
   onInstallTemplate,
   onRequestTemplates,
+  onSubmit,
 }: {
   surface: SessionPageSurfaceProps;
+  workspaceClient?: iPolloWorkServerClient | null;
+  workspaceId?: string | null;
+  opencodeBaseUrl?: string | null;
+  ipolloworkToken?: string | null;
   engineId?: string | null;
-  workspaceId: string;
-  onSubmit: (draft: ComposerDraft) => Promise<boolean>;
-  templates: TemplateCatalogItem[];
-  templatesLoading: boolean;
+  promptTemplates?: PluginConversationTemplate[];
+  templates?: TemplateCatalogItem[];
+  templatesLoading?: boolean;
   templateBusyId?: string | null;
-  getTemplateCover: (templateId: string) => Promise<{ data: ArrayBuffer; contentType?: string | null }>;
-  onUseTemplate: (templateId: string, surface: "design" | "video") => void;
-  onInstallTemplate: (templateId: string) => void;
-  onRequestTemplates: () => void;
+  getTemplateCover?: TemplateCoverLoader;
+  onUseTemplate?: (templateId: string, surface: "design" | "video") => void;
+  onInstallTemplate?: (templateId: string) => void;
+  onRequestTemplates?: () => void;
+  onSubmit: (draft: ComposerDraft) => Promise<boolean>;
 }) {
   const [draft, setDraft] = useState("");
   const [attachments, setAttachments] = useState<ComposerAttachment[]>([]);
@@ -477,6 +589,123 @@ function InitialProjectTaskStarter({
   const [starterMode, setStarterMode] = useState<NewConversationMode>("work");
   const [starterCapability, setStarterCapability] = useState<StarterCapability | null>(null);
   const [sending, setSending] = useState(false);
+  const [toolSkills, setToolSkills] = useState<SkillCard[]>([]);
+  const [toolMcpServers, setToolMcpServers] = useState<McpServerEntry[]>([]);
+  const [toolMcpStatus, setToolMcpStatus] = useState<string | null>(null);
+  const [toolMcpStatuses, setToolMcpStatuses] = useState<McpStatusMap>({});
+  const [toolImportedPlugins, setToolImportedPlugins] = useState<iPolloWorkPluginPackageItem[]>([]);
+  const [pastedText, setPastedText] = useState<Array<{ id: string; label: string; text: string; lines: number }>>([]);
+
+  const opencodeClient = useMemo(
+    () => opencodeBaseUrl && ipolloworkToken
+      ? createClient(opencodeBaseUrl, undefined, { token: ipolloworkToken, mode: "ipollowork" })
+      : null,
+    [ipolloworkToken, opencodeBaseUrl],
+  );
+
+  const listSkills = useCallback(async (): Promise<SkillCard[]> => {
+    if (!workspaceClient || !workspaceId) return [];
+    const response = await workspaceClient.listSkills(workspaceId, { includeGlobal: true });
+    const next = (response.items ?? []).map((skill) => ({
+      name: skill.name,
+      path: skill.path,
+      description: skill.description,
+      trigger: skill.trigger,
+    } satisfies SkillCard));
+    setToolSkills(next);
+    return next;
+  }, [workspaceClient, workspaceId]);
+
+  const listMcp = useCallback(async (): Promise<InitialProjectMcpResult> => {
+    if (!workspaceClient || !workspaceId) return { servers: [], statuses: {}, status: null };
+    const response = await workspaceClient.listMcp(workspaceId);
+    const servers = (response.items ?? []).flatMap((entry) => {
+      if (!isMcpServerConfig(entry.config)) return [];
+      return [{ name: entry.name, config: entry.config } satisfies McpServerEntry];
+    });
+    let statuses: McpStatusMap = {};
+    try {
+      if (opencodeClient && surface.workspaceRoot.trim()) {
+        statuses = unwrap<McpStatusMap>(await opencodeClient.mcp.status({ directory: surface.workspaceRoot.trim() }));
+      }
+    } catch {
+      statuses = {};
+    }
+    const status = servers.length ? null : "No MCP servers loaded.";
+    setToolMcpServers(servers);
+    setToolMcpStatuses(statuses);
+    setToolMcpStatus(status);
+    return { servers, statuses, status };
+  }, [opencodeClient, surface.workspaceRoot, workspaceClient, workspaceId]);
+
+  const listImportedPlugins = useCallback(async (): Promise<iPolloWorkPluginPackageItem[]> => {
+    if (!workspaceClient || !workspaceId) return [];
+    const response = await workspaceClient.listPluginPackages(workspaceId);
+    const plugins = response.items
+      .filter((item) => item.enabled)
+      .sort((left, right) => left.name.localeCompare(right.name));
+    setToolImportedPlugins(plugins);
+    return plugins;
+  }, [workspaceClient, workspaceId]);
+
+  const listExternalAgents = useCallback(async (): Promise<iPolloWorkPluginPackageItem[]> => {
+    if (!workspaceClient || !workspaceId) return [];
+    const response = await workspaceClient.listPluginPackages(workspaceId);
+    return response.items
+      .filter((item) =>
+        item.enabled
+        && Boolean(item.manifest.composer?.prompt.trim())
+        && item.manifest.resources.some((resource) =>
+          resource.provides?.includes("service:external-subagent") === true
+          && !item.disabledResourceIds.includes(resource.id)
+        )
+      )
+      .sort((left, right) => left.name.localeCompare(right.name));
+  }, [workspaceClient, workspaceId]);
+
+  const uploadInboxFiles = useCallback(async (files: File[]) => {
+    if (surface.onUploadInboxFiles) return surface.onUploadInboxFiles(files);
+    if (!workspaceClient || !workspaceId) return [];
+    return Promise.all(files.filter(Boolean).map((file) => workspaceClient.uploadInbox(workspaceId, file)));
+  }, [surface.onUploadInboxFiles, workspaceClient, workspaceId]);
+
+  const handlePasteText = useCallback((text: string) => {
+    const id = `paste-${Math.random().toString(36).slice(2)}`;
+    const label = `${id.slice(-4)} · ${text.split(/\r?\n/).length} lines`;
+    setPastedText((current) => [...current, { id, label, text, lines: text.split(/\r?\n/).length }]);
+    setDraft((current) => `${current}[pasted text ${label}]`);
+  }, []);
+
+  const handleExpandPastedText = useCallback((id: string) => {
+    setPastedText((current) => {
+      const part = current.find((item) => item.id === id);
+      if (!part) return current;
+      setDraft((draftValue) => draftValue.replace(`[pasted text ${part.label}]`, part.text));
+      return current.filter((item) => item.id !== id);
+    });
+  }, []);
+
+  const handleRemovePastedText = useCallback((id: string) => {
+    setPastedText((current) => {
+      const part = current.find((item) => item.id === id);
+      if (!part) return current;
+      setDraft((draftValue) => draftValue.replace(`[pasted text ${part.label}]`, ""));
+      return current.filter((item) => item.id !== id);
+    });
+  }, []);
+
+  const composerTooling: InitialProjectComposerTooling = {
+    listSkills,
+    skills: toolSkills,
+    listMcp,
+    mcpServers: toolMcpServers,
+    mcpStatus: toolMcpStatus,
+    mcpStatuses: toolMcpStatuses,
+    listImportedPlugins,
+    importedPlugins: toolImportedPlugins,
+    listExternalAgents,
+    onUploadInboxFiles: uploadInboxFiles,
+  };
 
   useEffect(() => {
     attachmentsRef.current = attachments;
@@ -503,6 +732,7 @@ function InitialProjectTaskStarter({
       const created = await onSubmit(composerDraft);
       if (!created) return false;
       clearSubmittedDraft(composerDraft.attachments);
+      setPastedText([]);
       return true;
     } finally {
       setSending(false);
@@ -512,13 +742,21 @@ function InitialProjectTaskStarter({
   const submit = async () => {
     const text = draft.trim();
     if (!text && attachments.length === 0 && !starterCapability) return;
-    const parts: ComposerDraft["parts"] = text ? [{ type: "text", text }] : [];
+    const resolvedText = pastedText.reduce(
+      (current, item) => current.replace(`[pasted text ${item.label}]`, item.text),
+      text,
+    );
+    const parts: ComposerDraft["parts"] = parseComposerParts(text, {
+      mentions: {},
+      pasteParts: pastedText,
+      designSelectionLabel: () => undefined,
+    });
     const composerDraft: ComposerDraft = {
       mode: "prompt",
       parts,
       attachments,
       text,
-      resolvedText: text,
+      resolvedText,
       capability: starterCapability
         ? { id: starterCapability.id, instruction: starterCapability.instruction }
         : undefined,
@@ -559,6 +797,7 @@ function InitialProjectTaskStarter({
           <NewConversationStarter
             selectedMode={starterMode}
             selectedCapabilityId={starterCapability?.id}
+            promptTemplates={promptTemplates}
             templates={templates}
             templatesLoading={templatesLoading}
             templateBusyId={templateBusyId}
@@ -577,7 +816,17 @@ function InitialProjectTaskStarter({
             }}
           />
         </div>
-        <div data-testid="new-conversation-starter-composer-shell" className="mt-6 w-full max-w-[616px] shrink-0">
+        <div data-testid="new-conversation-starter-composer-shell" className="mt-6 w-full shrink-0">
+          {(surface.providerConnectedCount ?? 0) === 0 ? (
+            <button
+              type="button"
+              className="mb-2 flex w-full items-center gap-2 rounded-lg border border-amber-7/40 bg-amber-2/30 px-3 py-2 text-left text-xs text-amber-11 transition-colors hover:bg-amber-3/40"
+              onClick={() => surface.onOpenSettingsSection?.("providers")}
+            >
+              <span className="font-medium">{t("session.no_model_connected")}</span>
+              <span className="text-amber-11/70">{t("session.add_provider_hint")}</span>
+            </button>
+          ) : null}
           <ReactSessionComposer
             draft={draft}
             mentions={{}}
@@ -588,6 +837,7 @@ function InitialProjectTaskStarter({
             busy={sending}
             queuedCount={0}
             disabled={sending || Boolean(surface.modelUnavailable)}
+            inputDisabled={sending}
             modelUnavailable={Boolean(surface.modelUnavailable)}
             statusLabel=""
             modelPickerOpen={surface.modelPickerOpen}
@@ -610,26 +860,38 @@ function InitialProjectTaskStarter({
             listAgents={surface.listAgents}
             onSelectAgent={surface.onSelectAgent}
             listCommands={surface.listCommands}
-            listExternalAgents={() => Promise.resolve([])}
+            listSkills={composerTooling.listSkills}
+            skills={composerTooling.skills}
+            listMcp={composerTooling.listMcp}
+            mcpServers={composerTooling.mcpServers}
+            mcpStatus={composerTooling.mcpStatus}
+            mcpStatuses={composerTooling.mcpStatuses}
+            listImportedPlugins={composerTooling.listImportedPlugins}
+            importedPlugins={composerTooling.importedPlugins}
+            listExternalAgents={composerTooling.listExternalAgents}
             onOpenSettingsSection={surface.onOpenSettingsSection}
-            recentFiles={[]}
-            searchFiles={() => Promise.resolve([])}
+            recentFiles={surface.recentFiles}
+            searchFiles={surface.searchFiles}
             onInsertMention={(_kind, value) => setDraft((current) => `${current}@${value} `)}
-            onPasteText={(text) => setDraft((current) => `${current}${text}`)}
+            onPasteText={handlePasteText}
             onUnsupportedFileLinks={(links) => setDraft((current) => `${current}${links.join("\n")}`)}
-            pastedText={[]}
-            onExpandPastedText={() => {}}
-            onRemovePastedText={() => {}}
-            isRemoteWorkspace={false}
-            isSandboxWorkspace={false}
-            onUploadInboxFiles={null}
-            draftScopeKey={`new-task:${workspaceId}:${engineId?.trim() || DEFAULT_ENGINE_ID}`}
+            pastedText={pastedText}
+            onExpandPastedText={handleExpandPastedText}
+            onRemovePastedText={handleRemovePastedText}
+            isRemoteWorkspace={surface.isRemoteWorkspace}
+            isSandboxWorkspace={surface.isSandboxWorkspace}
+            onUploadInboxFiles={composerTooling.onUploadInboxFiles}
+            draftScopeKey={`new-task:${workspaceId ?? "new-project"}:${engineId?.trim() || DEFAULT_ENGINE_ID}`}
             layout="inline"
-            inlineAppearance="engine-selected"
             placeholder={newConversationPlaceholder()}
+            topAccessory={starterCapability ? (
+              <div className="mx-4 mt-2 flex flex-wrap gap-1.5">
+                <StarterCapabilityChip capability={starterCapability} onClear={() => setStarterCapability(null)} />
+              </div>
+            ) : null}
             endAccessory={(
               <ProjectEngineBadge
-                engineId={engineId}
+                engineId={engineId ?? DEFAULT_ENGINE_ID}
                 testId="initial-project-engine-badge"
               />
             )}
@@ -637,6 +899,23 @@ function InitialProjectTaskStarter({
         </div>
       </div>
     </div>
+  );
+}
+
+function getSidebarInitialLoading(props: SessionPageSidebarProps) {
+  if (props.projectSessionLists.some((project) => project.sessions.length > 0)) {
+    return false;
+  }
+  if (props.sidebarHydratedFromCache) return false;
+  if (
+    props.startupPhase !== "sessionIndexReady" &&
+    props.startupPhase !== "firstSessionReady" &&
+    props.startupPhase !== "ready"
+  ) {
+    return true;
+  }
+  return props.projectSessionLists.some(
+    (project) => project.status === "loading" || project.status === "idle",
   );
 }
 
@@ -938,7 +1217,7 @@ export function SessionPage(props: SessionPageProps) {
   ));
   const sessionPanelState = useSessionPanelState(props.selectedSessionId ?? "");
   const activePanelTab = useActivePanelTab(props.selectedSessionId ?? "");
-  const { workspaceApps } = useInstalledPluginContributions(
+  const { conversationTemplates, workspaceApps } = useInstalledPluginContributions(
     props.ipolloworkServerClient,
     props.runtimeWorkspaceId,
   );
@@ -1235,11 +1514,7 @@ export function SessionPage(props: SessionPageProps) {
     if (!props.ipolloworkServerClient || !props.runtimeWorkspaceId) {
       return Promise.reject(new Error("Template cover is unavailable."));
     }
-    return props.ipolloworkServerClient.getTemplateCover(
-      props.runtimeWorkspaceId,
-      templateId,
-      PERSONAL_WORK_CONTEXT_ID,
-    );
+    return props.ipolloworkServerClient.getTemplateCover(props.runtimeWorkspaceId, templateId, PERSONAL_WORK_CONTEXT_ID);
   }, [props.ipolloworkServerClient, props.runtimeWorkspaceId]);
   const validateCurrentTemplate = useCallback(async () => {
     if (!props.ipolloworkServerClient || !props.runtimeWorkspaceId || !props.selectedSessionId) return null;
@@ -1671,7 +1946,7 @@ export function SessionPage(props: SessionPageProps) {
   const [renameProjectBusy, setRenameProjectBusy] = useState(false);
   const [deleteProjectId, setDeleteProjectId] = useState<string | null>(null);
   const [deleteProjectBusy, setDeleteProjectBusy] = useState(false);
-  const [mainWorkspaceView, setMainWorkspaceView] = useState<"extensions" | null>(null);
+  const [mainWorkspaceView, setMainWorkspaceView] = useState<"extensions" | "schedule" | "project-overview" | "project-board" | null>(null);
   const observedPluginWorkshopSessionRef = useRef<string | null>(null);
   const autoOpenedPluginWorkshopSessionRef = useRef<string | null>(null);
   const preserveSidePanelOnPanelOpenRef = useRef(false);
@@ -2611,7 +2886,19 @@ export function SessionPage(props: SessionPageProps) {
     setCurrentSidePanel(null);
     setMainWorkspaceView("extensions");
   }, [setCurrentSidePanel]);
-  const closeExtensionsRailPane = useCallback(() => {
+  const openGlobalSchedule = useCallback(() => {
+    setCurrentSidePanel(null);
+    setMainWorkspaceView("schedule");
+  }, [setCurrentSidePanel]);
+  const openProjectOverview = useCallback(() => {
+    setCurrentSidePanel(null);
+    setMainWorkspaceView("project-overview");
+  }, [setCurrentSidePanel]);
+  const openProjectBoard = useCallback(() => {
+    setCurrentSidePanel(null);
+    setMainWorkspaceView("project-board");
+  }, [setCurrentSidePanel]);
+  const closeMainWorkspaceView = useCallback(() => {
     setMainWorkspaceView(null);
   }, []);
   const openPluginWorkshopForSession = useCallback((
@@ -2736,7 +3023,7 @@ export function SessionPage(props: SessionPageProps) {
     {
       id: "plugin-workshop",
       label: t("plugin_workshop.title"),
-      iconSrc: publicAssetUrl("sidebar-icon/plugin.svg"),
+      iconSrc: publicAssetUrl("sidebar-icon/tool-case.svg"),
       active: panelRailActive && activePanelTab?.type === "plugin-studio",
       onClick: openPluginWorkshop,
       disabled: !props.selectedWorkspaceId,
@@ -2866,11 +3153,12 @@ export function SessionPage(props: SessionPageProps) {
     () => sessionTitleForId(props.sidebar.projectSessionLists, sessionActionId),
     [props.sidebar.projectSessionLists, sessionActionId],
   );
-  const hasNamedProject = props.sidebar.projectSessionLists.some((project) => !project.workspace.isDefault);
+  const selectedProject = props.sidebar.projectSessionLists.find(
+    (project) => project.workspace.id === props.selectedWorkspaceId,
+  );
   const showWorkspaceSetupEmptyState = props.workspaces.length === 0 && !hasSelectedTask;
   const showNewTaskStarter = !props.selectedSessionId && Boolean(props.surface) && !showWorkspaceSetupEmptyState;
   const showNewConversationChrome = !hasSelectedTask && !showWorkspaceSetupEmptyState;
-
   const showStartupSkeleton =
     !hasSelectedTask &&
     !showProjectNoTasksState &&
@@ -2934,21 +3222,26 @@ export function SessionPage(props: SessionPageProps) {
       settledSessionId !== props.selectedSessionId &&
       !templateEntrySurfaceReady,
   );
+  const showSelectedProjectNavigation = Boolean(selectedWorkspaceProject && !selectedWorkspaceProject.workspace.isDefault);
   const showHeaderMenu = Boolean(
-    hasSelectedTask || props.developerMode,
+    hasSelectedTask || props.developerMode || showSelectedProjectNavigation,
   );
   const showMainHeaderTitle = Boolean(
     !rightWorkspaceExpanded &&
-      (showWorkspaceSetupEmptyState || props.selectedSessionId),
+      (showWorkspaceSetupEmptyState || props.selectedSessionId || showSelectedProjectNavigation),
   );
 
   const showMainHeaderMenu = showHeaderMenu && showMainHeaderTitle;
-  const mainHeaderHidden = mainWorkspaceView === "extensions"
-    || showProjectNoTasksState
-    || (showNewConversationChrome && !sidebarVisuallyCollapsed);
-  const floatingHeaderActionClosesExtensions = mainWorkspaceView === "extensions";
-  const floatingHeaderActionLabel = floatingHeaderActionClosesExtensions
-    ? t("plugin_library.close_page")
+  const projectBuilderActive = isProjectBuilderSession(props.selectedWorkspaceId, props.selectedSessionId);
+  const projectWorkActiveView = mainWorkspaceView === "project-overview"
+    ? "overview"
+    : mainWorkspaceView === "project-board"
+      ? "tasks"
+      : "conversation";
+  const mainHeaderHidden = mainWorkspaceView === "extensions" || mainWorkspaceView === "schedule";
+  const floatingHeaderActionClosesWorkspaceView = mainHeaderHidden;
+  const floatingHeaderActionLabel = floatingHeaderActionClosesWorkspaceView
+    ? t("common.close")
     : sidePanelOpen ? t("session.right_panel_close") : t("session.right_panel_open");
   const visibleWorkspaceWidth = viewportWidth - (shellConfig.sidebar && sidebarOpen ? effectiveLeftSidebarWidth : 0);
   const floatingRightPanelToggleOffset = sidePanelOpen
@@ -3097,6 +3390,7 @@ export function SessionPage(props: SessionPageProps) {
           onOpenSession={handleSidebarOpenSession}
           onSelectProject={props.sidebar.onSelectProject}
           onOpenCreateProject={isElectronRuntime() ? openCreateProjectDialog : undefined}
+          onCreateProjectBuilder={props.sidebar.onCreateProjectBuilder}
           onOpenRenameProject={openRenameProject}
           onRevealProject={(workspaceId) => void props.sidebar.onRevealProject(workspaceId)}
           onOpenDeleteProject={setDeleteProjectId}
@@ -3121,6 +3415,8 @@ export function SessionPage(props: SessionPageProps) {
           }}
           activePrimaryItem={templateMarketOpen
             ? "template-market"
+            : mainWorkspaceView === "schedule"
+              ? "schedule"
             : mainWorkspaceView === "extensions"
               ? "extensions"
               : activePanelTab?.type === "plugin-studio"
@@ -3130,6 +3426,7 @@ export function SessionPage(props: SessionPageProps) {
           onOpenSettings={props.onOpenSettings}
           onOpenHelp={props.onOpenHelp}
           onOpenTemplateMarket={() => setTemplateMarketOpen(true)}
+          onOpenSchedule={openGlobalSchedule}
           onOpenExtensions={openExtensionsRailPane}
           onOpenPluginWorkshop={openPluginWorkshop}
           onSignIn={openCloudSignIn}
@@ -3150,11 +3447,11 @@ export function SessionPage(props: SessionPageProps) {
                       style={{ right: floatingRightPanelToggleOffset }}
                       aria-label={floatingHeaderActionLabel}
                       title={floatingHeaderActionLabel}
-                      aria-pressed={floatingHeaderActionClosesExtensions ? undefined : sidePanelOpen}
-                      disabled={!floatingHeaderActionClosesExtensions && !props.selectedSessionId && !sidePanelOpen}
-                      onClick={floatingHeaderActionClosesExtensions ? closeExtensionsRailPane : toggleRightPanel}
+                      aria-pressed={floatingHeaderActionClosesWorkspaceView ? undefined : sidePanelOpen}
+                      disabled={!floatingHeaderActionClosesWorkspaceView && !props.selectedSessionId && !sidePanelOpen}
+                      onClick={floatingHeaderActionClosesWorkspaceView ? closeMainWorkspaceView : toggleRightPanel}
                     >
-                      {floatingHeaderActionClosesExtensions ? (
+                      {floatingHeaderActionClosesWorkspaceView ? (
                         <X className="size-4" />
                       ) : (
                         <img
@@ -3181,7 +3478,7 @@ export function SessionPage(props: SessionPageProps) {
             >
               <main className="flex h-full min-w-0 flex-col overflow-hidden border-r border-border/40 dark:border-white/[0.055]">
           <header className={cn(
-            "relative z-10 h-10 shrink-0 items-center justify-between border-b border-border px-4 [border-bottom-width:0.5px] md:grid md:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] md:px-6 mac:titlebar-drag mac:backdrop-blur-2xl mac:backdrop-saturate-150 @container/titlebar",
+            "relative z-10 h-10 shrink-0 items-center justify-between border-b border-white/30 bg-background/80 px-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.4)] backdrop-blur-2xl backdrop-saturate-150 [border-bottom-width:0.5px] dark:border-white/[0.06] dark:bg-background/72 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] md:grid md:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] md:px-6 mac:titlebar-drag @container/titlebar",
             mainHeaderHidden ? "hidden!" : "flex",
             sidebarVisuallyCollapsed && shellConfig.sidebar ? "!pl-16 mac:!pl-32" : "",
           )}>
@@ -3202,12 +3499,21 @@ export function SessionPage(props: SessionPageProps) {
             <div className="relative z-10 flex min-w-0 max-w-full items-center gap-1 md:justify-self-start">
               {showMainHeaderTitle ? (
                 <>
-                  {props.selectedSessionId ? <ProjectHeaderButton projectName={selectedProjectName} /> : null}
+                  {showSelectedProjectNavigation ? (
+                    <ProjectHeaderButton projectName={selectedProjectName} onClick={openProjectOverview} />
+                  ) : null}
                   <h1 className="truncate text-[14px] font-medium text-dls-text">
                     {showWorkspaceSetupEmptyState
                       ? t("workspace.empty_state_header")
-                      : selectedSessionTitle || t("session.default_title")}
+                      : props.selectedSessionId
+                        ? selectedSessionTitle || t("session.default_title")
+                        : selectedProjectName}
                   </h1>
+                  {projectBuilderActive ? (
+                    <span className="shrink-0 rounded-full bg-primary/10 px-2 py-0.5 text-[9px] font-medium text-primary" data-testid="project-builder-badge">
+                      {t("project_builder.title")}
+                    </span>
+                  ) : null}
                 </>
               ) : null}
 
@@ -3278,6 +3584,15 @@ export function SessionPage(props: SessionPageProps) {
                   </DropdownMenuContent>
                 </DropdownMenu>
               ) : null}
+
+              {showSelectedProjectNavigation ? (
+                <ProjectWorkNavigation
+                  activeView={projectWorkActiveView}
+                  onOpenConversation={closeMainWorkspaceView}
+                  onOpenOverview={openProjectOverview}
+                  onOpenTasks={openProjectBoard}
+                />
+              ) : null}
             </div>
 
             <div data-testid="session-header-actions" className="relative z-10 flex items-center gap-1.5 text-gray-10 md:col-start-3 md:justify-self-end mac:titlebar-no-drag">
@@ -3329,7 +3644,28 @@ export function SessionPage(props: SessionPageProps) {
                 </div>
               ) : null}
 
-              {mainWorkspaceView === "extensions" && props.settingsSlot ? (
+              {mainWorkspaceView === "project-overview" ? (
+                <ProjectOverview
+                  projectName={selectedProjectName}
+                  workspaceId={props.runtimeWorkspaceId}
+                  client={props.ipolloworkServerClient}
+                  engineId={props.selectedWorkspaceDisplay.engineId}
+                  providers={props.providers ?? []}
+                  projectModel={props.surface?.selectedModel ?? { providerID: "", modelID: "" }}
+                  onOpenTasks={openProjectBoard}
+                  onConfigureModels={props.surface?.onConfigureModels}
+                  onConfigureTokenStar={props.surface?.onConfigureTokenStar}
+                />
+              ) : mainWorkspaceView === "schedule" || mainWorkspaceView === "project-board" ? (
+                <WorkCenter
+                  mode={mainWorkspaceView === "schedule" ? "global" : "project"}
+                  selectedWorkspaceId={props.selectedWorkspaceId}
+                  runtimeWorkspaceId={props.runtimeWorkspaceId}
+                  selectedClient={props.ipolloworkServerClient}
+                  environmentClient={props.environmentClient ?? null}
+                  workspaces={props.workspaces}
+                />
+              ) : mainWorkspaceView === "extensions" && props.settingsSlot ? (
                 <div className="flex h-full min-h-0 flex-col overflow-y-auto bg-background">
                   {props.settingsSlot}
                 </div>
@@ -3365,8 +3701,12 @@ export function SessionPage(props: SessionPageProps) {
                 <InitialProjectTaskStarter
                   key={`${props.selectedWorkspaceId}:${props.selectedWorkspaceDisplay.engineId ?? DEFAULT_ENGINE_ID}`}
                   surface={props.surface}
+                  workspaceClient={props.ipolloworkServerClient}
+                  workspaceId={props.runtimeWorkspaceId}
+                  opencodeBaseUrl={props.opencodeBaseUrl}
+                  ipolloworkToken={props.ipolloworkServerToken}
                   engineId={props.selectedWorkspaceDisplay.engineId}
-                  workspaceId={props.selectedWorkspaceId}
+                  promptTemplates={conversationTemplates}
                   templates={starterTemplateCatalog}
                   templatesLoading={starterTemplateCatalogLoading}
                   templateBusyId={templateBusyId}
@@ -3381,9 +3721,9 @@ export function SessionPage(props: SessionPageProps) {
                   }}
                   onInstallTemplate={(templateId) => void installStarterTemplate(templateId)}
                   onRequestTemplates={() => void refreshStarterTemplateCatalog()}
-                  onSubmit={hasNamedProject
+                  onSubmit={selectedProject && !selectedProject.workspace.isDefault
                     ? (draft) => props.sidebar.onCreateTaskFromDraft(props.selectedWorkspaceId, draft)
-                    : props.sidebar.onCreateInitialProjectTask}
+                    : (draft) => props.sidebar.onCreateInitialProjectTask(draft)}
                 />
               ) : null}
 
@@ -3661,7 +4001,7 @@ export function SessionPage(props: SessionPageProps) {
                               onClick={item.onClick}
                               disabled={item.disabled}
                             >
-                              <img src={item.iconSrc} alt="" className="size-4 shrink-0" />
+                              <img src={item.iconSrc} alt="" className={cn("size-4 shrink-0", item.id === "plugin-workshop" && "dark:invert")} />
                               <span className="min-w-0 flex-1 truncate">{item.label}</span>
                             </button>
                           );
@@ -3867,6 +4207,7 @@ export function SessionPage(props: SessionPageProps) {
               <ProjectEngineOptions
                 value={createProjectEngineId}
                 onValueChange={setCreateProjectEngineId}
+                onConfigureDeepSeek={() => props.onOpenProviderAuth?.("deepseek-official")}
                 disabled={createProjectBusy}
               />
               <div className="flex min-h-9 items-center gap-2 rounded-lg bg-[var(--project-dialog-notice)] px-4 py-2 text-[11px] leading-4 text-muted-foreground">

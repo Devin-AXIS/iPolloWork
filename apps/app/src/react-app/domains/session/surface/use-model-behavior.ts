@@ -4,10 +4,9 @@
 // the model picker's lazy option loader until that moves into its own hook.
 import { useMemo } from "react";
 
-import { getModelBehaviorSummary } from "@/app/lib/model-behavior";
+import { getModelBehaviorSummary, tokenStarModelSupportsEffort } from "@/app/lib/model-behavior";
 import type { ModelRef, ProviderListItem } from "@/app/types";
 import { t } from "@/i18n";
-import { tokenStarModelSupportsEffort } from "@/react-app/domains/connections/provider-auth/tokenstar-provider";
 
 type ProviderModel = ProviderListItem["models"][string];
 

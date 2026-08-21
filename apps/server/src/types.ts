@@ -125,6 +125,7 @@ export interface Capabilities {
   commands: { read: boolean; write: boolean };
   config: { read: boolean; write: boolean };
   templates: { read: boolean; install: boolean; import: boolean; uninstall: boolean };
+  work: { read: boolean; write: boolean; board: boolean; schedule: boolean };
   engine?: {
     id: string;
     sessions: { read: true; create: boolean; prompt: boolean; delete: boolean };

@@ -12,12 +12,12 @@ import {
   PanelsTopLeft,
   Plus,
   RotateCw,
-  WandSparkles,
   X,
 } from "lucide-react";
 import { useDragControls } from "motion/react";
 
 import type { iPolloWorkServerClient } from "@/app/lib/ipollowork-server";
+import { publicAssetUrl } from "@/app/lib/public-asset";
 import { PanelTab, PanelTabClose, PanelTabItem, PanelTabList } from "@/components/panel-tabs";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
@@ -192,7 +192,7 @@ function SidePanelTab({ tab, active, onSelect, onClose }: SidePanelTabProps) {
               <Globe />
             )
           ) : (
-            tab.type === "design" ? <Code2 /> : tab.type === "video" ? <Film /> : tab.type === "workspace-app" ? <PanelsTopLeft /> : tab.type === "plugin-studio" ? <WandSparkles /> : <ArtifactIcon type={tab.preview} />
+            tab.type === "design" ? <Code2 /> : tab.type === "video" ? <Film /> : tab.type === "workspace-app" ? <PanelsTopLeft /> : tab.type === "plugin-studio" ? <img src={publicAssetUrl("sidebar-icon/tool-case.svg")} alt="" className="size-4 dark:invert" /> : <ArtifactIcon type={tab.preview} />
           )}
           <span className="min-w-0 flex-1 truncate text-left">{tab.label}</span>
         </PanelTab>
@@ -672,7 +672,7 @@ export function SidePanel({
                           "h-9 rounded-xl px-2 text-[14px] font-normal tracking-[-0.56px] text-muted-foreground focus:bg-muted focus:text-foreground hover:bg-muted hover:text-foreground active:bg-accent active:text-foreground data-highlighted:bg-muted data-highlighted:text-foreground data-disabled:opacity-40",
                         ].join(" ")}
                       >
-                        <img src={item.iconSrc} alt="" className="size-4 shrink-0" />
+                        <img src={item.iconSrc} alt="" className={cn("size-4 shrink-0", item.id === "plugin-workshop" && "dark:invert")} />
                         <span className="flex-1">{item.label}</span>
                         {item.shortcut ? (
                           <span className="text-[12px] tracking-[-0.24px] text-muted-foreground">{item.shortcut}</span>

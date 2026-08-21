@@ -10,9 +10,7 @@ import {
   Loader2,
   PackageCheck,
   RefreshCw,
-  Sparkles,
   Upload,
-  WandSparkles,
 } from "lucide-react";
 import { downloadBlobAsFile } from "@/app/lib/download";
 import { readPluginPackageArchive } from "@/app/lib/plugin-package-archive";
@@ -30,6 +28,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { toast } from "@/components/ui/sonner";
+import { t } from "@/i18n";
 import { cn } from "@/lib/utils";
 import { ConfirmModal } from "@/react-app/design-system/modals/confirm-modal";
 import { notifyPluginUiContributionsChanged, type PluginUiSurface } from "@/react-app/plugin-ui/plugin-ui-contributions";
@@ -61,16 +60,10 @@ type PendingPluginWorkshopImport = {
   directoryId: string | null;
 };
 
-const PLUGIN_WORKSHOP_CAPABILITIES = [
-  { Icon: Blocks, label: "Studio" },
-  { Icon: Sparkles, label: "Skills" },
-  { Icon: WandSparkles, label: "MCP Server" },
-];
-
 const AI_REPAIR_DEBOUNCE_MS = 600;
 
 function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : "插件工坊操作失败";
+  return error instanceof Error ? error.message : t("plugin_workshop.operation_failed");
 }
 
 function workshopSurface(snapshot: PluginWorkshopProjectSnapshot): PluginUiSurface | null {
@@ -117,31 +110,23 @@ function PluginWorkshopBlankState(props: {
   onSelectProject: (project: PluginWorkshopProjectSummary) => void;
 }) {
   return (
-    <div className="flex h-full min-h-0 items-center justify-center overflow-auto bg-background px-8 py-16 text-center" data-testid="plugin-workshop-empty">
-      <div className="max-w-md">
-        <div className="text-[28px] font-medium tracking-[-1.4px] text-foreground">iPollo Work</div>
-        <h2 className="mt-1 text-[42px] font-black leading-none tracking-[-3px] text-foreground">把想法变成成果</h2>
-        <p className="mx-auto mt-7 max-w-sm text-sm leading-6 text-muted-foreground">
-          在左侧告诉 AI 你想做什么插件。Studio、MCP Server、Skills 和脚本会统一生成到当前项目的插件目录中。
+    <div className="flex h-full min-h-0 items-center justify-center overflow-auto bg-background px-6 py-10" data-testid="plugin-workshop-empty">
+      <section className="w-full max-w-xl">
+        <h2 className="text-base font-semibold tracking-[-0.2px] text-foreground">{t("plugin_workshop.title")}</h2>
+        <p className="mt-1 max-w-lg text-sm leading-6 text-muted-foreground">
+          {t("plugin_workshop.blank_description")}
         </p>
-        <div className="mt-6 flex flex-wrap justify-center gap-2 text-xs text-muted-foreground">
-          {PLUGIN_WORKSHOP_CAPABILITIES.map(({ Icon, label }) => (
-            <span key={label} className="inline-flex items-center gap-1.5 rounded-full border border-border bg-muted/40 px-3 py-1.5">
-              <Icon className="size-3.5" />{label}
-            </span>
-          ))}
-        </div>
         {props.projects.length ? (
           <select
             defaultValue=""
-            className="mt-8 h-9 w-full rounded-lg border border-input bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
-            aria-label="选择要试用的插件"
+            className="mt-6 h-9 w-full rounded-lg border border-input bg-muted/20 px-3 text-sm text-foreground outline-none transition-colors hover:bg-muted/40 focus:border-ring focus:ring-2 focus:ring-ring/20"
+            aria-label={t("plugin_workshop.select_plugin")}
             onChange={(event) => {
               const project = props.projects.find((entry) => entry.directoryId === event.currentTarget.value);
               if (project) props.onSelectProject(project);
             }}
           >
-            <option value="" disabled>选择要制作或试用的插件…</option>
+            <option value="" disabled>{t("plugin_workshop.select_plugin_placeholder")}</option>
             {props.projects.map((project) => (
               <option key={project.directoryId} value={project.directoryId}>
                 {project.manifest?.name ?? project.directoryId}
@@ -149,12 +134,14 @@ function PluginWorkshopBlankState(props: {
             ))}
           </select>
         ) : null}
-        <Button type="button" variant="outline" className="mt-8 rounded-xl" disabled={props.importing} onClick={props.onImport}>
-          {props.importing ? <Loader2 className="size-4 animate-spin" /> : <Upload className="size-4" />}
-          导入插件源码
-        </Button>
-        <p className="mt-2 text-xs text-muted-foreground">选择 .zip 源码压缩包，导入后可继续通过 AI 修改。</p>
-      </div>
+        <div className="mt-7 flex flex-wrap items-center gap-3">
+          <Button type="button" variant="default" size="sm" className="rounded-lg" disabled={props.importing} onClick={props.onImport}>
+            {props.importing ? <Loader2 className="size-4 animate-spin" /> : <Upload className="size-4" />}
+            {t("plugin_workshop.import_source")}
+          </Button>
+          <p className="text-xs leading-5 text-muted-foreground">{t("plugin_workshop.import_source_hint")}</p>
+        </div>
+      </section>
     </div>
   );
 }
@@ -340,7 +327,7 @@ export function PluginWorkshopPanel(props: PluginWorkshopPanelProps) {
   );
   const previewRuntimeKey = snapshot ? `${snapshot.project.directoryId}:${snapshot.revision}` : "";
   const studioContractError = snapshot && !surface
-    ? "插件需要在 manifest 中声明指向 UI resource 的 workspace-app contribution。"
+    ? t("plugin_workshop.studio_contract_error")
     : null;
   const autoPreparationCandidate = canPrepareStaticNetworkDraft(snapshot);
   const diagnostic = (autoPreparationCandidate ? null : validationError) || loadError || selectedProject?.error || studioContractError;
@@ -361,17 +348,17 @@ export function PluginWorkshopPanel(props: PluginWorkshopPanelProps) {
       const current = installed.items.find((item) => item.pluginId === snapshot.project.manifest?.id);
       const nextVersion = snapshot.project.manifest.package?.version ?? "";
       if (current?.version === nextVersion && current.integrity.sha256 !== checked.preview.integrity.sha256) {
-        throw new Error(`版本 ${nextVersion} 已安装。请让 AI 递增 manifest 的语义版本后再更新。`);
+        throw new Error(t("plugin_workshop.version_already_installed", { version: nextVersion }));
       }
       if (current && current.integrity.sha256 === checked.preview.integrity.sha256) {
-        toast.success("当前插件版本已经安装");
+        toast.success(t("plugin_workshop.already_installed"));
       } else {
         const result = await props.client.importPluginPackage(props.workspaceId, upload);
         toast.success(result.result.status === "updated"
-          ? `已更新 ${snapshot.project.manifest.name}`
-          : `已安装 ${snapshot.project.manifest.name}`, {
+          ? t("plugin_workshop.updated", { name: snapshot.project.manifest.name })
+          : t("plugin_workshop.installed", { name: snapshot.project.manifest.name }), {
           description: bundle.preparation.localizedUrls.length
-            ? `已自动内联 ${bundle.preparation.localizedUrls.length} 个远程静态资源并移除运行时网络权限。`
+            ? t("plugin_workshop.prepared_resources", { count: bundle.preparation.localizedUrls.length })
             : undefined,
         });
       }
@@ -379,7 +366,7 @@ export function PluginWorkshopPanel(props: PluginWorkshopPanelProps) {
       setInstalledVersion(nextVersion || null);
       notifyPluginUiContributionsChanged();
     } catch (error) {
-      toast.error("无法安装插件", { description: errorMessage(error) });
+      toast.error(t("plugin_workshop.install_failed"), { description: errorMessage(error) });
     } finally {
       setBusyAction(null);
     }
@@ -403,15 +390,15 @@ export function PluginWorkshopPanel(props: PluginWorkshopPanelProps) {
           : `${bundle.pluginId}-${bundle.version}-source.zip`,
         blob,
       );
-      toast.success(installPackage ? "iPollo 插件包已导出" : "插件源码 ZIP 已导出", {
+      toast.success(installPackage ? t("plugin_workshop.exported_package") : t("plugin_workshop.exported_source"), {
         description: installPackage
           ? bundle.preparation.localizedUrls.length
-            ? `已自动内联 ${bundle.preparation.localizedUrls.length} 个远程静态资源，插件包可离线安装运行。`
-            : "可直接导入 iPolloWork 安装。"
-          : "保留当前插件目录的原始源码，可再次导入插件工坊继续编辑。",
+            ? t("plugin_workshop.exported_prepared_resources", { count: bundle.preparation.localizedUrls.length })
+            : t("plugin_workshop.exported_package_hint")
+          : t("plugin_workshop.exported_source_hint"),
       });
     } catch (error) {
-      toast.error("无法导出插件", { description: errorMessage(error) });
+      toast.error(t("plugin_workshop.export_failed"), { description: errorMessage(error) });
     } finally {
       setBusyAction(null);
     }
@@ -430,15 +417,16 @@ export function PluginWorkshopPanel(props: PluginWorkshopPanelProps) {
     selectProject(imported.project);
     await validateProject(imported.project);
     await refreshProjects();
+    const importedName = imported.project.manifest?.name ?? imported.project.directoryId;
     toast.success(overwrite
-      ? `已覆盖导入 ${imported.project.manifest?.name ?? imported.project.directoryId}`
-      : `已导入 ${imported.project.manifest?.name ?? imported.project.directoryId}`);
+      ? t("plugin_workshop.overwritten", { name: importedName })
+      : t("plugin_workshop.imported", { name: importedName }));
   };
 
   const showImportError = (error: unknown) => {
     const message = errorMessage(error);
     setLoadError(message);
-    toast.error("无法导入插件", { description: message });
+    toast.error(t("plugin_workshop.import_failed"), { description: message });
   };
 
   const importProject = async (file: File) => {
@@ -446,7 +434,7 @@ export function PluginWorkshopPanel(props: PluginWorkshopPanelProps) {
     setLoadError(null);
     let upload: iPolloWorkPluginPackageUpload | null = null;
     try {
-      upload = await readPluginPackageArchive(file, "source", "插件工坊只能导入 .zip 源码压缩包。");
+      upload = await readPluginPackageArchive(file, "source", t("plugin_workshop.source_archive_only"));
       await applyImport(upload, false);
     } catch (error) {
       if (upload && error instanceof iPolloWorkServerError && error.code === "plugin_workshop_project_exists") {
@@ -498,9 +486,9 @@ export function PluginWorkshopPanel(props: PluginWorkshopPanelProps) {
       setRepairRequestLocked(false);
     }, AI_REPAIR_DEBOUNCE_MS);
 
-    const issue = diagnostic || "检查 manifest、Studio UI 和所有资源引用，并修复发现的问题。";
+    const issue = diagnostic || t("plugin_workshop.repair_default_issue");
     void props.onSendMessage({
-      text: `请检查并修复 plugins/${props.tab.pluginId}/ 插件。当前诊断：${issue}`,
+      text: t("plugin_workshop.repair_prompt", { pluginId: props.tab.pluginId, issue }),
       modelContext: null,
     });
   }, [diagnostic, props.aiEditing, props.onSendMessage, props.tab.pluginId]);
@@ -520,12 +508,12 @@ export function PluginWorkshopPanel(props: PluginWorkshopPanelProps) {
   const overwriteImportDialog = (
     <ConfirmModal
       open={pendingImport !== null}
-      title="覆盖现有插件源码？"
+      title={t("plugin_workshop.overwrite_title")}
       message={pendingImport?.directoryId
-        ? `plugins/${pendingImport.directoryId} 已存在。覆盖后，该目录会被压缩包中的源码完整替换，现有未导出的修改将丢失。`
-        : "同名插件源码已经存在。覆盖后，现有目录会被压缩包中的源码完整替换，未导出的修改将丢失。"}
-      confirmLabel="覆盖导入"
-      cancelLabel="取消导入"
+        ? t("plugin_workshop.overwrite_existing", { directory: pendingImport.directoryId })
+        : t("plugin_workshop.overwrite_same_name")}
+      confirmLabel={t("plugin_workshop.overwrite_confirm")}
+      cancelLabel={t("plugin_workshop.overwrite_cancel")}
       variant="danger"
       onConfirm={() => void overwritePendingImport()}
       onCancel={() => setPendingImport(null)}
@@ -533,7 +521,7 @@ export function PluginWorkshopPanel(props: PluginWorkshopPanelProps) {
   );
 
   if (!projectsLoaded && !loadError) {
-    return <div className="flex h-full items-center justify-center text-sm text-muted-foreground"><Loader2 className="mr-2 size-4 animate-spin" />正在准备插件工坊…</div>;
+    return <div className="flex h-full items-center justify-center text-sm text-muted-foreground"><Loader2 className="mr-2 size-4 animate-spin" />{t("plugin_workshop.preparing")}</div>;
   }
 
   if (!selectedProject) {
@@ -560,11 +548,11 @@ export function PluginWorkshopPanel(props: PluginWorkshopPanelProps) {
           value={selectedProject?.directoryId ?? ""}
           onChange={(event) => selectProject(projects.find((project) => project.directoryId === event.currentTarget.value))}
           className="h-8 min-w-0 flex-1 rounded-lg border border-input bg-background px-2 text-sm outline-none focus:ring-2 focus:ring-ring"
-          aria-label="选择要试用的插件"
+          aria-label={t("plugin_workshop.select_plugin")}
         >
           {projects.map((project) => <option key={project.directoryId} value={project.directoryId}>{project.manifest?.name ?? project.directoryId}</option>)}
         </select>
-        <Button variant="ghost" size="icon-sm" onClick={() => void refreshAll()} disabled={busyAction !== null} aria-label="刷新插件预览" title="刷新">
+        <Button variant="ghost" size="icon-sm" onClick={() => void refreshAll()} disabled={busyAction !== null} aria-label={t("plugin_workshop.refresh_preview")} title={t("plugin_workshop.refresh")}>
           <RefreshCw className={cn("size-4", busyAction === "refresh" && "animate-spin")} />
         </Button>
         <DropdownMenu>
@@ -572,7 +560,7 @@ export function PluginWorkshopPanel(props: PluginWorkshopPanelProps) {
             render={(
               <Button variant="outline" size="sm" disabled={!props.tab.pluginId || busyAction !== null}>
                 {busyAction === "export" ? <Loader2 className="size-3.5 animate-spin" /> : <Download className="size-3.5" />}
-                导出插件
+                {t("plugin_workshop.export")}
                 <ChevronDown className="size-3.5" />
               </Button>
             )}
@@ -581,22 +569,22 @@ export function PluginWorkshopPanel(props: PluginWorkshopPanelProps) {
             <DropdownMenuItem onClick={() => void exportProject("install")}>
               <PackageCheck />
               <span className="flex min-w-0 flex-col">
-                <span>iPollo 插件包</span>
-                <span className="text-xs font-normal text-muted-foreground">.ipollowork-plugin · 可直接安装</span>
+                <span>{t("plugin_workshop.package_label")}</span>
+                <span className="text-xs font-normal text-muted-foreground">{t("plugin_workshop.package_hint")}</span>
               </span>
             </DropdownMenuItem>
             <DropdownMenuItem onClick={() => void exportProject("source")}>
               <FileArchive />
               <span className="flex min-w-0 flex-col">
-                <span>源码压缩包</span>
-                <span className="text-xs font-normal text-muted-foreground">.zip · 保留原始插件文件夹</span>
+                <span>{t("plugin_workshop.source_label")}</span>
+                <span className="text-xs font-normal text-muted-foreground">{t("plugin_workshop.source_hint")}</span>
               </span>
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
         <Button size="sm" onClick={() => void installProject()} disabled={!snapshot?.project.manifest || !surface || busyAction !== null}>
           {busyAction === "install" ? <Loader2 className="size-3.5 animate-spin" /> : <PackageCheck className="size-3.5" />}
-          {installedVersion ? "更新插件" : "安装到软件"}
+          {installedVersion ? t("plugin_workshop.update") : t("plugin_workshop.install")}
         </Button>
       </div>
 
@@ -619,8 +607,8 @@ export function PluginWorkshopPanel(props: PluginWorkshopPanelProps) {
           <div className="flex h-full items-center justify-center p-8 text-center">
             <div className="max-w-sm">
               <Blocks className="mx-auto size-8 text-muted-foreground" />
-              <h3 className="mt-3 text-sm font-medium">还没有可预览的 Studio</h3>
-              <p className="mt-1 text-xs leading-5 text-muted-foreground">让 AI 在 manifest 中声明 UI resource 和 workspace-app contribution，并创建对应的独立 HTML 入口。</p>
+              <h3 className="mt-3 text-sm font-medium">{t("plugin_workshop.no_preview_title")}</h3>
+              <p className="mt-1 text-xs leading-5 text-muted-foreground">{t("plugin_workshop.no_preview_description")}</p>
             </div>
           </div>
         )}
@@ -640,17 +628,17 @@ export function PluginWorkshopPanel(props: PluginWorkshopPanelProps) {
                 disabled={repairRequestLocked || props.aiEditing}
                 aria-busy={repairRequestLocked || props.aiEditing}
               >
-                让 AI 修复
+                {t("plugin_workshop.repair")}
               </Button>
             ) : null}
           </div>
         </div>
       ) : (
         <div className="flex h-9 shrink-0 items-center gap-3 border-t border-border px-3 text-[11px] text-muted-foreground">
-          <span>{snapshot?.project.manifest?.resources.length ?? 0} 个资源</span>
+          <span>{t("plugin_workshop.resource_count", { count: snapshot?.project.manifest?.resources.length ?? 0 })}</span>
           <span>v{snapshot?.project.manifest?.package?.version ?? "0.0.0"}</span>
-          <span>{installedVersion ? `已安装 v${installedVersion}` : "未安装 · 当前会话可试用"}</span>
-          <span className="ml-auto">已选中 · 对话会自动调用</span>
+          <span>{installedVersion ? t("plugin_workshop.installed_version", { version: installedVersion }) : t("plugin_workshop.not_installed")}</span>
+          <span className="ml-auto">{t("plugin_workshop.selected_hint")}</span>
         </div>
       )}
       </div>

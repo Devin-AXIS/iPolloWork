@@ -1,6 +1,6 @@
 /** @jsxImportSource react */
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { AppWindowMac, ArrowUp, Check, ChevronDown, ChevronRight, Code2, FileText, ListTodo, Plus, Plug, Settings, Sparkles, Square, Terminal, X, Zap } from "lucide-react";
+import { AppWindowMac, ArrowUp, Bot, Check, ChevronDown, ChevronRight, Code2, FileText, ListTodo, Paperclip, Plus, Plug, Settings, Sparkles, Square, Terminal, Wrench, X, Zap } from "lucide-react";
 import fuzzysort from "fuzzysort";
 import { toast } from "@/components/ui/sonner";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -13,7 +13,7 @@ import { formatBytes } from "@/app/utils";
 import { t } from "@/i18n";
 import { resolveExtensionIconUrl } from "@/react-app/design-system/extension-icon-src";
 import { LexicalPromptEditor, type LexicalPromptEditorHandle } from "./editor";
-import { ModelBehaviorMenu } from "./model-behavior-menu";
+import { ModelBehaviorMenu } from "@/components/model-behavior-menu";
 import { listRunningAppsForMention } from "./app-mentions";
 import type { ComposerMentionKind } from "./mention-encoding";
 import { getSlashCommandQuery } from "./slash-command";
@@ -36,7 +36,7 @@ type ToolMenuSettingsSection = "commands" | "skills" | "mcps" | "plugins";
 type ToolMenuSection = "commands" | "skills" | "mcps" | "extensions";
 type PlusMenuSection = "tools" | "delegation";
 
-type ComposerProps = {
+export type ComposerProps = {
   draft: string;
   mentions: Record<string, ComposerMentionKind>;
   onDraftChange: (value: string) => void;
@@ -46,6 +46,7 @@ type ComposerProps = {
   busy: boolean;
   queuedCount: number;
   disabled: boolean;
+  inputDisabled?: boolean;
   modelUnavailable?: boolean;
   statusLabel: string;
   modelPickerOpen: boolean;
@@ -76,6 +77,9 @@ type ComposerProps = {
   mcpStatus?: string | null;
   mcpStatuses?: McpStatusMap;
   listInstalledExtensions?: () => Promise<iPolloWorkPluginPackageItem[]>;
+  /** Compatibility alias used by the project-first starter while plugin packages migrate to extensions. */
+  listImportedPlugins?: () => Promise<iPolloWorkPluginPackageItem[]>;
+  importedPlugins?: iPolloWorkPluginPackageItem[];
   onOpenWorkspaceApp?: (pluginId: string) => void;
   listExternalAgents: () => Promise<iPolloWorkPluginPackageItem[]>;
   onOpenSettingsSection?: (section: ToolMenuSettingsSection) => void;
@@ -266,7 +270,7 @@ export function ReactSessionComposer(props: ComposerProps) {
   const [mcpServers, setMcpServers] = useState<McpServerEntry[]>(props.mcpServers ?? []);
   const [mcpStatus, setMcpStatus] = useState<string | null>(props.mcpStatus ?? null);
   const [mcpStatuses, setMcpStatuses] = useState<McpStatusMap>(props.mcpStatuses ?? {});
-  const [installedExtensions, setInstalledExtensions] = useState<iPolloWorkPluginPackageItem[]>([]);
+  const [installedExtensions, setInstalledExtensions] = useState<iPolloWorkPluginPackageItem[]>(props.importedPlugins ?? []);
   const [extensionsLoading, setExtensionsLoading] = useState(false);
   const [slashOpen, setSlashOpen] = useState(false);
   const [plusMenuOpen, setPlusMenuOpen] = useState(false);
@@ -275,6 +279,7 @@ export function ReactSessionComposer(props: ComposerProps) {
   const [workModeOpen, setWorkModeOpen] = useState(false);
   const engineSelectedAppearance = props.layout === "inline" && props.inlineAppearance === "engine-selected";
   const canSend = props.draft.trim().length > 0 || props.attachments.length > 0 || props.hasPromptContext;
+  const editorDisabled = props.inputDisabled ?? props.disabled;
   const [workModes, setWorkModes] = useState<ConversationMode[]>([]);
   const [toolMenuSection, setToolMenuSection] = useState<ToolMenuSection>("commands");
   const [mentionItems, setMentionItems] = useState<MentionItem[]>([]);
@@ -287,7 +292,7 @@ export function ReactSessionComposer(props: ComposerProps) {
   const listCommandsRef = useRef(props.listCommands);
   const listSkillsRef = useRef(props.listSkills);
   const listMcpRef = useRef(props.listMcp);
-  const listInstalledExtensionsRef = useRef(props.listInstalledExtensions);
+  const listInstalledExtensionsRef = useRef(props.listInstalledExtensions ?? props.listImportedPlugins);
   const listExternalAgentsRef = useRef(props.listExternalAgents);
   const toolMenuLoadRef = useRef({
     openId: 0,
@@ -447,8 +452,8 @@ export function ReactSessionComposer(props: ComposerProps) {
   }, [props.busy, props.modeSelectionDisabled]);
 
   useEffect(() => {
-    listInstalledExtensionsRef.current = props.listInstalledExtensions;
-  }, [props.listInstalledExtensions]);
+    listInstalledExtensionsRef.current = props.listInstalledExtensions ?? props.listImportedPlugins;
+  }, [props.listInstalledExtensions, props.listImportedPlugins]);
 
   useEffect(() => {
     listExternalAgentsRef.current = props.listExternalAgents;
@@ -547,7 +552,7 @@ export function ReactSessionComposer(props: ComposerProps) {
     setCommandsLoaded(false);
     setSkillsLoaded(Boolean(props.skills));
     setMcpLoaded(Boolean(props.mcpServers));
-    setExtensionsLoaded(false);
+    setExtensionsLoaded(Boolean(props.importedPlugins));
   }, [toolMenuOpen]);
 
   useEffect(() => {
@@ -1236,7 +1241,8 @@ export function ReactSessionComposer(props: ComposerProps) {
               value={props.draft}
               mentions={props.mentions}
               pastedText={pastedTextTokens}
-              disabled={props.disabled}
+              disabled={editorDisabled}
+              submitDisabled={props.disabled}
               placeholder={props.placeholder ?? t("composer.placeholder")}
               onChange={props.onDraftChange}
               onSubmit={handleEditorSubmit}
@@ -1355,18 +1361,19 @@ export function ReactSessionComposer(props: ComposerProps) {
                       <div className="w-52 shrink-0 rounded-[16px] border border-dls-border bg-dls-surface p-1.5 shadow-[var(--dls-shell-shadow)]">
                       <button
                         type="button"
-                        className="flex w-full items-center rounded-[12px] px-3 py-2.5 text-left text-sm text-gray-11 hover:bg-gray-2"
+                        className="flex w-full items-center gap-2 rounded-[12px] px-3 py-2.5 text-left text-sm text-gray-11 hover:bg-gray-2"
                         onClick={() => {
                           setPlusMenuOpen(false);
                           setPlusMenuSection(null);
                           fileInput?.click();
                         }}
                       >
-                        {t("composer.plus_attach_files")}
+                        <Paperclip className="size-4 shrink-0 text-gray-9" aria-hidden />
+                        <span>{t("composer.plus_attach_files")}</span>
                       </button>
                       <button
                         type="button"
-                        className={`flex w-full items-center justify-between rounded-[12px] px-3 py-2.5 text-left text-sm ${plusMenuSection === "tools" ? "bg-gray-3 text-gray-12" : "text-gray-11 hover:bg-gray-2"}`}
+                        className={`flex w-full items-center justify-between gap-2 rounded-[12px] px-3 py-2.5 text-left text-sm ${plusMenuSection === "tools" ? "bg-gray-3 text-gray-12" : "text-gray-11 hover:bg-gray-2"}`}
                         onMouseEnter={() => setPlusMenuSection("tools")}
                         onClick={() => {
                           setPlusMenuSection("tools");
@@ -1374,12 +1381,15 @@ export function ReactSessionComposer(props: ComposerProps) {
                           setDelegationMenuOpen(false);
                         }}
                       >
-                        <span>{t("composer.plus_tools")}</span>
+                        <span className="flex min-w-0 items-center gap-2">
+                          <Wrench className="size-4 shrink-0 text-gray-9" aria-hidden />
+                          <span>{t("composer.plus_tools")}</span>
+                        </span>
                         <ChevronRight size={14} className="text-gray-9" />
                       </button>
                       <button
                         type="button"
-                        className={`flex w-full items-center justify-between rounded-[12px] px-3 py-2.5 text-left text-sm ${plusMenuSection === "delegation" ? "bg-gray-3 text-gray-12" : "text-gray-11 hover:bg-gray-2"}`}
+                        className={`flex w-full items-center justify-between gap-2 rounded-[12px] px-3 py-2.5 text-left text-sm ${plusMenuSection === "delegation" ? "bg-gray-3 text-gray-12" : "text-gray-11 hover:bg-gray-2"}`}
                         onMouseEnter={() => setPlusMenuSection("delegation")}
                         onClick={() => {
                           setPlusMenuSection("delegation");
@@ -1387,7 +1397,10 @@ export function ReactSessionComposer(props: ComposerProps) {
                           setToolMenuOpen(false);
                         }}
                       >
-                        <span>{t("composer.delegate_external_agents")}</span>
+                        <span className="flex min-w-0 items-center gap-2">
+                          <Bot className="size-4 shrink-0 text-gray-9" aria-hidden />
+                          <span>{t("composer.delegate_external_agents")}</span>
+                        </span>
                         <ChevronRight size={14} className="text-gray-9" />
                       </button>
                       </div>
