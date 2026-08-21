@@ -22,12 +22,10 @@ import {
   getRunnableChatModelEntries,
   mergeProviderListResponses,
   projectAccountProviderConnections,
-  refreshProviderListQueries,
   type ProviderListQueryInput,
   useMergedProviderListQuery,
   useProviderListQuery,
 } from "@/react-app/infra/provider-list-query";
-import { getReactQueryClient } from "@/react-app/infra/query-client";
 import {
   Command,
   CommandCollection,
@@ -41,7 +39,6 @@ import {
 } from "@/components/ui/command";
 import { isDesktopProviderBlocked } from "@/app/cloud/desktop-app-restrictions";
 import { openModelPickerEvent } from "@/react-app/shell/new-providers-listener";
-import { newProvidersEvent } from "@/app/lib/provider-events";
 
 function getProviderDisplayName(providerId: string) {
   return providerId
@@ -81,19 +78,6 @@ function useModelOptions(open: boolean) {
     directory: selectedWorkspaceRoot,
     enabled: Boolean(client),
   });
-
-  React.useEffect(() => {
-    if (!open || catalogSources.length === 0) return;
-    const handler = () => {
-      void refreshProviderListQueries(getReactQueryClient());
-    };
-    // Runtime model catalogs can change when an engine sidecar restarts or a
-    // provider is reconfigured. Revalidate on every picker open so the
-    // executable intersection cannot omit a newly supported model.
-    handler();
-    window.addEventListener(newProvidersEvent, handler);
-    return () => window.removeEventListener(newProvidersEvent, handler);
-  }, [catalogSources.length, open]);
 
   // Apply org-level restrictions (dev #1505) on top of the raw model list
   // so the picker never surfaces blocked options:

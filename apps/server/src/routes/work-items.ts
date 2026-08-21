@@ -8,10 +8,12 @@ import {
 import {
   createDefaultProjectWorkspaceConfig,
   projectWorkspaceConfigSchema,
+  type ProjectAgent,
 } from "@ipollowork/types/project-workspace";
+import type { ProjectSessionExecutionRuntime } from "@ipollowork/types/work-items";
 import {
-  DEEPSEEK_HARNESS_ENGINE_ID,
   DEFAULT_ENGINE_ID,
+  isHarnessWorkspaceEngineId,
 } from "@ipollowork/types/workspace";
 
 import { recordAudit } from "../audit.js";
@@ -68,6 +70,31 @@ function schemaError(message: string, issues: Array<{ path: PropertyKey[]; messa
   return new ApiError(400, "invalid_payload", message, {
     issues: issues.map((issue) => ({ path: issue.path.join("."), message: issue.message })),
   });
+}
+
+function resolveProjectExecutionRuntime(input: {
+  engineId: string;
+  agent: ProjectAgent;
+  requested: ProjectSessionExecutionRuntime;
+}): ProjectSessionExecutionRuntime {
+  const selectedModel = input.requested.model ?? input.agent.runtime.model;
+  const mode = input.agent.runtime.mode === "auto" || isHarnessWorkspaceEngineId(input.engineId)
+    ? input.requested.mode
+    : input.agent.runtime.mode === "plan"
+      ? "plan"
+      : "build";
+  return {
+    engineId: input.engineId,
+    // The composer is the user's explicit per-task selection. The Agent model
+    // is only the default when the composer has no model selected.
+    model: selectedModel,
+    mode,
+    modelVariant: input.requested.model
+      ? input.requested.modelVariant
+      : input.agent.runtime.model
+        ? input.agent.runtime.modelVariant
+        : input.requested.modelVariant,
+  };
 }
 
 async function withConflictHandling<T>(operation: () => Promise<T>): Promise<T> {
@@ -166,7 +193,15 @@ export function registerWorkItemRoutes(options: RegisterWorkItemRoutesOptions): 
         config,
         workspace.id,
         parsed.data.title,
-        existing.execution,
+        {
+          ...existing.execution,
+          runtime: resolveProjectExecutionRuntime({
+            engineId: projectEngineId,
+            agent: existing.execution.agent,
+            requested: parsed.data.runtime,
+          }),
+          boundAt: Date.now(),
+        },
       ));
     }
 
@@ -187,23 +222,17 @@ export function registerWorkItemRoutes(options: RegisterWorkItemRoutesOptions): 
         "Project tasks must use the project's engine. Change the project engine before starting a new task.",
       );
     }
-    const runtimeMode = agent.runtime.mode === "auto" || agentEngineId === DEEPSEEK_HARNESS_ENGINE_ID
-      ? parsed.data.runtime.mode
-      : agent.runtime.mode === "plan"
-        ? "plan"
-        : "build";
     const now = Date.now();
     const item = await startProjectSessionExecution(config, workspace.id, parsed.data.title, {
       sessionId,
       projectRevision: project.revision,
       projectGoal: project.goal,
       agent,
-      runtime: {
+      runtime: resolveProjectExecutionRuntime({
         engineId: projectEngineId,
-        model: agent.runtime.model ?? parsed.data.runtime.model,
-        mode: runtimeMode,
-        modelVariant: agent.runtime.model ? agent.runtime.modelVariant : parsed.data.runtime.modelVariant,
-      },
+        agent,
+        requested: parsed.data.runtime,
+      }),
       boundAt: now,
     });
     return jsonResponse(item);

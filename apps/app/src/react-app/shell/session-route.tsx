@@ -11,6 +11,7 @@ import type { UIMessage } from "ai";
 import { toast } from "@/components/ui/sonner";
 import type { PptxCompatibility, TemplateCategory, TemplateSessionSnapshot } from "@ipollowork/types/templates";
 import {
+  CODEX_HARNESS_ENGINE_ID,
   DEEPSEEK_HARNESS_ENGINE_ID,
   DEFAULT_ENGINE_ID,
   type BuiltInWorkspaceEngineId,
@@ -49,6 +50,7 @@ import {
 import type {
   ComposerDraft,
   ModelRef,
+  PromptDispatchOptions,
   SlashCommandOption,
   WorkspaceConnectionState,
   ProviderListItem,
@@ -86,7 +88,9 @@ import { useSessionActivityStore } from "@/react-app/domains/session/status/sess
 import { buildiPolloWorkEnvSystemContext } from "@/react-app/domains/session/sync/env-context";
 import {
   applySessionRevert,
+  beginOptimisticSessionPrompt,
   destroyWorkspaceSessionResources,
+  rollbackOptimisticSessionPrompt,
 } from "@/react-app/domains/session/sync/session-sync";
 import { attachmentRequiresNativeModelSupport } from "@/react-app/domains/session/sync/attachment-support";
 import {
@@ -232,6 +236,8 @@ let firstRunLoaderPhase: "unarmed" | "armed" | "done" = "unarmed";
 type PendingInitialProjectTask = {
   workspaceId: string;
   sessionId: string | null;
+  runtimeWorkspaceId: string | null;
+  clientUserMessageId: string | null;
   draft: ComposerDraft;
 };
 
@@ -326,12 +332,6 @@ export function SessionRoute() {
     () => selectSharedProviderWorkspace(workspaces, selectedWorkspace),
     [selectedWorkspace, workspaces],
   );
-  const deepSeekHarnessWorkspace = useMemo(
-    () => workspaces.find(
-      (workspace) => workspace.engineId?.trim() === DEEPSEEK_HARNESS_ENGINE_ID,
-    ) ?? null,
-    [workspaces],
-  );
   const sharedProviderEndpoint = useMemo(
     () => resolveWorkspaceEndpoint(sharedProviderWorkspace, {
       baseUrl,
@@ -339,14 +339,6 @@ export function SessionRoute() {
       hostToken: ipolloworkServerHostInfoState?.hostToken,
     }),
     [baseUrl, ipolloworkServerHostInfoState?.hostToken, sharedProviderWorkspace, token],
-  );
-  const deepSeekHarnessEndpoint = useMemo(
-    () => resolveWorkspaceEndpoint(deepSeekHarnessWorkspace, {
-      baseUrl,
-      token,
-      hostToken: ipolloworkServerHostInfoState?.hostToken,
-    }),
-    [baseUrl, deepSeekHarnessWorkspace, ipolloworkServerHostInfoState?.hostToken, token],
   );
   // Provider discovery/auth is an app-level OpenCode control plane even when
   // the selected workspace runs another agent engine. Every mounted workspace
@@ -366,13 +358,6 @@ export function SessionRoute() {
       directory: sharedProviderRoot,
     });
   }, [sharedProviderEndpoint, sharedProviderEngineId, sharedProviderRoot]);
-  const deepSeekHarnessProviderClient = useMemo(() => {
-    if (!deepSeekHarnessEndpoint?.token) return null;
-    return providerEngineAdapters.createClient(DEEPSEEK_HARNESS_ENGINE_ID, {
-      endpoint: deepSeekHarnessEndpoint,
-      directory: deepSeekHarnessWorkspace?.path,
-    });
-  }, [deepSeekHarnessEndpoint, deepSeekHarnessWorkspace?.path]);
   const modelCatalogSources = useMemo<readonly ProviderListQueryInput[]>(() => {
     const sources: ProviderListQueryInput[] = [];
     if (sharedProviderClient) {
@@ -383,16 +368,8 @@ export function SessionRoute() {
         directory: sharedProviderRoot || undefined,
       });
     }
-    if (deepSeekHarnessProviderClient && deepSeekHarnessWorkspace) {
-      sources.push({
-        client: deepSeekHarnessProviderClient,
-        engineId: DEEPSEEK_HARNESS_ENGINE_ID,
-        baseUrl: deepSeekHarnessEndpoint?.opencodeBaseUrl,
-        directory: deepSeekHarnessWorkspace.path || undefined,
-      });
-    }
     return sources;
-  }, [deepSeekHarnessEndpoint?.opencodeBaseUrl, deepSeekHarnessProviderClient, deepSeekHarnessWorkspace, sharedProviderClient, sharedProviderEndpoint?.opencodeBaseUrl, sharedProviderEngineId, sharedProviderRoot]);
+  }, [sharedProviderClient, sharedProviderEndpoint?.opencodeBaseUrl, sharedProviderEngineId, sharedProviderRoot]);
   useSessionMcpMaintenance({
     cloudSignedIn: denAuth.isSignedIn && activeWorkContextId === PERSONAL_WORK_CONTEXT_ID,
     client: selectedWorkspaceEndpoint?.client ?? null,
@@ -1134,7 +1111,11 @@ export function SessionRoute() {
       onOpenSettingsSection: (section: "commands" | "skills" | "mcps" | "plugins" | "providers") => {
         handleOpenSettings(section === "skills" ? "/settings/skills" : section === "mcps" ? "/settings/extensions/mcp" : section === "plugins" ? "/settings/extensions/plugins" : section === "providers" ? "/settings/ai" : "/settings/preferences");
       },
-      onSendDraft: async (draft: ComposerDraft, sessionId: string) => {
+      onSendDraft: async (
+        draft: ComposerDraft,
+        sessionId: string,
+        dispatchOptions?: PromptDispatchOptions,
+      ) => {
         const targetSessionId = sessionId.trim() || selectedSessionId;
         if (!targetSessionId) return false;
         const projectBuilderActive = isProjectBuilderSession(selectedWorkspaceId, targetSessionId);
@@ -1237,19 +1218,16 @@ export function SessionRoute() {
         if (text && (!targetSession || isDefaultSessionTitle(targetSession.title))) {
           const initialTitle = sessionTitleFromFirstPrompt(text);
           if (initialTitle) {
-            try {
-              await conversation.rename(targetSessionId, initialTitle, selectedWorkspaceRoot || undefined);
-              setSessionsByWorkspaceId((current) => ({
-                ...current,
-                [selectedWorkspaceId]: (current[selectedWorkspaceId] ?? []).map((session) => (
-                  session.id === targetSessionId ? { ...session, title: initialTitle } : session
-                )),
-              }));
-            } catch (error) {
-              // A title is presentation metadata. A transient rename failure
-              // must not block the user's first request from reaching the agent.
-              console.warn("[session-title] Could not persist the first-prompt title", error);
-            }
+            setSessionsByWorkspaceId((current) => ({
+              ...current,
+              [selectedWorkspaceId]: (current[selectedWorkspaceId] ?? []).map((session) => (
+                session.id === targetSessionId ? { ...session, title: initialTitle } : session
+              )),
+            }));
+            // The title is presentation metadata. Persist it concurrently so
+            // the first prompt is not queued behind another runtime RPC.
+            void conversation.rename(targetSessionId, initialTitle, selectedWorkspaceRoot || undefined)
+              .catch((error) => console.warn("[session-title] Could not persist the first-prompt title", error));
           }
         }
 
@@ -1531,7 +1509,7 @@ export function SessionRoute() {
         if (designSelectionContexts.length > 0 && !selectedWorkspaceEndpoint) {
           throw new Error("The selected Design element is no longer available in this workspace.");
         }
-        await promptDesignSelectionContexts({
+        const promptResult = await promptDesignSelectionContexts({
           contexts: designSelectionContexts,
           workspaceClient: selectedWorkspaceEndpoint?.client ?? {
             readWorkspaceFile: async () => { throw new Error("The selected Design element is no longer available in this workspace."); },
@@ -1539,6 +1517,7 @@ export function SessionRoute() {
           },
           prompt: () => conversation.sendPrompt({
             sessionId: targetSessionId,
+            clientUserMessageId: dispatchOptions?.clientUserMessageId,
             parts: promptParts,
             model: effectiveModel ?? undefined,
             mode: effectiveMode ?? undefined,
@@ -1551,6 +1530,36 @@ export function SessionRoute() {
             system: systemContext || undefined,
           }),
         });
+        const effectiveSessionId = promptResult.sessionId.trim() || targetSessionId;
+        if (effectiveSessionId !== targetSessionId) {
+          let replacementTitle = sessionTitleFromFirstPrompt(text) || t("session.untitled");
+          setSessionsByWorkspaceId((current) => {
+            const sessions = current[selectedWorkspaceId] ?? [];
+            const replaced = sessions.find((session) => session.id === targetSessionId);
+            replacementTitle = replaced?.title?.trim() || replacementTitle;
+            const replacement = {
+              ...(replaced ?? { title: replacementTitle, time: { created: Date.now(), updated: Date.now() } }),
+              id: effectiveSessionId,
+              slug: effectiveSessionId,
+            };
+            const nextSessions = sessions.some((session) => session.id === targetSessionId)
+              ? sessions.map((session) => session.id === targetSessionId ? replacement : session)
+              : [replacement, ...sessions];
+            const next = {
+              ...current,
+              [selectedWorkspaceId]: nextSessions.filter((session, index) => (
+                session.id !== effectiveSessionId || nextSessions.findIndex((item) => item.id === effectiveSessionId) === index
+              )),
+            };
+            sessionsByWorkspaceIdRef.current = next;
+            return next;
+          });
+          writeLastSessionFor(selectedWorkspaceId, effectiveSessionId);
+          rememberPendingCreatedSession(selectedWorkspaceId, effectiveSessionId);
+          navigateToWorkspaceSession(selectedWorkspaceId, effectiveSessionId, { replace: true });
+          void conversation.rename(effectiveSessionId, replacementTitle, selectedWorkspaceRoot || undefined)
+            .catch((error) => console.warn("[session-rebind] Could not persist the replacement task title", error));
+        }
         return true;
         } catch (error) {
           await finishStartedExecution("failed", describeRouteError(error));
@@ -1643,6 +1652,7 @@ export function SessionRoute() {
     modelVariantLabel,
     modelVariantValue,
     invalidateProjectExecutionQueries,
+    navigateToWorkspaceSession,
     navigate,
     opencodeBaseUrl,
     sessionProviderAuthSnapshot.connectedProviderIds,
@@ -1658,6 +1668,8 @@ export function SessionRoute() {
     selectedWorkspaceEndpoint,
     selectedWorkspaceId,
     selectedWorkspaceRoot,
+    rememberPendingCreatedSession,
+    sessionsByWorkspaceIdRef,
     setModelVariant,
     setSelectedMode,
     setSelectedModel,
@@ -1733,7 +1745,11 @@ export function SessionRoute() {
     try {
       setErrorsByWorkspaceId((current) => ({ ...current, [workspaceId]: null }));
       setRouteError(null);
-      const { item: session } = await endpoint.client.createSession(endpoint.workspaceId);
+      const { item: session } = await endpoint.client.createSession(
+        endpoint.workspaceId,
+        undefined,
+        activeSelectedModel,
+      );
       createdSessionId = session.id;
       let sessionType = type;
       if (templateId) {
@@ -1849,6 +1865,7 @@ export function SessionRoute() {
     }
   }, [
     baseUrl,
+    activeSelectedModel,
     ipolloworkServerHostInfoState?.hostToken,
     loading,
     navigateToWorkspaceSession,
@@ -1872,7 +1889,13 @@ export function SessionRoute() {
         }) || "";
       }
       if (!targetWorkspaceId) return false;
-      setPendingInitialProjectTask({ workspaceId: targetWorkspaceId, sessionId: null, draft });
+      setPendingInitialProjectTask({
+        workspaceId: targetWorkspaceId,
+        sessionId: null,
+        runtimeWorkspaceId: null,
+        clientUserMessageId: null,
+        draft,
+      });
       return true;
     } catch (error) {
       toast.error(t("projects.create_failed"), {
@@ -1941,7 +1964,13 @@ export function SessionRoute() {
 
   const handleCreateTaskFromDraft = useCallback(async (workspaceId: string, draft: ComposerDraft) => {
     if (pendingInitialProjectTask || !workspaces.some((workspace) => workspace.id === workspaceId)) return false;
-    setPendingInitialProjectTask({ workspaceId, sessionId: null, draft });
+    setPendingInitialProjectTask({
+      workspaceId,
+      sessionId: null,
+      runtimeWorkspaceId: null,
+      clientUserMessageId: null,
+      draft,
+    });
     return true;
   }, [pendingInitialProjectTask, workspaces]);
 
@@ -1959,13 +1988,34 @@ export function SessionRoute() {
         text: pending.draft.text,
         mode: pending.draft.mode,
       });
+      const workspace = workspaces.find((item) => item.id === pending.workspaceId);
+      const endpoint = workspace ? resolveWorkspaceEndpoint(workspace, {
+        baseUrl,
+        token,
+        hostToken: ipolloworkServerHostInfoState?.hostToken,
+      }) : null;
+      const clientUserMessageId = workspace?.engineId === CODEX_HARNESS_ENGINE_ID && endpoint
+        ? beginOptimisticSessionPrompt(endpoint.workspaceId, sessionId, pending.draft.text)
+        : null;
       setPendingInitialProjectTask((current) => current?.workspaceId === pending.workspaceId
-        ? { ...current, sessionId }
+        ? {
+            ...current,
+            sessionId,
+            runtimeWorkspaceId: endpoint?.workspaceId ?? null,
+            clientUserMessageId,
+          }
         : current);
     }).finally(() => {
       initialProjectSessionCreatingRef.current = false;
     });
-  }, [handleCreateTaskInWorkspace, pendingInitialProjectTask, workspaces]);
+  }, [
+    baseUrl,
+    handleCreateTaskInWorkspace,
+    ipolloworkServerHostInfoState?.hostToken,
+    pendingInitialProjectTask,
+    token,
+    workspaces,
+  ]);
 
   useEffect(() => {
     const pending = pendingInitialProjectTask;
@@ -1977,8 +2027,28 @@ export function SessionRoute() {
       || initialProjectDraftSendingRef.current
     ) return;
     initialProjectDraftSendingRef.current = true;
-    void Promise.resolve(surfaceProps.onSendDraft(pending.draft, pending.sessionId))
+    void Promise.resolve(surfaceProps.onSendDraft(
+      pending.draft,
+      pending.sessionId,
+      pending.clientUserMessageId ? { clientUserMessageId: pending.clientUserMessageId } : undefined,
+    ))
+      .then((dispatched) => {
+        if (!dispatched && pending.runtimeWorkspaceId) {
+          rollbackOptimisticSessionPrompt(
+            pending.runtimeWorkspaceId,
+            pending.sessionId!,
+            pending.clientUserMessageId,
+          );
+        }
+      })
       .catch((error) => {
+        if (pending.runtimeWorkspaceId) {
+          rollbackOptimisticSessionPrompt(
+            pending.runtimeWorkspaceId,
+            pending.sessionId!,
+            pending.clientUserMessageId,
+          );
+        }
         toast.error(error instanceof Error ? error.message : t("app.unknown_error"));
       })
       .finally(() => {
@@ -2366,10 +2436,6 @@ export function SessionRoute() {
       mcpConnectedCount={mcpConnectedCount}
       onOpenSettings={() => handleOpenSettings("/settings/preferences")}
       onOpenHelp={handleOpenHelp}
-      onOpenProviderAuth={(preferredProviderId) => sessionProviderAuthStore.openProviderAuthModal({
-        returnFocusTarget: "composer",
-        ...(preferredProviderId ? { preferredProviderId } : {}),
-      })}
       providerAuthModal={sessionProviderAuthSnapshot.providerAuthModalOpen ? {
         open: true,
         loading: false,
@@ -2467,7 +2533,11 @@ export function SessionRoute() {
             });
             if (!endpoint?.token) return;
             try {
-              const { item: session } = await endpoint.client.createSession(endpoint.workspaceId);
+              const { item: session } = await endpoint.client.createSession(
+                endpoint.workspaceId,
+                undefined,
+                activeSelectedModel,
+              );
               saveSessionDraft(workspaceId, session.id, { text: prompt, mode: "prompt" });
               writeActiveWorkspaceId(workspaceId || null);
               writeLastSessionFor(workspaceId, session.id);

@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
+import { createAssistantMessageEventStream } from "../dsh-runtime/node_modules/@earendil-works/pi-ai/dist/index.js";
 
 import {
   apply,
@@ -116,21 +117,27 @@ test("maps Fast aliases to the base Codex model with the priority service tier",
   const baseProvider = {
     id: "openai-codex",
     name: "OpenAI Codex",
-    auth: { oauth: {} },
+    auth: {
+      apiKey: {
+        name: "Test API key",
+        async resolve() { return undefined; },
+      },
+    },
     getModels: () => [{
       id: "gpt-5.4",
       name: "GPT-5.4",
       provider: "openai-codex",
-      api: "openai-codex-responses",
+      api: /** @type {"openai-codex-responses"} */ ("openai-codex-responses"),
+      baseUrl: "https://chatgpt.com/backend-api/codex",
       reasoning: true,
-      input: ["text"],
+      input: /** @type {Array<"text" | "image">} */ (["text"]),
       contextWindow: 100,
       maxTokens: 10,
       cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
     }],
     stream(model, context, options) {
       request = { model, context, options };
-      return { [Symbol.asyncIterator]: async function* iterator() {} };
+      return createAssistantMessageEventStream();
     },
     streamSimple() {
       throw new Error("priority aliases must use the API-specific stream");

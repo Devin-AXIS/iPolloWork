@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
-import { formatProcessDuration } from "../src/components/chat/utils";
+import { formatProcessDuration, getAssistantProcessState } from "../src/components/chat/utils";
 
 describe("session output issue regressions", () => {
   test("empty projects hide task controls and render the no-task state", () => {
@@ -41,8 +41,8 @@ describe("session output issue regressions", () => {
     );
 
     expect(sessionPageSource).toContain("function ProjectEngineBadge");
-    expect(sessionPageSource).toContain("data-engine-id={isDeepSeekHarness ? DEEPSEEK_HARNESS_ENGINE_ID : DEFAULT_ENGINE_ID}");
-    expect(sessionPageSource).toContain('t(isDeepSeekHarness ? "projects.engine_dsh" : "projects.engine_opencode")');
+    expect(sessionPageSource).toContain("data-engine-id={resolvedEngineId}");
+    expect(sessionPageSource).toContain('resolvedEngineId === CODEX_HARNESS_ENGINE_ID');
     expect(sessionPageSource).toContain("composerEndAccessory={(");
     expect(sessionPageSource).toContain('testId="session-composer-engine-badge"');
     expect(sessionPageSource).not.toContain("SessionEngineBadge");
@@ -54,6 +54,12 @@ describe("session output issue regressions", () => {
     expect(formatProcessDuration(8_400)).toBe("00:08");
     expect(formatProcessDuration(83_000)).toBe("01:23");
     expect(formatProcessDuration(3_723_000)).toBe("1:02:03");
+  });
+
+  test("assistant process state does not report failed turns as completed", () => {
+    expect(getAssistantProcessState(true, true)).toBe("streaming");
+    expect(getAssistantProcessState(false, true)).toBe("failed");
+    expect(getAssistantProcessState(false, false)).toBe("completed");
   });
 
   test("session header offers full-session Markdown export", () => {

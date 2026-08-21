@@ -142,6 +142,21 @@ describe("env-file", () => {
     expect(processEnv.NEW_PROVIDER_KEY).toBeUndefined();
   });
 
+  test("notifies runtime listeners after environment changes", async () => {
+    const svc = new EnvService({ path });
+    let changes = 0;
+    const unsubscribe = svc.onChange(() => {
+      changes += 1;
+    });
+
+    await svc.upsertMany([{ key: "OPENAI_API_KEY", value: "first" }]);
+    await svc.delete("OPENAI_API_KEY");
+    unsubscribe();
+    await svc.upsertMany([{ key: "DEEPSEEK_API_KEY", value: "second" }]);
+
+    expect(changes).toBe(2);
+  });
+
   test("can remove a process-only provider variable", async () => {
     const processEnv: NodeJS.ProcessEnv = { OPENAI_API_KEY: "inherited-secret" };
     const svc = new EnvService({ path, processEnv });

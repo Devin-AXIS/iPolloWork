@@ -120,10 +120,10 @@ export function useModelPicker(input: UseModelPickerInput) {
         const queryClient = getReactQueryClient();
         const catalogQuerySources = catalogSources.length ? catalogSources : activeSources;
         const [data, runtimeData] = await Promise.all([
-          ensureMergedProviderListQuery(queryClient, catalogQuerySources, { force: true }),
+          ensureMergedProviderListQuery(queryClient, catalogQuerySources),
           runtimeSource
-            ? ensureProviderListQuery(queryClient, { ...runtimeSource, force: true })
-            : ensureMergedProviderListQuery(queryClient, activeSources, { force: true }),
+            ? ensureProviderListQuery(queryClient, runtimeSource)
+            : ensureMergedProviderListQuery(queryClient, activeSources),
         ]);
         if (cancelled || !data.all) return;
         const mergedCatalog = mergeProviderListResponses([data, runtimeData]);

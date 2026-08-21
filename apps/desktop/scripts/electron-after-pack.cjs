@@ -3,10 +3,8 @@ const path = require("node:path");
 const { spawnSync } = require("node:child_process");
 
 const computerUseHelperAppName = "iPolloWork Computer Use.app";
-const requiredAsarEntries = [
-  "/server/dist/ipollowork-types/hyperframes.js",
-  "/server/dist/ipollowork-types/templates.js",
-];
+const unresolvedRuntimeTypesImport = /(["'])@ipollowork\/types(?:\/[A-Za-z0-9._/-]+)?\1/g;
+const stagedRuntimeTypesImport = /(["'])((?:\.\.?\/)+ipollowork-types\/[A-Za-z0-9._/-]+\.js)\1/g;
 const requiredOpenCodePluginEntries = [
   path.join("opencode-chrome-devtools", "dist", "plugin.js"),
   path.join("opencode-chrome-devtools", "package.json"),
@@ -123,16 +121,34 @@ function assertPackagedRuntimeTypes(context) {
     throw new Error(`Missing packaged Electron archive: ${asarPath}`);
   }
 
-  const { listPackage, uncache } = require("@electron/asar");
+  const { extractFile, listPackage, uncache } = require("@electron/asar");
   uncache(asarPath);
-  const entries = new Set(
-    listPackage(asarPath, { isPack: false }).map((entry) => entry.replaceAll("\\", "/")),
+  const rawEntries = listPackage(asarPath, { isPack: false });
+  const entries = new Map(
+    rawEntries.map((entry) => [entry.replaceAll("\\", "/"), entry.replace(/^[/\\]+/, "")]),
   );
-  const missing = requiredAsarEntries.filter((entry) => !entries.has(entry));
-  if (missing.length === 0) return;
+  const failures = [];
+
+  for (const [entry, rawEntry] of entries) {
+    if (!entry.startsWith("/server/dist/") || !entry.endsWith(".js") || entry.includes("/ipollowork-types/")) {
+      continue;
+    }
+    const source = extractFile(asarPath, rawEntry).toString("utf8");
+    const unresolved = [...source.matchAll(unresolvedRuntimeTypesImport)].map((match) => match[0]);
+    if (unresolved.length > 0) {
+      failures.push(`${entry} contains unresolved imports: ${[...new Set(unresolved)].join(", ")}`);
+    }
+    for (const match of source.matchAll(stagedRuntimeTypesImport)) {
+      const importedEntry = path.posix.normalize(path.posix.join(path.posix.dirname(entry), match[2]));
+      if (!entries.has(importedEntry)) {
+        failures.push(`${entry} references missing runtime module ${importedEntry}`);
+      }
+    }
+  }
+  if (failures.length === 0) return;
 
   throw new Error(
-    "Missing @ipollowork/types runtime files in app.asar: " + missing.join(", "),
+    "Invalid @ipollowork/types runtime closure in app.asar: " + failures.join("; "),
   );
 }
 

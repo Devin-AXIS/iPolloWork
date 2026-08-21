@@ -1,4 +1,5 @@
 import { isReasoningUIPart, isToolUIPart, type DynamicToolUIPart, type FileUIPart, type ToolUIPart, type UIMessage } from "ai"
+import { SYNTHETIC_SESSION_ERROR_MESSAGE_PREFIX } from "@/app/types"
 import { t } from "@/i18n"
 
 interface MessageGroup {
@@ -162,6 +163,20 @@ export function isInternalContinuationMessage(message: UIMessage): boolean {
   return message.role === "user" && message.parts.length === 0
 }
 
+export function getActiveAssistantMessageId(
+  messages: UIMessage[],
+  activeMessageBaseline?: number | null,
+) {
+  const latestVisibleUserIndex = messages.findLastIndex(
+    (message) => message.role === "user" && !isInternalContinuationMessage(message),
+  )
+  const turnStart = activeMessageBaseline ?? Math.max(0, latestVisibleUserIndex)
+  return messages.slice(turnStart).findLast(
+    (message) => message.role === "assistant"
+      && !message.id.startsWith(SYNTHETIC_SESSION_ERROR_MESSAGE_PREFIX),
+  )?.id
+}
+
 export function groupMessages(messages: UIMessage[]): MessageListItem[] {
   const items: MessageListItem[] = []
   const visibleMessages = messages.flatMap((message, index) =>
@@ -198,6 +213,13 @@ type AssistantRenderGroup =
   | { kind: "tool"; part: ToolUIPart | DynamicToolUIPart }
 
 export type AssistantProcessRenderGroup = Extract<AssistantRenderGroup, { kind: "reasoning" | "file" | "tool" }>
+
+export type AssistantProcessState = "streaming" | "failed" | "completed"
+
+export function getAssistantProcessState(isStreaming: boolean, hasError: boolean): AssistantProcessState {
+  if (isStreaming) return "streaming"
+  return hasError ? "failed" : "completed"
+}
 
 export interface AssistantRenderSections {
   processGroups: AssistantProcessRenderGroup[]

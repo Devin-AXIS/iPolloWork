@@ -6,6 +6,7 @@ import {
   type ProjectWorkspaceConfig,
 } from "@ipollowork/types/project-workspace";
 import {
+  CODEX_HARNESS_ENGINE_ID,
   DEFAULT_ENGINE_ID,
   DEEPSEEK_HARNESS_ENGINE_ID,
 } from "@ipollowork/types/workspace";
@@ -41,6 +42,7 @@ export function pluginNeedsConfiguration(
 }
 
 export function engineLabel(engineId: string | null | undefined): string {
+  if (engineId === CODEX_HARNESS_ENGINE_ID) return t("projects.engine_codex");
   if (engineId === DEEPSEEK_HARNESS_ENGINE_ID) return t("projects.engine_dsh");
   if (engineId === DEFAULT_ENGINE_ID) return t("projects.engine_opencode");
   return engineId?.trim() || t("project_overview.inherit_project");

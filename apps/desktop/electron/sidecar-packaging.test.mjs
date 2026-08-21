@@ -6,16 +6,22 @@ import path from "node:path";
 import { createPackage } from "@electron/asar";
 
 import afterPackModule from "../scripts/electron-after-pack.cjs";
-import { stageServerConstants, stageServerRuntimeTypes } from "../scripts/server-packaging.mjs";
+import {
+  assertServerRuntimeDependencies,
+  stageServerConstants,
+  stageServerRuntimeTypes,
+} from "../scripts/server-packaging.mjs";
 
 const afterPack = afterPackModule.default ?? afterPackModule;
 
-it("prepares and packages the DSH CLI outside app.asar", async () => {
-  const [builderConfig, mainSource, buildSource, devSource, workspaceConfig, osxSignPatch] = await Promise.all([
+it("prepares and packages Harness CLIs outside app.asar", async () => {
+  const [builderConfig, mainSource, stdioRuntimeSource, buildSource, devSource, codexPrepareSource, workspaceConfig, osxSignPatch] = await Promise.all([
     readFile(new URL("../electron-builder.yml", import.meta.url), "utf8"),
     readFile(new URL("./main.mjs", import.meta.url), "utf8"),
+    readFile(new URL("../../server/src/stdio-json-rpc-runtime.ts", import.meta.url), "utf8"),
     readFile(new URL("../scripts/electron-build.mjs", import.meta.url), "utf8"),
     readFile(new URL("../scripts/electron-dev.mjs", import.meta.url), "utf8"),
+    readFile(new URL("../scripts/prepare-codex-runtime.mjs", import.meta.url), "utf8"),
     readFile(new URL("../../../pnpm-workspace.yaml", import.meta.url), "utf8"),
     readFile(new URL("../../../patches/@electron__osx-sign@1.3.1.patch", import.meta.url), "utf8"),
   ]);
@@ -27,6 +33,16 @@ it("prepares and packages the DSH CLI outside app.asar", async () => {
   assert.match(builderConfig, /ipollowork-host-tools\.mjs/);
   assert.match(buildSource, /prepare-dsh-runtime\.mjs/);
   assert.match(devSource, /prepare-dsh-runtime\.mjs/);
+  assert.match(builderConfig, /from: codex-runtime\s+to: codex-runtime/);
+  assert.match(mainSource, /process\.resourcesPath, "codex-runtime"/);
+  assert.match(mainSource, /IPOLLOWORK_CODEX_CLI/);
+  assert.match(mainSource, /codex-win32-x64/);
+  assert.match(mainSource, /x86_64-pc-windows-msvc/);
+  assert.match(mainSource, /"codex\.exe"/);
+  assert.match(stdioRuntimeSource, /windowsHide: true/);
+  assert.match(buildSource, /prepare-codex-runtime\.mjs/);
+  assert.match(devSource, /prepare-codex-runtime\.mjs/);
+  assert.match(codexPrepareSource, /Codex native Windows runtime was not installed/);
   assert.match(workspaceConfig, /@electron\/osx-sign@1\.3\.1.*@electron__osx-sign@1\.3\.1\.patch/);
   assert.match(osxSignPatch, /maxConcurrentFileOperations = 64/);
   assert.match(osxSignPatch, /withFileOperationLimit\(\(\) => getFilePathIfBinary\(filePath\)\)/);
@@ -91,20 +107,59 @@ it("stages constants beside every compiled server module that imports them", asy
   }
 });
 
-it("stages shared runtime types beside compiled server modules", async () => {
+it("requires every external server dependency in the Electron runtime manifest", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "ipollowork-server-dependencies-"));
+  const serverPackagePath = path.join(root, "server-package.json");
+  const desktopPackagePath = path.join(root, "desktop-package.json");
+  await writeFile(serverPackagePath, JSON.stringify({
+    dependencies: {
+      "@ipollowork/types": "workspace:*",
+      "oauth4webapi": "^3.8.7",
+      zod: "^4.3.6",
+    },
+  }));
+  await writeFile(desktopPackagePath, JSON.stringify({ dependencies: { zod: "^4.3.6" } }));
+
+  try {
+    assert.throws(
+      () => assertServerRuntimeDependencies({ serverPackagePath, desktopPackagePath }),
+      /oauth4webapi/,
+    );
+    await writeFile(desktopPackagePath, JSON.stringify({
+      dependencies: { oauth4webapi: "^3.8.7", zod: "^4.3.6" },
+    }));
+    assert.doesNotThrow(
+      () => assertServerRuntimeDependencies({ serverPackagePath, desktopPackagePath }),
+    );
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+it("stages all shared runtime types beside nested compiled server modules", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "ipollowork-runtime-types-stage-"));
   const serverDistDir = path.join(root, "server-dist");
   const runtimeTypesDistDir = path.join(root, "types-dist");
-  await mkdir(serverDistDir, { recursive: true });
-  await mkdir(runtimeTypesDistDir, { recursive: true });
+  await mkdir(path.join(serverDistDir, "routes"), { recursive: true });
+  await mkdir(path.join(runtimeTypesDistDir, "den"), { recursive: true });
   await writeFile(path.join(serverDistDir, "hyperframes-catalog.js"), 'import { schema } from "@ipollowork/types/hyperframes";\n');
+  await writeFile(path.join(serverDistDir, "server.js"), 'import { defaults } from "@ipollowork/types";\n');
+  await writeFile(path.join(serverDistDir, "routes", "workspaces.js"), 'export { engine } from "@ipollowork/types/workspace";\n');
+  await writeFile(path.join(runtimeTypesDistDir, "index.js"), "export const defaults = {};\n");
   await writeFile(path.join(runtimeTypesDistDir, "hyperframes.js"), "export const schema = {};\n");
-  await writeFile(path.join(runtimeTypesDistDir, "templates.js"), "export const templates = {};\n");
+  await writeFile(path.join(runtimeTypesDistDir, "workspace.js"), "export const engine = {};\n");
+  await writeFile(path.join(runtimeTypesDistDir, "den", "inference.js"), "export const inference = {};\n");
 
   try {
-    assert.deepEqual(stageServerRuntimeTypes({ serverDistDir, runtimeTypesDistDir }), ["hyperframes-catalog.js"]);
+    assert.deepEqual(stageServerRuntimeTypes({ serverDistDir, runtimeTypesDistDir }).sort(), [
+      "hyperframes-catalog.js",
+      "routes/workspaces.js",
+      "server.js",
+    ]);
     assert.match(await readFile(path.join(serverDistDir, "hyperframes-catalog.js"), "utf8"), /\.\/ipollowork-types\/hyperframes\.js/);
-    assert.equal(await readFile(path.join(serverDistDir, "ipollowork-types", "templates.js"), "utf8"), "export const templates = {};\n");
+    assert.match(await readFile(path.join(serverDistDir, "server.js"), "utf8"), /\.\/ipollowork-types\/index\.js/);
+    assert.match(await readFile(path.join(serverDistDir, "routes", "workspaces.js"), "utf8"), /\.\.\/ipollowork-types\/workspace\.js/);
+    assert.equal(await readFile(path.join(serverDistDir, "ipollowork-types", "den", "inference.js"), "utf8"), "export const inference = {};\n");
   } finally {
     await rm(root, { recursive: true, force: true });
   }
@@ -132,8 +187,8 @@ it("requires the shared runtime types in packaged Electron archives", async () =
   const packageDir = path.join(sourceDir, "server", "dist", "ipollowork-types");
   await mkdir(packageDir, { recursive: true });
   await mkdir(resourcesDir, { recursive: true });
-  await writeFile(path.join(packageDir, "hyperframes.js"), "export {};\n");
-  await writeFile(path.join(packageDir, "templates.js"), "export {};\n");
+  await writeFile(path.join(sourceDir, "server", "dist", "server.js"), 'import "./ipollowork-types/workspace.js";\n');
+  await writeFile(path.join(packageDir, "workspace.js"), "export {};\n");
 
   try {
     await createPackage(sourceDir, path.join(resourcesDir, "app.asar"));
@@ -142,12 +197,19 @@ it("requires the shared runtime types in packaged Electron archives", async () =
       appOutDir,
     }));
 
-    await rm(path.join(packageDir, "templates.js"));
+    await rm(path.join(packageDir, "workspace.js"));
     await createPackage(sourceDir, path.join(resourcesDir, "app.asar"));
     assert.throws(() => assertPackagedRuntimeTypes({
       electronPlatformName: "win32",
       appOutDir,
-    }), /ipollowork-types\/templates\.js/);
+    }), /ipollowork-types\/workspace\.js/);
+
+    await writeFile(path.join(sourceDir, "server", "dist", "server.js"), 'import "@ipollowork/types/workspace";\n');
+    await createPackage(sourceDir, path.join(resourcesDir, "app.asar"));
+    assert.throws(() => assertPackagedRuntimeTypes({
+      electronPlatformName: "win32",
+      appOutDir,
+    }), /unresolved imports/);
   } finally {
     await rm(appOutDir, { recursive: true, force: true });
   }
@@ -189,8 +251,8 @@ async function createWindowsFixture(triple) {
   const asarSource = path.join(appOutDir, "asar-source");
   const runtimeTypes = path.join(asarSource, "server", "dist", "ipollowork-types");
   await mkdir(runtimeTypes, { recursive: true });
-  await writeFile(path.join(runtimeTypes, "hyperframes.js"), "export {};\n");
-  await writeFile(path.join(runtimeTypes, "templates.js"), "export {};\n");
+  await writeFile(path.join(asarSource, "server", "dist", "server.js"), 'import "./ipollowork-types/workspace.js";\n');
+  await writeFile(path.join(runtimeTypes, "workspace.js"), "export {};\n");
   await createPackage(asarSource, path.join(appOutDir, "resources", "app.asar"));
   const pluginRoot = path.join(appOutDir, "resources", "opencode-plugins", "opencode-chrome-devtools");
   const pluginDir = path.join(pluginRoot, "dist");

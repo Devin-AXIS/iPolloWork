@@ -4,11 +4,13 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { UIMessage } from "ai";
 import { useNavigate } from "react-router-dom";
 import { createClient, unwrap } from "@/app/lib/opencode";
-import { Code2, Ellipsis, Eye, FileText, Film, Folder, FolderPlus, Globe, Image, KeyRound, LoaderCircle, Lock, Mic2, Palette, PanelRightClose, PanelRightOpen, Pencil, Presentation, Search, Settings2, Trash2, Upload, X, Zap } from "lucide-react";
+import { Code2, Ellipsis, Eye, FileText, Film, Folder, FolderPlus, Globe, Image, LoaderCircle, Lock, Mic2, Palette, PanelRightClose, PanelRightOpen, Pencil, Presentation, Search, Settings2, Trash2, Upload, X, Zap } from "lucide-react";
 import { MAX_TEMPLATE_PACKAGE_BYTES, TEMPLATE_PACKAGE_FILE_ACCEPT, isPptxCompatibleTemplate, type PptxCompatibility, type TemplateCatalogItem, type TemplateCategory, type TemplateManifestV1, type TemplateSessionSnapshot, type TemplateSessionState, type TemplateValidationReport } from "@ipollowork/types/templates";
 import {
+  CODEX_HARNESS_ENGINE_ID,
   DEEPSEEK_HARNESS_ENGINE_ID,
   DEFAULT_ENGINE_ID,
+  isBuiltInWorkspaceEngineId,
   type BuiltInWorkspaceEngineId,
 } from "@ipollowork/types/workspace";
 
@@ -35,6 +37,7 @@ import type {
   ComposerDraft,
   McpServerEntry,
   McpStatusMap,
+  PromptDispatchOptions,
   ProviderListItem,
   SkillCard,
   TodoItem,
@@ -198,15 +201,20 @@ function ProjectEngineBadge({
   engineId?: string | null;
   testId?: string;
 }) {
-  const isDeepSeekHarness = engineId?.trim() === DEEPSEEK_HARNESS_ENGINE_ID;
-  const label = t(isDeepSeekHarness ? "projects.engine_dsh" : "projects.engine_opencode");
+  const candidateEngineId = engineId?.trim();
+  const resolvedEngineId = isBuiltInWorkspaceEngineId(candidateEngineId) ? candidateEngineId : DEFAULT_ENGINE_ID;
+  const label = t(resolvedEngineId === CODEX_HARNESS_ENGINE_ID
+    ? "projects.engine_codex"
+    : resolvedEngineId === DEEPSEEK_HARNESS_ENGINE_ID
+      ? "projects.engine_dsh"
+      : "projects.engine_opencode");
   return (
     <Tooltip>
       <TooltipTrigger
         render={(
           <div
             data-testid={testId}
-            data-engine-id={isDeepSeekHarness ? DEEPSEEK_HARNESS_ENGINE_ID : DEFAULT_ENGINE_ID}
+            data-engine-id={resolvedEngineId}
             aria-label={`${label} · ${t("projects.engine_running")}`}
             tabIndex={0}
             className="inline-flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-full bg-dls-canvas px-4 py-2 text-[13px] font-medium leading-[18px] text-dls-text transition-colors hover:bg-dls-surface-muted focus-visible:bg-dls-surface-muted focus-visible:outline-none"
@@ -314,12 +322,10 @@ function ProjectWorkNavigation({
 function ProjectEngineOptions({
   value,
   onValueChange,
-  onConfigureDeepSeek,
   disabled = false,
 }: {
   value: BuiltInWorkspaceEngineId;
   onValueChange: (engineId: BuiltInWorkspaceEngineId) => void;
-  onConfigureDeepSeek?: () => void;
   disabled?: boolean;
 }) {
   return (
@@ -327,13 +333,11 @@ function ProjectEngineOptions({
       <RadioGroup
         value={value}
         onValueChange={(engineId) => {
-          if (engineId === DEFAULT_ENGINE_ID || engineId === DEEPSEEK_HARNESS_ENGINE_ID) {
-            onValueChange(engineId);
-          }
+          if (isBuiltInWorkspaceEngineId(engineId)) onValueChange(engineId);
         }}
         disabled={disabled}
         aria-label={t("projects.default_engine")}
-        className="grid w-full grid-cols-1 gap-4 sm:grid-cols-2"
+        className="grid w-full grid-cols-1 gap-4 sm:grid-cols-3"
       >
         {[
           {
@@ -349,6 +353,13 @@ function ProjectEngineOptions({
             description: t("projects.engine_dsh_description"),
             icon: projectEngineDeepSeekIcon,
             iconClassName: "h-6 w-[33px]",
+          },
+          {
+            id: CODEX_HARNESS_ENGINE_ID,
+            name: t("projects.engine_codex"),
+            description: t("projects.engine_codex_description"),
+            icon: publicAssetUrl("ext-openai.svg"),
+            iconClassName: "size-6 dark:invert",
           },
         ].map((engine) => {
           const selected = value === engine.id;
@@ -393,17 +404,6 @@ function ProjectEngineOptions({
           );
         })}
       </RadioGroup>
-      {value === DEEPSEEK_HARNESS_ENGINE_ID && onConfigureDeepSeek ? (
-        <button
-          type="button"
-          disabled={disabled}
-          onClick={onConfigureDeepSeek}
-          className="inline-flex items-center gap-1.5 text-xs text-primary transition-colors hover:text-primary/80 disabled:pointer-events-none disabled:opacity-50"
-        >
-          <KeyRound className="size-3.5" />
-          {t("projects.configure_deepseek_key")}
-        </button>
-      ) : null}
     </div>
   );
 }
@@ -539,7 +539,6 @@ export type SessionPageProps = {
   questionReplyBusy?: boolean;
   respondQuestion?: (requestID: string, answers: string[][]) => void;
   notFoundMessage?: string | null;
-  onOpenProviderAuth?: (preferredProviderId?: string) => void;
   onRenameSession?: (sessionId: string, title: string) => Promise<void> | void;
   onDeleteSession?: (sessionId: string) => Promise<void> | void;
   onArchiveSession?: (sessionId: string, archived: boolean) => Promise<void> | void;
@@ -1981,7 +1980,11 @@ export function SessionPage(props: SessionPageProps) {
     setSidePanelState(sessionId, "panel");
   }, [props.selectedSessionId, props.selectedSessionKnown, selectTab, sessionPanelState.tabs, setSidePanelState]);
 
-  const sendSessionDraft = useCallback((draft: ComposerDraft, sessionId: string) => {
+  const sendSessionDraft = useCallback((
+    draft: ComposerDraft,
+    sessionId: string,
+    options?: PromptDispatchOptions,
+  ) => {
     const send = props.surface?.onSendDraft;
     if (!send) return false;
     const workspaceAppTab = sessionId === props.selectedSessionId
@@ -2008,9 +2011,9 @@ export function SessionPage(props: SessionPageProps) {
           id: alreadyScoped ? capabilityId : capabilityId ? `${capabilityId}+${workspaceCapabilityId}` : workspaceCapabilityId,
           instruction: capabilityInstruction,
         },
-      }, sessionId);
+      }, sessionId, options);
     }
-    if (!workshopTab) return send(draft, sessionId);
+    if (!workshopTab) return send(draft, sessionId, options);
     const capabilityId = draft.capability?.id;
     const alreadyScoped = capabilityId?.split("+").includes("plugin-workshop") === true;
     return send({
@@ -2019,7 +2022,7 @@ export function SessionPage(props: SessionPageProps) {
         id: alreadyScoped ? capabilityId : capabilityId ? `${capabilityId}+plugin-workshop` : "plugin-workshop",
         instruction: mergePluginWorkshopInstruction(draft.capability?.instruction, workshopTab.pluginId),
       },
-    }, sessionId);
+    }, sessionId, options);
   }, [activePanelTab, props.selectedSessionId, props.surface?.onSendDraft, sessionSidePanel]);
 
   const setCurrentSidePanel = useCallback((panel: SidePanelItem | null) => {
@@ -3697,7 +3700,7 @@ export function SessionPage(props: SessionPageProps) {
                 </div>
               ) : null}
 
-              {mainWorkspaceView === null && showNewTaskStarter && props.surface ? (
+              {mainWorkspaceView === null && showNewTaskStarter && !showStartupSkeleton && props.surface ? (
                 <InitialProjectTaskStarter
                   key={`${props.selectedWorkspaceId}:${props.selectedWorkspaceDisplay.engineId ?? DEFAULT_ENGINE_ID}`}
                   surface={props.surface}
@@ -3777,6 +3780,7 @@ export function SessionPage(props: SessionPageProps) {
                         environmentClient={props.environmentClient}
                         workspaceId={props.runtimeWorkspaceId!}
                         sessionId={props.selectedSessionId!}
+                        engineId={props.selectedWorkspaceDisplay.engineId ?? DEFAULT_ENGINE_ID}
                         sessionTitle={selectedSessionTitle || t("session.default_title")}
                         opencodeBaseUrl={reactSessionBaseUrl}
                         ipolloworkToken={reactSessionToken}
@@ -4203,7 +4207,6 @@ export function SessionPage(props: SessionPageProps) {
               <ProjectEngineOptions
                 value={createProjectEngineId}
                 onValueChange={setCreateProjectEngineId}
-                onConfigureDeepSeek={() => props.onOpenProviderAuth?.("deepseek-official")}
                 disabled={createProjectBusy}
               />
               <div className="flex min-h-9 items-center gap-2 rounded-lg bg-[var(--project-dialog-notice)] px-4 py-2 text-[11px] leading-4 text-muted-foreground">

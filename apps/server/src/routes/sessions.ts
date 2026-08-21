@@ -1,5 +1,18 @@
 import type { createOpencodeClient } from "@opencode-ai/sdk/v2/client";
-import { DEEPSEEK_HARNESS_ENGINE_ID } from "@ipollowork/types/workspace";
+import { CODEX_HARNESS_ENGINE_ID, DEEPSEEK_HARNESS_ENGINE_ID } from "@ipollowork/types/workspace";
+import {
+  codexHarnessRuntimeProviderId,
+  CodexHarnessUnavailableError,
+  type CodexHarnessRuntimePool,
+} from "../codex-harness-runtime.js";
+import {
+  listCodexHarnessSessions,
+  mapCodexThread,
+  readCodexHarnessMessages,
+  readCodexHarnessSession,
+  readCodexHarnessSnapshot,
+  type CodexThread,
+} from "../codex-harness-session-read-model.js";
 import {
   DeepSeekHarnessRpcError,
   type DeepSeekHarnessRuntimePool,
@@ -12,6 +25,7 @@ import {
   readDeepSeekHarnessSnapshot,
 } from "../deepseek-harness-session-read-model.js";
 import { ApiError } from "../errors.js";
+import { StdioJsonRpcError } from "../stdio-json-rpc-runtime.js";
 import { buildSession, buildSessionList, buildSessionMessages, buildSessionSnapshot } from "../session-read-model.js";
 import type { ServerConfig, TokenScope, WorkspaceInfo } from "../types.js";
 import { addRoute, type RequestContext, type Route } from "./registry.js";
@@ -41,6 +55,7 @@ interface RegisterSessionRoutesOptions {
   createWorkspaceOpencodeClient: (config: ServerConfig, workspace: WorkspaceInfo) => WorkspaceOpencodeClient;
   unwrapOpencodeResult: UnwrapOpencodeResult;
   deepseekHarness: DeepSeekHarnessRuntimePool;
+  codexHarness: CodexHarnessRuntimePool;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -61,13 +76,7 @@ function optionalString(body: Record<string, unknown>, key: string, maxLength: n
   return trimmed;
 }
 
-function sessionPromptInput(body: Record<string, unknown>) {
-  if (typeof body.text !== "string" || !body.text.trim()) {
-    throw new ApiError(400, "invalid_payload", "text is required");
-  }
-  if (body.text.length > 1_000_000) {
-    throw new ApiError(400, "invalid_payload", "text must be at most 1000000 characters");
-  }
+function sessionModelInput(body: Record<string, unknown>) {
   let model: { providerID: string; modelID: string } | undefined;
   if (body.model !== undefined) {
     if (!isRecord(body.model)) {
@@ -80,9 +89,19 @@ function sessionPromptInput(body: Record<string, unknown>) {
     }
     model = { providerID, modelID };
   }
+  return model;
+}
+
+function sessionPromptInput(body: Record<string, unknown>) {
+  if (typeof body.text !== "string" || !body.text.trim()) {
+    throw new ApiError(400, "invalid_payload", "text is required");
+  }
+  if (body.text.length > 1_000_000) {
+    throw new ApiError(400, "invalid_payload", "text must be at most 1000000 characters");
+  }
   return {
     text: body.text,
-    model,
+    model: sessionModelInput(body),
     mode: optionalString(body, "mode", 200),
     reasoningEffort: optionalString(body, "reasoningEffort", 100),
     clientTimeZone: optionalString(body, "clientTimeZone", 100),
@@ -104,7 +123,22 @@ export function registerSessionRoutes(options: RegisterSessionRoutesOptions): vo
     createWorkspaceOpencodeClient,
     unwrapOpencodeResult,
     deepseekHarness,
+    codexHarness,
   } = options;
+  const freshCodexThreadLimit = 500;
+  const freshCodexThreads = new Map<string, { providerID: string; modelID: string }>();
+  const codexThreadKey = (workspaceId: string, threadId: string) => `${workspaceId}\u0000${threadId}`;
+  const rememberFreshCodexThread = (
+    key: string,
+    model: { providerID: string; modelID: string },
+  ) => {
+    freshCodexThreads.set(key, model);
+    while (freshCodexThreads.size > freshCodexThreadLimit) {
+      const oldest = freshCodexThreads.keys().next().value;
+      if (typeof oldest !== "string") break;
+      freshCodexThreads.delete(oldest);
+    }
+  };
 
   function remapSessionReadError(error: unknown): never {
     if (error instanceof DeepSeekHarnessUnavailableError) {
@@ -113,6 +147,13 @@ export function registerSessionRoutes(options: RegisterSessionRoutesOptions): vo
     if (error instanceof DeepSeekHarnessRpcError) {
       const status = error.code === "not-found" || error.code === "session-not-found" ? 404 : 502;
       throw new ApiError(status, `deepseek_harness_${error.code}`, error.message, error.details);
+    }
+    if (error instanceof CodexHarnessUnavailableError) {
+      throw new ApiError(503, error.code, error.message);
+    }
+    if (error instanceof StdioJsonRpcError) {
+      const status = error.code === -32602 ? 400 : error.code === -32601 ? 501 : 502;
+      throw new ApiError(status, "codex_harness_rpc_failed", error.message, error.data);
     }
     if (error instanceof ApiError && error.code === "opencode_request_failed") {
       const details = error.details;
@@ -136,6 +177,9 @@ export function registerSessionRoutes(options: RegisterSessionRoutesOptions): vo
       if (workspace.engineId === DEEPSEEK_HARNESS_ENGINE_ID) {
         return await listDeepSeekHarnessSessions(deepseekHarness.forWorkspace(workspace), workspace, input);
       }
+      if (workspace.engineId === CODEX_HARNESS_ENGINE_ID) {
+        return await listCodexHarnessSessions(codexHarness.forWorkspace(workspace), workspace, input);
+      }
       const opencode = createWorkspaceOpencodeClient(config, workspace);
       return buildSessionList(
         unwrapOpencodeResult(
@@ -157,6 +201,9 @@ export function registerSessionRoutes(options: RegisterSessionRoutesOptions): vo
     try {
       if (workspace.engineId === DEEPSEEK_HARNESS_ENGINE_ID) {
         return await readDeepSeekHarnessSession(deepseekHarness.forWorkspace(workspace), workspace, sessionId);
+      }
+      if (workspace.engineId === CODEX_HARNESS_ENGINE_ID) {
+        return await readCodexHarnessSession(codexHarness.forWorkspace(workspace), sessionId);
       }
       const opencode = createWorkspaceOpencodeClient(config, workspace);
       return buildSession(
@@ -184,6 +231,9 @@ export function registerSessionRoutes(options: RegisterSessionRoutesOptions): vo
           input.limit,
         );
       }
+      if (workspace.engineId === CODEX_HARNESS_ENGINE_ID) {
+        return await readCodexHarnessMessages(codexHarness.forWorkspace(workspace), sessionId, input.limit);
+      }
       const opencode = createWorkspaceOpencodeClient(config, workspace);
       return buildSessionMessages(
         unwrapOpencodeResult(
@@ -205,6 +255,9 @@ export function registerSessionRoutes(options: RegisterSessionRoutesOptions): vo
       if (workspace.engineId === DEEPSEEK_HARNESS_ENGINE_ID) {
         return await readDeepSeekHarnessSnapshot(deepseekHarness.forWorkspace(workspace), workspace, sessionId, input.limit);
       }
+      if (workspace.engineId === CODEX_HARNESS_ENGINE_ID) {
+        return await readCodexHarnessSnapshot(codexHarness.forWorkspace(workspace), sessionId, input.limit);
+      }
       const opencode = createWorkspaceOpencodeClient(config, workspace);
       const [session, messages, todos, statuses] = await Promise.all([
         opencode.session
@@ -224,7 +277,11 @@ export function registerSessionRoutes(options: RegisterSessionRoutesOptions): vo
     }
   }
 
-  async function createWorkspaceSession(workspace: WorkspaceInfo, title?: string) {
+  async function createWorkspaceSession(
+    workspace: WorkspaceInfo,
+    title?: string,
+    model?: { providerID: string; modelID: string },
+  ) {
     try {
       if (workspace.engineId === DEEPSEEK_HARNESS_ENGINE_ID) {
         const runtime = deepseekHarness.forWorkspace(workspace);
@@ -249,6 +306,32 @@ export function registerSessionRoutes(options: RegisterSessionRoutesOptions): vo
             ...(result.agentPreset ? { agentPreset: result.agentPreset } : {}),
           },
         };
+      }
+      if (workspace.engineId === CODEX_HARNESS_ENGINE_ID) {
+        const runtime = codexHarness.forWorkspace(workspace);
+        const result = await runtime.startThread<{
+          thread?: CodexThread;
+          model?: string;
+          modelProvider?: string;
+        }>({
+          cwd: workspace.path,
+          approvalPolicy: "on-request",
+          sandbox: "workspace-write",
+          ...(model ? {
+            modelProvider: codexHarnessRuntimeProviderId(model.providerID),
+            model: model.modelID,
+            allowProviderModelFallback: false,
+          } : {}),
+        });
+        if (!result.thread?.id) {
+          throw new ApiError(502, "codex_harness_invalid_response", "Codex Harness returned an invalid thread");
+        }
+        rememberFreshCodexThread(codexThreadKey(workspace.id, result.thread.id), {
+          providerID: model?.providerID || result.modelProvider?.trim() || "",
+          modelID: result.model?.trim() || model?.modelID || "",
+        });
+        if (title) await runtime.call("thread/name/set", { threadId: result.thread.id, name: title });
+        return mapCodexThread({ ...result.thread, ...(title ? { name: title } : {}) });
       }
       const opencode = createWorkspaceOpencodeClient(config, workspace);
       return buildSession(
@@ -290,7 +373,42 @@ export function registerSessionRoutes(options: RegisterSessionRoutesOptions): vo
           content: [{ type: "text", text: input.text }],
           clientTimeZone: input.clientTimeZone || Intl.DateTimeFormat().resolvedOptions().timeZone,
         });
-        return;
+        return sessionId;
+      }
+      if (workspace.engineId === CODEX_HARNESS_ENGINE_ID) {
+        const runtime = codexHarness.forWorkspace(workspace);
+        const freshKey = codexThreadKey(workspace.id, sessionId);
+        const fresh = freshCodexThreads.get(freshKey);
+        const freshMatchesSelection = Boolean(
+          fresh
+          && (!input.model || (
+            fresh.providerID === input.model.providerID
+            && fresh.modelID === input.model.modelID
+          )),
+        );
+        let effectiveSessionId = sessionId;
+        if (!freshMatchesSelection) {
+          const resumed = await runtime.resumeThread({
+            threadId: sessionId,
+            cwd: workspace.path,
+            ...(input.model ? {
+              modelProvider: codexHarnessRuntimeProviderId(input.model.providerID),
+              model: input.model.modelID,
+            } : {}),
+          });
+          const resumedThread = resumed && isRecord(resumed.thread) ? resumed.thread : null;
+          if (typeof resumedThread?.id === "string" && resumedThread.id.trim()) {
+            effectiveSessionId = resumedThread.id.trim();
+          }
+        }
+        await runtime.call("turn/start", {
+          threadId: effectiveSessionId,
+          input: [{ type: "text", text: input.text, text_elements: [] }],
+          ...(input.model ? { model: input.model.modelID } : {}),
+          ...(input.reasoningEffort ? { effort: input.reasoningEffort } : {}),
+        });
+        freshCodexThreads.delete(freshKey);
+        return effectiveSessionId;
       }
       const opencode = createWorkspaceOpencodeClient(config, workspace);
       unwrapOpencodeResult(
@@ -303,6 +421,7 @@ export function registerSessionRoutes(options: RegisterSessionRoutesOptions): vo
         }),
         `/session/${encodeURIComponent(sessionId)}/prompt_async`,
       );
+      return sessionId;
     } catch (error) {
       remapSessionReadError(error);
     }
@@ -313,7 +432,11 @@ export function registerSessionRoutes(options: RegisterSessionRoutesOptions): vo
     requireClientScope(ctx, "collaborator");
     const workspace = await resolveWorkspace(config, ctx.params.id);
     const body = await readJsonBody(ctx.request);
-    const item = await createWorkspaceSession(workspace, optionalString(body, "title", 500));
+    const item = await createWorkspaceSession(
+      workspace,
+      optionalString(body, "title", 500),
+      sessionModelInput(body),
+    );
     return jsonResponse({ item }, 201);
   });
 
@@ -370,8 +493,12 @@ export function registerSessionRoutes(options: RegisterSessionRoutesOptions): vo
     if (!sessionId) {
       throw new ApiError(400, "invalid_payload", "sessionId is required");
     }
-    await promptWorkspaceSession(workspace, sessionId, sessionPromptInput(await readJsonBody(ctx.request)));
-    return jsonResponse({ ok: true, accepted: true }, 202);
+    const effectiveSessionId = await promptWorkspaceSession(
+      workspace,
+      sessionId,
+      sessionPromptInput(await readJsonBody(ctx.request)),
+    );
+    return jsonResponse({ ok: true, accepted: true, sessionId: effectiveSessionId }, 202);
   });
 
   addRoute(routes, "DELETE", "/workspace/:id/sessions/:sessionId", "client", async (ctx) => {
@@ -390,6 +517,12 @@ export function registerSessionRoutes(options: RegisterSessionRoutesOptions): vo
         "session_delete_unsupported",
         "DeepSeek Harness supports session archiving but not permanent deletion",
       );
+    }
+
+    if (workspace.engineId === CODEX_HARNESS_ENGINE_ID) {
+      freshCodexThreads.delete(codexThreadKey(workspace.id, sessionId));
+      await codexHarness.forWorkspace(workspace).call("thread/delete", { threadId: sessionId });
+      return jsonResponse({ ok: true });
     }
 
     const opencode = createWorkspaceOpencodeClient(config, workspace);

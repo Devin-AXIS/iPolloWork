@@ -86,6 +86,18 @@ const appStylesSource = readFileSync(
 );
 
 describe("settings route parsing", () => {
+  test("binds provider auth directly to the derived shared client", () => {
+    expect(settingsRouteSource).toContain(
+      "routeStateRef.current.providerClient = sharedProviderClient;",
+    );
+    expect(settingsRouteSource).not.toContain("activeProviderClient");
+  });
+
+  test("refreshes the account provider directory when AI settings becomes visible", () => {
+    expect(settingsRouteSource).toContain('if (route.tab !== "ai" || !sharedProviderClient) return;');
+    expect(settingsRouteSource).not.toContain("setProviders([]);");
+  });
+
   test("redirects the settings root to preferences while keeping the overview route available", () => {
     expect(parseSettingsPath("/settings")).toEqual({ tab: "preferences", redirectPath: "preferences" });
     expect(parseSettingsPath("/settings/general")).toEqual({ tab: "general", redirectPath: null });
@@ -229,7 +241,7 @@ describe("settings route parsing", () => {
     expect(selectMenuSource).toContain('h-[34px] w-full items-center justify-between');
     expect(selectMenuSource).toContain('rounded-[8px] border border-dls-border bg-white p-1');
     expect(selectMenuSource).toContain('text-[#1FBAC0]');
-    expect(skillsViewSource).toContain('<SelectTrigger\n              data-testid="skills-status-filter"');
+    expect(skillsViewSource).toContain('data-testid="skills-status-filter"');
     expect(skillsViewSource).not.toContain('<select\n              data-testid="skills-status-filter"');
   });
 

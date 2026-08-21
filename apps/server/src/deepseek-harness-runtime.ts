@@ -1,29 +1,36 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
-import { readFile } from "node:fs/promises";
 import { join } from "node:path";
-import { createOpencodeClient } from "@opencode-ai/sdk/v2/client";
 
 import {
   providerApiKeyCredentialRef,
   serializeSharedProviderProfile,
-  sharedProviderIdFromCredentialEnvKey,
   sharedProviderProfileEnvKey,
   sharedProviderProfiles,
   type SharedProviderProfile,
 } from "@ipollowork/types/provider-credentials";
+import { DEEPSEEK_HARNESS_ENGINE_ID } from "@ipollowork/types/workspace";
 
-import { isReservedEnvKey, type EnvService } from "./env-file.js";
+import type { EnvService } from "./env-file.js";
 import { writeDeepSeekHarnessPatchFile } from "./deepseek-harness-patch.js";
 import { onRuntimeMcpConfigWrite } from "./runtime-capability-store.js";
 import { readRuntimeProviderChannels } from "./runtime-opencode-config-store.js";
 import { runtimeStorageDir } from "./runtime-storage.js";
-import { resolveOpencodeAuthPath } from "./opencode-db.js";
-import { resolveWorkspaceOpencodeConnection } from "./opencode-connection.js";
-import { DEEPSEEK_HARNESS_ENGINE_ID, DEFAULT_ENGINE_ID } from "@ipollowork/types/workspace";
+import { resolveOpenAiCodexOAuthSession } from "./openai-codex-oauth.js";
+import {
+  compatibleProviderRuntimeProfiles,
+  sharedProviderApiCredentials as readSharedProviderApiCredentials,
+  sharedProviderChildEnvironment,
+} from "./shared-provider-runtime.js";
 import type { ServerConfig, WorkspaceInfo } from "./types.js";
 import { ensureDir } from "./utils.js";
+
+export {
+  openAiCodexOAuthCredential,
+  refreshOpenAiCodexOAuthCredential,
+  type OpenAiCodexOAuthCredential,
+} from "./openai-codex-oauth.js";
 
 type RpcFailure = {
   code: string;
@@ -95,116 +102,12 @@ const OPENCODE_ZEN_PUBLIC_PROVIDER_BRIDGE: DeepSeekHarnessProviderBridge = {
   discoverModels: true,
 };
 
-export type OpenAiCodexOAuthCredential = {
-  type: "oauth";
-  access: string;
-  refresh: string;
-  expires: number;
-  accountId?: string;
-};
-
 const OPENAI_CODEX_AUTH_PROVIDER_ID = "openai";
 const OPENAI_CODEX_PROVIDER_BRIDGE: DeepSeekHarnessProviderBridge = {
   providerId: "openai-codex",
   displayName: "OpenAI",
 };
-const OPENAI_CODEX_CLIENT_ID = "app_EMoamEEZ73f0CkXaXp7hrann";
-const OPENAI_CODEX_TOKEN_URL = "https://auth.openai.com/oauth/token";
-const OPENAI_CODEX_REFRESH_SKEW_MS = 60_000;
-const OPENAI_CODEX_REFRESH_TIMEOUT_MS = 10_000;
 const PROVIDER_MODEL_DISCOVERY_TIMEOUT_MS = 10_000;
-
-function oauthExpiry(value: unknown): number | null {
-  if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) return null;
-  return value < 1_000_000_000_000 ? value * 1_000 : value;
-}
-
-export function openAiCodexOAuthCredential(value: unknown): OpenAiCodexOAuthCredential | null {
-  if (!isRecord(value) || value.type !== "oauth") return null;
-  const access = nonEmptyString(value.access);
-  const refresh = nonEmptyString(value.refresh);
-  const expires = oauthExpiry(value.expires);
-  if (!access || !refresh || !expires) return null;
-  const accountId = nonEmptyString(value.accountId);
-  return {
-    type: "oauth",
-    access,
-    refresh,
-    expires,
-    ...(accountId ? { accountId } : {}),
-  };
-}
-
-export async function refreshOpenAiCodexOAuthCredential(
-  credential: OpenAiCodexOAuthCredential,
-  options: { fetcher?: typeof fetch; now?: number } = {},
-): Promise<OpenAiCodexOAuthCredential> {
-  const fetcher = options.fetcher ?? fetch;
-  const now = options.now ?? Date.now();
-  const response = await fetcher(OPENAI_CODEX_TOKEN_URL, {
-    method: "POST",
-    headers: { "content-type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({
-      grant_type: "refresh_token",
-      refresh_token: credential.refresh,
-      client_id: OPENAI_CODEX_CLIENT_ID,
-    }),
-    signal: AbortSignal.timeout(OPENAI_CODEX_REFRESH_TIMEOUT_MS),
-  });
-  if (!response.ok) {
-    throw new Error(`OpenAI Codex token refresh failed (${response.status})`);
-  }
-  const payload = await response.json() as Record<string, unknown>;
-  const access = nonEmptyString(payload.access_token);
-  const refresh = nonEmptyString(payload.refresh_token) ?? credential.refresh;
-  const expiresIn = typeof payload.expires_in === "number" && Number.isFinite(payload.expires_in)
-    ? payload.expires_in
-    : null;
-  if (!access || !expiresIn || expiresIn <= 0) {
-    throw new Error("OpenAI Codex token refresh response is incomplete");
-  }
-  return {
-    ...credential,
-    access,
-    refresh,
-    expires: now + expiresIn * 1_000,
-  };
-}
-
-let openAiCodexCredentialRefresh: Promise<string | null> | null = null;
-
-async function resolveOpenAiCodexAccessToken(
-  persist: (credential: OpenAiCodexOAuthCredential) => Promise<void>,
-): Promise<string | null> {
-  if (openAiCodexCredentialRefresh) return openAiCodexCredentialRefresh;
-  openAiCodexCredentialRefresh = (async () => {
-    const authPath = resolveOpencodeAuthPath();
-    if (!authPath) return null;
-    let authStore: Record<string, unknown>;
-    try {
-      const parsed = JSON.parse(await readFile(authPath, "utf8")) as unknown;
-      if (!isRecord(parsed)) return null;
-      authStore = parsed;
-    } catch {
-      return null;
-    }
-    const credential = openAiCodexOAuthCredential(authStore[OPENAI_CODEX_AUTH_PROVIDER_ID]);
-    if (!credential) return null;
-    if (credential.expires > Date.now() + OPENAI_CODEX_REFRESH_SKEW_MS) {
-      return credential.access;
-    }
-    try {
-      const refreshed = await refreshOpenAiCodexOAuthCredential(credential);
-      await persist(refreshed);
-      return refreshed.access;
-    } catch {
-      return credential.expires > Date.now() ? credential.access : null;
-    }
-  })().finally(() => {
-    openAiCodexCredentialRefresh = null;
-  });
-  return openAiCodexCredentialRefresh;
-}
 
 const OPENCODE_ZEN_PUBLIC_API_KEY = "public";
 
@@ -249,72 +152,6 @@ const DEEPSEEK_HARNESS_PROVIDER_ID_ALIASES = new Map<string, string>([
   ["kimi-for-coding", "kimi-coding"],
 ]);
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function nonEmptyString(value: unknown): string | undefined {
-  return typeof value === "string" && value.trim() ? value.trim() : undefined;
-}
-
-function positiveInteger(value: unknown): number | undefined {
-  return typeof value === "number" && Number.isInteger(value) && value > 0
-    ? value
-    : undefined;
-}
-
-function compatibleProtocol(
-  provider: Record<string, unknown>,
-): "openai-completions" | "openai-responses" | "anthropic-messages" {
-  const configuredApi = nonEmptyString(provider.api);
-  if (
-    configuredApi === "openai-completions"
-    || configuredApi === "openai-responses"
-    || configuredApi === "anthropic-messages"
-  ) {
-    return configuredApi;
-  }
-  const npm = nonEmptyString(provider.npm)?.toLowerCase() ?? "";
-  return npm.includes("anthropic") ? "anthropic-messages" : "openai-completions";
-}
-
-function compatibleBaseUrl(provider: Record<string, unknown>): string | undefined {
-  const options = isRecord(provider.options) ? provider.options : {};
-  const configured = nonEmptyString(options.baseURL)
-    ?? nonEmptyString(provider.baseURL)
-    ?? nonEmptyString(provider.api);
-  if (!configured) return undefined;
-  try {
-    const url = new URL(configured);
-    return url.protocol === "http:" || url.protocol === "https:" ? url.toString().replace(/\/$/, "") : undefined;
-  } catch {
-    return undefined;
-  }
-}
-
-function compatibleModels(value: unknown): DeepSeekHarnessDiscoveredModels["models"] {
-  if (!isRecord(value)) return [];
-  return Object.entries(value).flatMap(([modelId, modelValue]) => {
-    const id = modelId.trim();
-    if (!id) return [];
-    const model = isRecord(modelValue) ? modelValue : {};
-    const limit = isRecord(model.limit) ? model.limit : {};
-    const name = nonEmptyString(model.name);
-    const contextWindow = positiveInteger(model.contextWindow) ?? positiveInteger(limit.context);
-    const maxTokens = positiveInteger(model.maxTokens) ?? positiveInteger(limit.output);
-    const modalities = isRecord(model.modalities) && Array.isArray(model.modalities.input)
-      ? model.modalities.input.filter((entry): entry is "text" | "image" => entry === "text" || entry === "image")
-      : [];
-    return [{
-      id,
-      ...(name ? { name } : {}),
-      ...(contextWindow ? { contextWindow } : {}),
-      ...(maxTokens ? { maxTokens } : {}),
-      ...(modalities.length ? { input: [...new Set(modalities)] } : {}),
-    }];
-  });
-}
-
 /**
  * Translate the app-wide OpenCode-compatible provider profiles into the
  * provider-neutral shape consumed by the DSH pi-ai adapter. Credentials are
@@ -324,31 +161,13 @@ function compatibleModels(value: unknown): DeepSeekHarnessDiscoveredModels["mode
 export function deepSeekHarnessCompatibleProviderProfiles(
   providers: unknown,
 ): Map<string, DeepSeekHarnessProviderBridge> {
-  if (!isRecord(providers)) return new Map();
-  return new Map(Object.entries(providers).flatMap(([providerId, providerValue]) => {
-    const id = providerId.trim();
-    if (!/^[a-z][a-z0-9._-]*$/.test(id) || !isRecord(providerValue)) return [];
-    const baseURL = compatibleBaseUrl(providerValue);
-    const models = compatibleModels(providerValue.models);
-    if (!baseURL || models.length === 0) return [];
-    return [[id, {
-      providerId: id,
-      displayName: nonEmptyString(providerValue.name) ?? id,
-      api: compatibleProtocol(providerValue),
-      baseURL,
-      models,
-    }] as const];
-  }));
+  return compatibleProviderRuntimeProfiles(providers);
 }
 
 export function sharedProviderApiCredentials(
   records: ReadonlyArray<{ key: string; value: string }>,
 ): Map<string, string> {
-  return new Map(records.flatMap((record) => {
-    const providerId = sharedProviderIdFromCredentialEnvKey(record.key);
-    const apiKey = record.value.trim();
-    return providerId && apiKey ? [[providerId, apiKey] as const] : [];
-  }));
+  return readSharedProviderApiCredentials(records);
 }
 
 export function deepSeekHarnessProviderCredentials(
@@ -387,12 +206,7 @@ export function deepSeekHarnessProviderCredentials(
 export function deepSeekHarnessChildEnvironment(
   records: ReadonlyArray<{ key: string; value: string }>,
 ): Record<string, string> {
-  return Object.fromEntries(records
-    .filter((entry) => (
-      !isReservedEnvKey(entry.key)
-      && !sharedProviderIdFromCredentialEnvKey(entry.key)
-    ))
-    .map((entry) => [entry.key, entry.value]));
+  return sharedProviderChildEnvironment(records);
 }
 
 export class DeepSeekHarnessUnavailableError extends Error {
@@ -495,12 +309,12 @@ export class DeepSeekHarnessRuntime {
   }
 
   async #performSharedProviderApiCredentialSync(baseUrl: string): Promise<void> {
-    const [records, openAiCodexAccessToken] = await Promise.all([
+    const [records, openAiCodexOAuth] = await Promise.all([
       this.#env.list(),
-      resolveOpenAiCodexAccessToken((credential) => this.#persistOpenAiCodexOAuthCredential(credential)),
+      resolveOpenAiCodexOAuthSession(this.#config),
     ]);
     if (
-      openAiCodexAccessToken
+      openAiCodexOAuth
       && !sharedProviderProfiles(records).has(OPENAI_CODEX_AUTH_PROVIDER_ID)
     ) {
       await this.#env.upsertMany([{
@@ -513,7 +327,9 @@ export class DeepSeekHarnessRuntime {
         }),
       }]).catch(() => {});
     }
-    const credentials = deepSeekHarnessProviderCredentials(records, { openAiCodexAccessToken });
+    const credentials = deepSeekHarnessProviderCredentials(records, {
+      openAiCodexAccessToken: openAiCodexOAuth?.accessToken,
+    });
     const compatibleProfiles = deepSeekHarnessCompatibleProviderProfiles(
       await readRuntimeProviderChannels(this.#config).catch(() => ({})),
     );
@@ -685,33 +501,6 @@ export class DeepSeekHarnessRuntime {
       this.#syncedCredentialFingerprint = fingerprint;
       this.#syncedProviderIds = new Set(credentials.keys());
       this.#syncedCompatibleProviderIds = desiredCompatibleProviderIds;
-    }
-  }
-
-  async #persistOpenAiCodexOAuthCredential(
-    credential: OpenAiCodexOAuthCredential,
-  ): Promise<void> {
-    const workspace = this.#config.workspaces.find((entry) => entry.engineId === DEFAULT_ENGINE_ID);
-    if (!workspace) throw new Error("OpenCode workspace is unavailable for OAuth refresh persistence");
-    const connection = resolveWorkspaceOpencodeConnection(this.#config, workspace);
-    if (!connection.baseUrl) throw new Error("OpenCode provider endpoint is unavailable");
-    const client = createOpencodeClient({
-      baseUrl: connection.baseUrl,
-      ...(connection.authHeader ? { headers: { Authorization: connection.authHeader } } : {}),
-    });
-    const body = {
-      type: "oauth" as const,
-      access: credential.access,
-      refresh: credential.refresh,
-      expires: credential.expires,
-      ...(credential.accountId ? { accountId: credential.accountId } : {}),
-    };
-    const result = await client.auth.set({
-      providerID: OPENAI_CODEX_AUTH_PROVIDER_ID,
-      auth: body,
-    });
-    if (result.data !== true) {
-      throw new Error(`OpenCode rejected refreshed OAuth credentials (${result.response.status})`);
     }
   }
 
@@ -901,7 +690,7 @@ export class DeepSeekHarnessRuntimePool {
     this.#env = input.env;
     this.#stopConfigListener = onRuntimeMcpConfigWrite((config, workspaceId) => {
       if (config !== this.#config) return;
-      void this.#runtimes.get(workspaceId)?.close();
+      void this.closeWorkspace(workspaceId);
     });
   }
 
@@ -911,6 +700,12 @@ export class DeepSeekHarnessRuntimePool {
     const runtime = new DeepSeekHarnessRuntime({ config: this.#config, env: this.#env, workspace });
     this.#runtimes.set(workspace.id, runtime);
     return runtime;
+  }
+
+  async closeWorkspace(workspaceId: string): Promise<void> {
+    const runtime = this.#runtimes.get(workspaceId);
+    this.#runtimes.delete(workspaceId);
+    await runtime?.close();
   }
 
   async close(): Promise<void> {

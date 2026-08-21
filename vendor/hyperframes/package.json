@@ -47,15 +47,23 @@
     "yaml": "^2.9.0"
   },
   "resolutions": {
+    "@codemirror/state": "6.7.1",
+    "@codemirror/view": "6.43.8",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "react": "^19.0.0",
-    "react-dom": "^19.0.0"
+    "react-dom": "^19.0.0",
+    "tailwindcss": "3.4.17",
+    "typescript": "5.7.3"
   },
   "overrides": {
+    "@codemirror/state": "6.7.1",
+    "@codemirror/view": "6.43.8",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "react": "^19.0.0",
-    "react-dom": "^19.0.0"
+    "react-dom": "^19.0.0",
+    "tailwindcss": "3.4.17",
+    "typescript": "5.7.3"
   }
 }

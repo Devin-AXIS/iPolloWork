@@ -45,6 +45,13 @@ extraResources:
       - package.json
       - ipollowork-host-tools.mjs
       - node_modules/**/*
+  # Codex app-server is another stdio Harness runtime. Keep its optional
+  # platform binary outside ASAR so the JavaScript launcher can execute it.
+  - from: codex-runtime
+    to: codex-runtime
+    filter:
+      - package.json
+      - node_modules/**/*
   # Templates are installed by copying their full directory into the local
   # library. Electron's virtual ASAR filesystem can read them but Node cannot
   # recursively copy an ASAR directory on macOS, so keep these assets real.

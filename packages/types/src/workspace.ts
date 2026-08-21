@@ -18,17 +18,54 @@ export type WorkspaceRemoteKind = "opencode" | "ipollowork";
 
 export const DEFAULT_ENGINE_ID = "opencode";
 export const DEEPSEEK_HARNESS_ENGINE_ID = "deepseek-harness";
+export const CODEX_HARNESS_ENGINE_ID = "codex-harness";
 export const DEEPSEEK_HARNESS_INTERNAL_SYSTEM_PREFIX = "<system>\n<!-- ipollowork-internal-context -->\n";
+export const CODEX_HARNESS_LEGACY_SYSTEM_MARKER = "Long-running local process rule:";
+const CODEX_HARNESS_LEGACY_TEMPLATE_MARKERS = [
+  "Multi-artifact delivery contract:",
+  "Keep the template's visual language",
+  "ipollowork-internal-context",
+] as const;
+
+/**
+ * Codex turns created before application context was sent out-of-band stored
+ * that context as text entries before the authored prompt. Keep old threads
+ * readable without exposing the internal context in the conversation surface.
+ */
+export function visibleCodexHarnessUserText(entries: readonly string[]): string {
+  let internalContextIndex = -1;
+  entries.forEach((entry, index) => {
+    if (
+      entry.includes(CODEX_HARNESS_LEGACY_SYSTEM_MARKER)
+      || CODEX_HARNESS_LEGACY_TEMPLATE_MARKERS.some((marker) => entry.includes(marker))
+    ) internalContextIndex = index;
+  });
+  return entries
+    .slice(internalContextIndex >= 0 ? internalContextIndex + 1 : 0)
+    .join("\n");
+}
 
 export const BUILT_IN_WORKSPACE_ENGINE_IDS = [
   DEFAULT_ENGINE_ID,
   DEEPSEEK_HARNESS_ENGINE_ID,
+  CODEX_HARNESS_ENGINE_ID,
 ] as const;
 
 export type BuiltInWorkspaceEngineId = (typeof BUILT_IN_WORKSPACE_ENGINE_IDS)[number];
 
 export function isBuiltInWorkspaceEngineId(value: unknown): value is BuiltInWorkspaceEngineId {
   return typeof value === "string" && BUILT_IN_WORKSPACE_ENGINE_IDS.includes(value as BuiltInWorkspaceEngineId);
+}
+
+export const HARNESS_WORKSPACE_ENGINE_IDS = [
+  DEEPSEEK_HARNESS_ENGINE_ID,
+  CODEX_HARNESS_ENGINE_ID,
+] as const;
+
+export type HarnessWorkspaceEngineId = (typeof HARNESS_WORKSPACE_ENGINE_IDS)[number];
+
+export function isHarnessWorkspaceEngineId(value: unknown): value is HarnessWorkspaceEngineId {
+  return typeof value === "string" && HARNESS_WORKSPACE_ENGINE_IDS.includes(value as HarnessWorkspaceEngineId);
 }
 
 export type WorkspaceWire = {

@@ -1379,7 +1379,11 @@ export function createiPolloWorkServerClient(options: { baseUrl: string; token?:
       requestJson<TemplateSessionSnapshot>(baseUrl, `/workspace/${encodeURIComponent(workspaceId)}/template-sessions/${encodeURIComponent(sessionId)}/adopt-video`, { token, hostToken, method: "POST", body: {}, timeoutMs: timeouts.workspaceImport }),
     listTemplateSessions: (workspaceId: string) =>
       requestJson<{ items: TemplateSessionSnapshot[] }>(baseUrl, `/workspace/${encodeURIComponent(workspaceId)}/template-sessions`, { token, hostToken }),
-    createSession: (workspaceId: string, title?: string) =>
+    createSession: (
+      workspaceId: string,
+      title?: string,
+      model?: { providerID: string; modelID: string } | null,
+    ) =>
       requestJson<{ item: Session }>(
         baseUrl,
         `/workspace/${encodeURIComponent(workspaceId)}/sessions`,
@@ -1387,7 +1391,10 @@ export function createiPolloWorkServerClient(options: { baseUrl: string; token?:
           token,
           hostToken,
           method: "POST",
-          body: title?.trim() ? { title: title.trim() } : {},
+          body: {
+            ...(title?.trim() ? { title: title.trim() } : {}),
+            ...(model?.providerID && model.modelID ? { model } : {}),
+          },
           timeoutMs: timeouts.sessionRead,
         },
       ),

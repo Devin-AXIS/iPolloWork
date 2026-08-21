@@ -2,6 +2,7 @@
 import * as React from "react";
 import type { ProjectAgent } from "@ipollowork/types/project-workspace";
 import {
+  CODEX_HARNESS_ENGINE_ID,
   DEFAULT_ENGINE_ID,
   DEEPSEEK_HARNESS_ENGINE_ID,
 } from "@ipollowork/types/workspace";
@@ -121,9 +122,11 @@ export function ProjectAgentInspector(props: ProjectAgentInspectorProps) {
   const projectEngineId = props.projectEngineId?.trim() || DEFAULT_ENGINE_ID;
   const engineLabel = draft.runtime.engineId === DEFAULT_ENGINE_ID
     ? t("projects.engine_opencode")
-    : draft.runtime.engineId === DEEPSEEK_HARNESS_ENGINE_ID
-      ? t("projects.engine_dsh")
-      : draft.runtime.engineId || t("project_overview.inherit_project");
+    : draft.runtime.engineId === CODEX_HARNESS_ENGINE_ID
+      ? t("projects.engine_codex")
+      : draft.runtime.engineId === DEEPSEEK_HARNESS_ENGINE_ID
+        ? t("projects.engine_dsh")
+        : draft.runtime.engineId || t("project_overview.inherit_project");
   const modeLabel = draft.runtime.mode === "plan"
     ? t("project_overview.mode_plan")
     : draft.runtime.mode === "execute"
@@ -307,7 +310,11 @@ export function ProjectAgentInspector(props: ProjectAgentInspectorProps) {
                         <SelectContent align="start">
                           <SelectItem value={INHERIT_ENGINE_VALUE}>{t("project_overview.inherit_project")}</SelectItem>
                           <SelectItem value={projectEngineId}>
-                            {projectEngineId === DEEPSEEK_HARNESS_ENGINE_ID ? t("projects.engine_dsh") : t("projects.engine_opencode")}
+                            {projectEngineId === CODEX_HARNESS_ENGINE_ID
+                              ? t("projects.engine_codex")
+                              : projectEngineId === DEEPSEEK_HARNESS_ENGINE_ID
+                                ? t("projects.engine_dsh")
+                                : t("projects.engine_opencode")}
                           </SelectItem>
                           {draft.runtime.engineId && draft.runtime.engineId !== projectEngineId ? (
                             <SelectItem value={draft.runtime.engineId}>{draft.runtime.engineId}</SelectItem>

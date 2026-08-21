@@ -18,7 +18,8 @@ import type {
   ConversationSnapshot,
   ConversationStatus,
 } from "../engine/conversation-engine";
-import { completeConversationMessage } from "../engine/conversation-engine";
+import { completeConversationMessage, conversationMessageMetadata } from "../engine/conversation-engine";
+import { describeConversationSessionError } from "../engine/opencode-message-adapter";
 
 type SyncScope = {
   workspaceId: string;
@@ -334,6 +335,73 @@ function upsertMessage(messages: UIMessage[], next: UIMessage) {
   );
 }
 
+function isOptimisticUserMessage(message: UIMessage | undefined) {
+  if (message?.role !== "user" || !message.metadata || typeof message.metadata !== "object") return false;
+  const metadata = "ipollowork" in message.metadata ? message.metadata.ipollowork : null;
+  return Boolean(metadata && typeof metadata === "object" && "optimistic" in metadata && metadata.optimistic === true);
+}
+
+function createClientUserMessageId() {
+  const randomUUID = globalThis.crypto?.randomUUID?.bind(globalThis.crypto);
+  return `ipollowork-user-${randomUUID ? randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`}`;
+}
+
+/**
+ * Publish the user's accepted prompt before engine preflight/runtime work.
+ * Codex echoes this id as `userMessage.clientId`, allowing the authoritative
+ * event or snapshot to replace the optimistic row without a duplicate.
+ */
+export function beginOptimisticSessionPrompt(
+  workspaceId: string,
+  sessionId: string,
+  visibleText: string,
+  clientUserMessageId = createClientUserMessageId(),
+) {
+  const workspace = workspaceId.trim();
+  const session = sessionId.trim();
+  if (!workspace || !session) return clientUserMessageId;
+
+  const queryClient = getReactQueryClient();
+  const text = visibleText.trim();
+  queryClient.setQueryData<UIMessage[]>(transcriptKey(workspace, session), (current = []) => upsertMessage(current, {
+    id: clientUserMessageId,
+    role: "user",
+    metadata: conversationMessageMetadata({ created: Date.now() }, { optimistic: true }),
+    parts: text ? [{ type: "text", text, state: "done" }] : [],
+  }));
+  queryClient.setQueryData(statusKey(workspace, session), { type: "busy" } satisfies ConversationStatus);
+  const activity = useSessionActivityStore.getState();
+  activity.markMessageRole(workspace, session, clientUserMessageId, "user");
+  activity.setRunStatus(workspace, session, { type: "busy" });
+  return clientUserMessageId;
+}
+
+/** Remove only a still-optimistic prompt; an acknowledged Codex item wins. */
+export function rollbackOptimisticSessionPrompt(
+  workspaceId: string,
+  sessionId: string,
+  clientUserMessageId: string | null | undefined,
+) {
+  const workspace = workspaceId.trim();
+  const session = sessionId.trim();
+  const messageId = clientUserMessageId?.trim() ?? "";
+  if (!workspace || !session || !messageId) return false;
+
+  const queryClient = getReactQueryClient();
+  let removed = false;
+  queryClient.setQueryData<UIMessage[]>(transcriptKey(workspace, session), (current = []) => {
+    const message = current.find((item) => item.id === messageId);
+    if (!isOptimisticUserMessage(message)) return current;
+    removed = true;
+    return current.filter((item) => item.id !== messageId);
+  });
+  if (!removed) return false;
+  const idle = { type: "idle" } satisfies ConversationStatus;
+  queryClient.setQueryData(statusKey(workspace, session), idle);
+  useSessionActivityStore.getState().setRunStatus(workspace, session, idle);
+  return true;
+}
+
 /**
  * When a message.part.updated or message.part.delta event arrives for a
  * messageID we haven't seen a message.updated for yet, we have to stub the
@@ -485,20 +553,21 @@ function applyEvent(entry: SyncEntry, workspaceId: string, event: ConversationEv
   }
 
   if (event.type === "session.error") {
+    const errorText = describeConversationSessionError(event.errorText);
     const runStartedAt = takeTaskRunStart(event.sessionId);
     if (runStartedAt !== null) {
       captureAnalyticsEvent("task_run_errored", { duration_ms: Date.now() - runStartedAt });
       trackTaskFailed(event.sessionId, Date.now() - runStartedAt);
     }
-    notifyDesktopEvent({ type: "task.failed", sessionId: event.sessionId, errorText: event.errorText });
-    useSessionActivityStore.getState().setError(workspaceId, event.sessionId, event.errorText);
+    notifyDesktopEvent({ type: "task.failed", sessionId: event.sessionId, errorText });
+    useSessionActivityStore.getState().setError(workspaceId, event.sessionId, errorText);
     if (isTrackedSession(entry, event.sessionId)) {
       queryClient.setQueryData<UIMessage[]>(transcriptKey(workspaceId, event.sessionId), (current = []) => {
         const turnKey = latestAssistantMessageId(current) ?? event.sessionId;
-        return upsertMessage(current, createSessionErrorUIMessage(turnKey, event.errorText));
+        return upsertMessage(current, createSessionErrorUIMessage(turnKey, errorText));
       });
     }
-    for (const listener of entry.sessionErrorListeners) listener({ sessionId: event.sessionId, errorText: event.errorText });
+    for (const listener of entry.sessionErrorListeners) listener({ sessionId: event.sessionId, errorText });
     return;
   }
 
@@ -898,13 +967,17 @@ export function seedSessionState(workspaceId: string, snapshot: ConversationSnap
   const key = transcriptKey(workspaceId, snapshot.session.id);
   const incoming = snapshot.messages;
   const existing = queryClient.getQueryData<UIMessage[]>(key);
+  const preserveOptimisticBusy = snapshot.status.type === "idle"
+    && existing?.some(isOptimisticUserMessage) === true;
 
-  useSessionActivityStore.getState().seedSessionRun(
-    workspaceId,
-    snapshot.session.id,
-    snapshot.status,
-    assistantOutputAfterLatestUser(incoming),
-  );
+  if (!preserveOptimisticBusy) {
+    useSessionActivityStore.getState().seedSessionRun(
+      workspaceId,
+      snapshot.session.id,
+      snapshot.status,
+      assistantOutputAfterLatestUser(incoming),
+    );
+  }
 
   // The snapshot's revert cursor is authoritative: messages at/after it are
   // reverted server-side, so the cache must not keep them alive (a later
@@ -918,7 +991,9 @@ export function seedSessionState(workspaceId: string, snapshot: ConversationSnap
     snapshot.session.revertMessageId ?? null,
   ));
 
-  queryClient.setQueryData(statusKey(workspaceId, snapshot.session.id), snapshot.status);
+  if (!preserveOptimisticBusy) {
+    queryClient.setQueryData(statusKey(workspaceId, snapshot.session.id), snapshot.status);
+  }
   queryClient.setQueryData(todoKey(workspaceId, snapshot.session.id), snapshot.todos);
 }
 

@@ -1,7 +1,7 @@
 {
   "name": "@ipollowork/desktop",
   "private": true,
-  "version": "0.21.2",
+  "version": "0.21.5",
   "description": "iPolloWork desktop shell",
   "author": {
     "name": "iPolloWork",
@@ -29,6 +29,7 @@
   "dependencies": {
     "@ffmpeg-installer/ffmpeg": "^1.1.0",
     "@ffprobe-installer/ffprobe": "^2.1.2",
+    "@modelcontextprotocol/sdk": "1.29.0",
     "@opencode-ai/sdk": "^1.18.16",
     "better-sqlite3": "^11.10.0",
     "drizzle-orm": "^0.45.1",
@@ -36,6 +37,7 @@
     "jsonc-parser": "^3.2.1",
     "minimatch": "^10.0.1",
     "node-pty": "npm:@lydell/node-pty@1.2.0-beta.12",
+    "oauth4webapi": "^3.8.7",
     "yaml": "^2.6.1",
     "zod": "^4.3.6"
   },

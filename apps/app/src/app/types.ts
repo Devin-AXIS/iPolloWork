@@ -168,6 +168,11 @@ export type ComposerDraft = {
   command?: { name: string; arguments: string } | undefined;
 };
 
+/** Transient dispatch metadata shared by the session surface and engine adapter. */
+export type PromptDispatchOptions = {
+  clientUserMessageId?: string;
+};
+
 export type ArtifactItem = {
   id: string;
   name: string;

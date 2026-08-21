@@ -170,6 +170,7 @@ export class EnvService {
   private loadPromise: Promise<void> | null = null;
   private mutationQueue: Promise<void> = Promise.resolve();
   private variables: EnvRecord[] = [];
+  private readonly changeListeners = new Set<() => void>();
 
   constructor(options?: { path?: string; processEnv?: NodeJS.ProcessEnv }) {
     this.path = options?.path ? resolve(options.path) : resolveDefaultEnvStorePath();
@@ -216,6 +217,15 @@ export class EnvService {
     return run;
   }
 
+  onChange(listener: () => void): () => void {
+    this.changeListeners.add(listener);
+    return () => this.changeListeners.delete(listener);
+  }
+
+  private notifyChanged(): void {
+    for (const listener of this.changeListeners) listener();
+  }
+
   async list(): Promise<EnvRecord[]> {
     await this.ensureLoaded();
     return this.variables.slice();
@@ -239,6 +249,7 @@ export class EnvService {
       await writeStore(this.path, nextVariables);
       this.variables = nextVariables;
       this.projectIntoProcess(entries);
+      this.notifyChanged();
     });
   }
 
@@ -247,10 +258,15 @@ export class EnvService {
       await this.ensureLoaded();
       const before = this.variables.length;
       const nextVariables = this.variables.filter((entry) => entry.key !== key);
-      if (nextVariables.length === before) return this.removeFromProcess(key);
+      if (nextVariables.length === before) {
+        const removed = this.removeFromProcess(key);
+        if (removed) this.notifyChanged();
+        return removed;
+      }
       await writeStore(this.path, nextVariables);
       this.variables = nextVariables;
       this.removeFromProcess(key);
+      this.notifyChanged();
       return true;
     });
   }

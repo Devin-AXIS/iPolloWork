@@ -40,7 +40,8 @@ describe("Design AI session lifecycle", () => {
 
     expect(routeSource).toContain("isDefaultSessionTitle(targetSession.title)");
     expect(routeSource).toContain("sessionTitleFromFirstPrompt(text)");
-    expect(routeSource).toContain("await conversation.rename(targetSessionId, initialTitle");
+    expect(routeSource).toContain("void conversation.rename(targetSessionId, initialTitle");
+    expect(routeSource).toContain("the first prompt is not queued behind another runtime RPC");
   });
 
   test("expands the selected Design chip to a synthetic scoped agent instruction", async () => {

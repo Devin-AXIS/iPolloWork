@@ -1,6 +1,7 @@
 import { useSyncExternalStore } from "react";
 import {
   parseSharedProviderProfile,
+  providerApiKeyCredentialRef,
   serializeSharedProviderProfile,
   sharedConfiguredProviderIdsFromEnvKeys,
   sharedProviderCredentialEnvKey,
@@ -96,6 +97,9 @@ import {
 type ProviderReturnFocusTarget = "none" | "composer";
 type CloudProviderSyncReason = "sign_in" | "app_launch" | "interval" | "settings_cloud_opened";
 
+const PROVIDER_ENGINE_CLIENT_WAIT_TIMEOUT_MS = 10_000;
+const PROVIDER_ENGINE_CLIENT_WAIT_INTERVAL_MS = 100;
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -171,6 +175,10 @@ export type ProviderAuthStoreSnapshot = {
 
 type CreateProviderAuthStoreOptions = {
   client: () => unknown | null;
+  providerRuntimeConnections?: () => ReadonlyArray<{
+    engineId: string;
+    client: unknown;
+  }>;
   providers: () => ProviderListItem[];
   providerDefaults: () => Record<string, string>;
   providerConnectedIds: () => string[];
@@ -180,6 +188,7 @@ type CreateProviderAuthStoreOptions = {
   providerBaseUrl: () => string;
   selectedWorkspaceRoot: () => string;
   allowCloudImports?: () => boolean;
+  deferSharedProviderImport?: () => boolean;
   runtimeWorkspaceId: () => string | null;
   ensureRuntimeWorkspaceId?: () => Promise<string | null | undefined>;
   ipolloworkServer: ProviderAuthiPolloWorkServer;
@@ -192,6 +201,22 @@ type CreateProviderAuthStoreOptions = {
   focusPromptSoon?: () => void;
 };
 
+type ProviderRefreshOptions = {
+  dispose?: boolean;
+  force?: boolean;
+  skipSharedImport?: boolean;
+  runtimeEnvironmentChanged?: boolean;
+};
+
+function accountProviderCredentialIds(providerId: string): string[] {
+  const resolved = providerId.trim().toLowerCase();
+  if (!resolved) return [];
+  if (resolved === "deepseek" || resolved === "deepseek-official") {
+    return ["deepseek-official", "deepseek"];
+  }
+  return [resolved];
+}
+
 type MutableState = {
   providerAuthModalOpen: boolean;
   providerAuthBusy: boolean;
@@ -200,6 +225,7 @@ type MutableState = {
   providerAuthPreferredProviderId: string | null;
   providerAuthReturnFocusTarget: ProviderReturnFocusTarget;
   accountConnectedProviderIds: string[];
+  explicitlyDisconnectedProviderIds: string[];
   cloudOrgProviders: DenOrgLlmProvider[];
   importedCloudProviders: Record<string, CloudImportedProvider>;
 };
@@ -337,6 +363,7 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
     providerAuthPreferredProviderId: null,
     providerAuthReturnFocusTarget: "none",
     accountConnectedProviderIds: [],
+    explicitlyDisconnectedProviderIds: [],
     cloudOrgProviders: [],
     importedCloudProviders: {},
   };
@@ -352,6 +379,9 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
     changed: boolean;
     requiresReload: boolean;
   }> | null = null;
+  let providerRefreshInFlight: Promise<ProviderListResponse | null> | null = null;
+  let queuedProviderRefresh: Promise<ProviderListResponse | null> | null = null;
+  let queuedProviderRefreshOptions: ProviderRefreshOptions | null = null;
 
   const emitChange = () => {
     for (const listener of listeners) listener();
@@ -369,6 +399,29 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
       throw new Error(t("providers.not_connected"));
     }
     return getProviderEngineAdapter().connect(client);
+  };
+
+  const waitForProviderEngineConnection = async () => {
+    const deadline = Date.now() + PROVIDER_ENGINE_CLIENT_WAIT_TIMEOUT_MS;
+    while (!disposed) {
+      const client = options.client();
+      if (client) {
+        const connection = getProviderEngineAdapter().connect(client);
+        await connection.waitUntilHealthy();
+        return connection;
+      }
+
+      const remainingMs = deadline - Date.now();
+      if (remainingMs <= 0) break;
+      await new Promise<void>((resolve) => {
+        setTimeout(
+          resolve,
+          Math.min(PROVIDER_ENGINE_CLIENT_WAIT_INTERVAL_MS, remainingMs),
+        );
+      });
+    }
+
+    throw new Error(t("providers.not_connected"));
   };
 
   const markProviderEngineConfigReloadRequired = () => {
@@ -479,6 +532,9 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
       )),
     );
     const disabledProviderIds = new Set(options.disabledProviders());
+    const explicitlyDisconnectedProviderIds = new Set(
+      state.explicitlyDisconnectedProviderIds,
+    );
     snapshot = {
       providerAuthModalOpen: state.providerAuthModalOpen,
       providerAuthBusy: state.providerAuthBusy,
@@ -497,7 +553,10 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
             : []),
           ...options.providerConnectedIds().filter((providerId) => configuredRuntimeProviderIds.has(providerId)),
           ...state.accountConnectedProviderIds,
-        ].filter((providerId) => !disabledProviderIds.has(providerId))),
+        ].filter((providerId) => (
+          !disabledProviderIds.has(providerId)
+          && !explicitlyDisconnectedProviderIds.has(providerId.trim().toLowerCase())
+        ))),
       ],
       cloudOrgProviders: state.cloudOrgProviders,
       importedCloudProviders: state.importedCloudProviders,
@@ -516,6 +575,36 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
   ) => {
     if (Object.is(state[key], value)) return;
     mutateState((current) => ({ ...current, [key]: value }));
+  };
+
+  const setProvidersExplicitlyDisconnected = (
+    providerIds: readonly string[],
+    disconnected: boolean,
+  ) => {
+    const affectedProviderIds = new Set(
+      providerIds
+        .flatMap(accountProviderCredentialIds)
+        .map((providerId) => providerId.trim().toLowerCase())
+        .filter(Boolean),
+    );
+    if (!affectedProviderIds.size) return;
+    const nextProviderIds = disconnected
+      ? [...new Set([
+          ...state.explicitlyDisconnectedProviderIds,
+          ...affectedProviderIds,
+        ])].sort()
+      : state.explicitlyDisconnectedProviderIds.filter(
+          (providerId) => !affectedProviderIds.has(providerId),
+        );
+    if (
+      nextProviderIds.length === state.explicitlyDisconnectedProviderIds.length
+      && nextProviderIds.every(
+        (providerId, index) => providerId === state.explicitlyDisconnectedProviderIds[index],
+      )
+    ) {
+      return;
+    }
+    setStateField("explicitlyDisconnectedProviderIds", nextProviderIds);
   };
 
   const buildCloudProviderMethod = (
@@ -931,39 +1020,77 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
     }
   };
 
-  const removeProviderFromState = (providerId: string) => {
-    const resolved = providerId.trim();
-    if (!resolved) return;
-    options.setProviders(options.providers().filter((provider) => provider.id !== resolved));
+  const removeProviderFromState = (providerIds: readonly string[]) => {
+    const removedProviderIds = new Set(
+      providerIds.map((providerId) => providerId.trim().toLowerCase()).filter(Boolean),
+    );
+    if (!removedProviderIds.size) return;
+    options.setProviders(options.providers().filter(
+      (provider) => !removedProviderIds.has(provider.id.trim().toLowerCase()),
+    ));
     options.setProviderConnectedIds(
-      options.providerConnectedIds().filter((id) => id !== resolved),
+      options.providerConnectedIds().filter(
+        (id) => !removedProviderIds.has(id.trim().toLowerCase()),
+      ),
     );
     options.setProviderDefaults(
       Object.fromEntries(
-        Object.entries(options.providerDefaults()).filter(([id]) => id !== resolved),
+        Object.entries(options.providerDefaults()).filter(
+          ([id]) => !removedProviderIds.has(id.trim().toLowerCase()),
+        ),
       ),
     );
+    setProvidersExplicitlyDisconnected([...removedProviderIds], true);
     refreshSnapshot();
     emitChange();
   };
 
   const removeProviderAuthCredentials = async (providerId: string) => {
-    try {
-      await getProviderEngineConnection().removeCredentials(providerId);
-    } catch (error) {
-      if (!isMissingProviderCredentialError(error)) throw error;
-    }
+    const providerIds = accountProviderCredentialIds(providerId);
     const ipolloworkClient = getProviderServerSnapshot().ipolloworkServerClient;
+    const removesAccountConnection = state.accountConnectedProviderIds.some((providerId) => (
+      providerIds.includes(providerId.trim().toLowerCase())
+    ));
+    if (removesAccountConnection && !ipolloworkClient) {
+      // Hiding the provider only in renderer state makes it reappear on the
+      // next launch. An account-owned connection is disconnected only after
+      // its durable credential/profile store is reachable.
+      throw new Error(t("providers.disconnect_failed"));
+    }
+    const activeClient = options.client();
+    const activeEngineId = getProviderEngineAdapter().id;
+    const runtimeConnections = [
+      ...(activeClient ? [{ engineId: activeEngineId, client: activeClient }] : []),
+      ...(options.providerRuntimeConnections?.() ?? []),
+    ].filter((entry, index, entries) => entries.findIndex((candidate) => (
+      candidate.engineId === entry.engineId && candidate.client === entry.client
+    )) === index);
+
+    for (const [index, runtime] of runtimeConnections.entries()) {
+      const connection = modelRuntimeAdapters.get(runtime.engineId).connect(runtime.client);
+      for (const credentialProviderId of providerIds) {
+        try {
+          await connection.removeCredentials(credentialProviderId);
+        } catch (error) {
+          // The active account control plane owns OAuth credentials, so a real
+          // failure there must remain visible. Other runtimes only cache the
+          // shared account key and can reconcile on their next provider read.
+          if (index === 0 && !isMissingProviderCredentialError(error)) throw error;
+        }
+      }
+    }
+
     if (ipolloworkClient) {
       const providerEnvKeys = getProviderAuthProviders()
-        .find((provider) => provider.id === providerId)
-        ?.env.filter((key) => key.trim()) ?? [];
+        .filter((provider) => providerIds.includes(provider.id.trim().toLowerCase()))
+        .flatMap((provider) => provider.env.filter((key) => key.trim()));
       await Promise.all(
-        [...new Set([
-          sharedProviderCredentialEnvKey(providerId),
-          sharedProviderProfileEnvKey(providerId),
+        [...new Set(providerIds.flatMap((credentialProviderId) => [
+          sharedProviderCredentialEnvKey(credentialProviderId),
+          sharedProviderProfileEnvKey(credentialProviderId),
+          providerApiKeyCredentialRef(credentialProviderId),
           ...providerEnvKeys,
-        ])].map(async (key) => {
+        ]))].map(async (key) => {
           try {
             await ipolloworkClient.deleteUserEnv(key);
           } catch (error) {
@@ -973,9 +1100,12 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
       );
       setStateField(
         "accountConnectedProviderIds",
-        state.accountConnectedProviderIds.filter((id) => id !== providerId),
+        state.accountConnectedProviderIds.filter(
+          (id) => !providerIds.includes(id.trim().toLowerCase()),
+        ),
       );
     }
+    return providerIds;
   };
 
   const mirrorSharedProviderConnection = async (
@@ -1009,11 +1139,10 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
   const refreshAccountConnectedProviderIds = async () => {
     const ipolloworkClient = getProviderServerSnapshot().ipolloworkServerClient;
     if (!ipolloworkClient) return null;
-    const { keys, oauthProviderIds = [] } = await ipolloworkClient.listUserEnvKeys();
+    const { keys, oauthProviderIds } = await ipolloworkClient.listUserEnvKeys();
     const providerIds = [
       ...new Set([
-        ...sharedConfiguredProviderIdsFromEnvKeys(keys),
-        ...oauthProviderIds.map((providerId) => providerId.trim().toLowerCase()).filter(Boolean),
+        ...sharedConfiguredProviderIdsFromEnvKeys(keys, oauthProviderIds),
       ]),
     ].sort();
     if (
@@ -1396,7 +1525,12 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
   };
 
   const loadProviderAuthMethods = async (workerType: "local" | "remote") => {
-    const methods = await getProviderEngineConnection().listAuthMethods();
+    // Settings can render before the managed provider sidecar has finished
+    // starting. Treat that short window as loading instead of a permanent
+    // connection failure, then use the runtime adapter's canonical health
+    // check before requesting authentication methods.
+    const connection = await waitForProviderEngineConnection();
+    const methods = await connection.listAuthMethods();
     const cloudProviders = getProviderEngineAdapter().capabilities.cloudProviderImports
       ? await refreshCloudOrgProviders().catch(() => [] as DenOrgLlmProvider[])
       : [];
@@ -1459,16 +1593,42 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
     }
   }
 
-  async function refreshProviders(optionsArg?: {
-    dispose?: boolean;
-    force?: boolean;
-    skipSharedImport?: boolean;
-    runtimeEnvironmentChanged?: boolean;
-  }) {
+  const mergeProviderRefreshOptions = (
+    current: ProviderRefreshOptions | null,
+    next: ProviderRefreshOptions,
+  ): ProviderRefreshOptions => ({
+    dispose: current?.dispose === true || next.dispose === true,
+    force: current?.force === true || next.force === true,
+    // A queued refresh may serve several callers. Import unless every queued
+    // caller explicitly allows skipping it, so credential reconciliation is
+    // never lost behind a lighter catalog-only refresh.
+    skipSharedImport: current
+      ? current.skipSharedImport === true && next.skipSharedImport === true
+      : next.skipSharedImport,
+    runtimeEnvironmentChanged:
+      current?.runtimeEnvironmentChanged === true || next.runtimeEnvironmentChanged === true,
+  });
+
+  const requiresFollowUpProviderRefresh = (value: ProviderRefreshOptions) => (
+    value.dispose === true
+    || value.force === true
+    || value.skipSharedImport === true
+    || value.runtimeEnvironmentChanged === true
+  );
+
+  async function performProviderRefresh(optionsArg: ProviderRefreshOptions) {
     const accountEnvKeys = await refreshAccountConnectedProviderIds().catch(() => null);
     const client = options.client();
     if (!client) return null;
-    const sharedProviderImport = optionsArg?.skipSharedImport || !accountEnvKeys
+    const deferSharedImport = Boolean(
+      accountEnvKeys
+      && options.deferSharedProviderImport?.()
+      && !optionsArg?.skipSharedImport
+      && !optionsArg?.force
+      && !optionsArg?.dispose
+      && !optionsArg?.runtimeEnvironmentChanged,
+    );
+    const sharedProviderImport = optionsArg?.skipSharedImport || !accountEnvKeys || deferSharedImport
       ? { changed: false, requiresReload: false }
       : await importSharedProviderConnections(accountEnvKeys).catch(() => ({
           changed: false,
@@ -1517,10 +1677,62 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
         disabledProviders,
       );
       applyProviderListState(updated);
+      if (state.providerAuthError?.includes(t("providers.not_connected"))) {
+        // A provider client can be temporarily unavailable while a workspace
+        // runtime reconnects. Once the catalog succeeds, remove only that
+        // recovered connection error; credential and OAuth failures remain.
+        setStateField("providerAuthError", null);
+      }
+      if (deferSharedImport && accountEnvKeys) {
+        // The account provider list is the settings-page source of truth. Show
+        // it immediately, then reconcile credentials into the OpenCode runtime
+        // without holding the first render behind config writes and reloads.
+        void importSharedProviderConnections(accountEnvKeys)
+          .then(async (result) => {
+            if (!result.changed) return;
+            await refreshProviderListQueries(getReactQueryClient());
+            await refreshProviders({
+              force: true,
+              skipSharedImport: true,
+            });
+          })
+          .catch(() => null);
+      }
       return updated;
     } catch {
       return null;
     }
+  }
+
+  function refreshProviders(
+    optionsArg: ProviderRefreshOptions = {},
+  ): Promise<ProviderListResponse | null> {
+    if (providerRefreshInFlight) {
+      if (!requiresFollowUpProviderRefresh(optionsArg)) return providerRefreshInFlight;
+      queuedProviderRefreshOptions = mergeProviderRefreshOptions(
+        queuedProviderRefreshOptions,
+        optionsArg,
+      );
+      if (!queuedProviderRefresh) {
+        queuedProviderRefresh = providerRefreshInFlight
+          .catch(() => null)
+          .then(() => {
+            const queuedOptions = queuedProviderRefreshOptions ?? {};
+            queuedProviderRefreshOptions = null;
+            queuedProviderRefresh = null;
+            return refreshProviders(queuedOptions);
+          });
+      }
+      return queuedProviderRefresh;
+    }
+
+    const request = performProviderRefresh(optionsArg);
+    providerRefreshInFlight = request;
+    const clearInFlight = () => {
+      if (providerRefreshInFlight === request) providerRefreshInFlight = null;
+    };
+    void request.then(clearInFlight, clearInFlight);
+    return request;
   }
 
   async function completeProviderAuthOAuth(
@@ -1565,6 +1777,7 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
 
     const finishConnectedOAuth = async () => {
       await mirrorSharedProviderProfile(catalogSharedProviderProfile(options.providers(), resolved));
+      setProvidersExplicitlyDisconnected([resolved], false);
       return { connected: true, message: `${t("status.connected")} ${resolved}` };
     };
 
@@ -1643,6 +1856,7 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
         }
       }
       await getProviderEngineConnection().setApiKey(resolvedProviderId, trimmed);
+      setProvidersExplicitlyDisconnected([resolvedProviderId], false);
       setStateField(
         "accountConnectedProviderIds",
         [...new Set([...state.accountConnectedProviderIds, resolvedProviderId])].sort(),
@@ -1719,6 +1933,7 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
       }
       if (primaryApiKey) {
         await connection.setApiKey(localProviderId, primaryApiKey);
+        setProvidersExplicitlyDisconnected([localProviderId], false);
         await mirrorSharedProviderConnection(
           primaryApiKey,
           cloudSharedProviderProfile(provider, localProviderId),
@@ -1994,7 +2209,7 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
     setStateField("providerAuthError", null);
     getProviderEngineConnection();
 
-    const resolved = providerId.trim();
+    const resolved = providerId.trim().toLowerCase();
     if (!resolved) {
       throw new Error(t("providers.provider_id_required"));
     }
@@ -2007,28 +2222,43 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
     }
 
     try {
-      let runtimeManagedProviderId: string | null = null;
+      const providerIds = accountProviderCredentialIds(resolved);
+      let runtimeManagedProviderIds: string[] = [];
       try {
         const target = await resolveProviderEngineConfigTarget("write");
-        runtimeManagedProviderId = (await getProviderEngineAdapter().runtimeProviderIds(target))
-          .find((providerId) => providerId === resolved) ?? null;
+        const runtimeProviderIds = new Set(
+          (await getProviderEngineAdapter().runtimeProviderIds(target))
+            .map((runtimeProviderId) => runtimeProviderId.trim().toLowerCase()),
+        );
+        runtimeManagedProviderIds = providerIds.filter((id) => runtimeProviderIds.has(id));
       } catch {
         // Credential removal still works when runtime config inspection is unavailable.
       }
-      if (runtimeManagedProviderId) {
-        await patchRuntimeProviders({ [runtimeManagedProviderId]: null });
+      if (runtimeManagedProviderIds.length) {
+        await patchRuntimeProviders(Object.fromEntries(
+          runtimeManagedProviderIds.map((runtimeProviderId) => [runtimeProviderId, null]),
+        ));
       }
       await removeProviderAuthCredentials(resolved);
-      // Disconnect is an explicit account choice. Persist it through the
-      // existing runtime-disabled provider list so an inherited environment
-      // variable cannot silently reconnect the provider or repopulate model
-      // pickers. Reconnecting through iPolloWork removes this entry above.
-      await ensureProjectProviderDisabledState(resolved, true);
+      // React option getters can still expose the previous connected-provider
+      // list until the next render. Keep this successful disconnect
+      // authoritative so a stale runtime catalog cannot immediately re-add it.
+      setProvidersExplicitlyDisconnected(providerIds, true);
+      const environmentBackedProviderId = options.providers().find((provider) => (
+        providerIds.includes(provider.id.trim().toLowerCase()) && provider.source === "env"
+      ))?.id;
+      // Environment-owned providers cannot be removed from their external
+      // source. Keep only that legacy case disabled; account API keys and OAuth
+      // connections are removed immediately and do not require a manual reload.
+      if (environmentBackedProviderId) {
+        await ensureProjectProviderDisabledState(environmentBackedProviderId, true);
+      }
       await refreshProviders({
         dispose: true,
-        runtimeEnvironmentChanged: true,
+        force: true,
+        skipSharedImport: true,
       });
-      removeProviderFromState(resolved);
+      removeProviderFromState(providerIds);
       return `${t("providers.disconnected_prefix")} ${resolved}`;
     } catch (error) {
       const message = describeProviderError(error, t("providers.disconnect_failed"));

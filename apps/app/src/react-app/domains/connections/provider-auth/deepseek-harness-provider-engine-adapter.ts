@@ -157,8 +157,17 @@ function connection(client: unknown): ModelRuntimeConnection {
       await client.call("credentials.set", { ref, value: apiKey });
     },
     async removeCredentials(providerId) {
-      const ref = providerApiKeyCredentialRef(providerId);
-      await client.call("credentials.unset", { ref });
+      const resolvedProviderId = providerId.trim().toLowerCase();
+      const refs = new Set([providerApiKeyCredentialRef(resolvedProviderId)]);
+      if (resolvedProviderId === "openai") {
+        // DSH can expose the same account provider through both the API-key
+        // route and its Codex OAuth bridge. Both are engine-local caches of the
+        // shared OpenAI account and must disappear in one disconnect action.
+        refs.add(providerApiKeyCredentialRef("openai-codex"));
+      }
+      for (const ref of refs) {
+        await client.call("credentials.unset", { ref });
+      }
     },
     async readDisabledProviders() {
       return [];

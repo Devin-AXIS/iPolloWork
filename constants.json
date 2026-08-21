@@ -1,4 +1,5 @@
 {
+  "codexHarnessVersion": "0.149.0",
   "deepseekHarnessVersion": "0.1.0-rc.6",
   "opencodeVersion": "v1.18.16"
 }

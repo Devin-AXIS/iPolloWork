@@ -121,7 +121,8 @@ describe("sidebar projects", () => {
     expect(sessionRouteSource).toContain("engineId: DEFAULT_ENGINE_ID");
     expect(sessionRouteSource).not.toMatch(/handleCreateInitialProjectTask[\s\S]{0,500}selectedWorkspace\?\.engineId/);
     expect(sessionRouteSource).toContain('name: t("session.untitled")');
-    expect(sessionRouteSource).toContain("surfaceProps.onSendDraft(pending.draft, pending.sessionId)");
+    expect(sessionRouteSource).toContain("surfaceProps.onSendDraft(");
+    expect(sessionRouteSource).toContain("pending.clientUserMessageId ? { clientUserMessageId: pending.clientUserMessageId }");
     expect(sessionRouteSource).not.toContain("startupConversationPhase");
     expect(sessionPageSource).toContain("promptTemplates={conversationTemplates}");
     expect(sessionPageSource).toContain("templates={starterTemplateCatalog}");
@@ -134,13 +135,16 @@ describe("sidebar projects", () => {
     );
   });
 
-  test("loads only the selected project task directory without blocking the workspace shell", () => {
+  test("loads the selected task directory before hydrating remaining project indexes", () => {
     expect(workspaceRouteStateSource).toContain(
       "const selectedEntry = cachedEntries.find((entry) => entry.workspaceId === nextWorkspaceId);",
     );
     expect(workspaceRouteStateSource).toContain("? [selectedEntry.workspaceId]");
-    expect(workspaceRouteStateSource).toContain("void loadWorkspaceSessionsInBackground(initialLoads.selected).then(() => {");
+    expect(workspaceRouteStateSource).toContain("? loadWorkspaceSessionsInBackground(initialLoads.selected).then(() => {");
     expect(workspaceRouteStateSource).not.toContain("await loadWorkspaceSessionsInBackground(initialLoads.selected)");
+    expect(workspaceRouteStateSource).toContain("void selectedSessionsLoad.then(async () => {");
+    expect(workspaceRouteStateSource).toContain("for (const workspace of initialLoads.deferred)");
+    expect(workspaceRouteStateSource).toContain("await loadWorkspaceSessionsInBackground([workspace])");
     expect(sessionRouteSource).toContain("navigateToWorkspaceSession(workspaceId, null);");
     expect(sessionRouteSource).toContain("onCreateTaskFromDraft: handleCreateTaskFromDraft");
     expect(sessionRouteSource).toContain('if (!templateId && type === undefined)');
@@ -195,7 +199,9 @@ describe("sidebar projects", () => {
     expect(sidebarSource).toContain('<Loader2 className="size-3.5 animate-spin"');
     expect(sidebarSource).toContain('project.status === "loading" && project.sessions.length === 0 && !isSelectedProject');
     expect(sessionRouteSource).toContain("taskCreationInFlightRef.current.has(workspaceId)");
-    expect(sessionRouteSource).toContain("endpoint.client.createSession(endpoint.workspaceId)");
+    expect(sessionRouteSource).toMatch(
+      /endpoint\.client\.createSession\(\s*endpoint\.workspaceId,\s*undefined,\s*activeSelectedModel,?\s*\)/,
+    );
     expect(sessionRouteSource).not.toContain("workspaceConversation.create(");
     expect(sessionRouteSource).not.toContain("Give the click an immediate destination");
     expect(sessionRouteSource).toContain("taskCreationInFlightRef.current.delete(workspaceId)");
@@ -243,6 +249,8 @@ describe("sidebar projects", () => {
     expect(sessionPageSource).not.toContain('showCloseButton={false}');
     expect(sessionPageSource).toContain('data-testid="project-folder-picker"');
     expect(sessionPageSource).toContain('data-testid="project-engine-option"');
+    expect(sessionPageSource).not.toContain("onConfigureDeepSeek");
+    expect(sessionPageSource).not.toContain('t("projects.configure_deepseek_key")');
     expect(sessionPageSource).toContain('max-w-[516px]');
     expect(sessionPageSource).toContain('t("projects.engine_locked_notice")');
     expect(sessionPageSource).toContain("<RadioGroup");
@@ -250,7 +258,7 @@ describe("sidebar projects", () => {
     expect(sessionPageSource).toContain("projectEngineOpenCodeIcon");
     expect(sessionPageSource).toContain("projectEngineDeepSeekIcon");
     expect(sessionPageSource).toContain('data-state={selected ? "selected" : "default"}');
-    expect(sessionPageSource).toContain("grid w-full grid-cols-1 gap-4 sm:grid-cols-2");
+    expect(sessionPageSource).toContain("grid w-full grid-cols-1 gap-4 sm:grid-cols-3");
     expect(sessionPageSource).toContain("min-h-[120px]");
     expect(sessionPageSource).toContain('iconClassName: "h-6 w-[19px] dark:invert"');
     expect(sessionPageSource).toContain('iconClassName: "h-6 w-[33px]"');

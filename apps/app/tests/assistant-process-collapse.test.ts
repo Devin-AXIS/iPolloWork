@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 
 import {
+  getActiveAssistantMessageId,
   getAssistantRenderGroups,
   groupMessages,
   isMessageGroup,
@@ -24,9 +25,33 @@ describe("assistant process collapse sections", () => {
     expect(source).toContain("onClick={() => setIsOpen((open) => !open)}");
     expect(source).toContain("<AssistantProcessDisclosure");
     expect(source).toContain("isStreaming={isLiveGroup}");
-    expect(source).toContain("const isLiveGroup = isStreaming && isLatestAssistantGroup");
+    expect(source).toContain("const isLiveGroup = isStreaming && items.some");
     expect(source).toContain("itemRenderData.map(renderProcessItem)");
     expect(source).toContain("hideProcess");
+  });
+
+  test("keeps a follow-up waiting state off the completed assistant turn", () => {
+    const previousTurn = [
+      { id: "user-1", role: "user", parts: [{ type: "text", text: "First question" }] },
+      { id: "assistant-1", role: "assistant", parts: [{ type: "text", text: "First answer" }] },
+    ] satisfies Parameters<typeof getActiveAssistantMessageId>[0];
+    const followUpBaseline = previousTurn.length;
+
+    expect(getActiveAssistantMessageId(previousTurn, followUpBaseline)).toBeUndefined();
+
+    const awaitingFollowUp = [
+      ...previousTurn,
+      { id: "user-2", role: "user", parts: [{ type: "text", text: "Second question" }] },
+    ] satisfies Parameters<typeof getActiveAssistantMessageId>[0];
+    expect(getActiveAssistantMessageId(awaitingFollowUp, followUpBaseline)).toBeUndefined();
+    expect(getActiveAssistantMessageId(awaitingFollowUp)).toBeUndefined();
+
+    const respondingToFollowUp = [
+      ...awaitingFollowUp,
+      { id: "assistant-2", role: "assistant", parts: [{ type: "reasoning", text: "Working", state: "streaming" }] },
+    ] satisfies Parameters<typeof getActiveAssistantMessageId>[0];
+    expect(getActiveAssistantMessageId(respondingToFollowUp, followUpBaseline)).toBe("assistant-2");
+    expect(getActiveAssistantMessageId(respondingToFollowUp)).toBe("assistant-2");
   });
 
   test("moves completed pre-result work into a collapsible process section", () => {

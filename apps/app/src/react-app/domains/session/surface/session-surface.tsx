@@ -3,6 +3,7 @@ import { useCallback, useEffect, useEffectEvent, useMemo, useRef, useState, type
 import type { UIMessage } from "ai";
 import { useQuery } from "@tanstack/react-query";
 import type { TemplateCatalogItem } from "@ipollowork/types/templates";
+import { CODEX_HARNESS_ENGINE_ID } from "@ipollowork/types/workspace";
 import { Check, Minimize2, X } from "lucide-react";
 import { toast } from "@/components/ui/sonner";
 
@@ -27,6 +28,7 @@ import type {
   McpServerEntry,
   McpStatusMap,
   ModelRef,
+  PromptDispatchOptions,
   SkillCard,
   TodoItem,
 } from "@/app/types";
@@ -94,6 +96,8 @@ import { QueuedMessagesPanel } from "@/react-app/domains/session/modals/queued-m
 import { deriveOpenTargets, selectAutoOpenTarget, type OpenTarget } from "@/react-app/domains/session/artifacts/open-target";
 import { usePanelTabStore } from "@/react-app/domains/session/panel/panel-tab-store";
 import {
+  beginOptimisticSessionPrompt,
+  rollbackOptimisticSessionPrompt,
   seedSessionState,
   snapshotKey as reactSnapshotKey,
   statusKey as reactStatusKey,
@@ -178,6 +182,7 @@ export type SessionSurfaceProps = {
   workspaceId: string;
   workspaceRoot: string;
   sessionId: string;
+  engineId?: string;
   sessionTitle?: string;
   opencodeBaseUrl: string;
   ipolloworkToken: string;
@@ -189,7 +194,11 @@ export type SessionSurfaceProps = {
   selectedModel: ModelRef;
   onModelPickerOpenChange: (open: boolean) => void;
   onModelChange: (model: ModelRef) => void;
-  onSendDraft: (draft: ComposerDraft, sessionId: string) => boolean | Promise<boolean>;
+  onSendDraft: (
+    draft: ComposerDraft,
+    sessionId: string,
+    options?: PromptDispatchOptions,
+  ) => boolean | Promise<boolean>;
   onDraftChange: (draft: ComposerDraft) => void;
   supportsNativeAttachments: boolean;
   modelVariantLabel: string;
@@ -1119,6 +1128,9 @@ export function SessionSurface(props: SessionSurfaceProps) {
     setSending(true);
     setAwaitingAssistantBaseline(renderedMessages.length);
     const recoveryDraft = nextDraft.capability?.instruction.includes("authoritative delivery validation") === true;
+    const clientUserMessageId = props.engineId === CODEX_HARNESS_ENGINE_ID && !recoveryDraft
+      ? beginOptimisticSessionPrompt(props.workspaceId, props.sessionId, nextDraft.text)
+      : null;
     const templateEntryPath = props.templateEntryPath?.replace(/\\/g, "/") ?? "";
     const videoTask = newConversationMode === "video"
       || props.artifactContext?.kind === "video"
@@ -1146,7 +1158,11 @@ export function SessionSurface(props: SessionSurfaceProps) {
           pendingVideoDeliveryRef.current = pendingDelivery;
         }
       }
-      const dispatched = await props.onSendDraft(nextDraft, props.sessionId);
+      const dispatched = await props.onSendDraft(
+        nextDraft,
+        props.sessionId,
+        clientUserMessageId ? { clientUserMessageId } : undefined,
+      );
       if (selectedAnimations.length) {
         recordInspectorEvent("composer.hyperframes_sent", {
           workspaceId: props.workspaceId,
@@ -1163,10 +1179,13 @@ export function SessionSurface(props: SessionSurfaceProps) {
       // finishes. Keep the optimistic busy latch until the session's idle
       // event; only release immediately when the route did not dispatch.
       if (!dispatched) {
+        rollbackOptimisticSessionPrompt(props.workspaceId, props.sessionId, clientUserMessageId);
+        setAwaitingAssistantBaseline(null);
         runActivityObservedRef.current = false;
         setSending(false);
       }
     } catch (nextError) {
+      rollbackOptimisticSessionPrompt(props.workspaceId, props.sessionId, clientUserMessageId);
       if (pendingVideoDeliveryRef.current === pendingDelivery) pendingVideoDeliveryRef.current = null;
       const parsed = parseSessionError(nextError);
       captureAnalyticsEvent("task_send_failed", {});
@@ -1178,7 +1197,7 @@ export function SessionSurface(props: SessionSurfaceProps) {
       setSending(false);
       throw nextError;
     }
-  }, [appendComposerHistory, newConversationMode, props.artifactContext, props.onSendDraft, props.sessionId, props.templateEntryPath, props.workspaceId, renderedMessages.length, selectedAnimations, setComposerDraft]);
+  }, [appendComposerHistory, newConversationMode, props.artifactContext, props.engineId, props.onSendDraft, props.sessionId, props.templateEntryPath, props.workspaceId, renderedMessages.length, selectedAnimations, setComposerDraft]);
 
   const validatePendingVideoDelivery = useCallback(async () => {
     const pending = pendingVideoDeliveryRef.current;
@@ -2095,6 +2114,7 @@ export function SessionSurface(props: SessionSurfaceProps) {
                         templateEntryPath={props.templateEntryPath}
                         artifactFiles={props.artifactFiles}
                         artifactContext={props.artifactContext}
+                        activeMessageBaseline={awaitingAssistantBaseline}
                       />
                     </MessageListProvider>
                   </EnvironmentVariableProvider>

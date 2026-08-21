@@ -85,9 +85,12 @@ describe("shared AI provider preferences", () => {
     for (const source of [sessionRouteSource, settingsRouteSource]) {
       expect(source).toContain("const sharedProviderEngineId = DEFAULT_ENGINE_ID");
       expect(source).toContain("sharedProviderEndpoint?.opencodeBaseUrl");
-      expect(source).toContain("if (deepSeekHarnessProviderClient && deepSeekHarnessWorkspace)");
       expect(source).not.toContain("deepSeekHarnessWorkspace.id !== sharedProviderWorkspace?.id");
     }
+    expect(sessionRouteSource).not.toContain("runtimeModelCatalogSources");
+    expect(settingsRouteSource).toContain("const supportedEngines = new Set(providerEngineAdapters.ids())");
+    expect(settingsRouteSource).toContain("...runtimeModelCatalogSources,");
+    expect(settingsRouteSource).not.toContain("sources.push(...runtimeModelCatalogSources)");
   });
 
   test("uses the merged account catalog but the active engine runtime for prompt delivery", () => {
@@ -98,10 +101,13 @@ describe("shared AI provider preferences", () => {
     expect(sessionRouteSource).toContain("? filterProviderList(activeProviderListQuery.data, disabledProviderIds)");
     expect(sessionRouteSource).toContain("connectedProviderIds: sessionProviderAuthSnapshot.connectedProviderIds");
     expect(sessionRouteSource).toContain("disabledProviderIds,");
-    expect(settingsRouteSource).toContain("!effectiveProviderConnectedIdSet.has(provider.id) || sharedConnectedProviderIds.has(provider.id)");
+    expect(settingsRouteSource).toContain("catalogSources: modelCatalogSources");
+    expect(settingsRouteSource).toContain("runtimeSource: activeModelProviderSource");
+    expect(settingsRouteSource).toContain("connectedProviderIds: providerAuthSnapshot.connectedProviderIds");
     expect(sessionRouteSource).toContain("getSelectableChatModelSnapshot(activeProviderList)");
     expect(sessionRouteSource).toContain("runtimeSource: activeProviderSource");
-    expect(sessionRouteSource).toContain("model: activeSelectedModel ?? undefined");
+    expect(sessionRouteSource).toContain("model: activeSelectedModel");
+    expect(sessionRouteSource).toContain("providerId: activeSelectedModel.providerID");
   });
 
   test("describes compatible providers once for every engine adapter", () => {
@@ -140,5 +146,12 @@ describe("shared AI provider preferences", () => {
       sharedProviderCredentialEnvKey("deepseek-official"),
       sharedProviderProfileEnvKey("deepseek-official"),
     ])).toEqual(["deepseek-official", "openai"]);
+    expect(sharedConfiguredProviderIdsFromEnvKeys([
+      sharedProviderProfileEnvKey("openai"),
+      sharedProviderCredentialEnvKey("deepseek-official"),
+    ], [])).toEqual(["deepseek-official"]);
+    expect(sharedConfiguredProviderIdsFromEnvKeys([
+      sharedProviderProfileEnvKey("openai"),
+    ], ["openai"])).toEqual(["openai"]);
   });
 });

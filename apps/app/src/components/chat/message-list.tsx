@@ -86,7 +86,7 @@ import {
   getActiveToolLabel,
 } from "@/lib/tool-activity"
 import { cn } from "@/lib/utils"
-import { assistantResponseMarkdownFilename, buildAssistantResponseMarkdown, buildQuoteFollowUpPrompt, groupMessages, isMessageGroup, getLastTextPart, getAssistantRenderGroups, getFileTitle, getMediaBadge, getMessageCompleted, getMessageCreated, formatMessageTimestamp, formatProcessDuration, type UIMessageWithIndex, getMessagesText, splitAssistantRenderGroups, type AssistantProcessRenderGroup } from "./utils"
+import { assistantResponseMarkdownFilename, buildAssistantResponseMarkdown, buildQuoteFollowUpPrompt, getActiveAssistantMessageId, getAssistantProcessState, groupMessages, isMessageGroup, getLastTextPart, getAssistantRenderGroups, getFileTitle, getMediaBadge, getMessageCompleted, getMessageCreated, formatMessageTimestamp, formatProcessDuration, type UIMessageWithIndex, getMessagesText, splitAssistantRenderGroups, type AssistantProcessRenderGroup } from "./utils"
 
 const SEARCH_HIGHLIGHT_MARK_CLASS = "rounded px-0.5 bg-amber-4/70 text-current"
 
@@ -439,11 +439,12 @@ function assistantProcessSummary(groups: AssistantProcessRenderGroup[], duration
 function AssistantProcessDisclosure(props: {
   groups: AssistantProcessRenderGroup[]
   isStreaming: boolean
+  hasError?: boolean
   durationMs: number | null
   children: React.ReactNode
   contentClassName?: string
 }) {
-  const { groups, isStreaming, durationMs, children, contentClassName } = props
+  const { groups, isStreaming, hasError = false, durationMs, children, contentClassName } = props
   const [isOpen, setIsOpen] = React.useState(isStreaming)
   const previousStreamingRef = React.useRef(isStreaming)
 
@@ -456,19 +457,29 @@ function AssistantProcessDisclosure(props: {
     previousStreamingRef.current = isStreaming
   }, [isStreaming])
 
-  const label = isStreaming ? t("message.process_in_progress") : t("message.process_completed")
+  const processState = getAssistantProcessState(isStreaming, hasError)
+  const label = processState === "streaming"
+    ? t("message.process_in_progress")
+    : processState === "failed"
+      ? t("message.process_failed")
+      : t("message.process_completed")
 
   return (
     <div className="w-full">
       <button
         type="button"
-        className="text-muted-foreground hover:text-foreground flex w-full items-center gap-2 rounded-md px-0 py-1 text-left text-sm transition-colors"
+        className={cn(
+          "text-muted-foreground hover:text-foreground flex w-full items-center gap-2 rounded-md px-0 py-1 text-left text-sm transition-colors",
+          processState === "failed" && "text-destructive hover:text-destructive",
+        )}
         aria-expanded={isOpen}
         aria-label={isOpen ? t("message.collapse_process") : t("message.expand_process")}
         onClick={() => setIsOpen((open) => !open)}
       >
-        {isStreaming ? (
+        {processState === "streaming" ? (
           <LoaderCircle className="size-3.5 shrink-0 animate-spin" aria-hidden />
+        ) : processState === "failed" ? (
+          <AlertTriangle className="size-3.5 shrink-0" aria-hidden />
         ) : (
           <Check className="size-3.5 shrink-0" aria-hidden />
         )}
@@ -988,6 +999,7 @@ interface AssistantMessageGroupProps {
   artifactFiles?: readonly string[]
   artifactContext?: ArtifactInteractionContext
   latestAssistantMessageId?: string
+  activeAssistantMessageId?: string
 }
 
 function MessageGroup({
@@ -998,6 +1010,7 @@ function MessageGroup({
   artifactFiles,
   artifactContext,
   latestAssistantMessageId,
+  activeAssistantMessageId,
 }: AssistantMessageGroupProps) {
   const { onRevertToUserMessage, onForkAtMessage, showThinking } = useMessageList()
   const lastItem = items[items.length - 1]
@@ -1008,9 +1021,9 @@ function MessageGroup({
   const isLatestAssistantGroup = items.some(
     (item) => item.message.id === latestAssistantMessageId,
   )
-  // Keep the latest process attached to the active run while a follow-up has
-  // been accepted but has not emitted its first assistant message yet.
-  const isLiveGroup = isStreaming && isLatestAssistantGroup
+  const isLiveGroup = isStreaming && items.some(
+    (item) => item.message.id === activeAssistantMessageId,
+  )
   const previousLiveGroupRef = React.useRef(isLiveGroup)
   const resultEnteredAfterLiveRun = !isLiveGroup && previousLiveGroupRef.current
   const stepsRef = React.useRef<HTMLDivElement>(null)
@@ -1069,6 +1082,7 @@ function MessageGroup({
     && processCompletedAt >= processStartedAt
     ? processCompletedAt - processStartedAt
     : null
+  const hasSessionError = items.some((item) => isSessionErrorMessage(item.message))
 
   const renderProcessItem = (
     data: (typeof itemRenderData)[number],
@@ -1097,6 +1111,7 @@ function MessageGroup({
         <AssistantProcessDisclosure
           groups={processRenderGroups}
           isStreaming={isLiveGroup}
+          hasError={hasSessionError}
           durationMs={processDurationMs}
           contentClassName="max-h-[520px] overflow-y-auto"
         >
@@ -1173,14 +1188,19 @@ interface MessageListProps {
   templateEntryPath?: string
   artifactFiles?: readonly string[]
   artifactContext?: ArtifactInteractionContext
+  activeMessageBaseline?: number | null
 }
 
-export function MessageList({ messages, status, retryStatus, templateEntryPath, artifactFiles, artifactContext }: MessageListProps) {
+export function MessageList({ messages, status, retryStatus, templateEntryPath, artifactFiles, artifactContext, activeMessageBaseline }: MessageListProps) {
   const isStreaming = status === "submitted" || status === "streaming" || status === "retrying"
   const items = React.useMemo(() => groupMessages(messages), [messages])
   const latestAssistantMessageId = React.useMemo(
     () => getLatestArtifactAssistantMessageId(messages),
     [messages],
+  )
+  const activeAssistantMessageId = React.useMemo(
+    () => isStreaming ? getActiveAssistantMessageId(messages, activeMessageBaseline) : undefined,
+    [activeMessageBaseline, isStreaming, messages],
   )
   const error = useSessionErrorMessage();
   const hasSessionErrorMessage = React.useMemo(() => messages.some(isSessionErrorMessage), [messages])
@@ -1202,6 +1222,7 @@ export function MessageList({ messages, status, retryStatus, templateEntryPath, 
               artifactFiles={artifactFiles}
               artifactContext={artifactContext}
               latestAssistantMessageId={latestAssistantMessageId}
+              activeAssistantMessageId={activeAssistantMessageId}
             />
           )
         }
@@ -1226,7 +1247,9 @@ export function MessageList({ messages, status, retryStatus, templateEntryPath, 
         )
       })}
 
-      {status === "streaming" && <LoadingMessage label={liveActionLabel ?? undefined} />}
+      {(status === "submitted" || status === "streaming") && !activeAssistantMessageId
+        ? <LoadingMessage label={liveActionLabel ?? undefined} />
+        : null}
       {retryStatus ? <RetryMessage status={retryStatus} /> : null}
       {error && !hasSessionErrorMessage ? <ErrorMessage error={error} /> : null}
     </div>

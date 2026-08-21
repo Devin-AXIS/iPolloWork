@@ -7,6 +7,7 @@ import { safeStringify } from "../../../../app/utils";
 import { SYNTHETIC_SESSION_ERROR_MESSAGE_PREFIX } from "../../../../app/types";
 import { parseDesignAiSelectionDisplayMetadata } from "@ipollowork/design-studio";
 import { parseHyperframesAnimationDisplayMetadata } from "@/app/lib/hyperframes-effect-params";
+import { t } from "@/i18n";
 import { parseVideoVoiceDisplayMetadata } from "../video/video-voice";
 import { parseVideoIllustrationDisplayMetadata } from "../video/video-illustration";
 import {
@@ -58,9 +59,15 @@ function withAttachmentRecoveryHint(text: string) {
   return `${text}\nAn attached file in this conversation uses a format the model can't read. Revert the conversation to before the attachment was sent, or start a new session.`;
 }
 
-export function describeOpencodeSessionError(error: unknown, fallback = "Session failed") {
-  if (error instanceof Error) return withAttachmentRecoveryHint(error.message || fallback);
-  if (typeof error === "string") return withAttachmentRecoveryHint(error.trim() || fallback);
+function withRateLimitRecoveryHint(text: string, status?: number | null) {
+  const rateLimited = status === 429
+    || /\b429\b|too many requests|rate[\s_-]*limit/i.test(text);
+  return rateLimited ? t("message.rate_limit_error") : text;
+}
+
+export function describeConversationSessionError(error: unknown, fallback = "Session failed") {
+  if (error instanceof Error) return withAttachmentRecoveryHint(withRateLimitRecoveryHint(error.message || fallback));
+  if (typeof error === "string") return withAttachmentRecoveryHint(withRateLimitRecoveryHint(error.trim() || fallback));
   if (!error || typeof error !== "object") return fallback;
 
   const data = recordValue(error, "data");
@@ -82,11 +89,15 @@ export function describeOpencodeSessionError(error: unknown, fallback = "Session
   if (code) lines.push(`Code: ${code}`);
   if (retries !== null) lines.push(`Retries: ${retries}`);
   if (responseBody && responseBody !== message) lines.push(`Response: ${responseBody}`);
-  if (lines.some((line) => line !== fallback)) return withAttachmentRecoveryHint(lines.join("\n"));
+  if (lines.some((line) => line !== fallback)) {
+    return withAttachmentRecoveryHint(withRateLimitRecoveryHint(lines.join("\n"), status));
+  }
 
   const serialized = safeStringify(error);
   return serialized && serialized !== "{}" ? serialized : fallback;
 }
+
+export const describeOpencodeSessionError = describeConversationSessionError;
 
 function sessionErrorMessageId(turnKey: string) {
   return `${SYNTHETIC_SESSION_ERROR_MESSAGE_PREFIX}${turnKey}`;
