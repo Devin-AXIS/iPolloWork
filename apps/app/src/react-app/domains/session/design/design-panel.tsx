@@ -2306,7 +2306,7 @@ export function DesignPanel({
                           transform: `scale(${presentationScale})`,
                         }
                         : undefined}
-                      sandbox="allow-scripts"
+                      sandbox="allow-scripts allow-same-origin"
                       data-preview-loaded={previewLoaded ? "true" : "false"}
                       onLoad={() => {
                         setPreviewLoaded(true);

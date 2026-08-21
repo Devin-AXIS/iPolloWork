@@ -1,11 +1,17 @@
 import { describe, expect, test } from "bun:test";
 
 import {
+  designProjectSessionIdFromEntryPath,
   resolveTemplateEntrySurface,
   waitForTemplateEntrySurface,
 } from "../src/react-app/domains/session/templates/template-entry-route";
 
 describe("template entry surface routing", () => {
+  test("derives the prepared Design project id from its entry path", () => {
+    expect(designProjectSessionIdFromEntryPath("design/ses_bank-artifact-slides/entry.html")).toBe("ses_bank-artifact-slides");
+    expect(designProjectSessionIdFromEntryPath("reports/bank.html")).toBeNull();
+  });
+
   test("routes website and Slides entries to Design", () => {
     expect(resolveTemplateEntrySurface(
       { kind: "file", value: "design/ses_site/entry.html" },

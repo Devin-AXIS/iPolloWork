@@ -338,7 +338,7 @@ export function AppRoot() {
               />
 
               <Route
-                path="/session"
+                path="/session/:sessionId?"
                 element={
                   <DevProfiler id="SessionRoute">
                     <SessionRoute />
@@ -346,23 +346,7 @@ export function AppRoot() {
                 }
               />
               <Route
-                path="/session/:sessionId"
-                element={
-                  <DevProfiler id="SessionRoute">
-                    <SessionRoute />
-                  </DevProfiler>
-                }
-              />
-              <Route
-                path="/workspace/:workspaceId/session"
-                element={
-                  <DevProfiler id="SessionRoute">
-                    <SessionRoute />
-                  </DevProfiler>
-                }
-              />
-              <Route
-                path="/workspace/:workspaceId/session/:sessionId"
+                path="/workspace/:workspaceId/session/:sessionId?"
                 element={
                   <DevProfiler id="SessionRoute">
                     <SessionRoute />

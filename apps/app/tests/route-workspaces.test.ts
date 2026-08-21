@@ -2,6 +2,10 @@ import { describe, expect, test } from "bun:test";
 
 import type { WorkspaceInfo } from "../src/app/lib/desktop-types";
 import {
+  isDefaultSessionTitle,
+  sessionTitleFromFirstPrompt,
+} from "../src/app/lib/session-title";
+import {
   buildTaskPaletteSessionOptions,
   mapDesktopWorkspace,
   mergeRouteWorkspaces,
@@ -40,6 +44,16 @@ function remoteWorkspace(id: string): WorkspaceInfo {
 }
 
 describe("route workspaces", () => {
+  test("derives a stable sidebar title from the first user request", () => {
+    expect(sessionTitleFromFirstPrompt("  给我做一个阿里巴巴相关的 PPT\n和 10 秒视频  ")).toBe(
+      "给我做一个阿里巴巴相关的 PPT 和 10 秒视频",
+    );
+    expect(sessionTitleFromFirstPrompt("一".repeat(60))).toBe(`${"一".repeat(47)}…`);
+    expect(isDefaultSessionTitle("New conversation")).toBe(true);
+    expect(isDefaultSessionTitle("新建会话")).toBe(true);
+    expect(isDefaultSessionTitle("阿里巴巴 PPT 和视频")).toBe(false);
+  });
+
   test("uses the running server registry instead of stale local desktop records", () => {
     const server = [localWorkspace("ws_live", "/Users/example/current")];
     const desktop = [
@@ -69,7 +83,7 @@ describe("route workspaces", () => {
     expect(mergeRouteWorkspaces(server, desktop)[0]?.isDefault).toBe(true);
   });
 
-  test("keeps existing project positions stable while placing newly created projects first", () => {
+  test("keeps existing project positions stable and appends newly discovered projects", () => {
     const workspaces = [
       mapDesktopWorkspace(localWorkspace("selected", "/workspace/selected")),
       mapDesktopWorkspace(localWorkspace("new", "/workspace/new")),
@@ -77,9 +91,9 @@ describe("route workspaces", () => {
     ];
 
     expect(orderRouteWorkspaces(workspaces, ["older", "selected"]).map((workspace) => workspace.id)).toEqual([
-      "new",
       "older",
       "selected",
+      "new",
     ]);
   });
 
@@ -89,7 +103,7 @@ describe("route workspaces", () => {
     expect(resolveKnownWorkspaceId(workspaces, ["ws_stale", "ws_live"])).toBe("ws_live");
   });
 
-  test("blocks startup only on the selected workspace and loads other missing workspaces in the background", () => {
+  test("selects the current workspace task directory and defers every other missing workspace", () => {
     const workspaces = [
       mapDesktopWorkspace(localWorkspace("selected", "/workspace/selected")),
       mapDesktopWorkspace(localWorkspace("cached", "/workspace/cached")),
@@ -102,8 +116,8 @@ describe("route workspaces", () => {
       new Set(["cached"]),
     );
 
-    expect(result.blocking.map((workspace) => workspace.id)).toEqual(["selected"]);
-    expect(result.background.map((workspace) => workspace.id)).toEqual(["missing"]);
+    expect(result.selected.map((workspace) => workspace.id)).toEqual(["selected"]);
+    expect(result.deferred.map((workspace) => workspace.id)).toEqual(["missing"]);
   });
 
   test("filters delegated child sessions while retaining user-visible sessions", () => {

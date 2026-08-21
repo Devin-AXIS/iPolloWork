@@ -91,6 +91,8 @@ export function useWorkspaceRouteState(input: UseWorkspaceRouteStateInput) {
   const params = useParams<{ workspaceId?: string; sessionId?: string }>();
   const routeWorkspaceId = params.workspaceId?.trim() || "";
   const selectedSessionId = params.sessionId?.trim() || null;
+  const routeSelectionRef = useRef({ workspaceId: routeWorkspaceId, sessionId: selectedSessionId });
+  routeSelectionRef.current = { workspaceId: routeWorkspaceId, sessionId: selectedSessionId };
   const navigateToWorkspaceSession = useCallback((workspaceId: string, sessionId?: string | null, options?: { replace?: boolean }) => {
     const id = workspaceId.trim();
     if (!id) {
@@ -383,6 +385,7 @@ export function useWorkspaceRouteState(input: UseWorkspaceRouteStateInput) {
     const refreshStartedAt = Date.now();
     logStartupTiming("[startup] session route refresh started");
     const requestedContextId = workContextId;
+    const requestedRouteSelection = routeSelectionRef.current;
     setLoading(true);
     setRouteError(null);
     let desktopList: WorkspaceList | null = null;
@@ -481,15 +484,15 @@ export function useWorkspaceRouteState(input: UseWorkspaceRouteStateInput) {
       // the user's last-active workspace from localStorage, the desktop's
       // activeId, the server's activeId, then the first known workspace.
       let nextWorkspaceId = resolveKnownWorkspaceId(nextWorkspaces, [
-        routeWorkspaceId,
+        requestedRouteSelection.workspaceId,
         persistedActiveId,
         resolveWorkspaceListSelectedId(desktopList),
         list.activeId,
         nextWorkspaces[0]?.id,
       ]);
-      if (selectedSessionId) {
+      if (requestedRouteSelection.sessionId) {
         const match = cachedEntries.find((entry) =>
-          entry.sessions.some((session) => session?.id === selectedSessionId),
+          entry.sessions.some((session) => session?.id === requestedRouteSelection.sessionId),
         );
         if (match?.workspaceId) nextWorkspaceId = match.workspaceId;
       }
@@ -508,13 +511,11 @@ export function useWorkspaceRouteState(input: UseWorkspaceRouteStateInput) {
         }
         return next;
       });
+      const selectedEntry = cachedEntries.find((entry) => entry.workspaceId === nextWorkspaceId);
       setRetryingWorkspaceIds(
-        cachedEntries.flatMap((entry) =>
-          entry.sessions.length === 0 &&
-          (entry.workspaceId === nextWorkspaceId || !alreadyLoadedWorkspaceIds.has(entry.workspaceId))
-            ? [entry.workspaceId]
-            : [],
-        ),
+        selectedEntry && selectedEntry.sessions.length === 0 && !alreadyLoadedWorkspaceIds.has(selectedEntry.workspaceId)
+          ? [selectedEntry.workspaceId]
+          : [],
       );
       setLegacySelectedWorkspaceId(nextWorkspaceId);
       writeActiveWorkspaceId(nextWorkspaceId || null);
@@ -550,18 +551,21 @@ export function useWorkspaceRouteState(input: UseWorkspaceRouteStateInput) {
         errors: {},
       });
 
-      // Wait for the selected project's sessions before completing a context
-      // switch. Other projects continue loading in the background.
+      // Session directories are metadata-only and load independently from the
+      // route shell. Do not hold the whole workspace UI behind this request:
+      // the user can start a new task immediately while the selected project's
+      // existing task list fills in.
       const initialLoads = partitionInitialWorkspaceLoads(
         nextWorkspaces,
         nextWorkspaceId,
         alreadyLoadedWorkspaceIds,
       );
-      if (initialLoads.blocking.length > 0) {
+      if (initialLoads.selected.length > 0) {
         const selectedSessionsStartedAt = Date.now();
-        await loadWorkspaceSessionsInBackground(initialLoads.blocking);
-        logStartupTiming(`[startup] selected workspace sessions loaded in ${Date.now() - selectedSessionsStartedAt}ms`, {
-          workspaceId: nextWorkspaceId,
+        void loadWorkspaceSessionsInBackground(initialLoads.selected).then(() => {
+          logStartupTiming(`[startup] selected workspace sessions loaded in ${Date.now() - selectedSessionsStartedAt}ms`, {
+            workspaceId: nextWorkspaceId,
+          });
         });
       }
     } catch (error) {
@@ -600,7 +604,7 @@ export function useWorkspaceRouteState(input: UseWorkspaceRouteStateInput) {
       logStartupTiming(`[startup] session route refresh completed in ${Date.now() - refreshStartedAt}ms`);
       STARTUP_ROUTE_TIMING_REPORTED = true;
     }
-  }, [loadWorkspaceSessionsInBackground, markBootRouteReady, routeWorkspaceId, selectedSessionId, workContextId]);
+  }, [loadWorkspaceSessionsInBackground, markBootRouteReady, workContextId]);
   const handleRuntimeSessionUpdated = useCallback((update: { sessionId: string; info: Record<string, unknown> }) => {
     if (!selectedWorkspaceId) return;
     setSessionsByWorkspaceId((current) => {

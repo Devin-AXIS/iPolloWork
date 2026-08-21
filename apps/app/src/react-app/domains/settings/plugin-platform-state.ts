@@ -33,13 +33,10 @@ export function pluginPackageEngineScope(
     return { kind: "engine", engineId: DEFAULT_ENGINE_ID };
   }
   const engineIds = manifest.package?.engines;
-  const [engineId] = engineIds ?? [];
-  if (engineIds?.length === 1) return { kind: "engine", engineId };
 
   if (engineCompatibility?.length) {
-    const declaredEngines = engineIds ? new Set(engineIds) : null;
     const fullySupportedEngineIds = engineCompatibility
-      .filter((entry) => entry.status === "ready" && (!declaredEngines || declaredEngines.has(entry.engineId)))
+      .filter((entry) => entry.status === "ready")
       .map((entry) => entry.engineId);
     const [fullySupportedEngineId] = fullySupportedEngineIds;
     if (fullySupportedEngineIds.length === engineCompatibility.length) return { kind: "universal" };
@@ -47,6 +44,8 @@ export function pluginPackageEngineScope(
     if (fullySupportedEngineIds.length > 1) return { kind: "multi-engine", engineIds: fullySupportedEngineIds };
   }
 
+  const [engineId] = engineIds ?? [];
+  if (engineIds?.length === 1) return { kind: "engine", engineId };
   if (!engineId) return { kind: "universal" };
   return { kind: "multi-engine", engineIds: [...(engineIds ?? [])] };
 }

@@ -269,21 +269,24 @@ describe("plugin package manifest", () => {
     ]));
     expect(design.manifest.defaultEnabled).toBe(true);
     expect(video.manifest.defaultEnabled).toBe(true);
-    expect(design.manifest.contributions).toMatchObject([{
-      type: "session-side-panel",
-      ref: "ipollowork.design.panel",
-      location: "session-right-pane",
-    }]);
-    expect(video.manifest.contributions).toMatchObject([{
-      type: "session-side-panel",
-      ref: "ipollowork.video.panel",
-      location: "session-right-pane",
-    }]);
+    expect(design.manifest.contributions).toBeUndefined();
+    expect(video.manifest.contributions).toBeUndefined();
     expect(design.manifest.source).toMatchObject({ origin: "builtin", trusted: true });
     expect(video.manifest.source).toMatchObject({ origin: "builtin", trusted: true });
 
-    const untrustedNativePanel = validatePluginPackageManifest({
+    const legacyNativePanelManifest = {
       ...designManifest,
+      contributions: [{
+        type: "session-side-panel",
+        ref: "ipollowork.design.panel",
+        label: "Design",
+        location: "session-right-pane",
+      }],
+    };
+    expect(validatePluginPackageManifest(legacyNativePanelManifest).success).toBe(true);
+
+    const untrustedNativePanel = validatePluginPackageManifest({
+      ...legacyNativePanelManifest,
       id: "third-party-design",
       source: { ...designManifest.source, origin: "local", trusted: false },
     });

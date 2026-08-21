@@ -33,6 +33,13 @@ type AgentPresetList = {
   }>;
 };
 
+type ModelDirectory = {
+  groups: Array<{
+    id: string;
+    models: Array<{ id: string }>;
+  }>;
+};
+
 function modePresentation(id: string): Pick<ConversationMode, "label" | "description" | "icon"> | null {
   const modes: Record<string, Pick<ConversationMode, "label" | "description" | "icon">> = {
     standard: {
@@ -180,12 +187,41 @@ function deepSeekHarnessConnection(input: {
     const reasoningEffort = request.reasoningEffort || request.variant;
     const selectionKey = `${request.model.providerID}/${request.model.modelID}/${reasoningEffort ?? ""}`;
     if (selectedModels.get(request.sessionId) === selectionKey) return;
-    await client.call("session.selectModel", {
-      sessionId: request.sessionId,
-      provider: request.model.providerID,
-      model: request.model.modelID,
-      ...(reasoningEffort ? { reasoningEffort } : {}),
-    });
+    let directory: ModelDirectory | null = null;
+    let runtimeProviderId = request.model.providerID;
+    if (runtimeProviderId === "openai") {
+      directory = await client.call<ModelDirectory>("llm.models", {}).catch(() => null);
+      const nativeOpenAiHasModel = directory?.groups.some((group) => (
+        group.id === "openai" && group.models.some((model) => model.id === request.model?.modelID)
+      ));
+      const codexHasModel = directory?.groups.some((group) => (
+        group.id === "openai-codex" && group.models.some((model) => model.id === request.model?.modelID)
+      ));
+      const priorityCodexHasModel = directory?.groups.some((group) => (
+        group.id === "openai-codex-priority"
+        && group.models.some((model) => model.id === request.model?.modelID)
+      ));
+      if (!nativeOpenAiHasModel && priorityCodexHasModel) runtimeProviderId = "openai-codex-priority";
+      else if (!nativeOpenAiHasModel && codexHasModel) runtimeProviderId = "openai-codex";
+    }
+    try {
+      await client.call("session.selectModel", {
+        sessionId: request.sessionId,
+        provider: runtimeProviderId,
+        model: request.model.modelID,
+        ...(reasoningEffort ? { reasoningEffort } : {}),
+      });
+    } catch (error) {
+      directory ??= await client.call<ModelDirectory>("llm.models", {}).catch(() => null);
+      const modelAvailable = directory?.groups.some((group) => (
+        group.id === runtimeProviderId
+        && group.models.some((model) => model.id === request.model?.modelID)
+      ));
+      if (directory && !modelAvailable) {
+        throw new Error(t("session.deepseek_harness_model_unavailable"), { cause: error });
+      }
+      throw error;
+    }
     selectedModels.set(request.sessionId, selectionKey);
   };
 

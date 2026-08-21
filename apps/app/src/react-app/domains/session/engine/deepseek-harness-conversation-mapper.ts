@@ -421,6 +421,9 @@ export function normalizeDeepSeekHarnessErrorText(value: unknown): string {
   if (/no api key for provider route|missing[_ -]?credential/i.test(message)) {
     return t("session.deepseek_harness_missing_api_key");
   }
+  if (/^(error|错误)$/iu.test(message)) {
+    return t("session.deepseek_harness_run_failed");
+  }
   return message || t("session.deepseek_harness_run_failed");
 }
 
@@ -530,6 +533,7 @@ export function mapDeepSeekHarnessEnvelope(
           visibleAssistantOutput: true,
         });
       }
+      events.unshift({ type: "session.status", sessionId, status: { type: "busy" } });
       events.push({
         type: "message.chunk",
         sessionId,
@@ -551,36 +555,45 @@ export function mapDeepSeekHarnessEnvelope(
     rememberAssistantMessage(state, sessionId, turn, messageId);
     const tool = { messageId, toolName: data.name, input: normalizeToolInput(data.name, data.arguments) };
     state.tools.set(data.callId, tool);
-    return [{
-      type: "message.parts",
-      sessionId,
-      messageId,
-      partId: data.callId,
-      parts: [toolPart({ callId: data.callId, toolName: tool.toolName, input: tool.input, state: "input-streaming" })],
-      messageRole: "assistant",
-      visibleAssistantOutput: true,
-    }];
+    return [
+      // A tool call is itself an ordered proof that the turn is still active.
+      // Reassert busy here so a missing/late turn-start frame cannot make the
+      // process disclosure say "completed" while the tool is visibly running.
+      { type: "session.status", sessionId, status: { type: "busy" } },
+      {
+        type: "message.parts",
+        sessionId,
+        messageId,
+        partId: data.callId,
+        parts: [toolPart({ callId: data.callId, toolName: tool.toolName, input: tool.input, state: "input-streaming" })],
+        messageRole: "assistant",
+        visibleAssistantOutput: true,
+      },
+    ];
   }
   if (event.type === "tool/result") {
     const result = toolResultData(data);
     const tool = result ? state.tools.get(result.callId) : null;
     if (!result || !tool) return [];
-    return [{
-      type: "message.parts",
-      sessionId,
-      messageId: tool.messageId,
-      partId: result.callId,
-      parts: [toolPart({
-        callId: result.callId,
-        toolName: tool.toolName,
-        input: tool.input,
-        state: result.isError ? "output-error" : "output-available",
-        output: result.output,
-        errorText: result.errorText,
-      })],
-      messageRole: "assistant",
-      visibleAssistantOutput: true,
-    }];
+    return [
+      { type: "session.status", sessionId, status: { type: "busy" } },
+      {
+        type: "message.parts",
+        sessionId,
+        messageId: tool.messageId,
+        partId: result.callId,
+        parts: [toolPart({
+          callId: result.callId,
+          toolName: tool.toolName,
+          input: tool.input,
+          state: result.isError ? "output-error" : "output-available",
+          output: result.output,
+          errorText: result.errorText,
+        })],
+        messageRole: "assistant",
+        visibleAssistantOutput: true,
+      },
+    ];
   }
   if (event.type === "todo/write") return [{ type: "todo.updated", sessionId, todos: mapTodos(sessionId, data) }];
   if (event.type === "session/title" && typeof data.title === "string") {

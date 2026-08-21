@@ -4,6 +4,7 @@ import type {
 } from "@ipollowork/types/plugins";
 
 type RpcValue<T> = { value: T };
+const DEEPSEEK_HARNESS_RPC_TIMEOUT_MS = 30_000;
 
 export type DeepSeekHarnessServerRequest = {
   type: "server-request";
@@ -15,6 +16,14 @@ export type DeepSeekHarnessServerRequest = {
 export type DeepSeekHarnessRpcClient = {
   call<T>(method: string, payload?: unknown): Promise<T>;
 };
+
+/** Keep the account catalog engine-neutral while DSH uses pi-ai's route ID. */
+export function deepSeekHarnessAccountProviderId(providerId: string): string {
+  const normalized = providerId.trim().toLowerCase();
+  return normalized === "openai-codex" || normalized === "openai-codex-priority"
+    ? "openai"
+    : providerId;
+}
 
 export class DeepSeekHarnessClient implements DeepSeekHarnessRpcClient {
   readonly #baseUrl: string;
@@ -34,6 +43,7 @@ export class DeepSeekHarnessClient implements DeepSeekHarnessRpcClient {
       method: "POST",
       headers: this.#headers,
       body: JSON.stringify({ method, payload }),
+      signal: AbortSignal.timeout(DEEPSEEK_HARNESS_RPC_TIMEOUT_MS),
     });
     if (!response.ok) throw await responseError(response);
     return (await response.json() as RpcValue<T>).value;

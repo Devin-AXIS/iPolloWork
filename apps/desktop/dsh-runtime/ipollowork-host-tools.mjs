@@ -1,7 +1,127 @@
+import { PiAiAdapter } from "@deepseek-ai/dsh-llm-pi-ai";
+import { openaiCodexProvider } from "@earendil-works/pi-ai/providers/openai-codex";
+
+export const OPENAI_CODEX_PRIORITY_PROVIDER_ID = "openai-codex-priority";
+export const OPENAI_CODEX_PRIORITY_CREDENTIAL_REF = "OPENAI_CODEX_API_KEY";
+
+const OPENAI_CODEX_PRIORITY_MODEL_IDS = new Set([
+  "gpt-5.4",
+  "gpt-5.4-mini",
+  "gpt-5.5",
+]);
+
 function requiredEnvironment(name) {
   const value = String(process.env[name] ?? "").trim();
   if (!value) throw new Error(`${name} is required by the iPolloWork host tool bridge`);
   return value;
+}
+
+function isRecord(value) {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function priorityModelId(modelId) {
+  return `${modelId}-fast`;
+}
+
+function basePriorityModelId(modelId) {
+  return modelId.endsWith("-fast") ? modelId.slice(0, -"-fast".length) : modelId;
+}
+
+/**
+ * Build the DSH provider route for OpenCode's `*-fast` aliases. The alias is
+ * intentionally separate from the base Codex route: it carries the same OAuth
+ * credential and model, while preserving the priority service tier as request
+ * semantics instead of pretending Fast is another credential or wire model.
+ */
+export function createOpenAiCodexPriorityProvider(baseProvider = openaiCodexProvider()) {
+  const baseModels = new Map(baseProvider.getModels().map((model) => [model.id, model]));
+  const models = [...baseModels.values()]
+    .filter((model) => OPENAI_CODEX_PRIORITY_MODEL_IDS.has(model.id))
+    .map((model) => ({
+      ...model,
+      provider: OPENAI_CODEX_PRIORITY_PROVIDER_ID,
+      id: priorityModelId(model.id),
+      name: `${model.name} Fast`,
+    }));
+
+  const baseModel = (model) => {
+    const resolved = baseModels.get(basePriorityModelId(model.id));
+    if (!resolved) throw new Error(`Unknown OpenAI priority model: ${model.id}`);
+    return resolved;
+  };
+  const priorityOptions = (options = {}) => {
+    const reasoningEffort = options.reasoning === "off" ? undefined : options.reasoning;
+    return {
+      ...options,
+      reasoningEffort,
+      serviceTier: "priority",
+    };
+  };
+
+  return {
+    ...baseProvider,
+    id: OPENAI_CODEX_PRIORITY_PROVIDER_ID,
+    name: "OpenAI",
+    getModels: () => models,
+    stream: (model, context, options) => baseProvider.stream(
+      baseModel(model),
+      context,
+      { ...options, serviceTier: "priority" },
+    ),
+    streamSimple: (model, context, options) => baseProvider.stream(
+      baseModel(model),
+      context,
+      priorityOptions(options),
+    ),
+  };
+}
+
+class OpenAiCodexPriorityAdapter extends PiAiAdapter {
+  async *stream(options) {
+    for await (const chunk of super.stream(options)) {
+      const replayState = chunk.type === "finish" && isRecord(chunk.replayState)
+        ? chunk.replayState
+        : null;
+      if (replayState?.kind !== "pi-ai") {
+        yield chunk;
+        continue;
+      }
+      // The wrapped Codex transport reports the base route/model. Keep replay
+      // identity aligned with the DSH alias selected by the conversation so a
+      // later turn can safely restore the native response state.
+      yield {
+        ...chunk,
+        replayState: {
+          ...replayState,
+          provider: OPENAI_CODEX_PRIORITY_PROVIDER_ID,
+          model: options.model,
+        },
+      };
+    }
+  }
+}
+
+export function registerOpenAiCodexPriorityModels(ctx) {
+  const provider = createOpenAiCodexPriorityProvider();
+  const profile = {
+    provider: OPENAI_CODEX_PRIORITY_PROVIDER_ID,
+    displayName: "OpenAI",
+    piProvider: provider,
+    configuredMaxTokens: new Map(),
+    streamIdleTimeoutMs: 120_000,
+  };
+  const profiles = new Map([[OPENAI_CODEX_PRIORITY_PROVIDER_ID, profile]]);
+  const adapter = new OpenAiCodexPriorityAdapter({
+    profiles: () => profiles,
+    resolveApiKey: async () => {
+      const credential = await ctx.credentials.resolve(OPENAI_CODEX_PRIORITY_CREDENTIAL_REF);
+      if (credential?.value) return credential.value;
+      throw new Error("OpenAI Codex credential is not configured");
+    },
+    resolveAttachments: () => ctx.get?.("attachments"),
+  });
+  return ctx.llm.registerAdapter([OPENAI_CODEX_PRIORITY_PROVIDER_ID], adapter);
 }
 
 function jsonValue(value) {
@@ -27,9 +147,13 @@ function errorMessage(payload, fallback) {
   return fallback;
 }
 
-export const inject = ["tools"];
+export const inject = ["tools", "llm", "credentials"];
 
 export async function apply(ctx) {
+  ctx.effect(
+    () => registerOpenAiCodexPriorityModels(ctx),
+    "ipollowork: OpenAI priority model aliases",
+  );
   const serverUrl = requiredEnvironment("IPOLLOWORK_SERVER_URL").replace(/\/+$/, "");
   const token = requiredEnvironment("IPOLLOWORK_SERVER_TOKEN");
   const workspaceId = String(process.env.IPOLLOWORK_WORKSPACE_ID ?? "").trim();

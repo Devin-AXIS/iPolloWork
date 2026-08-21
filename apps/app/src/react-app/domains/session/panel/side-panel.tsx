@@ -47,7 +47,6 @@ import type { DesignAiSelectionContext } from "@ipollowork/design-studio";
 import { VideoPanel } from "../video/video-panel";
 import { WorkspaceAppFrame, type WorkspaceAppModelContext } from "@/react-app/plugin-ui/workspace-app-frame";
 import { PluginWorkshopPanel } from "../plugin-workshop/plugin-workshop";
-import type { PluginNativeWorkspace } from "@/react-app/plugin-ui/plugin-ui-contributions";
 import {
   computeBounds,
   getElectronBrowser,
@@ -63,7 +62,6 @@ type SidePanelProps = {
   workspaceRoot: string;
   isRemoteWorkspace?: boolean;
   launcherItems?: SidePanelLauncherItem[];
-  enabledNativeWorkspaces?: PluginNativeWorkspace["kind"][];
   onClose: () => void;
   onAskAi?: (context: DesignAiSelectionContext) => void;
   onSendWorkspaceAppMessage?: (input: { text: string; modelContext: WorkspaceAppModelContext | null }) => boolean | Promise<boolean>;
@@ -464,7 +462,6 @@ export function SidePanel({
   workspaceRoot,
   isRemoteWorkspace = false,
   launcherItems = [],
-  enabledNativeWorkspaces = ["design", "video"],
   onAskAi,
   onSendWorkspaceAppMessage,
   onSaveAsTemplate,
@@ -476,8 +473,6 @@ export function SidePanel({
 }: SidePanelProps) {
   const { tabs } = useSessionPanelState(sessionId);
   const activeTab = useActivePanelTab(sessionId);
-  const designEnabled = enabledNativeWorkspaces.includes("design");
-  const videoEnabled = enabledNativeWorkspaces.includes("video");
   const isBrowserAvailable = Boolean(getElectronBrowser());
 
   const { createTab, closeTab, selectTab, reorderTabs } = useSidePanelTabs(sessionId);
@@ -722,7 +717,7 @@ export function SidePanel({
         {!activeTab ? (
           <PanelEmpty />
         ) : null}
-        {activeTab?.type === "design" && designEnabled ? (
+        {activeTab?.type === "design" ? (
           <DesignPanelErrorBoundary resetKey={`${activeTab.id}:${activeTab.path}`}>
             <DesignPanel
               sessionId={activeTab.sessionId}
@@ -735,7 +730,7 @@ export function SidePanel({
               onSaveAsTemplate={onSaveAsTemplate}
             />
           </DesignPanelErrorBoundary>
-        ) : activeTab?.type === "video" && videoEnabled ? (
+        ) : activeTab?.type === "video" ? (
           <VideoPanel
             key={activeTab.id}
             title={activeTab.label}

@@ -1,13 +1,61 @@
 import { beforeEach, describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
+import type { TemplateCatalogItem, TemplateCategory, TemplateManifestV1 } from "@ipollowork/types/templates";
 
 import { setLocale } from "../src/i18n";
 
 import {
+  conversationArtifactSessionId,
+  conversationTemplateBrief,
+  inferConversationTemplateIntent,
+  inferConversationTemplateIntents,
   isVideoStudioReady,
+  selectConversationTemplate,
   templateBriefConfigFor,
   templateBriefPrompt,
 } from "../src/react-app/domains/session/templates/template-brief";
+
+function catalogItem(input: {
+  id: string;
+  category: TemplateCategory;
+  title: string;
+  tags?: string[];
+  installed?: boolean;
+  pptxCompatibility?: TemplateManifestV1["pptxCompatibility"];
+}): TemplateCatalogItem {
+  return {
+    manifest: {
+      schemaVersion: 1,
+      id: input.id,
+      version: "1.0.0",
+      kind: "design",
+      category: input.category,
+      subcategory: input.category,
+      style: "minimal",
+      tags: input.tags ?? [],
+      ...(input.pptxCompatibility ? { pptxCompatibility: input.pptxCompatibility } : {}),
+      surface: input.category === "video" ? "video" : "design",
+      title: input.title,
+      description: `${input.title} template`,
+      cover: "cover.svg",
+      entry: input.category === "video" ? "index.html" : "entry.html",
+      source: { name: "Test", license: "MIT" },
+      designSystem: {
+        tokenVersion: 1,
+        editableGroups: ["theme", "background", "typography", "components"],
+        tokens: "design-tokens.css",
+        variables: [],
+      },
+      applyChecklist: ["Keep the template structure"],
+      minimumAppVersion: "0.1.0",
+    },
+    sourceType: "bundled",
+    installed: input.installed ?? true,
+    installedVersion: input.installed === false ? null : "1.0.0",
+    updateAvailable: false,
+    verified: true,
+  };
+}
 
 describe("template brief", () => {
   beforeEach(() => {
@@ -95,6 +143,78 @@ describe("template brief", () => {
     expect(prompt).toContain("do not add <script> tags");
     expect(prompt).toContain("The Design panel owns slide navigation");
     expect(prompt).toContain("responsive slide reflow");
+  });
+
+  test("recognizes explicit creative deliverables but leaves explanatory questions as normal chat", () => {
+    expect(inferConversationTemplateIntent("帮我生成一份融资路演PPT")?.category).toBe("slides");
+    expect(inferConversationTemplateIntent("制作一个竖屏产品发布视频")?.category).toBe("video");
+    expect(inferConversationTemplateIntent("创建一个 AI 产品落地页")?.category).toBe("site");
+    expect(inferConversationTemplateIntent("请解释 PPT 是什么")).toBeNull();
+    expect(inferConversationTemplateIntent("告诉我怎么制作一个网页")).toBeNull();
+    expect(inferConversationTemplateIntent("做视频需要什么工具？")).toBeNull();
+    expect(inferConversationTemplateIntent("How do I create a website?")).toBeNull();
+    expect(inferConversationTemplateIntent("What tools should I use to make a video?")).toBeNull();
+    expect(inferConversationTemplateIntent("Please create a website for my company")?.category).toBe("site");
+    expect(inferConversationTemplateIntent("帮我写一个产品宣传视频脚本")).toBeNull();
+    expect(inferConversationTemplateIntent("生成一份路演 PPT 大纲")).toBeNull();
+  });
+
+  test("keeps every explicitly requested creative deliverable in one conversation plan", () => {
+    expect(inferConversationTemplateIntents("给我做一个恒生银行的 PPT 和视频").map((intent) => intent.category)).toEqual([
+      "slides",
+      "video",
+    ]);
+    expect(conversationArtifactSessionId("ses_bank", "slides")).toBe("ses_bank-artifact-slides");
+    expect(conversationArtifactSessionId("x".repeat(256), "video")).toHaveLength(256);
+  });
+
+  test("selects an installed semantic match and prefers native-editable templates for PPT", () => {
+    const catalog = [
+      catalogItem({ id: "test.deck-html", category: "slides", title: "HTML Deck", tags: ["deck"] }),
+      catalogItem({ id: "test.deck-pitch", category: "slides", title: "Investor Pitch", tags: ["pitch"], pptxCompatibility: "native-editable" }),
+      catalogItem({ id: "test.deck-perfect-uninstalled", category: "slides", title: "融资路演", tags: ["融资", "pitch"], installed: false }),
+    ];
+
+    expect(selectConversationTemplate("生成一份可编辑的融资路演 PPT", catalog)?.manifest.id).toBe("test.deck-pitch");
+  });
+
+  test("routes vertical social video requests to the matching video template", () => {
+    const catalog = [
+      catalogItem({ id: "test.video-default", category: "video", title: "Product Film" }),
+      catalogItem({ id: "test.video-vertical", category: "video", title: "Vertical Social Story", tags: ["vertical", "social"] }),
+    ];
+
+    expect(selectConversationTemplate("制作一个适合抖音的竖屏短视频", catalog)?.manifest.id).toBe("test.video-vertical");
+  });
+
+  test("turns the original conversation into the persisted template brief", () => {
+    const brief = conversationTemplateBrief("请帮我生成一个面向企业客户的 AI 产品官网");
+
+    expect(brief.title).toBe("一个面向企业客户的 AI 产品官网");
+    expect(brief.audience).toContain("当前对话");
+    expect(brief.details).toContain("面向企业客户");
+  });
+
+  test("materializes matched templates before ordinary chat generation and refreshes Studio", () => {
+    const routeSource = readFileSync(
+      new URL("../src/react-app/shell/session-route.tsx", import.meta.url),
+      "utf8",
+    );
+    const pageSource = readFileSync(
+      new URL("../src/react-app/domains/session/chat/session-page.tsx", import.meta.url),
+      "utf8",
+    );
+
+    expect(routeSource).toContain("inferConversationTemplateIntents(text)");
+    expect(routeSource).toContain("selectConversationTemplate(text, catalog.items, intent.category)");
+    expect(routeSource).toContain("conversationArtifactSessionId(targetSessionId, intent.category)");
+    expect(routeSource).toContain("Multi-artifact delivery contract");
+    expect(routeSource).toContain("conversationTemplateBrief(text)");
+    expect(routeSource).toContain('purpose: "artifact-delivery"');
+    expect(routeSource).not.toContain("No installed ${automaticTemplateIntent.category} template");
+    expect(routeSource).toContain("templateInstructions.push(templateBriefPrompt");
+    expect(pageSource).toContain("subscribeToSessionType((sessionId)");
+    expect(pageSource).toContain("currentTemplateSessionData?.hasBrief === true");
   });
 
   test("arms the shared artifact completion gate before starting a video template task", () => {

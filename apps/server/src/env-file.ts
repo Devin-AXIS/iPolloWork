@@ -165,13 +165,30 @@ export type EnvEntry = { key: string; value: string };
 
 export class EnvService {
   private readonly path: string;
+  private readonly processEnv: NodeJS.ProcessEnv | null;
   private loaded = false;
   private loadPromise: Promise<void> | null = null;
   private mutationQueue: Promise<void> = Promise.resolve();
   private variables: EnvRecord[] = [];
 
-  constructor(options?: { path?: string }) {
+  constructor(options?: { path?: string; processEnv?: NodeJS.ProcessEnv }) {
     this.path = options?.path ? resolve(options.path) : resolveDefaultEnvStorePath();
+    this.processEnv = options?.processEnv ?? null;
+  }
+
+  private projectIntoProcess(entries: ReadonlyArray<EnvEntry>): void {
+    if (!this.processEnv) return;
+    for (const entry of entries) {
+      if (isInternalEnvKey(entry.key)) continue;
+      this.processEnv[entry.key] = entry.value;
+    }
+  }
+
+  private removeFromProcess(key: string): boolean {
+    if (!this.processEnv || isInternalEnvKey(key)) return false;
+    if (!Object.prototype.hasOwnProperty.call(this.processEnv, key)) return false;
+    delete this.processEnv[key];
+    return true;
   }
 
   private async ensureLoaded(): Promise<void> {
@@ -180,6 +197,7 @@ export class EnvService {
       this.loadPromise = readStore(this.path)
         .then((store) => {
           this.variables = store.variables;
+          this.projectIntoProcess(store.variables);
           this.loaded = true;
         })
         .finally(() => {
@@ -220,6 +238,7 @@ export class EnvService {
       const nextVariables = Array.from(next.values()).sort((a, b) => a.key.localeCompare(b.key));
       await writeStore(this.path, nextVariables);
       this.variables = nextVariables;
+      this.projectIntoProcess(entries);
     });
   }
 
@@ -228,9 +247,10 @@ export class EnvService {
       await this.ensureLoaded();
       const before = this.variables.length;
       const nextVariables = this.variables.filter((entry) => entry.key !== key);
-      if (nextVariables.length === before) return false;
+      if (nextVariables.length === before) return this.removeFromProcess(key);
       await writeStore(this.path, nextVariables);
       this.variables = nextVariables;
+      this.removeFromProcess(key);
       return true;
     });
   }

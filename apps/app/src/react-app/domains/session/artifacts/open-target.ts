@@ -35,7 +35,7 @@ const WORKSPACE_ID_PREFIX_PATTERN = /^workspace\/(?:ws_[^/]+|\d+|[0-9a-f-]{6,})\
 const FILE_PATTERN = /(?:^|[\s"'`([{：])((?:[a-z]:[/\\][^\r\n"'`<>|]+?\.[a-z][a-z0-9]{0,9}|(?:\.{1,2}[/\\]|~[/\\]|[/\\])?[^\s"'`()\[\]{}<>|:/\\]+(?:[/\\][^\s"'`()\[\]{}<>|:/\\]+)+\.[a-z][a-z0-9]{0,9}|[^\s"'`()\[\]{}<>|:/\\]+\.[a-z][a-z0-9]{0,9}))(?=$|[\s"'`\)\]}>,;:.，。；：、])/gi;
 const URL_PATTERN = /https?:\/\/[^\s)\]}>"'`]+/gi;
 const SOCKET_PATTERN = /(?:ws|wss):\/\/[^\s)\]}>"'`]+/gi;
-const SIDEBAR_ARTIFACT_FILE_PREVIEWS = new Set<OpenTargetPreview>(["markdown", "sheet", "slides", "image", "pdf"]);
+const SIDEBAR_ARTIFACT_FILE_PREVIEWS = new Set<OpenTargetPreview>(["markdown", "sheet", "slides", "image", "pdf", "html"]);
 const STYLESHEET_EXTENSIONS = new Set([".css", ".scss", ".sass", ".less"]);
 const MARKDOWN_LINK_PATTERN = /\[([^\]\n]+)\]\(([^)\s]+)\)/g;
 const ASSISTANT_ARTIFACT_MENTION_PATTERN = /(?:\b(?:artifact|created|deck|deliverable|exported|file|generated|opened|presentation|saved|skill|slides?|updated|wrote)\b|创建|技能|文件|生成|路径|保存|输出|写入|更新)/i;

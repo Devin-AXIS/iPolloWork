@@ -246,7 +246,12 @@ function SessionActions({ className, sessionId, workspaceId, isPinned, isArchive
     <DropdownMenu>
       <DropdownMenuTrigger className="size-6 text-muted-foreground"
         render={
-          <Button variant="ghost" size="icon-sm" className={cn("size-6", className)}>
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            className={cn("size-6", className)}
+            onClick={(event) => event.stopPropagation()}
+          >
             <span className="flex size-4 items-center justify-center" aria-hidden="true">
               <img src={publicAssetUrl("sidebar-icon/figma-section-ellipsis.svg")} alt="" className="h-[2.33333px] w-[11.6667px]" />
             </span>
@@ -384,7 +389,6 @@ function RemoteConnectionIssueCard(props: {
 
 export type AppSidebarProps = {
   projectSessionLists: ProjectSessionList[];
-  showInitialLoading?: boolean;
   selectedWorkspaceId: string;
   developerMode: boolean;
   selectedSessionId: string | null;
@@ -751,13 +755,11 @@ export function AppSidebar(props: AppSidebarProps) {
                     key={project.workspace.id}
                     project={project}
                     className="py-0"
-                    showInitialLoading={props.showInitialLoading}
                     onSelectProject={props.onSelectProject}
                     onCreateProjectBuilder={props.onCreateProjectBuilder}
                     onOpenRenameProject={props.onOpenRenameProject}
                     onRevealProject={props.onRevealProject}
                     onOpenDeleteProject={props.onOpenDeleteProject}
-                    canRemoveProject={props.projectSessionLists.length > 1}
                   />
                 ))}
               </CollapsibleContent>
@@ -856,26 +858,22 @@ type ProjectSidebarContentProps = {
   className: string;
   project: ProjectSessionList;
   showProjectRow?: boolean;
-  showInitialLoading?: boolean;
   onSelectProject: (workspaceId: string) => Promise<boolean> | boolean | void;
   onCreateProjectBuilder?: (workspaceId: string) => void | Promise<void>;
   onOpenRenameProject: (workspaceId: string) => void;
   onRevealProject: (workspaceId: string) => void;
   onOpenDeleteProject: (workspaceId: string) => void;
-  canRemoveProject: boolean;
 };
 
 function ProjectSidebarContent({
   className,
   project,
   showProjectRow = true,
-  showInitialLoading,
   onSelectProject,
   onCreateProjectBuilder,
   onOpenRenameProject,
   onRevealProject,
   onOpenDeleteProject,
-  canRemoveProject,
 }: ProjectSidebarContentProps) {
   const ctx = useSidebarContext();
   const workspace = project.workspace;
@@ -936,12 +934,18 @@ function ProjectSidebarContent({
   );
   const remainingSessionCount = Math.max(0, getRootSessions(activeSessions).length - sessionPreviewCount);
   const [archivedExpanded, setArchivedExpanded] = React.useState(false);
+  const [creatingConversation, setCreatingConversation] = React.useState(false);
   const createConversationInProject = async () => {
-    if (!isCurrentProject) {
-      const selected = await onSelectProject(workspace.id);
-      if (selected === false) return;
+    if (creatingConversation) return;
+    setCreatingConversation(true);
+    try {
+      // A project-level plus always opens that project's sessionless starter.
+      // Selecting the project first can navigate to a remembered session and
+      // race the starter navigation, leaving the previous engine mounted.
+      await ctx.onCreateTaskInWorkspace(workspace.id);
+    } finally {
+      setCreatingConversation(false);
     }
-    await ctx.onCreateTaskInWorkspace(workspace.id);
   };
 
   return (
@@ -995,15 +999,20 @@ function ProjectSidebarContent({
                   size="icon-sm"
                   className="size-7 rounded-md"
                   onClick={() => void createConversationInProject()}
-                  disabled={showInitialLoading || isConnectionActionBusy}
+                  disabled={isConnectionActionBusy || creatingConversation}
+                  aria-busy={creatingConversation}
                   aria-label={t("projects.new_conversation", { project: workspaceLabel(workspace) })}
                   title={t("projects.new_conversation", { project: workspaceLabel(workspace) })}
                   data-testid="project-new-conversation-button"
                   data-project-id={workspace.id}
                 >
-                  <span className="flex size-4 items-center justify-center" aria-hidden="true">
-                    <img src={publicAssetUrl("sidebar-icon/figma-section-plus.svg")} alt="" className="size-[10.3333px]" />
-                  </span>
+                  {creatingConversation ? (
+                    <Loader2 className="size-3.5 animate-spin" aria-hidden="true" />
+                  ) : (
+                    <span className="flex size-4 items-center justify-center" aria-hidden="true">
+                      <img src={publicAssetUrl("sidebar-icon/figma-section-plus.svg")} alt="" className="size-[10.3333px]" />
+                    </span>
+                  )}
                 </Button>
                 <DropdownMenu>
                   <DropdownMenuTrigger
@@ -1048,7 +1057,6 @@ function ProjectSidebarContent({
                     <DropdownMenuItem
                       variant="destructive"
                       onClick={() => onOpenDeleteProject(workspace.id)}
-                      disabled={!canRemoveProject}
                     >
                       <Trash2 className="size-4" />
                       {t("projects.remove")}
@@ -1076,7 +1084,7 @@ function ProjectSidebarContent({
                     ctx.onEditWorkspaceConnection(workspace.id);
                   }}
                 />
-              ) : showInitialLoading || (project.status === "loading" && project.sessions.length === 0) ? (
+              ) : project.status === "loading" && project.sessions.length === 0 && !isSelectedProject ? (
                 <SidebarMenuSubItem>
                   <SidebarMenuSubButton aria-disabled className="text-muted-foreground text-xs truncate">
                     <span className="truncate">{t("workspace.loading_tasks")}</span>

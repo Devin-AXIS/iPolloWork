@@ -723,7 +723,10 @@ export async function startServer(config: ServerConfig): Promise<ServeResult> {
   const approvals = new ApprovalService(config.approval);
   const reloadEvents = new ReloadEventStore();
   const tokens = new TokenService(config);
-  const env = new EnvService();
+  // Keep the persisted account environment and this long-lived desktop/server
+  // process in lockstep. Managed agent children inherit this process on their
+  // next start, so disconnecting a provider cannot leave a stale credential.
+  const env = new EnvService({ processEnv: process.env });
   const deepseekHarness = new DeepSeekHarnessRuntimePool({ config, env });
   const logger = createServerLogger(config);
   let watcherHandle = startReloadWatchers({ config, reloadEvents, logger });
@@ -1613,6 +1616,9 @@ function createRoutes(
       category: category as import("@ipollowork/types/templates").TemplateCategory,
       pptxCompatibility: typeof body.pptxCompatibility === "string"
         ? body.pptxCompatibility as import("@ipollowork/types/templates").PptxCompatibility
+        : undefined,
+      purpose: typeof body.purpose === "string"
+        ? body.purpose as import("@ipollowork/types/templates").TemplateAuthoringInput["purpose"]
         : undefined,
     }), 201);
   });

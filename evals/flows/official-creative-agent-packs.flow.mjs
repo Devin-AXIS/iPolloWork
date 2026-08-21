@@ -345,16 +345,15 @@ export default {
       },
     },
     {
-      name: "Design plugin capabilities are independently manageable",
+      name: "Design plugin manages Agent Skills only",
       run: async (ctx) => {
-        await ctx.prove("Design Agent owns one workspace app and two Skills while allowing a Skill to be disabled independently", {
+        await ctx.prove("Design Agent owns two Skills while the built-in Design workspace remains app-owned", {
           voiceover: vo[1],
           action: async () => {
             await installPackage(ctx, "iPolloWork Design Agent");
             await ctx.navigateHash("/settings/extensions/plugin/design-agent");
             await ctx.waitFor(`
-              (document.body.innerText.includes('技能 2') || document.body.innerText.includes('Skills 2'))
-              && (document.body.innerText.includes('应用 1') || document.body.innerText.includes('Apps 1'))
+              document.body.innerText.includes('技能 2') || document.body.innerText.includes('Skills 2')
             `, {
               timeoutMs: 30_000,
               label: "Design Agent detail",
@@ -370,7 +369,7 @@ export default {
           },
           screenshot: {
             name: "design-agent-skills",
-            requireText: ["iPolloWork Design Agent", "应用 1", "技能 2", "Design Studio", "演示文稿", "卸载插件"],
+            requireText: ["iPolloWork Design Agent", "技能 2", "Design Studio", "演示文稿", "卸载插件"],
             rejectText: ["Something went wrong"],
             hashIncludes: "/settings/extensions/plugin/design-agent",
           },
@@ -422,9 +421,9 @@ export default {
       },
     },
     {
-      name: "Uninstalling Video removes its workspace entry",
+      name: "Uninstalling Video keeps the built-in workspace",
       run: async (ctx) => {
-        await ctx.prove("Uninstalling Video Agent removes the Video workspace entry while preserving its session project files", {
+        await ctx.prove("Uninstalling Video Agent removes its Skills while the built-in Video workspace and project remain available", {
           voiceover: vo[3],
           action: async () => {
             await ctx.navigateHash(sessionRoute);
@@ -456,38 +455,36 @@ export default {
             );
             await openPluginList(ctx);
             await removeInstalledPackage(ctx, "video-agent");
-            await ctx.navigateHash(sessionRoute);
-            await ctx.waitFor(`window.__ipolloworkControl.snapshot().route === ${JSON.stringify(sessionRoute)}`, {
+            await ctx.navigateHash(videoSessionRoute);
+            await ctx.waitFor(`window.__ipolloworkControl.snapshot().route === ${JSON.stringify(videoSessionRoute)}`, {
               timeoutMs: 60_000,
               label: "stable task after Video uninstall",
             });
-            await showSidePanelEntries(ctx);
-            await ctx.waitFor(`(() => {
-              const labels = [...document.querySelectorAll('[role="menuitem"], button')].map((entry) => entry.textContent?.trim() ?? '');
-              return !labels.includes('视频') && !labels.includes('Video') && !document.querySelector('[data-testid="video-panel"]');
-            })()`, { timeoutMs: 30_000, label: "Video workspace removed" });
+            await dismissTemplateBrief(ctx);
+            const reopenedVideoRoute = await openVideoStudio(ctx);
+            ctx.assert(reopenedVideoRoute === videoProjectRoute, `Video project changed after uninstall: ${videoProjectRoute} -> ${reopenedVideoRoute}`);
           },
           assert: async () => {
             const state = await ctx.eval(`(() => ({
               labels: [...document.querySelectorAll('[role="menuitem"], button')].map((entry) => entry.textContent?.trim() ?? ''),
               panel: Boolean(document.querySelector('[data-testid="video-panel"]')),
             }))()`);
-            ctx.assert(!state.labels.includes("视频") && !state.labels.includes("Video"), `Video entry remained after uninstall: ${JSON.stringify(state.labels)}`);
-            ctx.assert(!state.panel, "Video panel remained mounted after uninstall.");
+            ctx.assert(state.labels.includes("视频") || state.labels.includes("Video"), `Built-in Video entry disappeared after uninstall: ${JSON.stringify(state.labels)}`);
+            ctx.assert(state.panel, "Built-in Video panel did not remain mounted after uninstall.");
             ctx.assert(videoProjectRoute.startsWith("#project/"), `Video project route is wrong: ${videoProjectRoute}`);
           },
           screenshot: {
             name: "video-plugin-uninstalled",
-            requireText: ["Design"],
+            requireText: ["视频工作室"],
             rejectText: ["Something went wrong"],
           },
         });
       },
     },
     {
-      name: "Reinstalling Video restores the same project",
+      name: "Reinstalling Video restores Agent Skills",
       run: async (ctx) => {
-        await ctx.prove("Reinstalling Video Agent restores its workspace entry and reopens the same preserved project", {
+        await ctx.prove("Reinstalling Video Agent restores its Skills without replacing the same built-in Video project", {
           voiceover: vo[4],
           action: async () => {
             await openPluginList(ctx);

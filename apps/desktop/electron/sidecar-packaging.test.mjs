@@ -33,11 +33,18 @@ it("prepares and packages the DSH CLI outside app.asar", async () => {
 });
 
 it("hides consoles opened by packaged DSH tool subprocesses on Windows", async () => {
-  const [runtimeWorkspace, patch, prepareSource] = await Promise.all([
+  const [runtimeWorkspace, subprocessPatch, windowsSandboxPatch, prepareSource] = await Promise.all([
     readFile(new URL("../dsh-runtime/pnpm-workspace.yaml", import.meta.url), "utf8"),
     readFile(
       new URL(
         "../dsh-runtime/@deepseek-ai__dsh-subprocess-local@0.1.0-rc.6.patch",
+        import.meta.url,
+      ),
+      "utf8",
+    ),
+    readFile(
+      new URL(
+        "../dsh-runtime/@deepseek-ai__dsh-sandbox-windows-acl@0.1.0-rc.6.patch",
         import.meta.url,
       ),
       "utf8",
@@ -48,9 +55,15 @@ it("hides consoles opened by packaged DSH tool subprocesses on Windows", async (
     runtimeWorkspace,
     /@deepseek-ai\/dsh-subprocess-local@0\.1\.0-rc\.6.*"@deepseek-ai__dsh-subprocess-local@0\.1\.0-rc\.6\.patch"/,
   );
-  assert.match(patch, /windowsHide: platform === "win32"/);
-  assert.match(patch, /stdio: "ignore",\n\+\s+windowsHide: true/);
-  assert.match(prepareSource, /workspacePath, subprocessPatchPath/);
+  assert.match(
+    runtimeWorkspace,
+    /@deepseek-ai\/dsh-sandbox-windows-acl@0\.1\.0-rc\.6.*"@deepseek-ai__dsh-sandbox-windows-acl@0\.1\.0-rc\.6\.patch"/,
+  );
+  assert.match(subprocessPatch, /windowsHide: platform === "win32"/);
+  assert.match(subprocessPatch, /stdio: "ignore",\r?\n\+\s+windowsHide: true/);
+  assert.match(windowsSandboxPatch, /dwFlags: 257/);
+  assert.match(windowsSandboxPatch, /wShowWindow: 0/);
+  assert.match(prepareSource, /workspacePath, subprocessPatchPath, windowsSandboxPatchPath/);
   assert.doesNotMatch(prepareSource, /--ignore-workspace/);
 });
 

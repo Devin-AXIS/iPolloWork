@@ -46,7 +46,7 @@
     }
   },
   "package": {
-    "version": "0.1.3",
+    "version": "0.1.4",
     "publisher": {
       "id": "ipollowork",
       "name": "iPolloWork"
@@ -54,9 +54,6 @@
     "compatibility": {
       "ipollowork": ">=0.17.28"
     },
-    "engines": [
-      "opencode"
-    ],
     "updateId": "ipollowork/github"
   },
   "permissions": [

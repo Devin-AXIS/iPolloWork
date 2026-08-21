@@ -2,6 +2,7 @@ import { DEEPSEEK_HARNESS_ENGINE_ID } from "@ipollowork/types/workspace";
 import { providerApiKeyCredentialRef } from "@ipollowork/types/provider-credentials";
 
 import {
+  deepSeekHarnessAccountProviderId,
   DeepSeekHarnessClient,
   isDeepSeekHarnessRpcClient,
 } from "@/app/lib/deepseek-harness-client";
@@ -83,51 +84,53 @@ function connection(client: unknown): ModelRuntimeConnection {
           : [];
       }));
       refsByProvider.set("deepseek-official", providerApiKeyCredentialRef("deepseek-official"));
+      refsByProvider.set("openai-codex-priority", providerApiKeyCredentialRef("openai-codex"));
       const refs = [...new Set(models.groups.flatMap((group) => refsByProvider.get(group.id) ?? []))];
       const credentialState = await describeCredentials(refs);
-      const all: ProviderListItem[] = models.groups.map((group) => {
+      const allById = new Map<string, ProviderListItem>();
+      const connected = new Set<string>();
+      const defaults: Record<string, string> = {};
+      for (const group of models.groups) {
+        const providerId = deepSeekHarnessAccountProviderId(group.id);
         const ref = refsByProvider.get(group.id) ?? null;
-        return {
-          id: group.id,
+        const providerModels = Object.fromEntries(group.models.map((model) => {
+          const efforts = model.reasoning?.efforts ?? [];
+          return [model.id, {
+            id: model.id,
+            name: model.name,
+            capabilities: {
+              attachment: false,
+              reasoning: efforts.length > 0,
+              input: { image: false },
+            },
+            ...(efforts.length
+              ? { variants: Object.fromEntries(efforts.map((effort) => [effort.id, { name: effort.name ?? effort.id }])) }
+              : {}),
+          }];
+        }));
+        const previous = allById.get(providerId);
+        allById.set(providerId, {
+          id: providerId,
           name: group.name,
           source: "config",
-          env: ref ? [ref] : [],
-          models: Object.fromEntries(group.models.map((model) => {
-            const efforts = model.reasoning?.efforts ?? [];
-            return [model.id, {
-              id: model.id,
-              name: model.name,
-              capabilities: {
-                attachment: false,
-                reasoning: efforts.length > 0,
-                input: { image: false },
-              },
-              ...(efforts.length
-                ? { variants: Object.fromEntries(efforts.map((effort) => [effort.id, { name: effort.name ?? effort.id }])) }
-                : {}),
-            }];
-          })),
-        };
-      });
+          env: [...new Set([...(previous?.env ?? []), ...(ref ? [ref] : [])])],
+          models: { ...(previous?.models ?? {}), ...providerModels },
+        });
+        if (!ref || credentialState.credentials[ref]?.configured) connected.add(providerId);
+        if (!(providerId in defaults) && group.models[0]) defaults[providerId] = group.models[0].id;
+      }
       return {
-        all,
-        connected: all.flatMap((provider) => {
-          const ref = refsByProvider.get(provider.id) ?? null;
-          return !ref || credentialState.credentials[ref]?.configured ? [provider.id] : [];
-        }),
-        default: Object.fromEntries(
-          models.groups.flatMap((group) => group.models[0] ? [[group.id, group.models[0].id]] : []),
-        ),
+        all: [...allById.values()],
+        connected: [...connected],
+        default: defaults,
       };
     },
     async listAuthMethods() {
       const directory = await listProviderDirectory();
-      return Object.fromEntries(
-        directory.providers.map((provider) => [
-          provider.provider,
-          [{ type: "api" as const, label: "API key" }],
-        ]),
-      );
+      return Object.fromEntries(directory.providers.map((provider) => [
+        deepSeekHarnessAccountProviderId(provider.provider),
+        [{ type: "api" as const, label: "API key" }],
+      ]));
     },
     async authorizeOAuth() {
       throw new Error("DeepSeek Harness does not expose OAuth for this provider");

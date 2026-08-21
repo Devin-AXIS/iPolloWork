@@ -70,4 +70,9 @@ describe("Design Studio host bridge", () => {
     expect(templateCatalogDialog).toContain("ConfirmModal");
     expect(templateDialog).toContain("applyDesignStudioTemplate");
   });
+
+  test("keeps the generated Design document paintable inside Electron", () => {
+    expect(designPanel).toContain('sandbox="allow-scripts allow-same-origin"');
+    expect(designPanel).not.toContain('sandbox="allow-scripts"');
+  });
 });

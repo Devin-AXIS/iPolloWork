@@ -76,8 +76,21 @@ describe("new conversation animation catalog", () => {
     expect(sessionPage).toContain("const refreshStarterTemplateCatalog = useCallback");
     expect(sessionPage).toContain("PERSONAL_WORK_CONTEXT_ID");
     expect(sessionPage).toMatch(/listTemplates\(\s*props\.runtimeWorkspaceId,\s*PERSONAL_WORK_CONTEXT_ID,/);
-    expect(sessionPage).toContain("designTemplates={availableStarterTemplateCatalog}");
+    expect(sessionPage).toContain("designTemplates={starterTemplateCatalog}");
     expect(sessionPage).toContain("onRequestDesignTemplates={() => void refreshStarterTemplateCatalog()}");
+    expect(sessionPage).toContain('id: "design"');
+    expect(sessionPage).toContain("onOpenVideoStudio={openCurrentVideoStudio}");
+    expect(sessionPage).not.toContain("designWorkspaceEnabled");
+    expect(sessionPage).not.toContain("videoWorkspaceEnabled");
+  });
+
+  test("loads personal templates for both empty conversations and projects without tasks", () => {
+    expect(sessionPage).toMatch(/useEffect\(\(\) => \{[\s\S]*void refreshStarterTemplateCatalog\(\);[\s\S]*\}, \[props\.ipolloworkServerClient, props\.runtimeWorkspaceId, refreshStarterTemplateCatalog\]\);/);
+    expect(sessionPage).toContain("templates={starterTemplateCatalog}");
+    expect(sessionPage).toContain("templatesLoading={starterTemplateCatalogLoading}");
+    expect(sessionPage).toContain("getTemplateCover={getStarterTemplateCover}");
+    expect(sessionPage).toContain("onInstallTemplate={(templateId) => void installStarterTemplate(templateId)}");
+    expect(sessionPage).toContain('surface === "video" ? "video" : "design"');
   });
 
   test("keeps the project-first starter wired to the same workspace tools as New task", () => {

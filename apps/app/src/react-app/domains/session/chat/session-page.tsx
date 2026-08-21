@@ -74,7 +74,7 @@ import ProviderAuthModal, { type ProviderAuthModalProps } from "../../connection
 import { RenameSessionModal } from "../modals/rename-session-modal";
 import { AppSidebar } from "../sidebar/app-sidebar";
 import type { iPolloWorkSessionType, iPolloWorkTemplateId } from "../sidebar/app-sidebar-provider";
-import { readSessionType, sessionTypeForTemplate, setSessionType } from "../sidebar/session-type";
+import { readSessionType, sessionTypeForTemplate, setSessionType, subscribeToSessionType } from "../sidebar/session-type";
 import { SessionSurface, StarterCapabilityChip, type SessionSurfaceProps } from "../surface/session-surface";
 import { ReactSessionComposer, type ComposerProps } from "../surface/composer/composer";
 import {
@@ -108,12 +108,13 @@ import type { OpenTargetOptions } from "@/lib/target-provider";
 import { VoicePanel } from "../voice/voice-panel";
 import { designAiSelectionToken, type DesignAiSelectionContext } from "@ipollowork/design-studio";
 import { useDesignAiSelectionStore } from "../design/design-ai-selection-store";
-import { waitForTemplateEntrySurface } from "../templates/template-entry-route";
+import { designProjectSessionIdFromEntryPath, waitForTemplateEntrySurface } from "../templates/template-entry-route";
 import { loadTemplateSession } from "../templates/template-session-probe";
 import { TemplateSaveDialog, type TemplateSaveInput, type TemplateSaveMode } from "../templates/template-save-dialog";
 import {
   createVideoArtifactCompletionRequirement,
   videoProjectEntryPath,
+  videoProjectSessionIdFromEntryPath,
   type VideoArtifactCompletionRequirement,
 } from "../video/video-project";
 import { isStreamingSessionStatus } from "../sidebar/utils";
@@ -425,7 +426,7 @@ export type SessionPageSidebarProps = {
   connectingWorkspaceId: string | null;
   workspaceConnectionStateById: Record<string, WorkspaceConnectionState>;
   newTaskDisabled: boolean;
-  sidebarHydratedFromCache: boolean;
+  sidebarHydratedFromCache?: boolean;
   startupPhase: BootPhase;
   onOpenSession: (workspaceId: string, sessionId: string) => void;
   onSelectProject: (workspaceId: string) => Promise<boolean> | boolean | void;
@@ -435,6 +436,7 @@ export type SessionPageSidebarProps = {
     engineId: BuiltInWorkspaceEngineId;
   }) => Promise<string | null> | string | null | void;
   onCreateInitialProjectTask: (draft: ComposerDraft, workspaceId?: string) => Promise<boolean>;
+  onCreateTaskFromDraft: (workspaceId: string, draft: ComposerDraft) => Promise<boolean>;
   onRenameProject: (workspaceId: string, name: string) => Promise<void> | void;
   onRevealProject: (workspaceId: string) => Promise<void> | void;
   onDeleteProject: (workspaceId: string) => Promise<void> | void;
@@ -879,7 +881,7 @@ function InitialProjectTaskStarter({
             isRemoteWorkspace={surface.isRemoteWorkspace}
             isSandboxWorkspace={surface.isSandboxWorkspace}
             onUploadInboxFiles={composerTooling.onUploadInboxFiles}
-            draftScopeKey="initial-project-task"
+            draftScopeKey={`new-task:${workspaceId ?? "new-project"}:${engineId?.trim() || DEFAULT_ENGINE_ID}`}
             layout="inline"
             placeholder={newConversationPlaceholder()}
             topAccessory={starterCapability ? (
@@ -1215,23 +1217,10 @@ export function SessionPage(props: SessionPageProps) {
   ));
   const sessionPanelState = useSessionPanelState(props.selectedSessionId ?? "");
   const activePanelTab = useActivePanelTab(props.selectedSessionId ?? "");
-  const { conversationTemplates, workspaceApps, nativeWorkspaces, loaded: pluginContributionsLoaded } = useInstalledPluginContributions(
+  const { conversationTemplates, workspaceApps } = useInstalledPluginContributions(
     props.ipolloworkServerClient,
     props.runtimeWorkspaceId,
   );
-  const designWorkspaceEnabled = !pluginContributionsLoaded
-    || nativeWorkspaces.some((workspace) => workspace.kind === "design");
-  const videoWorkspaceEnabled = !pluginContributionsLoaded
-    || nativeWorkspaces.some((workspace) => workspace.kind === "video");
-  useEffect(() => {
-    if (!pluginContributionsLoaded || !props.selectedSessionId) return;
-    for (const tab of sessionPanelState.tabs) {
-      if ((tab.type === "design" && !designWorkspaceEnabled)
-        || (tab.type === "video" && !videoWorkspaceEnabled)) {
-        closeTab(props.selectedSessionId, tab.id);
-      }
-    }
-  }, [closeTab, designWorkspaceEnabled, pluginContributionsLoaded, props.selectedSessionId, sessionPanelState.tabs, videoWorkspaceEnabled]);
   const [hiddenTargetRevision, setHiddenTargetRevision] = useState(0);
   const [, setExtensionStateVersion] = useState(0);
   const hiddenAccessibleTargetIds = useMemo(
@@ -1314,6 +1303,10 @@ export function SessionPage(props: SessionPageProps) {
       ? readSessionType(props.selectedSessionId)
       : null
   ), [props.selectedSessionId, sessionTypeRevision]);
+  useEffect(() => subscribeToSessionType((sessionId) => {
+    if (sessionId !== props.selectedSessionId) return;
+    setSessionTypeRevision((value) => value + 1);
+  }), [props.selectedSessionId]);
   const isDesignSession = selectedSessionType === "design";
   const isVideoSession = selectedSessionType === "video";
   const currentVideoEntryPath = props.selectedSessionId && isVideoSession
@@ -1410,13 +1403,6 @@ export function SessionPage(props: SessionPageProps) {
         .find((artifact) => artifactPathMatchesTarget(artifact.path, currentVideoEntryPath)) ?? null
       : null
   ), [accessibleTargets, conversationMessages, currentVideoEntryPath]);
-  const availableStarterTemplateCatalog = useMemo(() => (
-    pluginContributionsLoaded
-      ? starterTemplateCatalog.filter((template) => (
-          template.manifest.surface === "design" ? designWorkspaceEnabled : videoWorkspaceEnabled
-        ))
-      : starterTemplateCatalog
-  ), [designWorkspaceEnabled, pluginContributionsLoaded, starterTemplateCatalog, videoWorkspaceEnabled]);
   const autoCollapsedSidebarRef = useRef(false);
   const autoCollapsedSidePanelRef = useRef<SessionPanelView | null>(null);
   const lastRightPanelViewRef = useRef<SessionPanelView>("launcher");
@@ -1434,24 +1420,26 @@ export function SessionPage(props: SessionPageProps) {
     props.selectedSessionId && dismissedTemplateBriefSessionIds.has(props.selectedSessionId),
   );
   const activateVideoStudio = useCallback((sessionId: string) => {
-    if (!videoWorkspaceEnabled) return;
     // Mark the agent turn as a video task so it receives the session-owned
     // project contract. The Studio itself opens only after an output exists.
     setSessionType(sessionId, "video");
     setSessionTypeRevision((value) => value + 1);
-  }, [videoWorkspaceEnabled]);
-  const openCurrentVideoStudio = useCallback((options?: { auto?: boolean }) => {
-    if (!props.selectedSessionId || !videoWorkspaceEnabled) return;
+  }, []);
+  const openVideoStudio = useCallback((sessionId: string, options?: { auto?: boolean; label?: string }) => {
     if (!options?.auto) prioritizeRightPanel();
-    const videoTabId = `video:${props.selectedSessionId}`;
-    openTab(props.selectedSessionId, {
+    const videoTabId = `video:${sessionId}`;
+    openTab(props.selectedSessionId ?? sessionId, {
       id: videoTabId,
       type: "video",
-      label: selectedSessionTitle || t("video.title"),
-      sessionId: props.selectedSessionId,
+      label: options?.label || selectedSessionTitle || t("video.title"),
+      sessionId,
     });
-    setSidePanelState(props.selectedSessionId, "panel");
-  }, [openTab, prioritizeRightPanel, props.selectedSessionId, selectedSessionTitle, setSidePanelState, videoWorkspaceEnabled]);
+    setSidePanelState(props.selectedSessionId ?? sessionId, "panel");
+  }, [openTab, prioritizeRightPanel, props.selectedSessionId, selectedSessionTitle, setSidePanelState]);
+  const openCurrentVideoStudio = useCallback((options?: { auto?: boolean }) => {
+    if (!props.selectedSessionId) return;
+    openVideoStudio(props.selectedSessionId, options);
+  }, [openVideoStudio, props.selectedSessionId]);
   const refreshTemplateCatalog = useCallback(async () => {
     if (!props.ipolloworkServerClient || !props.runtimeWorkspaceId) return;
     const requestId = ++templateCatalogRequestIdRef.current;
@@ -1507,6 +1495,15 @@ export function SessionPage(props: SessionPageProps) {
       }
     }
   }, [props.ipolloworkServerClient, props.runtimeWorkspaceId]);
+  useEffect(() => {
+    if (!props.ipolloworkServerClient || !props.runtimeWorkspaceId) {
+      starterTemplateCatalogRequestIdRef.current += 1;
+      setStarterTemplateCatalog([]);
+      setStarterTemplateCatalogLoading(false);
+      return;
+    }
+    void refreshStarterTemplateCatalog();
+  }, [props.ipolloworkServerClient, props.runtimeWorkspaceId, refreshStarterTemplateCatalog]);
   const getTemplateCover = useCallback((templateId: string) => {
     if (!props.ipolloworkServerClient || !props.runtimeWorkspaceId) {
       return Promise.reject(new Error("Template cover is unavailable."));
@@ -1897,7 +1894,8 @@ export function SessionPage(props: SessionPageProps) {
   }, [isVideoSession, openCurrentVideoStudio, props.selectedSessionId, props.sidebar.sessionStatusById, videoOutput]);
   useEffect(() => {
     const autoOpenTemplateProject = currentTemplateSessionData?.authoring === true
-      || currentTemplateSessionData?.manifest.id.startsWith("personal.") === true;
+      || currentTemplateSessionData?.manifest.id.startsWith("personal.") === true
+      || currentTemplateSessionData?.hasBrief === true;
     if (!props.selectedSessionId || !isVideoSession || !autoOpenTemplateProject) return;
     const templateKey = `${props.selectedSessionId}:${currentTemplateSessionData.state.entry}`;
     if (autoOpenedVideoTemplateRef.current === templateKey) return;
@@ -1952,6 +1950,14 @@ export function SessionPage(props: SessionPageProps) {
   const observedPluginWorkshopSessionRef = useRef<string | null>(null);
   const autoOpenedPluginWorkshopSessionRef = useRef<string | null>(null);
   const preserveSidePanelOnPanelOpenRef = useRef(false);
+
+  const openCreateProjectDialog = useCallback(() => {
+    setCreateProjectName("");
+    setCreateProjectFolder("");
+    setCreateProjectEngineId(DEFAULT_ENGINE_ID);
+    setCreateProjectError(null);
+    setCreateProjectOpen(true);
+  }, []);
 
   useEffect(() => {
     const sessionId = props.selectedSessionId;
@@ -2018,7 +2024,6 @@ export function SessionPage(props: SessionPageProps) {
 
   const setCurrentSidePanel = useCallback((panel: SidePanelItem | null) => {
     if (panel === "design" && props.selectedSessionId) {
-      if (!designWorkspaceEnabled) return;
       const entryPath = designTemplateEntryPath?.replaceAll("\\", "/").trim() || "";
       const designTabId = entryPath
         ? `design:${props.selectedSessionId}:${encodeURIComponent(entryPath)}`
@@ -2046,10 +2051,10 @@ export function SessionPage(props: SessionPageProps) {
     setSidePanelState(GLOBAL_VOICE_SIDE_PANEL_KEY, panel === "voice" ? "voice" : null);
     if (panel === "voice") return;
     setSidePanelState(props.selectedSessionId, panel);
-  }, [designTemplateEntryPath, designWorkspaceEnabled, openTab, props.selectedSessionId, selectTab, sessionPanelState.tabs, setSidePanelState]);
+  }, [designTemplateEntryPath, openTab, props.selectedSessionId, selectTab, sessionPanelState.tabs, setSidePanelState]);
 
   const openDesignTab = useCallback((path?: string) => {
-    if (!props.selectedSessionId || !designWorkspaceEnabled) return;
+    if (!props.selectedSessionId) return;
     const normalizedPath = path?.replaceAll("\\", "/").trim() || designTemplateEntryPath?.replaceAll("\\", "/").trim() || "";
     if (!normalizedPath) {
       setCurrentSidePanel("panel");
@@ -2059,20 +2064,21 @@ export function SessionPage(props: SessionPageProps) {
       ? `design:${props.selectedSessionId}:${encodeURIComponent(normalizedPath)}`
       : `design:${props.selectedSessionId}:entry`;
     const label = normalizedPath.split("/").filter(Boolean).pop() || "Design";
+    const designSessionId = designProjectSessionIdFromEntryPath(normalizedPath) ?? props.selectedSessionId;
     const existing = sessionPanelState.tabs.find((tab) => tab.id === designTabId);
     if (!existing) {
       openTab(props.selectedSessionId, {
         id: designTabId,
         type: "design",
         label,
-        sessionId: props.selectedSessionId,
+        sessionId: designSessionId,
         path: normalizedPath || undefined,
       });
     } else {
       selectTab(props.selectedSessionId, designTabId);
     }
     setCurrentSidePanel("panel");
-  }, [designTemplateEntryPath, designWorkspaceEnabled, openTab, props.selectedSessionId, selectTab, sessionPanelState.tabs, setCurrentSidePanel]);
+  }, [designTemplateEntryPath, openTab, props.selectedSessionId, selectTab, sessionPanelState.tabs, setCurrentSidePanel]);
 
   useEffect(() => {
     if (!props.selectedSessionId || !designTemplateEntryPath) return;
@@ -2404,6 +2410,19 @@ export function SessionPage(props: SessionPageProps) {
 
     return waitForTemplateEntrySurface(target, binding);
   }, [props.ipolloworkServerClient, props.runtimeWorkspaceId, props.selectedSessionId, templateSessionData]);
+  const openArtifactTargetInPanel = useCallback((target: OpenTarget, sessionId: string, auto = false) => {
+    if (auto && activePanelTab?.id === target.id) return;
+    if (!auto) prioritizeRightPanel();
+    openTab(sessionId, {
+      id: target.id,
+      type: "artifact",
+      label: target.name,
+      preview: target.preview,
+      target,
+    });
+    preserveSidePanelOnPanelOpenRef.current = true;
+    setCurrentSidePanel("panel");
+  }, [activePanelTab?.id, openTab, prioritizeRightPanel, setCurrentSidePanel]);
   const openTarget = useCallback(async (target: OpenTarget, options?: OpenTargetOptions, sourceSessionId?: string) => {
     // SessionSurface automatically previews newly discovered targets after an
     // agent finishes. Video tasks already have a dedicated preview surface.
@@ -2438,11 +2457,30 @@ export function SessionPage(props: SessionPageProps) {
       return;
     }
 
+    const sourceId = sourceSessionId ?? props.selectedSessionId;
+    const videoArtifactSessionId = target.kind === "file" && target.preview === "html"
+      ? videoProjectSessionIdFromEntryPath(target.value)
+      : null;
+    if (options?.viewer === "video" && videoArtifactSessionId) {
+      setSessionType(videoArtifactSessionId, "video");
+      openVideoStudio(videoArtifactSessionId, { label: target.name });
+      return;
+    }
+    if (target.kind === "file" && target.preview === "html" && options?.viewer === "design") {
+      prioritizeRightPanel();
+      openDesignTab(target.value);
+      return;
+    }
+    if (target.kind === "file" && target.preview === "html" && options?.viewer === "preview") {
+      if (sourceId) openArtifactTargetInPanel(target, sourceId);
+      return;
+    }
+
     if (isVideoSession && target.kind === "file" && target.preview === "html") {
       if (currentVideoEntryPath && artifactPathMatchesTarget(target.value, currentVideoEntryPath)) {
         openCurrentVideoStudio();
+        return;
       }
-      return;
     }
 
     if (artifactContext?.kind === "presentation" && target.kind === "file") {
@@ -2453,21 +2491,19 @@ export function SessionPage(props: SessionPageProps) {
       if (!isPresentationEntry && !isPresentationFile) return;
     }
 
-    const sourceId = sourceSessionId ?? props.selectedSessionId;
     const templateSurface = await resolveOpenTargetTemplateSurface(target, sourceId);
     if (templateSurface) {
       if (!options?.auto) prioritizeRightPanel();
       if (templateSurface === "design") {
         openDesignTab(target.value);
       } else {
-        setCurrentSidePanel(templateSurface);
+        openCurrentVideoStudio();
       }
       return;
     }
 
     if (target.kind === "file" && target.preview === "html") {
-      if (!options?.auto) prioritizeRightPanel();
-      openDesignTab(target.value);
+      if (sourceId) openArtifactTargetInPanel(target, sourceId, options?.auto);
       return;
     }
 
@@ -2484,17 +2520,8 @@ export function SessionPage(props: SessionPageProps) {
 
     const sessionId = sourceId;
     if (!sessionId) return;
-    if (options?.auto && activePanelTab?.id === target.id) return;
-    if (!options?.auto) prioritizeRightPanel();
-    openTab(sessionId, {
-      id: target.id,
-      type: "artifact",
-      label: target.name,
-      preview: target.preview,
-    });
-    preserveSidePanelOnPanelOpenRef.current = true;
-    setCurrentSidePanel("panel");
-  }, [activePanelTab?.id, artifactContext, browserUrlForTarget, currentVideoEntryPath, downloadOpenTarget, isVideoSession, openCurrentVideoStudio, openDesignTab, openTab, prioritizeRightPanel, props.selectedSessionId, props.selectedWorkspaceDisplay.workspaceType, props.selectedWorkspaceRoot, resolveOpenTargetTemplateSurface, setCurrentSidePanel]);
+    openArtifactTargetInPanel(target, sessionId, options?.auto);
+  }, [artifactContext, browserUrlForTarget, currentVideoEntryPath, downloadOpenTarget, isVideoSession, openArtifactTargetInPanel, openCurrentVideoStudio, openDesignTab, openVideoStudio, prioritizeRightPanel, props.selectedSessionId, props.selectedWorkspaceDisplay.workspaceType, props.selectedWorkspaceRoot, resolveOpenTargetTemplateSurface]);
   const closeRightPane = useCallback((options?: { preserveAutoCollapse?: boolean }) => {
     if (!options?.preserveAutoCollapse) {
       userOpenedSidePanelWhileNarrowRef.current = false;
@@ -2968,14 +2995,14 @@ export function SessionPage(props: SessionPageProps) {
       onClick: addBrowserPanelTab,
       disabled: !isElectronRuntime(),
     },
-    ...(designWorkspaceEnabled ? [{
+    {
       id: "design",
       label: "Design",
       iconSrc: publicAssetUrl("sidebar-entry-code.svg"),
       active: panelRailActive && activePanelTab?.type === "design",
       onClick: showDesignRailPane,
       disabled: !props.selectedSessionId || props.selectedWorkspaceDisplay.workspaceType === "remote",
-    }] : []),
+    },
     {
       id: "files",
       label: t("session.side_panel.files"),
@@ -3126,20 +3153,11 @@ export function SessionPage(props: SessionPageProps) {
     () => sessionTitleForId(props.sidebar.projectSessionLists, sessionActionId),
     [props.sidebar.projectSessionLists, sessionActionId],
   );
-  const hasNamedProject = props.sidebar.projectSessionLists.some((project) => !project.workspace.isDefault);
   const selectedProject = props.sidebar.projectSessionLists.find(
     (project) => project.workspace.id === props.selectedWorkspaceId,
   );
-  const selectedProjectHasNoTasks = Boolean(
-    selectedProject
-      && !selectedProject.workspace.isDefault
-      && selectedProject.status === "ready"
-      && selectedProject.sessions.length === 0,
-  );
-  const showInitialProjectTaskStarter = !props.selectedSessionId
-    && Boolean(props.surface)
-    && (!hasNamedProject || selectedProjectHasNoTasks);
   const showWorkspaceSetupEmptyState = props.workspaces.length === 0 && !hasSelectedTask;
+  const showNewTaskStarter = !props.selectedSessionId && Boolean(props.surface) && !showWorkspaceSetupEmptyState;
   const showNewConversationChrome = !hasSelectedTask && !showWorkspaceSetupEmptyState;
   const showStartupSkeleton =
     !hasSelectedTask &&
@@ -3150,7 +3168,6 @@ export function SessionPage(props: SessionPageProps) {
     props.startupPhase !== "ready";
   const showSessionLoadingState =
     hasSelectedTask && props.sessionLoadingById(props.selectedSessionId!) && !showWorkspaceSetupEmptyState;
-  const sidebarInitialLoading = useMemo(() => getSidebarInitialLoading(props.sidebar), [props.sidebar]);
   // Derive the main-pane error from the same data the sidebar uses so the two
   // panes can never disagree. We check (in priority order):
   // 1. selectedWorkspaceError (errorsByWorkspaceId[selectedWorkspaceId])
@@ -3365,7 +3382,6 @@ export function SessionPage(props: SessionPageProps) {
           selectedWorkspaceId={props.sidebar.selectedWorkspaceId}
           developerMode={props.sidebar.developerMode}
           selectedSessionId={props.sidebar.selectedSessionId}
-          showInitialLoading={sidebarInitialLoading}
           showSessionActions={Boolean(props.onRenameSession || props.onDeleteSession || props.onArchiveSession)}
           sessionStatusById={props.sidebar.sessionStatusById}
           connectingWorkspaceId={props.sidebar.connectingWorkspaceId}
@@ -3373,13 +3389,7 @@ export function SessionPage(props: SessionPageProps) {
           newTaskDisabled={props.sidebar.newTaskDisabled}
           onOpenSession={handleSidebarOpenSession}
           onSelectProject={props.sidebar.onSelectProject}
-          onOpenCreateProject={isElectronRuntime() ? () => {
-            setCreateProjectName("");
-            setCreateProjectFolder("");
-            setCreateProjectEngineId(DEFAULT_ENGINE_ID);
-            setCreateProjectError(null);
-            setCreateProjectOpen(true);
-          } : undefined}
+          onOpenCreateProject={isElectronRuntime() ? openCreateProjectDialog : undefined}
           onCreateProjectBuilder={props.sidebar.onCreateProjectBuilder}
           onOpenRenameProject={openRenameProject}
           onRevealProject={(workspaceId) => void props.sidebar.onRevealProject(workspaceId)}
@@ -3494,7 +3504,7 @@ export function SessionPage(props: SessionPageProps) {
                   ) : null}
                   <h1 className="truncate text-[14px] font-medium text-dls-text">
                     {showWorkspaceSetupEmptyState
-                      ? t("workspace.empty_state_body")
+                      ? t("workspace.empty_state_header")
                       : props.selectedSessionId
                         ? selectedSessionTitle || t("session.default_title")
                         : selectedProjectName}
@@ -3687,16 +3697,17 @@ export function SessionPage(props: SessionPageProps) {
                 </div>
               ) : null}
 
-              {mainWorkspaceView === null && showInitialProjectTaskStarter && props.surface ? (
+              {mainWorkspaceView === null && showNewTaskStarter && props.surface ? (
                 <InitialProjectTaskStarter
+                  key={`${props.selectedWorkspaceId}:${props.selectedWorkspaceDisplay.engineId ?? DEFAULT_ENGINE_ID}`}
                   surface={props.surface}
                   workspaceClient={props.ipolloworkServerClient}
                   workspaceId={props.runtimeWorkspaceId}
                   opencodeBaseUrl={props.opencodeBaseUrl}
                   ipolloworkToken={props.ipolloworkServerToken}
-                  engineId={selectedProject?.workspace.engineId ?? DEFAULT_ENGINE_ID}
+                  engineId={props.selectedWorkspaceDisplay.engineId}
                   promptTemplates={conversationTemplates}
-                  templates={availableStarterTemplateCatalog}
+                  templates={starterTemplateCatalog}
                   templatesLoading={starterTemplateCatalogLoading}
                   templateBusyId={templateBusyId}
                   getTemplateCover={getStarterTemplateCover}
@@ -3710,14 +3721,13 @@ export function SessionPage(props: SessionPageProps) {
                   }}
                   onInstallTemplate={(templateId) => void installStarterTemplate(templateId)}
                   onRequestTemplates={() => void refreshStarterTemplateCatalog()}
-                  onSubmit={(draft) => props.sidebar.onCreateInitialProjectTask(
-                    draft,
-                    selectedProjectHasNoTasks ? props.selectedWorkspaceId : undefined,
-                  )}
+                  onSubmit={selectedProject && !selectedProject.workspace.isDefault
+                    ? (draft) => props.sidebar.onCreateTaskFromDraft(props.selectedWorkspaceId, draft)
+                    : (draft) => props.sidebar.onCreateInitialProjectTask(draft)}
                 />
               ) : null}
 
-              {mainWorkspaceView === null && !showInitialProjectTaskStarter && showDelayedSessionLoadingState ? (
+              {mainWorkspaceView === null && !showNewTaskStarter && showDelayedSessionLoadingState ? (
                 <div className="px-6 py-16">
                   <div
                     className="mx-auto flex max-w-[320px] flex-col items-center gap-3 text-center"
@@ -3732,12 +3742,12 @@ export function SessionPage(props: SessionPageProps) {
                 </div>
               ) : null}
 
-              {mainWorkspaceView === null && !showInitialProjectTaskStarter && !showDelayedSessionLoadingState && canRenderReactSurface ? (
+              {mainWorkspaceView === null && !showNewTaskStarter && !showDelayedSessionLoadingState && canRenderReactSurface ? (
                 <div className="flex h-full min-h-0 flex-col lg:flex-row">
                   <div className="min-h-0 min-w-0 flex-1">
-                      {isDesignSession && designWorkspaceEnabled && templateSessionLoading ? (
+                      {isDesignSession && templateSessionLoading ? (
                         <div className="flex h-full items-center justify-center gap-2 text-sm text-dls-secondary"><LoaderCircle className="size-4 animate-spin" />{t("templates.preparing")}</div>
-                      ) : isDesignSession && designWorkspaceEnabled && !hasTemplateSession && props.ipolloworkServerClient && props.runtimeWorkspaceId ? (
+                      ) : isDesignSession && !hasTemplateSession && props.ipolloworkServerClient && props.runtimeWorkspaceId ? (
                         <DesignStarter
                           client={props.ipolloworkServerClient}
                           workspaceId={props.runtimeWorkspaceId}
@@ -3794,7 +3804,7 @@ export function SessionPage(props: SessionPageProps) {
                           ? pendingVideoArtifactCompletion.requirement
                           : undefined}
                         onArtifactCompletionRequirementConsumed={consumePendingVideoArtifactCompletion}
-                        onOpenVideoStudio={videoWorkspaceEnabled ? openCurrentVideoStudio : undefined}
+                        onOpenVideoStudio={openCurrentVideoStudio}
                         onOpenWorkspaceApp={openWorkspaceAppForPlugin}
                         onCreateSession={(type, templateId) => props.sidebar.onCreateTaskInWorkspace(
                           props.selectedWorkspaceId,
@@ -3803,8 +3813,6 @@ export function SessionPage(props: SessionPageProps) {
                           PERSONAL_WORK_CONTEXT_ID,
                         )}
                         onMaterializeTemplate={async (templateId, surface) => {
-                          if ((surface === "design" && !designWorkspaceEnabled)
-                            || (surface === "video" && !videoWorkspaceEnabled)) return;
                           if (!props.ipolloworkServerClient || !props.runtimeWorkspaceId || !props.selectedSessionId) return;
 
                           const result = await props.ipolloworkServerClient.materializeTemplate(
@@ -3836,8 +3844,8 @@ export function SessionPage(props: SessionPageProps) {
                           }
                           openCurrentVideoStudio();
                         }}
-                        onActivateVideoStudio={videoWorkspaceEnabled ? activateVideoStudio : undefined}
-                        designTemplates={availableStarterTemplateCatalog}
+                        onActivateVideoStudio={activateVideoStudio}
+                        designTemplates={starterTemplateCatalog}
                         designTemplatesLoading={starterTemplateCatalogLoading}
                         designTemplateBusyId={templateBusyId}
                         onInstallDesignTemplate={(templateId) => void installStarterTemplate(templateId)}
@@ -3847,7 +3855,7 @@ export function SessionPage(props: SessionPageProps) {
                 </div>
               ) : null}
 
-              {mainWorkspaceView === null && !showInitialProjectTaskStarter && !showDelayedSessionLoadingState && !canRenderReactSurface && !showStartupSkeleton ? (
+              {mainWorkspaceView === null && !showNewTaskStarter && !showDelayedSessionLoadingState && !canRenderReactSurface && !showStartupSkeleton ? (
                 <div className={showProjectNoTasksState
                   ? "flex h-full items-center justify-center px-6"
                   : `mx-auto max-w-[800px] px-6 ${showWorkspaceSetupEmptyState ? "pt-20" : "pt-10"}`}
@@ -3870,8 +3878,17 @@ export function SessionPage(props: SessionPageProps) {
                         <Zap className="text-dls-secondary" />
                       </div>
                       <div className="space-y-2">
-                        <h3 className="text-xl font-medium">{t("workspace.empty_state_body")}</h3>
+                        <h3 className="text-xl font-medium">{t("workspace.empty_state_title")}</h3>
+                        <p className="mx-auto max-w-md text-sm leading-6 text-dls-secondary">
+                          {t("workspace.empty_state_body")}
+                        </p>
                       </div>
+                      {isElectronRuntime() ? (
+                        <Button type="button" onClick={openCreateProjectDialog}>
+                          <FolderPlus className="size-4" />
+                          {t("projects.create")}
+                        </Button>
+                      ) : null}
                     </div>
                   ) : showSelectedWorkspaceError ? (
                     <div className="px-6 py-16">
@@ -4026,10 +4043,6 @@ export function SessionPage(props: SessionPageProps) {
                         workspaceRoot={props.selectedWorkspaceRoot}
                         isRemoteWorkspace={props.surface?.isRemoteWorkspace ?? false}
                         launcherItems={sidePanelLauncherItems}
-                        enabledNativeWorkspaces={[
-                          ...(designWorkspaceEnabled ? ["design" as const] : []),
-                          ...(videoWorkspaceEnabled ? ["video" as const] : []),
-                        ]}
                         aiEditing={isStreamingSessionStatus(props.sidebar.sessionStatusById[props.selectedSessionId])}
                         onAskAi={handleDesignAskAi}
                         onSendWorkspaceAppMessage={sendWorkspaceAppMessage}

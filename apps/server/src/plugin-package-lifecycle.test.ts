@@ -13,6 +13,7 @@ import {
   type PluginEngineAdapter,
 } from "./plugin-engine-adapter.js";
 import { bundledPluginPackageIds } from "./plugin-package-catalog.js";
+import { buildDeepSeekHarnessPatch } from "./deepseek-harness-patch.js";
 import { disposeiPolloWorkWorkspaceConfigStore } from "./ipollowork-workspace-config-store.js";
 import {
   disposeRuntimeOpencodeConfigStore,
@@ -226,7 +227,7 @@ describe("plugin package lifecycle", () => {
     ])).toThrow("Duplicate plugin engine adapter: opencode");
   });
 
-  test("reports complete, partial, and unsupported engine compatibility without hiding portable resources", async () => {
+  test("reports portable resources as ready when each engine has an adapter path", async () => {
     const packageRoot = await createRoot("ipollowork-plugin-compatibility-");
     await writeDeclarativePackage(packageRoot);
     const manifest = JSON.parse(await readFile(join(packageRoot, "ipollowork.plugin.json"), "utf8"));
@@ -247,12 +248,27 @@ describe("plugin package lifecycle", () => {
     });
     expect(pluginEngineCompatibility(deepSeekHarnessPluginEngineAdapter, manifest)).toMatchObject({
       engineId: "deepseek-harness",
-      status: "partial",
-      unsupportedRequiredResourceIds: ["private-mcp"],
+      status: "ready",
+      supportedResourceIds: ["acme-skill", "private-mcp"],
     });
 
     manifest.resources = [{ type: "command", id: "command-only", path: "commands/only.md", required: true }];
-    expect(pluginEngineCompatibility(deepSeekHarnessPluginEngineAdapter, manifest).status).toBe("unsupported");
+    manifest.package.engines = ["opencode"];
+    expect(pluginEngineCompatibility(deepSeekHarnessPluginEngineAdapter, manifest)).toMatchObject({
+      status: "ready",
+      supportedResourceIds: ["command-only"],
+      nativeEngineOnly: false,
+    });
+
+    manifest.engineBindings = [{
+      engine: "opencode",
+      compatibility: ">=1.0.0",
+      capabilities: [{ id: "native-plugin", kind: "plugin", path: "plugins/native.ts", required: true }],
+    }];
+    expect(pluginEngineCompatibility(deepSeekHarnessPluginEngineAdapter, manifest)).toMatchObject({
+      status: "partial",
+      nativeEngineOnly: true,
+    });
   });
 
   test("previews the complete Figma package and every bundled workflow file", async () => {
@@ -453,6 +469,37 @@ describe("plugin package lifecycle", () => {
       enabled: true,
     });
     expect(await readFile(join(workspaceRoot, ".opencode", "skills", "acme-research", "SKILL.md"), "utf8")).toBe("# Version one\n");
+  });
+
+  test("ignores obsolete historical manifests while keeping the current package usable", async () => {
+    const lifecycle = await import("./plugin-package-lifecycle.js");
+    const workspaceRoot = await createRoot("ipollowork-plugin-history-workspace-");
+    const packageV1 = await createRoot("ipollowork-plugin-history-v1-");
+    const packageV2 = await createRoot("ipollowork-plugin-history-v2-");
+    process.env.IPOLLOWORK_RUNTIME_DB = join(workspaceRoot, "runtime.sqlite");
+    await writePackage(packageV1, "1.0.0", "export const version = 'v1'\n", "# Version one\n");
+    await writePackage(packageV2, "1.1.0", "export const version = 'v2'\n", "# Version two\n");
+    const config = serverConfig(workspaceRoot);
+
+    await lifecycle.installPluginPackage({ serverConfig: config, packageRoot: packageV1 });
+    await lifecycle.updatePluginPackage({ serverConfig: config, packageRoot: packageV2 });
+    const statePath = join(workspaceRoot, "plugin-packages", "state.json");
+    const state = JSON.parse(await readFile(statePath, "utf8"));
+    state.packages["acme-research"].versions["1.0.0"].manifest.schemaVersion = 1;
+    await writeFile(statePath, `${JSON.stringify(state, null, 2)}\n`, "utf8");
+
+    await lifecycle.reconcilePluginPackagesForWorkspace({
+      serverConfig: config,
+      workspaceId: WORKSPACE_ID,
+      workspaceRoot,
+    });
+    expect(await lifecycle.listInstalledPluginPackages({ serverConfig: config })).toEqual([
+      expect.objectContaining({ pluginId: "acme-research", version: "1.1.0" }),
+    ]);
+    await expect(lifecycle.uninstallPluginPackage({
+      serverConfig: config,
+      pluginId: "acme-research",
+    })).resolves.toMatchObject({ status: "uninstalled", version: "1.1.0" });
   });
 
   test("stops an update when an owned file was modified by the user", async () => {
@@ -833,6 +880,16 @@ describe("plugin package lifecycle", () => {
       const payload = await response.json();
       const pluginIds = payload.items.map((item: { pluginId: string }) => item.pluginId);
       expect(pluginIds).toEqual([...bundledPluginPackageIds]);
+      for (const item of payload.items as Array<{
+        pluginId: string;
+        engineCompatibility: Array<{ engineId: string; status: string }>;
+      }>) {
+        const compatibility = new Map(item.engineCompatibility.map((entry) => [entry.engineId, entry.status]));
+        expect(compatibility.get("opencode")).toBe("ready");
+        expect(compatibility.get("deepseek-harness")).toBe(
+          item.pluginId === "deepseek-harness" ? "partial" : "ready",
+        );
+      }
 
       const parallelEnginePluginApi = await fetch(
         `http://127.0.0.1:${server.port}/workspace/${WORKSPACE_ID}/plugins`,
@@ -880,6 +937,7 @@ describe("plugin package lifecycle", () => {
       { type: "command", id: "research-command", path: "commands/research-topic.md", label: "Research a topic" },
       { type: "agent", id: "research-reviewer", path: "agents/research-reviewer.md", description: "Review research claims" },
     );
+    manifest.package.engines = ["opencode"];
     await writeFile(manifestPath, JSON.stringify(manifest, null, 2), "utf8");
     const config = serverConfig(workspaceRoot);
     config.workspaces[0]!.engineId = "deepseek-harness";
@@ -910,7 +968,7 @@ describe("plugin package lifecycle", () => {
     })).toEqual([]);
   });
 
-  test("registers plugin MCP resources for DeepSeek Harness and removes them on disable", async () => {
+  test("registers OAuth MCP resources through the scoped proxy for DeepSeek Harness", async () => {
     const lifecycle = await import("./plugin-package-lifecycle.js");
     const workspaceRoot = await createRoot("ipollowork-plugin-dsh-mcp-workspace-");
     const packageRoot = await createRoot("ipollowork-plugin-dsh-mcp-package-");
@@ -919,19 +977,29 @@ describe("plugin package lifecycle", () => {
     await writeFile(join(packageRoot, "mcp", "acme.json"), JSON.stringify({
       type: "remote",
       url: "https://mcp.acme.example/mcp",
+      oauth: {},
     }), "utf8");
     const manifestPath = join(packageRoot, "ipollowork.plugin.json");
     const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
-    manifest.resources.push({ type: "mcp", id: "acme-mcp", path: "mcp/acme.json", mcpServerName: "acme" });
+    manifest.resources.push({ type: "mcp", id: "acme-mcp", path: "mcp/acme.json", mcpServerName: "acme", oauth: true });
     await writeFile(manifestPath, JSON.stringify(manifest, null, 2), "utf8");
     const config = serverConfig(workspaceRoot);
     config.workspaces[0]!.engineId = "deepseek-harness";
 
     await lifecycle.installPluginPackage({ serverConfig: config, packageRoot });
-    expect((await readRuntimeOpencodeConfig(config, WORKSPACE_ID)).mcp?.acme).toEqual({
+    const runtimeMcp = (await readRuntimeOpencodeConfig(config, WORKSPACE_ID)).mcp?.acme;
+    expect(runtimeMcp).toMatchObject({
       type: "remote",
-      url: "https://mcp.acme.example/mcp",
+      enabled: true,
+      oauth: false,
     });
+    expect(runtimeMcp?.url).toMatch(/^http:\/\/127\.0\.0\.1:0\/mcp-proxy\//);
+    expect((runtimeMcp?.headers as Record<string, unknown> | undefined)?.Authorization).toMatch(/^Bearer [A-Za-z0-9_-]{32,}$/);
+
+    const patch = await buildDeepSeekHarnessPatch(config, config.workspaces[0]!);
+    expect(JSON.stringify(patch)).toContain('"transport":"streamable-http"');
+    expect(JSON.stringify(patch)).toContain('"serverName":"acme"');
+    expect(JSON.stringify(patch)).toContain('"Authorization":"Bearer ');
 
     await lifecycle.setPluginPackageEnabled({
       serverConfig: config,
@@ -1440,10 +1508,10 @@ describe("plugin package lifecycle", () => {
           { pluginId: "sentry", version: "1.0.2", installedVersion: null, updateAvailable: false },
           { pluginId: "stripe", version: "1.0.2", installedVersion: null, updateAvailable: false },
           { pluginId: "context7", version: "1.0.2", installedVersion: null, updateAvailable: false },
-          { pluginId: "github", version: "0.1.3", installedVersion: null, updateAvailable: false },
-          { pluginId: "wechat-official", version: "0.1.3", installedVersion: null, updateAvailable: false },
-          { pluginId: "design-agent", version: "0.3.0", installedVersion: "0.3.0", updateAvailable: false },
-          { pluginId: "video-agent", version: "0.3.0", installedVersion: "0.3.0", updateAvailable: false },
+          { pluginId: "github", version: "0.1.4", installedVersion: null, updateAvailable: false },
+          { pluginId: "wechat-official", version: "0.1.4", installedVersion: null, updateAvailable: false },
+          { pluginId: "design-agent", version: "0.3.1", installedVersion: "0.3.1", updateAvailable: false },
+          { pluginId: "video-agent", version: "0.3.1", installedVersion: "0.3.1", updateAvailable: false },
           { pluginId: "deepseek-harness", version: "0.3.7", installedVersion: null, updateAvailable: false },
         ],
       });
@@ -1536,7 +1604,7 @@ describe("plugin package lifecycle", () => {
       });
       expect(githubInstallation.status).toBe(200);
       expect(await githubInstallation.json()).toMatchObject({
-        result: { status: "installed", pluginId: "github", version: "0.1.3" },
+        result: { status: "installed", pluginId: "github", version: "0.1.4" },
         item: {
           pluginId: "github",
           manifest: {
@@ -1566,7 +1634,7 @@ describe("plugin package lifecycle", () => {
       });
       expect(wechatInstallation.status).toBe(200);
       expect(await wechatInstallation.json()).toMatchObject({
-        result: { status: "installed", pluginId: "wechat-official", version: "0.1.3" },
+        result: { status: "installed", pluginId: "wechat-official", version: "0.1.4" },
         item: {
           pluginId: "wechat-official",
           manifest: {
@@ -1610,7 +1678,7 @@ describe("plugin package lifecycle", () => {
     } finally {
       await server.stop();
     }
-  });
+  }, 15_000);
 
   test("installs, toggles, removes, and restores complete creative workspace packages", async () => {
     const workspaceRoot = await createRoot("ipollowork-creative-agent-catalog-api-");
@@ -1632,13 +1700,13 @@ describe("plugin package lifecycle", () => {
     const packages = [
       {
         pluginId: "design-agent",
-        version: "0.3.0",
+        version: "0.3.1",
         skillPath: join(workspaceRoot, ".opencode", "skills", "ipollowork-design-studio", "SKILL.md"),
         heading: "# iPolloWork Design Studio",
       },
       {
         pluginId: "video-agent",
-        version: "0.3.0",
+        version: "0.3.1",
         skillPath: join(workspaceRoot, ".opencode", "skills", "ipollowork-video-studio", "SKILL.md"),
         heading: "# iPolloWork Video Studio",
       },

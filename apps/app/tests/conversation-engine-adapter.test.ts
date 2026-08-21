@@ -294,6 +294,135 @@ describe("conversation engine adapters", () => {
       sessionId: "session-1",
       errorText: normalized,
     }]);
+
+    expect(normalizeDeepSeekHarnessErrorText("错误")).not.toBe("错误");
+  });
+
+  test("explains when a selected model is absent from the DeepSeek Harness runtime", async () => {
+    const originalFetch = globalThis.fetch;
+    const methods: string[] = [];
+    globalThis.fetch = (async (_input, init) => {
+      const body = JSON.parse(String(init?.body)) as { method?: string };
+      methods.push(body.method ?? "");
+      if (body.method === "session.selectModel") {
+        return Response.json({ message: "错误" }, { status: 400 });
+      }
+      if (body.method === "llm.models") {
+        return Response.json({ value: {
+          groups: [{ id: "opencode", models: [{ id: "deepseek-v4-flash-free" }] }],
+        } });
+      }
+      return Response.json({ value: {} });
+    }) as typeof fetch;
+
+    try {
+      const connection = conversationEngineAdapters.get(DEEPSEEK_HARNESS_ENGINE_ID).connect({
+        baseUrl: "http://unused.test",
+        serverBaseUrl: "http://ipollowork.test",
+        workspaceId: "ws_dsh",
+        token: "token",
+      });
+      await expect(connection.sendPrompt({
+        sessionId: "session-1",
+        parts: [{ type: "text", text: "Which model is active?" }],
+        model: { providerID: "tokenstar", modelID: "gpt-5.6-sol" },
+      })).rejects.toThrow("DeepSeek Harness");
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+
+    expect(methods).toEqual(["session.selectModel", "llm.models"]);
+  });
+
+  test("routes the account OpenAI provider through DSH's Codex OAuth route", async () => {
+    const originalFetch = globalThis.fetch;
+    const requests: Array<{ method: string; payload: Record<string, unknown> }> = [];
+    globalThis.fetch = (async (input, init) => {
+      const body = JSON.parse(String(init?.body)) as {
+        method?: string;
+        payload?: Record<string, unknown>;
+      };
+      if (String(input).endsWith("/prompt")) {
+        requests.push({ method: "session.prompt", payload: body.payload ?? {} });
+        return Response.json({ ok: true });
+      }
+      requests.push({ method: body.method ?? "", payload: body.payload ?? {} });
+      if (body.method === "llm.models") {
+        return Response.json({ value: {
+          groups: [{ id: "openai-codex", models: [{ id: "gpt-5.4" }] }],
+        } });
+      }
+      return Response.json({ value: {} });
+    }) as typeof fetch;
+
+    try {
+      const connection = conversationEngineAdapters.get(DEEPSEEK_HARNESS_ENGINE_ID).connect({
+        baseUrl: "http://unused.test",
+        serverBaseUrl: "http://ipollowork.test",
+        workspaceId: "ws_dsh",
+        token: "token",
+      });
+      await connection.sendPrompt({
+        sessionId: "session-codex",
+        parts: [{ type: "text", text: "Use Codex" }],
+        model: { providerID: "openai", modelID: "gpt-5.4" },
+      });
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+
+    expect(requests.map((request) => request.method)).toEqual([
+      "llm.models",
+      "session.selectModel",
+      "session.prompt",
+    ]);
+    expect(requests[1]?.payload).toMatchObject({
+      provider: "openai-codex",
+      model: "gpt-5.4",
+    });
+  });
+
+  test("routes OpenAI Fast aliases through DSH's priority Codex adapter", async () => {
+    const originalFetch = globalThis.fetch;
+    const requests: Array<{ method: string; payload: Record<string, unknown> }> = [];
+    globalThis.fetch = (async (input, init) => {
+      const body = JSON.parse(String(init?.body)) as {
+        method?: string;
+        payload?: Record<string, unknown>;
+      };
+      if (String(input).endsWith("/prompt")) {
+        requests.push({ method: "session.prompt", payload: body.payload ?? {} });
+        return Response.json({ ok: true });
+      }
+      requests.push({ method: body.method ?? "", payload: body.payload ?? {} });
+      if (body.method === "llm.models") {
+        return Response.json({ value: {
+          groups: [{ id: "openai-codex-priority", models: [{ id: "gpt-5.4-fast" }] }],
+        } });
+      }
+      return Response.json({ value: {} });
+    }) as typeof fetch;
+
+    try {
+      const connection = conversationEngineAdapters.get(DEEPSEEK_HARNESS_ENGINE_ID).connect({
+        baseUrl: "http://unused.test",
+        serverBaseUrl: "http://ipollowork.test",
+        workspaceId: "ws_dsh",
+        token: "token",
+      });
+      await connection.sendPrompt({
+        sessionId: "session-codex-fast",
+        parts: [{ type: "text", text: "Use priority Codex" }],
+        model: { providerID: "openai", modelID: "gpt-5.4-fast" },
+      });
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+
+    expect(requests[1]?.payload).toMatchObject({
+      provider: "openai-codex-priority",
+      model: "gpt-5.4-fast",
+    });
   });
 
   test("exposes native DeepSeek Harness modes and applies model selection before prompting", async () => {
@@ -633,6 +762,7 @@ describe("conversation engine adapters", () => {
 
     expect(stepStart).toEqual([]);
     expect(firstChunk).toEqual([
+      { type: "session.status", sessionId: "dsh-session", status: { type: "busy" } },
       expect.objectContaining({
         type: "message.parts",
         messageRole: "assistant",
@@ -641,6 +771,7 @@ describe("conversation engine adapters", () => {
       expect.objectContaining({ type: "message.chunk", chunk: expect.objectContaining({ delta: "你" }) }),
     ]);
     expect(nextChunk).toEqual([
+      { type: "session.status", sessionId: "dsh-session", status: { type: "busy" } },
       expect.objectContaining({ type: "message.chunk", chunk: expect.objectContaining({ delta: "好" }) }),
     ]);
   });
@@ -697,6 +828,7 @@ describe("conversation engine adapters", () => {
   });
 
   test("normalizes DeepSeek Harness tool arguments into the shared tool schema", () => {
+    const state = { parts: new Set<string>(), tools: new Map() };
     const events = mapDeepSeekHarnessEnvelope({
       type: "server-request",
       rpcId: "rpc-edit",
@@ -720,19 +852,49 @@ describe("conversation engine adapters", () => {
           },
         },
       },
-    }, { parts: new Set(), tools: new Map() });
+    }, state);
 
-    expect(events).toEqual([expect.objectContaining({
-      type: "message.parts",
-      parts: [expect.objectContaining({
-        toolName: "edit",
-        input: {
-          filePath: "design/session/entry.html",
-          oldString: "Before",
-          newString: "After",
+    expect(events).toEqual([
+      { type: "session.status", sessionId: "dsh-session", status: { type: "busy" } },
+      expect.objectContaining({
+        type: "message.parts",
+        parts: [expect.objectContaining({
+          toolName: "edit",
+          input: {
+            filePath: "design/session/entry.html",
+            oldString: "Before",
+            newString: "After",
+          },
+        })],
+      }),
+    ]);
+
+    const resultEvents = mapDeepSeekHarnessEnvelope({
+      type: "server-request",
+      rpcId: "rpc-edit-result",
+      payload: {
+        type: "session/event",
+        sessionId: "dsh-session",
+        event: {
+          type: "tool/result",
+          seq: 4,
+          time: 40,
+          data: {
+            message: {
+              content: [{ type: "tool-result", toolCallId: "edit-1", content: "updated" }],
+            },
+          },
         },
-      })],
-    })]);
+      },
+    }, state);
+
+    expect(resultEvents).toEqual([
+      { type: "session.status", sessionId: "dsh-session", status: { type: "busy" } },
+      expect.objectContaining({
+        type: "message.parts",
+        parts: [expect.objectContaining({ state: "output-available", output: "updated" })],
+      }),
+    ]);
   });
 
   test("normalizes DeepSeek Harness text attachments without leaking data URLs", async () => {

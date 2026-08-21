@@ -1348,7 +1348,7 @@ export function createiPolloWorkServerClient(options: { baseUrl: string; token?:
         timeoutMs: timeouts.workspaceImport,
         direct: true,
       }),
-    createTemplateAuthoringSession: (workspaceId: string, input: { sessionId: string; category: TemplateCategory; pptxCompatibility?: PptxCompatibility }) =>
+    createTemplateAuthoringSession: (workspaceId: string, input: { sessionId: string; category: TemplateCategory; pptxCompatibility?: PptxCompatibility; purpose?: "template-authoring" | "artifact-delivery" }) =>
       requestJson<TemplateSessionSnapshot>(baseUrl, `/workspace/${encodeURIComponent(workspaceId)}/templates/authoring-sessions`, {
         token,
         hostToken,
@@ -1379,6 +1379,18 @@ export function createiPolloWorkServerClient(options: { baseUrl: string; token?:
       requestJson<TemplateSessionSnapshot>(baseUrl, `/workspace/${encodeURIComponent(workspaceId)}/template-sessions/${encodeURIComponent(sessionId)}/adopt-video`, { token, hostToken, method: "POST", body: {}, timeoutMs: timeouts.workspaceImport }),
     listTemplateSessions: (workspaceId: string) =>
       requestJson<{ items: TemplateSessionSnapshot[] }>(baseUrl, `/workspace/${encodeURIComponent(workspaceId)}/template-sessions`, { token, hostToken }),
+    createSession: (workspaceId: string, title?: string) =>
+      requestJson<{ item: Session }>(
+        baseUrl,
+        `/workspace/${encodeURIComponent(workspaceId)}/sessions`,
+        {
+          token,
+          hostToken,
+          method: "POST",
+          body: title?.trim() ? { title: title.trim() } : {},
+          timeoutMs: timeouts.sessionRead,
+        },
+      ),
     listSessions: (
       workspaceId: string,
       options?: { roots?: boolean; start?: number; search?: string; limit?: number },
@@ -2240,7 +2252,7 @@ export function createiPolloWorkServerClient(options: { baseUrl: string; token?:
     // User-level env vars (host-auth only — desktop shell is the sole caller).
     // See apps/server/src/env-file.ts and apps/app/pr/environment-variables.md.
     listUserEnvKeys: () =>
-      requestJson<{ keys: string[] }>(
+      requestJson<{ keys: string[]; oauthProviderIds?: string[] }>(
         baseUrl,
         "/env/keys",
         { token, hostToken, timeoutMs: timeouts.config },

@@ -12,7 +12,10 @@ import { getReactQueryClient } from "../src/react-app/infra/query-client";
 import {
   ensureMergedProviderListQuery,
   getChatProviderCatalogItems,
+  getRunnableChatModelEntries,
+  getSelectableChatProviderItems,
   mergeProviderListResponses,
+  projectAccountProviderConnections,
   providerListQueryKey,
 } from "../src/react-app/infra/provider-list-query";
 import { DEEPSEEK_HARNESS_ENGINE_ID, DEFAULT_ENGINE_ID } from "@ipollowork/types/workspace";
@@ -21,6 +24,8 @@ import {
   sharedProviderCredentialEnvKey,
   sharedProviderProfileEnvKey,
 } from "@ipollowork/types/provider-credentials";
+import { iPolloWorkServerError } from "../src/app/lib/ipollowork-server";
+import type { ProviderListItem } from "../src/app/types";
 
 function createOpenCodeProviderClient() {
   const calls: Array<{ name: string; value?: unknown }> = [];
@@ -142,6 +147,32 @@ describe("model runtime adapters", () => {
     queryClient.clear();
   });
 
+  test("keeps successful account catalogs when a secondary engine catalog fails", async () => {
+    const queryClient = getReactQueryClient();
+    queryClient.clear();
+    const { client } = createOpenCodeProviderClient();
+    const unavailableHarnessClient = {
+      async call(): Promise<never> {
+        throw new Error("DeepSeek Harness is unavailable");
+      },
+    };
+
+    const result = await ensureMergedProviderListQuery(queryClient, [{
+      client,
+      engineId: DEFAULT_ENGINE_ID,
+      baseUrl: "http://opencode-runtime",
+      directory: "C:\\workspace",
+    }, {
+      client: unavailableHarnessClient,
+      engineId: DEEPSEEK_HARNESS_ENGINE_ID,
+      baseUrl: "http://dsh-runtime",
+      directory: "C:\\workspace",
+    }], { force: true });
+
+    expect(result.all[0]?.id).toBe("opencode");
+    queryClient.clear();
+  });
+
   test("resolves a connected GPT model independently from the agent engine", () => {
     const providers = {
       all: [{
@@ -194,6 +225,302 @@ describe("model runtime adapters", () => {
       providers,
       model: { providerID: "openai", modelID: "missing" },
     }).status).toBe("model-unavailable");
+  });
+
+  test("projects the account catalog to models executable by the active engine", () => {
+    const catalog = {
+      all: [{
+        id: "openai",
+        name: "OpenAI",
+        source: "config" as const,
+        env: [],
+        models: {
+          "gpt-5.6-sol": { id: "gpt-5.6-sol", name: "GPT-5.6 Sol", capabilities: {} },
+          "gpt-5.6-sol-fast": { id: "gpt-5.6-sol-fast", name: "GPT-5.6 Sol Fast", capabilities: {} },
+        },
+      }, {
+        id: "deepseek-official",
+        name: "DeepSeek",
+        source: "config" as const,
+        env: [],
+        models: {
+          "deepseek-v4-flash": { id: "deepseek-v4-flash", name: "DeepSeek V4 Flash", capabilities: {} },
+        },
+      }],
+      connected: ["openai", "deepseek-official"],
+      default: {},
+    };
+    const dshRuntime = {
+      all: [{
+        ...catalog.all[0]!,
+        models: { "gpt-5.6-sol": catalog.all[0]!.models["gpt-5.6-sol"]! },
+      }, catalog.all[1]!],
+      connected: ["deepseek-official"],
+      default: {},
+    };
+
+    expect(getRunnableChatModelEntries({
+      catalog,
+      runtime: dshRuntime,
+      engineId: DEEPSEEK_HARNESS_ENGINE_ID,
+    }).map(({ provider, modelId }) => `${provider.id}:${modelId}`)).toEqual([
+      "deepseek-official:deepseek-v4-flash",
+    ]);
+  });
+
+  test("persists and idempotently disconnects an OAuth provider without mirroring its secret", async () => {
+    const queryClient = getReactQueryClient();
+    queryClient.clear();
+    const profileWrites: Array<{ key: string; value: string }> = [];
+    const envDeleteAttempts: string[] = [];
+    const envKeys: string[] = [];
+    let oauthConnected = true;
+    const providerList = () => ({
+      all: [{
+        id: "openai",
+        name: "OpenAI",
+        source: "api" as const,
+        env: [],
+        models: { "gpt-5.4": { id: "gpt-5.4", name: "GPT-5.4" } },
+      }],
+      connected: oauthConnected ? ["openai"] : [],
+      default: { openai: "gpt-5.4" },
+    });
+    let disabledProviderIds: string[] = [];
+    const client = {
+      global: { health: async () => ({ data: { healthy: true } }) },
+      provider: {
+        list: async () => ({ data: providerList() }),
+        auth: async () => ({ data: { openai: [{ type: "oauth", label: "OpenAI" }] } }),
+        oauth: {
+          authorize: async () => ({ data: { url: "https://example.com", method: "code" } }),
+          callback: async () => ({ data: true }),
+        },
+      },
+      auth: {
+        set: async () => {
+          providers = providers.map((provider) => (
+            provider.id === "openai" ? { ...provider, source: "api" as const } : provider
+          ));
+          return { data: true };
+        },
+        remove: async () => {
+          oauthConnected = false;
+          return { data: true };
+        },
+      },
+      config: {
+        get: async () => ({ data: { disabled_providers: disabledProviderIds } }),
+        update: async (value: { config: { disabled_providers?: string[] } }) => {
+          disabledProviderIds = value.config.disabled_providers ?? [];
+          return { data: true };
+        },
+      },
+      instance: { dispose: async () => ({ data: true }) },
+    };
+    let providers = providerList().all;
+    let connectedIds = providerList().connected;
+    const serverClient = {
+      readOpencodeConfigFile: async () => ({
+        content: disabledProviderIds.length
+          ? `{\"disabled_providers\":[\"${disabledProviderIds.join('\",\"')}\"]}`
+          : "{}",
+      }),
+      writeOpencodeConfigFile: async (_workspaceId: string, _scope: string, content: string) => {
+        disabledProviderIds = content.includes('"openai"') ? ["openai"] : [];
+        return { ok: true };
+      },
+      listUserEnvKeys: async () => ({
+        keys: [...envKeys],
+        oauthProviderIds: oauthConnected ? ["openai"] : [],
+      }),
+      upsertUserEnv: async (entries: Array<{ key: string; value: string }>) => {
+        profileWrites.push(...entries);
+        for (const entry of entries) if (!envKeys.includes(entry.key)) envKeys.push(entry.key);
+        return { updated: entries.map((entry) => entry.key) };
+      },
+      deleteUserEnv: async (key: string) => {
+        envDeleteAttempts.push(key);
+        const index = envKeys.indexOf(key);
+        if (index < 0) {
+          throw new iPolloWorkServerError(404, "env_not_found", "Environment variable not found");
+        }
+        envKeys.splice(index, 1);
+        return { ok: true };
+      },
+      reloadEngine: async () => ({ ok: true }),
+    };
+    const store = createProviderAuthStore({
+      client: () => client,
+      providers: () => providers,
+      providerDefaults: () => providerList().default,
+      providerConnectedIds: () => connectedIds,
+      disabledProviders: () => disabledProviderIds,
+      checkDesktopAppRestriction: () => false,
+      selectedWorkspaceDisplay: () => ({
+        id: "workspace-oauth",
+        name: "OAuth Workspace",
+        path: "C:\\workspace",
+        preset: "starter",
+        workspaceType: "local",
+        engineId: DEFAULT_ENGINE_ID,
+      }),
+      providerBaseUrl: () => "http://localhost:43121/opencode",
+      selectedWorkspaceRoot: () => "C:\\workspace",
+      runtimeWorkspaceId: () => "workspace-oauth",
+      ipolloworkServer: {
+        getSnapshot: () => ({
+          ipolloworkServerStatus: "connected",
+          ipolloworkServerClient: serverClient as never,
+          ipolloworkServerCapabilities: { config: { read: true, write: true } },
+        }),
+      },
+      setProviders: (value) => { providers = value; },
+      setProviderDefaults: () => {},
+      setProviderConnectedIds: (value) => { connectedIds = value; },
+      setDisabledProviders: (value) => { disabledProviderIds = value; },
+      markEngineConfigReloadRequired: () => {},
+    });
+
+    expect(await store.completeProviderAuthOAuth("openai", 0, "oauth-code"))
+      .toMatchObject({ connected: true });
+    expect(profileWrites).toHaveLength(1);
+    expect(profileWrites[0]?.key).toBe(sharedProviderProfileEnvKey("openai"));
+    expect(profileWrites[0]?.key).not.toBe(sharedProviderCredentialEnvKey("openai"));
+    await store.refreshProviders();
+    expect(store.getSnapshot().connectedProviderIds).toContain("openai");
+    expect(await store.disconnectProvider("openai")).toContain("openai");
+    expect(envDeleteAttempts).toEqual([
+      sharedProviderCredentialEnvKey("openai"),
+      sharedProviderProfileEnvKey("openai"),
+    ]);
+    expect(envKeys).toEqual([]);
+    expect(disabledProviderIds).toEqual(["openai"]);
+    expect(store.getSnapshot().connectedProviderIds).not.toContain("openai");
+    store.dispose();
+    queryClient.clear();
+  });
+
+  test("keeps an environment-backed provider disabled until the user reconnects it", async () => {
+    const queryClient = getReactQueryClient();
+    queryClient.clear();
+    let disabledProviderIds: string[] = [];
+    let providers: ProviderListItem[] = [{
+      id: "openai",
+      name: "OpenAI",
+      source: "env" as const,
+      env: ["OPENAI_API_KEY"],
+      models: {
+        "gpt-5.4": { id: "gpt-5.4", name: "GPT-5.4", capabilities: {} },
+      },
+    }];
+    let connectedProviderIds = ["openai"];
+    const providerList = () => ({
+      all: providers,
+      connected: ["openai"],
+      default: { openai: "gpt-5.4" },
+    });
+    const client = {
+      global: { health: async () => ({ data: { healthy: true } }) },
+      provider: {
+        list: async () => ({ data: providerList() }),
+        auth: async () => ({ data: {} }),
+        oauth: {
+          authorize: async () => ({ data: {} }),
+          callback: async () => ({ data: true }),
+        },
+      },
+      auth: {
+        set: async () => {
+          providers = providers.map((provider) => (
+            provider.id === "openai" ? { ...provider, source: "api" as const } : provider
+          ));
+          return { data: true };
+        },
+        remove: async () => ({ data: true }),
+      },
+      config: {
+        get: async () => ({ data: { disabled_providers: disabledProviderIds } }),
+        update: async (value: { config: { disabled_providers?: string[] } }) => {
+          disabledProviderIds = value.config.disabled_providers ?? [];
+          return { data: true };
+        },
+      },
+      instance: { dispose: async () => ({ data: true }) },
+    };
+    const store = createProviderAuthStore({
+      client: () => client,
+      providers: () => providers,
+      providerDefaults: () => providerList().default,
+      providerConnectedIds: () => connectedProviderIds,
+      disabledProviders: () => disabledProviderIds,
+      checkDesktopAppRestriction: () => false,
+      selectedWorkspaceDisplay: () => ({
+        id: "workspace-env",
+        name: "Environment Workspace",
+        path: "C:\\workspace",
+        preset: "starter",
+        workspaceType: "local",
+        engineId: DEFAULT_ENGINE_ID,
+      }),
+      providerBaseUrl: () => "http://localhost:43121/opencode",
+      selectedWorkspaceRoot: () => "C:\\workspace",
+      runtimeWorkspaceId: () => "workspace-env",
+      ipolloworkServer: {
+        getSnapshot: () => ({
+          ipolloworkServerStatus: "disconnected",
+          ipolloworkServerClient: null,
+          ipolloworkServerCapabilities: null,
+        }),
+      },
+      setProviders: (value) => { providers = value; },
+      setProviderDefaults: () => {},
+      setProviderConnectedIds: (value) => { connectedProviderIds = value; },
+      setDisabledProviders: (value) => { disabledProviderIds = value; },
+      markEngineConfigReloadRequired: () => {},
+    });
+
+    expect(await store.disconnectProvider("openai")).toBe("Disconnected openai");
+    expect(disabledProviderIds).toEqual(["openai"]);
+    expect(store.getSnapshot().connectedProviderIds).not.toContain("openai");
+
+    await store.submitProviderApiKey("openai", "reconnected-key");
+    expect(disabledProviderIds).toEqual([]);
+    expect(store.getSnapshot().connectedProviderIds).toContain("openai");
+    store.dispose();
+    queryClient.clear();
+  });
+
+  test("keeps an account-connected model ready after engine catalogs are merged", () => {
+    const account = {
+      all: [{
+        id: "openai",
+        name: "OpenAI",
+        source: "config" as const,
+        env: [],
+        models: {
+          "gpt-5.4": {
+            id: "gpt-5.4",
+            name: "GPT-5.4",
+            capabilities: { reasoning: true, input: { text: true }, output: { text: true } },
+          },
+        },
+      }],
+      connected: ["openai"],
+      default: { openai: "gpt-5.4" },
+    };
+    const harness = {
+      all: [{ id: "deepseek-official", name: "DeepSeek", source: "config" as const, env: [], models: {} }],
+      connected: ["deepseek-official"],
+      default: {},
+    };
+    const merged = mergeProviderListResponses([account, harness]);
+
+    expect(modelRuntimeAdapters.resolveModel({
+      engineId: DEEPSEEK_HARNESS_ENGINE_ID,
+      providers: merged,
+      model: { providerID: "openai", modelID: "gpt-5.4" },
+    }).status).toBe("ready");
   });
 
   test("routes provider list, auth and disabled state through OpenCode", async () => {
@@ -435,6 +762,69 @@ describe("model runtime adapters", () => {
 
     expect(merged.all[0]?.source).toBe("env");
     expect(merged.connected).toEqual([]);
+  });
+
+  test("projects only explicitly account-configured env providers into the shared model directory", () => {
+    const projected = projectAccountProviderConnections({
+      all: [
+        {
+          id: "openai",
+          name: "OpenAI",
+          source: "env",
+          env: ["OPENAI_API_KEY"],
+          models: {
+            "gpt-5.4": { id: "gpt-5.4", name: "GPT-5.4", capabilities: {} },
+          },
+        },
+        {
+          id: "ambient-only",
+          name: "Ambient only",
+          source: "env",
+          env: ["AMBIENT_ONLY_API_KEY"],
+          models: {
+            ambient: { id: "ambient", name: "Ambient", capabilities: {} },
+          },
+        },
+      ],
+      connected: [],
+      default: { openai: "gpt-5.4" },
+    }, ["openai"]);
+
+    expect(projected?.all.find((provider) => provider.id === "openai")?.source).toBe("config");
+    expect(projected?.all.find((provider) => provider.id === "ambient-only")?.source).toBe("env");
+    expect(projected?.connected).toEqual(["openai"]);
+    expect(getChatProviderCatalogItems(projected).map((provider) => provider.id)).toEqual(["openai"]);
+    expect(modelRuntimeAdapters.resolveModel({
+      engineId: DEEPSEEK_HARNESS_ENGINE_ID,
+      providers: projected!,
+      model: { providerID: "openai", modelID: "gpt-5.4" },
+    }).status).toBe("ready");
+  });
+
+  test("keeps authorization-center environment providers out of the chat picker", () => {
+    const projected = projectAccountProviderConnections({
+      all: [
+        {
+          id: "alibaba-cn",
+          name: "Alibaba (China)",
+          source: "env",
+          env: ["DASHSCOPE_API_KEY"],
+          models: { qwen: { id: "qwen", name: "Qwen", capabilities: {} } },
+        },
+        {
+          id: "openai",
+          name: "OpenAI",
+          source: "config",
+          env: [],
+          models: { "gpt-5.6": { id: "gpt-5.6", name: "GPT-5.6", capabilities: {} } },
+        },
+      ],
+      connected: [],
+      default: {},
+    }, ["openai"]);
+
+    expect(projected?.all.find((provider) => provider.id === "alibaba-cn")?.source).toBe("env");
+    expect(getSelectableChatProviderItems(projected).map((provider) => provider.id)).toEqual(["openai"]);
   });
 
   test("keeps disconnected catalog models available for the shared key flow", () => {
@@ -995,6 +1385,78 @@ describe("model runtime adapters", () => {
     );
   });
 
+  test("projects DSH's Codex OAuth route into the account OpenAI provider", async () => {
+    const client = {
+      async call<T>(method: string): Promise<T> {
+        if (method === "llm.models") {
+          return { groups: [
+            {
+              id: "openai",
+              name: "OpenAI API",
+              models: [{ id: "gpt-5", name: "GPT-5" }],
+            },
+            {
+              id: "openai-codex",
+              name: "OpenAI Codex",
+              models: [{ id: "gpt-5.4", name: "GPT-5.4" }],
+            },
+            {
+              id: "openai-codex-priority",
+              name: "OpenAI",
+              models: [{ id: "gpt-5.4-fast", name: "GPT-5.4 Fast" }],
+            },
+          ] } as T;
+        }
+        if (method === "llm.providers") {
+          return { providers: [
+            {
+              provider: "openai",
+              displayName: "OpenAI API",
+              settingsNs: "llm-pi-ai",
+              settingsPath: ["providers", "openai"],
+              active: true,
+            },
+            {
+              provider: "openai-codex",
+              displayName: "OpenAI Codex",
+              settingsNs: "llm-pi-ai",
+              settingsPath: ["providers", "openai-codex"],
+              active: true,
+            },
+          ] } as T;
+        }
+        if (method === "settings.describe") {
+          return { namespaces: [{
+            ns: "llm-pi-ai",
+            value: { providers: {
+              openai: { apiKeyEnv: "OPENAI_API_KEY" },
+              "openai-codex": { apiKeyEnv: "OPENAI_CODEX_API_KEY" },
+            } },
+          }] } as T;
+        }
+        if (method === "credentials.describe") {
+          return { credentials: {
+            OPENAI_API_KEY: { configured: true },
+            OPENAI_CODEX_API_KEY: { configured: true },
+          } } as T;
+        }
+        throw new Error(`Unexpected method: ${method}`);
+      },
+    };
+
+    const providers = await deepSeekHarnessProviderEngineAdapter.connect(client).listProviders();
+    expect(providers.all).toEqual([expect.objectContaining({
+      id: "openai",
+      models: expect.objectContaining({
+        "gpt-5": expect.any(Object),
+        "gpt-5.4": expect.any(Object),
+        "gpt-5.4-fast": expect.any(Object),
+      }),
+    })]);
+    expect(providers.connected).toEqual(["openai"]);
+    expect(providers.default).toEqual({ openai: "gpt-5" });
+  });
+
   test("disconnects every runtime-managed compatible provider, not only built-ins", async () => {
     const { calls, client } = createOpenCodeProviderClient();
     const runtimePatches: unknown[] = [];
@@ -1003,11 +1465,13 @@ describe("model runtime adapters", () => {
       id: "minimax",
       name: "MiniMax",
       source: "config" as const,
-      env: [],
+      env: ["MINIMAX_API_KEY"],
       models: { "MiniMax-M3": { id: "MiniMax-M3", name: "MiniMax-M3", capabilities: {} } },
     }];
     let connectedIds = ["minimax"];
     const serverClient = {
+      readOpencodeConfigFile: async () => ({ content: "{}" }),
+      writeOpencodeConfigFile: async () => ({ ok: true }),
       getConfig: async () => ({
         opencode: { provider: { minimax: { name: "MiniMax" } } },
         ipollowork: {},
@@ -1059,6 +1523,7 @@ describe("model runtime adapters", () => {
     expect(deletedEnvKeys).toEqual([
       sharedProviderCredentialEnvKey("minimax"),
       sharedProviderProfileEnvKey("minimax"),
+      "MINIMAX_API_KEY",
     ]);
     expect(calls).toContainEqual({ name: "remove", value: { providerID: "minimax" } });
     expect(connectedIds).not.toContain("minimax");

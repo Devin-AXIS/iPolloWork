@@ -4,6 +4,8 @@
   "version": "0.1.0",
   "description": "Packaged DeepSeek Harness CLI runtime for iPolloWork",
   "dependencies": {
-    "@deepseek-ai/dsh": "0.1.0-rc.6"
+    "@deepseek-ai/dsh": "0.1.0-rc.6",
+    "@deepseek-ai/dsh-llm-pi-ai": "0.1.0-rc.6",
+    "@earendil-works/pi-ai": "0.82.1"
   }
 }

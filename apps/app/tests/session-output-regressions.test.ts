@@ -110,6 +110,17 @@ describe("session output issue regressions", () => {
     expect(source).toContain('new Event("ipollowork:focusPrompt")');
   });
 
+  test("multiple generated file cards use a visible horizontal overflow rail", () => {
+    const source = readFileSync(
+      new URL("../src/components/chat/artifact.tsx", import.meta.url),
+      "utf8",
+    );
+
+    expect(source).toContain('compact ? "w-full" : "w-[17rem] flex-none snap-start"');
+    expect(source).toContain("overflow-x-auto overscroll-x-contain pb-2 [scrollbar-gutter:stable]");
+    expect(source).not.toContain("no-scrollbar flex min-w-0 flex-nowrap gap-2 overflow-x-auto");
+  });
+
   test("generated file links open in the internal right panel by default", () => {
     const source = readFileSync(
       new URL("../src/components/markdown/markdown.tsx", import.meta.url),
@@ -122,6 +133,29 @@ describe("session output issue regressions", () => {
 
     expect(clickHandler).toContain("onOpenTarget(target);");
     expect(clickHandler).not.toContain("external: true");
+  });
+
+  test("HTML files use persisted surface metadata and still offer explicit viewer overrides", () => {
+    const sessionPageSource = readFileSync(
+      new URL("../src/react-app/domains/session/chat/session-page.tsx", import.meta.url),
+      "utf8",
+    );
+    const menuSource = readFileSync(
+      new URL("../src/components/markdown/link-action-menu.tsx", import.meta.url),
+      "utf8",
+    );
+
+    expect(sessionPageSource).toContain("resolveOpenTargetTemplateSurface(target, sourceId)");
+    expect(sessionPageSource).toContain('if (templateSurface === "design")');
+    expect(sessionPageSource).toContain("openCurrentVideoStudio();");
+    expect(sessionPageSource).toContain('options?.viewer === "design"');
+    expect(sessionPageSource).toContain('options?.viewer === "preview"');
+    expect(sessionPageSource).toContain('options?.viewer === "video"');
+    expect(sessionPageSource).toContain("openArtifactTargetInPanel(target, sourceId, options?.auto)");
+    expect(menuSource).toContain('handleOpenWithViewer("design")');
+    expect(menuSource).toContain('handleOpenWithViewer("preview")');
+    expect(menuSource).toContain('handleOpenWithViewer("video")');
+    expect(menuSource).toContain('"link_action.open_recommended"');
   });
 
   test("generated video files open the session Video Studio from the message list", () => {

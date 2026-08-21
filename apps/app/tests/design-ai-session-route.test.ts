@@ -35,6 +35,14 @@ describe("Design AI session lifecycle", () => {
     useDesignAiSelectionStore.getState().resetSession("ses_1");
   });
 
+  test("persists the first user request as the initial session title", async () => {
+    const routeSource = await Bun.file(routeUrl).text();
+
+    expect(routeSource).toContain("isDefaultSessionTitle(targetSession.title)");
+    expect(routeSource).toContain("sessionTitleFromFirstPrompt(text)");
+    expect(routeSource).toContain("await conversation.rename(targetSessionId, initialTitle");
+  });
+
   test("expands the selected Design chip to a synthetic scoped agent instruction", async () => {
     expect(sessionPrompt.draftToParts).toBeFunction();
     if (typeof sessionPrompt.draftToParts !== "function") return;

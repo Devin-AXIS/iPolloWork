@@ -35,15 +35,17 @@ const desktopConfigSource = readFileSync(
 ).replaceAll("\r\n", "\n");
 
 describe("startup session loading", () => {
-  test("keeps historical sessions idle until the user opens or creates a task", () => {
+  test("opens a sessionless fresh composer instead of restoring or eagerly creating a session", () => {
     expect(routeStateSource).not.toContain("readLastSessionFor");
     expect(routeStateSource).toContain(
       "navigateToWorkspaceSession(selectedWorkspaceId, null, { replace: true });",
     );
+    expect(sessionRouteSource).not.toContain("startupConversationPhase");
+    expect(sessionRouteSource).toContain("const handleCreateTaskFromDraft = useCallback(");
+    expect(sessionRouteSource).toContain("setPendingInitialProjectTask({ workspaceId, sessionId: null, draft });");
     expect(sessionRouteSource).toContain(
       "pendingProjectSelectionRef",
     );
-    expect(sessionRouteSource).not.toContain("startupConversationPhase");
     expect(sessionRouteSource).not.toContain("const targetSessionId = remembered");
   });
 
@@ -55,6 +57,13 @@ describe("startup session loading", () => {
     expect(firstRunLoaderSource).not.toContain("Preparing workspace");
   });
 
+  test("reveals the create-project empty state after workspace discovery settles", () => {
+    expect(sessionRouteSource).toContain("if (!loading && workspaces.length === 0)");
+    expect(sessionRouteSource).toMatch(
+      /if \(!loading && workspaces\.length === 0\) \{\s+dismissFirstRunLoader\(\);\s+return;/,
+    );
+  });
+
   test("subscribes to resources for only the selected session", () => {
     expect(runtimeSource).toContain(
       "trackWorkspaceSessionsSync(input, props.sessionId ? [props.sessionId] : [])",
@@ -62,6 +71,13 @@ describe("startup session loading", () => {
     expect(runtimeSource).not.toContain("activeSessionIds");
     expect(sessionRouteSource).not.toContain("activeSessionIds=");
     expect(sessionRouteSource).not.toContain("loadWorkspaceSessionsInBackground(initialLoads.background)");
+  });
+
+  test("keeps the sidebar data mounted when only the selected project or task route changes", () => {
+    expect(routeStateSource).toContain("const routeSelectionRef = useRef({ workspaceId: routeWorkspaceId, sessionId: selectedSessionId })");
+    expect(routeStateSource).toContain("const requestedRouteSelection = routeSelectionRef.current");
+    expect(routeStateSource).toContain("}, [loadWorkspaceSessionsInBackground, markBootRouteReady, workContextId]);");
+    expect(routeStateSource).not.toContain("markBootRouteReady, routeWorkspaceId, selectedSessionId, workContextId");
   });
 
   test("destroys the old view and reuses the startup loading artwork while switching", () => {
