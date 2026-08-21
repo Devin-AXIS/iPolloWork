@@ -5,6 +5,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import {
+  codexHarnessPluginEngineAdapter,
   deepSeekHarnessPluginEngineAdapter,
   openCodePluginEngineAdapter,
   pluginEngineAdapters,
@@ -207,6 +208,7 @@ describe("plugin package lifecycle", () => {
   test("registers unique engine adapters and rejects duplicate IDs", () => {
     const alternateAdapter: PluginEngineAdapter = {
       id: "deepseek-harness",
+      projectionRoots: [".alternate"],
       portableResourceTypes: new Set(["skill"]),
       nativeCapabilityKinds: new Set(),
       compatibility: () => [],
@@ -219,8 +221,12 @@ describe("plugin package lifecycle", () => {
     expect(registry.ids()).toEqual([ENGINE_ID, "deepseek-harness"]);
     expect(registry.get(ENGINE_ID)).toBe(openCodePluginEngineAdapter);
     expect(registry.get("deepseek-harness")).toBe(alternateAdapter);
-    expect(pluginEngineAdapters.ids()).toEqual([ENGINE_ID, "deepseek-harness"]);
+    expect(pluginEngineAdapters.ids()).toEqual([ENGINE_ID, "deepseek-harness", "codex-harness"]);
     expect(pluginEngineAdapters.get("deepseek-harness")).toBe(deepSeekHarnessPluginEngineAdapter);
+    expect(pluginEngineAdapters.get("codex-harness")).toBe(codexHarnessPluginEngineAdapter);
+    expect(openCodePluginEngineAdapter.projectionRoots).toEqual([".opencode"]);
+    expect(deepSeekHarnessPluginEngineAdapter.projectionRoots).toEqual([".dsh"]);
+    expect(codexHarnessPluginEngineAdapter.projectionRoots).toEqual([".agents"]);
     expect(() => new PluginEngineAdapterRegistry([
       openCodePluginEngineAdapter,
       openCodePluginEngineAdapter,
@@ -248,6 +254,11 @@ describe("plugin package lifecycle", () => {
     });
     expect(pluginEngineCompatibility(deepSeekHarnessPluginEngineAdapter, manifest)).toMatchObject({
       engineId: "deepseek-harness",
+      status: "ready",
+      supportedResourceIds: ["acme-skill", "private-mcp"],
+    });
+    expect(pluginEngineCompatibility(codexHarnessPluginEngineAdapter, manifest)).toMatchObject({
+      engineId: "codex-harness",
       status: "ready",
       supportedResourceIds: ["acme-skill", "private-mcp"],
     });
@@ -629,6 +640,27 @@ describe("plugin package lifecycle", () => {
     await expectMissing(join(workspaceRoot, ".dsh", "skills", "acme-research", "SKILL.md"));
   });
 
+  test("installs portable skills through the Codex Harness adapter", async () => {
+    const lifecycle = await import("./plugin-package-lifecycle.js");
+    const workspaceRoot = await createRoot("ipollowork-plugin-codex-workspace-");
+    const packageRoot = await createRoot("ipollowork-plugin-codex-package-");
+    await writeDeclarativePackage(packageRoot);
+    const skill = "---\nname: acme-research\ndescription: Research with Acme.\n---\n\n# Acme Research\n";
+    await writeFile(join(packageRoot, "skills", "acme-research", "SKILL.md"), skill, "utf8");
+    const config = serverConfig(workspaceRoot);
+    const workspace = config.workspaces[0];
+    if (!workspace) throw new Error("Test workspace is missing");
+    workspace.engineId = "codex-harness";
+
+    const installed = await lifecycle.installPluginPackage({ serverConfig: config, packageRoot });
+    expect(installed).toMatchObject({ status: "installed", pluginId: "acme-research" });
+    expect(await readFile(join(workspaceRoot, ".agents", "skills", "acme-research", "SKILL.md"), "utf8")).toBe(skill);
+    await expectMissing(join(workspaceRoot, ".opencode", "skills", "acme-research", "SKILL.md"));
+
+    await lifecycle.uninstallPluginPackage({ serverConfig: config, pluginId: "acme-research" });
+    await expectMissing(join(workspaceRoot, ".agents", "skills", "acme-research", "SKILL.md"));
+  });
+
   test("projects bundled Design and Video packages into DeepSeek Harness skills", async () => {
     const lifecycle = await import("./plugin-package-lifecycle.js");
     const workspaceRoot = await createRoot("ipollowork-plugin-dsh-creative-workspace-");
@@ -901,6 +933,41 @@ describe("plugin package lifecycle", () => {
     }
   });
 
+  test("lists the same bundled packages for the Codex Harness engine", async () => {
+    const workspaceRoot = await createRoot("ipollowork-plugin-codex-catalog-workspace-");
+    process.env.IPOLLOWORK_RUNTIME_DB = join(workspaceRoot, "runtime.sqlite");
+    const config = serverConfig(workspaceRoot);
+    const workspace = config.workspaces[0];
+    if (!workspace) throw new Error("Test workspace is missing");
+    workspace.engineId = "codex-harness";
+    const server = await startServer(config);
+
+    try {
+      const response = await fetch(`http://127.0.0.1:${server.port}/workspace/${WORKSPACE_ID}/plugin-packages/catalog`, {
+        headers: { authorization: "Bearer token" },
+      });
+      expect(response.status).toBe(200);
+      const payload = await response.json();
+      const pluginIds = payload.items.map((item: { pluginId: string }) => item.pluginId);
+      expect(pluginIds).toEqual([...bundledPluginPackageIds]);
+      for (const item of payload.items as Array<{
+        pluginId: string;
+        engineCompatibility: Array<{ engineId: string; status: string }>;
+      }>) {
+        const compatibility = new Map(item.engineCompatibility.map((entry) => [entry.engineId, entry.status]));
+        expect(compatibility.get("opencode")).toBe("ready");
+        expect(compatibility.get("deepseek-harness")).toBe(
+          item.pluginId === "deepseek-harness" ? "partial" : "ready",
+        );
+        expect(compatibility.get("codex-harness")).toBe(
+          item.pluginId === "deepseek-harness" ? "partial" : "ready",
+        );
+      }
+    } finally {
+      await server.stop();
+    }
+  });
+
   test("keeps Work-layer resources while projecting DeepSeek Harness skills", async () => {
     const lifecycle = await import("./plugin-package-lifecycle.js");
     const workspaceRoot = await createRoot("ipollowork-plugin-dsh-unsupported-workspace-");
@@ -922,7 +989,7 @@ describe("plugin package lifecycle", () => {
     expect(preview.writes.map((file) => file.path)).toEqual([".dsh/skills/acme-research/SKILL.md"]);
   });
 
-  test("exposes portable plugin commands and agents to DeepSeek Harness and removes them with the global lifecycle", async () => {
+  test("exposes portable plugin commands and agents to both Harness engines", async () => {
     const lifecycle = await import("./plugin-package-lifecycle.js");
     const workspaceRoot = await createRoot("ipollowork-plugin-dsh-prompts-workspace-");
     const packageRoot = await createRoot("ipollowork-plugin-dsh-prompts-package-");
@@ -950,6 +1017,13 @@ describe("plugin package lifecycle", () => {
       expect.objectContaining({ type: "agent", name: "research-reviewer", description: "Review research claims" }),
       expect.objectContaining({ type: "command", name: "research-topic", description: "Research a topic" }),
     ]);
+    expect(await lifecycle.listPortablePluginPromptCapabilities({
+      serverConfig: config,
+      engineId: "codex-harness",
+    })).toEqual([
+      expect.objectContaining({ type: "agent", name: "research-reviewer", description: "Review research claims" }),
+      expect.objectContaining({ type: "command", name: "research-topic", description: "Research a topic" }),
+    ]);
 
     await lifecycle.setPluginPackageEnabled({
       serverConfig: config,
@@ -959,6 +1033,10 @@ describe("plugin package lifecycle", () => {
     expect(await lifecycle.listPortablePluginPromptCapabilities({
       serverConfig: config,
       engineId: "deepseek-harness",
+    })).toEqual([]);
+    expect(await lifecycle.listPortablePluginPromptCapabilities({
+      serverConfig: config,
+      engineId: "codex-harness",
     })).toEqual([]);
 
     await lifecycle.uninstallPluginPackage({ serverConfig: config, pluginId: "acme-research" });

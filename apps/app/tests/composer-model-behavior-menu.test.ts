@@ -90,6 +90,7 @@ describe("Composer model and reasoning menu", () => {
     expect(source).toContain("if ((!open && !compactOpen) || (!client && catalogSources.length === 0)) return;");
     expect(source).toContain("ensureMergedProviderListQuery");
     expect(source).toContain("catalogSources.length ? catalogSources : activeSources");
+    expect(source).not.toContain("force: true");
     expect(source).toContain("mergeProviderListResponses([data, runtimeData])");
     expect(source).toContain("filterProviderList(");
     expect(source).toContain("disabledProviderIds = []");
@@ -119,6 +120,7 @@ describe("Composer model and reasoning menu", () => {
     expect(model).toContain("function groupByProvider(modelOptions: ModelOption[])");
     expect(model).toContain("useMergedProviderListQuery");
     expect(model).not.toContain("await refetch()");
+    expect(model).not.toContain("refreshProviderListQueries");
     expect(model).toContain("getRunnableChatModelEntries({");
     expect(model).toContain("mergeProviderListResponses([catalogQuery.data, runtimeQuery.data])");
     expect(model).toContain('t("settings.loading_providers")');

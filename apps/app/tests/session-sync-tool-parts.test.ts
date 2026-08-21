@@ -19,7 +19,10 @@ function applyOpenCodeEvent(
   const mapped = mapOpenCodeConversationEvent(event);
   if (mapped) __applySessionSyncEventForTest(input, mapped);
 }
-import { describeOpencodeSessionError } from "../src/react-app/domains/session/engine/opencode-message-adapter";
+import {
+  describeConversationSessionError,
+  describeOpencodeSessionError,
+} from "../src/react-app/domains/session/engine/opencode-message-adapter";
 import {
   parseDynamicToolUIPart,
   parseStructuredOutputUIPart,
@@ -101,6 +104,12 @@ describe("tool part mapper", () => {
       name: "MessageAbortedError",
       message: "Aborted",
     })).toBe("The run was interrupted before it finished. If you clicked Stop, the interruption was requested by you.");
+  });
+
+  test("turns exhausted 429 retries into an actionable provider error", () => {
+    const message = describeConversationSessionError("exceeded retry limit, last status: 429 Too Many Requests");
+    expect(message).toContain("429");
+    expect(message).not.toContain("exceeded retry limit");
   });
 
   test("defers in-progress tools with empty input", () => {

@@ -2,9 +2,7 @@ import type {
   EnginePluginPromptSelection,
   PluginPromptCapabilitySummary,
 } from "@ipollowork/types/plugins";
-
-type RpcValue<T> = { value: T };
-const DEEPSEEK_HARNESS_RPC_TIMEOUT_MS = 30_000;
+import { WorkspaceEngineRpcClient } from "./workspace-engine-rpc-client";
 
 export type DeepSeekHarnessServerRequest = {
   type: "server-request";
@@ -26,88 +24,37 @@ export function deepSeekHarnessAccountProviderId(providerId: string): string {
 }
 
 export class DeepSeekHarnessClient implements DeepSeekHarnessRpcClient {
-  readonly #baseUrl: string;
-  readonly #headers: HeadersInit;
+  readonly #client: WorkspaceEngineRpcClient;
 
   constructor(input: { serverBaseUrl: string; workspaceId: string; token?: string }) {
-    const serverBaseUrl = input.serverBaseUrl.replace(/\/+$/, "");
-    this.#baseUrl = `${serverBaseUrl}/workspace/${encodeURIComponent(input.workspaceId)}/engine/deepseek-harness`;
-    this.#headers = {
-      "content-type": "application/json",
-      ...(input.token ? { authorization: `Bearer ${input.token}` } : {}),
-    };
+    this.#client = new WorkspaceEngineRpcClient({
+      ...input,
+      name: "DeepSeek Harness",
+      engineId: "deepseek-harness",
+    });
   }
 
   async call<T>(method: string, payload: unknown = {}): Promise<T> {
-    const response = await fetch(`${this.#baseUrl}/rpc`, {
-      method: "POST",
-      headers: this.#headers,
-      body: JSON.stringify({ method, payload }),
-      signal: AbortSignal.timeout(DEEPSEEK_HARNESS_RPC_TIMEOUT_MS),
-    });
-    if (!response.ok) throw await responseError(response);
-    return (await response.json() as RpcValue<T>).value;
+    return this.#client.call(method, payload);
   }
 
   async respond(rpcId: string, result: unknown): Promise<void> {
-    const response = await fetch(`${this.#baseUrl}/respond`, {
-      method: "POST",
-      headers: this.#headers,
-      body: JSON.stringify({ rpcId, result }),
-    });
-    if (!response.ok) throw await responseError(response);
+    await this.#client.respond(rpcId, result);
   }
 
   async pluginCapabilities(): Promise<PluginPromptCapabilitySummary[]> {
-    const response = await fetch(`${this.#baseUrl}/plugin-capabilities`, {
-      headers: this.#headers,
-    });
-    if (!response.ok) throw await responseError(response);
-    const payload = await response.json() as { items?: PluginPromptCapabilitySummary[] };
-    return Array.isArray(payload.items) ? payload.items : [];
+    return this.#client.pluginCapabilities();
   }
 
   async prompt(payload: Record<string, unknown>, plugins?: EnginePluginPromptSelection): Promise<void> {
-    const response = await fetch(`${this.#baseUrl}/prompt`, {
-      method: "POST",
-      headers: this.#headers,
-      body: JSON.stringify({ payload, ...(plugins ? { plugins } : {}) }),
-    });
-    if (!response.ok) throw await responseError(response);
+    await this.#client.prompt(payload, plugins);
   }
 
   async *events(stream: "mux" | "host", signal: AbortSignal): AsyncGenerator<DeepSeekHarnessServerRequest> {
-    const response = await fetch(`${this.#baseUrl}/events/${stream}`, {
-      headers: this.#headers,
-      signal,
-    });
-    if (!response.ok || !response.body) throw await responseError(response);
-    const reader = response.body.getReader();
-    const decoder = new TextDecoder();
-    let buffer = "";
-    try {
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) return;
-        buffer += decoder.decode(value, { stream: true });
-        let boundary = buffer.indexOf("\n\n");
-        while (boundary !== -1) {
-          const chunk = buffer.slice(0, boundary);
-          buffer = buffer.slice(boundary + 2);
-          const data = chunk
-            .split("\n")
-            .filter((line) => line.startsWith("data: "))
-            .map((line) => line.slice(6))
-            .join("");
-          if (data) {
-            const parsed = JSON.parse(data) as DeepSeekHarnessServerRequest;
-            if (parsed?.type === "server-request" && typeof parsed.rpcId === "string") yield parsed;
-          }
-          boundary = buffer.indexOf("\n\n");
-        }
+    for await (const parsed of this.#client.events(stream, signal)) {
+      if (parsed?.type === "server-request" && typeof parsed.rpcId === "string") {
+        yield parsed as DeepSeekHarnessServerRequest;
       }
-    } finally {
-      reader.releaseLock();
     }
   }
 }
@@ -117,13 +64,4 @@ export function isDeepSeekHarnessRpcClient(value: unknown): value is DeepSeekHar
     && value !== null
     && "call" in value
     && typeof value.call === "function";
-}
-
-async function responseError(response: Response): Promise<Error> {
-  try {
-    const body = await response.json() as { message?: string; error?: { message?: string } };
-    return new Error(body.message || body.error?.message || `DeepSeek Harness request failed (${response.status})`);
-  } catch {
-    return new Error(`DeepSeek Harness request failed (${response.status})`);
-  }
 }

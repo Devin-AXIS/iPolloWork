@@ -85,10 +85,10 @@ export function designSelectionContextsForDraft(
   return [...contexts.values()];
 }
 
-export async function promptDesignSelectionContexts(input: {
+export async function promptDesignSelectionContexts<T>(input: {
   contexts: DesignAiSelectionContext[];
   workspaceClient: DesignSelectionWorkspaceClient;
-  prompt: () => Promise<void | { error?: unknown }>;
+  prompt: () => Promise<T>;
   designSelectionStore?: DesignSelectionStore;
 }) {
   const designSelectionStore = input.designSelectionStore ?? useDesignAiSelectionStore;
@@ -108,7 +108,9 @@ export async function promptDesignSelectionContexts(input: {
       designSelectionStore.getState().markRunning(context.id);
     }
     const result = await input.prompt();
-    if (result?.error) throw new Error(serializeSDKError(result.error));
+    if (result && typeof result === "object" && "error" in result && result.error) {
+      throw new Error(serializeSDKError(result.error));
+    }
     return result;
   } catch (error) {
     for (const context of input.contexts) designSelectionStore.getState().fail(context.id);

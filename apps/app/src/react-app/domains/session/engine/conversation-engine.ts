@@ -164,12 +164,17 @@ export type ConversationSubscribeInput = {
 
 export type ConversationPromptInput = {
   sessionId: string;
+  clientUserMessageId?: string;
   parts: ConversationPromptPart[];
   model?: ModelRef;
   mode?: string;
   variant?: string;
   reasoningEffort?: string;
   system?: string;
+};
+
+export type ConversationPromptResult = {
+  sessionId: string;
 };
 
 export interface ConversationEngineConnection {
@@ -207,7 +212,7 @@ export interface ConversationEngineConnection {
     directory?: string;
     reasoningEffort?: string;
   }): Promise<void>;
-  sendPrompt(input: ConversationPromptInput): Promise<void>;
+  sendPrompt(input: ConversationPromptInput): Promise<ConversationPromptResult>;
   listCommands(directory?: string): Promise<SlashCommandOption[]>;
   listModes(): Promise<ConversationMode[]>;
   listAgents(): Promise<ConversationAgent[]>;

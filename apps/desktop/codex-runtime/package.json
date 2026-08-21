@@ -1,0 +1,9 @@
+{
+  "name": "@ipollowork/codex-runtime",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Packaged Codex Harness CLI runtime for iPolloWork",
+  "dependencies": {
+    "@openai/codex": "0.149.0"
+  }
+}

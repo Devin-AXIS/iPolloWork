@@ -80,6 +80,43 @@ function configureBundledDshRuntime() {
 }
 
 configureBundledDshRuntime();
+
+function configureBundledCodexRuntime() {
+  try {
+    if (process.env.IPOLLOWORK_CODEX_CLI?.trim()) return;
+    const runtimeRoot = app.isPackaged
+      ? path.join(process.resourcesPath, "codex-runtime")
+      : path.resolve(__dirname, "..", "codex-runtime");
+    const packageRoot = path.join(runtimeRoot, "node_modules", "@openai", "codex");
+    const manifest = require(path.join(packageRoot, "package.json"));
+    let cliPath = path.join(packageRoot, "bin", "codex.js");
+    if (process.platform === "win32") {
+      const target = process.arch === "arm64"
+        ? { packageName: "codex-win32-arm64", triple: "aarch64-pc-windows-msvc" }
+        : process.arch === "x64"
+          ? { packageName: "codex-win32-x64", triple: "x86_64-pc-windows-msvc" }
+          : null;
+      if (!target) return;
+      cliPath = path.join(
+        runtimeRoot,
+        "node_modules",
+        "@openai",
+        target.packageName,
+        "vendor",
+        target.triple,
+        "bin",
+        "codex.exe",
+      );
+    }
+    if (!existsSync(cliPath)) return;
+    process.env.IPOLLOWORK_CODEX_CLI = cliPath;
+    if (typeof manifest.version === "string") process.env.IPOLLOWORK_CODEX_CLI_VERSION = manifest.version;
+  } catch {
+    // The Codex adapter reports an unavailable runtime if packaging omitted it.
+  }
+}
+
+configureBundledCodexRuntime();
 const NATIVE_DEEP_LINK_EVENT = "ipollowork:deep-link-native";
 const DESKTOP_RESUMED_EVENT = "ipollowork:desktop-resumed";
 const TAURI_APP_IDENTIFIER = "com.differentai.ipollowork";

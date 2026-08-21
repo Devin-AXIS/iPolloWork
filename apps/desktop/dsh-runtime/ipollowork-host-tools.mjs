@@ -1,8 +1,10 @@
 import { PiAiAdapter } from "@deepseek-ai/dsh-llm-pi-ai";
+import { resolveRetryPolicy } from "@deepseek-ai/dsh-llm";
 import { openaiCodexProvider } from "@earendil-works/pi-ai/providers/openai-codex";
 
 export const OPENAI_CODEX_PRIORITY_PROVIDER_ID = "openai-codex-priority";
 export const OPENAI_CODEX_PRIORITY_CREDENTIAL_REF = "OPENAI_CODEX_API_KEY";
+const PRIORITY_SERVICE_TIER = "priority";
 
 const OPENAI_CODEX_PRIORITY_MODEL_IDS = new Set([
   "gpt-5.4",
@@ -16,6 +18,7 @@ function requiredEnvironment(name) {
   return value;
 }
 
+/** @param {unknown} value @returns {value is Record<string, unknown>} */
 function isRecord(value) {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -55,7 +58,7 @@ export function createOpenAiCodexPriorityProvider(baseProvider = openaiCodexProv
     return {
       ...options,
       reasoningEffort,
-      serviceTier: "priority",
+      serviceTier: /** @type {"priority"} */ (PRIORITY_SERVICE_TIER),
     };
   };
 
@@ -67,7 +70,7 @@ export function createOpenAiCodexPriorityProvider(baseProvider = openaiCodexProv
     stream: (model, context, options) => baseProvider.stream(
       baseModel(model),
       context,
-      { ...options, serviceTier: "priority" },
+      { ...options, serviceTier: /** @type {"priority"} */ (PRIORITY_SERVICE_TIER) },
     ),
     streamSimple: (model, context, options) => baseProvider.stream(
       baseModel(model),
@@ -110,6 +113,7 @@ export function registerOpenAiCodexPriorityModels(ctx) {
     piProvider: provider,
     configuredMaxTokens: new Map(),
     streamIdleTimeoutMs: 120_000,
+    retryPolicy: resolveRetryPolicy(undefined, "providers.openai-codex-priority.retryPolicy"),
   };
   const profiles = new Map([[OPENAI_CODEX_PRIORITY_PROVIDER_ID, profile]]);
   const adapter = new OpenAiCodexPriorityAdapter({

@@ -20,6 +20,7 @@ import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { currentLocale, t } from "@/i18n";
+import { CODEX_HARNESS_ENGINE_ID, DEEPSEEK_HARNESS_ENGINE_ID, DEFAULT_ENGINE_ID } from "@ipollowork/types/workspace";
 import type {
   iPolloWorkPluginAuthorizationState,
   iPolloWorkBundledPluginPackageItem,
@@ -132,7 +133,9 @@ function statusText(state: iPolloWorkPluginAuthorizationState | undefined, requi
 }
 
 function engineName(engineId: string): string {
-  return engineId === "deepseek-harness" ? "DeepSeek Harness" : engineId === "opencode" ? "OpenCode" : engineId;
+  if (engineId === CODEX_HARNESS_ENGINE_ID) return t("projects.engine_codex");
+  if (engineId === DEEPSEEK_HARNESS_ENGINE_ID) return t("projects.engine_dsh");
+  return engineId === DEFAULT_ENGINE_ID ? t("projects.engine_opencode") : engineId;
 }
 
 function engineScopeBadge(item: iPolloWorkPluginPackageItem | iPolloWorkBundledPluginPackageItem): ReactNode {

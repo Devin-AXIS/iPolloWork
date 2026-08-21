@@ -3,6 +3,8 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { z } from "zod";
+import { Client as McpClient } from "@modelcontextprotocol/sdk/client/index.js";
+import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 
 import { writeRuntimeOpencodeConfig } from "./runtime-opencode-config-store.js";
 import { startServer } from "./server.js";
@@ -240,6 +242,39 @@ describe("Connect-aware legacy extension gating", () => {
     const call = await callResponse.json() as { actions?: Array<{ extensionId?: string }> };
     expect(call.actions?.length).toBeGreaterThan(0);
     expect(call.actions?.every((action) => action.extensionId === "storage")).toBe(true);
+  });
+
+  test("exposes the shared host tools through the Codex-compatible MCP bridge", async () => {
+    const { base } = await boot();
+    const client = new McpClient({ name: "ipollowork-host-test", version: "1.0.0" });
+    const transport = new StreamableHTTPClientTransport(
+      new URL(`${base}/engine-tools/mcp?workspaceId=ws_1`),
+      { requestInit: { headers: clientHeaders() } },
+    );
+    try {
+      await client.connect(transport);
+      const tools = await client.listTools();
+      expect(tools.tools.map((tool) => tool.name)).toEqual([
+        "ipollowork_extension_list_actions",
+        "ipollowork_extension_call",
+        "ipollowork_project_read",
+        "ipollowork_project_apply",
+        "ipollowork_workspace_app_list_tools",
+        "ipollowork_workspace_app_call_tool",
+      ]);
+      const result = await client.callTool({
+        name: "ipollowork_extension_list_actions",
+        arguments: { extensionId: "storage" },
+      });
+      expect(result.structuredContent).toMatchObject({
+        ok: true,
+        actions: expect.arrayContaining([
+          expect.objectContaining({ extensionId: "storage" }),
+        ]),
+      });
+    } finally {
+      await client.close();
+    }
   });
 
   test("reads and applies a validated project through the shared engine host tools", async () => {

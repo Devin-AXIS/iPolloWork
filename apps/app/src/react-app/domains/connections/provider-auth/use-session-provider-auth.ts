@@ -107,6 +107,7 @@ export function useSessionProviderAuth(input: UseSessionProviderAuthInput) {
         providerBaseUrl: () => stateRef.current.providerBaseUrl,
         selectedWorkspaceRoot: () => stateRef.current.selectedWorkspaceRoot,
         allowCloudImports: () => (stateRef.current.selectedWorkspace?.engineId?.trim() || DEFAULT_ENGINE_ID) === DEFAULT_ENGINE_ID,
+        deferSharedProviderImport: () => true,
         runtimeWorkspaceId: () => stateRef.current.selectedWorkspaceEndpoint?.workspaceId ?? null,
         ipolloworkServer: {
           getSnapshot: () => ({

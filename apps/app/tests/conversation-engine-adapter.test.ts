@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import {
+  CODEX_HARNESS_ENGINE_ID,
   DEEPSEEK_HARNESS_ENGINE_ID,
   DEEPSEEK_HARNESS_INTERNAL_SYSTEM_PREFIX,
   DEFAULT_ENGINE_ID,
@@ -8,6 +9,7 @@ import {
 import {
   ConversationEngineAdapterRegistry,
   type ConversationEngineAdapter,
+  type ConversationPermission,
 } from "../src/react-app/domains/session/engine/conversation-engine";
 import {
   openCodeConversationEngineAdapter,
@@ -22,15 +24,410 @@ import {
   mapOpenCodeConversationEvent,
   mapOpenCodeConversationSnapshot,
 } from "../src/react-app/domains/session/engine/opencode-conversation-mapper";
+import {
+  createCodexLiveState,
+  mapCodexHarnessEvent,
+} from "../src/react-app/domains/session/engine/codex-harness-conversation-mapper";
 
 describe("conversation engine adapters", () => {
-  test("keeps OpenCode as default while registering DeepSeek Harness as a peer", () => {
-    expect(conversationEngineAdapters.ids()).toEqual([DEFAULT_ENGINE_ID, DEEPSEEK_HARNESS_ENGINE_ID]);
+  test("keeps OpenCode as default while registering Harness engines as peers", () => {
+    expect(conversationEngineAdapters.ids()).toEqual([
+      DEFAULT_ENGINE_ID,
+      DEEPSEEK_HARNESS_ENGINE_ID,
+      CODEX_HARNESS_ENGINE_ID,
+    ]);
     expect(conversationEngineAdapters.get()).toBe(openCodeConversationEngineAdapter);
     expect(conversationEngineAdapters.get(DEEPSEEK_HARNESS_ENGINE_ID).id).toBe(DEEPSEEK_HARNESS_ENGINE_ID);
+    expect(conversationEngineAdapters.get(CODEX_HARNESS_ENGINE_ID).id).toBe(CODEX_HARNESS_ENGINE_ID);
     expect(() => conversationEngineAdapters.get("unknown")).toThrow(
       "Conversation engine is not registered: unknown",
     );
+  });
+
+  test("maps Codex app-server turns, streaming output, and approvals into the shared protocol", () => {
+    const state = createCodexLiveState();
+    expect(mapCodexHarnessEvent({
+      type: "notification",
+      method: "turn/started",
+      params: { threadId: "codex-thread", turn: { id: "turn-1" } },
+    }, state)).toEqual([{ type: "session.status", sessionId: "codex-thread", status: { type: "busy" } }]);
+
+    expect(mapCodexHarnessEvent({
+      type: "notification",
+      method: "item/started",
+      params: {
+        threadId: "codex-thread",
+        turnId: "turn-1",
+        startedAtMs: 9,
+        item: {
+          type: "userMessage",
+          id: "codex-user-item",
+          clientId: "ipollowork-user-1",
+          content: [{ type: "text", text: "立即显示" }],
+        },
+      },
+    }, state)).toEqual([expect.objectContaining({
+      type: "message.upsert",
+      message: expect.objectContaining({ id: "ipollowork-user-1", role: "user" }),
+    })]);
+
+    expect(mapCodexHarnessEvent({
+      type: "notification",
+      method: "item/started",
+      params: {
+        threadId: "codex-thread",
+        turnId: "turn-1",
+        startedAtMs: 10,
+        item: { type: "agentMessage", id: "answer-1", text: "" },
+      },
+    }, state)).toEqual([expect.objectContaining({
+      type: "message.upsert",
+      message: expect.objectContaining({ id: "answer-1", role: "assistant" }),
+    })]);
+
+    expect(mapCodexHarnessEvent({
+      type: "notification",
+      method: "item/agentMessage/delta",
+      params: { threadId: "codex-thread", turnId: "turn-1", itemId: "answer-1", delta: "完成" },
+    }, state)).toEqual([expect.objectContaining({
+      type: "message.chunk",
+      messageId: "answer-1",
+      chunk: expect.objectContaining({ type: "text-delta", delta: "完成" }),
+    })]);
+
+    expect(mapCodexHarnessEvent({
+      type: "notification",
+      method: "item/completed",
+      params: {
+        threadId: "codex-thread",
+        turnId: "turn-1",
+        completedAtMs: 12,
+        item: {
+          type: "agentMessage",
+          id: "answer-1",
+          content: [{ type: "text", text: "完成" }],
+        },
+      },
+    }, state)).toEqual([expect.objectContaining({
+      type: "message.upsert",
+      message: expect.objectContaining({
+        id: "answer-1",
+        parts: [expect.objectContaining({ type: "text", text: "完成", state: "done" })],
+      }),
+    })]);
+
+    const completedTurnEvents = mapCodexHarnessEvent({
+      type: "notification",
+      method: "turn/completed",
+      params: { threadId: "codex-thread", turn: { id: "turn-1", status: "completed" } },
+    }, state);
+    expect(completedTurnEvents).toContainEqual({ type: "session.idle", sessionId: "codex-thread" });
+    expect(completedTurnEvents.some((event) => event.type === "session.error")).toBe(false);
+
+    expect(mapCodexHarnessEvent({
+      type: "request",
+      id: 7,
+      method: "item/commandExecution/requestApproval",
+      params: { threadId: "codex-thread", turnId: "turn-1", itemId: "tool-1", command: "pnpm test" },
+    }, state)).toEqual([expect.objectContaining({
+      type: "permission.asked",
+      permission: expect.objectContaining({ sessionId: "codex-thread", kind: "shell", resources: ["pnpm test"] }),
+    })]);
+
+    expect(mapCodexHarnessEvent({
+      type: "request",
+      id: "legacy-approval",
+      method: "execCommandApproval",
+      params: {
+        conversationId: "codex-thread",
+        command: ["powershell.exe", "-Command", "Get-ChildItem"],
+        cwd: "C:\\workspace",
+      },
+    }, state)).toEqual([expect.objectContaining({
+      type: "permission.asked",
+      permission: expect.objectContaining({
+        sessionId: "codex-thread",
+        kind: "shell",
+        resources: ["powershell.exe -Command Get-ChildItem", "C:\\workspace"],
+      }),
+    })]);
+  });
+
+  test("does not mark a Codex reasoning-only turn as successfully processed", () => {
+    const state = createCodexLiveState();
+    mapCodexHarnessEvent({
+      type: "notification",
+      method: "turn/started",
+      params: { threadId: "codex-thread", turn: { id: "turn-without-result" } },
+    }, state);
+    mapCodexHarnessEvent({
+      type: "notification",
+      method: "item/completed",
+      params: {
+        threadId: "codex-thread",
+        turnId: "turn-without-result",
+        item: { type: "reasoning", id: "reasoning-only", summary: ["Still thinking"] },
+      },
+    }, state);
+
+    expect(mapCodexHarnessEvent({
+      type: "notification",
+      method: "turn/completed",
+      params: { threadId: "codex-thread", turn: { id: "turn-without-result", status: "completed" } },
+    }, state)).toEqual(expect.arrayContaining([
+      {
+        type: "session.error",
+        sessionId: "codex-thread",
+        errorText: "Codex 已结束处理，但没有返回最终结果。请重试这条需求。",
+      },
+      { type: "session.idle", sessionId: "codex-thread" },
+    ]));
+  });
+
+  test("keeps Codex completion state isolated to the matching user turn", () => {
+    const state = createCodexLiveState();
+    mapCodexHarnessEvent({
+      type: "notification",
+      method: "turn/started",
+      params: { threadId: "codex-thread", turn: { id: "turn-with-result" } },
+    }, state);
+    mapCodexHarnessEvent({
+      type: "notification",
+      method: "item/completed",
+      params: {
+        threadId: "codex-thread",
+        turnId: "turn-with-result",
+        item: { type: "agentMessage", id: "answer-first", text: "第一轮结果" },
+      },
+    }, state);
+    expect(mapCodexHarnessEvent({
+      type: "notification",
+      method: "turn/completed",
+      params: { threadId: "codex-thread", turn: { id: "turn-with-result", status: "completed" } },
+    }, state).some((event) => event.type === "session.error")).toBe(false);
+
+    mapCodexHarnessEvent({
+      type: "notification",
+      method: "turn/started",
+      params: { threadId: "codex-thread", turn: { id: "turn-without-result" } },
+    }, state);
+    mapCodexHarnessEvent({
+      type: "notification",
+      method: "item/completed",
+      params: {
+        threadId: "codex-thread",
+        turnId: "turn-without-result",
+        item: { type: "reasoning", id: "reasoning-second", summary: ["第二轮仍在思考"] },
+      },
+    }, state);
+    expect(mapCodexHarnessEvent({
+      type: "notification",
+      method: "turn/completed",
+      params: { threadId: "codex-thread", turn: { id: "turn-without-result", status: "completed" } },
+    }, state)).toEqual(expect.arrayContaining([
+      expect.objectContaining({ type: "session.error", sessionId: "codex-thread" }),
+      { type: "session.idle", sessionId: "codex-thread" },
+    ]));
+  });
+
+  test("keeps Codex always-allow effective for later shell requests in the same task", async () => {
+    const originalFetch = globalThis.fetch;
+    const responses: Array<Record<string, unknown>> = [];
+    const events: Array<{ type: string }> = [];
+    let eventController: ReadableStreamDefaultController<Uint8Array> | null = null;
+    let firstPermission: ConversationPermission | null = null;
+    let resolveFirstPermission = () => {};
+    const firstPermissionReady = new Promise<void>((resolve) => {
+      resolveFirstPermission = resolve;
+    });
+    globalThis.fetch = (async (input, init) => {
+      if (String(input).endsWith("/events")) {
+        return new Response(new ReadableStream<Uint8Array>({
+          start(controller) {
+            eventController = controller;
+          },
+        }), { headers: { "content-type": "text/event-stream" } });
+      }
+      const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
+      responses.push(body);
+      return Response.json({ ok: true });
+    }) as typeof fetch;
+
+    try {
+      const connection = conversationEngineAdapters.get(CODEX_HARNESS_ENGINE_ID).connect({
+        baseUrl: "http://unused.test",
+        serverBaseUrl: "http://ipollowork.test",
+        workspaceId: "ws_codex",
+        token: "token",
+      });
+      const subscribe = connection.subscribe({
+        signal: new AbortController().signal,
+        onEvent(event) {
+          events.push(event);
+          if (event.type === "permission.asked" && !firstPermission) {
+            firstPermission = event.permission;
+            resolveFirstPermission();
+          }
+        },
+      });
+      await Promise.resolve();
+      const encoder = new TextEncoder();
+      eventController?.enqueue(encoder.encode(`data: ${JSON.stringify({
+        type: "request",
+        id: 41,
+        method: "item/commandExecution/requestApproval",
+        params: {
+          threadId: "codex-thread",
+          command: "powershell.exe -Command Get-ChildItem",
+          cwd: "C:\\workspace",
+          proposedExecpolicyAmendment: ["powershell.exe"],
+          availableDecisions: [
+            "accept",
+            { acceptWithExecpolicyAmendment: { execpolicy_amendment: ["powershell.exe"] } },
+            "decline",
+          ],
+        },
+      })}\n\n`));
+      await firstPermissionReady;
+      if (!firstPermission) throw new Error("Codex permission was not emitted");
+      await connection.replyPermission({ permission: firstPermission, reply: "always" });
+
+      eventController?.enqueue(encoder.encode(`data: ${JSON.stringify({
+        type: "request",
+        id: 42,
+        method: "item/commandExecution/requestApproval",
+        params: {
+          threadId: "codex-thread",
+          command: "powershell.exe -Command pnpm test",
+          cwd: "C:\\workspace\\apps\\app",
+        },
+      })}\n\n`));
+      eventController?.close();
+      await subscribe;
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+
+    expect(events.filter((event) => event.type === "permission.asked")).toHaveLength(1);
+    expect(responses).toEqual([
+      {
+        rpcId: 41,
+        result: { decision: "acceptForSession" },
+      },
+      { rpcId: 42, result: { decision: "accept" } },
+    ]);
+  });
+
+  test("uses the legacy Codex approval response vocabulary", async () => {
+    const originalFetch = globalThis.fetch;
+    const responses: Array<Record<string, unknown>> = [];
+    globalThis.fetch = (async (_input, init) => {
+      responses.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
+      return Response.json({ ok: true });
+    }) as typeof fetch;
+
+    try {
+      const connection = conversationEngineAdapters.get(CODEX_HARNESS_ENGINE_ID).connect({
+        baseUrl: "http://unused.test",
+        serverBaseUrl: "http://ipollowork.test",
+        workspaceId: "ws_codex",
+        token: "token",
+      });
+      await connection.replyPermission({
+        permission: {
+          id: "legacy-approval",
+          sessionId: "codex-thread",
+          kind: "shell",
+          resources: ["powershell.exe -Command Get-ChildItem"],
+          remember: ["always"],
+          metadata: {},
+          receivedAt: Date.now(),
+          native: {
+            rpcId: "legacy-approval",
+            method: "execCommandApproval",
+            params: { conversationId: "codex-thread" },
+          },
+        },
+        reply: "always",
+      });
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+
+    expect(responses).toEqual([{
+      rpcId: "legacy-approval",
+      result: { decision: "approved_for_session" },
+    }]);
+  });
+
+  test("keeps Codex application context out of the authored user message", async () => {
+    const originalFetch = globalThis.fetch;
+    const requests: Array<Record<string, unknown>> = [];
+    globalThis.fetch = (async (_input, init) => {
+      requests.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
+      return Response.json({ ok: true, sessionId: "codex-thread-rebound" });
+    }) as typeof fetch;
+
+    let promptResult: { sessionId: string } | undefined;
+    try {
+      const connection = conversationEngineAdapters.get(CODEX_HARNESS_ENGINE_ID).connect({
+        baseUrl: "http://unused.test",
+        serverBaseUrl: "http://ipollowork.test",
+        workspaceId: "ws_codex",
+        token: "token",
+      });
+      promptResult = await connection.sendPrompt({
+        sessionId: "codex-thread",
+        clientUserMessageId: "ipollowork-user-1",
+        parts: [
+          { type: "text", text: "Internal template instructions", synthetic: true },
+          { type: "text", text: "当前是什么模型和 agent" },
+        ],
+        system: "Long-running local process rule:\nInternal application context",
+        model: { providerID: "deepseek-official", modelID: "deepseek-v4-flash" },
+      });
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+
+    expect(requests).toEqual([{
+      payload: {
+        threadId: "codex-thread",
+        clientUserMessageId: "ipollowork-user-1",
+        input: [{ type: "text", text: "当前是什么模型和 agent", text_elements: [] }],
+        system: "Long-running local process rule:\nInternal application context\n\nInternal template instructions",
+        model: { providerID: "deepseek-official", modelID: "deepseek-v4-flash" },
+      },
+    }]);
+    expect(promptResult).toEqual({ sessionId: "codex-thread-rebound" });
+  });
+
+  test("hides application context embedded by legacy Codex turns", () => {
+    const events = mapCodexHarnessEvent({
+      type: "notification",
+      method: "item/completed",
+      params: {
+        threadId: "codex-thread",
+        turnId: "turn-legacy",
+        item: {
+          type: "userMessage",
+          id: "user-legacy",
+          content: [
+            { type: "text", text: "Plugin instructions that were also hidden" },
+            { type: "text", text: "Workspace contract\n\nLong-running local process rule:\nInternal application context" },
+            { type: "text", text: "当前是什么模型和 agent" },
+          ],
+        },
+      },
+    }, createCodexLiveState());
+
+    expect(events).toEqual([expect.objectContaining({
+      type: "message.upsert",
+      message: expect.objectContaining({
+        role: "user",
+        parts: [expect.objectContaining({ text: "当前是什么模型和 agent" })],
+      }),
+    })]);
   });
 
   test("rejects duplicate adapter registrations", () => {

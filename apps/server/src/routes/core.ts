@@ -1,5 +1,8 @@
 import { appendFile, mkdir } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
+import { Server as McpServer } from "@modelcontextprotocol/sdk/server/index.js";
+import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
+import { CallToolRequestSchema, ListToolsRequestSchema } from "@modelcontextprotocol/sdk/types.js";
 import {
   createDefaultProjectWorkspaceConfig,
   projectWorkspaceConfigSchema,
@@ -295,6 +298,50 @@ export function registerCoreRoutes(options: RegisterCoreRoutesOptions): void {
     }),
   } satisfies Record<EngineHostToolName, EngineHostToolHandler>;
 
+  const handleEngineHostMcpRequest = async (ctx: RequestContext): Promise<Response> => {
+    const workspaceId = ctx.url.searchParams.get("workspaceId")?.trim() ?? "";
+    if (!workspaceId) {
+      throw new ApiError(400, "engine_host_workspace_required", "The engine host MCP requires a workspaceId");
+    }
+    await resolveWorkspace(config, workspaceId);
+    const server = new McpServer(
+      { name: "ipollowork-host", version: serverVersion },
+      { capabilities: { tools: {} } },
+    );
+    server.setRequestHandler(ListToolsRequestSchema, async () => ({
+      tools: ENGINE_HOST_TOOLS.map((tool) => ({
+        name: tool.name,
+        description: tool.description,
+        inputSchema: tool.parameters,
+      })),
+    }));
+    server.setRequestHandler(CallToolRequestSchema, async (request) => {
+      const descriptor = engineHostTool(request.params.name);
+      if (!descriptor) {
+        throw new ApiError(
+          404,
+          "engine_host_tool_not_found",
+          `Engine host tool is not registered: ${request.params.name || "missing"}`,
+        );
+      }
+      const args = isRecord(request.params.arguments) ? request.params.arguments : {};
+      const value = await engineHostToolHandlers[descriptor.name](ctx, args, { workspaceId });
+      return {
+        content: [{
+          type: "text",
+          text: JSON.stringify(value ?? null),
+        }],
+        ...(isRecord(value) ? { structuredContent: value } : {}),
+      };
+    });
+    const transport = new WebStandardStreamableHTTPServerTransport({
+      sessionIdGenerator: undefined,
+      enableJsonResponse: true,
+    });
+    await server.connect(transport);
+    return transport.handleRequest(ctx.request);
+  };
+
   const healthResponse = () => jsonResponse({
     ok: true,
     version: serverVersion,
@@ -513,6 +560,13 @@ export function registerCoreRoutes(options: RegisterCoreRoutesOptions): void {
   addRoute(routes, "GET", "/engine-tools", "client", async () => {
     return jsonResponse({ ok: true, schemaVersion: 1, tools: ENGINE_HOST_TOOLS });
   });
+
+  // Codex Harness consumes the same server-owned extension and Workspace App
+  // actions as OpenCode and DSH through a standard, stateless MCP transport.
+  // Keeping dispatch here prevents engine-specific copies of plugin behavior.
+  addRoute(routes, "POST", "/engine-tools/mcp", "client", handleEngineHostMcpRequest);
+  addRoute(routes, "GET", "/engine-tools/mcp", "client", handleEngineHostMcpRequest);
+  addRoute(routes, "DELETE", "/engine-tools/mcp", "client", handleEngineHostMcpRequest);
 
   addRoute(routes, "POST", "/workspace/:id/project-builder-sessions/:sessionId", "client", async (ctx) => {
     if (ctx.actor?.scope === "viewer") {

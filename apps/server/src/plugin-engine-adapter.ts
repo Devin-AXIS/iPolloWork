@@ -2,7 +2,11 @@ import { readFile } from "node:fs/promises";
 import { pathToFileURL } from "node:url";
 
 import type { PluginEngineCompatibility } from "@ipollowork/types/plugins";
-import { DEEPSEEK_HARNESS_ENGINE_ID } from "@ipollowork/types/workspace";
+import {
+  CODEX_HARNESS_ENGINE_ID,
+  DEEPSEEK_HARNESS_ENGINE_ID,
+  type HarnessWorkspaceEngineId,
+} from "@ipollowork/types/workspace";
 
 import type {
   PluginPackageManifest,
@@ -41,6 +45,8 @@ type PluginEngineContext = {
 
 export interface PluginEngineAdapter {
   readonly id: string;
+  /** Workspace directories owned by this engine's portable projections. */
+  readonly projectionRoots: readonly string[];
   /** Portable package resources this engine can consume through this adapter. */
   readonly portableResourceTypes: ReadonlySet<PluginResourceType>;
   /** Native engine-binding capability kinds implemented by this adapter. */
@@ -161,6 +167,10 @@ const DEEPSEEK_HARNESS_TARGETS = {
   skills: ".dsh/skills/",
 } as const;
 
+const CODEX_HARNESS_TARGETS = {
+  skills: ".agents/skills/",
+} as const;
+
 function projectedPath(sourcePath: string, targets: Readonly<Record<string, string>>): string | null {
   for (const [directory, target] of Object.entries(targets)) {
     if (sourcePath.startsWith(`${directory}/`)) return `${target}${sourcePath.slice(directory.length + 1)}`;
@@ -273,6 +283,7 @@ function pluginSpecs(version: PluginEngineVersion | null, resolvePath: PluginEng
 
 export const openCodePluginEngineAdapter: PluginEngineAdapter = {
   id: "opencode",
+  projectionRoots: [".opencode"],
   portableResourceTypes: new Set(["skill", "agent", "command", "mcp"]),
   nativeCapabilityKinds: new Set(["plugin"]),
   compatibility(manifest) {
@@ -300,34 +311,57 @@ export const openCodePluginEngineAdapter: PluginEngineAdapter = {
   },
 };
 
-export const deepSeekHarnessPluginEngineAdapter: PluginEngineAdapter = {
+function portableHarnessPluginEngineAdapter(input: {
+  id: HarnessWorkspaceEngineId;
+  name: string;
+  version: string;
+  targets: Readonly<Record<string, string>>;
+}): PluginEngineAdapter {
+  return {
+    id: input.id,
+    projectionRoots: [...new Set(Object.values(input.targets).map((target) => target.split("/")[0]).filter(Boolean))],
+    // Skills and MCPs are projected into the Harness runtime. Commands and
+    // agents are consumed through the server-owned prompt adapter, preserving
+    // one portable package contract without pretending they are native
+    // plugins.
+    portableResourceTypes: new Set(["skill", "agent", "command", "mcp"]),
+    nativeCapabilityKinds: new Set(),
+    compatibility(manifest) {
+      const binding = manifest.engineBindings?.find((entry) => entry.engine === input.id);
+      return [{
+        name: input.name,
+        version: input.version,
+        range: binding?.compatibility,
+      }];
+    },
+    workspaceFiles(version) {
+      return workspaceFiles(version, input.targets);
+    },
+    skillTargetPath(version, resourceId) {
+      return skillTargetPath(version, resourceId, input.targets);
+    },
+    async syncRuntime(runtimeInput) {
+      await syncMcpRuntime(runtimeInput);
+    },
+  };
+}
+
+export const deepSeekHarnessPluginEngineAdapter = portableHarnessPluginEngineAdapter({
   id: DEEPSEEK_HARNESS_ENGINE_ID,
-  // Skills and MCPs are projected into the Harness runtime. Commands and
-  // agents are consumed through the server-owned prompt adapter, preserving
-  // one portable package contract without pretending they are native DSH
-  // plugins.
-  portableResourceTypes: new Set(["skill", "agent", "command", "mcp"]),
-  nativeCapabilityKinds: new Set(),
-  compatibility(manifest) {
-    const binding = manifest.engineBindings?.find((entry) => entry.engine === DEEPSEEK_HARNESS_ENGINE_ID);
-    return [{
-      name: "DeepSeek Harness",
-      version: constants.deepseekHarnessVersion,
-      range: binding?.compatibility,
-    }];
-  },
-  workspaceFiles(version) {
-    return workspaceFiles(version, DEEPSEEK_HARNESS_TARGETS);
-  },
-  skillTargetPath(version, resourceId) {
-    return skillTargetPath(version, resourceId, DEEPSEEK_HARNESS_TARGETS);
-  },
-  async syncRuntime(input) {
-    await syncMcpRuntime(input);
-  },
-};
+  name: "DeepSeek Harness",
+  version: constants.deepseekHarnessVersion,
+  targets: DEEPSEEK_HARNESS_TARGETS,
+});
+
+export const codexHarnessPluginEngineAdapter = portableHarnessPluginEngineAdapter({
+  id: CODEX_HARNESS_ENGINE_ID,
+  name: "Codex Harness",
+  version: constants.codexHarnessVersion,
+  targets: CODEX_HARNESS_TARGETS,
+});
 
 export const pluginEngineAdapters = new PluginEngineAdapterRegistry([
   openCodePluginEngineAdapter,
   deepSeekHarnessPluginEngineAdapter,
+  codexHarnessPluginEngineAdapter,
 ]);

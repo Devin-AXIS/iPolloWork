@@ -1,4 +1,3 @@
-import type { EnginePluginPromptSelection } from "@ipollowork/types/plugins";
 import {
   DEEPSEEK_HARNESS_ENGINE_ID,
   DEEPSEEK_HARNESS_INTERNAL_SYSTEM_PREFIX,
@@ -10,6 +9,10 @@ import {
   DeepSeekHarnessUnavailableError,
 } from "../deepseek-harness-runtime.js";
 import { ApiError } from "../errors.js";
+import {
+  parseEnginePluginPromptSelection,
+  resolveEnginePluginPrompt,
+} from "../plugin-prompt-adapter.js";
 import { listPortablePluginPromptCapabilities } from "../plugin-package-lifecycle.js";
 import type { ServerConfig, TokenScope, WorkspaceInfo } from "../types.js";
 import { addRoute, type RequestContext, type Route } from "./registry.js";
@@ -75,67 +78,25 @@ function internalPromptText(text: string): string {
   return `${DEEPSEEK_HARNESS_INTERNAL_SYSTEM_PREFIX}${text}\n</system>`;
 }
 
-function pluginPromptSelection(value: unknown): EnginePluginPromptSelection | undefined {
-  if (!isRecord(value)) return undefined;
-  const commandValue = isRecord(value.command) ? value.command : null;
-  const commandName = typeof commandValue?.name === "string" ? commandValue.name.trim() : "";
-  const commandArguments = typeof commandValue?.arguments === "string" ? commandValue.arguments.trim() : "";
-  const agents = Array.isArray(value.agents)
-    ? [...new Set(value.agents.flatMap((agent) => typeof agent === "string" && agent.trim() ? [agent.trim()] : []))]
-    : [];
-  if (!commandName && agents.length === 0) return undefined;
-  return {
-    ...(commandName ? { command: { name: commandName, ...(commandArguments ? { arguments: commandArguments } : {}) } } : {}),
-    ...(agents.length > 0 ? { agents } : {}),
-  };
-}
-
 async function withPluginPromptInstructions(
   config: ServerConfig,
   payload: Record<string, unknown>,
-  selection: EnginePluginPromptSelection | undefined,
+  selection: ReturnType<typeof parseEnginePluginPromptSelection>,
 ): Promise<Record<string, unknown>> {
   const content = Array.isArray(payload.content) ? [...payload.content] : [];
-  if (!selection) return { ...payload, content };
-  const capabilities = await listPortablePluginPromptCapabilities({
-    serverConfig: config,
+  const resolved = await resolveEnginePluginPrompt({
+    config,
     engineId: DEEPSEEK_HARNESS_ENGINE_ID,
+    selection,
   });
-  const instructions: Array<{ type: "text"; text: string }> = [];
-  const resolveCapability = (type: "command" | "agent", name: string) => {
-    const matches = capabilities.filter((capability) => capability.type === type && capability.name === name);
-    if (matches.length !== 1) {
-      throw new ApiError(
-        matches.length === 0 ? 404 : 409,
-        matches.length === 0 ? "plugin_prompt_capability_not_found" : "plugin_prompt_capability_ambiguous",
-        matches.length === 0
-          ? `Installed plugin ${type} was not found: ${name}`
-          : `More than one installed plugin exposes ${type}: ${name}`,
-      );
-    }
-    return matches[0];
+  return {
+    ...payload,
+    content: [
+      ...resolved.systemInstructions.map((text) => ({ type: "text", text: internalPromptText(text) })),
+      ...content,
+      ...resolved.userInstructions.map((text) => ({ type: "text", text })),
+    ],
   };
-  if (selection.command) {
-    const command = resolveCapability("command", selection.command.name);
-    instructions.push({
-      type: "text",
-      text: internalPromptText(`Execute the installed plugin command /${command.name}. Follow its instructions:\n\n${command.content}`),
-    });
-    content.push({
-      type: "text",
-      text: selection.command.arguments
-        ? `Run /${command.name} with these arguments: ${selection.command.arguments}`
-        : `Run /${command.name}.`,
-    });
-  }
-  for (const agentName of selection.agents ?? []) {
-    const agent = resolveCapability("agent", agentName);
-    instructions.push({
-      type: "text",
-      text: internalPromptText(`The user selected the plugin agent "${agent.name}". Follow these agent instructions:\n\n${agent.content}`),
-    });
-  }
-  return { ...payload, content: [...instructions, ...content] };
 }
 
 function remapDeepSeekHarnessError(error: unknown): never {
@@ -174,7 +135,7 @@ export function registerDeepSeekHarnessRoutes(options: RegisterDeepSeekHarnessRo
     const promptPayload = await withPluginPromptInstructions(
       config,
       body.payload,
-      pluginPromptSelection(body.plugins),
+      parseEnginePluginPromptSelection(body.plugins),
     );
     try {
       await runtime.forWorkspace(workspace).call("session.prompt", promptPayload);

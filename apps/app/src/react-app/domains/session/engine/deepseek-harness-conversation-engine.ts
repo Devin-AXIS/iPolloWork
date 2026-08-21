@@ -398,6 +398,7 @@ function deepSeekHarnessConnection(input: {
           clientTimeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
         }, selectedAgents.length > 0 ? { agents: selectedAgents } : undefined);
         mutableModes.set(request.sessionId, false);
+        return { sessionId: request.sessionId };
       } catch (error) {
         throw conversationError(error);
       }

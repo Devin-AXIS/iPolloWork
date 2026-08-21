@@ -70,7 +70,12 @@ describe("startup session loading", () => {
     );
     expect(runtimeSource).not.toContain("activeSessionIds");
     expect(sessionRouteSource).not.toContain("activeSessionIds=");
-    expect(sessionRouteSource).not.toContain("loadWorkspaceSessionsInBackground(initialLoads.background)");
+    expect(routeStateSource).toContain("void selectedSessionsLoad.then(async () => {");
+    expect(routeStateSource).toContain("for (const workspace of initialLoads.deferred)");
+    expect(routeStateSource).toContain("await loadWorkspaceSessionsInBackground([workspace])");
+    expect(routeStateSource).toContain("() => readSessionDirectoryCache()");
+    expect(routeStateSource).toContain("writeSessionDirectoryCache(Object.fromEntries(");
+    expect(routeStateSource).toContain("const cachedSessions = readSessionDirectoryCache()");
   });
 
   test("keeps the sidebar data mounted when only the selected project or task route changes", () => {
@@ -100,6 +105,12 @@ describe("startup session loading", () => {
     );
     expect(sessionSurfaceSource).toContain("props.onLoadSettled?.(props.sessionId);");
     expect(loadingOverlaySource).toContain("export function IPollo" + "LoadingArtwork()");
+  });
+
+  test("does not render the new-task starter behind the startup skeleton", () => {
+    expect(sessionPageSource).toContain(
+      "mainWorkspaceView === null && showNewTaskStarter && !showStartupSkeleton && props.surface",
+    );
   });
 
   test("invalidates pre-sleep requests and refreshes local and cloud state after desktop resume", () => {

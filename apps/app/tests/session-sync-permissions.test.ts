@@ -16,11 +16,13 @@ import {
   __createWorkspaceSessionSyncForTest,
   __disposeWorkspaceSessionSyncForTest,
   __hasWorkspaceSessionSyncForTest,
+  beginOptimisticSessionPrompt,
   coalescePendingDeltas,
   destroyWorkspaceSessionResources,
   ensureWorkspaceSessionSync,
   permissionKey,
   questionKey,
+  rollbackOptimisticSessionPrompt,
   seedPermissionState,
   seedQuestionState,
   seedSessionState,
@@ -296,6 +298,41 @@ describe("session question sync", () => {
 });
 
 describe("session transcript sync", () => {
+  test("shows an accepted prompt as busy before a stale Codex snapshot catches up", () => {
+    const messageId = beginOptimisticSessionPrompt(
+      "workspace-a",
+      "session-a",
+      "立即开始处理",
+      "ipollowork-user-1",
+    );
+
+    seedSessionState("workspace-a", snapshotWithMessages([]));
+
+    expect(messageId).toBe("ipollowork-user-1");
+    expect(getReactQueryClient().getQueryData(statusKey("workspace-a", "session-a"))).toEqual({ type: "busy" });
+    expect(getReactQueryClient().getQueryData<UIMessage[]>(transcriptKey("workspace-a", "session-a"))).toEqual([
+      expect.objectContaining({
+        id: "ipollowork-user-1",
+        role: "user",
+        parts: [expect.objectContaining({ text: "立即开始处理" })],
+      }),
+    ]);
+  });
+
+  test("rolls back only a prompt that the engine has not acknowledged", () => {
+    beginOptimisticSessionPrompt("workspace-a", "session-a", "will fail", "ipollowork-user-1");
+    expect(rollbackOptimisticSessionPrompt("workspace-a", "session-a", "ipollowork-user-1")).toBe(true);
+    expect(getReactQueryClient().getQueryData(transcriptKey("workspace-a", "session-a"))).toEqual([]);
+    expect(getReactQueryClient().getQueryData(statusKey("workspace-a", "session-a"))).toEqual({ type: "idle" });
+
+    getReactQueryClient().setQueryData(transcriptKey("workspace-a", "session-a"), [
+      uiMessage("ipollowork-user-2", "user", "acknowledged"),
+    ]);
+    expect(rollbackOptimisticSessionPrompt("workspace-a", "session-a", "ipollowork-user-2")).toBe(false);
+    expect(getReactQueryClient().getQueryData<UIMessage[]>(transcriptKey("workspace-a", "session-a")))
+      .toHaveLength(1);
+  });
+
   test("coalesces token-sized deltas by transcript part", () => {
     const deltas = coalescePendingDeltas([
       { sessionId: "session-a", messageId: "msg-a", partId: "part-a", reasoning: false, delta: "hel" },

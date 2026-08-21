@@ -3,8 +3,10 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DEEPSEEK_HARNESS_ENGINE_ID, DEFAULT_ENGINE_ID } from "@ipollowork/types/workspace";
+import { createDefaultProjectWorkspaceConfig } from "@ipollowork/types/project-workspace";
 import type { ProjectSessionExecution } from "@ipollowork/types/work-items";
 
+import { writeiPolloWorkWorkspaceConfig } from "./ipollowork-workspace-config-store.js";
 import type { ServerConfig } from "./types.js";
 import { startServer } from "./server.js";
 import {
@@ -64,6 +66,12 @@ afterEach(async () => {
 describe("work item store", () => {
   test("exposes authenticated engine-neutral work routes", async () => {
     const { config } = await testContext();
+    const project = createDefaultProjectWorkspaceConfig({ engineId: DEFAULT_ENGINE_ID });
+    const projectAgent = project.agents[0];
+    if (!projectAgent) throw new Error("Default project Agent is required");
+    projectAgent.runtime.model = { providerId: "openai", modelId: "gpt-agent-default" };
+    projectAgent.runtime.modelVariant = "high";
+    await writeiPolloWorkWorkspaceConfig(config, "project_one", (current) => ({ ...current, project }));
     const server = await startServer(config);
     try {
       const baseUrl = `http://127.0.0.1:${server.port}`;
@@ -92,9 +100,9 @@ describe("work item store", () => {
           title: "Project conversation",
           runtime: {
             engineId: DEFAULT_ENGINE_ID,
-            model: { providerId: "openai", modelId: "gpt-5" },
+            model: { providerId: "deepseek-official", modelId: "deepseek-v4" },
             mode: "build",
-            modelVariant: "high",
+            modelVariant: "low",
           },
         }),
       });
@@ -104,7 +112,11 @@ describe("work item store", () => {
         execution: {
           sessionId: "session_one",
           agent: { id: "project-lead" },
-          runtime: { engineId: DEFAULT_ENGINE_ID, model: { modelId: "gpt-5" } },
+          runtime: {
+            engineId: DEFAULT_ENGINE_ID,
+            model: { providerId: "deepseek-official", modelId: "deepseek-v4" },
+            modelVariant: "low",
+          },
         },
       });
 
@@ -134,7 +146,7 @@ describe("work item store", () => {
         status: "running",
         execution: {
           projectRevision: 0,
-          runtime: { engineId: DEFAULT_ENGINE_ID, model: { modelId: "gpt-5" }, mode: "build", modelVariant: "high" },
+          runtime: { engineId: DEFAULT_ENGINE_ID, model: { modelId: "gpt-6" }, mode: "plan", modelVariant: "low" },
         },
       });
 
@@ -245,7 +257,7 @@ describe("work item store", () => {
     }
   });
 
-  test("keeps one immutable Agent runtime binding while task state follows repeated runs", async () => {
+  test("updates the execution binding while task state follows repeated runs", async () => {
     const { config } = await testContext();
     try {
       const baseExecution: ProjectSessionExecution = {
@@ -295,7 +307,7 @@ describe("work item store", () => {
       expect(restarted).toMatchObject({
         status: "running",
         title: "Review copy again",
-        execution: { projectRevision: 3, runtime: { model: { modelId: "gpt-5" } } },
+        execution: { projectRevision: 4, runtime: { model: { modelId: "gpt-6" } } },
       });
 
       const failed = await finishProjectSessionExecution(config, "project_one", baseExecution.sessionId, {

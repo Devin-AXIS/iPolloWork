@@ -159,6 +159,7 @@ function openCodeConnection(input: { baseUrl: string; token?: string; directory?
         ...(input.system ? { system: input.system } : {}),
       });
       if (result.error !== undefined) unwrap(result);
+      return { sessionId: input.sessionId };
     },
     async listCommands(directory) {
       try {

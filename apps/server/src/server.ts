@@ -4,7 +4,7 @@ import { homedir, hostname } from "node:os";
 import { dirname, join, relative, resolve, sep } from "node:path";
 import { createOpencodeClient } from "@opencode-ai/sdk/v2/client";
 import { IPOLLOWORK_PACKAGE_EXTENSION, IPOLLOWORK_PACKAGE_MEDIA_TYPE, templateCategorySchema } from "@ipollowork/types/templates";
-import { DEEPSEEK_HARNESS_ENGINE_ID } from "@ipollowork/types/workspace";
+import { CODEX_HARNESS_ENGINE_ID, DEEPSEEK_HARNESS_ENGINE_ID } from "@ipollowork/types/workspace";
 import { DEFAULT_ENGINE_ID, type ApprovalRequest, type Capabilities, type ServerConfig, type WorkspaceInfo, type Actor, type ReloadReason, type ReloadTrigger, type TokenScope } from "./types.js";
 import { ApprovalService } from "./approvals.js";
 import { sanitizePortableOpencodeConfig } from "./portable-opencode.js";
@@ -34,6 +34,7 @@ import { sanitizeCommandName, validateMcpName } from "./validators.js";
 import { TokenService } from "./tokens.js";
 import { EnvService } from "./env-file.js";
 import { DeepSeekHarnessRuntimePool } from "./deepseek-harness-runtime.js";
+import { CodexHarnessRuntimePool } from "./codex-harness-runtime.js";
 import { pluginEngineAdapters, pluginEngineCompatibility } from "./plugin-engine-adapter.js";
 import type { PluginPackageManifest } from "./plugin-package-manifest.js";
 
@@ -103,6 +104,7 @@ import { registerOperationRoutes } from "./routes/operations.js";
 import { addRoute, matchRoute, type AuthMode, type RequestContext, type Route } from "./routes/registry.js";
 import { registerSessionRoutes } from "./routes/sessions.js";
 import { registerDeepSeekHarnessRoutes } from "./routes/deepseek-harness.js";
+import { registerCodexHarnessRoutes } from "./routes/codex-harness.js";
 import { registerWorkspaceRoutes } from "./routes/workspaces.js";
 import { registerPluginWorkshopRoutes } from "./routes/plugin-workshop.js";
 import { registerWorkItemRoutes } from "./routes/work-items.js";
@@ -728,6 +730,7 @@ export async function startServer(config: ServerConfig): Promise<ServeResult> {
   // next start, so disconnecting a provider cannot leave a stale credential.
   const env = new EnvService({ processEnv: process.env });
   const deepseekHarness = new DeepSeekHarnessRuntimePool({ config, env });
+  const codexHarness = new CodexHarnessRuntimePool({ config, env });
   const logger = createServerLogger(config);
   let watcherHandle = startReloadWatchers({ config, reloadEvents, logger });
   const refreshWorkspaceReloadBaseline = (workspaceId: string, reasons?: ReloadReason[]) =>
@@ -742,7 +745,7 @@ export async function startServer(config: ServerConfig): Promise<ServeResult> {
     reloadWatcherRestart = reloadWatcherRestart.then(restart, restart);
     return reloadWatcherRestart;
   };
-  const routes = createRoutes(config, approvals, tokens, env, deepseekHarness, restartReloadWatchers);
+  const routes = createRoutes(config, approvals, tokens, env, deepseekHarness, codexHarness, restartReloadWatchers);
 
   const serverOptions: {
     hostname: string;
@@ -897,7 +900,7 @@ export async function startServer(config: ServerConfig): Promise<ServeResult> {
       await watcherHandle.close();
       reloadBaselineRefreshers.delete(config);
       try {
-        await deepseekHarness.close();
+        await Promise.all([deepseekHarness.close(), codexHarness.close()]);
         await disposeAllPluginServices(config);
         await server.stop();
       } finally {
@@ -1272,10 +1275,10 @@ function emitReloadEvent(
 function pluginProjectionRoots(config: ServerConfig): string[] {
   return config.workspaces
     .filter((workspace) => workspace.workspaceType === "local")
-    .map((workspace) => join(
-      workspace.path,
-      (workspace.engineId ?? DEFAULT_ENGINE_ID) === DEFAULT_ENGINE_ID ? ".opencode" : ".dsh",
-    ));
+    .flatMap((workspace) => pluginEngineAdapters
+      .get(workspace.engineId ?? DEFAULT_ENGINE_ID)
+      .projectionRoots
+      .map((root) => join(workspace.path, root)));
 }
 
 function emitPluginReloadEvents(
@@ -1440,6 +1443,7 @@ function createRoutes(
   tokens: TokenService,
   env: EnvService,
   deepseekHarness: DeepSeekHarnessRuntimePool,
+  codexHarness: CodexHarnessRuntimePool,
   onWorkspacesChanged: () => Promise<void>,
 ): Route[] {
   const routes: Route[] = [];
@@ -1503,12 +1507,22 @@ function createRoutes(
     createWorkspaceOpencodeClient,
     unwrapOpencodeResult,
     deepseekHarness,
+    codexHarness,
   });
 
   registerDeepSeekHarnessRoutes({
     routes,
     config,
     runtime: deepseekHarness,
+    readJsonBody,
+    requireClientScope,
+    resolveWorkspace,
+  });
+
+  registerCodexHarnessRoutes({
+    routes,
+    config,
+    runtime: codexHarness,
     readJsonBody,
     requireClientScope,
     resolveWorkspace,
@@ -2502,7 +2516,11 @@ function createRoutes(
     resolveWorkspace,
     reloadWorkspaceEngine: async (serverConfig, workspace) => {
       if (workspace.engineId === DEEPSEEK_HARNESS_ENGINE_ID) {
-        await deepseekHarness.close();
+        await deepseekHarness.closeWorkspace(workspace.id);
+        return;
+      }
+      if (workspace.engineId === CODEX_HARNESS_ENGINE_ID) {
+        await codexHarness.closeWorkspace(workspace.id);
         return;
       }
       await reloadOpencodeEngine(serverConfig, workspace);

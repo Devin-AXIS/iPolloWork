@@ -433,21 +433,29 @@ export async function startProjectSessionExecution(
   const execution = projectSessionExecutionSchema.parse(value);
   const db = await workItemDb(config);
   const now = Date.now();
-  const resume = async (current: WorkItem): Promise<WorkItem> => {
+  const resume = async (): Promise<WorkItem> => {
     db.run(
       `UPDATE work_items SET
-        title = ?, status = 'running', assignee = ?, last_error = NULL,
+        title = ?, status = 'running', assignee = ?, execution_json = ?, last_error = NULL,
         run_started_at = ?, run_completed_at = NULL,
         version = version + 1, updated_at = ?
        WHERE workspace_id = ? AND session_id = ?`,
-      [title, current.execution?.agent.id ?? execution.agent.id, now, now, workspaceId, execution.sessionId],
+      [
+        title,
+        execution.agent.id,
+        JSON.stringify(execution),
+        now,
+        now,
+        workspaceId,
+        execution.sessionId,
+      ],
     );
     const updated = await readProjectSessionWorkItem(config, workspaceId, execution.sessionId);
     if (!updated) throw new Error("Project session work item could not be read");
     return updated;
   };
   const existing = await readProjectSessionWorkItem(config, workspaceId, execution.sessionId);
-  if (existing) return resume(existing);
+  if (existing) return resume();
 
   const id = `work_${shortId()}`;
   const nextPositionRow = db.get(
@@ -478,7 +486,7 @@ export async function startProjectSessionExecution(
   if (changes === 0) {
     const concurrent = await readProjectSessionWorkItem(config, workspaceId, execution.sessionId);
     if (!concurrent) throw new Error("Project session work item could not be read after insert conflict");
-    return resume(concurrent);
+    return resume();
   }
   const created = await readWorkItem(config, workspaceId, id);
   if (!created) throw new Error("Project session work item could not be read");

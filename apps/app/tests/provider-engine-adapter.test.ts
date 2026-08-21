@@ -1,6 +1,8 @@
 import { describe, expect, test } from "bun:test";
+import { QueryClient, QueryObserver } from "@tanstack/react-query";
 
 import {
+  codexHarnessProviderEngineAdapter,
   deepSeekHarnessProviderEngineAdapter,
   modelRuntimeAdapters,
   ModelRuntimeAdapterRegistry,
@@ -17,8 +19,9 @@ import {
   mergeProviderListResponses,
   projectAccountProviderConnections,
   providerListQueryKey,
+  refreshProviderListQueries,
 } from "../src/react-app/infra/provider-list-query";
-import { DEEPSEEK_HARNESS_ENGINE_ID, DEFAULT_ENGINE_ID } from "@ipollowork/types/workspace";
+import { CODEX_HARNESS_ENGINE_ID, DEEPSEEK_HARNESS_ENGINE_ID, DEFAULT_ENGINE_ID } from "@ipollowork/types/workspace";
 import {
   parseSharedProviderProfile,
   sharedProviderCredentialEnvKey,
@@ -96,10 +99,164 @@ function createOpenCodeProviderClient() {
 }
 
 describe("model runtime adapters", () => {
-  test("keeps OpenCode as default while registering DeepSeek Harness as a model runtime peer", () => {
-    expect(modelRuntimeAdapters.ids()).toEqual([DEFAULT_ENGINE_ID, DEEPSEEK_HARNESS_ENGINE_ID]);
+  test("coalesces concurrent provider refreshes during settings startup", async () => {
+    const queryClient = getReactQueryClient();
+    queryClient.clear();
+    const { client } = createOpenCodeProviderClient();
+    let resolveEnvKeys = () => {};
+    const envKeysReady = new Promise<void>((resolve) => {
+      resolveEnvKeys = resolve;
+    });
+    let envKeyRequests = 0;
+    let providers: ProviderListItem[] = [];
+    let connectedProviderIds: string[] = [];
+    let providerDefaults: Record<string, string> = {};
+    let disabledProviderIds: string[] = [];
+    const store = createProviderAuthStore({
+      client: () => client,
+      providers: () => providers,
+      providerDefaults: () => providerDefaults,
+      providerConnectedIds: () => connectedProviderIds,
+      disabledProviders: () => disabledProviderIds,
+      checkDesktopAppRestriction: () => false,
+      selectedWorkspaceDisplay: () => ({
+        id: "workspace-startup-refresh",
+        name: "Startup refresh",
+        path: "C:\\workspace-startup-refresh",
+        preset: "starter",
+        workspaceType: "local",
+        engineId: DEFAULT_ENGINE_ID,
+      }),
+      providerBaseUrl: () => "http://localhost/provider-startup-refresh",
+      selectedWorkspaceRoot: () => "C:\\workspace-startup-refresh",
+      runtimeWorkspaceId: () => "workspace-startup-refresh",
+      ipolloworkServer: {
+        getSnapshot: () => ({
+          ipolloworkServerStatus: "connected",
+          ipolloworkServerClient: {
+            async listUserEnvKeys() {
+              envKeyRequests += 1;
+              await envKeysReady;
+              return { keys: [], oauthProviderIds: [] };
+            },
+          } as never,
+          ipolloworkServerCapabilities: { config: { read: true, write: true } },
+        }),
+      },
+      setProviders: (value) => { providers = value; },
+      setProviderDefaults: (value) => { providerDefaults = value; },
+      setProviderConnectedIds: (value) => { connectedProviderIds = value; },
+      setDisabledProviders: (value) => { disabledProviderIds = value; },
+      markEngineConfigReloadRequired: () => {},
+    });
+
+    const first = store.refreshProviders();
+    const second = store.refreshProviders();
+    const forced = store.refreshProviders({ force: true });
+    const alsoForced = store.refreshProviders({ force: true });
+    await Promise.resolve();
+    expect(envKeyRequests).toBe(1);
+
+    resolveEnvKeys();
+    await Promise.all([first, second, forced, alsoForced]);
+    expect(envKeyRequests).toBe(2);
+    expect(store.getSnapshot().connectedProviderIds).toEqual(["opencode"]);
+    store.dispose();
+    queryClient.clear();
+  });
+
+  test("waits for the provider client during settings startup", async () => {
+    const queryClient = getReactQueryClient();
+    queryClient.clear();
+    const { client } = createOpenCodeProviderClient();
+    let activeClient: unknown | null = null;
+    let providers: ProviderListItem[] = [];
+    let connectedProviderIds: string[] = [];
+    let providerDefaults: Record<string, string> = {};
+    let disabledProviderIds: string[] = [];
+    const store = createProviderAuthStore({
+      client: () => activeClient,
+      providers: () => providers,
+      providerDefaults: () => providerDefaults,
+      providerConnectedIds: () => connectedProviderIds,
+      disabledProviders: () => disabledProviderIds,
+      checkDesktopAppRestriction: () => false,
+      selectedWorkspaceDisplay: () => ({
+        id: "workspace-reconnect",
+        name: "Reconnect Workspace",
+        path: "C:\\workspace",
+        preset: "starter",
+        workspaceType: "local",
+        engineId: DEFAULT_ENGINE_ID,
+      }),
+      providerBaseUrl: () => "http://localhost:43121/opencode",
+      selectedWorkspaceRoot: () => "C:\\workspace",
+      runtimeWorkspaceId: () => "workspace-reconnect",
+      ipolloworkServer: {
+        getSnapshot: () => ({
+          ipolloworkServerStatus: "disconnected",
+          ipolloworkServerClient: null,
+          ipolloworkServerCapabilities: null,
+        }),
+      },
+      setProviders: (value) => { providers = value; },
+      setProviderDefaults: (value) => { providerDefaults = value; },
+      setProviderConnectedIds: (value) => { connectedProviderIds = value; },
+      setDisabledProviders: (value) => { disabledProviderIds = value; },
+      markEngineConfigReloadRequired: () => {},
+    });
+
+    const opening = store.openProviderAuthModal();
+    expect(store.getSnapshot().providerAuthBusy).toBe(true);
+    activeClient = client;
+    await opening;
+
+    expect(store.getSnapshot().providerAuthError).toBeNull();
+    expect(store.getSnapshot().providerAuthBusy).toBe(false);
+    expect(store.getSnapshot().providerAuthModalOpen).toBe(true);
+    expect(store.getSnapshot().providerAuthMethods.openai).toEqual([
+      { type: "oauth", label: "OpenAI", methodIndex: 0 },
+    ]);
+    store.dispose();
+    queryClient.clear();
+  });
+
+  test("refreshes each active provider query only once", async () => {
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    let requests = 0;
+    const observer = new QueryObserver(queryClient, {
+      queryKey: providerListQueryKey({
+        engineId: DEFAULT_ENGINE_ID,
+        baseUrl: "http://localhost/provider-refresh",
+        directory: "C:\\workspace",
+      }),
+      queryFn: async () => {
+        requests += 1;
+        return { all: [], connected: [], default: {} };
+      },
+      staleTime: Infinity,
+    });
+    const unsubscribe = observer.subscribe(() => undefined);
+
+    await observer.refetch();
+    await refreshProviderListQueries(queryClient);
+
+    expect(requests).toBe(2);
+    unsubscribe();
+    queryClient.clear();
+  });
+
+  test("keeps OpenCode as default while registering Harness model runtimes as peers", () => {
+    expect(modelRuntimeAdapters.ids()).toEqual([
+      DEFAULT_ENGINE_ID,
+      DEEPSEEK_HARNESS_ENGINE_ID,
+      CODEX_HARNESS_ENGINE_ID,
+    ]);
     expect(modelRuntimeAdapters.get()).toBe(openCodeProviderEngineAdapter);
     expect(modelRuntimeAdapters.get(DEEPSEEK_HARNESS_ENGINE_ID)).toBe(deepSeekHarnessProviderEngineAdapter);
+    expect(modelRuntimeAdapters.get(CODEX_HARNESS_ENGINE_ID)).toBe(codexHarnessProviderEngineAdapter);
     expect(() => modelRuntimeAdapters.get("unknown")).toThrow(
       "Model runtime is not registered: unknown",
     );
@@ -118,7 +275,7 @@ describe("model runtime adapters", () => {
       .not.toEqual(providerListQueryKey({ engineId: "deepseek-harness", baseUrl: "http://runtime" }));
   });
 
-  test("force-refreshes every engine catalog when the model picker opens", async () => {
+  test("supports an explicit provider catalog refresh when requested", async () => {
     const queryClient = getReactQueryClient();
     queryClient.clear();
     const { client } = createOpenCodeProviderClient();
@@ -266,6 +423,22 @@ describe("model runtime adapters", () => {
     }).map(({ provider, modelId }) => `${provider.id}:${modelId}`)).toEqual([
       "deepseek-official:deepseek-v4-flash",
     ]);
+
+    const codexRuntime = {
+      all: [{
+        ...catalog.all[0]!,
+        models: { "gpt-5.6-sol": catalog.all[0]!.models["gpt-5.6-sol"]! },
+      }],
+      connected: ["openai"],
+      default: { openai: "gpt-5.6-sol" },
+    };
+    expect(getRunnableChatModelEntries({
+      catalog,
+      runtime: codexRuntime,
+      engineId: CODEX_HARNESS_ENGINE_ID,
+    }).map(({ provider, modelId }) => `${provider.id}:${modelId}`)).toEqual([
+      "openai:gpt-5.6-sol",
+    ]);
   });
 
   test("persists and idempotently disconnects an OAuth provider without mirroring its secret", async () => {
@@ -320,6 +493,7 @@ describe("model runtime adapters", () => {
     };
     let providers = providerList().all;
     let connectedIds = providerList().connected;
+    let accountServerAvailable = true;
     const serverClient = {
       readOpencodeConfigFile: async () => ({
         content: disabledProviderIds.length
@@ -370,9 +544,11 @@ describe("model runtime adapters", () => {
       runtimeWorkspaceId: () => "workspace-oauth",
       ipolloworkServer: {
         getSnapshot: () => ({
-          ipolloworkServerStatus: "connected",
-          ipolloworkServerClient: serverClient as never,
-          ipolloworkServerCapabilities: { config: { read: true, write: true } },
+          ipolloworkServerStatus: accountServerAvailable ? "connected" : "disconnected",
+          ipolloworkServerClient: accountServerAvailable ? serverClient as never : null,
+          ipolloworkServerCapabilities: accountServerAvailable
+            ? { config: { read: true, write: true } }
+            : null,
         }),
       },
       setProviders: (value) => { providers = value; },
@@ -389,14 +565,123 @@ describe("model runtime adapters", () => {
     expect(profileWrites[0]?.key).not.toBe(sharedProviderCredentialEnvKey("openai"));
     await store.refreshProviders();
     expect(store.getSnapshot().connectedProviderIds).toContain("openai");
+    accountServerAvailable = false;
+    await expect(store.disconnectProvider("openai")).rejects.toThrow("disconnect");
+    expect(envKeys).toEqual([sharedProviderProfileEnvKey("openai")]);
+    accountServerAvailable = true;
     expect(await store.disconnectProvider("openai")).toContain("openai");
     expect(envDeleteAttempts).toEqual([
       sharedProviderCredentialEnvKey("openai"),
       sharedProviderProfileEnvKey("openai"),
+      "OPENAI_API_KEY",
     ]);
     expect(envKeys).toEqual([]);
-    expect(disabledProviderIds).toEqual(["openai"]);
+    expect(disabledProviderIds).toEqual([]);
     expect(store.getSnapshot().connectedProviderIds).not.toContain("openai");
+    store.dispose();
+    queryClient.clear();
+  });
+
+  test("disconnects DeepSeek aliases from every mounted runtime without requesting a manual reload", async () => {
+    const queryClient = getReactQueryClient();
+    queryClient.clear();
+    const { calls: openCodeCalls, client: openCodeClient } = createOpenCodeProviderClient();
+    const dshCalls: Array<{ method: string; payload: unknown }> = [];
+    const dshClient = {
+      call: async <T>(method: string, payload: unknown) => {
+        dshCalls.push({ method, payload });
+        if (method === "credentials.unset") return undefined as T;
+        if (method === "llm.models") return { groups: [] } as T;
+        throw new Error(`Unexpected DSH method: ${method}`);
+      },
+    };
+    const deletedEnvKeys: string[] = [];
+    let providers: ProviderListItem[] = [{
+      id: "deepseek-official",
+      name: "DeepSeek",
+      source: "config" as const,
+      env: ["DEEPSEEK_API_KEY"],
+      models: {},
+    }];
+    // Model the React render lag that originally caused a disconnected
+    // provider to be merged back into the settings list. The setter records
+    // the new value, while the getter deliberately keeps returning the
+    // previous render's connected IDs.
+    const connectedProviderIds = ["deepseek-official", "deepseek"];
+    let writtenConnectedProviderIds = connectedProviderIds;
+    let manualReloadRequests = 0;
+    const serverClient = {
+      listUserEnvKeys: async () => ({ keys: [], oauthProviderIds: [] }),
+      deleteUserEnv: async (key: string) => {
+        deletedEnvKeys.push(key);
+        return { ok: true };
+      },
+      readOpencodeConfigFile: async () => ({ content: "{}" }),
+      writeOpencodeConfigFile: async () => ({ ok: true }),
+      reloadEngine: async () => ({ ok: true }),
+    };
+    const store = createProviderAuthStore({
+      client: () => openCodeClient,
+      providerRuntimeConnections: () => [{
+        engineId: DEEPSEEK_HARNESS_ENGINE_ID,
+        client: dshClient,
+      }],
+      providers: () => providers,
+      providerDefaults: () => ({}),
+      providerConnectedIds: () => connectedProviderIds,
+      disabledProviders: () => [],
+      checkDesktopAppRestriction: () => false,
+      selectedWorkspaceDisplay: () => ({
+        id: "workspace-deepseek-account",
+        name: "DeepSeek Account",
+        path: "C:\\workspace",
+        preset: "starter",
+        workspaceType: "local",
+        engineId: DEFAULT_ENGINE_ID,
+      }),
+      providerBaseUrl: () => "http://localhost:43121/opencode",
+      selectedWorkspaceRoot: () => "C:\\workspace",
+      runtimeWorkspaceId: () => "workspace-deepseek-account",
+      ipolloworkServer: {
+        getSnapshot: () => ({
+          ipolloworkServerStatus: "connected",
+          ipolloworkServerClient: serverClient as never,
+          ipolloworkServerCapabilities: { config: { read: true, write: true } },
+        }),
+      },
+      setProviders: (value) => { providers = value; },
+      setProviderDefaults: () => {},
+      setProviderConnectedIds: (value) => { writtenConnectedProviderIds = value; },
+      setDisabledProviders: () => {},
+      markEngineConfigReloadRequired: () => { manualReloadRequests += 1; },
+    });
+
+    await store.disconnectProvider("deepseek-official");
+
+    expect(openCodeCalls).toContainEqual({
+      name: "remove",
+      value: { providerID: "deepseek-official" },
+    });
+    expect(openCodeCalls).toContainEqual({
+      name: "remove",
+      value: { providerID: "deepseek" },
+    });
+    expect(dshCalls.filter(({ method }) => method === "credentials.unset")).toEqual([
+      { method: "credentials.unset", payload: { ref: "DEEPSEEK_API_KEY" } },
+      { method: "credentials.unset", payload: { ref: "DEEPSEEK_API_KEY" } },
+    ]);
+    expect(deletedEnvKeys).toEqual(expect.arrayContaining([
+      sharedProviderCredentialEnvKey("deepseek-official"),
+      sharedProviderProfileEnvKey("deepseek-official"),
+      sharedProviderCredentialEnvKey("deepseek"),
+      sharedProviderProfileEnvKey("deepseek"),
+      "DEEPSEEK_API_KEY",
+    ]));
+    expect(writtenConnectedProviderIds).not.toContain("deepseek-official");
+    expect(writtenConnectedProviderIds).not.toContain("deepseek");
+    expect(store.getSnapshot().connectedProviderIds).not.toContain("deepseek-official");
+    expect(store.getSnapshot().connectedProviderIds).not.toContain("deepseek");
+    expect(manualReloadRequests).toBe(0);
     store.dispose();
     queryClient.clear();
   });
@@ -647,6 +932,15 @@ describe("model runtime adapters", () => {
     expect(calls).toContainEqual({
       method: "credentials.unset",
       payload: { ref: "DEEPSEEK_API_KEY" },
+    });
+    await connection.removeCredentials("openai");
+    expect(calls).toContainEqual({
+      method: "credentials.unset",
+      payload: { ref: "OPENAI_API_KEY" },
+    });
+    expect(calls).toContainEqual({
+      method: "credentials.unset",
+      payload: { ref: "OPENAI_CODEX_API_KEY" },
     });
   });
 

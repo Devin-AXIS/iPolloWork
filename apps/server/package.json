@@ -48,6 +48,7 @@
   },
   "dependencies": {
     "@ipollowork/types": "workspace:*",
+    "@modelcontextprotocol/sdk": "1.29.0",
     "@opencode-ai/sdk": "^1.18.16",
     "better-sqlite3": "^11.10.0",
     "drizzle-orm": "^0.45.1",

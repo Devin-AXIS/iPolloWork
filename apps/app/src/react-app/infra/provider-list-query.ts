@@ -64,8 +64,10 @@ export function providerListQueryKey(input: {
 }
 
 export async function refreshProviderListQueries(queryClient: QueryClient) {
-  await queryClient.invalidateQueries({ queryKey: PROVIDER_LIST_QUERY_ROOT });
-  await queryClient.refetchQueries({ queryKey: PROVIDER_LIST_QUERY_ROOT, type: "active" });
+  await queryClient.invalidateQueries({
+    queryKey: PROVIDER_LIST_QUERY_ROOT,
+    refetchType: "active",
+  });
 }
 
 export async function fetchProviderList(input: {

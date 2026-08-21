@@ -83,17 +83,27 @@ export function sharedProviderIdFromProfileEnvKey(key: string): string | null {
 
 /**
  * Account-level provider connections include API-key credentials and OAuth
- * connections. OAuth secrets remain in the engine auth vault; their existing
- * shared profile is the non-secret account marker used by the app shell.
+ * connections. When the caller has an authoritative OAuth directory, a
+ * profile is metadata only and cannot revive a disconnected provider. The
+ * profile fallback remains for older servers that do not expose OAuth IDs.
  */
-export function sharedConfiguredProviderIdsFromEnvKeys(keys: readonly string[]): string[] {
+export function sharedConfiguredProviderIdsFromEnvKeys(
+  keys: readonly string[],
+  oauthProviderIds?: readonly string[],
+): string[] {
+  const hasAuthoritativeOAuthDirectory = oauthProviderIds !== undefined
   return [
     ...new Set(
-      keys.flatMap((key) => {
-        const providerId = sharedProviderIdFromCredentialEnvKey(key)
-          ?? sharedProviderIdFromProfileEnvKey(key)
-        return providerId ? [providerId] : []
-      }),
+      [
+        ...keys.flatMap((key) => {
+          const providerId = sharedProviderIdFromCredentialEnvKey(key)
+            ?? (hasAuthoritativeOAuthDirectory ? null : sharedProviderIdFromProfileEnvKey(key))
+          return providerId ? [providerId] : []
+        }),
+        ...(oauthProviderIds ?? [])
+          .map((providerId) => providerId.trim().toLowerCase())
+          .filter(Boolean),
+      ],
     ),
   ].sort()
 }

@@ -56,7 +56,9 @@ import {
 } from "./route-workspaces";
 import {
   readActiveWorkspaceId,
+  readSessionDirectoryCache,
   writeActiveWorkspaceId,
+  writeSessionDirectoryCache,
 } from "./session-memory";
 import { legacySessionRoute, workspaceSessionRoute } from "./workspace-routes";
 
@@ -108,7 +110,9 @@ export function useWorkspaceRouteState(input: UseWorkspaceRouteStateInput) {
   const [baseUrl, setBaseUrl] = useState("");
   const [token, setToken] = useState("");
   const [workspaces, setWorkspaces] = useState<RouteWorkspace[]>([]);
-  const [sessionsByWorkspaceId, setSessionsByWorkspaceId] = useState<Record<string, RouteSession[]>>({});
+  const [sessionsByWorkspaceId, setSessionsByWorkspaceId] = useState<Record<string, RouteSession[]>>(
+    () => readSessionDirectoryCache(),
+  );
   const [errorsByWorkspaceId, setErrorsByWorkspaceId] = useState<Record<string, string | null>>({});
   const [workspaceConnectionOverrides, setWorkspaceConnectionOverrides] = useState<Record<string, WorkspaceConnectionState>>({});
   const [routeError, setRouteError] = useState<string | null>(null);
@@ -168,7 +172,7 @@ export function useWorkspaceRouteState(input: UseWorkspaceRouteStateInput) {
   const workspacesRef = useRef<RouteWorkspace[]>([]);
   const remoteWorkspaceCheckRunRef = useRef<Record<string, string>>({});
   const remoteWorkspaceCheckRunCounterRef = useRef(0);
-  const sessionsByWorkspaceIdRef = useRef<Record<string, RouteSession[]>>({});
+  const sessionsByWorkspaceIdRef = useRef<Record<string, RouteSession[]>>(sessionsByWorkspaceId);
   const pendingCreatedSessionIdsRef = useRef<Record<string, Record<string, number>>>({});
   const startupRetryTimerRef = useRef<number | null>(null);
   const [retryingWorkspaceIds, setRetryingWorkspaceIds] = useState<string[]>([]);
@@ -182,9 +186,10 @@ export function useWorkspaceRouteState(input: UseWorkspaceRouteStateInput) {
     setLoading(true);
     setRouteError(null);
     workspacesRef.current = [];
-    sessionsByWorkspaceIdRef.current = {};
+    const cachedSessions = readSessionDirectoryCache();
+    sessionsByWorkspaceIdRef.current = cachedSessions;
     setWorkspaces([]);
-    setSessionsByWorkspaceId({});
+    setSessionsByWorkspaceId(cachedSessions);
     setErrorsByWorkspaceId({});
     setRetryingWorkspaceIds([]);
     setLegacySelectedWorkspaceId("");
@@ -430,8 +435,9 @@ export function useWorkspaceRouteState(input: UseWorkspaceRouteStateInput) {
         setBaseUrl("");
         setToken("");
         setWorkspaces(desktopWorkspaces);
-        sessionsByWorkspaceIdRef.current = {};
-        setSessionsByWorkspaceId({});
+        const cachedSessions = readSessionDirectoryCache();
+        sessionsByWorkspaceIdRef.current = cachedSessions;
+        setSessionsByWorkspaceId(cachedSessions);
         setErrorsByWorkspaceId({});
         setLegacySelectedWorkspaceId(resolveWorkspaceListSelectedId(desktopList) || desktopWorkspaces[0]?.id || "");
         return;
@@ -560,12 +566,21 @@ export function useWorkspaceRouteState(input: UseWorkspaceRouteStateInput) {
         nextWorkspaceId,
         alreadyLoadedWorkspaceIds,
       );
-      if (initialLoads.selected.length > 0) {
-        const selectedSessionsStartedAt = Date.now();
-        void loadWorkspaceSessionsInBackground(initialLoads.selected).then(() => {
-          logStartupTiming(`[startup] selected workspace sessions loaded in ${Date.now() - selectedSessionsStartedAt}ms`, {
-            workspaceId: nextWorkspaceId,
-          });
+      const selectedSessionsStartedAt = Date.now();
+      const selectedSessionsLoad = initialLoads.selected.length > 0
+        ? loadWorkspaceSessionsInBackground(initialLoads.selected).then(() => {
+            logStartupTiming(`[startup] selected workspace sessions loaded in ${Date.now() - selectedSessionsStartedAt}ms`, {
+              workspaceId: nextWorkspaceId,
+            });
+          })
+        : Promise.resolve();
+      if (initialLoads.deferred.length > 0) {
+        // Keep cold runtimes for background projects from competing with the
+        // selected project's task directory. Message history remains lazy.
+        void selectedSessionsLoad.then(async () => {
+          for (const workspace of initialLoads.deferred) {
+            await loadWorkspaceSessionsInBackground([workspace]);
+          }
         });
       }
     } catch (error) {
@@ -643,7 +658,12 @@ export function useWorkspaceRouteState(input: UseWorkspaceRouteStateInput) {
 
   useEffect(() => {
     sessionsByWorkspaceIdRef.current = sessionsByWorkspaceId;
-  }, [sessionsByWorkspaceId]);
+    if (workspaces.length === 0) return;
+    const visibleWorkspaceIds = new Set(workspaces.map((workspace) => workspace.id));
+    writeSessionDirectoryCache(Object.fromEntries(
+      Object.entries(sessionsByWorkspaceId).filter(([workspaceId]) => visibleWorkspaceIds.has(workspaceId)),
+    ));
+  }, [sessionsByWorkspaceId, workspaces]);
 
   const handleRemoteWorkspaceConnectionSaved = useCallback(
     async (workspaceId: string) => {

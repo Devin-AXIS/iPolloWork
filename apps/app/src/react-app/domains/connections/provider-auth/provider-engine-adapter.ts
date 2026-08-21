@@ -8,11 +8,13 @@ import type {
   ProviderListResponse,
   ProviderModel,
 } from "../../../../app/types";
+import { codexHarnessProviderEngineAdapter } from "./codex-harness-provider-engine-adapter";
 import { deepSeekHarnessProviderEngineAdapter } from "./deepseek-harness-provider-engine-adapter";
 import { openCodeProviderEngineAdapter } from "./opencode-provider-engine-adapter";
 
 export { openCodeProviderEngineAdapter } from "./opencode-provider-engine-adapter";
 export { deepSeekHarnessProviderEngineAdapter } from "./deepseek-harness-provider-engine-adapter";
+export { codexHarnessProviderEngineAdapter } from "./codex-harness-provider-engine-adapter";
 
 export type ProviderEngineAuthMethod = {
   type: "oauth" | "api";
@@ -192,6 +194,7 @@ export class ModelRuntimeAdapterRegistry {
 export const modelRuntimeAdapters = new ModelRuntimeAdapterRegistry([
   openCodeProviderEngineAdapter,
   deepSeekHarnessProviderEngineAdapter,
+  codexHarnessProviderEngineAdapter,
 ]);
 
 /** Remove after the settings/session provider-management routes migrate to the canonical name. */
