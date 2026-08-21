@@ -2,7 +2,7 @@
   "schemaVersion": 2,
   "id": "video-agent",
   "name": "iPollo Video",
-  "description": "提供 iPollo Video、HyperFrames、旁白工作流与配套 Agent Skills。",
+  "description": "为内建 iPollo Video 提供 HyperFrames、旁白工作流与配套 Agent Skills。",
   "category": "AI Agent 与自动化",
   "defaultEnabled": true,
   "source": {
@@ -21,7 +21,7 @@
     "defaultLocale": "zh",
     "translations": {
       "en": {
-        "description": "iPollo Video, HyperFrames, voiceover workflows, and official Agent Skills.",
+        "description": "Official HyperFrames and voiceover Agent Skills for the built-in iPollo Video workspace.",
         "category": "AI Agents & Automation",
         "composer": { "prompt": "Use iPollo Video to create or edit video in the current session's video project." },
         "resources": {
@@ -49,7 +49,7 @@
     }
   },
   "package": {
-    "version": "0.3.0",
+    "version": "0.3.1",
     "publisher": {
       "id": "ipollowork",
       "name": "iPolloWork"
@@ -71,15 +71,6 @@
     {
       "id": "process",
       "reason": "运行 HyperFrames 对当前会话项目的只读检查和验证命令。"
-    }
-  ],
-  "contributions": [
-    {
-      "type": "session-side-panel",
-      "ref": "ipollowork.video.panel",
-      "label": "Video",
-      "description": "在当前会话右侧打开 Video Studio。",
-      "location": "session-right-pane"
     }
   ],
   "resources": [

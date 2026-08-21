@@ -13,6 +13,10 @@ const subprocessPatchPath = resolve(
   runtimeRoot,
   "@deepseek-ai__dsh-subprocess-local@0.1.0-rc.6.patch",
 );
+const windowsSandboxPatchPath = resolve(
+  runtimeRoot,
+  "@deepseek-ai__dsh-sandbox-windows-acl@0.1.0-rc.6.patch",
+);
 const stampPath = resolve(runtimeRoot, ".install-stamp.json");
 const cliPath = resolve(runtimeRoot, "node_modules", "@deepseek-ai", "dsh", "lib", "bin.js");
 const dshManifestPath = resolve(runtimeRoot, "node_modules", "@deepseek-ai", "dsh", "package.json");
@@ -20,7 +24,7 @@ const pnpmCommand = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
 
 function installKey() {
   const hash = createHash("sha256");
-  for (const filePath of [manifestPath, lockPath, workspacePath, subprocessPatchPath]) {
+  for (const filePath of [manifestPath, lockPath, workspacePath, subprocessPatchPath, windowsSandboxPatchPath]) {
     hash.update(readFileSync(filePath));
   }
   return hash.digest("hex");

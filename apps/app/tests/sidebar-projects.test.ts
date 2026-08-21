@@ -19,6 +19,10 @@ const sessionRouteSource = readFileSync(
   new URL("../src/react-app/shell/session-route.tsx", import.meta.url),
   "utf8",
 );
+const workspaceRouteStateSource = readFileSync(
+  new URL("../src/react-app/shell/use-workspace-route-state.ts", import.meta.url),
+  "utf8",
+);
 const starterSource = readFileSync(
   new URL("../src/components/chat/new-conversation-starter.tsx", import.meta.url),
   "utf8",
@@ -65,7 +69,8 @@ describe("sidebar projects", () => {
     expect(sidebarSource).toContain('isSelectedProject && "bg-sidebar-accent font-medium text-sidebar-accent-foreground mac:bg-black/5 dark:mac:bg-white/10"');
     expect(sidebarSource).toContain('<SidebarMenuSub className="mt-[2px] translate-x-0 gap-1 pb-2">');
     expect(sessionRouteSource).toContain("const rememberedSessionId = readLastSessionFor(workspaceId);");
-    expect(sessionRouteSource).toContain("?? rememberedSessionId");
+    expect(sessionRouteSource).toContain("knownSessions.find((session) => session.id === rememberedSessionId)?.id");
+    expect(sessionRouteSource).not.toContain("?? rememberedSessionId");
     expect(sessionRouteSource).toContain("navigateToWorkspaceSession(workspaceId, targetSessionId);");
     expect(sidebarSource).toContain("onSelectProject(workspace.id)");
     expect(sidebarSource).toContain("<ConversationList");
@@ -77,7 +82,7 @@ describe("sidebar projects", () => {
     expect(sidebarSource).toContain('addTestId="new-project-button"');
     expect(sidebarSource).toContain('t("session.new_task")');
     expect(sidebarSource).toContain('t("projects.create")');
-    expect(sidebarSource.match(/className="flex size-4 shrink-0 items-center justify-center"/g)).toHaveLength(4);
+    expect(sidebarSource.match(/className="flex size-4 shrink-0 items-center justify-center"/g)).toHaveLength(5);
     expect(sidebarSource).toContain('primarySidebarActionClassName = "h-8 gap-2 rounded-[8px] px-2');
     expect(sidebarSource).toContain('<SidebarMenu className="gap-1">');
   });
@@ -93,12 +98,15 @@ describe("sidebar projects", () => {
 
   test("creates the first project and task with OpenCode only after the starter is submitted", () => {
     expect(sessionPageSource).toContain('data-testid="initial-project-task-starter"');
-    expect(sessionPageSource).toContain("showInitialProjectTaskStarter");
+    expect(sessionPageSource).toContain("showNewTaskStarter");
+    expect(sessionPageSource).toContain("props.sidebar.onCreateTaskFromDraft(props.selectedWorkspaceId, draft)");
     expect(sessionPageSource).toContain("props.sidebar.onCreateInitialProjectTask");
     expect(sessionPageSource).toContain('testId="initial-project-engine-badge"');
+    expect(sessionPageSource).toContain("engineId={props.selectedWorkspaceDisplay.engineId}");
+    expect(sessionPageSource).toContain('key={`${props.selectedWorkspaceId}:${props.selectedWorkspaceDisplay.engineId ?? DEFAULT_ENGINE_ID}`}');
+    expect(sessionPageSource).toContain('draftScopeKey={`new-task:${workspaceId}:${engineId?.trim() || DEFAULT_ENGINE_ID}`}');
     expect(sessionPageSource).not.toContain('data-testid="initial-project-engine-dialog"');
     expect(sessionPageSource).toContain("await onSubmit(composerDraft)");
-    expect(sessionPageSource).toContain('engineId={DEFAULT_ENGINE_ID}');
     expect(sessionPageSource).toContain("<ProjectEngineOptions");
     expect(composerSource).toContain("endAccessory?: ReactNode");
     expect(composerSource).toContain('inlineAppearance?: "default" | "engine-selected"');
@@ -113,11 +121,22 @@ describe("sidebar projects", () => {
     expect(sessionRouteSource).not.toMatch(/handleCreateInitialProjectTask[\s\S]{0,500}selectedWorkspace\?\.engineId/);
     expect(sessionRouteSource).toContain('name: t("session.untitled")');
     expect(sessionRouteSource).toContain("surfaceProps.onSendDraft(pending.draft, pending.sessionId)");
-    expect(sessionRouteSource).toContain("workspaces.find((workspace) => workspace.id === selectedWorkspaceId)?.isDefault !== false");
-    expect(sessionRouteSource).toMatch(/if \(pendingInitialProjectTask\) return;[\s\S]*startupConversationPhase !== "pending"/);
+    expect(sessionRouteSource).not.toContain("startupConversationPhase");
     expect(sessionRouteSource).toMatch(
       /!loading[\s\S]*selectedWorkspaceId[\s\S]*!workspaces\.some\(\(workspace\) => !workspace\.isDefault\)[\s\S]*dismissFirstRunLoader\(\)/,
     );
+  });
+
+  test("loads only the selected project task directory without blocking the workspace shell", () => {
+    expect(workspaceRouteStateSource).toContain(
+      "const selectedEntry = cachedEntries.find((entry) => entry.workspaceId === nextWorkspaceId);",
+    );
+    expect(workspaceRouteStateSource).toContain("? [selectedEntry.workspaceId]");
+    expect(workspaceRouteStateSource).toContain("void loadWorkspaceSessionsInBackground(initialLoads.selected).then(() => {");
+    expect(workspaceRouteStateSource).not.toContain("await loadWorkspaceSessionsInBackground(initialLoads.selected)");
+    expect(sessionRouteSource).toContain("navigateToWorkspaceSession(workspaceId, null);");
+    expect(sessionRouteSource).toContain("onCreateTaskFromDraft: handleCreateTaskFromDraft");
+    expect(sessionRouteSource).toContain('if (!templateId && type === undefined)');
   });
 
   test("matches the project-first starter design in both themes", () => {
@@ -154,8 +173,23 @@ describe("sidebar projects", () => {
     expect(sidebarSource).not.toContain("onDoubleClick={() => setProjectExpanded");
     expect(sidebarSource).toContain('data-testid="project-new-conversation-button"');
     expect(sidebarSource).toContain("const createConversationInProject = async () =>");
-    expect(sidebarSource).toMatch(/await onSelectProject\(workspace\.id\);[\s\S]*await ctx\.onCreateTaskInWorkspace\(workspace\.id\);/);
-    expect(sidebarSource).toContain('disabled={showInitialLoading || isConnectionActionBusy}');
+    expect(sidebarSource).toContain("await ctx.onCreateTaskInWorkspace(workspace.id);");
+    expect(sidebarSource).not.toMatch(/createConversationInProject[\s\S]{0,500}await onSelectProject\(workspace\.id\)/);
+    expect(sidebarSource).toContain("setCreatingConversation(true)");
+    expect(sidebarSource).toContain('aria-busy={creatingConversation}');
+    expect(sidebarSource).toContain('disabled={isConnectionActionBusy || creatingConversation}');
+    expect(sidebarSource).not.toContain("showInitialLoading");
+    expect(sidebarSource).not.toContain("canRemoveProject");
+    expect(sessionRouteSource).not.toContain('t("projects.keep_one")');
+    expect(sessionRouteSource).toContain('navigateToWorkspaceSession("", null, { replace: true });');
+    expect(sidebarSource).toContain('<Loader2 className="size-3.5 animate-spin"');
+    expect(sidebarSource).toContain('project.status === "loading" && project.sessions.length === 0 && !isSelectedProject');
+    expect(sessionRouteSource).toContain("taskCreationInFlightRef.current.has(workspaceId)");
+    expect(sessionRouteSource).toContain("endpoint.client.createSession(endpoint.workspaceId)");
+    expect(sessionRouteSource).not.toContain("workspaceConversation.create(");
+    expect(sessionRouteSource).not.toContain("Give the click an immediate destination");
+    expect(sessionRouteSource).toContain("taskCreationInFlightRef.current.delete(workspaceId)");
+    expect(sidebarSource).toContain("onClick={(event) => event.stopPropagation()}");
     expect(sessionRouteSource).not.toContain("retryingWorkspaceIds.includes(workspaceId)");
     expect(sidebarSource).toContain('t("projects.rename")');
     expect(sidebarSource).toContain('t("projects.show_in_folder")');
@@ -182,6 +216,18 @@ describe("sidebar projects", () => {
     expect(sessionRouteSource).not.toContain('if (!name || !requestedFolderPath)');
   });
 
+  test("explains that a project is required and reuses the project creation dialog", () => {
+    expect(sessionPageSource).toContain('t("workspace.empty_state_header")');
+    expect(sessionPageSource).toContain('t("workspace.empty_state_title")');
+    expect(sessionPageSource).toContain('t("workspace.empty_state_body")');
+    expect(sessionPageSource).toContain('onClick={openCreateProjectDialog}');
+    expect(sessionPageSource).toContain('onOpenCreateProject={isElectronRuntime() ? openCreateProjectDialog : undefined}');
+    expect(englishLocaleSource).toContain('"workspace.empty_state_title": "Create a project to get started"');
+    expect(chineseLocaleSource).toContain('"workspace.empty_state_header": "请先创建项目"');
+    expect(chineseLocaleSource).toContain('"workspace.empty_state_title": "创建项目后即可开始使用"');
+    expect(chineseLocaleSource).toContain('"workspace.empty_state_body": "当前还没有项目。请先创建一个项目，然后即可在项目中发起对话和使用 AI 功能。"');
+  });
+
   test("matches the project creation design with localized, theme-aware controls", () => {
     expect(sessionPageSource).toContain('data-testid="create-project-dialog"');
     expect(sessionPageSource).not.toContain('showCloseButton={false}');
@@ -189,8 +235,6 @@ describe("sidebar projects", () => {
     expect(sessionPageSource).toContain('data-testid="project-engine-option"');
     expect(sessionPageSource).toContain('max-w-[516px]');
     expect(sessionPageSource).toContain('t("projects.engine_locked_notice")');
-    expect(sessionPageSource).toContain('props.onOpenProviderAuth?.("deepseek-official")');
-    expect(sessionPageSource).toContain('t("projects.configure_deepseek_key")');
     expect(sessionPageSource).toContain("<RadioGroup");
     expect(sessionPageSource).toContain("projectEngineSelectedIcon");
     expect(sessionPageSource).toContain("projectEngineOpenCodeIcon");

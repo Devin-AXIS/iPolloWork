@@ -25,6 +25,7 @@ import {
   artifactPathMatchesTarget,
   canOpenArtifactInContext,
   canPreviewArtifact,
+  getArtifactStudioTarget,
   groupConversationOutputArtifacts,
   isConversationOutputArtifact,
   selectArtifactContextOutputs,
@@ -56,8 +57,13 @@ function ArtifactButton({ artifact, sessionId, artifactContext, onOpenVideoStudi
   const canPreview = canPreviewArtifact(artifact);
   const isVideoEntry = artifactContext?.kind === "video"
     && artifactPathMatchesTarget(artifact.path, artifactContext.entryPath);
-  const canOpenVideoStudio = isVideoEntry && Boolean(onOpenVideoStudio);
-  const canActivate = artifactContext?.kind === "video" ? canOpenVideoStudio : canOpen;
+  const studioTarget = getArtifactStudioTarget(artifact);
+  const opensCurrentVideoStudio = isVideoEntry && Boolean(onOpenVideoStudio);
+  const canOpenVideoStudio = opensCurrentVideoStudio || studioTarget?.surface === "video";
+  const canOpenDesignStudio = studioTarget?.surface === "design";
+  const canActivate = studioTarget
+    ? true
+    : artifactContext?.kind === "video" ? opensCurrentVideoStudio : canOpen;
   const title = compactArtifactTitle(artifact.name);
 
   const content = (
@@ -69,7 +75,9 @@ function ArtifactButton({ artifact, sessionId, artifactContext, onOpenVideoStudi
         <DescriptiveButtonTitle className={cn(compact ? "max-w-56 text-xs font-medium" : "max-w-full text-sm font-medium")} title={artifact.name}>{title}</DescriptiveButtonTitle>
         {(!compact || canOpenVideoStudio) && canActivate ? (
           <DescriptiveButtonDescription className={cn(compact ? "text-[10px] leading-3" : "text-xs leading-4")}>
-            {canOpenVideoStudio ? t("session.outputs.action_video_preview_edit") : t("session.outputs.action_browse_edit")}
+            {canOpenVideoStudio
+              ? t("link_action.open_video_studio")
+              : canOpenDesignStudio ? t("link_action.open_design") : t("session.outputs.action_browse_edit")}
           </DescriptiveButtonDescription>
         ) : null}
       </DescriptiveButtonContent>
@@ -90,17 +98,19 @@ function ArtifactButton({ artifact, sessionId, artifactContext, onOpenVideoStudi
   }
 
   return (
-    <div className={cn("group/output relative max-w-full", compact && "w-full")}>
+    <div className={cn("group/output relative max-w-full", compact ? "w-full" : "w-[17rem] flex-none snap-start")}>
       <DescriptiveButton
         className={cn("max-w-full items-center whitespace-nowrap", compact ? "w-full flex-none justify-start gap-1.5 rounded-xl px-2 py-1.5 hover:bg-muted/70" : "min-h-[72px] w-full min-w-0 gap-4 rounded-2xl px-5 py-4")}
         onClick={() => {
-          if (canOpenVideoStudio) {
+          if (opensCurrentVideoStudio) {
             onOpenVideoStudio?.();
             return;
           }
-          previewArtifact(artifact);
+          previewArtifact(artifact, studioTarget ? { viewer: studioTarget.surface } : undefined);
         }}
-        title={canOpenVideoStudio ? t("session.outputs.open_video_studio") : canPreview ? `Preview ${artifact.name}` : `Open ${artifact.name}`}
+        title={canOpenVideoStudio
+          ? t("session.outputs.open_video_studio")
+          : canOpenDesignStudio ? t("link_action.open_design") : canPreview ? `Preview ${artifact.name}` : `Open ${artifact.name}`}
       >
         {content}
       </DescriptiveButton>
@@ -195,7 +205,10 @@ export function ArtifactList({ messages, sessionId, title, includeTargetFallback
   return (
     <div className="w-full">
       {title ? <div className="mb-1.5 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{title}</div> : null}
-      <div className="no-scrollbar flex min-w-0 flex-nowrap gap-2 overflow-x-auto pb-1">
+      <div
+        className="flex min-w-0 snap-x snap-proximity flex-nowrap gap-2 overflow-x-auto overscroll-x-contain pb-2 [scrollbar-gutter:stable]"
+        aria-label={t("session.outputs.title")}
+      >
         {displayedArtifacts.map((artifact) => (
           <ArtifactButton key={artifact.id} artifact={artifact} sessionId={sessionId} artifactContext={artifactContext} onOpenVideoStudio={onOpenVideoStudio} />
         ))}

@@ -18,7 +18,7 @@ const zhSource = readFileSync(resolve(import.meta.dir, "../src/i18n/locales/zh.t
 describe("model picker vision badge", () => {
   test("tracks vision support separately from generic attachment support", () => {
     expect(typesSource).toContain("supportsVision?: boolean");
-    expect(hookSource).toContain("const runtime = resolveModelRuntime(active");
+    expect(hookSource).toContain("getRunnableChatModelEntries({");
     expect(hookSource).toContain("supportsVision: runtime.capabilities?.vision === true");
   });
 
@@ -31,8 +31,8 @@ describe("model picker vision badge", () => {
   });
 
   test("renders the vision badge in the compact composer model switcher", () => {
-    expect(compactSelectSource).toContain("const runtime = resolveModelRuntime(data");
-    expect(compactSelectSource).toContain(".filter((provider) => accountConnected.has(provider.id))");
+    expect(compactSelectSource).toContain("getRunnableChatModelEntries({");
+    expect(compactSelectSource).toContain("isConnected: configuredProviderIds.has(provider.id)");
     expect(compactSelectSource).toContain("supportsVision: runtime.capabilities?.vision === true");
     expect(compactSelectSource).toContain("const visionBadgeLabel = option.supportsVision ? t(\"model_picker.badge_vision\") : null");
     expect(compactSelectSource).toContain("{visionBadgeLabel}");
@@ -41,5 +41,12 @@ describe("model picker vision badge", () => {
   test("localizes the vision badge label", () => {
     expect(enSource).toContain('"model_picker.badge_vision": "Vision"');
     expect(zhSource).toContain('"model_picker.badge_vision": "视觉"');
+  });
+
+  test("omits models that the active agent engine cannot execute", () => {
+    expect(compactSelectSource).toContain("runtime: runtimeQuery.data");
+    expect(compactSelectSource).not.toContain('t("model_picker.engine_unavailable")');
+    expect(hookSource).toContain("runtime: runtimeData");
+    expect(hookSource).not.toContain('t("model_picker.engine_unavailable")');
   });
 });

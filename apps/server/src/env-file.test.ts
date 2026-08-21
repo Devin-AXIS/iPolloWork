@@ -125,6 +125,53 @@ describe("env-file", () => {
     expect(await svc.delete("FOO")).toBe(false);
   });
 
+  test("keeps the current process environment synchronized", async () => {
+    const processEnv: NodeJS.ProcessEnv = { EXISTING_KEY: "before" };
+    const svc = new EnvService({ path, processEnv });
+
+    await svc.upsertMany([
+      { key: "EXISTING_KEY", value: "after" },
+      { key: "NEW_PROVIDER_KEY", value: "secret" },
+    ]);
+    expect(processEnv.EXISTING_KEY).toBe("after");
+    expect(processEnv.NEW_PROVIDER_KEY).toBe("secret");
+
+    expect(await svc.delete("EXISTING_KEY")).toBe(true);
+    expect(processEnv.EXISTING_KEY).toBeUndefined();
+    expect(await svc.delete("NEW_PROVIDER_KEY")).toBe(true);
+    expect(processEnv.NEW_PROVIDER_KEY).toBeUndefined();
+  });
+
+  test("can remove a process-only provider variable", async () => {
+    const processEnv: NodeJS.ProcessEnv = { OPENAI_API_KEY: "inherited-secret" };
+    const svc = new EnvService({ path, processEnv });
+
+    expect(await svc.delete("OPENAI_API_KEY")).toBe(true);
+    expect(processEnv.OPENAI_API_KEY).toBeUndefined();
+    expect(await svc.delete("OPENAI_API_KEY")).toBe(false);
+  });
+
+  test("loads persisted values into the current process without projecting internal keys", async () => {
+    writeFileSync(
+      path,
+      JSON.stringify({
+        schemaVersion: 1,
+        updatedAt: Date.now(),
+        variables: [
+          { key: "ANTHROPIC_API_KEY", value: "stored-secret", updatedAt: Date.now() },
+          { key: "IPOLLOWORK_API_KEY", value: "internal-secret", updatedAt: Date.now() },
+        ],
+      }),
+    );
+    const processEnv: NodeJS.ProcessEnv = {};
+    const svc = new EnvService({ path, processEnv });
+
+    await svc.list();
+
+    expect(processEnv.ANTHROPIC_API_KEY).toBe("stored-secret");
+    expect(processEnv.IPOLLOWORK_API_KEY).toBeUndefined();
+  });
+
   test("persisted file has 0600 perms on POSIX", async () => {
     if (process.platform === "win32") return;
     const svc = new EnvService({ path });

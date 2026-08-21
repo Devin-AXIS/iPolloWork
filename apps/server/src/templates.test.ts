@@ -1000,6 +1000,32 @@ describe("template installations", () => {
     }
   });
 
+  test("persists artifact-delivery surfaces without turning them into template-authoring sessions", async () => {
+    const root = await mkdtemp(join(tmpdir(), "ipw-delivery-surfaces-"));
+    process.env.IPOLLOWORK_RUNTIME_DB = join(root, "runtime.sqlite");
+    const serverConfig = config(root);
+    const ws = workspace(root, "alpha");
+    const slides = await createTemplateAuthoringSession(serverConfig, ws, {
+      sessionId: "delivery_slides",
+      category: "slides",
+      purpose: "artifact-delivery",
+    });
+    const video = await createTemplateAuthoringSession(serverConfig, ws, {
+      sessionId: "delivery_video",
+      category: "video",
+      purpose: "artifact-delivery",
+    });
+
+    expect(slides).toMatchObject({ authoring: false, surface: "design" });
+    expect(slides.state.entry).toBe("design/delivery_slides/entry.html");
+    expect(JSON.parse(await readFile(join(ws.path, "design", "delivery_slides", "brief.json"), "utf8"))).toMatchObject({ mode: "artifact-delivery" });
+    expect(await readFile(join(ws.path, slides.state.entry), "utf8")).not.toContain("template draft");
+    expect(video).toMatchObject({ authoring: false, surface: "video" });
+    expect(video.state.entry).toBe("video/delivery_video/index.html");
+    expect((await readTemplateSession(serverConfig, ws, slides.sessionId)).authoring).toBe(false);
+    expect((await readTemplateSession(serverConfig, ws, video.sessionId)).authoring).toBe(false);
+  });
+
   test("initializes native PPT and HyperFrames authoring contracts without changing session paths", async () => {
     const root = await mkdtemp(join(tmpdir(), "ipw-authoring-surfaces-"));
     process.env.IPOLLOWORK_RUNTIME_DB = join(root, "runtime.sqlite");

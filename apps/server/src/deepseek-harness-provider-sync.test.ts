@@ -10,6 +10,8 @@ import {
   deepSeekHarnessCompatibleProviderProfiles,
   deepSeekHarnessProviderCredentials,
   deepSeekHarnessWebArgs,
+  openAiCodexOAuthCredential,
+  refreshOpenAiCodexOAuthCredential,
   sharedProviderApiCredentials,
 } from "./deepseek-harness-runtime.js";
 
@@ -85,6 +87,56 @@ describe("DeepSeek Harness provider credential sync", () => {
         discoverModels: true,
       },
     });
+  });
+
+  test("bridges an OpenCode Codex OAuth access token without copying its refresh token", () => {
+    expect(deepSeekHarnessProviderCredentials([], {
+      openAiCodexAccessToken: "codex-access-token",
+    }).get("openai-codex")).toEqual({
+      apiKey: "codex-access-token",
+      bridge: {
+        providerId: "openai-codex",
+        displayName: "OpenAI",
+      },
+    });
+  });
+
+  test("parses and refreshes the persisted OpenCode Codex OAuth credential", async () => {
+    const credential = openAiCodexOAuthCredential({
+      type: "oauth",
+      access: "old-access",
+      refresh: "refresh-secret",
+      expires: 1_800_000_000,
+      accountId: "account-1",
+    });
+    expect(credential).toMatchObject({
+      access: "old-access",
+      refresh: "refresh-secret",
+      expires: 1_800_000_000_000,
+    });
+    expect(credential).not.toBeNull();
+
+    const requests: RequestInit[] = [];
+    const refreshed = await refreshOpenAiCodexOAuthCredential(credential!, {
+      now: 2_000_000,
+      fetcher: (async (_input, init) => {
+        requests.push(init ?? {});
+        return Response.json({
+          access_token: "new-access",
+          refresh_token: "new-refresh",
+          expires_in: 3_600,
+        });
+      }) as typeof fetch,
+    });
+    expect(refreshed).toEqual({
+      type: "oauth",
+      access: "new-access",
+      refresh: "new-refresh",
+      expires: 5_600_000,
+      accountId: "account-1",
+    });
+    expect(String(requests[0]?.body)).toContain("grant_type=refresh_token");
+    expect(requests[0]?.signal).toBeInstanceOf(AbortSignal);
   });
 
   test("keeps the Zen bridge when the user replaces the public key with an account key", () => {

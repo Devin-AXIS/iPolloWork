@@ -17,6 +17,11 @@ export {
 
 export const HYPERFRAMES_STUDIO_LABEL = "Local HyperFrames Studio";
 
+export function videoProjectSessionIdFromEntryPath(path: string) {
+  const match = /^video\/([^/]+)\/index\.html$/i.exec(path.trim().replaceAll("\\", "/").replace(/^\.\//, ""));
+  return match?.[1] ?? null;
+}
+
 /**
  * Template metadata is authoritative when it exists. Older sessions created
  * before template-session persistence still have their surface in the

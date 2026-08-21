@@ -966,6 +966,16 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
   const activeModelProviderRoot = activeEngineId === DEEPSEEK_HARNESS_ENGINE_ID
     ? deepSeekHarnessWorkspace?.path?.trim() || ""
     : sharedProviderRoot;
+  const activeModelProviderSource = useMemo<ProviderListQueryInput | null>(() => (
+    activeModelProviderClient
+      ? {
+          client: activeModelProviderClient,
+          engineId: activeEngineId,
+          baseUrl: activeModelProviderEndpoint?.opencodeBaseUrl,
+          directory: activeModelProviderRoot || undefined,
+        }
+      : null
+  ), [activeEngineId, activeModelProviderClient, activeModelProviderEndpoint?.opencodeBaseUrl, activeModelProviderRoot]);
   const setActiveModel = useCallback((model: ModelRef) => {
     local.setPrefs((previous) => updateModelPreferences(
       previous,
@@ -995,7 +1005,9 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
     baseUrl: activeModelProviderEndpoint?.opencodeBaseUrl ?? "",
     workspaceRoot: activeModelProviderRoot,
     catalogSources: modelCatalogSources,
+    runtimeSource: activeModelProviderSource,
     connectedProviderIds: providerAuthSnapshot.connectedProviderIds,
+    disabledProviderIds: disabledProviders,
     onLoadError: handleModelPickerLoadError,
   });
   // Settings refreshes provider auth whenever the picker opens (the session
@@ -1649,7 +1661,7 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
   const deepSeekHarnessConnectedProviders = getConnectedProviderItems(
     deepSeekHarnessProviderQuery.data,
   ).flatMap((provider) =>
-    sharedConnectedProviderIds.has(provider.id)
+    !effectiveProviderConnectedIdSet.has(provider.id) || sharedConnectedProviderIds.has(provider.id)
       ? []
       : [{
           id: provider.id,

@@ -12,9 +12,8 @@ import {
   safeStringify,
 } from "@/app/utils";
 import {
-  DEFAULT_SESSION_TITLE,
   getDisplaySessionTitle,
-  isGeneratedSessionTitle,
+  isDefaultSessionTitle,
 } from "@/app/lib/session-title";
 import { t } from "@/i18n";
 import type { ConversationSession } from "@/react-app/domains/session/engine/conversation-engine";
@@ -199,11 +198,11 @@ export function partitionInitialWorkspaceLoads<T extends { id: string }>(
   workspaces: T[],
   selectedWorkspaceId: string,
   alreadyLoadedWorkspaceIds: ReadonlySet<string>,
-): { blocking: T[]; background: T[] } {
+): { selected: T[]; deferred: T[] } {
   const selected = workspaces.find((workspace) => workspace.id === selectedWorkspaceId);
   return {
-    blocking: selected ? [selected] : [],
-    background: workspaces.filter((workspace) => (
+    selected: selected ? [selected] : [],
+    deferred: workspaces.filter((workspace) => (
       workspace.id !== selectedWorkspaceId && !alreadyLoadedWorkspaceIds.has(workspace.id)
     )),
   };
@@ -217,12 +216,7 @@ export function isInternalSubtaskSession(session: RouteSession) {
 
 export function isBlankDefaultSession(session: RouteSession) {
   const title = session.title?.trim() ?? "";
-  const hasDefaultTitle =
-    !title ||
-    title === DEFAULT_SESSION_TITLE ||
-    title === t("session.default_title") ||
-    title === "新建会话" ||
-    isGeneratedSessionTitle(title);
+  const hasDefaultTitle = isDefaultSessionTitle(title);
   if (!hasDefaultTitle) return false;
 
   const created = session.time?.created;
@@ -296,21 +290,20 @@ export function orderRouteWorkspaces(workspaces: RouteWorkspace[], orderIds: str
   if (orderIds.length === 0) return workspaces;
 
   const workspaceById = new Map(workspaces.map((workspace) => [workspace.id, workspace]));
-  const orderedIdSet = new Set(orderIds);
   const ordered: RouteWorkspace[] = [];
   const usedIds = new Set<string>();
-
-  for (const workspace of workspaces) {
-    if (orderedIdSet.has(workspace.id)) continue;
-    ordered.push(workspace);
-    usedIds.add(workspace.id);
-  }
 
   for (const id of orderIds) {
     const workspace = workspaceById.get(id);
     if (!workspace || usedIds.has(id)) continue;
     ordered.push(workspace);
     usedIds.add(id);
+  }
+
+  for (const workspace of workspaces) {
+    if (usedIds.has(workspace.id)) continue;
+    ordered.push(workspace);
+    usedIds.add(workspace.id);
   }
 
   return ordered;

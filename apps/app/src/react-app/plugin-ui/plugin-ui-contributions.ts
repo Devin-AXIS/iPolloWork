@@ -27,32 +27,17 @@ export type PluginConversationTemplate = {
   mode: "work" | "code" | "design" | "video";
 };
 
-export type PluginNativeWorkspace = {
-  id: string;
-  pluginId: string;
-  kind: "design" | "video";
-  label: string;
-  description: string;
-};
-
 export type InstalledPluginContributions = {
   workspaceApps: PluginUiSurface[];
   settingsPages: PluginUiSurface[];
   conversationTemplates: PluginConversationTemplate[];
-  nativeWorkspaces: PluginNativeWorkspace[];
 };
 
 const EMPTY_CONTRIBUTIONS: InstalledPluginContributions = {
   workspaceApps: [],
   settingsPages: [],
   conversationTemplates: [],
-  nativeWorkspaces: [],
 };
-
-const NATIVE_WORKSPACE_KINDS = new Map<string, PluginNativeWorkspace["kind"]>([
-  ["ipollowork.design.panel", "design"],
-  ["ipollowork.video.panel", "video"],
-]);
 
 export const PLUGIN_UI_CONTRIBUTIONS_CHANGED = "ipollowork:plugin-ui-contributions-changed";
 
@@ -96,27 +81,11 @@ export function resolveInstalledPluginContributions(
   const workspaceApps: PluginUiSurface[] = [];
   const settingsPages: PluginUiSurface[] = [];
   const conversationTemplates: PluginConversationTemplate[] = [];
-  const nativeWorkspaces: PluginNativeWorkspace[] = [];
 
   for (const item of items) {
     if (!item.enabled) continue;
     if (activePluginEngineCompatibility(item)?.status === "unsupported") continue;
     item.manifest.contributions?.forEach((contribution, index) => {
-      const nativeKind = contribution.ref ? NATIVE_WORKSPACE_KINDS.get(contribution.ref) : undefined;
-      if (contribution.type === "session-side-panel"
-        && contribution.location === "session-right-pane"
-        && nativeKind
-        && item.manifest.source.origin === "builtin"
-        && item.manifest.source.trusted) {
-        nativeWorkspaces.push({
-          id: contributionId(item.pluginId, contribution, index),
-          pluginId: item.pluginId,
-          kind: nativeKind,
-          label: contribution.label?.trim() || item.name,
-          description: contribution.description?.trim() || item.manifest.description,
-        });
-        return;
-      }
       if (contribution.type === "workspace-app" || contribution.type === "settings-page") {
         const surface = uiSurface(item, contribution, index);
         if (!surface) return;
@@ -140,7 +109,6 @@ export function resolveInstalledPluginContributions(
     workspaceApps: workspaceApps.sort(byLabel),
     settingsPages: settingsPages.sort(byLabel),
     conversationTemplates: conversationTemplates.sort(byLabel),
-    nativeWorkspaces: nativeWorkspaces.sort(byLabel),
   };
 }
 
@@ -149,29 +117,21 @@ export function useInstalledPluginContributions(
   workspaceId: string | null | undefined,
 ) {
   const [contributions, setContributions] = useState(EMPTY_CONTRIBUTIONS);
-  const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
     if (!client || !workspaceId) {
       setContributions(EMPTY_CONTRIBUTIONS);
-      setLoaded(false);
       return;
     }
     let active = true;
-    setLoaded(false);
     const load = () => {
       void client.listPluginPackages(workspaceId)
         .then(({ items }) => {
           if (active) {
             setContributions(resolveInstalledPluginContributions(items));
-            setLoaded(true);
           }
         })
-        .catch(() => {
-          if (active) {
-            setLoaded(false);
-          }
-        });
+        .catch(() => undefined);
     };
     load();
     window.addEventListener(PLUGIN_UI_CONTRIBUTIONS_CHANGED, load);
@@ -183,5 +143,5 @@ export function useInstalledPluginContributions(
     };
   }, [client, workspaceId]);
 
-  return { ...contributions, loaded };
+  return contributions;
 }

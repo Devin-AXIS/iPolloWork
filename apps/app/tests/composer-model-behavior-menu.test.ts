@@ -87,11 +87,18 @@ describe("Composer model and reasoning menu", () => {
   test("loads model options when the compact Composer picker opens", () => {
     const source = readFileSync(modelPickerHookPath, "utf8");
 
-    expect(source).toContain("if ((!open && !compactOpen) || !client) return;");
+    expect(source).toContain("if ((!open && !compactOpen) || (!client && catalogSources.length === 0)) return;");
     expect(source).toContain("ensureMergedProviderListQuery");
-    expect(source).toContain("catalogSources.length ? catalogSources : [activeSource]");
-    expect(source).toContain("const runtime = resolveModelRuntime(active");
-    expect(source).toContain('disabled: runtime.status !== "ready"');
+    expect(source).toContain("catalogSources.length ? catalogSources : activeSources");
+    expect(source).toContain("mergeProviderListResponses([data, runtimeData])");
+    expect(source).toContain("filterProviderList(");
+    expect(source).toContain("disabledProviderIds = []");
+    expect(source).toContain("getRunnableChatModelEntries({");
+    expect(source).toContain("runtime: runtimeData");
+    expect(source).toContain("const configuredProviderIds = new Set(accountData.connected)");
+    expect(source).toContain("isConnected: configuredProviderIds.has(provider.id)");
+    expect(source).not.toContain('disabled: runtime.status !== "ready"');
+    expect(source).toContain("setLoadedOptions({ scopeKey: optionScopeKey, options })");
   });
 
   test("Composer uses one combined model and reasoning menu", () => {
@@ -107,13 +114,18 @@ describe("Composer model and reasoning menu", () => {
     expect(menu).toContain("onModelVariantChange");
     expect(menu).toContain("rounded-full bg-transparent px-2 text-[12px]");
     expect(menu).toContain("hover:bg-gray-3");
-    expect(model).toContain('kind: "tokenstar-connect"');
-    expect(model).toContain("Connect TokenStar");
-    expect(model).toContain('grouped.push({ value: "TokenStar", items: [tokenStarEntry] })');
-    expect(model).toContain("includeTokenStar &&");
-    expect(model).toContain("ensureMergedProviderListQuery");
-    expect(model).toContain("getSelectableChatProviderItems(catalog ?? data)");
-    expect(model).toContain("disabled={option.disabled && !onConfigureModels}");
+    expect(model).not.toContain("Connect TokenStar");
+    expect(model).not.toContain("tokenstar-connect");
+    expect(model).toContain("function groupByProvider(modelOptions: ModelOption[])");
+    expect(model).toContain("useMergedProviderListQuery");
+    expect(model).not.toContain("await refetch()");
+    expect(model).toContain("getRunnableChatModelEntries({");
+    expect(model).toContain("mergeProviderListResponses([catalogQuery.data, runtimeQuery.data])");
+    expect(model).toContain('t("settings.loading_providers")');
+    expect(model).toContain('t("model_picker.no_models_available")');
+    expect(model).toContain("const configuredProviderIds = new Set(catalogValue?.connected ?? [])");
+    expect(model).toContain("isConnected: configuredProviderIds.has(provider.id)");
+    expect(model).toContain("disabled={option.disabled && (option.isConnected || !onConfigureModels)}");
     expect(model).toContain("if (option.disabled)");
     expect(model).toContain("onConfigureModels?.(option.providerID)");
     expect(model).not.toContain('option.providerID === "tokenstar") continue');
@@ -145,5 +157,16 @@ describe("Composer model and reasoning menu", () => {
     expect(composer).toContain("<ChevronDown");
     expect(composer).toContain("<WorkModeIcon");
     expect(composer).toContain("mode.description");
+  });
+
+  test("derives model behavior catalog without an effect-driven render loop", () => {
+    const source = readFileSync(
+      new URL("../src/react-app/domains/session/surface/use-model-behavior.ts", import.meta.url),
+      "utf8",
+    );
+
+    expect(source).toContain("const providerCatalog = useMemo<ProviderCatalog>");
+    expect(source).not.toContain("setProviderCatalog");
+    expect(source).not.toContain("useEffect");
   });
 });

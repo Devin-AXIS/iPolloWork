@@ -37,27 +37,35 @@ describe("plugin UI contributions", () => {
       workspaceApps: [],
       settingsPages: [],
       conversationTemplates: [],
-      nativeWorkspaces: [],
     });
     expect(resolveInstalledPluginContributions([{ ...item, disabledResourceIds: ["canvas"] }]).workspaceApps).toHaveLength(0);
   });
 
-  test("activates trusted native workspaces only through installed packages", async () => {
+  test("does not treat built-in Design and Video workspaces as plugin contributions", async () => {
     const manifest = parsePluginPackageManifest(await Bun.file(new URL("../../../examples/plugin-packages/design-agent/ipollowork.plugin.json", import.meta.url)).json());
+    const legacyManifest = parsePluginPackageManifest({
+      ...manifest,
+      contributions: [{
+        type: "session-side-panel",
+        ref: "ipollowork.design.panel",
+        label: "Design",
+        location: "session-right-pane",
+      }],
+    });
     const item: iPolloWorkPluginPackageItem = {
-      pluginId: manifest.id,
-      name: manifest.name,
-      version: manifest.package?.version ?? "0.2.0",
+      pluginId: legacyManifest.id,
+      name: legacyManifest.name,
+      version: legacyManifest.package?.version ?? "0.2.0",
       enabled: true,
       disabledResourceIds: [],
       previousVersion: null,
-      manifest,
+      manifest: legacyManifest,
       integrity: { sha256: "0".repeat(64), status: "unsigned" },
       activeEngineId: "opencode",
       engineCompatibility: [{
         engineId: "opencode",
         status: "ready",
-        supportedResourceIds: manifest.resources.map((resource) => resource.id),
+        supportedResourceIds: legacyManifest.resources.map((resource) => resource.id),
         unsupportedResourceIds: [],
         unsupportedRequiredResourceIds: [],
         unsupportedCapabilityIds: [],
@@ -65,17 +73,10 @@ describe("plugin UI contributions", () => {
       }],
     };
 
-    expect(resolveInstalledPluginContributions([item]).nativeWorkspaces).toMatchObject([{
-      pluginId: "design-agent",
-      kind: "design",
-    }]);
-    expect(resolveInstalledPluginContributions([{
-      ...item,
-      manifest: { ...manifest, source: { ...manifest.source, origin: "local", trusted: false } },
-    }]).nativeWorkspaces).toEqual([]);
-    expect(resolveInstalledPluginContributions([{
-      ...item,
-      engineCompatibility: [{ ...item.engineCompatibility[0]!, status: "unsupported" }],
-    }]).nativeWorkspaces).toEqual([]);
+    expect(resolveInstalledPluginContributions([item])).toEqual({
+      workspaceApps: [],
+      settingsPages: [],
+      conversationTemplates: [],
+    });
   });
 });

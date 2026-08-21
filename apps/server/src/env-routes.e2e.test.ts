@@ -240,7 +240,10 @@ describe("env routes", () => {
 
     const list = await fetch(`${base}/env/keys`, { headers: hostAuth() });
     expect(list.status).toBe(200);
-    expect(await list.json()).toEqual({ keys: ["ANTHROPIC_API_KEY", "NBA_LIVE_KEY"] });
+    expect(await list.json()).toEqual({
+      keys: ["ANTHROPIC_API_KEY", "NBA_LIVE_KEY"],
+      oauthProviderIds: [],
+    });
   });
 
   test("authorization catalog returns safe AI usage metadata, never secret values", async () => {

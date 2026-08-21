@@ -5,7 +5,12 @@ import { join } from "node:path";
 
 import { Database } from "bun:sqlite";
 
-import { resolveOpencodeDbPath, seedOpencodeSessionMessages } from "./opencode-db.js";
+import {
+  listOpencodeOAuthProviderIds,
+  resolveOpencodeAuthPath,
+  resolveOpencodeDbPath,
+  seedOpencodeSessionMessages,
+} from "./opencode-db.js";
 
 async function createDb(): Promise<{ path: string; dispose: () => void }> {
   const dir = await mkdtemp(join(tmpdir(), "ipollowork-opencode-db-"));
@@ -121,6 +126,31 @@ describe.skipIf(!betterSqliteAvailable)("seedOpencodeSessionMessages", () => {
 });
 
 describe("resolveOpencodeDbPath", () => {
+  test("finds the managed account auth vault beside the OpenCode database", async () => {
+    const root = await mkdtemp(join(tmpdir(), "ipollowork-orchestrator-auth-"));
+    const dir = join(root, "ipollowork-dev-data", "xdg", "data", "opencode");
+    const file = join(dir, "auth.json");
+    await mkdir(dir, { recursive: true });
+    await writeFile(file, JSON.stringify({
+      openai: { type: "oauth", access: "secret", refresh: "secret", expires: 123 },
+      anthropic: { type: "api", key: "secret" },
+    }), "utf8");
+
+    const previousDataDir = process.env.IPOLLOWORK_DATA_DIR;
+    const previousXdg = process.env.XDG_DATA_HOME;
+    try {
+      process.env.IPOLLOWORK_DATA_DIR = root;
+      delete process.env.XDG_DATA_HOME;
+      expect(resolveOpencodeAuthPath()).toBe(file);
+      expect(listOpencodeOAuthProviderIds({ managedOnly: true })).toEqual(["openai"]);
+    } finally {
+      if (previousDataDir === undefined) delete process.env.IPOLLOWORK_DATA_DIR;
+      else process.env.IPOLLOWORK_DATA_DIR = previousDataDir;
+      if (previousXdg === undefined) delete process.env.XDG_DATA_HOME;
+      else process.env.XDG_DATA_HOME = previousXdg;
+    }
+  });
+
   test("prefers an existing XDG opencode.db when present", async () => {
     const xdg = await mkdtemp(join(tmpdir(), "ipollowork-opencode-xdg-"));
     const dir = join(xdg, "opencode");

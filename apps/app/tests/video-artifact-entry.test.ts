@@ -6,6 +6,8 @@ import {
   artifactDirectoryPath,
   artifactPathMatchesTarget,
   canOpenArtifactInContext,
+  getArtifactStudioTarget,
+  groupConversationOutputArtifacts,
   getArtifactsFromMessages,
   selectArtifactContextOutputs,
   selectTemplateEntryArtifacts,
@@ -14,6 +16,7 @@ import {
   createVideoArtifactCompletionRequirement,
   unchangedVideoArtifactIssue,
   videoProjectEntryPath,
+  videoProjectSessionIdFromEntryPath,
 } from "../src/react-app/domains/session/video/video-project";
 import { deriveOpenTargets, getAssistantFileMentionPaths } from "../src/react-app/domains/session/artifacts/open-target";
 
@@ -52,6 +55,22 @@ function slidesArtifact(path: string): ArtifactItem {
 }
 
 describe("video artifact entry routing", () => {
+  test("routes prepared Design and Video entries to their dedicated Studios", () => {
+    const slides = htmlArtifact("design/ses_bank-artifact-slides/entry.html");
+    const video = htmlArtifact("video/ses_bank-artifact-video/index.html");
+    expect(getArtifactStudioTarget(slides)).toEqual({
+      surface: "design",
+      sessionId: "ses_bank-artifact-slides",
+    });
+    expect(getArtifactStudioTarget(video)).toEqual({
+      surface: "video",
+      sessionId: "ses_bank-artifact-video",
+    });
+    expect(groupConversationOutputArtifacts([slides, video])).toHaveLength(2);
+    expect(getArtifactStudioTarget(htmlArtifact("reports/bank.html"))).toBeNull();
+    expect(videoProjectSessionIdFromEntryPath("video/ses_bank-artifact-video/index.html")).toBe("ses_bank-artifact-video");
+  });
+
   test("derives one session-owned video entry", () => {
     expect(videoProjectEntryPath("ses/video 1")).toBe("video/ses_video_1/index.html");
   });

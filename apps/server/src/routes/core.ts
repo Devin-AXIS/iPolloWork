@@ -30,6 +30,7 @@ import {
 } from "../extensions/google-workspace.js";
 import { callExperimentalExtensionAction, listExperimentalExtensionActions } from "../extensions/index.js";
 import { workspaceIdForPluginContext } from "../plugin-service-runtime.js";
+import { listOpencodeOAuthProviderIds } from "../opencode-db.js";
 import { uiControlRequest } from "../ui-control-client.js";
 import type { TokenService } from "../tokens.js";
 import {
@@ -517,7 +518,10 @@ export function registerCoreRoutes(options: RegisterCoreRoutesOptions): void {
 
   addRoute(routes, "GET", "/env/keys", "host-token", async () => {
     const items = await env.list().catch(rethrowEnvStoreReadError);
-    return jsonResponse({ keys: items.map((item) => item.key) });
+    return jsonResponse({
+      keys: items.map((item) => item.key),
+      oauthProviderIds: listOpencodeOAuthProviderIds({ managedOnly: true }),
+    });
   });
 
   function envRuntimeKeyFromUrl(url: URL): string {

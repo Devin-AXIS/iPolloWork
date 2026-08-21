@@ -1510,8 +1510,8 @@ describe("plugin package lifecycle", () => {
           { pluginId: "context7", version: "1.0.2", installedVersion: null, updateAvailable: false },
           { pluginId: "github", version: "0.1.4", installedVersion: null, updateAvailable: false },
           { pluginId: "wechat-official", version: "0.1.4", installedVersion: null, updateAvailable: false },
-          { pluginId: "design-agent", version: "0.3.0", installedVersion: "0.3.0", updateAvailable: false },
-          { pluginId: "video-agent", version: "0.3.0", installedVersion: "0.3.0", updateAvailable: false },
+          { pluginId: "design-agent", version: "0.3.1", installedVersion: "0.3.1", updateAvailable: false },
+          { pluginId: "video-agent", version: "0.3.1", installedVersion: "0.3.1", updateAvailable: false },
           { pluginId: "deepseek-harness", version: "0.3.7", installedVersion: null, updateAvailable: false },
         ],
       });
@@ -1700,13 +1700,13 @@ describe("plugin package lifecycle", () => {
     const packages = [
       {
         pluginId: "design-agent",
-        version: "0.3.0",
+        version: "0.3.1",
         skillPath: join(workspaceRoot, ".opencode", "skills", "ipollowork-design-studio", "SKILL.md"),
         heading: "# iPolloWork Design Studio",
       },
       {
         pluginId: "video-agent",
-        version: "0.3.0",
+        version: "0.3.1",
         skillPath: join(workspaceRoot, ".opencode", "skills", "ipollowork-video-studio", "SKILL.md"),
         heading: "# iPolloWork Video Studio",
       },

@@ -6,7 +6,7 @@ import {
   isEditToolPart,
   isWriteToolPart,
 } from "@/lib/build-in-tools";
-import { useOpenTargets } from "@/lib/target-provider";
+import { useOpenTargets, type OpenTargetOptions } from "@/lib/target-provider";
 import { getAssistantFileMentionPaths, isCollectibleArtifactTarget, isOpenableFileTarget, type OpenTarget, type OpenTargetPreview } from "@/react-app/domains/session/artifacts/open-target";
 
 export type ArtifactType = "website" | "markdown" | "sheet" | "slides" | "document" | "image" | "video" | "audio" | "pdf" | "html" | "text" | "unknown";
@@ -32,6 +32,11 @@ export type ConversationOutputGroup = {
 export type ArtifactInteractionContext =
   | { kind: "video"; entryPath: string }
   | { kind: "presentation"; entryPath: string }
+
+export type ArtifactStudioTarget = {
+  surface: "design" | "video"
+  sessionId: string
+}
 
 type ArtifactEntry = ArtifactItem & {
   sequence: number
@@ -223,6 +228,15 @@ export function isConversationOutputArtifact(artifact: ArtifactItem) {
 /** HTML compositions under the video workspace open the session's Video Studio. */
 export function isVideoHtmlArtifact(artifact: ArtifactItem) {
   return artifact.type === "html" && /(?:^|\/)video(?:\/|$)/i.test(artifact.path);
+}
+
+export function getArtifactStudioTarget(artifact: ArtifactItem): ArtifactStudioTarget | null {
+  if (artifact.type !== "html") return null;
+  const path = normalizeArtifactPath(artifact.path);
+  const video = /^video\/([^/]+)\/index\.html$/i.exec(path);
+  if (video?.[1]) return { surface: "video", sessionId: video[1] };
+  const design = /^design\/([^/]+)\/(?:entry|index)\.html$/i.exec(path);
+  return design?.[1] ? { surface: "design", sessionId: design[1] } : null;
 }
 
 const BUNDLE_PRIMARY_TYPES = new Set<ArtifactType>(["website", "html", "video", "slides", "document", "pdf"]);
@@ -549,9 +563,9 @@ export function useArtifacts(messages: UIMessage[], options: GetArtifactsOptions
 export function usePreviewArtifact() {
   const { onOpenTarget } = useOpenTargets();
 
-  return React.useCallback((artifact: ArtifactItem) => {
+  return React.useCallback((artifact: ArtifactItem, options?: OpenTargetOptions) => {
     async function previewArtifact() {
-      onOpenTarget?.(artifact.legacy_target);
+      onOpenTarget?.(artifact.legacy_target, options);
     }
 
     void previewArtifact();

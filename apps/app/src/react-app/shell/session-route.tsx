@@ -9,7 +9,7 @@ import {
 import { useNavigate } from "react-router-dom";
 import type { UIMessage } from "ai";
 import { toast } from "@/components/ui/sonner";
-import type { PptxCompatibility, TemplateCategory } from "@ipollowork/types/templates";
+import type { PptxCompatibility, TemplateCategory, TemplateSessionSnapshot } from "@ipollowork/types/templates";
 import {
   DEEPSEEK_HARNESS_ENGINE_ID,
   DEFAULT_ENGINE_ID,
@@ -28,6 +28,10 @@ import {
 import { trackSessionActive, trackTaskStarted } from "@/app/lib/den-telemetry";
 import { buildDiagnosticsBundleJson } from "@/app/lib/diagnostics-bundle";
 import { downloadTextAsFile } from "@/app/lib/download";
+import {
+  isDefaultSessionTitle,
+  sessionTitleFromFirstPrompt,
+} from "@/app/lib/session-title";
 import {
   resolveWorkspaceEndpoint,
   workspaceServerId,
@@ -92,6 +96,13 @@ import {
 import { useDesignAiSelectionStore } from "@/react-app/domains/session/design/design-ai-selection-store";
 import { readAppliedDesignSystemId } from "@/react-app/domains/session/design/design-system-theme-contract";
 import { templateAuthoringKickoff, templateAuthoringSystemContext } from "@/react-app/domains/session/templates/template-authoring";
+import {
+  conversationArtifactSessionId,
+  conversationTemplateBrief,
+  inferConversationTemplateIntents,
+  selectConversationTemplate,
+  templateBriefPrompt,
+} from "@/react-app/domains/session/templates/template-brief";
 import { useSessionInteractions } from "@/react-app/domains/session/sync/use-session-interactions";
 import {
   modelSupportsAttachments,
@@ -155,7 +166,10 @@ import { SettingsSurface } from "./settings-route";
 import {
   ensureProviderListQuery,
   getSelectableChatModelSnapshot,
+  mergeProviderListResponses,
+  projectAccountProviderConnections,
   type ProviderListQueryInput,
+  useMergedProviderListQuery,
   useProviderListQuery,
 } from "@/react-app/infra/provider-list-query";
 import { resolveEngineSelectableChatModel } from "@/react-app/infra/preferred-chat-model";
@@ -205,7 +219,6 @@ function focusPromptSoon() {
 // (component state would reset and flash the underlying page). Reset only on
 // app relaunch, matching BOOT_STARTED in desktop-runtime-boot.ts.
 let firstRunLoaderPhase: "unarmed" | "armed" | "done" = "unarmed";
-let startupConversationPhase: "pending" | "creating" | "done" = "pending";
 
 type PendingInitialProjectTask = {
   workspaceId: string;
@@ -225,6 +238,7 @@ export function SessionRoute() {
   const [pendingInitialProjectTask, setPendingInitialProjectTask] = useState<PendingInitialProjectTask | null>(null);
   const initialProjectSessionCreatingRef = useRef(false);
   const initialProjectDraftSendingRef = useRef(false);
+  const taskCreationInFlightRef = useRef(new Set<string>());
   const {
     navigateToWorkspaceSession,
     selectedSessionId,
@@ -386,7 +400,6 @@ export function SessionRoute() {
   );
   // One-way latch for "a refreshRouteState is currently running"; prevents
   // overlapping route refreshes from queueing up when the user clicks fast.
-  const firstRunSessionRef = useRef(false);
   const [developerMode, setDeveloperMode] = useState(() => {
     if (typeof window === "undefined") return false;
     return window.localStorage.getItem("ipollowork.developerMode") === "1";
@@ -501,7 +514,6 @@ export function SessionRoute() {
     const rememberedSessionId = readLastSessionFor(workspaceId);
     const targetSessionId = knownSessions.find((session) => session.id === rememberedSessionId)?.id
       ?? knownSessions[0]?.id
-      ?? rememberedSessionId
       ?? null;
     if (targetSessionId) writeLastSessionFor(workspaceId, targetSessionId);
     navigateToWorkspaceSession(workspaceId, targetSessionId);
@@ -516,6 +528,17 @@ export function SessionRoute() {
     setRetryingWorkspaceIds,
     workspaces,
   ]);
+
+  const openNewTaskInWorkspace = useCallback((workspaceId: string) => {
+    const project = workspaces.find((workspace) => workspace.id === workspaceId);
+    if (!project) return false;
+    setLegacySelectedWorkspaceId(workspaceId);
+    writeActiveWorkspaceId(workspaceId);
+    rememberProjectForWorkContext(activeWorkContextId, workspaceId);
+    navigateToWorkspaceSession(workspaceId, null);
+    focusPromptSoon();
+    return true;
+  }, [activeWorkContextId, navigateToWorkspaceSession, setLegacySelectedWorkspaceId, workspaces]);
 
   const createProject = useCallback(async (input: {
     name: string;
@@ -600,16 +623,21 @@ export function SessionRoute() {
   }, [workspaces]);
 
   const deleteProject = useCallback(async (workspaceId: string) => {
-    if (workspaces.length <= 1) throw new Error(t("projects.keep_one"));
     const fallback = workspaces.find((workspace) => workspace.id !== workspaceId && !workspace.isDefault)
       ?? workspaces.find((workspace) => workspace.id !== workspaceId);
-    if (!fallback) throw new Error(t("projects.keep_one"));
     if (client) await client.deleteWorkspace(workspaceId);
     if (isDesktopRuntime()) await workspaceForget(workspaceId);
     writeLastSessionFor(workspaceId, null);
-    await selectProject(fallback.id);
+    if (fallback) {
+      await selectProject(fallback.id);
+    } else {
+      writeActiveWorkspaceId(null);
+      rememberProjectForWorkContext(activeWorkContextId, null);
+      setLegacySelectedWorkspaceId("");
+      navigateToWorkspaceSession("", null, { replace: true });
+    }
     await refreshRouteState();
-  }, [client, refreshRouteState, selectProject, workspaces]);
+  }, [activeWorkContextId, client, navigateToWorkspaceSession, refreshRouteState, selectProject, setLegacySelectedWorkspaceId, workspaces]);
   const seedWorkspaceActivitySessions = useSessionActivityStore((state) => state.seedWorkspaceSessions);
   const sessionActivityByWorkspaceId = useSessionActivityStore((state) => state.statusesByWorkspaceId);
 
@@ -667,19 +695,62 @@ export function SessionRoute() {
   }, [errorsByWorkspaceId, workspaceConnectionOverrides, workspaces]);
 
   const mcpConnectedCount = useMcpConnectedCount(opencodeClient, selectedWorkspaceRoot);
-  const providerListQuery = useProviderListQuery({
-    client: engineProviderClient,
-    engineId: activeEngineId,
-    baseUrl: selectedWorkspaceEndpoint?.opencodeBaseUrl,
-    directory: selectedWorkspaceRoot || undefined,
+  const { store: sessionProviderAuthStore, snapshot: sessionProviderAuthSnapshot } =
+    useSessionProviderAuth({
+      engineClient: sharedProviderClient,
+      providers,
+      providerDefaults,
+      providerConnectedIds,
+      disabledProviderIds,
+      selectedWorkspace: sharedProviderAuthWorkspace,
+      selectedWorkspaceEndpoint: sharedProviderEndpoint,
+      providerBaseUrl: sharedProviderEndpoint?.opencodeBaseUrl ?? "",
+      selectedWorkspaceRoot: sharedProviderRoot,
+      selectedWorkspaceId: sharedProviderAuthWorkspace?.id ?? "",
+      setProviders,
+      setProviderDefaults,
+      setProviderConnectedIds,
+      setDisabledProviderIds,
+    });
+  const providerListQuery = useMergedProviderListQuery({
+    sources: modelCatalogSources,
+    enabled: modelCatalogSources.length > 0,
   });
+  const activeProviderSource = useMemo<ProviderListQueryInput | null>(() => (
+    engineProviderClient
+      ? {
+          client: engineProviderClient,
+          engineId: activeEngineId,
+          baseUrl: selectedWorkspaceEndpoint?.opencodeBaseUrl,
+          directory: selectedWorkspaceRoot || undefined,
+        }
+      : null
+  ), [activeEngineId, engineProviderClient, selectedWorkspaceEndpoint?.opencodeBaseUrl, selectedWorkspaceRoot]);
+  const activeProviderListQuery = useProviderListQuery({
+    client: activeProviderSource?.client ?? null,
+    engineId: activeProviderSource?.engineId,
+    baseUrl: activeProviderSource?.baseUrl,
+    directory: activeProviderSource?.directory,
+  });
+  const accountProviderList = filterProviderList(
+    projectAccountProviderConnections(
+      mergeProviderListResponses([providerListQuery.data, activeProviderListQuery.data]),
+      sessionProviderAuthSnapshot.connectedProviderIds,
+    ) ?? mergeProviderListResponses([]),
+    disabledProviderIds,
+  );
+  const activeProviderList = activeProviderListQuery.data
+    ? filterProviderList(activeProviderListQuery.data, disabledProviderIds)
+    : undefined;
   const modelPicker = useModelPicker({
     client: engineProviderClient,
     engineId: activeEngineId,
     baseUrl: selectedWorkspaceEndpoint?.opencodeBaseUrl ?? "",
     workspaceRoot: selectedWorkspaceRoot,
     catalogSources: modelCatalogSources,
-    connectedProviderIds: providerConnectedIds,
+    runtimeSource: activeProviderSource,
+    connectedProviderIds: sessionProviderAuthSnapshot.connectedProviderIds,
+    disabledProviderIds,
   });
   const setSelectedModel = useCallback((model: ModelRef) => {
     local.setPrefs((previous) => updateModelPreferences(
@@ -699,7 +770,7 @@ export function SessionRoute() {
       (selection) => ({ ...selection, modelVariant }),
     ));
   }, [local.setPrefs]);
-  const selectableModels = getSelectableChatModelSnapshot(providerListQuery.data);
+  const selectableModels = getSelectableChatModelSnapshot(activeProviderList);
   const customProvidersRestricted = checkDesktopRestriction({ restriction: "allowCustomProviders" });
   const permittedSelectableModels = selectableModels.filter((provider) => (
     !isDesktopProviderBlocked({
@@ -707,16 +778,18 @@ export function SessionRoute() {
       checkRestriction: checkDesktopRestriction,
     }) && (
       !customProvidersRestricted ||
-      providerConnectedIds.some((providerId) => providerId.trim() === provider.providerID.trim())
+      sessionProviderAuthSnapshot.connectedProviderIds.some(
+        (providerId) => providerId.trim() === provider.providerID.trim(),
+      )
     )
   ));
-  const activeSelectedModel = providerListQuery.data
+  const activeSelectedModel = activeProviderList
     ? resolveEngineSelectableChatModel({
         providers: permittedSelectableModels,
-        defaults: providerListQuery.data.default,
+        defaults: activeProviderList.default,
         preferred: selectedModel,
       })
-    : selectedModel;
+    : null;
   const usesSharedModelPreference = Boolean(
     selectedModel &&
     activeSelectedModel &&
@@ -728,12 +801,12 @@ export function SessionRoute() {
     : null;
   const { providerCatalog, modelVariantLabel, modelBehaviorOptions, modelVariantValue } =
     useModelBehavior({
-      providerList: providerListQuery.data,
+      providerList: accountProviderList,
       defaultModel: activeSelectedModel,
       modelVariant: activeModelVariant,
     });
   const selectedModelSupportsAttachments = modelSupportsAttachments(providerCatalog, activeSelectedModel);
-  const selectedModelUnavailable = Boolean(providerListQuery.data && !activeSelectedModel);
+  const selectedModelUnavailable = Boolean(!activeSelectedModel);
   const hasUsableModel = Boolean(activeSelectedModel && !selectedModelUnavailable);
   // Creating and opening a conversation does not require a usable model.
   // Keeping this separate from `canCreateTask` prevents a first-run workspace
@@ -749,29 +822,12 @@ export function SessionRoute() {
   const iPolloWorkModelsPromo = useiPolloWorkModelsStartupPromo({
     clientReady: Boolean(opencodeClient),
     workspaceId: selectedWorkspaceId,
-    providerConnectedIds,
+    providerConnectedIds: sessionProviderAuthSnapshot.connectedProviderIds,
     // Cloud sign-in is always an explicit user action. New local installs
     // enter the workspace directly instead of receiving a login promotion.
     suppressed: true,
   });
 
-  const { store: sessionProviderAuthStore, snapshot: sessionProviderAuthSnapshot } =
-    useSessionProviderAuth({
-      engineClient: sharedProviderClient,
-      providers,
-      providerDefaults,
-      providerConnectedIds,
-      disabledProviderIds,
-      selectedWorkspace: sharedProviderAuthWorkspace,
-      selectedWorkspaceEndpoint: sharedProviderEndpoint,
-      providerBaseUrl: sharedProviderEndpoint?.opencodeBaseUrl ?? "",
-      selectedWorkspaceRoot: sharedProviderRoot,
-      selectedWorkspaceId: sharedProviderAuthWorkspace?.id ?? "",
-      setProviders,
-      setProviderDefaults,
-      setProviderConnectedIds,
-      setDisabledProviderIds,
-    });
   const {
     activePermission,
     permissionReplyBusy,
@@ -1000,7 +1056,9 @@ export function SessionRoute() {
           preferredProviderId: "tokenstar",
         });
       },
-      providerConnectedCount: hasUsableModel ? 1 : providerConnectedIds.length,
+      providerConnectedCount: hasUsableModel
+        ? 1
+        : sessionProviderAuthSnapshot.connectedProviderIds.length,
       onOpenSettingsSection: (section: "commands" | "skills" | "mcps" | "plugins" | "providers") => {
         handleOpenSettings(section === "skills" ? "/settings/skills" : section === "mcps" ? "/settings/extensions/mcp" : section === "plugins" ? "/settings/extensions/plugins" : section === "providers" ? "/settings/ai" : "/settings/preferences");
       },
@@ -1034,6 +1092,27 @@ export function SessionRoute() {
             },
           });
           return false;
+        }
+
+        const targetSession = (sessionsByWorkspaceId[selectedWorkspaceId] ?? [])
+          .find((session) => session.id === targetSessionId);
+        if (text && (!targetSession || isDefaultSessionTitle(targetSession.title))) {
+          const initialTitle = sessionTitleFromFirstPrompt(text);
+          if (initialTitle) {
+            try {
+              await conversation.rename(targetSessionId, initialTitle, selectedWorkspaceRoot || undefined);
+              setSessionsByWorkspaceId((current) => ({
+                ...current,
+                [selectedWorkspaceId]: (current[selectedWorkspaceId] ?? []).map((session) => (
+                  session.id === targetSessionId ? { ...session, title: initialTitle } : session
+                )),
+              }));
+            } catch (error) {
+              // A title is presentation metadata. A transient rename failure
+              // must not block the user's first request from reaching the agent.
+              console.warn("[session-title] Could not persist the first-prompt title", error);
+            }
+          }
         }
 
         captureAnalyticsEvent("task_message_sent", {
@@ -1101,100 +1180,181 @@ export function SessionRoute() {
             ? selectedWorkspaceEndpoint.client.getTemplateSession(selectedWorkspaceEndpoint.workspaceId, targetSessionId).catch(() => null)
             : Promise.resolve(null),
         ]);
-        let sessionTemplate = initialSessionTemplate;
+        const sessionTemplates: TemplateSessionSnapshot[] = initialSessionTemplate ? [initialSessionTemplate] : [];
+        let automaticTemplateInstruction: string | null = null;
+        const sessionTypeBeforeRouting = readSessionType(targetSessionId);
+        const automaticTemplateIntents = sessionTypeBeforeRouting === "work"
+          ? inferConversationTemplateIntents(text)
+          : [];
+        if (sessionTemplates.length === 0 && automaticTemplateIntents.length > 0 && selectedWorkspaceEndpoint) {
+          const templateInstructions: string[] = [];
+          try {
+            const templateScope = readActiveWorkContextId();
+            const catalog = await selectedWorkspaceEndpoint.client.listTemplates(
+              selectedWorkspaceEndpoint.workspaceId,
+              templateScope,
+            );
+            for (const intent of automaticTemplateIntents) {
+              const artifactSessionId = automaticTemplateIntents.length === 1
+                ? targetSessionId
+                : conversationArtifactSessionId(targetSessionId, intent.category);
+              let artifactTemplate = await selectedWorkspaceEndpoint.client
+                .getTemplateSession(selectedWorkspaceEndpoint.workspaceId, artifactSessionId)
+                .catch(() => null);
+              if (!artifactTemplate) {
+                const selectedTemplate = selectConversationTemplate(text, catalog.items, intent.category);
+                if (selectedTemplate) {
+                  const materialized = await selectedWorkspaceEndpoint.client.materializeTemplate(
+                    selectedWorkspaceEndpoint.workspaceId,
+                    selectedTemplate.manifest.id,
+                    artifactSessionId,
+                    conversationTemplateBrief(text),
+                    templateScope,
+                  );
+                  artifactTemplate = {
+                    sessionId: artifactSessionId,
+                    surface: materialized.manifest.surface,
+                    authoring: false,
+                    state: materialized.state,
+                    manifest: materialized.manifest,
+                  } satisfies TemplateSessionSnapshot;
+                } else {
+                  artifactTemplate = await selectedWorkspaceEndpoint.client.createTemplateAuthoringSession(
+                    selectedWorkspaceEndpoint.workspaceId,
+                    {
+                      sessionId: artifactSessionId,
+                      category: intent.category,
+                      pptxCompatibility: intent.category === "slides" && /\bpptx?\b|可编辑|导出.{0,5}ppt/i.test(text)
+                        ? "native-editable"
+                        : undefined,
+                      purpose: "artifact-delivery",
+                    },
+                  );
+                }
+              }
+              sessionTemplates.push(artifactTemplate);
+              setSessionType(artifactSessionId, sessionTypeForTemplate(artifactTemplate.manifest));
+              templateInstructions.push(templateBriefPrompt({
+                template: artifactTemplate.manifest,
+                entryPath: artifactTemplate.state.entry,
+                briefPath: artifactTemplate.state.briefPath,
+              }));
+            }
+            automaticTemplateInstruction = [
+              ...templateInstructions,
+              ...(templateInstructions.length > 1 ? [
+                `Multi-artifact delivery contract: this request requires all ${templateInstructions.length} prepared artifacts. Complete every entry above in this turn; do not replace one artifact with a description, outline, export, or link to another. In the final answer, mention every exact entry path so iPolloWork renders one separate clickable output card for each artifact.`,
+              ] : []),
+            ].join("\n\n");
+          } catch (error) {
+            // Automatic surface selection is an interaction enhancement. If
+            // the local template service is unavailable, preserve normal chat
+            // delivery instead of blocking the user's prompt.
+            console.warn("[template-auto-route] Could not initialize the artifact surfaces", error);
+            sessionTemplates.length = 0;
+          }
+        }
         // Claim a pre-template Studio project before the prompt is sent. This
         // is the one-time migration that makes the persisted session record,
         // the agent contract, and the right-side Studio point at one path.
-        if (!sessionTemplate && selectedWorkspaceEndpoint && readSessionType(targetSessionId) === "video") {
-          sessionTemplate = await selectedWorkspaceEndpoint.client.adoptLegacyVideoSession(selectedWorkspaceEndpoint.workspaceId, targetSessionId).catch(() => null);
+        if (sessionTemplates.length === 0 && selectedWorkspaceEndpoint && readSessionType(targetSessionId) === "video") {
+          const adoptedTemplate = await selectedWorkspaceEndpoint.client
+            .adoptLegacyVideoSession(selectedWorkspaceEndpoint.workspaceId, targetSessionId)
+            .catch(() => null);
+          if (adoptedTemplate) sessionTemplates.push(adoptedTemplate);
         }
         const cachedSessionType = readSessionType(targetSessionId);
-        const isVideoTask = shouldInjectVideoTaskContext(
-          sessionTemplate?.manifest.surface,
-          cachedSessionType,
-        );
+        const videoSessionTemplates = sessionTemplates.filter((template) => template.manifest.surface === "video");
+        const isLegacyVideoTask = videoSessionTemplates.length === 0 && shouldInjectVideoTaskContext(null, cachedSessionType);
         const videoPromptText = draft.resolvedText ?? draft.text;
         const videoDeliveryRequirements = videoDeliveryRequirementsForPrompt({
           capabilityId: draft.capability?.id,
           promptText: videoPromptText,
         });
-        let includeVoiceoverContext = isVideoTask && videoDeliveryRequirements.voiceover;
-        if (isVideoTask && !includeVoiceoverContext && selectedWorkspaceEndpoint) {
-          const entryPath = sessionTemplate?.state.entry ?? videoProjectEntryPath(targetSessionId);
-          const entry = await selectedWorkspaceEndpoint.client
-            .readWorkspaceFile(selectedWorkspaceEndpoint.workspaceId, entryPath)
-            .catch(() => null);
-          includeVoiceoverContext = videoCompositionHasVoiceover(entry?.content);
-        }
-        const videoSystemContext = isVideoTask
-          ? videoTaskSystemContext(
-              targetSessionId,
-              selectedWorkspaceRoot,
-              sessionTemplate?.manifest.surface === "video" ? sessionTemplate.manifest : null,
-              { includeVoiceover: includeVoiceoverContext, deliveryRequirements: videoDeliveryRequirements },
-            )
-          : null;
-        const isDesignTask = sessionTemplate?.surface === "design";
-        const designSessionTemplate = isDesignTask ? sessionTemplate : null;
-        const designPath = designSessionTemplate?.state.entry ?? null;
-        const designSystemContext = isDesignTask
-          ? designHtmlThemeSystemContext({
-              id: designSessionTemplate?.manifest.id ?? null,
-              category: designSessionTemplate?.manifest.category ?? null,
-              title: designSessionTemplate?.manifest.title ?? null,
-              entry: designPath,
-              tokenPath: designSessionTemplate?.manifest.designSystem.tokens ?? "design-tokens.css",
-              applyChecklist: designSessionTemplate?.manifest.applyChecklist ?? null,
-            })
-          : null;
-        let selectedDesignSystemGuide: string | null = null;
-        if (sessionTemplate?.authoring && selectedWorkspaceEndpoint && sessionTemplate.manifest.designSystem.tokens) {
-          const entryDirectory = sessionTemplate.state.entry.split("/").slice(0, -1).join("/");
-          const tokenPath = `${entryDirectory}/${sessionTemplate.manifest.designSystem.tokens}`;
-          const tokenFile = await selectedWorkspaceEndpoint.client.readWorkspaceFile(selectedWorkspaceEndpoint.workspaceId, tokenPath).catch(() => null);
-          const appliedDesignSystemId = readAppliedDesignSystemId(tokenFile?.content);
-          if (appliedDesignSystemId && appliedDesignSystemId !== "default") {
-            const { loadDesignSystemAuthoringGuide } = await import("@/react-app/domains/session/design/design-system-registry");
-            selectedDesignSystemGuide = await loadDesignSystemAuthoringGuide(appliedDesignSystemId).catch(() => null);
+        const videoTasks = videoSessionTemplates.length > 0
+          ? videoSessionTemplates.map((template) => ({ sessionId: template.sessionId, template }))
+          : isLegacyVideoTask
+            ? [{ sessionId: targetSessionId, template: null }]
+            : [];
+        const videoSystemContexts = await Promise.all(videoTasks.map(async ({ sessionId, template }) => {
+          let includeVoiceoverContext = videoDeliveryRequirements.voiceover;
+          if (!includeVoiceoverContext && selectedWorkspaceEndpoint) {
+            const entryPath = template?.state.entry ?? videoProjectEntryPath(sessionId);
+            const entry = await selectedWorkspaceEndpoint.client
+              .readWorkspaceFile(selectedWorkspaceEndpoint.workspaceId, entryPath)
+              .catch(() => null);
+            includeVoiceoverContext = videoCompositionHasVoiceover(entry?.content);
           }
-        }
-        const authoringSystemContext = sessionTemplate
-          ? templateAuthoringSystemContext(sessionTemplate, selectedDesignSystemGuide)
-          : null;
-        const systemContext = [envSystemContext, videoSystemContext, designSystemContext, authoringSystemContext, capabilitySystemContext]
+          return videoTaskSystemContext(
+            sessionId,
+            selectedWorkspaceRoot,
+            template?.manifest ?? null,
+            { includeVoiceover: includeVoiceoverContext, deliveryRequirements: videoDeliveryRequirements },
+          );
+        }));
+        const designSessionTemplates = sessionTemplates.filter((template) => template.manifest.surface === "design");
+        const designSystemContexts = designSessionTemplates.map((template) => designHtmlThemeSystemContext({
+          id: template.manifest.id,
+          category: template.manifest.category,
+          title: template.manifest.title,
+          entry: template.state.entry,
+          tokenPath: template.manifest.designSystem.tokens ?? "design-tokens.css",
+          applyChecklist: template.manifest.applyChecklist,
+        }));
+        const authoringSystemContexts = await Promise.all(sessionTemplates.map(async (template) => {
+          let selectedDesignSystemGuide: string | null = null;
+          if (template.authoring && selectedWorkspaceEndpoint && template.manifest.designSystem.tokens) {
+            const entryDirectory = template.state.entry.split("/").slice(0, -1).join("/");
+            const tokenPath = `${entryDirectory}/${template.manifest.designSystem.tokens}`;
+            const tokenFile = await selectedWorkspaceEndpoint.client
+              .readWorkspaceFile(selectedWorkspaceEndpoint.workspaceId, tokenPath)
+              .catch(() => null);
+            const appliedDesignSystemId = readAppliedDesignSystemId(tokenFile?.content);
+            if (appliedDesignSystemId && appliedDesignSystemId !== "default") {
+              const { loadDesignSystemAuthoringGuide } = await import("@/react-app/domains/session/design/design-system-registry");
+              selectedDesignSystemGuide = await loadDesignSystemAuthoringGuide(appliedDesignSystemId).catch(() => null);
+            }
+          }
+          return templateAuthoringSystemContext(template, selectedDesignSystemGuide);
+        }));
+        const systemContext = [envSystemContext, ...videoSystemContexts, ...designSystemContexts, ...authoringSystemContexts, capabilitySystemContext]
           .filter((value): value is string => Boolean(value?.trim()))
           .join("\n\n");
         // Version history is a site-only workflow. Slides and every other
         // design category keep their single session artifact without creating
         // website-style snapshots before each AI turn.
-        if (designPath && selectedWorkspaceEndpoint && designSessionTemplate?.manifest.category === "site") {
-          try {
-            const currentDesign = await selectedWorkspaceEndpoint.client.readWorkspaceFile(selectedWorkspaceEndpoint.workspaceId, designPath);
-            let versionContent = currentDesign.content;
-            const selectedVersionPath = window.localStorage.getItem(`ipollowork.session-design-version.${targetSessionId}`);
-            if (selectedVersionPath && selectedVersionPath !== "current") {
-              const selectedVersion = await selectedWorkspaceEndpoint.client.readWorkspaceFile(selectedWorkspaceEndpoint.workspaceId, selectedVersionPath);
+        if (selectedWorkspaceEndpoint) {
+          for (const designTemplate of designSessionTemplates) {
+            if (designTemplate.manifest.category !== "site") continue;
+            const designPath = designTemplate.state.entry;
+            try {
+              const currentDesign = await selectedWorkspaceEndpoint.client.readWorkspaceFile(selectedWorkspaceEndpoint.workspaceId, designPath);
+              let versionContent = currentDesign.content;
+              const selectedVersionPath = window.localStorage.getItem(`ipollowork.session-design-version.${designTemplate.sessionId}`);
+              if (selectedVersionPath && selectedVersionPath !== "current") {
+                const selectedVersion = await selectedWorkspaceEndpoint.client.readWorkspaceFile(selectedWorkspaceEndpoint.workspaceId, selectedVersionPath);
+                await selectedWorkspaceEndpoint.client.writeWorkspaceFile(selectedWorkspaceEndpoint.workspaceId, {
+                  path: designPath,
+                  content: selectedVersion.content,
+                  baseUpdatedAt: currentDesign.updatedAt ?? null,
+                });
+                versionContent = selectedVersion.content;
+                window.localStorage.setItem(`ipollowork.session-design-version.${designTemplate.sessionId}`, "current");
+              }
               await selectedWorkspaceEndpoint.client.writeWorkspaceFile(selectedWorkspaceEndpoint.workspaceId, {
-                path: designPath,
-                content: selectedVersion.content,
-                baseUpdatedAt: currentDesign.updatedAt ?? null,
+                path: `design/.versions/${designTemplate.sessionId}/${Date.now()}-before-ai.html`,
+                content: versionContent,
+                baseUpdatedAt: null,
               });
-              versionContent = selectedVersion.content;
-              window.localStorage.setItem(`ipollowork.session-design-version.${targetSessionId}`, "current");
+              await getReactQueryClient().invalidateQueries({
+                queryKey: ["design-html-catalog", selectedWorkspaceEndpoint.workspaceId],
+              });
+              await getReactQueryClient().invalidateQueries({
+                queryKey: ["design-html", selectedWorkspaceEndpoint.workspaceId, designPath],
+              });
+            } catch (error) {
+              throw new Error(`Could not create the Design version before this AI update: ${error instanceof Error ? error.message : "Unknown error"}`);
             }
-            await selectedWorkspaceEndpoint.client.writeWorkspaceFile(selectedWorkspaceEndpoint.workspaceId, {
-              path: `design/.versions/${targetSessionId}/${Date.now()}-before-ai.html`,
-              content: versionContent,
-              baseUpdatedAt: null,
-            });
-            await getReactQueryClient().invalidateQueries({
-              queryKey: ["design-html-catalog", selectedWorkspaceEndpoint.workspaceId],
-            });
-            await getReactQueryClient().invalidateQueries({
-              queryKey: ["design-html", selectedWorkspaceEndpoint.workspaceId, designPath],
-            });
-          } catch (error) {
-            throw new Error(`Could not create the Design version before this AI update: ${error instanceof Error ? error.message : "Unknown error"}`);
           }
         }
         const capabilityPromptPart = draft.capability
@@ -1204,8 +1364,16 @@ export function SessionRoute() {
               synthetic: true,
             }]
           : [];
+        const automaticTemplatePromptPart = automaticTemplateInstruction
+          ? [{
+              type: "text" as const,
+              text: automaticTemplateInstruction,
+              synthetic: true,
+            }]
+          : [];
         const promptParts = [
           ...capabilityPromptPart,
+          ...automaticTemplatePromptPart,
           ...parts,
         ];
         if (designSelectionContexts.length > 0 && !selectedWorkspaceEndpoint) {
@@ -1319,7 +1487,7 @@ export function SessionRoute() {
     modelVariantValue,
     navigate,
     opencodeBaseUrl,
-    providerConnectedIds,
+    sessionProviderAuthSnapshot.connectedProviderIds,
     selectedMode,
     activeSelectedModel,
     selectedSessionId,
@@ -1397,21 +1565,14 @@ export function SessionRoute() {
     if (!endpoint || !endpoint.token) {
       return null;
     }
-    const workspaceConversation = conversationEngineAdapters
-      .get(workspace.engineId)
-      .connect({
-        baseUrl: endpoint.opencodeBaseUrl,
-        token: endpoint.token,
-        directory: workspace.path?.trim() || undefined,
-        serverBaseUrl: endpoint.baseUrl,
-        workspaceId: endpoint.workspaceId,
-      });
+    if (taskCreationInFlightRef.current.has(workspaceId)) return null;
+    taskCreationInFlightRef.current.add(workspaceId);
     let createdSessionId: string | null = null;
     let projectInitializationFailed = false;
     try {
       setErrorsByWorkspaceId((current) => ({ ...current, [workspaceId]: null }));
       setRouteError(null);
-      const session = await workspaceConversation.create(workspace.path?.trim() || undefined);
+      const { item: session } = await endpoint.client.createSession(endpoint.workspaceId);
       createdSessionId = session.id;
       let sessionType = type;
       if (templateId) {
@@ -1522,6 +1683,8 @@ export function SessionRoute() {
         }
       }
       return null;
+    } finally {
+      taskCreationInFlightRef.current.delete(workspaceId);
     }
   }, [
     baseUrl,
@@ -1552,6 +1715,12 @@ export function SessionRoute() {
       return false;
     }
   }, [createProject, pendingInitialProjectTask]);
+
+  const handleCreateTaskFromDraft = useCallback(async (workspaceId: string, draft: ComposerDraft) => {
+    if (pendingInitialProjectTask || !workspaces.some((workspace) => workspace.id === workspaceId)) return false;
+    setPendingInitialProjectTask({ workspaceId, sessionId: null, draft });
+    return true;
+  }, [pendingInitialProjectTask, workspaces]);
 
   useEffect(() => {
     const pending = pendingInitialProjectTask;
@@ -1632,6 +1801,13 @@ export function SessionRoute() {
       dismissFirstRunLoader();
       return;
     }
+    // Once workspace discovery has settled with no projects, the actionable
+    // empty state is the destination. Do not hide its create-project button
+    // behind the first-run resource loader until the safety timeout.
+    if (!loading && workspaces.length === 0) {
+      dismissFirstRunLoader();
+      return;
+    }
     if (
       !loading
       && selectedWorkspaceId
@@ -1641,12 +1817,10 @@ export function SessionRoute() {
       return;
     }
     // State settled and this profile already has sessions or last-session
-    // memory (not a first run): hand back to the normal UI. Skipped once the
-    // auto-create below has latched — our own just-created session briefly
-    // satisfies this before navigation lands.
+    // memory (not a first run): hand back to the normal UI. The new-task
+    // route remains sessionless until the user submits its first message.
     if (
       !loading &&
-      !firstRunSessionRef.current &&
       selectedWorkspaceId &&
       ((sessionsByWorkspaceId[selectedWorkspaceId] ?? []).length > 0 ||
         Boolean(readLastSessionFor(selectedWorkspaceId)))
@@ -1654,24 +1828,6 @@ export function SessionRoute() {
       dismissFirstRunLoader();
     }
   }, [sessionsByWorkspaceId, firstRunLoaderActive, dismissFirstRunLoader, selectedSessionId, routeError, selectedWorkspaceError, errorsByWorkspaceId, loading, selectedWorkspaceId, workspaces]);
-
-  // Every desktop launch starts in a fresh conversation. Historical session
-  // resources remain idle until the user explicitly opens that session.
-  useEffect(() => {
-    if (!canCreateSession || !isDesktopRuntime()) return;
-    if (selectedSessionId) {
-      startupConversationPhase = "done";
-      return;
-    }
-    if (loading || !selectedWorkspaceId) return;
-    if (pendingInitialProjectTask) return;
-    if (workspaces.find((workspace) => workspace.id === selectedWorkspaceId)?.isDefault !== false) return;
-    if (startupConversationPhase !== "pending") return;
-    startupConversationPhase = "creating";
-    void handleCreateTaskInWorkspace(selectedWorkspaceId).then((createdSessionId) => {
-      startupConversationPhase = createdSessionId ? "done" : "pending";
-    });
-  }, [canCreateSession, loading, pendingInitialProjectTask, selectedSessionId, selectedWorkspaceId, handleCreateTaskInWorkspace, workspaces]);
 
   const {
     commandPaletteOpen,
@@ -1683,7 +1839,7 @@ export function SessionRoute() {
   } = useShellShortcuts({
     canCreateTask,
     workspaceId: selectedWorkspaceId,
-    onCreateTask: (workspaceId: string) => void handleCreateTaskInWorkspace(workspaceId),
+    onCreateTask: (workspaceId: string) => void openNewTaskInWorkspace(workspaceId),
   });
   useReactRenderWatchdog("SessionRoute", {
     selectedSessionId,
@@ -1978,7 +2134,7 @@ export function SessionRoute() {
       headerStatus={canCreateTask ? t("status.connected") : t("session.loading_detail")}
       busyHint={effectiveLoading ? t("session.loading_detail") : null}
       startupPhase={effectiveLoading ? "nativeInit" : "ready"}
-      providerConnectedIds={providerConnectedIds}
+      providerConnectedIds={sessionProviderAuthSnapshot.connectedProviderIds}
       hasUsableModel={hasUsableModel}
       providers={providers}
       mcpConnectedCount={mcpConnectedCount}
@@ -2049,7 +2205,6 @@ export function SessionRoute() {
         connectingWorkspaceId: null,
         workspaceConnectionStateById,
         newTaskDisabled: !canCreateSession,
-        sidebarHydratedFromCache: Object.values(sessionsByWorkspaceId).some((list) => list.length > 0),
         startupPhase: effectiveLoading ? "nativeInit" : "ready",
         onOpenSession: (workspaceId, sessionId) => {
           setLegacySelectedWorkspaceId(workspaceId);
@@ -2060,12 +2215,18 @@ export function SessionRoute() {
         onSelectProject: selectProject,
         onCreateProject: createProject,
         onCreateInitialProjectTask: handleCreateInitialProjectTask,
+        onCreateTaskFromDraft: handleCreateTaskFromDraft,
         onRenameProject: renameProject,
         onRevealProject: revealProject,
         onDeleteProject: deleteProject,
         onPrefetchSession: () => {},
-        onCreateTaskInWorkspace: (workspaceId, type, templateId, templateScope) =>
-          handleCreateTaskInWorkspace(workspaceId, type, templateId, templateScope),
+        onCreateTaskInWorkspace: (workspaceId, type, templateId, templateScope) => {
+          if (!templateId && type === undefined) {
+            openNewTaskInWorkspace(workspaceId);
+            return null;
+          }
+          return handleCreateTaskInWorkspace(workspaceId, type, templateId, templateScope);
+        },
         onCreateTemplateAuthoring: (workspaceId, input) =>
           handleCreateTaskInWorkspace(workspaceId, "work", undefined, undefined, input),
         onCreateTaskWithPrompt: (workspaceId, prompt) => {
@@ -2078,25 +2239,20 @@ export function SessionRoute() {
               hostToken: ipolloworkServerHostInfoState?.hostToken,
             });
             if (!endpoint?.token) return;
-            const workspaceConversation = conversationEngineAdapters
-              .get(workspace.engineId)
-              .connect({
-                baseUrl: endpoint.opencodeBaseUrl,
-                token: endpoint.token,
-                directory: workspace.path?.trim() || undefined,
-                serverBaseUrl: endpoint.baseUrl,
-                workspaceId: endpoint.workspaceId,
-              });
             try {
-              const session = await workspaceConversation.create(workspace.path?.trim() || undefined);
+              const { item: session } = await endpoint.client.createSession(endpoint.workspaceId);
               saveSessionDraft(workspaceId, session.id, { text: prompt, mode: "prompt" });
               writeActiveWorkspaceId(workspaceId || null);
               writeLastSessionFor(workspaceId, session.id);
               rememberPendingCreatedSession(workspaceId, session.id);
-              setSessionsByWorkspaceId((current) => ({
-                ...current,
-                [workspaceId]: [session, ...(current[workspaceId] ?? [])],
-              }));
+              setSessionsByWorkspaceId((current) => {
+                const next = {
+                  ...current,
+                  [workspaceId]: [session, ...(current[workspaceId] ?? [])],
+                };
+                sessionsByWorkspaceIdRef.current = next;
+                return next;
+              });
               navigateToWorkspaceSession(workspaceId, session.id);
               focusPromptSoon();
             } catch {
@@ -2180,7 +2336,7 @@ export function SessionRoute() {
       onClose={() => setCommandPaletteOpen(false)}
       onCreateNewSession={() => {
         if (selectedWorkspaceId) {
-          void handleCreateTaskInWorkspace(selectedWorkspaceId);
+          openNewTaskInWorkspace(selectedWorkspaceId);
         }
       }}
       onOpenSession={(workspaceId, sessionId) => {

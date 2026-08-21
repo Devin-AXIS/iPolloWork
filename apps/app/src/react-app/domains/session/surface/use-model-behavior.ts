@@ -2,7 +2,7 @@
 // the active default model — what the composer renders as its variant pill.
 // Extracted verbatim from session-route.tsx; the catalog is also consumed by
 // the model picker's lazy option loader until that moves into its own hook.
-import { useEffect, useMemo, useState } from "react";
+import { useMemo } from "react";
 
 import { getModelBehaviorSummary } from "@/app/lib/model-behavior";
 import type { ModelRef, ProviderListItem } from "@/app/types";
@@ -32,19 +32,15 @@ export type UseModelBehaviorInput = {
 
 export function useModelBehavior(input: UseModelBehaviorInput) {
   const { providerList, defaultModel, modelVariant } = input;
-  const [providerCatalog, setProviderCatalog] = useState<ProviderCatalog>({});
-
-  // Prefetch the full provider catalog once so `getModelBehaviorSummary` has
-  // everything it needs to expose the reasoning/thinking variants the active
-  // model supports — without waiting for the model picker to open. Cached
-  // as providerID → modelID → ProviderModel.
-  useEffect(() => {
-    if (!providerList?.all) return;
+  // This catalog is derived entirely from the query response. Keeping it as
+  // state caused a render loop whenever account projection returned a fresh
+  // provider-list object (most visible while switching to DSH).
+  const providerCatalog = useMemo<ProviderCatalog>(() => {
     const next: ProviderCatalog = {};
-    for (const provider of providerList.all) {
+    for (const provider of providerList?.all ?? []) {
       next[provider.id] = { ...(provider.models ?? {}) };
     }
-    setProviderCatalog(next);
+    return next;
   }, [providerList]);
 
   // Compute behavior (reasoning/thinking variant) options for the current

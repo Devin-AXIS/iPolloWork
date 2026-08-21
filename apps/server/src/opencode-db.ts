@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import { existsSync, readdirSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { homedir } from "node:os";
 import { isAbsolute, join } from "node:path";
 
@@ -56,6 +56,43 @@ function opencodeDataDirs(): string[] {
     if (appData) dirs.push(join(appData, "opencode"));
   }
   return Array.from(new Set(dirs));
+}
+
+/** The account auth vault used by the managed OpenCode control plane. */
+export function resolveOpencodeAuthPath(options: { managedOnly?: boolean } = {}): string | null {
+  const directories = options.managedOnly ? opencodeOrchestratorDataDirs() : opencodeDataDirs();
+  return directories
+    .map((dir) => join(dir, "auth.json"))
+    .find((candidate) => existsSync(candidate)) ?? null;
+}
+
+/** Secret-free OAuth connection metadata for account provider recovery. */
+export function listOpencodeOAuthProviderIds(
+  options: { managedOnly?: boolean } = {},
+): string[] {
+  const path = resolveOpencodeAuthPath(options);
+  if (!path) return [];
+  try {
+    const parsed = JSON.parse(readFileSync(path, "utf8")) as unknown;
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return [];
+    return Object.entries(parsed)
+      .flatMap(([providerId, credential]) => {
+        if (!credential || typeof credential !== "object" || Array.isArray(credential)) return [];
+        const record = credential as Record<string, unknown>;
+        return record.type === "oauth"
+          && typeof record.access === "string"
+          && record.access.length > 0
+          && typeof record.refresh === "string"
+          && record.refresh.length > 0
+          && typeof record.expires === "number"
+          ? [providerId.trim().toLowerCase()]
+          : [];
+      })
+      .filter(Boolean)
+      .sort();
+  } catch {
+    return [];
+  }
 }
 
 function preferredDbNames(): string[] {

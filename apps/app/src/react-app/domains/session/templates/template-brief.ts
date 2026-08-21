@@ -1,4 +1,4 @@
-import type { TemplateCategory, TemplateManifestV1 } from "@ipollowork/types/templates";
+import type { TemplateCatalogItem, TemplateCategory, TemplateManifestV1 } from "@ipollowork/types/templates";
 import { t } from "@/i18n";
 
 export type TemplateBrief = {
@@ -48,6 +48,152 @@ export type TemplateBriefConfig = {
 
 export function isVideoStudioReady(hasTemplateSession: boolean, hasBrief: boolean): boolean {
   return hasTemplateSession && hasBrief;
+}
+
+export type ConversationTemplateIntent = {
+  category: TemplateCategory;
+  prompt: string;
+};
+
+const CREATIVE_DELIVERABLE_ACTION = /(?:生成|制作|创建|设计|开发|搭建|编写|起草|输出|写(?:一份|一个|一套|一篇)?|做(?:一份|一个|一套|一张|一段|个)?|\b(?:create|build|develop|make|generate|design|produce|draft|write)\b)/i;
+const EXPLANATION_ONLY_REQUEST = /(?:怎么|如何)(?:做|制作|创建|设计|生成)|(?:做|制作|创建|设计|生成).{0,12}(?:需要什么|用什么|有哪些|是什么|怎么|如何)|(?:什么|哪些).{0,8}(?:工具|方法|步骤)|(?:解释|介绍|教程|方法|步骤).{0,12}(?:ppt|幻灯片|演示文稿|视频|网页|网站|海报|报告|文章)|\bhow\s+(?:do|can|should|would)\b|\bhow\s+to\b|\bwhat\s+(?:tools?|steps?|methods?|software)\b|\bwhy\b/i;
+const PLAN_ONLY_REQUEST = /(?:视频|动画|宣传片|短片)\s*(?:脚本|文案|创意方案)|(?:ppt|幻灯片|演示文稿)\s*(?:大纲|提纲)|(?:网页|网站)\s*(?:需求文档|策划方案)/i;
+
+const CATEGORY_INTENT_PATTERNS: ReadonlyArray<{
+  category: TemplateCategory;
+  pattern: RegExp;
+}> = [
+  { category: "slides", pattern: /\bpptx?\b|幻灯片|演示文稿|路演稿|演示稿|\b(?:slide deck|slides|presentation|pitch deck|deck)\b/i },
+  { category: "video", pattern: /视频|动画|短片|宣传片|片头|片尾|竖屏短视频|\b(?:video|animation|motion graphics?|reel|promo film)\b/i },
+  { category: "cards", pattern: /社交卡片|轮播卡片|小红书卡片|信息卡片|\b(?:social cards?|carousel)\b/i },
+  { category: "poster", pattern: /海报|横幅|主视觉|\b(?:poster|banner|key visual)\b/i },
+  { category: "app", pattern: /应用原型|产品原型|交互原型|管理后台|控制台|仪表盘|\b(?:app|application|prototype|dashboard|admin console)\b/i },
+  { category: "report", pattern: /分析报告|研究报告|数据报告|实验报告|周报|年报|\b(?:report|readout|weekly update)\b/i },
+  { category: "article", pattern: /公众号文章|博客文章|长文|推文|文章|\b(?:article|blog post|editorial)\b/i },
+  { category: "site", pattern: /落地页|着陆页|官网|网页|网站|页面|\bhtml\b|\b(?:landing page|website|webpage|web page|site)\b/i },
+  { category: "other", pattern: /简历|履历|\b(?:resume|curriculum vitae|cv)\b/i },
+];
+
+const DEFAULT_TEMPLATE_IDS: Partial<Record<TemplateCategory, readonly string[]>> = {
+  site: ["ipollowork.html-anything.prototype-web", "ipollowork.html-anything.web-proto-soft"],
+  video: ["ipollowork.html-anything.motion-frames", "ipollowork.hyperframes.release-spotlight"],
+  slides: ["ipollowork.pptx-brand-narrative", "ipollowork.html-anything.deck-blueprint"],
+  app: ["ipollowork.app-creator-studio"],
+  poster: ["ipollowork.html-anything.poster-hero"],
+  cards: ["ipollowork.html-anything.social-carousel"],
+  report: ["ipollowork.html-anything.data-report"],
+  article: ["ipollowork.html-anything.article-magazine"],
+};
+
+const TEMPLATE_SEMANTIC_SIGNALS: ReadonlyArray<{
+  request: RegExp;
+  template: RegExp;
+  score: number;
+}> = [
+  { request: /融资|路演|投资人|\b(?:fundrais|investor|pitch)\w*\b/i, template: /pitch|fundrais|investor/i, score: 36 },
+  { request: /品牌|品牌故事|\bbrand\w*\b/i, template: /brand|narrative/i, score: 28 },
+  { request: /产品发布|新品|上线|\b(?:product launch|release|launch)\b/i, template: /product|launch|release|spotlight/i, score: 28 },
+  { request: /课程|教学|培训|\b(?:course|lesson|training|education)\b/i, template: /course|lesson|training|education/i, score: 28 },
+  { request: /代码|编程|技术讲解|\b(?:code|coding|developer|technical)\b/i, template: /code|developer|technical|tech/i, score: 26 },
+  { request: /竖屏|短视频|社交媒体|小红书|抖音|\b(?:vertical|social|reel|tiktok)\b/i, template: /vertical|social|reel|xhs/i, score: 32 },
+  { request: /财务|金融|股票|投资|\b(?:finance|financial|stock|equity)\b/i, template: /finance|financial|stock|equity/i, score: 28 },
+  { request: /数据|图表|分析|仪表盘|\b(?:data|chart|analytics|dashboard)\b/i, template: /data|chart|analytics|dashboard|report/i, score: 22 },
+  { request: /建筑|作品集|\b(?:architecture|portfolio|atelier)\b/i, template: /architecture|portfolio|atelier/i, score: 28 },
+  { request: /极简|简约|\bminimal\b/i, template: /minimal/i, score: 16 },
+  { request: /柔和|圆润|\bsoft\b/i, template: /soft/i, score: 16 },
+  { request: /粉彩|小清新|\bpastel\b/i, template: /pastel/i, score: 16 },
+  { request: /暗色|深色|黑色|\b(?:dark|obsidian)\b/i, template: /dark|obsidian/i, score: 16 },
+  { request: /赛博|科技感|\bcyber\b/i, template: /cyber/i, score: 16 },
+  { request: /编辑部|杂志|\b(?:editorial|magazine)\b/i, template: /editorial|magazine/i, score: 16 },
+  { request: /手绘|线框|草图|\b(?:sketch|wireframe)\b/i, template: /sketch|wireframe/i, score: 16 },
+];
+
+function templateSearchText(item: TemplateCatalogItem): string {
+  const { manifest } = item;
+  return [
+    manifest.id,
+    manifest.title,
+    manifest.description,
+    manifest.subcategory,
+    manifest.style,
+    ...manifest.tags,
+  ].join(" ").toLowerCase();
+}
+
+function promptSearchTerms(prompt: string): string[] {
+  const latinTerms = prompt.toLowerCase().match(/[a-z][a-z0-9-]{1,}/g) ?? [];
+  const cjkTerms = prompt.match(/[\u3400-\u9fff]{2,6}/g) ?? [];
+  return [...new Set([...latinTerms, ...cjkTerms])];
+}
+
+export function inferConversationTemplateIntent(prompt: string): ConversationTemplateIntent | null {
+  return inferConversationTemplateIntents(prompt)[0] ?? null;
+}
+
+export function inferConversationTemplateIntents(prompt: string): ConversationTemplateIntent[] {
+  const normalized = prompt.trim();
+  if (!normalized || !CREATIVE_DELIVERABLE_ACTION.test(normalized)) return [];
+  if (EXPLANATION_ONLY_REQUEST.test(normalized) || PLAN_ONLY_REQUEST.test(normalized)) return [];
+  return CATEGORY_INTENT_PATTERNS
+    .filter(({ pattern }) => pattern.test(normalized))
+    .map(({ category }) => ({ category, prompt: normalized }));
+}
+
+export function conversationArtifactSessionId(sessionId: string, category: TemplateCategory) {
+  const suffix = `-artifact-${category}`;
+  return `${sessionId.slice(0, 256 - suffix.length)}${suffix}`;
+}
+
+export function conversationTemplateBrief(prompt: string): TemplateBrief {
+  const normalized = prompt.trim().replace(/\s+/g, " ");
+  const title = normalized
+    .replace(/^(?:请|麻烦)?\s*(?:帮我|给我|我要|我需要|我想要)?\s*/i, "")
+    .replace(/^(?:生成|制作|创建|设计|开发|搭建|编写|起草|输出|写|做)\s*/i, "")
+    .slice(0, 96)
+    .trim() || "对话生成内容";
+  return {
+    title,
+    audience: "根据当前对话推断目标受众；如需求中已明确受众，以明确内容为准。",
+    details: prompt.trim(),
+  };
+}
+
+export function selectConversationTemplate(
+  prompt: string,
+  catalog: readonly TemplateCatalogItem[],
+  requestedCategory?: TemplateCategory,
+): TemplateCatalogItem | null {
+  const intent = requestedCategory
+    ? { category: requestedCategory, prompt: prompt.trim() }
+    : inferConversationTemplateIntent(prompt);
+  if (!intent) return null;
+  const candidates = catalog.filter((item) => item.installed && item.manifest.category === intent.category);
+  if (candidates.length === 0) return null;
+  const terms = promptSearchTerms(intent.prompt);
+  const defaults = DEFAULT_TEMPLATE_IDS[intent.category] ?? [];
+  const requestsNativeSlides = intent.category === "slides" && /\bpptx?\b|可编辑|导出.{0,5}ppt/i.test(intent.prompt);
+  const requestsHtmlSlides = intent.category === "slides" && /\bhtml\b|网页演示/i.test(intent.prompt);
+
+  return [...candidates].sort((left, right) => {
+    const score = (item: TemplateCatalogItem) => {
+      const searchText = templateSearchText(item);
+      let value = item.sourceType === "local" || item.sourceType === "market" ? 2 : 0;
+      for (const term of terms) {
+        if (searchText.includes(term.toLowerCase())) value += term.length > 4 ? 4 : 2;
+      }
+      for (const signal of TEMPLATE_SEMANTIC_SIGNALS) {
+        if (signal.request.test(intent.prompt) && signal.template.test(searchText)) value += signal.score;
+      }
+      if (requestsNativeSlides && item.manifest.pptxCompatibility === "native-editable") value += 24;
+      if (requestsHtmlSlides && item.manifest.pptxCompatibility !== "native-editable") value += 18;
+      const defaultIndex = defaults.indexOf(item.manifest.id);
+      if (defaultIndex >= 0) value += Math.max(1, 8 - defaultIndex);
+      return value;
+    };
+    return score(right) - score(left)
+      || left.manifest.title.localeCompare(right.manifest.title)
+      || left.manifest.id.localeCompare(right.manifest.id);
+  })[0] ?? null;
 }
 
 function briefField(key: keyof TemplateBriefFields, label: string, placeholder: string, optional = false): TemplateBriefField {

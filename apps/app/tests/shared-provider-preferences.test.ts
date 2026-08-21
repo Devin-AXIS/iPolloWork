@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { describe, expect, test } from "bun:test";
 import { DEEPSEEK_HARNESS_ENGINE_ID, DEFAULT_ENGINE_ID } from "@ipollowork/types/workspace";
 import {
+  sharedConfiguredProviderIdsFromEnvKeys,
   sharedProviderCredentialEnvKey,
   sharedProviderIdsFromEnvKeys,
   sharedProviderProfileEnvKey,
@@ -89,6 +90,20 @@ describe("shared AI provider preferences", () => {
     }
   });
 
+  test("uses the merged account catalog but the active engine runtime for prompt delivery", () => {
+    expect(sessionRouteSource).toContain("const providerListQuery = useMergedProviderListQuery({");
+    expect(sessionRouteSource).toContain("sources: modelCatalogSources");
+    expect(sessionRouteSource).toContain("enabled: modelCatalogSources.length > 0");
+    expect(sessionRouteSource).toContain("const accountProviderList = filterProviderList(");
+    expect(sessionRouteSource).toContain("? filterProviderList(activeProviderListQuery.data, disabledProviderIds)");
+    expect(sessionRouteSource).toContain("connectedProviderIds: sessionProviderAuthSnapshot.connectedProviderIds");
+    expect(sessionRouteSource).toContain("disabledProviderIds,");
+    expect(settingsRouteSource).toContain("!effectiveProviderConnectedIdSet.has(provider.id) || sharedConnectedProviderIds.has(provider.id)");
+    expect(sessionRouteSource).toContain("getSelectableChatModelSnapshot(activeProviderList)");
+    expect(sessionRouteSource).toContain("runtimeSource: activeProviderSource");
+    expect(sessionRouteSource).toContain("model: activeSelectedModel ?? undefined");
+  });
+
   test("describes compatible providers once for every engine adapter", () => {
     const profile = buildSharedProviderProfile({
       providerId: "acme",
@@ -116,6 +131,14 @@ describe("shared AI provider preferences", () => {
       sharedProviderCredentialEnvKey("deepseek-official"),
       sharedProviderCredentialEnvKey("openai"),
       "OPENAI_API_KEY",
+    ])).toEqual(["deepseek-official", "openai"]);
+  });
+
+  test("keeps OAuth providers account-connected through their non-secret profile", () => {
+    expect(sharedConfiguredProviderIdsFromEnvKeys([
+      sharedProviderProfileEnvKey("openai"),
+      sharedProviderCredentialEnvKey("deepseek-official"),
+      sharedProviderProfileEnvKey("deepseek-official"),
     ])).toEqual(["deepseek-official", "openai"]);
   });
 });

@@ -36,6 +36,11 @@ const legacyOrganizationWorkspaces = resolve(import.meta.dir, "../src/app/cloud/
 describe("personal and Enterprise chat entry wiring", () => {
   test("routes a completed account sign-in directly to chat", () => {
     expect(appRoot).toContain('navigate("/session", { replace: true })');
+    expect(appRoot).toContain('path="/session/:sessionId?"');
+    expect(appRoot).toContain('path="/workspace/:workspaceId/session/:sessionId?"');
+    expect(appRoot).not.toContain('path="/workspace/:workspaceId/session"');
+    expect(appRoot).not.toContain("sessionRouteKey");
+    expect(appRoot.match(/<SessionRoute \/>/g)).toHaveLength(2);
     expect(appRoot).not.toContain('path="/onboarding"');
     expect(appRoot).not.toContain("WorkContextEntryPage");
     expect(appRoot).not.toContain("denSessionUpdatedEvent");
@@ -73,7 +78,7 @@ describe("personal and Enterprise chat entry wiring", () => {
   test("keeps market launches scoped while the starter catalog stays personal", () => {
     expect(sessionPage).toMatch(/template\.manifest\.id,\s+templateResourceScope,/);
     expect(sessionPage).toMatch(/props\.selectedSessionId,\s+undefined,\s+PERSONAL_WORK_CONTEXT_ID,/);
-    expect(sessionPage).toContain("designTemplates={availableStarterTemplateCatalog}");
+    expect(sessionPage).toContain("designTemplates={starterTemplateCatalog}");
     expect(sessionRoute).toContain("templateScope ?? readActiveWorkContextId()");
     expect(sessionRoute).toContain("Template unavailable");
     expect(sessionRoute).toContain("deleteSession(endpoint.workspaceId, createdSessionId)");

@@ -1,9 +1,10 @@
-import { useQuery, type QueryClient } from "@tanstack/react-query";
+import { useQueries, useQuery, type QueryClient } from "@tanstack/react-query";
 
 import type {
   ModelRef,
   ProviderListItem,
   ProviderListResponse,
+  ProviderModel,
 } from "../../app/types";
 import { dispatchNewProviders } from "../../app/lib/provider-events";
 import { DEFAULT_ENGINE_ID } from "@ipollowork/types/workspace";
@@ -127,18 +128,90 @@ export function mergeProviderListResponses(
   return { all: [...providers.values()], connected: [...connected], default: defaults };
 }
 
+/**
+ * Project the account credential directory onto an engine catalog. OpenCode
+ * reports some API-key providers as `env` even when the key was explicitly
+ * saved through iPolloWork. Account credential IDs are authoritative for that
+ * distinction, so promote only those providers and keep unrelated ambient
+ * shell variables hidden.
+ */
+export function projectAccountProviderConnections(
+  value: ProviderListResponse | null | undefined,
+  configuredProviderIds: readonly string[],
+): ProviderListResponse | undefined {
+  if (!value) return undefined;
+  const configured = new Set(configuredProviderIds.map((id) => id.trim()).filter(Boolean));
+
+  let changed = false;
+  const all = value.all.map((provider) => {
+    if (!configured.has(provider.id) || provider.source !== "env") return provider;
+    changed = true;
+    return { ...provider, source: "config" as const };
+  });
+  const available = new Set(all.map((provider) => provider.id));
+  // Engine catalogs can report ambient environment credentials as connected.
+  // Account configuration is authoritative for user-selectable providers;
+  // only the built-in OpenCode route remains connected without a credential.
+  const connected = new Set(
+    value.connected.filter((providerId) => providerId.trim().toLowerCase() === "opencode"),
+  );
+  for (const providerId of configured) {
+    if (!available.has(providerId)) continue;
+    connected.add(providerId);
+  }
+  const nextConnected = [...connected];
+  if (
+    nextConnected.length !== value.connected.length
+    || nextConnected.some((providerId, index) => providerId !== value.connected[index])
+  ) {
+    changed = true;
+  }
+  return changed ? { ...value, all, connected: nextConnected } : value;
+}
+
 export async function ensureMergedProviderListQuery(
   queryClient: QueryClient,
   sources: readonly ProviderListQueryInput[],
   options?: { force?: boolean },
 ): Promise<ProviderListResponse> {
-  const values = await Promise.all(
+  const results = await Promise.allSettled(
     sources.map((source) => ensureProviderListQuery(queryClient, {
       ...source,
       force: options?.force,
     })),
   );
+  const values = results.flatMap((result) => result.status === "fulfilled" ? [result.value] : []);
+  if (values.length === 0) {
+    const failure = results.find((result) => result.status === "rejected");
+    if (failure?.status === "rejected") throw failure.reason;
+  }
   return mergeProviderListResponses(values);
+}
+
+/**
+ * Subscribe to the account-wide model directory projected through every
+ * registered engine runtime. Picker refreshes update these same per-engine
+ * query keys, keeping selection and prompt delivery on one readiness view.
+ */
+export function useMergedProviderListQuery(input: {
+  sources: readonly ProviderListQueryInput[];
+  enabled?: boolean;
+}) {
+  const results = useQueries({
+    queries: input.sources.map((source) => ({
+      queryKey: providerListQueryKey(source),
+      enabled: Boolean(source.client) && (input.enabled ?? true),
+      staleTime: PROVIDER_LIST_CACHE_MS,
+      gcTime: PROVIDER_LIST_CACHE_MS,
+      queryFn: () => fetchProviderList(source),
+    })),
+  });
+  const values = results.flatMap((result) => result.data ? [result.data] : []);
+  return {
+    data: values.length ? mergeProviderListResponses(values) : undefined,
+    isLoading: values.length === 0 && results.some((result) => result.isLoading),
+    error: values.length === 0 ? results.find((result) => result.error)?.error ?? null : null,
+  };
 }
 
 export function getConnectedProviderItems(value: ProviderListResponse | null | undefined) {
@@ -182,6 +255,40 @@ export function getSelectableChatModelSnapshot(
     providerID: provider.id,
     modelIDs: Object.keys(provider.models ?? {}),
   }));
+}
+
+export type RunnableChatModelEntry = {
+  provider: ProviderListItem;
+  modelId: string;
+  model: ProviderModel;
+  runtime: ModelRuntimeResolution;
+};
+
+/**
+ * Return the account catalog entries that the active agent runtime can
+ * execute now. The account catalog owns labels and metadata; the active
+ * runtime response is the authority for provider connection and model-route
+ * support. Model pickers must consume this intersection instead of rendering
+ * unsupported account models as disabled rows.
+ */
+export function getRunnableChatModelEntries(input: {
+  catalog: ProviderListResponse | null | undefined;
+  runtime: ProviderListResponse | null | undefined;
+  engineId?: string | null;
+}): RunnableChatModelEntry[] {
+  if (!input.runtime) return [];
+  return getSelectableChatProviderItems(input.catalog).flatMap((provider) => (
+    Object.entries(provider.models).flatMap(([modelId, model]) => {
+      const runtime = resolveModelRuntime(
+        input.runtime,
+        { providerID: provider.id, modelID: modelId },
+        input.engineId,
+      );
+      return runtime.status === "ready"
+        ? [{ provider, modelId, model, runtime }]
+        : [];
+    })
+  ));
 }
 
 export function getConnectedProviderSnapshot(

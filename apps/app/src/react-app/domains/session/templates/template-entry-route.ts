@@ -14,6 +14,11 @@ function normalizePath(path: string) {
   return path.replaceAll("\\", "/");
 }
 
+export function designProjectSessionIdFromEntryPath(path: string) {
+  const match = /^design\/([^/]+)\/(?:entry|index)\.html$/i.exec(normalizePath(path).trim().replace(/^\.\//, ""));
+  return match?.[1] ?? null;
+}
+
 export function resolveTemplateEntrySurface(
   target: OpenableTarget,
   binding: TemplateEntryBinding | null | undefined,

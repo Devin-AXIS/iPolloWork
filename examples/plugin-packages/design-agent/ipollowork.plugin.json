@@ -2,7 +2,7 @@
   "schemaVersion": 2,
   "id": "design-agent",
   "name": "iPollo Design",
-  "description": "提供 iPollo Design、演示文稿工作台与配套 Agent Skills。",
+  "description": "为内建 iPollo Design 与演示文稿工作台提供配套 Agent Skills。",
   "category": "AI Agent 与自动化",
   "defaultEnabled": true,
   "source": {
@@ -21,7 +21,7 @@
     "defaultLocale": "zh",
     "translations": {
       "en": {
-        "description": "iPollo Design workspace, presentation workspace, and official Agent Skills.",
+        "description": "Official Agent Skills for the built-in iPollo Design and presentation workspaces.",
         "category": "AI Agents & Automation",
         "composer": { "prompt": "Use iPollo Design to create or edit content in the current session's design project." },
         "resources": {
@@ -39,7 +39,7 @@
     }
   },
   "package": {
-    "version": "0.3.0",
+    "version": "0.3.1",
     "publisher": {
       "id": "ipollowork",
       "name": "iPolloWork"
@@ -57,15 +57,6 @@
     {
       "id": "workspace-write",
       "reason": "按照用户要求更新当前会话的设计或演示文稿文件。"
-    }
-  ],
-  "contributions": [
-    {
-      "type": "session-side-panel",
-      "ref": "ipollowork.design.panel",
-      "label": "Design",
-      "description": "在当前会话右侧打开 Design Studio。",
-      "location": "session-right-pane"
     }
   ],
   "resources": [

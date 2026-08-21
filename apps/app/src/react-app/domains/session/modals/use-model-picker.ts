@@ -6,13 +6,15 @@
 import { useEffect, useMemo, useState } from "react";
 
 import { isDesktopProviderBlocked } from "@/app/cloud/desktop-app-restrictions";
+import { filterProviderList } from "@/app/utils/providers";
 import type { ModelOption } from "@/app/types";
 import { useCheckDesktopRestriction } from "@/react-app/domains/cloud/desktop-config-provider";
 import {
   ensureMergedProviderListQuery,
   ensureProviderListQuery,
-  getChatProviderCatalogItems,
-  resolveModelRuntime,
+  getRunnableChatModelEntries,
+  mergeProviderListResponses,
+  projectAccountProviderConnections,
   type ProviderListQueryInput,
 } from "@/react-app/infra/provider-list-query";
 import { getReactQueryClient } from "@/react-app/infra/query-client";
@@ -28,7 +30,9 @@ export type UseModelPickerInput = {
   baseUrl: string;
   workspaceRoot: string;
   catalogSources?: readonly ProviderListQueryInput[];
+  runtimeSource?: ProviderListQueryInput | null;
   connectedProviderIds?: readonly string[];
+  disabledProviderIds?: readonly string[];
   /** Optional: surface option-load failures (settings shows a toast; the session route stays silent). */
   onLoadError?: (error: unknown) => void;
 };
@@ -40,7 +44,9 @@ export function useModelPicker(input: UseModelPickerInput) {
     baseUrl,
     workspaceRoot,
     catalogSources = [],
+    runtimeSource = null,
     connectedProviderIds = [],
+    disabledProviderIds = [],
     onLoadError,
   } = input;
   const checkDesktopRestriction = useCheckDesktopRestriction();
@@ -48,7 +54,17 @@ export function useModelPicker(input: UseModelPickerInput) {
   const [open, setOpen] = useState(false);
   const [compactOpen, setCompactOpen] = useState(false);
   const [query, setQuery] = useState("");
-  const [modelOptions, setModelOptions] = useState<ModelOption[]>([]);
+  const optionScopeKey = [
+    engineId?.trim() ?? "",
+    runtimeSource?.baseUrl?.trim() ?? baseUrl.trim(),
+    runtimeSource?.directory?.trim() ?? workspaceRoot.trim(),
+    [...disabledProviderIds].sort().join(","),
+  ].join("\u0000");
+  const [loadedOptions, setLoadedOptions] = useState<{ scopeKey: string; options: ModelOption[] }>({
+    scopeKey: "",
+    options: [],
+  });
+  const modelOptions = loadedOptions.scopeKey === optionScopeKey ? loadedOptions.options : [];
   // Provider IDs that were just added — used to highlight them as
   // "Recently added" in the model picker even after they've been
   // marked as seen in localStorage.
@@ -91,25 +107,30 @@ export function useModelPicker(input: UseModelPickerInput) {
   // uses the compact picker, while settings uses the full modal; both consume
   // the same model options and must work on their first open.
   useEffect(() => {
-    if ((!open && !compactOpen) || !client) return;
+    if ((!open && !compactOpen) || (!client && catalogSources.length === 0)) return;
     let cancelled = false;
     void (async () => {
       try {
-        const activeSource = {
+        const activeSources: ProviderListQueryInput[] = client ? [{
           client,
           engineId,
           baseUrl,
           directory: workspaceRoot || undefined,
-        } satisfies ProviderListQueryInput;
-        const [data, active] = await Promise.all([
-          ensureMergedProviderListQuery(
-            getReactQueryClient(),
-            catalogSources.length ? catalogSources : [activeSource],
-            { force: true },
-          ),
-          ensureProviderListQuery(getReactQueryClient(), { ...activeSource, force: true }),
+        }] : [];
+        const queryClient = getReactQueryClient();
+        const catalogQuerySources = catalogSources.length ? catalogSources : activeSources;
+        const [data, runtimeData] = await Promise.all([
+          ensureMergedProviderListQuery(queryClient, catalogQuerySources, { force: true }),
+          runtimeSource
+            ? ensureProviderListQuery(queryClient, { ...runtimeSource, force: true })
+            : ensureMergedProviderListQuery(queryClient, activeSources, { force: true }),
         ]);
         if (cancelled || !data.all) return;
+        const mergedCatalog = mergeProviderListResponses([data, runtimeData]);
+        const accountData = filterProviderList(
+          projectAccountProviderConnections(mergedCatalog, connectedProviderIds) ?? mergedCatalog,
+          [...disabledProviderIds],
+        );
         // Flag models from recently-added providers so they appear in
         // the "Recently added" section at the top of the picker.
         // Two sources: (1) providers not yet in the localStorage seen-set,
@@ -121,43 +142,31 @@ export function useModelPicker(input: UseModelPickerInput) {
         } catch {
           seenIds = new Set();
         }
-        const accountConnected = new Set([
-          ...data.connected,
-          ...connectedProviderIds,
-        ]);
+        const configuredProviderIds = new Set(accountData.connected);
         const options: ModelOption[] = [];
-        for (const provider of getChatProviderCatalogItems(data)) {
-          const modelIds = Object.keys(provider.models);
+        for (const { provider, modelId, model, runtime } of getRunnableChatModelEntries({
+          catalog: accountData,
+          runtime: runtimeData,
+          engineId,
+        })) {
           const isNew = !seenIds.has(provider.id) || recentProviderIds.has(provider.id);
-          const isConnected = accountConnected.has(provider.id);
-          for (const id of modelIds) {
-            const model = provider.models[id];
-            const runtime = resolveModelRuntime(active, {
-              providerID: provider.id,
-              modelID: id,
-            }, engineId);
-            options.push({
-              providerID: provider.id,
-              modelID: id,
-              title: model.name || id,
-              description: provider.name,
-              behaviorTitle: t("model_behavior.title_reasoning_effort"),
-              behaviorLabel: t("settings.provider_default_label"),
-              behaviorDescription: "",
-              behaviorValue: null,
-              isFree: provider.id.trim().toLowerCase() === "opencode",
-              isConnected,
-              disabled: !isConnected || runtime.status !== "ready",
-              footer: isConnected
-                ? t("model_picker.engine_unavailable")
-                : t("model_picker.connect_provider_hint"),
-              isRecommended: isNew,
-              supportsVision: runtime.capabilities?.vision === true,
-              source: /^lpr_/i.test(provider.id) ? "cloud" as const : undefined,
-            });
-          }
+          options.push({
+            providerID: provider.id,
+            modelID: modelId,
+            title: model.name || modelId,
+            description: provider.name,
+            behaviorTitle: t("model_behavior.title_reasoning_effort"),
+            behaviorLabel: t("settings.provider_default_label"),
+            behaviorDescription: "",
+            behaviorValue: null,
+            isFree: provider.id.trim().toLowerCase() === "opencode",
+            isConnected: configuredProviderIds.has(provider.id),
+            isRecommended: isNew,
+            supportsVision: runtime.capabilities?.vision === true,
+            source: /^lpr_/i.test(provider.id) ? "cloud" as const : undefined,
+          });
         }
-        setModelOptions(options);
+        setLoadedOptions({ scopeKey: optionScopeKey, options });
       } catch (error) {
         // Default: silent — the picker surfaces an empty list rather than
         // blocking the UI. Callers can opt into surfacing the failure.
@@ -167,7 +176,7 @@ export function useModelPicker(input: UseModelPickerInput) {
     return () => {
       cancelled = true;
     };
-  }, [open, compactOpen, baseUrl, catalogSources, client, connectedProviderIds, engineId, recentProviderIds, workspaceRoot]);
+  }, [open, compactOpen, baseUrl, catalogSources, client, connectedProviderIds, disabledProviderIds, engineId, optionScopeKey, recentProviderIds, runtimeSource, workspaceRoot]);
 
   // Apply org-level restrictions (dev #1505) on top of the raw model list
   // so the picker never surfaces blocked options:

@@ -77,6 +77,27 @@ export function sharedProviderProfileEnvKey(providerId: string): string {
   return `${SHARED_PROVIDER_CREDENTIAL_PREFIX}${encodedProviderId(providerId)}${SHARED_PROVIDER_PROFILE_SUFFIX}`
 }
 
+export function sharedProviderIdFromProfileEnvKey(key: string): string | null {
+  return providerIdFromEnvKey(key, SHARED_PROVIDER_PROFILE_SUFFIX)
+}
+
+/**
+ * Account-level provider connections include API-key credentials and OAuth
+ * connections. OAuth secrets remain in the engine auth vault; their existing
+ * shared profile is the non-secret account marker used by the app shell.
+ */
+export function sharedConfiguredProviderIdsFromEnvKeys(keys: readonly string[]): string[] {
+  return [
+    ...new Set(
+      keys.flatMap((key) => {
+        const providerId = sharedProviderIdFromCredentialEnvKey(key)
+          ?? sharedProviderIdFromProfileEnvKey(key)
+        return providerId ? [providerId] : []
+      }),
+    ),
+  ].sort()
+}
+
 export function serializeSharedProviderProfile(profile: SharedProviderProfile): string {
   return JSON.stringify(profile)
 }
