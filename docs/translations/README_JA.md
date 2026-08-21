@@ -20,13 +20,13 @@
   <a href="https://trendshift.io/repositories/88012?utm_source=trendshift-badge&amp;utm_medium=badge&amp;utm_campaign=badge-trendshift-88012"><img src="https://trendshift.io/api/badge/trendshift/repositories/88012/weekly?language=TypeScript" alt="#24 TypeScript Repository Of The Week | Trendshift" width="250" height="55" /></a>
 </p>
 
-**人とエージェントチームのための、エンタープライズ対応・ローカルファーストの Agent Workbench。コード、文書、プレゼン、Webサイト、デザイン、動画を一つのワークスペースで計画・共同作業・継続編集できます。**
+**人とエージェントチームのための、エンタープライズ対応・ローカルファーストの Agent Workbench。複数エンジンと統一されたプラグイン／Skill システム、マルチエージェントのプロジェクトとタスク、コード・文書・プレゼン・Webサイト・デザイン・動画の編集可能な制作を一つのワークスペースに統合します。**
 
 https://github.com/user-attachments/assets/201b561a-22ec-4c8e-a4e8-f34172cf0aa3
 
-iPolloWork は、次世代のエージェントネイティブな働き方を支えるワークスペースレイヤーです。プロジェクト、エージェント、タスク、スケジュール、プラグイン、Skills、MCP ツール、編集可能な成果物を一つの操作画面に統合します。目的を伝えるとエージェントが計画して実行し、チームは進捗を確認し、操作を承認し、同じ場所で成果物を編集し続けられます。
+iPolloWork は、次世代のエージェントネイティブな働き方を支える統一ワークスペースレイヤーです。ランタイムごとにプロジェクトや拡張機能を分断せず、エージェント、タスク、スケジュール、プラグイン、Skills、ツール、実行状況、編集可能な成果物を一つの操作画面に統合します。目的を伝えるとエージェントが計画して実行し、チームは進捗を確認し、操作を承認し、同じ場所で成果物を編集し続けられます。
 
-iPolloWork は、特定のコーディングエージェントの代替を目指す製品ではありません。[Codex](https://github.com/openai/codex)、[DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)、OpenCode、そして将来のエージェントランタイムを接続しながら、それぞれのエコシステム固有の強みを保つオープンなワークベンチです。コーディングは出発点にすぎず、スライド、Web ページ、ビジュアルデザイン、動画も、完成ファイルやチャット記録で終わらず編集可能なまま残ります。
+iPolloWork は、特定のコーディングエージェントの代替を目指す製品ではありません。明確な互換境界を通じて [Codex](https://github.com/openai/codex)、[DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)、OpenCode、そして将来のエージェントランタイムを接続しながら、それぞれのエコシステム固有の強みを保ちます。コーディングは出発点にすぎず、スライド、Web ページ、ビジュアルデザイン、動画も、完成ファイルやチャット記録で終わらず編集可能なまま残ります。
 
 <div align="center">
   <h3>iPolloWork 公式 WeChat コミュニティに参加</h3>
@@ -36,21 +36,26 @@ iPolloWork は、特定のコーディングエージェントの代替を目指
 
 ## iPolloWork の違い
 
-- **プロジェクト中心の共同作業** — 人とエージェントが、役割、タスク、スケジュール、実行状態、成果物を同じプロジェクト画面で共有し、孤立したチャットに作業を分散させません。
-- **ランタイムを置き換えずに接続** — OpenCode が標準ローカルランタイムを担い、DeepSeek Harness は任意のネイティブランタイム兼委任先として動作します。Codex や他の MCP クライアントは、セマンティックな制御インターフェースから iPolloWork を操作できます。
+- **複数エンジン、一つのワークベンチ** — Codex、DeepSeek Harness、OpenCode、将来のランタイムに対応し、エンジンごとにプロジェクト体験を作り直す必要がありません。
+- **統一されたグローバル拡張システム** — ポータブルなプラグイン、Skills、エージェント、コマンド、サービス、認証を一度だけインストール・有効化・更新・削除し、任意のエンジン固有バインディングも同じライフサイクルで管理します。
+- **プロジェクト中心の人とエージェントの共同作業** — 役割、タスク、スケジュール、実行状態、成果物を同じプロジェクト画面で共有し、孤立したチャットに作業を分散させません。
 - **一つの編集可能な制作ループ** — コードから文書、Web サイト、プレゼン、デザイン、動画まで、生成後もテキスト、画像、レイアウト、タイムライン、シーンを変更できます。
-- **組み合わせ可能な拡張性** — Skills、プラグイン、MCP サーバー、モデルプロバイダー、ブラウザ自動化、エンジン固有機能を必要に応じて追加できます。
-- **ローカルとエンタープライズの管理** — ローカル実行、モデル選択、権限と実行の確認を保ち、チームで必要なときだけ組織サービスへ接続できます。
+- **ローカルとエンタープライズの管理** — ローカル実行、モデル選択、権限と実行の確認を保ち、チームで本当に必要なときだけ組織サービスへ接続できます。
 
 ## エージェントランタイムの互換性
 
-OpenCode は現在の標準ローカル実行ランタイムです。[DeepSeek Harness（DSH）](https://github.com/deepseek-ai/deepseek-harness) は任意のピアランタイム兼サブエージェント委任先として統合され、[Codex](https://github.com/openai/codex) と他の MCP 対応クライアントは [`ipollowork-ui-mcp`](https://www.npmjs.com/package/ipollowork-ui-mcp) 制御インターフェースから接続できます。すべてが同じワークベンチを利用しますが、各ランタイムのネイティブ機能が同一であるとは扱いません。
+OpenCode は現在の標準ローカル実行ランタイムです。[DeepSeek Harness（DSH）](https://github.com/deepseek-ai/deepseek-harness) は任意のピアランタイム兼サブエージェント委任先として統合され、[Codex](https://github.com/openai/codex) は [`ipollowork-ui-mcp`](https://www.npmjs.com/package/ipollowork-ui-mcp) 制御インターフェースから接続します。MCP はこの接続経路で使うプロトコルであり、Codex、DSH、OpenCode と並ぶ別のエージェントエンジンではありません。すべてが同じワークベンチを利用しますが、各ランタイムのネイティブ機能が同一であるとは扱いません。
 
 連携モデルはシンプルです。iPolloWork をプロジェクトワークベンチとして維持し、必要に応じて範囲を限定した作業を DSH サブエージェントに委任し、構造化された進捗と結果を同じプロジェクトへ戻します。各ランタイムは独自のエージェント、Skills、プラグイン、実行モデルを維持します。
 
 ### DeepSeek Harness で iPolloWork の制作プラグインを直接起動する
 
 DeepSeek Harness の Web UI に、iPolloWork のネイティブ Design、PPT、Video ビューをインストールし、任意のプロジェクトディレクトリから起動できます。
+
+<p>
+  <a href="https://www.npmjs.com/package/deepseek-idesign"><img src="https://img.shields.io/npm/v/deepseek-idesign?label=DeepSeek%20Design&amp;logo=npm&amp;color=CB3837" alt="deepseek-idesign npm version" /></a>
+  <a href="https://www.npmjs.com/package/deepseek-ivideo"><img src="https://img.shields.io/npm/v/deepseek-ivideo?label=DeepSeek%20Video&amp;logo=npm&amp;color=CB3837" alt="deepseek-ivideo npm version" /></a>
+</p>
 
 ```bash
 npx @deepseek-ai/dsh plugin --profile web add deepseek-idesign deepseek-ippt deepseek-ivideo
