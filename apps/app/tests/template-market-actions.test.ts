@@ -26,9 +26,12 @@ const desktopMain = readFileSync(
 );
 
 describe("template market actions", () => {
-  test("keeps package import but hides save-current controls", () => {
-    expect(marketDialog).toContain('t("template_market.import_package")');
+  test("keeps package import but removes create and save-current controls", () => {
+    expect(marketDialog).toContain('t("template_market.import")');
+    expect(marketDialog).toContain('t("template_market.import_tooltip")');
     expect(marketDialog).toContain("accept={TEMPLATE_PACKAGE_FILE_ACCEPT}");
+    expect(marketDialog).not.toContain('t("template_authoring.create")');
+    expect(marketDialog).not.toContain("onCreate:");
     expect(marketDialog).not.toContain('t("template_market.save_current")');
     expect(marketDialog).not.toContain("onSaveCurrent");
     expect(marketDialog).not.toContain("canSaveCurrent");
@@ -99,11 +102,52 @@ describe("template market actions", () => {
     }
   });
 
-  test("shows export only for local templates in the personal catalog", () => {
-    expect(marketDialog).toContain('onExport={template.sourceType === "local" ? () => props.onExport(template) : undefined}');
-    expect(marketDialog).toContain('template.sourceType === "local" && onExport');
-    expect(marketDialog.match(/onExport=\{/g)?.length).toBe(1);
-    expect(marketDialog).toContain('t("template_market.export_package")');
+  test("keeps template cards focused on source, style, use, and favorites", () => {
+    expect(marketDialog).toContain("FAVORITE_TEMPLATE_IDS_STORAGE_KEY");
+    expect(marketDialog).toContain("writeFavoriteTemplateIds(next)");
+    expect(marketDialog).toContain("templateFormatLabel(template)");
+    expect(marketDialog).toContain("favorite && \"fill-current\"");
+    expect(marketDialog).not.toContain("onExport:");
+    expect(marketDialog).not.toContain("onUninstall:");
+    expect(marketDialog).not.toContain('t("template_market.preview")');
+  });
+
+  test("keeps the template dialog stationary, resizable, and above its popup controls", () => {
+    expect(marketDialog).not.toContain("template-market-drag-region");
+    expect(marketDialog).not.toContain("setPointerCapture");
+    expect(marketDialog).not.toContain("setDialogPosition");
+    expect(marketDialog).not.toContain("electron:titlebar-drag");
+    expect(marketDialog).toContain("<DialogContent showCloseButton className=");
+    expect(marketDialog).toContain("max-h-[calc(100dvh-32px)] max-w-[calc(100dvw-32px)] resize");
+    expect(marketDialog).toContain("[&>[data-slot=dialog-close]]:top-[29px]");
+    expect(marketDialog).toContain('className="mt-4 w-full shrink-0 px-6"');
+    expect(marketDialog).toContain('className="relative mt-4 w-full"');
+    expect(marketDialog).toContain('className="mt-3 flex h-9 items-center gap-4 overflow-x-auto"');
+    expect(marketDialog).toContain('className="mt-3 min-h-0 w-full flex-1 overflow-y-auto px-6 pb-6"');
+    expect(marketDialog).not.toContain("showCloseButton={false}");
+    expect(marketDialog.match(/positionerClassName="z-\[90\]"/g)).toHaveLength(6);
+  });
+
+  test("matches the Figma three-column template card layout", () => {
+    expect(marketDialog.match(/grid grid-cols-3 gap-4 max-\[800px\]:grid-cols-2 max-\[540px\]:grid-cols-1/g)).toHaveLength(3);
+    expect(marketDialog).toContain('border-2 border-transparent bg-muted/50 pb-4 transition-colors duration-150 hover:border-[var(--project-dialog-accent)]');
+    expect(marketDialog).toContain('className="relative block h-[137px] w-full shrink-0');
+    expect(marketDialog).toContain('t("template_market.favorite")');
+    expect(marketDialog).toContain('category === id ? "bg-foreground text-background" : "text-foreground hover:bg-muted"');
+    expect(marketDialog).toContain('t("template_market.all_types")');
+    expect(marketDialog).toContain("items-center justify-center gap-1.5 whitespace-nowrap");
+    expect(marketDialog).toContain("text-[13px] font-medium leading-[22px] text-foreground");
+    expect(marketDialog).not.toMatch(/#[0-9a-f]{3,8}/i);
+    expect(marketDialog).not.toContain("rgba(");
+    expect(marketDialog).not.toContain("widthClass");
+    expect(marketDialog).not.toContain("max-w-[763px]");
+    expect(marketDialog).not.toContain("w-[calc(100%-48px)]");
+    expect(marketDialog.match(/w-full[^\"]*px-6/g)).toHaveLength(3);
+    expect(marketDialog).not.toContain("ml-[57px]");
+    expect(marketDialog).toContain('t("template_market.type_label")');
+    expect(marketDialog).toContain("bg-transparent px-4 font-['PingFang_SC',sans-serif]");
+    expect(marketDialog).toContain('className="ml-auto flex shrink-0 items-center gap-2"');
+    expect(marketDialog).not.toContain('view === "my" ? "mt-4" : "mt-5"');
   });
 
   test("reuses the HTML cover and preview flow for installed enterprise templates", () => {
