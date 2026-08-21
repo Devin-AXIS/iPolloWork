@@ -701,7 +701,7 @@ export function AppSidebar(props: AppSidebarProps) {
                 className={primarySidebarActionClass}
               >
                 <span className="flex size-4 shrink-0 items-center justify-center" aria-hidden="true">
-                  <CalendarDays className="size-3.5" />
+                  <CalendarDays className="!size-3.5" strokeWidth={1.7} />
                 </span>
                 <span className="flex-1 truncate">{t("work.global_title")}</span>
               </SidebarMenuButton>

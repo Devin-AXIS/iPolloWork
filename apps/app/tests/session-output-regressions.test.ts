@@ -96,6 +96,9 @@ describe("session output issue regressions", () => {
 
     expect(source).toContain("const TEMPLATE_REFERENCE_UPLOAD_VISIBLE = false;");
     expect(source).toContain("{TEMPLATE_REFERENCE_UPLOAD_VISIBLE ? <div");
+    expect(source).toContain('className="flex min-h-0 w-full flex-1 items-center justify-center overflow-auto px-6 py-10"');
+    expect(source).toContain('className="mx-auto w-full max-w-xl overflow-hidden');
+    expect(source).toContain('className="mt-2 placeholder:text-muted-foreground/70"');
   });
 
   test("output files can seed a follow-up revision prompt", () => {
@@ -302,7 +305,7 @@ describe("session output issue regressions", () => {
     }
   });
 
-  test("template market exposes category counts, import details, and installed enterprise actions", () => {
+  test("template market exposes compact discovery controls, import details, and installed enterprise actions", () => {
     const source = readFileSync(
       new URL("../src/react-app/domains/session/templates/template-market-dialog.tsx", import.meta.url),
       "utf8",
@@ -312,12 +315,13 @@ describe("session output issue regressions", () => {
       "utf8",
     );
 
-    expect(source).toContain("const categoryCounts = React.useMemo");
-    expect(source).toContain("const allCount = React.useMemo");
-    expect(source).toContain("categoryCounts.get(id) ?? 0");
+    expect(source).toContain("const PRIMARY_CATEGORIES = CATEGORIES.slice(0, 4)");
+    expect(source).toContain("const MORE_CATEGORIES = CATEGORIES.slice(4)");
+    expect(source).toContain('type MyTemplateCollection = "all" | "favorites" | "mine"');
+    expect(source).toContain('font-[\'PingFang_SC\',sans-serif] text-xs font-medium text-foreground');
     expect(source).toContain("{pendingImport.name} - {(pendingImport.size / 1024).toFixed(1)} KB");
-    expect(source).toContain("enterpriseMode ? (visibleEnterpriseResources.length");
-    expect(source).not.toContain("enterpriseMode ? (visible.length || visibleEnterpriseResources.length");
+    expect(source).toContain('enterpriseMode && view === "explore"');
+    expect(source).toContain("<WorkResourceScopeSwitch");
     expect(sessionSource).toContain('listTemplates(props.runtimeWorkspaceId, "personal")');
     expect(sessionSource).toContain('listEnterpriseResources("template")');
     expect(sessionSource).toContain("item.sourceType === \"local\" && item.installed");
