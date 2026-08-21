@@ -22,13 +22,13 @@
   <a href="https://trendshift.io/repositories/88012?utm_source=trendshift-badge&amp;utm_medium=badge&amp;utm_campaign=badge-trendshift-88012"><img src="https://trendshift.io/api/badge/trendshift/repositories/88012/weekly?language=TypeScript" alt="#24 TypeScript Repository Of The Week | Trendshift" width="250" height="55" /></a>
 </p>
 
-**面向人與智能體團隊的企業級、本地優先 Agent Workbench：在一個工作空間裏規劃、協作，並持續編輯代碼、文檔、演示稿、網站、設計和視頻。**
+**面向人與智能體團隊的企業級、本地優先 Agent Workbench：在一個工作空間內統一多引擎、統一插件與 Skills，管理多智能體項目和任務，並持續編輯代碼、文檔、演示稿、網站、設計和視頻。**
 
 https://github.com/user-attachments/assets/201b561a-22ec-4c8e-a4e8-f34172cf0aa3
 
-iPolloWork 是面向下一代 Agent 原生工作方式的工作台層。它把項目、智能體、任務、日程、插件、Skills、MCP 工具和可編輯成果放進同一個控制界面。你描述目標，智能體負責規劃和執行；團隊可以檢查進度、批准操作，並在同一個地方繼續編輯結果。
+iPolloWork 是面向下一代 Agent 原生工作方式的統一工作台層。它不會按運行時割裂項目和擴展，而是把智能體、任務、日程、插件、Skills、工具、執行過程和可編輯成果放進同一個控制界面。你描述目標，智能體負責規劃和執行；團隊可以檢查進度、批准操作，並在同一個地方繼續編輯結果。
 
-iPolloWork 不再把自己定義成某一個編程智能體的“平替”。它是連接 [Codex](https://github.com/openai/codex)、[DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)、OpenCode 和未來智能體運行時的開放工作台，同時保留各個生態自身的原生優勢。編程只是起點：當結果變成演示稿、網頁、視覺設計或視頻時，它仍然可以繼續編輯，而不是隻留下一個成品文件或一段聊天記錄。
+iPolloWork 不再把自己定義成某一個編程智能體的“平替”。它通過明確的兼容邊界連接 [Codex](https://github.com/openai/codex)、[DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)、OpenCode 和未來智能體運行時，同時保留各個生態自身的原生優勢。編程只是起點：當結果變成演示稿、網頁、視覺設計或視頻時，它仍然可以繼續編輯，而不是隻留下一個成品文件或一段聊天記錄。
 
 <div align="center">
   <h3>加入 iPolloWork 官方微信羣</h3>
@@ -38,21 +38,26 @@ iPolloWork 不再把自己定義成某一個編程智能體的“平替”。它
 
 ## 它真正解決的核心問題
 
-- **項目原生協作** — 人與智能體圍繞同一個項目查看職責、任務、日程、執行健康和成果，不再把工作拆散在彼此孤立的對話裏。
-- **兼容運行時，而不是替代運行時** — OpenCode 提供默認本地執行，DeepSeek Harness 可作為可選原生運行時和委派目標，Codex 或其他 MCP 客户端可以通過語義控制接口操作 iPolloWork。
-- **一體化可編輯創作** — 從代碼延伸到文檔、網站、演示稿、設計和視頻；生成之後，文字、圖片、佈局、時間線和畫面仍能繼續修改。
-- **可組合擴展** — Skills、插件、MCP 服務、模型渠道、瀏覽器自動化和引擎原生能力可以按需加入，不把整個工作台綁定到某一個智能體框架。
-- **本地與企業可控** — 可以完全在本地運行、自選模型或服務商、逐項審核權限和執行；團隊需要時再連接組織服務。
+- **多引擎，一個工作台** — 兼容 Codex、DeepSeek Harness、OpenCode 和未來運行時，不需要圍繞每個引擎重新搭建項目體驗。
+- **統一的全局擴展系統** — 插件、Skills、智能體、命令、服務和授權只需安裝、啓用、更新或卸載一次；可選的引擎原生綁定仍歸同一生命週期管理。
+- **項目原生的人機協作** — 人與智能體圍繞同一個項目查看職責、任務、日程、執行健康和成果，不再把工作拆散在彼此孤立的對話裏。
+- **一體化可編輯生產** — 從代碼延伸到文檔、網站、演示稿、設計和視頻；生成之後，文字、圖片、佈局、時間線和畫面仍能繼續修改。
+- **本地與企業可控** — 可以完全在本地運行、自選模型或服務商、逐項審核權限和執行；團隊真正需要時再連接組織服務。
 
 ## 智能體運行時兼容
 
-OpenCode 是目前默認的本地執行運行時。[DeepSeek Harness（DSH）](https://github.com/deepseek-ai/deepseek-harness) 已作為可選同級運行時和子代理委派目標接入；[Codex](https://github.com/openai/codex) 與其他支持 MCP 的客户端則可以通過 [`ipollowork-ui-mcp`](https://www.npmjs.com/package/ipollowork-ui-mcp) 控制界面接入。它們共享同一個工作台，但不會假裝所有運行時都擁有完全相同的原生能力。
+OpenCode 是目前默認的本地執行運行時。[DeepSeek Harness（DSH）](https://github.com/deepseek-ai/deepseek-harness) 已作為可選同級運行時和子代理委派目標接入；[Codex](https://github.com/openai/codex) 則通過 [`ipollowork-ui-mcp`](https://www.npmjs.com/package/ipollowork-ui-mcp) 控制界面接入。MCP 是這條接入路徑使用的協議，不是與 Codex、DSH、OpenCode 並列的另一個智能體引擎。它們共享同一個工作台，但不會假裝所有運行時都擁有完全相同的原生能力。
 
 協作方式保持簡單：iPolloWork 是項目工作台；需要時，一個任務可以把邊界明確的工作交給 DSH 子代理，再把結構化進度和結果帶回同一個項目。各運行時繼續保留自己的智能體、Skills、插件和執行機制。
 
 ### 在 DeepSeek Harness 中直接啓動 iPolloWork 創作插件
 
 DeepSeek Harness 用户可以把 iPolloWork 的 Design、PPT 和 Video 原生視圖安裝到 DSH Web 界面，並從任意項目目錄啓動：
+
+<p>
+  <a href="https://www.npmjs.com/package/deepseek-idesign"><img src="https://img.shields.io/npm/v/deepseek-idesign?label=DeepSeek%20Design&amp;logo=npm&amp;color=CB3837" alt="deepseek-idesign npm 版本" /></a>
+  <a href="https://www.npmjs.com/package/deepseek-ivideo"><img src="https://img.shields.io/npm/v/deepseek-ivideo?label=DeepSeek%20Video&amp;logo=npm&amp;color=CB3837" alt="deepseek-ivideo npm 版本" /></a>
+</p>
 
 ```bash
 npx @deepseek-ai/dsh plugin --profile web add deepseek-idesign deepseek-ippt deepseek-ivideo
