@@ -16,7 +16,6 @@ import { mkdir, rename, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
 import {
-  opencodeChromeDevtoolsPluginPath,
   ipolloworkExtensionsPreviewPluginPath,
   ipolloworkCapabilitiesKnowledgePluginPath,
   ipolloworkAnthropicAdaptiveThinkingPluginPath,
@@ -109,7 +108,6 @@ export async function buildiPolloWorkRuntimeConfigObject(
       },
     },
     plugin: [
-      opencodeChromeDevtoolsPluginPath(),
       ipolloworkExtensionsPreviewPluginPath(),
       ipolloworkCapabilitiesKnowledgePluginPath(),
       ipolloworkAnthropicAdaptiveThinkingPluginPath(),

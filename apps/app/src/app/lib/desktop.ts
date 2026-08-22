@@ -129,12 +129,34 @@ declare global {
       browser?: {
         show?: (bounds: { x: number; y: number; width: number; height: number }) => Promise<void>;
         hide?: () => Promise<void>;
-        openUrl?: (url: string, provider?: "auto" | "builtin" | "external") => Promise<{
+        openUrl?: (url: string) => Promise<{
           provider: "builtin";
-          browser_url: string;
-          target_id: string;
-          tab_id: string;
+          tabId: string;
           url: string;
+        }>;
+        snapshot?: (payload: { tabId: string }) => Promise<{
+          ok: true;
+          provider: "builtin";
+          tabId: string;
+          snapshotId: string;
+          url: string;
+          title: string;
+          tree: string;
+          elementCount: number;
+          truncated: boolean;
+        }>;
+        act?: (payload: {
+          tabId: string;
+          snapshotId: string;
+          workspaceRoot?: string;
+          actions: Array<Record<string, unknown>>;
+        }) => Promise<{
+          ok: true;
+          provider: "builtin";
+          tabId: string;
+          url: string;
+          results: Array<Record<string, unknown>>;
+          snapshotRequired: boolean;
         }>;
         navigate?: (url: string) => Promise<void>;
         back?: () => Promise<void>;

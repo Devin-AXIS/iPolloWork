@@ -387,8 +387,11 @@ export const usePanelTabStore = create<PanelTabStore>()(
         }
 
         const currentActiveTab = session.tabs.find((tab) => tab.id === session.activeTabId);
+        const activeBrowserTabIsNew = Boolean(
+          activeBrowserTabId && !session.tabs.some((tab) => tab.id === activeBrowserTabId),
+        );
         const shouldSyncActiveFromElectron =
-          !session.activeTabId || currentActiveTab?.type === "browser";
+          !session.activeTabId || currentActiveTab?.type === "browser" || activeBrowserTabIsNew;
 
         const activeTabId = shouldSyncActiveFromElectron
           ? resolveActiveTabId(mergedTabs, activeBrowserTabId)

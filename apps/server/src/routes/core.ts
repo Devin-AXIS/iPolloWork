@@ -25,6 +25,7 @@ import { EnvStoreReadError, InvalidEnvKeyError, isValidEnvKey, type EnvService }
 import {
   ENGINE_HOST_TOOLS,
   ENGINE_HOST_TOOL_NAMES,
+  consequentialBrowserControlNames,
   engineHostTool,
   type EngineHostToolName,
 } from "../engine-host-tools.js";
@@ -88,6 +89,35 @@ interface RegisterCoreRoutesOptions {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function browserActionRecords(value: unknown): Record<string, unknown>[] {
+  return Array.isArray(value) ? value.filter(isRecord) : [];
+}
+
+function browserRequesterLabel(context: Record<string, unknown>): string {
+  for (const [key, label] of [["extensionId", "plugin"], ["sessionId", "session"], ["agent", "agent"]] as const) {
+    const value = typeof context[key] === "string" ? context[key].trim() : "";
+    if (value) return `${label} ${value.slice(0, 80)}`;
+  }
+  return "current engine session";
+}
+
+async function executeUiControlAction(actionId: string, args: Record<string, unknown>): Promise<unknown> {
+  const response = await uiControlRequest("/execute", {
+    method: "POST",
+    body: { actionId, args },
+  });
+  if (isRecord(response) && response.ok === false) {
+    throw new ApiError(
+      503,
+      "desktop_browser_unavailable",
+      typeof response.error === "string" ? response.error : "iPolloWork Desktop browser runtime is unavailable",
+    );
+  }
+  return isRecord(response) && response.ok === true && "result" in response
+    ? response.result
+    : response;
 }
 
 function defaultProjectConfig(workspace: WorkspaceInfo): ProjectWorkspaceConfig {
@@ -296,6 +326,78 @@ export function registerCoreRoutes(options: RegisterCoreRoutesOptions): void {
         },
       },
     }),
+    [ENGINE_HOST_TOOL_NAMES.browserOpenUrl]: async (_ctx, args) => executeUiControlAction(
+      "browser.open_url",
+      { url: typeof args.url === "string" ? args.url : "" },
+    ),
+    [ENGINE_HOST_TOOL_NAMES.browserSnapshot]: async (_ctx, args) => executeUiControlAction(
+      "browser.snapshot",
+      { tabId: typeof args.tabId === "string" ? args.tabId : "" },
+    ),
+    [ENGINE_HOST_TOOL_NAMES.browserAct]: async (ctx, args, context) => {
+      if (ctx.actor?.scope === "viewer") {
+        throw new ApiError(403, "forbidden", "Viewer tokens cannot act on external websites");
+      }
+      const actions = browserActionRecords(args.actions);
+      const workspace = await resolveEngineToolWorkspace(context);
+      const consequentialNames = consequentialBrowserControlNames(actions);
+      const requester = browserRequesterLabel(context);
+      if (consequentialNames.length > 0) {
+        const summary = `${requester} requests browser action: ${consequentialNames.slice(0, 3).join(", ")}`.slice(0, 240);
+        const approval = await ctx.approvals.requestApproval({
+          workspaceId: workspace.id,
+          action: "browser.external.consequential",
+          summary,
+          paths: [],
+          actor: ctx.actor ?? { type: "remote" },
+        });
+        if (!approval.allowed) {
+          throw new ApiError(403, "browser_action_denied", "Consequential browser action was not approved", {
+            requestId: approval.id,
+            reason: approval.reason,
+          });
+        }
+      }
+      const result = await executeUiControlAction("browser.act", {
+        tabId: typeof args.tabId === "string" ? args.tabId : "",
+        snapshotId: typeof args.snapshotId === "string" ? args.snapshotId : "",
+        actions,
+        workspaceRoot: workspace.path,
+      });
+      if (isRecord(result) && result.ok !== false) {
+        await recordAudit(workspace.path, {
+          id: shortId(),
+          workspaceId: workspace.id,
+          actor: ctx.actor ?? { type: "remote" },
+          action: "browser.external.act",
+          target: typeof args.tabId === "string" ? args.tabId : "browser",
+          summary: `${requester}: ${actions.length} browser action${actions.length === 1 ? "" : "s"}`,
+          timestamp: Date.now(),
+        });
+      }
+      return result;
+    },
+    [ENGINE_HOST_TOOL_NAMES.browserSetProxy]: async (ctx, args, context) => {
+      if (ctx.actor?.scope === "viewer") {
+        throw new ApiError(403, "forbidden", "Viewer tokens cannot change the browser proxy");
+      }
+      const workspace = await resolveEngineToolWorkspace(context);
+      const result = await executeUiControlAction("browser.set_proxy", {
+        proxy: typeof args.proxy === "string" ? args.proxy : "",
+      });
+      if (isRecord(result) && result.ok !== false) {
+        await recordAudit(workspace.path, {
+          id: shortId(),
+          workspaceId: workspace.id,
+          actor: ctx.actor ?? { type: "remote" },
+          action: "browser.proxy.set",
+          target: "browser",
+          summary: typeof args.proxy === "string" && args.proxy.trim() ? "Set browser proxy" : "Clear browser proxy",
+          timestamp: Date.now(),
+        });
+      }
+      return result;
+    },
   } satisfies Record<EngineHostToolName, EngineHostToolHandler>;
 
   const handleEngineHostMcpRequest = async (ctx: RequestContext): Promise<Response> => {

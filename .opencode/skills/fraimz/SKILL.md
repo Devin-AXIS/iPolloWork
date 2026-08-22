@@ -104,9 +104,9 @@ the cloud stack for env-gated cloud flows.
 
 ## Pitfalls (learned the hard way)
 
-- **Target the right CDP page.** A sandbox can expose several targets; ad-hoc
-  `browser_eval` defaults to the first — pass the iPolloWork `target_id` when
-  probing manually.
+- **Target the right CDP page.** A sandbox can expose several targets. Declare
+  `cdpTarget` on the coded flow when the default iPolloWork page is not the
+  intended surface; do not depend on an ambient browser-tool target.
 - **`__ipolloworkControl` readiness.** Attaches after boot and resets on config
   reload: `ctx.waitFor("Boolean(window.__ipolloworkControl)")` before driving,
   and re-wait after any "Reloading OpenCode config".
@@ -143,5 +143,5 @@ Reference flow: `evals/flows/session-search-grouped.flow.mjs`.
 - `evals/voiceovers/` + `evals/runner/voiceover.mjs` — approved scripts,
   parser, drift check, scaffolder; the `voiceover` skill owns the journey
   around this loop.
-- `daytona-electron-test` (sandbox launch), `daytona-flow-validator`
-  (Daytona-native windows/xdotool), `daytona-recording-artifacts` (video).
+- `daytona-electron-test` (sandbox launch), the runner's Daytona-native
+  computer-use helpers, and `daytona-recording-artifacts` (video).

@@ -175,7 +175,7 @@ it("stages all shared runtime types beside nested compiled server modules", asyn
 });
 const {
   assertPackagedNodePty,
-  assertPackagedOpenCodePlugins,
+  assertPackagedOpenCodeRuntime,
   assertPackagedRuntimeTypes,
 } = afterPackModule;
 
@@ -224,27 +224,16 @@ it("requires the shared runtime types in packaged Electron archives", async () =
   }
 });
 
-it("requires the bundled Chrome DevTools plugin in packaged Electron resources", async () => {
-  const appOutDir = await mkdtemp(path.join(os.tmpdir(), "ipollowork-opencode-plugin-"));
-  const pluginRoot = path.join(appOutDir, "resources", "opencode-plugins", "opencode-chrome-devtools");
-  const pluginDir = path.join(pluginRoot, "dist");
-  await mkdir(pluginDir, { recursive: true });
-
+it("requires the bundled OpenCode tool runtime in packaged Electron resources", async () => {
+  const appOutDir = await mkdtemp(path.join(os.tmpdir(), "ipollowork-opencode-runtime-"));
   try {
-    assert.throws(() => assertPackagedOpenCodePlugins({
+    assert.throws(() => assertPackagedOpenCodeRuntime({
       electronPlatformName: "win32",
       appOutDir,
-    }), /opencode-chrome-devtools/);
+    }), /OpenCode runtime/);
 
-    await writeFile(path.join(pluginDir, "plugin.js"), "export default {};");
-    assert.throws(() => assertPackagedOpenCodePlugins({
-      electronPlatformName: "win32",
-      appOutDir,
-    }), /package\.json/);
-
-    await writeFile(path.join(pluginRoot, "package.json"), '{"name":"opencode-chrome-devtools"}\n');
     await createOpenCodeRuntimeFixture(appOutDir);
-    assert.doesNotThrow(() => assertPackagedOpenCodePlugins({
+    assert.doesNotThrow(() => assertPackagedOpenCodeRuntime({
       electronPlatformName: "win32",
       appOutDir,
     }));
@@ -263,11 +252,6 @@ async function createWindowsFixture(triple) {
   await writeFile(path.join(asarSource, "server", "dist", "server.js"), 'import "./ipollowork-types/workspace.js";\n');
   await writeFile(path.join(runtimeTypes, "workspace.js"), "export {};\n");
   await createPackage(asarSource, path.join(appOutDir, "resources", "app.asar"));
-  const pluginRoot = path.join(appOutDir, "resources", "opencode-plugins", "opencode-chrome-devtools");
-  const pluginDir = path.join(pluginRoot, "dist");
-  await mkdir(pluginDir, { recursive: true });
-  await writeFile(path.join(pluginDir, "plugin.js"), "export default {};\n");
-  await writeFile(path.join(pluginRoot, "package.json"), '{"name":"opencode-chrome-devtools"}\n');
   await createOpenCodeRuntimeFixture(appOutDir);
 
   for (const name of [
@@ -278,8 +262,8 @@ async function createWindowsFixture(triple) {
     await writeFile(path.join(sidecarsDir, name), "placeholder");
   }
 
-  // ipollowork-server and chrome-devtools-mcp are intentionally absent. The
-  // afterPack hook must not require their obsolete executable sidecars.
+  // The embedded server has no executable sidecar. The afterPack hook only
+  // keeps the canonical engine binaries and their version metadata.
   await writeFile(path.join(sidecarsDir, "unrelated.txt"), "legacy");
 
   return { appOutDir, sidecarsDir };

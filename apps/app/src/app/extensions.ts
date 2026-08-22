@@ -70,24 +70,20 @@ export const BUILT_IN_IPOLLOWORK_EXTENSION_MANIFESTS: iPolloWorkExtensionManifes
     description: "Automate the built-in browser panel that stays visible inside iPolloWork.",
     source: { format: "ipollowork-builtin", origin: "builtin", trusted: true },
     icon: { src: publicAssetUrl("ipollowork-mark.svg") },
-    composer: { prompt: "Use the iPolloWork Browser extension to " },
+    composer: { prompt: "Use the iPolloWork built-in browser to " },
     setup: {
-      instructions: "iPolloWork Browser is ready by default in desktop workspaces.",
+      instructions: "iPolloWork Browser is ready by default and uses the same host-owned semantic runtime with every AI engine.",
     },
     resources: [],
-    engineBindings: [{
-      engine: "opencode",
-      capabilities: [{ id: "opencode-chrome-devtools", kind: "plugin", packageName: "opencode-chrome-devtools", required: true }],
-    }],
     contributions: [
       { type: "settings-panel", ref: "ipollowork.browser.settings", location: "settings-detail" },
       { type: "session-side-panel", ref: "ipollowork.browser.panel", location: "session-right-pane" },
-      { type: "composer-prompt", prompt: "Use the iPolloWork Browser extension to ", location: "composer" },
+      { type: "composer-prompt", prompt: "Use the iPolloWork built-in browser to ", location: "composer" },
     ],
     enablement: [
       { type: "toggle-enabled", ref: "ipollowork-browser", label: "Enabled" },
     ],
-    lifecycle: { reload: ["plugins", "agents"], detection: ["plugin:opencode-chrome-devtools"] },
+    lifecycle: { reload: [], detection: [] },
     defaultEnabled: true,
   },
   {

@@ -197,6 +197,10 @@ type TemplateSessionData = {
   hasBrief: boolean;
 };
 
+function workspaceAppCapabilityInstruction(label: string) {
+  return `The user explicitly activated the ${label} plugin workbench for this request. Use workspace_app.list_tools and workspace_app.call_tool only when this workbench exposes a relevant tool. If the plugin capability instruction names another declared action path, follow that instruction instead. Do not inspect or operate unrelated Design, Video, Files, or other side-panel surfaces. If the workbench cannot complete the request, explain the concrete tool error.`;
+}
+
 function ProjectEngineBadge({
   engineId,
   testId,
@@ -2131,7 +2135,7 @@ export function SessionPage(props: SessionPageProps) {
       const workspaceCapabilityId = `workspace-app:${workspaceAppTab.surface.pluginId}:${workspaceAppTab.surface.resource.id}`;
       const capabilityId = draft.capability?.id;
       const alreadyScoped = capabilityId?.split("+").includes(workspaceCapabilityId) === true;
-      const workspaceInstruction = `The user explicitly activated the ${workspaceAppTab.label} Workspace App for this request. You must use its available workspace_app tools instead of substituting a generic response. Call workspace_app.list_tools to inspect the app tools, then call workspace_app.call_tool with the appropriate tool and arguments. If the app cannot complete the request, explain the concrete tool error.`;
+      const workspaceInstruction = workspaceAppCapabilityInstruction(workspaceAppTab.label);
       const capabilityInstruction = draft.capability?.instruction?.includes(workspaceInstruction)
         ? draft.capability.instruction
         : [draft.capability?.instruction, workspaceInstruction].filter(Boolean).join("\n\n");
@@ -2218,8 +2222,9 @@ export function SessionPage(props: SessionPageProps) {
     const templateKey = `${props.selectedSessionId}:${designTemplateEntryPath}`;
     if (autoOpenedDesignTemplateRef.current === templateKey) return;
     autoOpenedDesignTemplateRef.current = templateKey;
+    if (sessionSidePanel === "panel" && activePanelTab && activePanelTab.type !== "design") return;
     openDesignTab(designTemplateEntryPath);
-  }, [designTemplateEntryPath, openDesignTab, props.selectedSessionId]);
+  }, [activePanelTab, designTemplateEntryPath, openDesignTab, props.selectedSessionId, sessionSidePanel]);
 
   const toggleCurrentSidePanel = useCallback((panel: SidePanelItem) => {
     userOpenedSidebarWhileNarrowRef.current = false;
@@ -2826,11 +2831,11 @@ export function SessionPage(props: SessionPageProps) {
         setTemplateSessionData({ sessionId: props.selectedSessionId, ...materialized, hasBrief: false });
         setSessionTypeRevision((value) => value + 1);
         setTemplateSessionRevision((value) => value + 1);
-        setCurrentSidePanel("design");
+        openDesignTab(path);
         return { ok: true, path };
       },
     };
-  }, [props.ipolloworkServerClient, props.runtimeWorkspaceId, props.selectedSessionId, props.selectedWorkspaceDisplay.workspaceType, setCurrentSidePanel]);
+  }, [openDesignTab, props.ipolloworkServerClient, props.runtimeWorkspaceId, props.selectedSessionId, props.selectedWorkspaceDisplay.workspaceType]);
   const seedDesignDeckControlAction = useMemo<iPolloWorkControlAction | null>(() => {
     if (!import.meta.env.DEV) return null;
 
@@ -2912,38 +2917,88 @@ export function SessionPage(props: SessionPageProps) {
         setTemplateSessionData({ sessionId: props.selectedSessionId, ...materialized, hasBrief: false });
         setSessionTypeRevision((value) => value + 1);
         setTemplateSessionRevision((value) => value + 1);
-        setCurrentSidePanel("design");
+        openDesignTab(path);
         return { ok: true, path };
       },
     };
-  }, [props.ipolloworkServerClient, props.runtimeWorkspaceId, props.selectedSessionId, props.selectedWorkspaceDisplay.workspaceType, setCurrentSidePanel]);
+  }, [openDesignTab, props.ipolloworkServerClient, props.runtimeWorkspaceId, props.selectedSessionId, props.selectedWorkspaceDisplay.workspaceType]);
   useControlAction(seedDesignHtmlControlAction);
   useControlAction(seedDesignDeckControlAction);
   const openBrowserUrlControlAction = useMemo<iPolloWorkControlAction>(() => ({
     id: "browser.open_url",
     label: "Open URL in built-in browser",
-    description: "Create or select an iPolloWork built-in browser tab, navigate it to a URL, and return the CDP handle for browser automation.",
+    description: "Open a website in a new iPolloWork built-in browser tab and return its host-owned tab ID.",
     sideEffect: "navigation",
     requiresArgs: true,
     args: [
       { name: "url", type: "string", required: true, description: "The website URL to open." },
-      { name: "provider", type: "string", description: "Browser provider. Use builtin or auto. External is reserved for future support." },
     ],
-    previewArgs: { url: "https://example.com", provider: "builtin" },
+    previewArgs: { url: "https://example.com" },
     disabled: !isElectronRuntime(),
     execute: async (args) => {
       const url = controlStringArg(args, "url");
       if (!url) return { ok: false, error: "Missing URL." };
-      const provider = controlStringArg(args, "provider") || "builtin";
-      if (provider !== "auto" && provider !== "builtin") {
-        return { ok: false, error: `Browser provider is not available yet: ${provider}` };
-      }
       setCurrentSidePanel("panel");
-      const result = await window.__IPOLLOWORK_ELECTRON__?.browser?.openUrl?.(url, provider);
+      const result = await window.__IPOLLOWORK_ELECTRON__?.browser?.openUrl?.(url);
       return result;
     },
   }), [setCurrentSidePanel]);
   useControlAction(openBrowserUrlControlAction);
+  const snapshotBrowserControlAction = useMemo<iPolloWorkControlAction>(() => ({
+    id: "browser.snapshot",
+    label: "Read built-in browser page",
+    description: "Return a bounded semantic accessibility tree with stable refs for one built-in browser tab.",
+    sideEffect: "none",
+    requiresArgs: true,
+    args: [
+      { name: "tabId", type: "string", required: true, description: "Built-in browser tab ID returned by browser.open_url." },
+    ],
+    disabled: !isElectronRuntime(),
+    execute: async (args) => {
+      const tabId = controlStringArg(args, "tabId");
+      if (!tabId) return { ok: false, error: "Missing tabId." };
+      setCurrentSidePanel("panel");
+      const snapshot = window.__IPOLLOWORK_ELECTRON__?.browser?.snapshot;
+      if (!snapshot) return { ok: false, error: "Built-in browser runtime is not available." };
+      return snapshot({ tabId });
+    },
+  }), [setCurrentSidePanel]);
+  useControlAction(snapshotBrowserControlAction);
+  const actInBrowserControlAction = useMemo<iPolloWorkControlAction>(() => ({
+    id: "browser.act",
+    label: "Act in built-in browser",
+    description: "Execute a bounded ref-based browser action batch through real keyboard and pointer input.",
+    sideEffect: "mutation",
+    requiresArgs: true,
+    args: [
+      { name: "tabId", type: "string", required: true, description: "Built-in browser tab ID." },
+      { name: "snapshotId", type: "string", required: true, description: "Latest semantic snapshot ID." },
+      { name: "workspaceRoot", type: "string", description: "Server-injected local workspace root used only to validate uploads." },
+      { name: "actions", type: "array", required: true, description: "One to eight ref-based browser actions." },
+    ],
+    disabled: !isElectronRuntime(),
+    execute: async (args) => {
+      const object = controlObjectArg(args);
+      const tabId = controlStringArg(args, "tabId");
+      const snapshotId = controlStringArg(args, "snapshotId");
+      const actions = object ? Reflect.get(object, "actions") : null;
+      if (!tabId || !snapshotId || !Array.isArray(actions)) {
+        return { ok: false, error: "tabId, snapshotId, and actions are required." };
+      }
+      setCurrentSidePanel("panel");
+      const act = window.__IPOLLOWORK_ELECTRON__?.browser?.act;
+      if (!act) return { ok: false, error: "Built-in browser runtime is not available." };
+      return act({
+        tabId,
+        snapshotId,
+        workspaceRoot: controlStringArg(args, "workspaceRoot") || undefined,
+        actions: actions.filter((action): action is Record<string, unknown> => (
+          Boolean(action) && typeof action === "object" && !Array.isArray(action)
+        )),
+      });
+    },
+  }), [setCurrentSidePanel]);
+  useControlAction(actInBrowserControlAction);
   const setBrowserProxyControlAction = useMemo<iPolloWorkControlAction>(() => ({
     id: "browser.set_proxy",
     label: "Set built-in browser proxy",
@@ -3100,9 +3155,10 @@ export function SessionPage(props: SessionPageProps) {
   }) => {
     if (!props.selectedSessionId || (activePanelTab?.type !== "workspace-app" && activePanelTab?.type !== "plugin-studio")) return false;
     const context = activePanelTab.type === "workspace-app"
-      ? input.modelContext
-        ? `The active Workspace App is ${activePanelTab.label}. Use its available workspace_app tools when the user asks to inspect or edit it. Current app context:\n${JSON.stringify(input.modelContext, null, 2)}`
-        : `The active Workspace App is ${activePanelTab.label}. Use its available workspace_app tools when the user asks to inspect or edit it.`
+      ? [
+          workspaceAppCapabilityInstruction(activePanelTab.label),
+          input.modelContext ? `Current workbench context:\n${JSON.stringify(input.modelContext, null, 2)}` : null,
+        ].filter(Boolean).join("\n\n")
       : pluginWorkshopSystemInstruction(activePanelTab.pluginId);
     return sendSessionDraft({
       mode: "prompt",

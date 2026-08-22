@@ -72,6 +72,7 @@ describe("ipollowork runtime config file", () => {
     expect(mcp.posthog?.enabled).toBe(true);
     expect(parsed.default_agent).toBe("ipollowork");
     expect(Array.isArray(parsed.plugin)).toBe(true);
+    expect((parsed.plugin as string[]).join("\n")).not.toContain("chrome-devtools");
   });
 
   test("ipollowork prompt has a static search-first Memory Bank section, distinct from ## Memory", async () => {

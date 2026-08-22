@@ -277,10 +277,6 @@ importers:
       electron-devtools-installer:
         specifier: ^4.0.0
         version: 4.0.0
-      opencode-chrome-devtools:
-        specifier: 1.0.4
-        version: 1.0.4(@opencode-ai/plugin@1.18.16)
-
   apps/installer:
     dependencies:
       '@ipollowork/install-config':
@@ -5387,12 +5383,6 @@ packages:
 
   opencc-js@1.4.0:
     resolution: {integrity: sha512-SEb4huI5+lT4CFPA4sgs+NAOOgpcmdHZ+vYxhRLR1bQWIt6VRwpFPjWgTJAWAg1MviDcXTBe5zVoUOVxVxNK8w==}
-
-  opencode-chrome-devtools@1.0.4:
-    resolution: {integrity: sha512-BKYEoUSI4actm3RkSJb0Ujv7P0RK2QvfbUcET+HfdSdVfdRNFLxh8PhufrDtBju+WRVsn19bEJCo7W3xdiY8RQ==}
-    hasBin: true
-    peerDependencies:
-      '@opencode-ai/plugin': '*'
 
   ora@5.4.1:
     resolution: {integrity: sha512-5b6Y85tPxZZ7QytO+BQzysW31HJku27cRIlkbAXaNx+BdcVi+LlRFmVXzeF6a7JCwJpyw5c4b+YSVImQIrBpuQ==}
@@ -11713,14 +11703,6 @@ snapshots:
       wsl-utils: 0.3.1
 
   opencc-js@1.4.0: {}
-
-  opencode-chrome-devtools@1.0.4(@opencode-ai/plugin@1.18.16):
-    dependencies:
-      '@opencode-ai/plugin': 1.18.16
-      ws: 8.18.3
-    transitivePeerDependencies:
-      - bufferutil
-      - utf-8-validate
 
   ora@5.4.1:
     dependencies:

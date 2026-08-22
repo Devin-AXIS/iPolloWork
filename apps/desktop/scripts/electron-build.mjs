@@ -169,16 +169,6 @@ function bundleNodeModule(entry, output) {
 }
 
 function stageBundledOpenCodeRuntime() {
-  const chromeEntry = fileURLToPath(import.meta.resolve("opencode-chrome-devtools"));
-  const chromeRoot = resolve(dirname(chromeEntry), "..");
-  const chromeDestinationRoot = resolve(
-    serverDistDir,
-    "opencode-plugins",
-    "opencode-chrome-devtools",
-  );
-  bundleNodeModule(chromeEntry, resolve(chromeDestinationRoot, "dist", "plugin.js"));
-  copyFileSync(resolve(chromeRoot, "package.json"), resolve(chromeDestinationRoot, "package.json"));
-
   const sdkEntry = fileURLToPath(import.meta.resolve("@opencode-ai/plugin"));
   const sdkRoot = resolve(dirname(sdkEntry), "..");
   const sdkPackage = JSON.parse(readFileSync(resolve(sdkRoot, "package.json"), "utf8"));

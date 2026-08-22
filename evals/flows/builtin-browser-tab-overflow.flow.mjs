@@ -164,7 +164,6 @@ export default {
       run: async (ctx) => {
         await ctx.eval("window.__IPOLLOWORK_ELECTRON__.browser.closeAllTabs?.()", { awaitPromise: true });
         await ctx.control("browser.open_url", {
-          provider: "builtin",
           url: "https://example.com/?ipollowork-overflow-tab=1",
         });
         await ctx.waitFor("document.querySelectorAll('button[aria-label^=\"Select tab:\"]').length >= 1", {

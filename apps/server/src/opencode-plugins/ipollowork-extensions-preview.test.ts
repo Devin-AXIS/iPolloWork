@@ -226,6 +226,10 @@ describe("iPolloWorkExtensionsPreview UI control tools", () => {
     expect(tools).toContain("ipollowork_project_apply");
     expect(tools).toContain("ipollowork_workspace_app_list_tools");
     expect(tools).toContain("ipollowork_workspace_app_call_tool");
+    expect(tools).toContain("ipollowork_browser_open_url");
+    expect(tools).toContain("ipollowork_browser_snapshot");
+    expect(tools).toContain("ipollowork_browser_act");
+    expect(tools).toContain("ipollowork_browser_set_proxy");
     expect(tools).toContain("list_motion_presets");
     expect(tools).toContain("mutate_motion");
 
@@ -237,6 +241,8 @@ describe("iPolloWorkExtensionsPreview UI control tools", () => {
     expect(plugin.tool.ipollowork_session_read.description).toContain("never use it to recover or infer the current interrupted task");
     expect(system).toContain("list_motion_presets");
     expect(system).toContain("mutate_motion");
+    expect(system).toContain("stale refs");
+    expect(system).not.toContain("browser_url plus target_id");
   });
 
   test("registers UI-control tools and steering when opted in", async () => {
