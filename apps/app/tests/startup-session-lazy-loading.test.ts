@@ -42,7 +42,9 @@ describe("startup session loading", () => {
     );
     expect(sessionRouteSource).not.toContain("startupConversationPhase");
     expect(sessionRouteSource).toContain("const handleCreateTaskFromDraft = useCallback(");
-    expect(sessionRouteSource).toContain("setPendingInitialProjectTask({ workspaceId, sessionId: null, draft });");
+    expect(sessionRouteSource).toMatch(
+      /setPendingInitialProjectTask\(\{\s*workspaceId,\s*sessionId: null,\s*runtimeWorkspaceId: null,\s*clientUserMessageId: null,\s*draft,\s*\}\);/,
+    );
     expect(sessionRouteSource).toContain(
       "pendingProjectSelectionRef",
     );
@@ -109,7 +111,7 @@ describe("startup session loading", () => {
 
   test("does not render the new-task starter behind the startup skeleton", () => {
     expect(sessionPageSource).toContain(
-      "mainWorkspaceView === null && showNewTaskStarter && !showStartupSkeleton && props.surface",
+      "mainWorkspaceView === null && !engineInstallGateActive && !engineStartupGateActive && showNewTaskStarter && !showStartupSkeleton && props.surface",
     );
   });
 

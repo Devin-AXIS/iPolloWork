@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, test } from "bun:test";
 
-import { getCloudSettingsTabs } from "../src/react-app/domains/settings/shell/settings-page";
+import { getCloudSettingsTabs, getGlobalSettingsTabs } from "../src/react-app/domains/settings/shell/settings-page";
 import { parseSettingsPath } from "../src/react-app/shell/settings-route";
 
 const settingsRouteSource = readFileSync(
@@ -18,6 +18,10 @@ const settingsPanelSource = readFileSync(
 );
 const settingsPageSource = readFileSync(
   new URL("../src/react-app/domains/settings/shell/settings-page.tsx", import.meta.url),
+  "utf8",
+);
+const engineManagementSource = readFileSync(
+  new URL("../src/react-app/domains/settings/pages/engine-management-view.tsx", import.meta.url),
   "utf8",
 );
 const environmentTableSource = readFileSync(
@@ -125,6 +129,19 @@ describe("settings route parsing", () => {
       tab: "authorizations",
       redirectPath: null,
     });
+  });
+
+  test("exposes a global engine manager without turning engines into workspace settings", () => {
+    expect(parseSettingsPath("/settings/engines")).toEqual({ tab: "engines", redirectPath: null });
+    expect(getGlobalSettingsTabs(false)).toContain("engines");
+    expect(settingsRouteSource).toContain("<EngineManagementView anyActiveRuns=");
+    expect(engineManagementSource).toContain('data-testid="engine-package-row"');
+    expect(engineManagementSource).toContain('t("settings.engine_manager.data_retained")');
+    expect(engineManagementSource).toContain('case "desktop-client"');
+    expect(engineManagementSource).toContain('t("settings.engine_manager.external_desktop_client_notice")');
+    expect(engineManagementSource).toContain("engine.canUninstall");
+    expect(englishLocaleSource).toContain('"settings.engine_manager.source_desktop_client": "Provided by Codex client"');
+    expect(chineseLocaleSource).toContain('"settings.engine_manager.source_desktop_client": "由 Codex 客户端提供"');
   });
 
   test("recognizes an installed plugin detail as its own extensions route", () => {

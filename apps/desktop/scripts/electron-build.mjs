@@ -257,8 +257,6 @@ function stageBundledOpenCodeRuntime() {
 
 assertServerRuntimeDependencies({ serverPackagePath, desktopPackagePath });
 run(pnpmCmd, ["--filter", "@ipollowork/app", "typecheck"], repoRoot);
-run(nodeCmd, [resolve(__dirname, "prepare-dsh-runtime.mjs")], desktopRoot);
-run(nodeCmd, [resolve(__dirname, "prepare-codex-runtime.mjs")], desktopRoot);
 run(nodeCmd, [resolve(__dirname, "prepare-sidecar.mjs"), "--force", "--outdir", electronSidecarDir], desktopRoot);
 run(nodeCmd, [resolve(__dirname, "prepare-computer-use-helper.mjs"), "--force", "--outdir", electronHelperDir], desktopRoot);
 // Build the server TS → JS so Electron can import it in-process

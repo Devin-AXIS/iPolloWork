@@ -26,6 +26,7 @@ import {
   canOpenArtifactInContext,
   canPreviewArtifact,
   getArtifactStudioTarget,
+  getArtifactTypeLabel,
   groupConversationOutputArtifacts,
   isConversationOutputArtifact,
   selectArtifactContextOutputs,
@@ -65,6 +66,7 @@ function ArtifactButton({ artifact, sessionId, artifactContext, onOpenVideoStudi
     ? true
     : artifactContext?.kind === "video" ? opensCurrentVideoStudio : canOpen;
   const title = compactArtifactTitle(artifact.name);
+  const typeLabel = getArtifactTypeLabel(studioTarget?.surface === "video" ? "video" : artifact.type);
 
   const content = (
     <>
@@ -72,7 +74,12 @@ function ArtifactButton({ artifact, sessionId, artifactContext, onOpenVideoStudi
         <ArtifactIcon className={cn("shrink-0", compact ? "size-4" : "size-5")} type={artifact.type} />
       </DescriptiveButtonIcon>
       <DescriptiveButtonContent className={cn("min-w-0", compact && "flex-none")}>
-        <DescriptiveButtonTitle className={cn(compact ? "max-w-56 text-xs font-medium" : "max-w-full text-sm font-medium")} title={artifact.name}>{title}</DescriptiveButtonTitle>
+        <div className="flex min-w-0 items-center gap-1.5">
+          <DescriptiveButtonTitle className={cn(compact ? "max-w-48 text-xs font-medium" : "max-w-full text-sm font-medium")} title={artifact.name}>{title}</DescriptiveButtonTitle>
+          <span className="shrink-0 rounded-md bg-muted/70 px-1.5 py-0.5 text-[9px] font-medium leading-none text-muted-foreground">
+            {typeLabel}
+          </span>
+        </div>
         {(!compact || canOpenVideoStudio) && canActivate ? (
           <DescriptiveButtonDescription className={cn(compact ? "text-[10px] leading-3" : "text-xs leading-4")}>
             {canOpenVideoStudio

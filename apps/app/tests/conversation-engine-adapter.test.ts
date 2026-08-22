@@ -402,34 +402,6 @@ describe("conversation engine adapters", () => {
     expect(promptResult).toEqual({ sessionId: "codex-thread-rebound" });
   });
 
-  test("hides application context embedded by legacy Codex turns", () => {
-    const events = mapCodexHarnessEvent({
-      type: "notification",
-      method: "item/completed",
-      params: {
-        threadId: "codex-thread",
-        turnId: "turn-legacy",
-        item: {
-          type: "userMessage",
-          id: "user-legacy",
-          content: [
-            { type: "text", text: "Plugin instructions that were also hidden" },
-            { type: "text", text: "Workspace contract\n\nLong-running local process rule:\nInternal application context" },
-            { type: "text", text: "当前是什么模型和 agent" },
-          ],
-        },
-      },
-    }, createCodexLiveState());
-
-    expect(events).toEqual([expect.objectContaining({
-      type: "message.upsert",
-      message: expect.objectContaining({
-        role: "user",
-        parts: [expect.objectContaining({ text: "当前是什么模型和 agent" })],
-      }),
-    })]);
-  });
-
   test("rejects duplicate adapter registrations", () => {
     const duplicate = { ...openCodeConversationEngineAdapter } satisfies ConversationEngineAdapter;
     expect(() => new ConversationEngineAdapterRegistry(DEFAULT_ENGINE_ID, [
@@ -587,7 +559,7 @@ describe("conversation engine adapters", () => {
                 role: "user",
                 source: { kind: "user" },
                 content: [
-                  { type: "text", text: "<system>\nInternal runtime instructions\n</system>" },
+                  { type: "text", text: `${DEEPSEEK_HARNESS_INTERNAL_SYSTEM_PREFIX}Internal runtime instructions\n</system>` },
                   { type: "text", text: "Build it" },
                 ],
               },
@@ -693,6 +665,10 @@ describe("conversation engine adapters", () => {
     }]);
 
     expect(normalizeDeepSeekHarnessErrorText("错误")).not.toBe("错误");
+
+    const expired = normalizeDeepSeekHarnessErrorText("Provided authentication token is expired.");
+    expect(expired).toContain("iPolloWork");
+    expect(expired).not.toContain("Provided authentication token");
   });
 
   test("explains when a selected model is absent from the DeepSeek Harness runtime", async () => {

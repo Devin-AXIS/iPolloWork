@@ -412,9 +412,6 @@ async function stopAll(exitCode = 0) {
 process.once("SIGINT", () => void stopAll(130));
 process.once("SIGTERM", () => void stopAll(143));
 
-runSync(nodeCmd, [resolve(__dirname, "prepare-dsh-runtime.mjs")], { cwd: desktopRoot });
-runSync(nodeCmd, [resolve(__dirname, "prepare-codex-runtime.mjs")], { cwd: desktopRoot });
-
 if (process.env.IPOLLOWORK_ELECTRON_SKIP_SHARED_PREPARE !== "1") {
   runSync(nodeCmd, [resolve(__dirname, "prepare-sidecar.mjs"), "--force", "--outdir", electronSidecarDir], { cwd: desktopRoot });
   runSync(nodeCmd, [resolve(__dirname, "prepare-computer-use-helper.mjs"), "--outdir", electronHelperDir], { cwd: desktopRoot });

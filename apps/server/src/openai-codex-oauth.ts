@@ -39,6 +39,20 @@ function oauthExpiry(value: unknown): number | null {
   return value < 1_000_000_000_000 ? value * 1_000 : value;
 }
 
+function accessTokenLifetime(accessToken: string): { issuedAt: number; expiresAt: number } | null {
+  const payload = accessToken.split(".")[1];
+  if (!payload) return null;
+  try {
+    const parsed: unknown = JSON.parse(Buffer.from(payload, "base64url").toString("utf8"));
+    if (!isRecord(parsed)) return null;
+    const issuedAt = oauthExpiry(parsed.iat);
+    const expiresAt = oauthExpiry(parsed.exp);
+    return issuedAt && expiresAt && expiresAt > issuedAt ? { issuedAt, expiresAt } : null;
+  } catch {
+    return null;
+  }
+}
+
 export function openAiCodexOAuthCredential(value: unknown): OpenAiCodexOAuthCredential | null {
   if (!isRecord(value) || value.type !== "oauth") return null;
   const access = nonEmptyString(value.access);
@@ -53,6 +67,21 @@ export function openAiCodexOAuthCredential(value: unknown): OpenAiCodexOAuthCred
     expires,
     ...(accountId ? { accountId } : {}),
   };
+}
+
+/**
+ * Refresh subscription OAuth before its advertised expiry. Some upstream
+ * sessions are invalidated earlier than the JWT timestamp, so non-OpenCode
+ * runtimes should not keep a token for its entire nominal lifetime.
+ */
+export function openAiCodexOAuthCredentialNeedsRefresh(
+  credential: OpenAiCodexOAuthCredential,
+  now = Date.now(),
+): boolean {
+  if (credential.expires <= now + OPENAI_CODEX_REFRESH_SKEW_MS) return true;
+  const lifetime = accessTokenLifetime(credential.access);
+  if (!lifetime) return false;
+  return now >= lifetime.issuedAt + (lifetime.expiresAt - lifetime.issuedAt) / 2;
 }
 
 export async function refreshOpenAiCodexOAuthCredential(
@@ -143,7 +172,7 @@ export async function resolveOpenAiCodexOAuthSession(
     const credential = openAiCodexOAuthCredential(authStore[OPENAI_CODEX_AUTH_PROVIDER_ID]);
     if (!credential) return null;
     let active = credential;
-    if (credential.expires <= Date.now() + OPENAI_CODEX_REFRESH_SKEW_MS) {
+    if (openAiCodexOAuthCredentialNeedsRefresh(credential)) {
       try {
         active = await refreshOpenAiCodexOAuthCredential(credential);
         await persistOpenAiCodexOAuthCredential(config, active);

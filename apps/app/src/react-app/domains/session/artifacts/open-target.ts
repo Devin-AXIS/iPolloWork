@@ -33,12 +33,13 @@ const WORKSPACE_ID_PREFIX_PATTERN = /^workspace\/(?:ws_[^/]+|\d+|[0-9a-f-]{6,})\
 
 // Covers relative paths plus Windows absolute paths with spaces or CJK directory names.
 const FILE_PATTERN = /(?:^|[\s"'`([{：])((?:[a-z]:[/\\][^\r\n"'`<>|]+?\.[a-z][a-z0-9]{0,9}|(?:\.{1,2}[/\\]|~[/\\]|[/\\])?[^\s"'`()\[\]{}<>|:/\\]+(?:[/\\][^\s"'`()\[\]{}<>|:/\\]+)+\.[a-z][a-z0-9]{0,9}|[^\s"'`()\[\]{}<>|:/\\]+\.[a-z][a-z0-9]{0,9}))(?=$|[\s"'`\)\]}>,;:.，。；：、])/gi;
+const DIRECTORY_PATTERN = /(?:^|[\s"'`([{：])((?:\.{1,2}[/\\]|~[/\\]|[/\\])?[^\s"'`()\[\]{}<>|:/\\]+(?:[/\\][^\s"'`()\[\]{}<>|:/\\]+)+[/\\])(?=$|[\s"'`\)\]}>,;:.，。；：、])/gi;
 const URL_PATTERN = /https?:\/\/[^\s)\]}>"'`]+/gi;
 const SOCKET_PATTERN = /(?:ws|wss):\/\/[^\s)\]}>"'`]+/gi;
 const SIDEBAR_ARTIFACT_FILE_PREVIEWS = new Set<OpenTargetPreview>(["markdown", "sheet", "slides", "image", "pdf", "html"]);
 const STYLESHEET_EXTENSIONS = new Set([".css", ".scss", ".sass", ".less"]);
 const MARKDOWN_LINK_PATTERN = /\[([^\]\n]+)\]\(([^)\s]+)\)/g;
-const ASSISTANT_ARTIFACT_MENTION_PATTERN = /(?:\b(?:artifact|created|deck|deliverable|exported|file|generated|opened|presentation|saved|skill|slides?|updated|wrote)\b|创建|技能|文件|生成|路径|保存|输出|写入|更新)/i;
+const ASSISTANT_ARTIFACT_MENTION_PATTERN = /(?:\b(?:artifact|complete|completed|created|deck|deliverable|exported|file|generated|open|opened|presentation|saved|skill|slides?|updated|wrote)\b|产物|创建|完成|打开|技能|文件|生成|路径|保存|输出|写入|更新)/i;
 const DISCOVERY_TOOL_NAMES = new Set(["glob", "grep", "search", "find"]);
 const ARTIFACT_METADATA_TOOL_NAMES = new Set(["ipollowork_extension_call"]);
 const WRITE_TOOL_NAMES = new Set([
@@ -53,6 +54,10 @@ const WRITE_TOOL_NAMES = new Set([
   "write_file",
 ]);
 const FILE_METADATA_KEYS = ["path", "file", "filePath", "filepath"];
+const FILE_METADATA_COLLECTION_KEYS = ["files"];
+const FILE_METADATA_CONTAINER_KEYS = ["artifacts", "changes", "output", "outputs", "result", "results"];
+const FILE_METADATA_MAX_DEPTH = 4;
+const FILE_METADATA_MAX_VALUES = 100;
 const PATCH_FILE_PATTERN = /^\*\*\* (?:Add File|Update File):\s*(.+)$/gmi;
 const PATCH_MOVE_TO_PATTERN = /^\*\*\* Move to:\s*(.+)$/gmi;
 const URI_PATTERN = /^(?:https?|wss?|file):\/\//i;
@@ -101,11 +106,56 @@ function shouldScanAssistantFileMentions(text: string) {
 
 export function getAssistantFileMentionPaths(text: string) {
   if (!shouldScanAssistantFileMentions(text)) return [];
+  return getContextualFileMentionPaths(text);
+}
+
+function getFileMentionPaths(text: string) {
   const paths: string[] = [];
   FILE_PATTERN.lastIndex = 0;
   for (const match of text.matchAll(FILE_PATTERN)) {
     if (match[1]) paths.push(match[1]);
   }
+  return paths;
+}
+
+function getDirectoryMentionPaths(text: string) {
+  const paths: string[] = [];
+  DIRECTORY_PATTERN.lastIndex = 0;
+  for (const match of text.matchAll(DIRECTORY_PATTERN)) {
+    if (match[1]) paths.push(match[1]);
+  }
+  return paths;
+}
+
+function getContextualFileMentionPaths(text: string) {
+  const paths: string[] = [];
+  let directory: string | null = null;
+  let foundFileInDirectory = false;
+
+  for (const line of text.split(/\r?\n/)) {
+    const directories = getDirectoryMentionPaths(line);
+    const nextDirectory = directories.at(-1);
+    if (nextDirectory) {
+      directory = nextDirectory.replace(/[\\]+/g, "/");
+      foundFileInDirectory = false;
+    }
+
+    const files = getFileMentionPaths(line);
+    for (const file of files) {
+      if (directory && !file.includes("/") && !file.includes("\\")) {
+        paths.push(`${directory}${file}`);
+        foundFileInDirectory = true;
+      } else {
+        paths.push(file);
+      }
+    }
+
+    if (directory && foundFileInDirectory && line.trim() && directories.length === 0 && files.length === 0) {
+      directory = null;
+      foundFileInDirectory = false;
+    }
+  }
+
   return paths;
 }
 
@@ -182,10 +232,6 @@ export function isLocalhostBrowserTarget(target: OpenTarget) {
   return target.kind === "url" && /(?:https?|wss?):\/\/(localhost|127\.0\.0\.1|0\.0\.0\.0|\[::1\])/i.test(target.value);
 }
 
-export function selectAutoOpenTarget(_targets: OpenTarget[]): OpenTarget | null {
-  return null;
-}
-
 function scanText(
   map: Map<string, OpenTarget>,
   text: string,
@@ -228,9 +274,8 @@ function scanText(
 
   if (!options.includeFiles) return;
 
-  FILE_PATTERN.lastIndex = 0;
-  for (const match of scanValue.matchAll(FILE_PATTERN)) {
-    if (match[1]) addTarget(map, targetFromFile(match[1], confidence, reason));
+  for (const path of getContextualFileMentionPaths(scanValue)) {
+    addTarget(map, targetFromFile(path, confidence, reason));
   }
 }
 
@@ -254,25 +299,41 @@ function isArtifactMetadataTool(toolName: string) {
   return ARTIFACT_METADATA_TOOL_NAMES.has(normalizedToolName(toolName));
 }
 
-function collectFileMetadataValues(value: unknown) {
-  if (!isObject(value)) return [];
-  const values: string[] = [];
+function collectFileMetadataValues(
+  value: unknown,
+  depth = 0,
+  allowString = false,
+  values: string[] = [],
+) {
+  if (values.length >= FILE_METADATA_MAX_VALUES || depth > FILE_METADATA_MAX_DEPTH) return values;
+  if (typeof value === "string") {
+    if (allowString) values.push(value);
+    return values;
+  }
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      collectFileMetadataValues(item, depth + 1, allowString, values);
+      if (values.length >= FILE_METADATA_MAX_VALUES) break;
+    }
+    return values;
+  }
+  if (!isObject(value)) return values;
+
   for (const key of FILE_METADATA_KEYS) {
     const file = value[key];
     if (typeof file === "string") values.push(file);
   }
-  const files = value.files;
-  if (Array.isArray(files)) {
-    for (const file of files) {
-      if (typeof file === "string") values.push(file);
-    }
+  for (const key of FILE_METADATA_COLLECTION_KEYS) {
+    collectFileMetadataValues(value[key], depth + 1, true, values);
+  }
+  for (const key of FILE_METADATA_CONTAINER_KEYS) {
+    collectFileMetadataValues(value[key], depth + 1, false, values);
   }
   return values;
 }
 
 function collectNestedFileMetadataValues(value: unknown) {
-  if (!isObject(value)) return [];
-  return [value, value.result].flatMap(collectFileMetadataValues);
+  return collectFileMetadataValues(value);
 }
 
 function collectPatchFileValues(value: unknown) {
@@ -295,6 +356,17 @@ function addFileValues(map: Map<string, OpenTarget>, values: string[], confidenc
   for (const value of values) {
     addTarget(map, targetFromFile(value, confidence, reason));
   }
+}
+
+export function getWrittenFilePaths(toolName: string, input: unknown, output: unknown) {
+  if (!isWriteTool(toolName)) return [];
+  const values = [
+    ...collectFileMetadataValues(input),
+    ...collectFileMetadataValues(output),
+    ...collectPatchFileValues(input),
+    ...(typeof output === "string" ? getFileMentionPaths(output) : []),
+  ];
+  return [...new Set(values.map((value) => value.trim()).filter(Boolean))];
 }
 
 export function deriveOpenTargets(messages: UIMessage[], options: DeriveOpenTargetsOptions = {}): OpenTarget[] {
@@ -334,14 +406,10 @@ export function deriveOpenTargets(messages: UIMessage[], options: DeriveOpenTarg
       if (writeTool) {
         addFileValues(
           targets,
-          [part.input, part.output].flatMap(collectFileMetadataValues),
+          getWrittenFilePaths(part.toolName, part.input, part.output),
           95,
           "write tool metadata",
         );
-        addFileValues(targets, collectPatchFileValues(part.input), 95, "patch metadata");
-        if (typeof part.output === "string") {
-          scanText(targets, part.output, 90, "write tool output", { includeFiles: true });
-        }
       }
 
       if (artifactMetadataTool) {

@@ -1,13 +1,8 @@
 import type { UIMessage } from "ai";
 import * as React from "react";
 
-import {
-  isApplyPatchToolPart,
-  isEditToolPart,
-  isWriteToolPart,
-} from "@/lib/build-in-tools";
 import { useOpenTargets, type OpenTargetOptions } from "@/lib/target-provider";
-import { getAssistantFileMentionPaths, isCollectibleArtifactTarget, isOpenableFileTarget, type OpenTarget, type OpenTargetPreview } from "@/react-app/domains/session/artifacts/open-target";
+import { getAssistantFileMentionPaths, getWrittenFilePaths, isCollectibleArtifactTarget, isOpenableFileTarget, type OpenTarget, type OpenTargetPreview } from "@/react-app/domains/session/artifacts/open-target";
 
 export type ArtifactType = "website" | "markdown" | "sheet" | "slides" | "document" | "image" | "video" | "audio" | "pdf" | "html" | "text" | "unknown";
 
@@ -19,7 +14,7 @@ export type ArtifactItem = {
   messageId: string
   messageIndex: number
   updatedAt?: number
-  legacy_target: OpenTarget
+  target: OpenTarget
 }
 
 export type ConversationOutputGroup = {
@@ -157,11 +152,11 @@ export function getArtifactTypeLabel(type: ArtifactType) {
 }
 
 export function canPreviewArtifact(artifact: ArtifactItem) {
-  return isCollectibleArtifactTarget(artifact.legacy_target);
+  return isCollectibleArtifactTarget(artifact.target);
 }
 
 export function canOpenArtifact(artifact: ArtifactItem) {
-  return canPreviewArtifact(artifact) || isOpenableFileTarget(artifact.legacy_target);
+  return canPreviewArtifact(artifact) || isOpenableFileTarget(artifact.target);
 }
 
 export function canOpenArtifactInContext(
@@ -223,11 +218,6 @@ export function isConversationOutputArtifact(artifact: ArtifactItem) {
   if (INTERNAL_OUTPUT_PATH_PATTERN.test(artifact.path)) return false;
   if (INTERNAL_OUTPUT_NAME_PATTERN.test(artifact.name)) return false;
   return true;
-}
-
-/** HTML compositions under the video workspace open the session's Video Studio. */
-export function isVideoHtmlArtifact(artifact: ArtifactItem) {
-  return artifact.type === "html" && /(?:^|\/)video(?:\/|$)/i.test(artifact.path);
 }
 
 export function getArtifactStudioTarget(artifact: ArtifactItem): ArtifactStudioTarget | null {
@@ -387,8 +377,18 @@ function openTargetFromArtifactPath(
   const verified = verifiedTargets.find(
     (target) => target.id === id || artifactPathMatchesTarget(normalized, target.value),
   );
+  if (verified) return verified;
 
-  return verified ?? {
+  if (!normalized.includes("/")) {
+    const basenameMatches = verifiedTargets.filter((target) => (
+      target.kind === "file"
+      && target.exists === true
+      && getArtifactName(target.value).toLowerCase() === normalized.toLowerCase()
+    ));
+    if (basenameMatches.length === 1) return basenameMatches[0];
+  }
+
+  return {
     id,
     kind: "file",
     value: normalized,
@@ -399,32 +399,9 @@ function openTargetFromArtifactPath(
   };
 }
 
-function parseApplyPatchPaths(patchText: unknown) {
-  if (typeof patchText !== "string") return [];
-  const paths: string[] = [];
-
-  for (const line of patchText.split("\n")) {
-    if (line.startsWith("*** Add File:")) {
-      paths.push(line.slice("*** Add File:".length).trim());
-      continue;
-    }
-
-    if (line.startsWith("*** Update File:")) {
-      paths.push(line.slice("*** Update File:".length).trim());
-      continue;
-    }
-
-    if (line.startsWith("*** Move to:")) {
-      paths.push(line.slice("*** Move to:".length).trim());
-    }
-  }
-
-  return paths;
-}
-
 function artifactPathCandidate(path: unknown, verifiedFromWrite = false): ArtifactPathCandidate | null {
   if (typeof path !== "string") return null;
-  const normalized = path.trim().toLowerCase();
+  const normalized = path.trim();
   return normalized ? { path: normalized, verifiedFromWrite } : null;
 }
 
@@ -446,20 +423,8 @@ function getArtifactPathsFromMessage(message: UIMessage) {
       continue;
     }
 
-    if (isWriteToolPart(part)) {
-      const candidate = artifactPathCandidate(part.input.filePath, true);
-      if (candidate) paths.push(candidate);
-      continue;
-    }
-
-    if (isEditToolPart(part)) {
-      const candidate = artifactPathCandidate(part.input.filePath, true);
-      if (candidate) paths.push(candidate);
-      continue;
-    }
-    if (isApplyPatchToolPart(part)) {
-      paths.push(...parseApplyPatchPaths(part.input.patchText).flatMap((path) => artifactPathCandidate(path, true) ?? []));
-    }
+    paths.push(...getWrittenFilePaths(part.toolName, part.input, part.output)
+      .flatMap((path) => artifactPathCandidate(path, true) ?? []));
   }
 
   return paths;
@@ -474,11 +439,15 @@ function addArtifact(
   verifiedTargets: OpenTarget[],
   verifiedTarget?: OpenTarget,
 ) {
-  const normalized = normalizeArtifactPath(path);
+  const requestedPath = normalizeArtifactPath(path);
+  const requestedType = getArtifactType(requestedPath);
+  const target = verifiedTarget ?? openTargetFromArtifactPath(requestedPath, getArtifactName(requestedPath), requestedType, verifiedTargets);
+  const normalized = target.kind === "file" && target.exists === true
+    ? normalizeArtifactPath(target.value)
+    : requestedPath;
   const key = normalized.toLowerCase();
   const type = getArtifactType(normalized);
-  const legacyTarget = verifiedTarget ?? openTargetFromArtifactPath(normalized, getArtifactName(normalized), type, verifiedTargets);
-  const name = legacyTarget.name;
+  const name = target.name;
 
   artifacts.set(key, {
     id: key,
@@ -488,8 +457,8 @@ function addArtifact(
     messageId,
     messageIndex,
     sequence,
-    updatedAt: legacyTarget.updatedAt,
-    legacy_target: legacyTarget,
+    updatedAt: target.updatedAt,
+    target,
   });
 }
 
@@ -564,10 +533,6 @@ export function usePreviewArtifact() {
   const { onOpenTarget } = useOpenTargets();
 
   return React.useCallback((artifact: ArtifactItem, options?: OpenTargetOptions) => {
-    async function previewArtifact() {
-      onOpenTarget?.(artifact.legacy_target, options);
-    }
-
-    void previewArtifact();
+    onOpenTarget?.(artifact.target, options);
   }, [onOpenTarget]);
 }

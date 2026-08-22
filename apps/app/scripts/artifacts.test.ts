@@ -8,7 +8,6 @@ import {
   getArtifactsFromMessages,
   groupConversationOutputArtifacts,
   isConversationOutputArtifact,
-  isVideoHtmlArtifact,
   selectTemplateEntryArtifacts,
 } from "../src/lib/artifacts";
 
@@ -36,7 +35,7 @@ describe("getArtifactsFromMessages", () => {
     })[0]).toMatchObject({
       path: "design/ses_deck/entry.html",
       type: "html",
-      legacy_target: { exists: true, preview: "html" },
+      target: { exists: true, preview: "html" },
     });
   });
 
@@ -70,7 +69,7 @@ describe("getArtifactsFromMessages", () => {
     expect(selectTemplateEntryArtifacts(artifacts, entryPath)).toEqual([
       expect.objectContaining({
         path: entryPath,
-        legacy_target: expect.objectContaining({ reason: "template entry", exists: true }),
+        target: expect.objectContaining({ reason: "template entry", exists: true }),
       }),
     ]);
   });
@@ -96,7 +95,7 @@ describe("getArtifactsFromMessages", () => {
       name: "ipollowork-vertebrae-deck.pptx",
       path: "decks/ipollowork-vertebrae-deck.pptx",
       type: "slides",
-      legacy_target: { preview: "slides", exists: true },
+      target: { preview: "slides", exists: true },
     });
   });
 
@@ -123,7 +122,7 @@ describe("getArtifactsFromMessages", () => {
       exists: true,
     }];
 
-    expect(getArtifactsFromMessages(messages, targets)[0]?.legacy_target).toMatchObject({
+    expect(getArtifactsFromMessages(messages, targets)[0]?.target).toMatchObject({
       value: "customers.csv",
       exists: true,
     });
@@ -200,7 +199,7 @@ describe("getArtifactsFromMessages", () => {
 
     const artifact = getArtifactsFromMessages(messages, targets, { includeTargetFallbacks: false })[0];
 
-    expect(artifact).toMatchObject({ path: "src/widget.tsx", legacy_target: { exists: true, preview: "text" } });
+    expect(artifact).toMatchObject({ path: "src/widget.tsx", target: { exists: true, preview: "text" } });
     expect(artifact ? canPreviewArtifact(artifact) : true).toBe(false);
     expect(artifact ? canOpenArtifact(artifact) : false).toBe(true);
   });
@@ -223,9 +222,62 @@ describe("getArtifactsFromMessages", () => {
     expect(artifact).toMatchObject({
       path: "reports/generated.md",
       type: "markdown",
-      legacy_target: { exists: true, preview: "markdown" },
+      target: { exists: true, preview: "markdown" },
     });
     expect(artifact ? canPreviewArtifact(artifact) : false).toBe(true);
+    expect(artifact ? canOpenArtifact(artifact) : false).toBe(true);
+  });
+
+  it("lists every file returned by an array-shaped write tool result", () => {
+    const messages: UIMessage[] = [{
+      id: "msg_patch_created",
+      role: "assistant",
+      parts: [{
+        type: "dynamic-tool",
+        toolName: "apply_patch",
+        toolCallId: "patch_tool",
+        state: "output-available",
+        input: {},
+        output: [
+          { path: "video/ses_launch/index.html", kind: "update", diff: "@@" },
+          { path: "reports/launch.xlsx", kind: "add", diff: "@@" },
+        ],
+      }],
+    }];
+
+    const artifacts = getArtifactsFromMessages(messages, [], { includeTargetFallbacks: false });
+
+    expect(artifacts.map((artifact) => artifact.path)).toEqual([
+      "reports/launch.xlsx",
+      "video/ses_launch/index.html",
+    ]);
+    expect(artifacts.every(canOpenArtifact)).toBe(true);
+  });
+
+  it("uses a uniquely resolved nested path for a bare filename", () => {
+    const messages: UIMessage[] = [{
+      id: "msg_nested_file",
+      role: "assistant",
+      parts: [{ type: "text", text: "已完成，可以打开 account_monthly.csv。", state: "done" }],
+    }];
+    const targets: OpenTarget[] = [{
+      id: "file:analysis/data/account_monthly.csv",
+      kind: "file",
+      value: "analysis/data/account_monthly.csv",
+      name: "account_monthly.csv",
+      preview: "sheet",
+      confidence: 65,
+      reason: "message",
+      exists: true,
+    }];
+
+    const artifact = getArtifactsFromMessages(messages, targets, { includeTargetFallbacks: false })[0];
+
+    expect(artifact).toMatchObject({
+      path: "analysis/data/account_monthly.csv",
+      type: "sheet",
+      target: { exists: true, value: "analysis/data/account_monthly.csv" },
+    });
     expect(artifact ? canOpenArtifact(artifact) : false).toBe(true);
   });
 
@@ -249,7 +301,6 @@ describe("getArtifactsFromMessages", () => {
       "reports/trends.md",
     ]);
     expect(outputs.some((artifact) => artifact.name === "SKILL.md")).toBe(false);
-    expect(isVideoHtmlArtifact(outputs.find((artifact) => artifact.path === "video/scene.html")!)).toBe(true);
   });
 
   it("bundles multi-file outputs around the final entry file", () => {

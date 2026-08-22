@@ -7,6 +7,7 @@ import {
   Cable,
   CloudCog,
   Cog,
+  Cpu,
   FolderLock,
   Info,
   Layout,
@@ -58,6 +59,8 @@ export function getSettingsTabIcon(tab: SettingsTab) {
   switch (tab) {
     case "ai":
       return Zap;
+    case "engines":
+      return Cpu;
     case "preferences":
       return SlidersHorizontal;
     case "shell":
@@ -118,6 +121,8 @@ export function getSettingsTabLabel(tab: SettingsTab) {
   switch (tab) {
     case "ai":
       return t("settings.tab_ai");
+    case "engines":
+      return t("settings.tab_engines");
     case "preferences":
       return t("settings.tab_preferences");
     case "shell":
@@ -163,6 +168,8 @@ export function getSettingsTabDescription(tab: SettingsTab) {
   switch (tab) {
     case "ai":
       return t("settings.tab_description_ai");
+    case "engines":
+      return t("settings.tab_description_engines");
     case "preferences":
       return t("settings.tab_description_preferences");
     case "shell":
@@ -209,7 +216,7 @@ export function getWorkspaceSettingsTabs(): SettingsTab[] {
 }
 
 export function getGlobalSettingsTabs(developerMode: boolean): SettingsTab[] {
-  const tabs: SettingsTab[] = ["ai", "authorizations", "shell", "appearance", "environment", "updates", "recovery"];
+  const tabs: SettingsTab[] = ["ai", "engines", "authorizations", "shell", "appearance", "environment", "updates", "recovery"];
   if (developerMode) tabs.push("debug");
   return tabs;
 }

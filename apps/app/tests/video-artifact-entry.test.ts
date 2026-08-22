@@ -29,7 +29,7 @@ function htmlArtifact(path: string): ArtifactItem {
     type: "html",
     messageId: "message",
     messageIndex: 0,
-    legacy_target: {
+    target: {
       id: `file:${path}`,
       kind: "file",
       value: path,
@@ -47,8 +47,8 @@ function slidesArtifact(path: string): ArtifactItem {
   return {
     ...artifact,
     type: "slides",
-    legacy_target: {
-      ...artifact.legacy_target,
+    target: {
+      ...artifact.target,
       preview: "slides",
     },
   };
@@ -132,8 +132,8 @@ describe("video artifact entry routing", () => {
     const stylesheet: ArtifactItem = {
       ...htmlArtifact("video/ses_video/design-tokens.css"),
       type: "text",
-      legacy_target: {
-        ...htmlArtifact("video/ses_video/design-tokens.css").legacy_target,
+      target: {
+        ...htmlArtifact("video/ses_video/design-tokens.css").target,
         preview: "text",
       },
     };
@@ -234,7 +234,7 @@ describe("video artifact entry routing", () => {
     expect(getArtifactsFromMessages(messages, [verifiedTarget])).toContainEqual(expect.objectContaining({
       name: "SKILL.md",
       type: "markdown",
-      legacy_target: verifiedTarget,
+      target: verifiedTarget,
     }));
   });
 });

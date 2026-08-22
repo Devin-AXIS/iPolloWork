@@ -1,10 +1,10 @@
 /** @jsxImportSource react */
 import type { CSSProperties } from "react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { UIMessage } from "ai";
 import { useNavigate } from "react-router-dom";
 import { createClient, unwrap } from "@/app/lib/opencode";
-import { Code2, Ellipsis, Eye, FileText, Film, Folder, FolderPlus, Globe, Image, LoaderCircle, Lock, Mic2, Palette, PanelRightClose, PanelRightOpen, Pencil, Presentation, Search, Settings2, Trash2, Upload, X, Zap } from "lucide-react";
+import { Code2, Download, Ellipsis, Eye, FileText, Film, Folder, FolderPlus, Globe, Image, LoaderCircle, Lock, Mic2, Palette, PanelRightClose, PanelRightOpen, Pencil, Presentation, Search, Settings2, Trash2, Upload, X, Zap } from "lucide-react";
 import { MAX_TEMPLATE_PACKAGE_BYTES, TEMPLATE_PACKAGE_FILE_ACCEPT, isPptxCompatibleTemplate, type PptxCompatibility, type TemplateCatalogItem, type TemplateCategory, type TemplateManifestV1, type TemplateSessionSnapshot, type TemplateSessionState, type TemplateValidationReport } from "@ipollowork/types/templates";
 import {
   CODEX_HARNESS_ENGINE_ID,
@@ -31,7 +31,7 @@ import {
 } from "@/app/lib/enterprise-connections";
 import { getDisplaySessionTitle } from "../../../../app/lib/session-title";
 import type { BootPhase } from "../../../../app/lib/startup-boot";
-import { openDesktopPath, pickDirectory, revealDesktopItemInDir, saveFile, type WorkspaceInfo } from "../../../../app/lib/desktop";
+import { openDesktopPath, pickDirectory, revealDesktopItemInDir, saveFile, type EnginePackageInfo, type WorkspaceInfo } from "../../../../app/lib/desktop";
 import type {
   ComposerAttachment,
   ComposerDraft,
@@ -55,6 +55,8 @@ import {
   getArtifactsFromMessages,
 } from "@/lib/artifacts";
 import { Button } from "@/components/ui/button";
+import { formatBytes } from "@/app/utils";
+import { useEnginePackages } from "@/react-app/domains/engines/use-engine-packages";
 
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -184,6 +186,7 @@ const NARROW_LAYOUT_WIDTH = 960;
 const VIDEO_PANEL_DEFAULT_WIDTH = 1120;
 const SESSION_SHELL_TRANSITION_MS = 220;
 const SESSION_SHELL_TRANSITION_EASING = "cubic-bezier(0.22, 1, 0.36, 1)";
+const ENGINE_STARTUP_TRANSITION_MS = 900;
 const TEMPLATE_REFERENCE_UPLOAD_VISIBLE = false;
 type SessionPanelView = SidePanelItem | "launcher";
 type TemplateSessionData = {
@@ -322,10 +325,12 @@ function ProjectWorkNavigation({
 function ProjectEngineOptions({
   value,
   onValueChange,
+  enginePackages,
   disabled = false,
 }: {
   value: BuiltInWorkspaceEngineId;
   onValueChange: (engineId: BuiltInWorkspaceEngineId) => void;
+  enginePackages?: ReadonlyMap<string, EnginePackageInfo>;
   disabled?: boolean;
 }) {
   return (
@@ -363,6 +368,14 @@ function ProjectEngineOptions({
           },
         ].map((engine) => {
           const selected = value === engine.id;
+          const enginePackage = enginePackages?.get(engine.id);
+          const packageLabel = enginePackage?.builtIn
+            ? t("projects.engine_built_in")
+            : enginePackage?.installed
+              ? t("projects.engine_installed")
+              : enginePackage
+                ? t("projects.engine_install_required")
+                : null;
           return (
             <label
               key={engine.id}
@@ -393,17 +406,131 @@ function ProjectEngineOptions({
                     {engine.name}
                   </span>
                 </span>
-                <img
-                  src={selected ? projectEngineSelectedIcon : projectEngineUnselectedIcon}
-                  alt=""
-                  className={cn("size-4 shrink-0", selected && "dark:invert")}
-                />
+                <span className="flex items-center gap-2">
+                  {packageLabel ? (
+                    <span className={cn(
+                      "whitespace-nowrap rounded-full px-2 py-0.5 text-[10px] font-medium",
+                      enginePackage?.installed ? "bg-blue-3/70 text-blue-11" : "bg-amber-3/70 text-amber-11",
+                    )}>
+                      {packageLabel}
+                    </span>
+                  ) : null}
+                  <img
+                    src={selected ? projectEngineSelectedIcon : projectEngineUnselectedIcon}
+                    alt=""
+                    className={cn("size-4 shrink-0", selected && "dark:invert")}
+                  />
+                </span>
               </span>
               <span className="text-xs leading-[22px] text-muted-foreground">{engine.description}</span>
             </label>
           );
         })}
       </RadioGroup>
+    </div>
+  );
+}
+
+function EngineStartupGate({
+  engine,
+  phase,
+  busy,
+  onInstall,
+}: {
+  engine: EnginePackageInfo;
+  phase: "install" | "launch";
+  busy: boolean;
+  onInstall?: () => void;
+}) {
+  const launching = phase === "launch";
+  const percent = engine.totalBytes && engine.downloadedBytes != null
+    ? Math.min(100, Math.round((engine.downloadedBytes / engine.totalBytes) * 100))
+    : null;
+  const icon = engine.id === DEEPSEEK_HARNESS_ENGINE_ID
+    ? projectEngineDeepSeekIcon
+    : publicAssetUrl("ext-openai.svg");
+  const status = engine.status === "verifying"
+    ? t("settings.engine_manager.status_verifying")
+    : engine.status === "installing"
+      ? t("settings.engine_manager.status_installing")
+      : t("settings.engine_manager.status_downloading");
+  const title = launching
+    ? t("projects.engine_starting_title", { name: engine.name })
+    : t("projects.engine_prepare_title", { name: engine.name });
+  const description = launching
+    ? t("projects.engine_starting_description")
+    : engine.status === "failed"
+      ? t("projects.engine_prepare_retry_description")
+      : t("projects.engine_prepare_description");
+
+  return (
+    <div
+      className="flex h-full items-center justify-center px-6 py-12"
+      data-testid={launching ? "engine-startup-gate" : "engine-install-gate"}
+      data-engine-id={engine.id}
+      role="status"
+      aria-live="polite"
+      aria-busy={launching || busy}
+    >
+      <div className="w-full max-w-[420px] text-center">
+        <div className="relative mx-auto size-[72px]">
+          {launching || busy ? (
+            <span className="absolute inset-0 animate-pulse rounded-[22px] border border-dls-border bg-dls-hover/70" aria-hidden="true" />
+          ) : null}
+          <div className="absolute inset-2 flex items-center justify-center rounded-2xl border border-dls-border bg-dls-card/90 shadow-[var(--dls-card-shadow)] backdrop-blur-xl">
+            <img
+              src={icon}
+              alt=""
+              className={cn("max-h-8 max-w-9 object-contain", engine.id !== DEEPSEEK_HARNESS_ENGINE_ID && "dark:invert")}
+            />
+          </div>
+        </div>
+        <h2 className="mt-5 text-lg font-semibold tracking-tight text-dls-text">
+          {title}
+        </h2>
+        <p className="mx-auto mt-2 max-w-sm text-sm leading-6 text-dls-secondary">
+          {description}
+        </p>
+
+        {launching ? (
+          <div className="mt-5 inline-flex items-center gap-2 rounded-full border border-dls-border bg-dls-card/70 px-3 py-2 text-xs text-dls-secondary backdrop-blur-xl">
+            <OwDotTicker size="sm" />
+            <span>{t("projects.engine_starting_step")}</span>
+          </div>
+        ) : busy ? (
+          <div className="mt-6 text-left" role="status" aria-live="polite">
+            <div className="h-1.5 overflow-hidden rounded-full bg-dls-hover">
+              <div
+                className={cn(
+                  "h-full rounded-full bg-foreground transition-[width] duration-300",
+                  percent == null && "w-1/3 animate-pulse",
+                )}
+                style={percent == null ? undefined : { width: `${percent}%` }}
+              />
+            </div>
+            <div className="mt-2 flex items-center justify-between gap-3 text-[11px] text-dls-secondary">
+              <span>{status}</span>
+              {engine.downloadedBytes != null ? (
+                <span className="tabular-nums">
+                  {formatBytes(engine.downloadedBytes)}
+                  {engine.totalBytes ? ` / ${formatBytes(engine.totalBytes)}` : ""}
+                </span>
+              ) : null}
+            </div>
+          </div>
+        ) : onInstall ? (
+          <Button className="mt-6 min-w-32" onClick={onInstall}>
+            <Download className="size-4" />
+            {engine.status === "failed" ? t("common.retry") : t("settings.engine_manager.install")}
+          </Button>
+        ) : null}
+        {engine.error ? <p className="mt-3 text-xs leading-5 text-red-11">{engine.error}</p> : null}
+        {!launching ? (
+          <p className="mt-5 text-[11px] leading-5 text-dls-secondary">
+            {t("projects.engine_prepare_data_notice")}
+          </p>
+        ) : null}
+      </div>
     </div>
   );
 }
@@ -1949,6 +2076,9 @@ export function SessionPage(props: SessionPageProps) {
   const observedPluginWorkshopSessionRef = useRef<string | null>(null);
   const autoOpenedPluginWorkshopSessionRef = useRef<string | null>(null);
   const preserveSidePanelOnPanelOpenRef = useRef(false);
+  const autoEngineInstallAttemptRef = useRef<string | null>(null);
+  const [engineLaunchTransitionKey, setEngineLaunchTransitionKey] = useState<string | null>(null);
+  const enginePackages = useEnginePackages();
 
   const openCreateProjectDialog = useCallback(() => {
     setCreateProjectName("");
@@ -3159,6 +3289,78 @@ export function SessionPage(props: SessionPageProps) {
   const selectedProject = props.sidebar.projectSessionLists.find(
     (project) => project.workspace.id === props.selectedWorkspaceId,
   );
+  const selectedEngineId = isBuiltInWorkspaceEngineId(props.selectedWorkspaceDisplay.engineId)
+    ? props.selectedWorkspaceDisplay.engineId
+    : DEFAULT_ENGINE_ID;
+  const selectedEnginePackage = enginePackages.byId.get(selectedEngineId) ?? null;
+  const engineInstallGateActive = Boolean(
+    enginePackages.supported
+      && !enginePackages.loading
+      && props.selectedWorkspaceDisplay.workspaceType !== "remote"
+      && selectedEngineId !== DEFAULT_ENGINE_ID
+      && selectedEnginePackage
+      && !selectedEnginePackage.installed,
+  );
+  const engineInstallBusy = Boolean(
+    selectedEnginePackage
+      && (enginePackages.actionEngineId === selectedEnginePackage.id
+        || ["downloading", "verifying", "installing"].includes(selectedEnginePackage.status)),
+  );
+  const selectedEngineLaunchKey = `${props.selectedWorkspaceId}:${selectedEngineId}`;
+  useLayoutEffect(() => {
+    if (
+      enginePackages.loading
+      || selectedEngineId === DEFAULT_ENGINE_ID
+      || props.selectedWorkspaceDisplay.workspaceType === "remote"
+      || !selectedEnginePackage?.installed
+    ) {
+      setEngineLaunchTransitionKey(null);
+      return;
+    }
+    setEngineLaunchTransitionKey(selectedEngineLaunchKey);
+    const timeout = window.setTimeout(() => {
+      setEngineLaunchTransitionKey((current) => current === selectedEngineLaunchKey ? null : current);
+    }, ENGINE_STARTUP_TRANSITION_MS);
+    return () => window.clearTimeout(timeout);
+  }, [
+    enginePackages.loading,
+    props.selectedWorkspaceDisplay.workspaceType,
+    selectedEngineId,
+    selectedEngineLaunchKey,
+    selectedEnginePackage?.installed,
+  ]);
+  const engineStartupGateActive = Boolean(
+    !engineInstallGateActive
+      && !enginePackages.loading
+      && selectedEnginePackage?.installed
+      && (
+        selectedProject?.status === "loading"
+        || engineLaunchTransitionKey === selectedEngineLaunchKey
+      ),
+  );
+  const installSelectedEngine = useCallback(() => {
+    if (!selectedEnginePackage) return;
+    void enginePackages.install(selectedEnginePackage.id)
+      .then(() => Promise.resolve(props.sidebar.onSelectProject(props.selectedWorkspaceId)))
+      .catch((error) => {
+        toast.error(error instanceof Error ? error.message : t("settings.engine_manager.install_failed"));
+      });
+  }, [enginePackages.install, props.selectedWorkspaceId, props.sidebar.onSelectProject, selectedEnginePackage]);
+  useEffect(() => {
+    if (!engineInstallGateActive || !selectedEnginePackage) {
+      autoEngineInstallAttemptRef.current = null;
+      return;
+    }
+    if (
+      selectedEnginePackage.status !== "not-installed"
+      || !selectedEnginePackage.canInstall
+      || engineInstallBusy
+    ) return;
+    const attemptKey = `${props.selectedWorkspaceId}:${selectedEnginePackage.id}`;
+    if (autoEngineInstallAttemptRef.current === attemptKey) return;
+    autoEngineInstallAttemptRef.current = attemptKey;
+    installSelectedEngine();
+  }, [engineInstallBusy, engineInstallGateActive, installSelectedEngine, props.selectedWorkspaceId, selectedEnginePackage]);
   const showWorkspaceSetupEmptyState = props.workspaces.length === 0 && !hasSelectedTask;
   const showNewTaskStarter = !props.selectedSessionId && Boolean(props.surface) && !showWorkspaceSetupEmptyState;
   const showNewConversationChrome = !hasSelectedTask && !showWorkspaceSetupEmptyState;
@@ -3219,7 +3421,9 @@ export function SessionPage(props: SessionPageProps) {
     Boolean(currentTemplateSessionData) || isDesignSession
   );
   const showBrandedSessionLoading = Boolean(
-    canRenderReactSurface &&
+    !engineInstallGateActive &&
+      !engineStartupGateActive &&
+      canRenderReactSurface &&
       hasSelectedTask &&
       props.selectedSessionId &&
       settledSessionId !== props.selectedSessionId &&
@@ -3672,6 +3876,19 @@ export function SessionPage(props: SessionPageProps) {
                 <div className="flex h-full min-h-0 flex-col overflow-y-auto bg-background">
                   {props.settingsSlot}
                 </div>
+              ) : engineInstallGateActive && selectedEnginePackage ? (
+                <EngineStartupGate
+                  engine={selectedEnginePackage}
+                  phase="install"
+                  busy={engineInstallBusy || selectedEnginePackage.status === "not-installed"}
+                  onInstall={installSelectedEngine}
+                />
+              ) : engineStartupGateActive && selectedEnginePackage ? (
+                <EngineStartupGate
+                  engine={selectedEnginePackage}
+                  phase="launch"
+                  busy
+                />
               ) : showStartupSkeleton ? (
                 <div className="px-6 py-14" role="status" aria-live="polite">
                   <div className="mx-auto max-w-2xl space-y-6">
@@ -3700,7 +3917,7 @@ export function SessionPage(props: SessionPageProps) {
                 </div>
               ) : null}
 
-              {mainWorkspaceView === null && showNewTaskStarter && !showStartupSkeleton && props.surface ? (
+              {mainWorkspaceView === null && !engineInstallGateActive && !engineStartupGateActive && showNewTaskStarter && !showStartupSkeleton && props.surface ? (
                 <InitialProjectTaskStarter
                   key={`${props.selectedWorkspaceId}:${props.selectedWorkspaceDisplay.engineId ?? DEFAULT_ENGINE_ID}`}
                   surface={props.surface}
@@ -3730,7 +3947,7 @@ export function SessionPage(props: SessionPageProps) {
                 />
               ) : null}
 
-              {mainWorkspaceView === null && !showNewTaskStarter && showDelayedSessionLoadingState ? (
+              {mainWorkspaceView === null && !engineInstallGateActive && !engineStartupGateActive && !showNewTaskStarter && showDelayedSessionLoadingState ? (
                 <div className="px-6 py-16">
                   <div
                     className="mx-auto flex max-w-[320px] flex-col items-center gap-3 text-center"
@@ -3745,7 +3962,7 @@ export function SessionPage(props: SessionPageProps) {
                 </div>
               ) : null}
 
-              {mainWorkspaceView === null && !showNewTaskStarter && !showDelayedSessionLoadingState && canRenderReactSurface ? (
+              {mainWorkspaceView === null && !engineInstallGateActive && !engineStartupGateActive && !showNewTaskStarter && !showDelayedSessionLoadingState && canRenderReactSurface ? (
                 <div className="flex h-full min-h-0 flex-col lg:flex-row">
                   <div className="min-h-0 min-w-0 flex-1">
                       {isDesignSession && templateSessionLoading ? (
@@ -3859,7 +4076,7 @@ export function SessionPage(props: SessionPageProps) {
                 </div>
               ) : null}
 
-              {mainWorkspaceView === null && !showNewTaskStarter && !showDelayedSessionLoadingState && !canRenderReactSurface && !showStartupSkeleton ? (
+              {mainWorkspaceView === null && !engineInstallGateActive && !engineStartupGateActive && !showNewTaskStarter && !showDelayedSessionLoadingState && !canRenderReactSurface && !showStartupSkeleton ? (
                 <div className={showProjectNoTasksState
                   ? "flex h-full items-center justify-center px-6"
                   : `mx-auto max-w-[800px] px-6 ${showWorkspaceSetupEmptyState ? "pt-20" : "pt-10"}`}
@@ -4207,6 +4424,7 @@ export function SessionPage(props: SessionPageProps) {
               <ProjectEngineOptions
                 value={createProjectEngineId}
                 onValueChange={setCreateProjectEngineId}
+                enginePackages={enginePackages.byId}
                 disabled={createProjectBusy}
               />
               <div className="flex min-h-9 items-center gap-2 rounded-lg bg-[var(--project-dialog-notice)] px-4 py-2 text-[11px] leading-4 text-muted-foreground">

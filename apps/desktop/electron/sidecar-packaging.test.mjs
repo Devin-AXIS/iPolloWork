@@ -14,42 +14,49 @@ import {
 
 const afterPack = afterPackModule.default ?? afterPackModule;
 
-it("prepares and packages Harness CLIs outside app.asar", async () => {
-  const [builderConfig, mainSource, stdioRuntimeSource, buildSource, devSource, codexPrepareSource, workspaceConfig, osxSignPatch] = await Promise.all([
+it("ships Harness CLIs as verified optional engine packages instead of app resources", async () => {
+  const [builderConfig, mainSource, managerSource, packageSource, releaseWorkflow, stdioRuntimeSource, buildSource, devSource, codexPrepareSource, codexRuntimeManifest, workspaceConfig, osxSignPatch] = await Promise.all([
     readFile(new URL("../electron-builder.yml", import.meta.url), "utf8"),
     readFile(new URL("./main.mjs", import.meta.url), "utf8"),
+    readFile(new URL("./engine-package-manager.mjs", import.meta.url), "utf8"),
+    readFile(new URL("../scripts/package-engine-runtime.mjs", import.meta.url), "utf8"),
+    readFile(new URL("../../../.github/workflows/release-macos-aarch64.yml", import.meta.url), "utf8"),
     readFile(new URL("../../server/src/stdio-json-rpc-runtime.ts", import.meta.url), "utf8"),
     readFile(new URL("../scripts/electron-build.mjs", import.meta.url), "utf8"),
     readFile(new URL("../scripts/electron-dev.mjs", import.meta.url), "utf8"),
     readFile(new URL("../scripts/prepare-codex-runtime.mjs", import.meta.url), "utf8"),
+    readFile(new URL("../codex-runtime/package.json", import.meta.url), "utf8"),
     readFile(new URL("../../../pnpm-workspace.yaml", import.meta.url), "utf8"),
     readFile(new URL("../../../patches/@electron__osx-sign@1.3.1.patch", import.meta.url), "utf8"),
   ]);
-  assert.match(builderConfig, /from: dsh-runtime\s+to: dsh-runtime/);
+  assert.doesNotMatch(builderConfig, /from: dsh-runtime\s+to: dsh-runtime/);
   assert.match(builderConfig, /from: \.\.\/\.\.\/examples\/plugin-packages\/deepseek-harness/);
-  assert.match(mainSource, /process\.resourcesPath, "dsh-runtime"/);
-  assert.match(mainSource, /IPOLLOWORK_DSH_CLI/);
-  assert.match(mainSource, /IPOLLOWORK_DSH_HOST_PLUGIN/);
-  assert.match(builderConfig, /ipollowork-host-tools\.mjs/);
-  assert.match(buildSource, /prepare-dsh-runtime\.mjs/);
-  assert.match(devSource, /prepare-dsh-runtime\.mjs/);
-  assert.match(builderConfig, /from: codex-runtime\s+to: codex-runtime/);
-  assert.match(mainSource, /process\.resourcesPath, "codex-runtime"/);
-  assert.match(mainSource, /IPOLLOWORK_CODEX_CLI/);
-  assert.match(mainSource, /codex-win32-x64/);
-  assert.match(mainSource, /x86_64-pc-windows-msvc/);
-  assert.match(mainSource, /"codex\.exe"/);
+  assert.doesNotMatch(builderConfig, /from: codex-runtime\s+to: codex-runtime/);
+  assert.match(mainSource, /createEnginePackageManager/);
+  assert.match(managerSource, /IPOLLOWORK_DSH_CLI/);
+  assert.match(managerSource, /IPOLLOWORK_DSH_HOST_PLUGIN/);
+  assert.match(managerSource, /IPOLLOWORK_CODEX_CLI/);
+  assert.match(managerSource, /engine-packs/);
+  assert.match(managerSource, /checksum verification failed/);
+  assert.doesNotMatch(buildSource, /prepare-dsh-runtime\.mjs/);
+  assert.doesNotMatch(devSource, /prepare-dsh-runtime\.mjs/);
+  assert.doesNotMatch(buildSource, /prepare-codex-runtime\.mjs/);
+  assert.doesNotMatch(devSource, /prepare-codex-runtime\.mjs/);
+  assert.match(packageSource, /prepare-dsh-runtime\.mjs/);
+  assert.match(packageSource, /prepare-codex-runtime\.mjs/);
+  assert.match(releaseWorkflow, /package-engine-runtime\.mjs --all/);
   assert.match(stdioRuntimeSource, /windowsHide: true/);
-  assert.match(buildSource, /prepare-codex-runtime\.mjs/);
-  assert.match(devSource, /prepare-codex-runtime\.mjs/);
   assert.match(codexPrepareSource, /Codex native Windows runtime was not installed/);
+  assert.match(codexPrepareSource, /CI: process\.env\.CI \|\| "1"/);
+  assert.match(codexRuntimeManifest, /"packageManager": "pnpm@11\.4\.0"/);
   assert.match(workspaceConfig, /@electron\/osx-sign@1\.3\.1.*@electron__osx-sign@1\.3\.1\.patch/);
   assert.match(osxSignPatch, /maxConcurrentFileOperations = 64/);
   assert.match(osxSignPatch, /withFileOperationLimit\(\(\) => getFilePathIfBinary\(filePath\)\)/);
 });
 
 it("hides consoles opened by packaged DSH tool subprocesses on Windows", async () => {
-  const [runtimeWorkspace, subprocessPatch, windowsSandboxPatch, prepareSource] = await Promise.all([
+  const [runtimeManifest, runtimeWorkspace, subprocessPatch, windowsSandboxPatch, prepareSource] = await Promise.all([
+    readFile(new URL("../dsh-runtime/package.json", import.meta.url), "utf8"),
     readFile(new URL("../dsh-runtime/pnpm-workspace.yaml", import.meta.url), "utf8"),
     readFile(
       new URL(
@@ -79,7 +86,9 @@ it("hides consoles opened by packaged DSH tool subprocesses on Windows", async (
   assert.match(subprocessPatch, /stdio: "ignore",\r?\n\+\s+windowsHide: true/);
   assert.match(windowsSandboxPatch, /dwFlags: 257/);
   assert.match(windowsSandboxPatch, /wShowWindow: 0/);
+  assert.match(runtimeManifest, /"packageManager": "pnpm@11\.4\.0"/);
   assert.match(prepareSource, /workspacePath, subprocessPatchPath, windowsSandboxPatchPath/);
+  assert.match(prepareSource, /CI: process\.env\.CI \|\| "1"/);
   assert.doesNotMatch(prepareSource, /--ignore-workspace/);
 });
 

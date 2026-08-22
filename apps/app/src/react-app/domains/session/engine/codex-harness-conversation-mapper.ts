@@ -1,5 +1,4 @@
 import type { DynamicToolUIPart, UIMessage } from "ai";
-import { visibleCodexHarnessUserText } from "@ipollowork/types/workspace";
 
 import type { WorkspaceEngineEvent } from "@/app/lib/workspace-engine-rpc-client";
 import type {
@@ -103,9 +102,9 @@ function messageForItem(
   );
   if (type === "userMessage") {
     const content = Array.isArray(item.content) ? item.content : [];
-    const text = visibleCodexHarnessUserText(
-      content.flatMap((entry) => isRecord(entry) && entry.type === "text" && typeof entry.text === "string" ? [entry.text] : []),
-    );
+    const text = content
+      .flatMap((entry) => isRecord(entry) && entry.type === "text" && typeof entry.text === "string" ? [entry.text] : [])
+      .join("\n");
     return { id: messageId, role: "user", metadata, parts: text ? [{ type: "text", text, state: "done" }] : [] };
   }
   if (type === "agentMessage" || type === "plan") {

@@ -232,6 +232,19 @@ describe("sidebar projects", () => {
     expect(sessionRouteSource).not.toContain('if (!name || !requestedFolderPath)');
   });
 
+  test("creates optional-engine projects first and installs their runtime on entry", () => {
+    expect(sessionPageSource).toContain("const enginePackages = useEnginePackages();");
+    expect(sessionPageSource).toContain('data-testid={launching ? "engine-startup-gate" : "engine-install-gate"}');
+    expect(sessionPageSource).toContain('t("projects.engine_install_required")');
+    expect(sessionPageSource).toContain("enginePackages.install(selectedEnginePackage.id)");
+    expect(sessionPageSource).toContain("autoEngineInstallAttemptRef");
+    expect(sessionPageSource).toContain("props.sidebar.onSelectProject(props.selectedWorkspaceId)");
+    expect(sessionPageSource).toContain("ENGINE_STARTUP_TRANSITION_MS = 900");
+    expect(sessionPageSource).toContain("engineLaunchTransitionKey === selectedEngineLaunchKey");
+    expect(sessionPageSource).toContain('phase="launch"');
+    expect(sessionPageSource).toContain("!engineInstallGateActive && !engineStartupGateActive && showNewTaskStarter");
+  });
+
   test("explains that a project is required and reuses the project creation dialog", () => {
     expect(sessionPageSource).toContain('t("workspace.empty_state_header")');
     expect(sessionPageSource).toContain('t("workspace.empty_state_title")');

@@ -11,11 +11,18 @@ import {
   deepSeekHarnessProviderCredentials,
   deepSeekHarnessWebArgs,
   openAiCodexOAuthCredential,
+  openAiCodexOAuthCredentialNeedsRefresh,
   refreshOpenAiCodexOAuthCredential,
   sharedProviderApiCredentials,
 } from "./deepseek-harness-runtime.js";
 
 describe("DeepSeek Harness provider credential sync", () => {
+  const accessToken = (issuedAt: number, expiresAt: number) => [
+    Buffer.from(JSON.stringify({ alg: "none", typ: "JWT" })).toString("base64url"),
+    Buffer.from(JSON.stringify({ iat: issuedAt, exp: expiresAt })).toString("base64url"),
+    "signature",
+  ].join(".");
+
   test("places launcher patch options before web-app options", () => {
     expect(deepSeekHarnessWebArgs("", "C:/runtime/plugins.patch.yml")).toEqual([
       "--profile",
@@ -137,6 +144,30 @@ describe("DeepSeek Harness provider credential sync", () => {
     });
     expect(String(requests[0]?.body)).toContain("grant_type=refresh_token");
     expect(requests[0]?.signal).toBeInstanceOf(AbortSignal);
+  });
+
+  test("refreshes a shared Codex OAuth token halfway through its advertised lifetime", () => {
+    const credential = openAiCodexOAuthCredential({
+      type: "oauth",
+      access: accessToken(1_000, 2_000),
+      refresh: "refresh-secret",
+      expires: 2_000,
+    });
+    expect(credential).not.toBeNull();
+    expect(openAiCodexOAuthCredentialNeedsRefresh(credential!, 1_499_000)).toBe(false);
+    expect(openAiCodexOAuthCredentialNeedsRefresh(credential!, 1_500_000)).toBe(true);
+  });
+
+  test("keeps opaque OAuth tokens on their explicit expiry schedule", () => {
+    const credential = openAiCodexOAuthCredential({
+      type: "oauth",
+      access: "opaque-access-token",
+      refresh: "refresh-secret",
+      expires: 2_000,
+    });
+    expect(credential).not.toBeNull();
+    expect(openAiCodexOAuthCredentialNeedsRefresh(credential!, 1_000_000)).toBe(false);
+    expect(openAiCodexOAuthCredentialNeedsRefresh(credential!, 1_940_000)).toBe(true);
   });
 
   test("keeps the Zen bridge when the user replaces the public key with an account key", () => {

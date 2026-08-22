@@ -1,5 +1,3 @@
-import { visibleCodexHarnessUserText } from "@ipollowork/types/workspace";
-
 import {
   isCodexUnmaterializedThreadError,
   type CodexHarnessRuntime,
@@ -79,9 +77,9 @@ function contentText(content: CodexThreadItem["content"]): string {
 }
 
 function userContentText(content: CodexThreadItem["content"]): string {
-  return visibleCodexHarnessUserText((content ?? []).flatMap((entry) => (
+  return (content ?? []).flatMap((entry) => (
     typeof entry !== "string" && entry.type === "text" && typeof entry.text === "string" ? [entry.text] : []
-  )));
+  )).join("\n");
 }
 
 function messagePart(item: CodexThreadItem) {

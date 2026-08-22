@@ -1,6 +1,9 @@
 import { resolve } from "node:path";
 
-import { DEEPSEEK_HARNESS_ENGINE_ID } from "@ipollowork/types/workspace";
+import {
+  DEEPSEEK_HARNESS_ENGINE_ID,
+  stripDeepSeekHarnessInternalContext,
+} from "@ipollowork/types/workspace";
 
 import type { DeepSeekHarnessRuntime } from "./deepseek-harness-runtime.js";
 import { ApiError } from "./errors.js";
@@ -36,7 +39,6 @@ type SessionListValue = { items: DeepSeekHarnessSummary[] };
 type WorkspaceListValue = { archivedSessionIds: string[] };
 
 const INTERNAL_SESSION_TITLE = /^<system(?:>|\s)/iu;
-const LEGACY_SYSTEM_BLOCK = /^<system>\n[\s\S]*\n<\/system>$/u;
 
 export type DeepSeekHarnessSessionInfo = {
   id: string;
@@ -188,9 +190,10 @@ function textFromContent(content: unknown): string {
 function visibleUserContent(message: Record<string, unknown>): unknown {
   const content = message.content;
   if (!Array.isArray(content)) return content;
-  return content.filter((block, index) => {
-    if (!isRecord(block) || block.type !== "text" || typeof block.text !== "string") return true;
-    return index !== 0 || content.length === 1 || !LEGACY_SYSTEM_BLOCK.test(block.text.trim());
+  return content.flatMap((block) => {
+    if (!isRecord(block) || block.type !== "text" || typeof block.text !== "string") return [block];
+    const text = stripDeepSeekHarnessInternalContext(block.text);
+    return text.trim() ? [{ ...block, text }] : [];
   });
 }
 

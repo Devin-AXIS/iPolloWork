@@ -22,11 +22,29 @@ const cliPath = resolve(runtimeRoot, "node_modules", "@deepseek-ai", "dsh", "lib
 const dshManifestPath = resolve(runtimeRoot, "node_modules", "@deepseek-ai", "dsh", "package.json");
 const pnpmCommand = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
 
+function supportedArchitectures() {
+  const target = process.env.TARGET?.trim() || "";
+  const os = target.includes("apple-darwin")
+    ? "darwin"
+    : target.includes("windows-msvc")
+      ? "win32"
+      : target.includes("linux")
+        ? "linux"
+        : process.platform;
+  const cpu = target.startsWith("aarch64-")
+    ? "arm64"
+    : target.startsWith("x86_64-")
+      ? "x64"
+      : process.arch;
+  return { os: [os], cpu: [cpu] };
+}
+
 function installKey() {
   const hash = createHash("sha256");
   for (const filePath of [manifestPath, lockPath, workspacePath, subprocessPatchPath, windowsSandboxPatchPath]) {
     hash.update(readFileSync(filePath));
   }
+  hash.update(JSON.stringify(supportedArchitectures()));
   return hash.digest("hex");
 }
 
@@ -49,6 +67,11 @@ const install = spawnSync(
   ["--config.minimum-release-age=0", "install", "--frozen-lockfile", "--prod", "--node-linker=hoisted", "--ignore-scripts"],
   {
     cwd: runtimeRoot,
+    env: {
+      ...process.env,
+      CI: process.env.CI || "1",
+      NPM_CONFIG_SUPPORTED_ARCHITECTURES: JSON.stringify(supportedArchitectures()),
+    },
     stdio: "inherit",
     shell: process.platform === "win32",
   },

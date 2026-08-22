@@ -1,12 +1,19 @@
 import assert from "node:assert/strict";
+import { existsSync } from "node:fs";
 import { afterEach, test } from "node:test";
-import { createAssistantMessageEventStream } from "../dsh-runtime/node_modules/@earendil-works/pi-ai/dist/index.js";
+import { fileURLToPath } from "node:url";
 
-import {
-  apply,
-  createOpenAiCodexPriorityProvider,
-  OPENAI_CODEX_PRIORITY_PROVIDER_ID,
-} from "../dsh-runtime/ipollowork-host-tools.mjs";
+const hostToolsUrl = new URL("../dsh-runtime/ipollowork-host-tools.mjs", import.meta.url);
+const piAiUrl = new URL("../dsh-runtime/node_modules/@earendil-works/pi-ai/dist/index.js", import.meta.url);
+const runtimePrepared = existsSync(fileURLToPath(piAiUrl));
+
+async function loadRuntimeModules() {
+  const [hostTools, piAi] = await Promise.all([
+    import(hostToolsUrl.href),
+    import(piAiUrl.href),
+  ]);
+  return { ...hostTools, ...piAi };
+}
 
 const originalFetch = globalThis.fetch;
 const originalEnvironment = {
@@ -27,7 +34,8 @@ afterEach(() => {
   }
 });
 
-test("registers the engine-neutral catalog and forwards DSH session context", async () => {
+test("registers the engine-neutral catalog and forwards DSH session context", { skip: !runtimePrepared }, async () => {
+  const { apply, OPENAI_CODEX_PRIORITY_PROVIDER_ID } = await loadRuntimeModules();
   process.env.IPOLLOWORK_SERVER_URL = "http://ipollowork.test";
   process.env.IPOLLOWORK_SERVER_TOKEN = "secret-token";
   process.env.IPOLLOWORK_WORKSPACE_ID = "ws_dsh";
@@ -111,7 +119,8 @@ test("registers the engine-neutral catalog and forwards DSH session context", as
   assert.equal(requests[1].init.headers.Authorization, "Bearer secret-token");
 });
 
-test("maps Fast aliases to the base Codex model with the priority service tier", () => {
+test("maps Fast aliases to the base Codex model with the priority service tier", { skip: !runtimePrepared }, async () => {
+  const { createAssistantMessageEventStream, createOpenAiCodexPriorityProvider } = await loadRuntimeModules();
   /** @type {any} */
   let request;
   const baseProvider = {
