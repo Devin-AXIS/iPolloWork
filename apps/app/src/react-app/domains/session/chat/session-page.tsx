@@ -170,7 +170,8 @@ import projectEngineOpenCodeIcon from "./assets/project-engine-opencode.svg";
 import projectEngineSelectedIcon from "./assets/project-engine-selected.svg";
 import projectEngineUnselectedIcon from "./assets/project-engine-unselected.svg";
 
-
+const WORKSPACE_APP_LIST_TOOLS_NAME = "ipollowork_workspace_app_list_tools";
+const WORKSPACE_APP_CALL_TOOL_NAME = "ipollowork_workspace_app_call_tool";
 const STARTUP_SKELETON_ROWS = [
   { id: "intro", titleWidth: "42%", bodyWidth: "88%" },
   { id: "middle", titleWidth: "56%", bodyWidth: "88%" },
@@ -199,7 +200,7 @@ type TemplateSessionData = {
 };
 
 function workspaceAppCapabilityInstruction(label: string) {
-  return `The user explicitly activated the ${label} plugin workbench for this request. Use workspace_app.list_tools and workspace_app.call_tool only when this workbench exposes a relevant tool. If the plugin capability instruction names another declared action path, follow that instruction instead. Do not inspect or operate unrelated Design, Video, Files, or other side-panel surfaces. If the workbench cannot complete the request, explain the concrete tool error.`;
+  return `The user explicitly activated the ${label} plugin workbench for this request. Use ${WORKSPACE_APP_LIST_TOOLS_NAME} and ${WORKSPACE_APP_CALL_TOOL_NAME} only when this workbench exposes a relevant tool. If the plugin capability instruction names another declared action path, follow that instruction instead. Do not inspect or operate unrelated Design, Video, Files, or other side-panel surfaces. If the workbench cannot complete the request, explain the concrete tool error.`;
 }
 
 function ProjectEngineBadge({
