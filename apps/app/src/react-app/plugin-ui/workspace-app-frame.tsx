@@ -1,5 +1,5 @@
 /** @jsxImportSource react */
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   AppBridge,
   PostMessageTransport,
@@ -8,21 +8,30 @@ import {
   type McpUiUpdateModelContextRequest,
 } from "@modelcontextprotocol/ext-apps/app-bridge";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
-import { Loader2, RotateCw } from "lucide-react";
+import { Loader2, RotateCw, SlidersHorizontal } from "lucide-react";
 
 import type {
   iPolloWorkPluginUiResource,
   iPolloWorkServerClient,
 } from "@/app/lib/ipollowork-server";
 import { Button } from "@/components/ui/button";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import { usePlatform } from "@/react-app/kernel/platform";
+import {
+  StudioInspectorHeader,
+  StudioInspectorPanel,
+} from "@/react-app/domains/session/panel/studio-inspector-panel";
 import {
   useControlActions,
   type iPolloWorkControlAction,
 } from "@/react-app/shell/control/control-provider";
 import {
   PLUGIN_UI_HOST_CONTEXT_KEY,
+  PLUGIN_UI_INSPECTOR_CONTEXT_KEY,
+  parsePluginUiInspectorContext,
+  type PluginUiInspectorContextV1,
   type PluginUiHostContextV1,
 } from "@ipollowork/types/plugins";
 
@@ -36,6 +45,7 @@ type WorkspaceAppFrameProps = {
   workspaceId: string;
   workspaceRoot: string;
   sessionId?: string | null;
+  launch?: PluginUiHostContextV1["launch"];
   placement: "workspace" | "settings";
   displayMode?: "inline" | "fullscreen";
   onDisplayModeChange?: (mode: "inline" | "fullscreen") => void;
@@ -86,6 +96,15 @@ function messageText(content: Array<{ type: string; text?: string }>) {
   return content.flatMap((block) => block.type === "text" && block.text?.trim() ? [block.text.trim()] : []).join("\n\n");
 }
 
+function callToolResultText(result: CallToolResult) {
+  return result.content.flatMap((block) => block.type === "text" && block.text.trim() ? [block.text.trim()] : []).join("\n\n");
+}
+
+function inspectorContextFrom(modelContext: WorkspaceAppModelContext) {
+  if (!isRecord(modelContext.structuredContent)) return null;
+  return parsePluginUiInspectorContext(modelContext.structuredContent[PLUGIN_UI_INSPECTOR_CONTEXT_KEY]);
+}
+
 function toolResult(value: unknown): CallToolResult {
   return {
     content: [{ type: "text", text: typeof value === "string" ? value : JSON.stringify(value, null, 2) }],
@@ -118,7 +137,7 @@ function sameWorkspaceAppRuntimeResource(
 function pluginUiHostContext(
   props: Pick<
     WorkspaceAppFrameProps,
-    "surface" | "placement" | "workspaceId" | "workspaceRoot" | "sessionId"
+    "surface" | "placement" | "workspaceId" | "workspaceRoot" | "sessionId" | "launch"
   >,
   developmentPreview: WorkspaceAppFrameProps["developmentPreview"],
 ): PluginUiHostContextV1 {
@@ -130,6 +149,7 @@ function pluginUiHostContext(
     workspaceId: props.workspaceId,
     workspaceRoot: props.workspaceRoot,
     sessionId: props.sessionId ?? null,
+    ...(props.launch ? { launch: props.launch } : {}),
     ...(developmentPreview ? {
       developmentPreview: {
         mode: "plugin-workshop",
@@ -137,6 +157,130 @@ function pluginUiHostContext(
       },
     } : {}),
   };
+}
+
+type WorkspaceAppInspectorProps = {
+  context: PluginUiInspectorContextV1;
+  onClose: () => void;
+  onCallTool: (name: string, args: Record<string, unknown>) => Promise<CallToolResult>;
+};
+
+function WorkspaceAppInspector({ context, onClose, onCallTool }: WorkspaceAppInspectorProps) {
+  const formRef = useRef<HTMLFormElement>(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState("");
+
+  const formArguments = () => {
+    const values: Record<string, string> = {};
+    if (!formRef.current) return values;
+    for (const [name, value] of new FormData(formRef.current)) {
+      if (typeof value === "string") values[name] = value;
+    }
+    return values;
+  };
+
+  const submit = async () => {
+    if (submitting || context.submitDisabled) return;
+    setSubmitting(true);
+    setError("");
+    try {
+      const update = await onCallTool(context.updateTool, formArguments());
+      if (update.isError) throw new Error(callToolResultText(update) || "Could not update the image settings.");
+      const result = await onCallTool(context.submitTool, {});
+      if (result.isError) throw new Error(callToolResultText(result) || "The image action failed.");
+    } catch (nextError) {
+      setError(nextError instanceof Error ? nextError.message : "The image action failed.");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const updateLiveField = async (fieldId: string, value: string) => {
+    setError("");
+    try {
+      const update = await onCallTool(context.updateTool, { ...formArguments(), [fieldId]: value });
+      if (update.isError) throw new Error(callToolResultText(update) || "Could not update the image settings.");
+    } catch (nextError) {
+      setError(nextError instanceof Error ? nextError.message : "Could not update the image settings.");
+    }
+  };
+
+  const status = error
+    ? { message: error, tone: "error" }
+    : context.status;
+
+  return (
+    <StudioInspectorPanel
+      ariaLabel={context.title}
+      header={<StudioInspectorHeader
+        title={context.title}
+        description={context.description}
+        icon={<SlidersHorizontal />}
+        closeLabel="Close settings"
+        onClose={onClose}
+      />}
+      bodyClassName="px-4 py-4"
+      testId="workspace-app-inspector"
+    >
+      <form ref={formRef} className="space-y-4" onSubmit={(event) => { event.preventDefault(); void submit(); }}>
+        {context.fields.map((field) => (
+          <label key={field.id} className="block space-y-1.5">
+            <span className="text-[11px] font-medium text-foreground">{field.label}</span>
+            {field.control === "textarea" ? (
+              <Textarea
+                key={`${field.id}:${field.value}`}
+                name={field.id}
+                defaultValue={field.value}
+                placeholder={field.placeholder}
+                disabled={submitting}
+                className="min-h-28 resize-y rounded-xl bg-background text-[12px] leading-5"
+              />
+            ) : (
+              <Select
+                key={`${field.id}:${field.value}`}
+                name={field.id}
+                defaultValue={field.value}
+                disabled={submitting}
+                onValueChange={field.live ? (value) => {
+                  if (value !== null) void updateLiveField(field.id, value);
+                } : undefined}
+              >
+                <SelectTrigger className="w-full rounded-xl bg-input/50" aria-label={field.label}>
+                  <SelectValue>
+                    {field.live ? field.options?.find((option) => option.value === field.value)?.label : undefined}
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent align="start">
+                  {field.options?.map((option) => (
+                    <SelectItem key={option.value} value={option.value} disabled={option.disabled}>{option.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+          </label>
+        ))}
+
+        {status ? (
+          <p
+            className={cn(
+              "rounded-lg px-2.5 py-2 text-[11px] leading-4",
+              status.tone === "error" && "bg-destructive/10 text-destructive",
+              status.tone === "success" && "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300",
+              status.tone === "info" && "bg-muted text-muted-foreground",
+            )}
+            role="status"
+          >
+            {status.message}
+          </p>
+        ) : null}
+
+        <Button type="submit" className="w-full rounded-xl" disabled={submitting || context.submitDisabled}>
+          {submitting ? <Loader2 className="animate-spin" /> : null}
+          {context.submitLabel}
+        </Button>
+      </form>
+    </StudioInspectorPanel>
+  );
 }
 
 export function WorkspaceAppFrame(props: WorkspaceAppFrameProps) {
@@ -147,6 +291,7 @@ export function WorkspaceAppFrame(props: WorkspaceAppFrameProps) {
   const resourceIdentityRef = useRef("");
   const developmentPreviewRef = useRef(props.developmentPreview);
   const modelContextRef = useRef<WorkspaceAppModelContext | null>(null);
+  const inspectorOpenRequestRef = useRef("");
   const onDisplayModeChangeRef = useRef(props.onDisplayModeChange);
   const onSendMessageRef = useRef(props.onSendMessage);
   const onRequestCloseRef = useRef(props.onRequestClose);
@@ -162,6 +307,8 @@ export function WorkspaceAppFrame(props: WorkspaceAppFrameProps) {
   const [loading, setLoading] = useState(true);
   const [bridgeReady, setBridgeReady] = useState(false);
   const [revision, setRevision] = useState(0);
+  const [inspectorContext, setInspectorContext] = useState<PluginUiInspectorContextV1 | null>(null);
+  const [inspectorOpen, setInspectorOpen] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -170,8 +317,11 @@ export function WorkspaceAppFrame(props: WorkspaceAppFrameProps) {
     if (replacingResource) {
       resourceIdentityRef.current = resourceIdentity;
       resourceRef.current = null;
+      inspectorOpenRequestRef.current = "";
       setResource(null);
       setBridgeReady(false);
+      setInspectorContext(null);
+      setInspectorOpen(false);
     }
     if (!resourceRef.current) setLoading(true);
     setError(null);
@@ -273,6 +423,14 @@ export function WorkspaceAppFrame(props: WorkspaceAppFrameProps) {
     };
     bridge.onupdatemodelcontext = async (context) => {
       modelContextRef.current = context;
+      const nextInspector = inspectorContextFrom(context);
+      setInspectorContext(nextInspector);
+      if (!nextInspector) {
+        setInspectorOpen(false);
+      } else if (nextInspector.openRequestId && nextInspector.openRequestId !== inspectorOpenRequestRef.current) {
+        inspectorOpenRequestRef.current = nextInspector.openRequestId;
+        setInspectorOpen(true);
+      }
       return {};
     };
     bridge.onopenlink = async ({ url }) => {
@@ -332,17 +490,23 @@ export function WorkspaceAppFrame(props: WorkspaceAppFrameProps) {
 
   useEffect(() => {
     const bridge = bridgeRef.current;
-    if (!bridge || !props.developmentPreview) return;
+    if (!bridge) return;
     const pluginContext = pluginUiHostContext(props, props.developmentPreview);
     bridge.setHostContext({
-      developmentPreview: pluginContext.developmentPreview,
+      ...(pluginContext.developmentPreview ? { developmentPreview: pluginContext.developmentPreview } : {}),
       [PLUGIN_UI_HOST_CONTEXT_KEY]: pluginContext,
     });
-  }, [props.developmentPreview?.revision, props.placement, props.sessionId, props.surface.pluginId, props.surface.resource.id, props.workspaceId, props.workspaceRoot]);
+  }, [props.developmentPreview?.revision, props.launch, props.placement, props.sessionId, props.surface.pluginId, props.surface.resource.id, props.workspaceId, props.workspaceRoot]);
 
   useEffect(() => {
     bridgeRef.current?.setHostContext({ displayMode: props.displayMode ?? "inline" });
   }, [props.displayMode]);
+
+  const callWorkspaceAppTool = useCallback(async (name: string, args: Record<string, unknown>) => {
+    const bridge = bridgeRef.current;
+    if (!bridge) return toolError("Workspace App is not ready");
+    return bridge.callTool({ name, arguments: args });
+  }, []);
 
   const controlActions = useMemo<iPolloWorkControlAction[]>(() => props.placement !== "workspace" ? [] : [
     {
@@ -411,14 +575,23 @@ export function WorkspaceAppFrame(props: WorkspaceAppFrameProps) {
   }
 
   return (
-    <iframe
-      ref={iframeRef}
-      title={props.surface.label}
-      className={cn("h-full w-full border-0 bg-background", props.className)}
-      sandbox="allow-scripts allow-same-origin"
-      allow={buildAllowAttribute(resource.resource.ui.permissions)}
-      data-development-preview={props.developmentPreview ? "plugin-workshop" : undefined}
-      data-preview-revision={props.developmentPreview?.revision}
-    />
+    <div className={cn("flex h-full min-h-0 w-full overflow-hidden bg-background", props.className)}>
+      <iframe
+        ref={iframeRef}
+        title={props.surface.label}
+        className="h-full min-w-0 flex-1 border-0 bg-background"
+        sandbox="allow-scripts allow-same-origin"
+        allow={buildAllowAttribute(resource.resource.ui.permissions)}
+        data-development-preview={props.developmentPreview ? "plugin-workshop" : undefined}
+        data-preview-revision={props.developmentPreview?.revision}
+      />
+      {inspectorOpen && inspectorContext ? (
+        <WorkspaceAppInspector
+          context={inspectorContext}
+          onClose={() => setInspectorOpen(false)}
+          onCallTool={callWorkspaceAppTool}
+        />
+      ) : null}
+    </div>
   );
 }

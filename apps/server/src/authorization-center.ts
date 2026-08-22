@@ -75,9 +75,9 @@ const AUTHORIZATION_SERVICES: readonly AuthorizationServiceDefinition[] = [
     keys: ["ARK_API_KEY"],
     category: "media",
     agent: {
-      capability: "Volcengine Ark video generation",
-      useWhen: "Use when the user asks to generate a video.",
-      instruction: "Use the iPolloWork media extension and keep generation outputs in the active workspace.",
+      capability: "Volcengine Ark image and video generation",
+      useWhen: "Use when the user asks to generate or edit an image with Seedream, or generate a video with Seedance.",
+      instruction: "Use the iPolloWork image or media extension and keep generation outputs in the active workspace.",
     },
   },
   {

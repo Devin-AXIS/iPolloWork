@@ -157,6 +157,7 @@ import { cn } from "@/lib/utils";
 import { useActiveEnterpriseConnection } from "@/react-app/domains/enterprise/use-active-enterprise-connection";
 import { useInstalledPluginContributions, type PluginConversationTemplate } from "@/react-app/plugin-ui/plugin-ui-contributions";
 import type { WorkspaceAppModelContext } from "@/react-app/plugin-ui/workspace-app-frame";
+import type { PluginUiHostContextV1 } from "@ipollowork/types/plugins";
 import { isProjectBuilderSession, ProjectOverview, WorkCenter } from "@/react-app/domains/work";
 import {
   mergePluginWorkshopInstruction,
@@ -3134,7 +3135,7 @@ export function SessionPage(props: SessionPageProps) {
   const openVoiceRailPane = useCallback(() => {
     toggleCurrentSidePanel("voice");
   }, [toggleCurrentSidePanel]);
-  const openWorkspaceApp = useCallback((surface: (typeof workspaceApps)[number]) => {
+  const openWorkspaceApp = useCallback((surface: (typeof workspaceApps)[number], launch?: PluginUiHostContextV1["launch"]) => {
     if (!props.selectedSessionId) return;
     openTab(props.selectedSessionId, {
       id: `workspace-app:${surface.id}`,
@@ -3142,13 +3143,29 @@ export function SessionPage(props: SessionPageProps) {
       label: surface.label,
       sessionId: props.selectedSessionId,
       surface,
+      launch,
     });
     setCurrentSidePanel("panel");
   }, [openTab, props.selectedSessionId, setCurrentSidePanel]);
-  const openWorkspaceAppForPlugin = useCallback((pluginId: string) => {
+  const openWorkspaceAppForPlugin = useCallback((pluginId: string, launch?: PluginUiHostContextV1["launch"]) => {
     const surface = workspaceApps.find((entry) => entry.pluginId === pluginId);
-    if (surface) openWorkspaceApp(surface);
+    if (surface) {
+      openWorkspaceApp(surface, launch);
+      return;
+    }
+    if (pluginId === "image-studio") toast.error(t("artifact.image_studio_install_required"));
   }, [openWorkspaceApp, workspaceApps]);
+  const openImageStudio = useCallback((target: OpenTarget) => {
+    openWorkspaceAppForPlugin("image-studio", {
+      intent: "edit-image",
+      source: {
+        kind: "workspace-file",
+        path: target.value,
+        name: target.name,
+        preview: target.preview,
+      },
+    });
+  }, [openWorkspaceAppForPlugin]);
   const sendWorkspaceAppMessage = useCallback((input: {
     text: string;
     modelContext: WorkspaceAppModelContext | null;
@@ -4323,6 +4340,7 @@ export function SessionPage(props: SessionPageProps) {
                         aiEditing={isStreamingSessionStatus(props.sidebar.sessionStatusById[props.selectedSessionId])}
                         onAskAi={handleDesignAskAi}
                         onSendWorkspaceAppMessage={sendWorkspaceAppMessage}
+                        onEditImage={openImageStudio}
                         onSaveAsTemplate={hasTemplateSession && props.selectedWorkspaceDisplay.workspaceType === "local" ? openTemplateSave : undefined}
                         expanded={rightPanelExpanded}
                         titlebarInset={rightPanelExpanded && (!shellConfig.sidebar || !sidebarOpen)}

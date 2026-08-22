@@ -71,6 +71,7 @@ type NewConversationStarterProps = {
   onSelectPrompt: (prompt: string, capability?: StarterCapability) => void;
   promptTemplates?: Array<{
     id: string;
+    pluginId?: string;
     label: string;
     description: string;
     prompt: string;
@@ -1124,6 +1125,7 @@ export function NewConversationStarter({
   const visiblePromptTemplates = useMemo(() => [
     ...(selectedMode === "work" ? savedPromptTemplates.map((template) => ({
       id: `saved:${template.id}`,
+      pluginId: undefined,
       label: template.title,
       description: template.prompt,
       prompt: template.prompt,
@@ -1132,6 +1134,7 @@ export function NewConversationStarter({
       .filter((template) => template.mode === selectedMode)
       .map((template) => ({
         id: `plugin:${template.id}`,
+        pluginId: template.pluginId,
         label: template.label,
         description: template.description || template.prompt,
         prompt: template.prompt,
@@ -1351,7 +1354,15 @@ export function NewConversationStarter({
                   key={template.id}
                   type="button"
                   className="max-w-full rounded-lg border border-border bg-background px-3 py-2 text-left text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-                  onClick={() => onSelectPrompt(template.prompt)}
+                  onClick={() => onSelectPrompt(
+                    template.pluginId ? "" : template.prompt,
+                    template.pluginId ? {
+                      id: template.id,
+                      label: template.label,
+                      icon: AppWindow,
+                      instruction: template.prompt,
+                    } : undefined,
+                  )}
                 >
                   <span className="block truncate font-medium text-foreground">{template.label}</span>
                   <span className="mt-0.5 block max-w-[220px] truncate">{template.description}</span>

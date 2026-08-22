@@ -1,4 +1,5 @@
 import { pathToFileURL } from "node:url";
+import { AsyncLocalStorage } from "node:async_hooks";
 import { mkdir, rm } from "node:fs/promises";
 import { join, resolve, sep } from "node:path";
 
@@ -34,6 +35,12 @@ export type PluginServiceRuntime = {
   workspace: Readonly<{
     root: string;
   }>;
+  host: Readonly<{
+    callAction(
+      reference: string,
+      args: Record<string, unknown>,
+    ): Promise<unknown>;
+  }>;
 };
 
 type PluginService = {
@@ -42,6 +49,13 @@ type PluginService = {
 };
 
 type PluginServiceFactory = (runtime: PluginServiceRuntime) => PluginService | Promise<PluginService>;
+
+type PluginHostActionDispatch = (
+  reference: string,
+  args: Record<string, unknown>,
+) => Promise<unknown>;
+
+const pluginHostActionScope = new AsyncLocalStorage<PluginHostActionDispatch | undefined>();
 
 type CachedPluginService = {
   workspaceId: string;
@@ -216,6 +230,10 @@ export async function callPluginServiceAction(input: {
   action: string;
   args: Record<string, unknown>;
   context: Record<string, unknown>;
+  callHostAction?: (
+    reference: string,
+    args: Record<string, unknown>,
+  ) => Promise<unknown>;
 }) {
   const installed = await resolveInstalledPluginService({
     serverConfig: input.config,
@@ -228,6 +246,10 @@ export async function callPluginServiceAction(input: {
   const dataDir = pluginServiceDataDirectory(input.config, input.workspaceId, input.pluginId);
   const workspace = input.config.workspaces.find((entry) => entry.id === input.workspaceId);
   if (!workspace) throw new ApiError(404, "workspace_not_found", "Workspace not found for plugin service");
+  const hostActionsAllowed = installed.manifest.source.origin === "builtin" && installed.manifest.source.trusted;
+  const allowedHostActions = new Set(hostActionsAllowed
+    ? (serviceResource(installed.manifest)?.requires ?? []).filter((requirement) => requirement.startsWith("action:"))
+    : []);
   await mkdir(dataDir, { recursive: true, mode: 0o700 });
   const runtime = {
     plugin: Object.freeze({ id: input.pluginId, version: installed.version }),
@@ -235,6 +257,22 @@ export async function callPluginServiceAction(input: {
     environment: bindPluginEnvironmentRuntime(installed.manifest, input.env),
     storage: Object.freeze({ dataDir }),
     workspace: Object.freeze({ root: resolve(workspace.path) }),
+    host: Object.freeze({
+      callAction: async (
+        reference: string,
+        args: Record<string, unknown>,
+      ) => {
+        const requirement = reference.startsWith("action:") ? reference : `action:${reference}`;
+        if (!allowedHostActions.has(requirement)) {
+          throw new ApiError(403, "plugin_host_action_denied", `Plugin service did not declare host action access: ${requirement}`);
+        }
+        const dispatch = pluginHostActionScope.getStore();
+        if (!dispatch) {
+          throw new ApiError(503, "plugin_host_action_unavailable", "Host action dispatch is not available in this runtime");
+        }
+        return dispatch(requirement, args);
+      },
+    }),
   };
   const service = await persistentService({
     config: input.config,
@@ -250,7 +288,7 @@ export async function callPluginServiceAction(input: {
     ok: true,
     extensionId: input.pluginId,
     action: input.action,
-    result: await handler(input.args, input.context),
+    result: await pluginHostActionScope.run(input.callHostAction, () => handler(input.args, input.context)),
     context: input.context,
   };
 }

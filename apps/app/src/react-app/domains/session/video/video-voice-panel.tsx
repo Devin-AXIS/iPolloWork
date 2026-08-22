@@ -1,13 +1,13 @@
 /** @jsxImportSource react */
 import * as React from "react";
-import { AudioLines, Check, FileAudio, Loader2, Play, RefreshCw, Sparkles, Upload, X } from "lucide-react";
+import { AudioLines, Check, FileAudio, Loader2, Play, RefreshCw, Sparkles, Upload } from "lucide-react";
 
 import type { iPolloWorkServerClient } from "@/app/lib/ipollowork-server";
 import { Button } from "@/components/ui/button";
-import { ScrollArea, ScrollAreaViewport } from "@/components/ui/scroll-area";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { t } from "@/i18n";
+import { StudioInspectorHeader, StudioInspectorPanel } from "../panel/studio-inspector-panel";
 
 import {
   BAILIAN_PRESET_VOICES,
@@ -381,21 +381,26 @@ export function VideoVoicePanel({ sessionId, workspaceRoot, client, workspaceId,
   }, [loading, previewRequest, previewVoice]);
 
   return (
-    <aside className={embedded ? "absolute bottom-0 right-0 top-[90px] z-20 flex min-h-0 min-w-0 max-w-full flex-col border-l border-border bg-popover" : "absolute inset-y-0 right-0 z-20 flex w-[22rem] max-w-[calc(100%-2rem)] flex-col border-l border-border bg-popover/95 shadow-2xl backdrop-blur-xl"} style={embedded ? { width: embeddedWidth } : undefined} aria-label={t("video.voice.panel_label")} data-testid="video-voice-panel" data-embedded={embedded ? "true" : "false"}>
-      {!embedded ? <div className="flex h-11 shrink-0 items-center gap-2 border-b border-border px-3">
-        <AudioLines className="size-4 text-primary" />
-        <div className="min-w-0 flex-1">
-          <p className="text-sm font-medium">{t("video.voice.title")}</p>
-          <p className="truncate text-[10px] text-muted-foreground">{t("video.voice.subtitle")}</p>
-        </div>
-        <Button variant="ghost" size="icon-xs" onClick={() => void previewVoice()} disabled={!activeVoice || previewing} aria-label={t("video.voice.preview_current")}>
+    <StudioInspectorPanel
+      ariaLabel={t("video.voice.panel_label")}
+      className={embedded
+        ? "absolute bottom-0 right-0 top-[90px] z-20 h-auto min-w-0 max-w-full bg-popover"
+        : "absolute inset-y-0 right-0 z-20 h-auto w-[22rem] max-w-[calc(100%-2rem)] bg-popover/95 shadow-2xl backdrop-blur-xl"}
+      width={embedded ? embeddedWidth : undefined}
+      embedded={embedded}
+      testId="video-voice-panel"
+      bodyClassName="px-3 py-3"
+      header={!embedded ? <StudioInspectorHeader
+        title={t("video.voice.title")}
+        description={t("video.voice.subtitle")}
+        icon={<AudioLines />}
+        actions={<Button variant="ghost" size="icon-xs" onClick={() => void previewVoice()} disabled={!activeVoice || previewing} aria-label={t("video.voice.preview_current")}>
           {previewing ? <Loader2 className="animate-spin" /> : <Play />}
-        </Button>
-        <Button variant="ghost" size="icon-xs" onClick={onClose} aria-label={t("video.voice.close_settings")}><X /></Button>
-      </div> : null}
-
-      <ScrollArea className="min-h-0 flex-1">
-        <ScrollAreaViewport className="px-3 py-3">
+        </Button>}
+        closeLabel={t("video.voice.close_settings")}
+        onClose={onClose}
+      /> : undefined}
+    >
           {loading ? <div className="grid min-h-40 place-items-center text-xs text-muted-foreground"><Loader2 className="mr-2 inline size-4 animate-spin" />{t("video.voice.loading_config")}</div> : null}
           {!loading && !mediaReady ? <div className="rounded-xl border border-amber-500/25 bg-amber-500/8 p-3 text-xs leading-5 text-muted-foreground"><p className="font-medium text-foreground">{t("video.voice.configure_title")}</p><p className="mt-1">{t("video.voice.configure_description")}</p></div> : null}
           {!loading && mediaReady ? <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value === "mine" ? "mine" : "preset")} className="gap-3">
@@ -434,9 +439,7 @@ export function VideoVoicePanel({ sessionId, workspaceRoot, client, workspaceId,
             </TabsContent>
           </Tabs> : null}
           {message ? <p className="mt-3 rounded-lg bg-muted px-2.5 py-2 text-[11px] leading-4 text-muted-foreground" role="status">{message}</p> : null}
-        </ScrollAreaViewport>
-      </ScrollArea>
-    </aside>
+    </StudioInspectorPanel>
   );
 }
 

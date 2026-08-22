@@ -35,6 +35,8 @@ extraResources:
     to: plugin-packages/design-agent
   - from: ../../examples/plugin-packages/video-agent
     to: plugin-packages/video-agent
+  - from: ../../examples/plugin-packages/image-studio
+    to: plugin-packages/image-studio
   - from: ../../examples/plugin-packages/deepseek-harness
     to: plugin-packages/deepseek-harness
   # Templates are installed by copying their full directory into the local
