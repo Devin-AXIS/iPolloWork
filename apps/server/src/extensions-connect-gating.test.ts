@@ -6,12 +6,22 @@ import { z } from "zod";
 import { Client as McpClient } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 
+import { consequentialBrowserControlNames } from "./engine-host-tools.js";
 import { writeRuntimeOpencodeConfig } from "./runtime-opencode-config-store.js";
 import { startServer } from "./server.js";
 import type { ServerConfig } from "./types.js";
 
 const CLIENT_TOKEN = "owt_connect_client_token";
 const HOST_TOKEN = "owt_connect_host_token";
+
+test("browser host policy identifies only consequential verified clicks", () => {
+  expect(consequentialBrowserControlNames([
+    { type: "fill", ref: "@e1", value: "Publish" },
+    { type: "click", ref: "@e2", expectedName: "Preview" },
+    { type: "click", ref: "@e3", expectedName: "确认发布" },
+    { type: "click", ref: "@e4", expectedName: "Delete post" },
+  ])).toEqual(["确认发布", "Delete post"]);
+});
 
 const actionSchema = z.object({
   extensionId: z.string(),
@@ -106,11 +116,12 @@ function serverConfig(root: string): ServerConfig {
   };
 }
 
-async function boot() {
+async function boot(options: { approval?: ServerConfig["approval"] } = {}) {
   const root = await mkdtemp(join(tmpdir(), "ipollowork-connect-gating-"));
   dirs.push(root);
   process.env.IPOLLOWORK_RUNTIME_DB = join(root, "runtime.sqlite");
   const config = serverConfig(root);
+  if (options.approval) config.approval = options.approval;
   const server = await startServer(config);
   stops.push(() => server.stop());
   return { base: `http://127.0.0.1:${server.port}`, config };
@@ -214,7 +225,47 @@ afterEach(async () => {
   restoreEnv("GOOGLE_WORKSPACE_TOKEN_BROKER_URL", previousEnv.legacyTokenBrokerUrl);
 });
 
-describe("Connect-aware legacy extension gating", () => {
+describe("extension and engine host tool gating", () => {
+  test("pauses consequential browser clicks and identifies the requesting session", async () => {
+    const { base } = await boot({ approval: { mode: "manual", timeoutMs: 5_000 } });
+    const pendingCall = fetch(`${base}/engine-tools/call`, {
+      method: "POST",
+      headers: clientJsonHeaders(),
+      body: JSON.stringify({
+        name: "ipollowork_browser_act",
+        args: {
+          tabId: "tab_publish",
+          snapshotId: "snapshot_publish",
+          actions: [{ type: "click", ref: "@e7", expectedName: "Publish now" }],
+        },
+        context: { workspaceId: "ws_1", sessionId: "session_editor" },
+      }),
+    });
+
+    let approval: { id?: string; action?: string; summary?: string } | undefined;
+    const deadline = Date.now() + 2_000;
+    while (!approval && Date.now() < deadline) {
+      const response = await fetch(`${base}/approvals`, { headers: hostJsonHeaders() });
+      const payload = await response.json() as { items?: Array<{ id?: string; action?: string; summary?: string }> };
+      approval = payload.items?.[0];
+      if (!approval) await Bun.sleep(20);
+    }
+
+    expect(approval).toMatchObject({
+      action: "browser.external.consequential",
+      summary: "session session_editor requests browser action: Publish now",
+    });
+    const reply = await fetch(`${base}/approvals/${approval?.id}`, {
+      method: "POST",
+      headers: hostJsonHeaders(),
+      body: JSON.stringify({ reply: "deny" }),
+    });
+    expect(reply.status).toBe(200);
+    const denied = await pendingCall;
+    expect(denied.status).toBe(403);
+    expect(await denied.json()).toMatchObject({ code: "browser_action_denied" });
+  });
+
   test("exposes one engine-neutral host tool catalog and dispatches extension discovery through it", async () => {
     const { base } = await boot();
     const catalogResponse = await fetch(`${base}/engine-tools`, { headers: clientHeaders() });
@@ -227,6 +278,10 @@ describe("Connect-aware legacy extension gating", () => {
       "ipollowork_project_apply",
       "ipollowork_workspace_app_list_tools",
       "ipollowork_workspace_app_call_tool",
+      "ipollowork_browser_open_url",
+      "ipollowork_browser_snapshot",
+      "ipollowork_browser_act",
+      "ipollowork_browser_set_proxy",
     ]);
 
     const callResponse = await fetch(`${base}/engine-tools/call`, {
@@ -261,6 +316,10 @@ describe("Connect-aware legacy extension gating", () => {
         "ipollowork_project_apply",
         "ipollowork_workspace_app_list_tools",
         "ipollowork_workspace_app_call_tool",
+        "ipollowork_browser_open_url",
+        "ipollowork_browser_snapshot",
+        "ipollowork_browser_act",
+        "ipollowork_browser_set_proxy",
       ]);
       const result = await client.callTool({
         name: "ipollowork_extension_list_actions",

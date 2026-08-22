@@ -7,6 +7,7 @@ import {
   resolveiPolloWorkExtensionDiscoveryInstruction,
 } from "./ipollowork-extensions-preview-connect-steering.js";
 import {
+  ENGINE_BROWSER_INSTRUCTION,
   ENGINE_HOST_TOOL_NAMES,
   engineHostTool,
   type EngineHostToolName,
@@ -61,7 +62,36 @@ const uiExecuteArgsSchema = z.object({
 
 const browserOpenUrlArgsSchema = z.object({
   url: z.string().describe("The website URL to open in the iPolloWork built-in browser."),
-  provider: z.enum(["auto", "builtin", "external"]).optional().describe("Browser provider. Use builtin or auto; external is reserved for future support."),
+});
+
+const browserSnapshotArgsSchema = z.object({
+  tabId: z.string().trim().min(1).describe("Built-in browser tab ID returned by ipollowork_browser_open_url."),
+});
+
+const browserActionSchema = z.discriminatedUnion("type", [
+  z.object({
+    type: z.literal("click"),
+    ref: z.string().trim().min(1),
+    expectedName: z.string().trim().min(1).max(200),
+  }),
+  z.object({ type: z.literal("fill"), ref: z.string().trim().min(1), value: z.string().max(50_000) }),
+  z.object({
+    type: z.literal("press"),
+    key: z.enum(["ArrowDown", "ArrowLeft", "ArrowRight", "ArrowUp", "End", "Escape", "Home", "PageDown", "PageUp", "Tab"]),
+  }),
+  z.object({
+    type: z.literal("upload"),
+    ref: z.string().trim().min(1),
+    filePaths: z.array(z.string().trim().min(1)).min(1).max(20),
+    extensionId: z.string().trim().min(1).optional(),
+  }),
+  z.object({ type: z.literal("wait"), durationMs: z.number().int().min(0).max(2_000) }),
+]);
+
+const browserActArgsSchema = z.object({
+  tabId: z.string().trim().min(1),
+  snapshotId: z.string().trim().min(1),
+  actions: z.array(browserActionSchema).min(1).max(8),
 });
 
 const browserSetProxyArgsSchema = z.object({
@@ -173,13 +203,6 @@ When the user asks what they said, what happened, or what was decided in another
 Use ipollowork_session_search first to search session titles and message transcripts across workspaces. If there is one clear match, use ipollowork_session_read with the returned sessionId/workspaceId to retrieve transcript context without navigating the UI.
 Answer only from the returned search/read results. If multiple sessions match, ask a short clarifying question. If the returned transcript is limited or missing the older context needed, say so instead of guessing.
 Never use these cross-session tools to recover the current task after an interruption/continuation, discover current project files, or infer what you were working on. Current-task continuity must come from the current transcript, current system context, and explicitly scoped current-project files.`;
-
-const IPOLLOWORK_BROWSER_INSTRUCTION =
-  `Do NOT use browser_navigate, browser_click, or browser_snapshot to interact with the iPolloWork app itself. Those are for browsing external websites.
-
-## Built-in Browser (external websites)
-For web browsing tasks, ALWAYS start with ipollowork_browser_open_url. It creates/selects a built-in iPolloWork browser tab and returns browser_url plus target_id. Use that exact browser_url and target_id for every later browser_snapshot, browser_click, browser_fill, browser_eval, and browser_screenshot call.
-Do not call browser_navigate without a target_id returned by ipollowork_browser_open_url. Do not use browser_* tools on the iPolloWork app target (avoid targets with title "iPolloWork" or URLs containing ":5173/#/").`;
 
 const IPOLLOWORK_MOTION_INSTRUCTION = `## Video motion presets
 For ordinary animation on an existing text element in the current Video Studio project, use list_motion_presets and mutate_motion. Generated captions use this exact same compiler: create a stable leaf text child marked data-ipw-caption-text="true", then target that child with mutate_motion instead of hand-writing a caption-specific approximation. Choose a stable preset id and a small parameter set; do not hand-write GSAP for an effect these tools support. Each target has at most one enter, emphasis, and exit preset. The same contract applies when the user's request came from voice transcription. Use custom GSAP only for an explicitly advanced effect outside the preset catalog.`;
@@ -620,7 +643,7 @@ export const iPolloWorkExtensionsPreview = async () => {
   "experimental.chat.system.transform": async (_input: unknown, output: { system: string[] }) => {
     output.system.push(await resolveiPolloWorkExtensionDiscoveryInstruction());
     output.system.push(IPOLLOWORK_SESSION_MEMORY_INSTRUCTION);
-    output.system.push(IPOLLOWORK_BROWSER_INSTRUCTION);
+    output.system.push(ENGINE_BROWSER_INSTRUCTION);
     output.system.push(IPOLLOWORK_MOTION_INSTRUCTION);
     if (uiControlEnabled) output.system.push(IPOLLOWORK_UI_CONTROL_INSTRUCTION);
   },
@@ -798,40 +821,54 @@ export const iPolloWorkExtensionsPreview = async () => {
         }
       },
     },
-    ipollowork_browser_open_url: {
-      description: "Open a URL in the iPolloWork built-in browser and return the exact CDP browser_url and target_id to use for browser_* automation tools. Always use this before browser_snapshot/click/fill/eval for web browsing tasks.",
+    [ENGINE_HOST_TOOL_NAMES.browserOpenUrl]: {
+      description: engineHostToolDescription(ENGINE_HOST_TOOL_NAMES.browserOpenUrl),
       args: browserOpenUrlArgsSchema.shape,
-      async execute(rawArgs: unknown) {
+      async execute(rawArgs: unknown, context: OpenCodeContext) {
         const args = browserOpenUrlArgsSchema.parse(rawArgs);
-        const result = await uiControlRequest("/execute", {
-          method: "POST",
-          body: {
-            actionId: "browser.open_url",
-            args: { url: args.url, provider: args.provider ?? "builtin" },
-          },
+        const result = await postJson("/engine-tools/call", {
+          name: ENGINE_HOST_TOOL_NAMES.browserOpenUrl,
+          args,
+          context: contextPayload(context),
         });
         return JSON.stringify(result, null, 2);
       },
     },
-    ipollowork_browser_set_proxy: {
-      description: "Route all iPolloWork built-in browser traffic through an HTTP/SOCKS proxy — for example to fetch search results or pages as seen from another location. Applies to every built-in browser tab (including browser_* automation) until cleared with ipollowork_browser_clear_proxy. If the user has named proxies configured as IPOLLOWORK_BROWSER_PROXY_<NAME> environment variables, pass env:NAME instead of a raw URL.",
+    [ENGINE_HOST_TOOL_NAMES.browserSnapshot]: {
+      description: engineHostToolDescription(ENGINE_HOST_TOOL_NAMES.browserSnapshot),
+      args: browserSnapshotArgsSchema.shape,
+      async execute(rawArgs: unknown, context: OpenCodeContext) {
+        const args = browserSnapshotArgsSchema.parse(rawArgs);
+        const result = await postJson("/engine-tools/call", {
+          name: ENGINE_HOST_TOOL_NAMES.browserSnapshot,
+          args,
+          context: contextPayload(context),
+        });
+        return JSON.stringify(result, null, 2);
+      },
+    },
+    [ENGINE_HOST_TOOL_NAMES.browserAct]: {
+      description: engineHostToolDescription(ENGINE_HOST_TOOL_NAMES.browserAct),
+      args: browserActArgsSchema.shape,
+      async execute(rawArgs: unknown, context: OpenCodeContext) {
+        const args = browserActArgsSchema.parse(rawArgs);
+        const result = await postJson("/engine-tools/call", {
+          name: ENGINE_HOST_TOOL_NAMES.browserAct,
+          args,
+          context: contextPayload(context),
+        });
+        return JSON.stringify(result, null, 2);
+      },
+    },
+    [ENGINE_HOST_TOOL_NAMES.browserSetProxy]: {
+      description: engineHostToolDescription(ENGINE_HOST_TOOL_NAMES.browserSetProxy),
       args: browserSetProxyArgsSchema.shape,
-      async execute(rawArgs: unknown) {
+      async execute(rawArgs: unknown, context: OpenCodeContext) {
         const args = browserSetProxyArgsSchema.parse(rawArgs);
-        const result = await uiControlRequest("/execute", {
-          method: "POST",
-          body: { actionId: "browser.set_proxy", args: { proxy: args.proxy } },
-        });
-        return JSON.stringify(result, null, 2);
-      },
-    },
-    ipollowork_browser_clear_proxy: {
-      description: "Clear the iPolloWork built-in browser proxy and restore the system network settings.",
-      args: {},
-      async execute() {
-        const result = await uiControlRequest("/execute", {
-          method: "POST",
-          body: { actionId: "browser.set_proxy", args: { proxy: "" } },
+        const result = await postJson("/engine-tools/call", {
+          name: ENGINE_HOST_TOOL_NAMES.browserSetProxy,
+          args,
+          context: contextPayload(context),
         });
         return JSON.stringify(result, null, 2);
       },

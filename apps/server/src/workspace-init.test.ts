@@ -11,7 +11,6 @@ import {
 import {
   ipolloworkExtensionsPreviewPluginPath,
   ipolloworkPluginPath,
-  opencodeChromeDevtoolsPluginPath,
 } from "./ipollowork-extensions-plugin-path.js";
 import { ENGINE_HOST_TOOL_NAMES } from "./engine-host-tools.js";
 
@@ -77,27 +76,6 @@ describe("ensureWorkspaceFiles", () => {
         delete process.resourcesPath;
       }
     }
-  });
-
-  test("uses the bundled Chrome DevTools plugin in packaged Electron", () => {
-    const resourcesPath = join("C:", "Program Files", "iPollo", "resources");
-    const pluginPath = opencodeChromeDevtoolsPluginPath(
-      join(resourcesPath, "app.asar", "server", "dist"),
-    );
-
-    expect(pluginPath).toBe(join(
-      resourcesPath,
-      "opencode-plugins",
-      "opencode-chrome-devtools",
-      "dist",
-      "plugin.js",
-    ));
-    expect(pluginPath).not.toBe("opencode-chrome-devtools");
-  });
-
-  test("keeps the package-name fallback outside packaged Electron", () => {
-    expect(opencodeChromeDevtoolsPluginPath(join("C:", "repo", "apps", "server", "dist")))
-      .toBe("opencode-chrome-devtools");
   });
 
   test("does not create workspace extension preview plugin", async () => {

@@ -5,6 +5,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { app, WebContentsView, clipboard, session, shell } from "electron";
+import { createBrowserRuntime } from "./browser-runtime.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const BROWSER_SESSION_PARTITION = "persist:ipollowork-browser";
@@ -12,14 +13,12 @@ const BROWSER_DEFAULT_URL = "about:blank";
 // URL a user-initiated new tab (the "+" button / opening the browser panel)
 // lands on. The agent's programmatic path keeps BROWSER_DEFAULT_URL.
 const BROWSER_NEW_TAB_URL = "https://www.google.com";
-const BROWSER_TARGET_RESOLVE_TIMEOUT_MS = 2500;
-const BROWSER_TARGET_RESOLVE_INTERVAL_MS = 80;
 const MENU_OVERLAY_HTML = "overlay.html";
 const MENU_OVERLAY_WIDTH = 196;
 const MENU_OVERLAY_HEIGHT = 176;
 const MENU_OVERLAY_READY_TIMEOUT_MS = 2000;
 
-export function createBrowserPanel({ getWindow, remoteDebugPort, onDeepLink }) {
+export function createBrowserPanel({ getWindow, onDeepLink, listLocalWorkspaces }) {
   const browserTabs = new Map();
   let browserTabOrder = [];
   let activeBrowserTabId = null;
@@ -110,56 +109,13 @@ export function createBrowserPanel({ getWindow, remoteDebugPort, onDeepLink }) {
     });
   }
 
-  function cdpBrowserUrl() {
-    return `http://127.0.0.1:${remoteDebugPort}`;
-  }
-
-  function browserTargetMarkerUrl(tabId) {
-    const marker = `ipollowork-browser-tab:${tabId}`;
-    const html = `<!doctype html><title>${marker}</title><meta name="ipollowork-browser-tab" content="${tabId}"><body>${marker}</body>`;
-    return `data:text/html;charset=utf-8,${encodeURIComponent(html)}`;
-  }
-
-  async function listCdpTargets() {
-    if (!remoteDebugPort || remoteDebugPort <= 0) return [];
-    const response = await fetch(`${cdpBrowserUrl()}/json/list`, { signal: AbortSignal.timeout(1000) });
-    if (!response.ok) throw new Error(`CDP target list failed: HTTP ${response.status}`);
-    const targets = await response.json();
-    return Array.isArray(targets) ? targets : [];
-  }
-
-  async function resolveBrowserCdpTargetId(tabId) {
-    const marker = encodeURIComponent(`ipollowork-browser-tab:${tabId}`);
-    const deadline = Date.now() + BROWSER_TARGET_RESOLVE_TIMEOUT_MS;
-    while (Date.now() < deadline) {
-      const targets = await listCdpTargets().catch(() => []);
-      const target = targets.find((candidate) => (
-        candidate?.type === "page" &&
-        typeof candidate.id === "string" &&
-        typeof candidate.url === "string" &&
-        candidate.url.includes(marker)
-      ));
-      if (target?.id) return target.id;
-      await new Promise((resolve) => setTimeout(resolve, BROWSER_TARGET_RESOLVE_INTERVAL_MS));
-    }
-    throw new Error("Could not resolve built-in browser CDP target.");
-  }
-
-  async function openBrowserUrlForAutomation(rawUrl, provider = "auto") {
-    const requestedProvider = String(provider || "auto").trim().toLowerCase();
-    if (requestedProvider && requestedProvider !== "auto" && requestedProvider !== "builtin") {
-      throw new Error(`Browser provider is not available yet: ${requestedProvider}`);
-    }
+  async function openBrowserUrlForAutomation(rawUrl) {
     const url = normalizeBrowserUrl(rawUrl);
     const tab = createBrowserTab("about:blank", { select: true });
-    await tab.view.webContents.loadURL(browserTargetMarkerUrl(tab.tabId));
-    const targetId = await resolveBrowserCdpTargetId(tab.tabId);
     await tab.view.webContents.loadURL(url);
     return {
       provider: "builtin",
-      browser_url: cdpBrowserUrl(),
-      target_id: targetId,
-      tab_id: tab.tabId,
+      tabId: tab.tabId,
       url,
     };
   }
@@ -175,6 +131,14 @@ export function createBrowserPanel({ getWindow, remoteDebugPort, onDeepLink }) {
   function getActiveWebContents() {
     return getActiveBrowserView()?.webContents ?? null;
   }
+
+  const browserRuntime = createBrowserRuntime({
+    getTab: (tabId) => getBrowserTab(tabId || undefined),
+    selectTab: (tabId) => selectBrowserTab(tabId),
+    focusWindow: () => window()?.focus(),
+    listLocalWorkspaces,
+    getUserDataPath: () => app.getPath("userData"),
+  });
 
   const BROWSER_SCROLLBAR_CSS = `
     *::-webkit-scrollbar {
@@ -521,6 +485,7 @@ export function createBrowserPanel({ getWindow, remoteDebugPort, onDeepLink }) {
     });
     view.webContents.on("did-start-navigation", (_event, targetUrl, isInPlace, isMainFrame) => {
       if (!isMainFrame || isInPlace) return;
+      browserRuntime.invalidate(tabId);
       const target = String(targetUrl ?? "");
       // data: loads are internal plumbing (CDP target-marker pages), not
       // user-visible navigations — don't surface the panel for them.
@@ -544,9 +509,9 @@ export function createBrowserPanel({ getWindow, remoteDebugPort, onDeepLink }) {
         }, 200);
         return;
       }
-      // Agent-driven CDP navigation can target a background tab whose view is
-      // detached. Bring that tab on screen, otherwise navigation "succeeds"
-      // while the visible tab stays on about:blank (#2015).
+      // Host-driven navigation can target a background tab whose view is
+      // detached. Bring that tab on screen so the visible panel always matches
+      // the tab returned to the engine.
       if (activeBrowserTabId !== tabId) {
         try {
           selectBrowserTab(tabId);
@@ -558,7 +523,10 @@ export function createBrowserPanel({ getWindow, remoteDebugPort, onDeepLink }) {
     });
     view.webContents.on("dom-ready", () => injectBrowserScrollbarCss(view.webContents));
     view.webContents.on("did-navigate", () => sendBrowserState());
-    view.webContents.on("did-navigate-in-page", () => sendBrowserState());
+    view.webContents.on("did-navigate-in-page", () => {
+      browserRuntime.invalidate(tabId);
+      sendBrowserState();
+    });
     view.webContents.on("page-title-updated", () => sendBrowserState());
     view.webContents.on("page-favicon-updated", (_event, favicons) => {
       tab.favicon = Array.isArray(favicons) ? favicons[0] ?? null : null;
@@ -567,6 +535,7 @@ export function createBrowserPanel({ getWindow, remoteDebugPort, onDeepLink }) {
     view.webContents.on("did-start-loading", () => sendBrowserState());
     view.webContents.on("did-stop-loading", () => sendBrowserState());
     view.webContents.once("destroyed", () => {
+      browserRuntime.forget(tabId);
       browserTabs.delete(tabId);
       browserTabOrder = browserTabOrder.filter((id) => id !== tabId);
       if (activeBrowserTabId === tabId) activeBrowserTabId = browserTabOrder[0] ?? null;
@@ -663,6 +632,7 @@ export function createBrowserPanel({ getWindow, remoteDebugPort, onDeepLink }) {
     const closingIndex = browserTabOrder.indexOf(tabId);
     const wasActive = activeBrowserTabId === tabId;
     detachBrowserView(tab.view);
+    browserRuntime.forget(tabId);
     browserTabs.delete(tabId);
     browserTabOrder = browserTabOrder.filter((id) => id !== tabId);
     if (wasActive) {
@@ -695,6 +665,7 @@ export function createBrowserPanel({ getWindow, remoteDebugPort, onDeepLink }) {
     browserTabOrder = [];
     activeBrowserTabId = null;
     for (const tab of tabsToClose) {
+      browserRuntime.forget(tab.tabId);
       try { tab.view.webContents.close(); } catch { /* already destroyed */ }
     }
     sendToRenderer("ipollowork:browser:panel-closed");
@@ -763,6 +734,7 @@ export function createBrowserPanel({ getWindow, remoteDebugPort, onDeepLink }) {
     menuOverlayRequest = null;
     try { overlayView?.webContents.close(); } catch { /* already destroyed */ }
     for (const tab of browserTabs.values()) {
+      browserRuntime.forget(tab.tabId);
       try { tab.view.webContents.close(); } catch { /* already destroyed */ }
     }
     browserTabs.clear();
@@ -775,7 +747,9 @@ export function createBrowserPanel({ getWindow, remoteDebugPort, onDeepLink }) {
   function registerIpc(ipcMain) {
     ipcMain.handle("ipollowork:browser:show", (_event, bounds) => attachBrowserView(bounds));
     ipcMain.handle("ipollowork:browser:hide", () => hideBrowserView());
-    ipcMain.handle("ipollowork:browser:openUrl", (_event, url, provider) => openBrowserUrlForAutomation(url, provider));
+    ipcMain.handle("ipollowork:browser:openUrl", (_event, url) => openBrowserUrlForAutomation(url));
+    ipcMain.handle("ipollowork:browser:snapshot", (_event, payload) => browserRuntime.snapshot(payload));
+    ipcMain.handle("ipollowork:browser:act", (_event, payload) => browserRuntime.act(payload));
     ipcMain.handle("ipollowork:browser:navigate", (_event, url) => {
       const view = getActiveBrowserView() ?? createBrowserTab("about:blank", { select: true }).view;
       view.webContents.loadURL(normalizeBrowserUrl(url));

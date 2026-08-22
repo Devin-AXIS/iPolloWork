@@ -1,6 +1,5 @@
 import { execFileSync, spawn } from "node:child_process";
 import { createServer } from "node:http";
-import net from "node:net";
 import { existsSync, readdirSync } from "node:fs";
 import {
   cp,
@@ -1359,41 +1358,20 @@ if (process.platform === "darwin" && INITIAL_APP_ICON_IMAGE && !INITIAL_APP_ICON
   app.dock.setIcon(INITIAL_APP_ICON_IMAGE);
 }
 
-// Expose Chrome DevTools Protocol so the opencode-chrome-devtools plugin can
-// drive the built-in browser panel.  Use IPOLLOWORK_ELECTRON_REMOTE_DEBUG_PORT to
-// pin a specific port; otherwise probe for a free one starting at 9223.
-// Must resolve before app.commandLine.appendSwitch (before `ready`).
-function probePort(port) {
-  return new Promise((resolve) => {
-    const srv = net.createServer();
-    srv.once("error", () => resolve(false));
-    srv.listen({ port, host: "127.0.0.1" }, () => {
-      srv.close(() => resolve(true));
-    });
-  });
-}
-
-async function findFreeCdpPort(candidates) {
-  for (const port of candidates) {
-    if (await probePort(port)) return port;
-  }
-  return 0;
-}
-
+// Development/evaluation tools may opt into a localhost CDP port. Product
+// browser automation runs directly inside the Desktop Host and does not expose
+// or depend on this endpoint.
 const explicitCdpPort = Number.parseInt(
   process.env.IPOLLOWORK_ELECTRON_REMOTE_DEBUG_PORT?.trim() ?? "",
   10,
 );
 const remoteDebugPort = Number.isFinite(explicitCdpPort) && explicitCdpPort > 0
   ? explicitCdpPort
-  : await findFreeCdpPort([9223, 9224, 9225, 9226, 9227]);
+  : 0;
 if (remoteDebugPort > 0) {
   app.commandLine.appendSwitch("remote-debugging-port", String(remoteDebugPort));
   app.commandLine.appendSwitch("remote-debugging-address", "127.0.0.1");
 }
-// Make the resolved port available to the embedded server so it flows into
-// agent instructions via ensureiPolloWorkAgent → resolveAgentTemplate.
-process.env.IPOLLOWORK_ELECTRON_REMOTE_DEBUG_PORT = String(remoteDebugPort);
 
 // Apply extra Chromium flags from ELECTRON_EXTRA_LAUNCH_ARGS.
 // Used in headless/Daytona environments to pass e.g. --disable-gpu.
@@ -1523,17 +1501,18 @@ async function writeMainWindowState(win) {
   }
 }
 
-const browserPanel = createBrowserPanel({
-  remoteDebugPort,
-  getWindow: () => mainWindow,
-  onDeepLink: (urls) => queueDeepLinks(urls),
-});
-
 const workspaceStore = createWorkspaceStore({
   app,
   defaultDenBaseUrl: DEFAULT_DEN_BASE_URL,
   defaultRequireSignin: DEFAULT_DESKTOP_REQUIRE_SIGNIN,
   forceRequireSignin: FORCE_DESKTOP_REQUIRE_SIGNIN,
+});
+
+const browserPanel = createBrowserPanel({
+  getWindow: () => mainWindow,
+  listLocalWorkspaces: async () => (await workspaceStore.readWorkspaceState()).workspaces
+    .filter((entry) => entry?.workspaceType !== "remote"),
+  onDeepLink: (urls) => queueDeepLinks(urls),
 });
 
 function normalizePlatform(value) {

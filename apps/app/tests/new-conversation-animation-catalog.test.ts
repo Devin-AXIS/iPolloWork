@@ -115,6 +115,7 @@ describe("new conversation animation catalog", () => {
   test("opens a materialized design template in the Design panel", () => {
     expect(sessionPage).toContain("const autoOpenedDesignTemplateRef = useRef<string | null>(null)");
     expect(sessionPage).toContain("const templateKey = `${props.selectedSessionId}:${designTemplateEntryPath}`");
+    expect(sessionPage).toContain('sessionSidePanel === "panel" && activePanelTab && activePanelTab.type !== "design"');
     expect(sessionPage).toContain("openDesignTab(designTemplateEntryPath)");
   });
 

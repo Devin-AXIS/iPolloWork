@@ -490,7 +490,7 @@ describe("workspace session write APIs", () => {
       }),
     });
     expect(promptResponse.status).toBe(202);
-    await expect(promptResponse.json()).resolves.toEqual({ ok: true, accepted: true });
+    await expect(promptResponse.json()).resolves.toEqual({ ok: true, accepted: true, sessionId: "ses_created" });
 
     const createRequest = mock.requests.find((request) => request.method === "POST" && request.pathname === "/session");
     expect(createRequest?.directory).toBe(workspaceRoot);

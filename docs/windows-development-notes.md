@@ -194,25 +194,11 @@ versions.json-x86_64-pc-windows-msvc.exe
 Windows ARM64 uses the same layout with the
 `aarch64-pc-windows-msvc.exe` suffix.
 
-There is no `ipollowork-server.exe`: the server now runs in-process inside
-Electron. There is also no `chrome-devtools-mcp.exe`: Chrome DevTools support
-is provided through the OpenCode plugin/runtime integration rather than a
-packaged executable.
-
-## Resolved packaging issue: obsolete sidecar requirements
-
-Before commit `9a78a681`, the Electron `afterPack` hook still required
-architecture-specific executables for `ipollowork-server` and
-`chrome-devtools-mcp`. Neither executable was produced by the current build,
-so Electron Builder could stop with an error similar to:
-
-```text
-Missing packaged sidecar for target: ipollowork-server-x86_64-pc-windows-msvc.exe
-```
-
-The hook now normalizes only the native executables that the build actually
-creates: OpenCode and Orchestrator. Regression tests exercise this contract for
-both Windows x64 and Windows ARM64, intentionally omitting the obsolete files.
+There is no separate server or browser automation executable. The server runs
+in-process inside Electron, and the Desktop Host owns the built-in browser
+runtime shared by every engine. The packaging hook normalizes only the native
+executables the build creates: OpenCode and Orchestrator. Regression tests
+exercise this contract for both Windows x64 and Windows ARM64.
 
 Relevant implementation and regression coverage:
 

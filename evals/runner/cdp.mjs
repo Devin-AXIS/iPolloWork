@@ -29,6 +29,7 @@ export async function pickAppTarget(baseUrl, targetFilter = null) {
     : null;
   const target =
     requestedTarget ??
+    pages.find((page) => page.title === "iPollo Work") ??
     pages.find((page) => page.title === "iPolloWork") ??
     pages.find(
       (page) =>

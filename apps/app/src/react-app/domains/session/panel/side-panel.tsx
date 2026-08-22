@@ -20,7 +20,15 @@ import type { iPolloWorkServerClient } from "@/app/lib/ipollowork-server";
 import { publicAssetUrl } from "@/app/lib/public-asset";
 import { PanelTab, PanelTabClose, PanelTabItem, PanelTabList } from "@/components/panel-tabs";
 import { Button } from "@/components/ui/button";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import {
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import {
   InputGroup,
   InputGroupAddon,
@@ -46,6 +54,7 @@ import { DesignPanel } from "../design/design-panel";
 import type { DesignAiSelectionContext } from "@ipollowork/design-studio";
 import { VideoPanel } from "../video/video-panel";
 import { WorkspaceAppFrame, type WorkspaceAppModelContext } from "@/react-app/plugin-ui/workspace-app-frame";
+import { MarbleAvatar } from "@/react-app/design-system/marble-avatar";
 import { PluginWorkshopPanel } from "../plugin-workshop/plugin-workshop";
 import {
   computeBounds,
@@ -182,6 +191,7 @@ function SidePanelTab({ tab, active, onSelect, onClose }: SidePanelTabProps) {
           } : undefined}
           title={tab.label}
           aria-label={`Select tab: ${tab.label}`}
+          aria-selected={active}
         >
           {tab.type === "browser" ? (
             tab.favicon ? (
@@ -211,11 +221,22 @@ type BrowserPanelContentProps = {
   onClose: () => void;
 };
 
+function browserAddressLabel(url: string) {
+  if (!url || url === "about:blank") return t("side_panel.new_tab");
+
+  try {
+    return new URL(url).host || url;
+  } catch {
+    return url;
+  }
+}
+
 function BrowserPanelContent({
   tab,
   onClose,
 }: BrowserPanelContentProps) {
   const isAvailable = Boolean(getElectronBrowser());
+  const [addressExpanded, setAddressExpanded] = React.useState(false);
   const [urlInput, setUrlInput] = React.useState(tab.url);
   const urlFocusedRef = React.useRef(false);
   const contentRef = React.useRef<HTMLDivElement>(null);
@@ -229,6 +250,29 @@ function BrowserPanelContent({
       setUrlInput(tab.url);
     }
   }, [tab.id, tab.url]);
+
+  React.useEffect(() => {
+    setAddressExpanded(false);
+  }, [tab.id]);
+
+  const expandAddress = React.useCallback(() => {
+    setAddressExpanded(true);
+    window.requestAnimationFrame(() => {
+      urlInputRef.current?.focus();
+      urlInputRef.current?.select();
+    });
+  }, []);
+
+  React.useEffect(() => {
+    const handleAddressShortcut = (event: KeyboardEvent) => {
+      if (!(event.metaKey || event.ctrlKey) || event.altKey || event.key.toLowerCase() !== "l") return;
+      event.preventDefault();
+      expandAddress();
+    };
+
+    window.addEventListener("keydown", handleAddressShortcut);
+    return () => window.removeEventListener("keydown", handleAddressShortcut);
+  }, [expandAddress]);
 
   const navigate = React.useCallback(() => {
     void getElectronBrowser()?.navigate?.(urlInput);
@@ -251,8 +295,15 @@ function BrowserPanelContent({
       event.preventDefault();
       navigate();
       urlInputRef.current?.blur();
+      return;
     }
-  }, [navigate]);
+
+    if (event.key === "Escape") {
+      event.preventDefault();
+      setUrlInput(tab.url);
+      urlInputRef.current?.blur();
+    }
+  }, [navigate, tab.url]);
 
   React.useLayoutEffect(() => {
     const browser = getElectronBrowser();
@@ -409,29 +460,73 @@ function BrowserPanelContent({
               />
               <TooltipContent>{t("side_panel.reload")}</TooltipContent>
             </Tooltip>
-            <InputGroup className="mx-1 h-7 flex-1 rounded-md">
-              <InputGroupInput
-                ref={urlInputRef}
-                type="text"
-                className="h-7"
-                value={urlInput}
-                onChange={(event) => setUrlInput(event.target.value)}
-                onKeyDown={handleUrlKeyDown}
-                onFocus={() => {
-                  urlFocusedRef.current = true;
-                  urlInputRef.current?.select();
-                }}
-                onBlur={() => {
-                  urlFocusedRef.current = false;
-                }}
-                placeholder={t("side_panel.enter_url")}
-                spellCheck={false}
-                autoComplete="off"
+            {addressExpanded ? (
+              <InputGroup className="mx-1 h-7 flex-1 rounded-md">
+                <InputGroupInput
+                  ref={urlInputRef}
+                  type="text"
+                  className="h-7"
+                  value={urlInput}
+                  onChange={(event) => setUrlInput(event.target.value)}
+                  onKeyDown={handleUrlKeyDown}
+                  onFocus={() => {
+                    urlFocusedRef.current = true;
+                    urlInputRef.current?.select();
+                  }}
+                  onBlur={() => {
+                    urlFocusedRef.current = false;
+                    setAddressExpanded(false);
+                  }}
+                  placeholder={t("side_panel.enter_url")}
+                  spellCheck={false}
+                  autoComplete="off"
+                />
+                <InputGroupAddon align="inline-start" className="ps-2">
+                  <Globe />
+                </InputGroupAddon>
+              </InputGroup>
+            ) : (
+              <Button
+                variant="outline"
+                size="sm"
+                className="mx-1 h-7 min-w-0 flex-1 justify-start gap-1.5 px-2 text-xs font-normal text-muted-foreground shadow-none before:shadow-none hover:text-foreground"
+                onClick={expandAddress}
+                aria-label={t("side_panel.edit_address", { site: browserAddressLabel(tab.url) })}
+                title={tab.url || t("side_panel.enter_url")}
+              >
+                <Globe className="size-3.5" />
+                <span className="truncate">{browserAddressLabel(tab.url)}</span>
+              </Button>
+            )}
+            <DropdownMenu>
+              <DropdownMenuTrigger
+                render={(
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    className="rounded-full p-0"
+                    aria-label={t("side_panel.browser_profile_trigger")}
+                    title={t("side_panel.browser_profile_trigger")}
+                  >
+                    <MarbleAvatar seed="browser-profile:default" className="size-6 rounded-full" />
+                  </Button>
+                )}
               />
-              <InputGroupAddon align="inline-start" className="ps-2">
-                <Globe />
-              </InputGroupAddon>
-            </InputGroup>
+              <DropdownMenuContent align="end" className="w-64">
+                <DropdownMenuGroup>
+                  <DropdownMenuLabel>{t("side_panel.browser_profile")}</DropdownMenuLabel>
+                  <DropdownMenuCheckboxItem checked className="items-start">
+                    <MarbleAvatar seed="browser-profile:default" className="mt-0.5 size-7 rounded-full" />
+                    <span className="min-w-0">
+                      <span className="block truncate">{t("side_panel.default_browser_profile")}</span>
+                      <span className="mt-0.5 block text-xs font-normal text-muted-foreground">
+                        {t("side_panel.browser_profile_saved_hint")}
+                      </span>
+                    </span>
+                  </DropdownMenuCheckboxItem>
+                </DropdownMenuGroup>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </>
         ) : (
           <p className="px-2 text-sm text-muted-foreground">

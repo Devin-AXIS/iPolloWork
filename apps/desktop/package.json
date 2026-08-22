@@ -24,8 +24,8 @@
     "typecheck:electron": "pnpm --dir ../server exec tsc -p ../desktop/tsconfig.electron.json --noEmit",
     "prepare:sidecar": "node ./scripts/prepare-sidecar.mjs",
     "package:engine-runtimes": "node ./scripts/package-engine-runtime.mjs --all",
-    "test": "node --test electron/brand-icon-windows.test.mjs electron/desktop-auth-window.test.mjs electron/desktop-protocol.test.mjs electron/dev-cloud-default.test.mjs electron/dsh-host-tools.test.mjs electron/engine-package-manager.test.mjs electron/hyperframes-runtime-packaging.test.mjs electron/open-external.test.mjs electron/relaunch-policy.test.mjs electron/runtime.test.mjs electron/runtime-ca.test.mjs electron/stdio-safety.test.mjs electron/system-font-catalog.test.mjs electron/updater.test.mjs electron/remote-workspace.test.mjs electron/workspace-store.test.mjs electron/sidecar-packaging.test.mjs",
-    "coverage": "node --test --experimental-test-coverage electron/brand-icon-windows.test.mjs electron/desktop-auth-window.test.mjs electron/desktop-protocol.test.mjs electron/dev-cloud-default.test.mjs electron/dsh-host-tools.test.mjs electron/engine-package-manager.test.mjs electron/hyperframes-runtime-packaging.test.mjs electron/open-external.test.mjs electron/relaunch-policy.test.mjs electron/runtime.test.mjs electron/runtime-ca.test.mjs electron/stdio-safety.test.mjs electron/system-font-catalog.test.mjs electron/updater.test.mjs electron/remote-workspace.test.mjs electron/workspace-store.test.mjs electron/sidecar-packaging.test.mjs"
+    "test": "node --test electron/brand-icon-windows.test.mjs electron/browser-runtime.test.mjs electron/desktop-auth-window.test.mjs electron/desktop-protocol.test.mjs electron/dev-cloud-default.test.mjs electron/dsh-host-tools.test.mjs electron/engine-package-manager.test.mjs electron/hyperframes-runtime-packaging.test.mjs electron/open-external.test.mjs electron/relaunch-policy.test.mjs electron/runtime.test.mjs electron/runtime-ca.test.mjs electron/stdio-safety.test.mjs electron/system-font-catalog.test.mjs electron/updater.test.mjs electron/remote-workspace.test.mjs electron/workspace-store.test.mjs electron/sidecar-packaging.test.mjs",
+    "coverage": "node --test --experimental-test-coverage electron/brand-icon-windows.test.mjs electron/browser-runtime.test.mjs electron/desktop-auth-window.test.mjs electron/desktop-protocol.test.mjs electron/dev-cloud-default.test.mjs electron/dsh-host-tools.test.mjs electron/engine-package-manager.test.mjs electron/hyperframes-runtime-packaging.test.mjs electron/open-external.test.mjs electron/relaunch-policy.test.mjs electron/runtime.test.mjs electron/runtime-ca.test.mjs electron/stdio-safety.test.mjs electron/system-font-catalog.test.mjs electron/updater.test.mjs electron/remote-workspace.test.mjs electron/workspace-store.test.mjs electron/sidecar-packaging.test.mjs"
   },
   "dependencies": {
     "@ffmpeg-installer/ffmpeg": "^1.1.0",
@@ -48,7 +48,6 @@
     "@opencode-ai/plugin": "1.18.16",
     "electron": "^35.0.0",
     "electron-builder": "^25.1.8",
-    "electron-devtools-installer": "^4.0.0",
-    "opencode-chrome-devtools": "1.0.4"
+    "electron-devtools-installer": "^4.0.0"
   }
 }

@@ -5,10 +5,6 @@ const { spawnSync } = require("node:child_process");
 const computerUseHelperAppName = "iPolloWork Computer Use.app";
 const unresolvedRuntimeTypesImport = /(["'])@ipollowork\/types(?:\/[A-Za-z0-9._/-]+)?\1/g;
 const stagedRuntimeTypesImport = /(["'])((?:\.\.?\/)+ipollowork-types\/[A-Za-z0-9._/-]+\.js)\1/g;
-const requiredOpenCodePluginEntries = [
-  path.join("opencode-chrome-devtools", "dist", "plugin.js"),
-  path.join("opencode-chrome-devtools", "package.json"),
-];
 const requiredOpenCodeRuntimeEntries = [
   "package.json",
   "package-lock.json",
@@ -152,18 +148,14 @@ function assertPackagedRuntimeTypes(context) {
   );
 }
 
-function assertPackagedOpenCodePlugins(context) {
+function assertPackagedOpenCodeRuntime(context) {
   const resourcesDir = resolveResourcesDir(context);
-  const pluginsDir = path.join(resourcesDir, "opencode-plugins");
-  const missing = requiredOpenCodePluginEntries.filter((name) => !fs.existsSync(path.join(pluginsDir, name)));
   const runtimeDir = path.join(resourcesDir, "opencode-runtime");
-  missing.push(
-    ...requiredOpenCodeRuntimeEntries.filter((name) => !fs.existsSync(path.join(runtimeDir, name))),
-  );
+  const missing = requiredOpenCodeRuntimeEntries.filter((name) => !fs.existsSync(path.join(runtimeDir, name)));
   if (missing.length === 0) return;
 
   throw new Error(
-    "Missing bundled OpenCode plugins in the packaged app: " + missing.join(", "),
+    "Missing bundled OpenCode runtime in the packaged app: " + missing.join(", "),
   );
 }
 
@@ -243,7 +235,7 @@ async function afterPack(context) {
 
   assertPackagedNodePty(context);
   assertPackagedRuntimeTypes(context);
-  assertPackagedOpenCodePlugins(context);
+  assertPackagedOpenCodeRuntime(context);
   signComputerUseHelper(context);
 }
 
@@ -251,4 +243,4 @@ module.exports = afterPack;
 module.exports.default = afterPack;
 module.exports.assertPackagedNodePty = assertPackagedNodePty;
 module.exports.assertPackagedRuntimeTypes = assertPackagedRuntimeTypes;
-module.exports.assertPackagedOpenCodePlugins = assertPackagedOpenCodePlugins;
+module.exports.assertPackagedOpenCodeRuntime = assertPackagedOpenCodeRuntime;

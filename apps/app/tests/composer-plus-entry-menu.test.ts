@@ -99,16 +99,20 @@ describe("composer plus entry menu", () => {
     expect(composerSource).not.toContain("IPOLLOWORK_EXTENSION_CATALOG");
   });
 
-  test("activates an extension Workspace App and scopes the next request to its tools", () => {
+  test("scopes an extension workbench without forcing an unrelated tool path", () => {
     expect(composerSource).toContain("props.onOpenWorkspaceApp?.(entry.pluginId)");
     expect(sessionSurfaceSource).toContain("onOpenWorkspaceApp={props.onOpenWorkspaceApp}");
     expect(sessionPageSource).toContain("openWorkspaceAppForPlugin");
     expect(sessionPageSource).toContain("entry.pluginId === pluginId");
     expect(sessionPageSource).toContain("onOpenWorkspaceApp={openWorkspaceAppForPlugin}");
     expect(sessionPageSource).toContain('activePanelTab?.type === "workspace-app"');
-    expect(sessionPageSource).toContain("You must use its available workspace_app tools");
+    expect(sessionPageSource).toContain("workspaceAppCapabilityInstruction");
+    expect(sessionPageSource).toContain("only when this workbench exposes a relevant tool");
+    expect(sessionPageSource).toContain("follow that instruction instead");
+    expect(sessionPageSource).toContain("Do not inspect or operate unrelated Design");
     expect(sessionPageSource).toContain("workspace_app.list_tools");
     expect(sessionPageSource).toContain("workspace_app.call_tool");
+    expect(sessionPageSource).not.toContain("You must use its available workspace_app tools");
   });
 
   test("presents DeepSeek Harness as collaboration without implementation details", () => {
