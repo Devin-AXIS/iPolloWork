@@ -34,8 +34,8 @@ const DESIGN_HTML_THEME_TOKEN_LINES = [
   "- All generated or edited Design HTML must keep the shared theme stylesheet linked as `<link rel=\"stylesheet\" href=\"design-tokens.css\" data-ipw-design-tokens>` when the file lives beside that stylesheet. Keep it as the final stylesheet/style entry before `</head>` so the theme contract can override generated component CSS.",
   "- The current editable HTML file is the structural source of truth. Read it before editing and update its existing DOM and CSS in place.",
   "- Manual Studio edits are user-owned source state. Preserve `data-hf-id`, `data-hf-studio-*`, `--hf-studio-*`, inline geometry/transform values, and existing GSAP position/scale/rotation writes unless the request explicitly changes that exact element and property; never rebuild from an earlier or cached HTML snapshot.",
-  "- For targeted or follow-up edits, preserve unrelated root classes, sections, template-specific class names, component geometry, artwork, responsive behavior, animation, and timing. The initial confirmed brief may require a new content structure.",
-  "- Reuse the selected template's distinctive visual and component language; never replace it with a generic hero, statistics row, feature cards, project grid, dashboard, or another standard scaffold.",
+  "- Preserve the existing root classes, section hierarchy and order, template-specific class names, component geometry, artwork, responsive behavior, animation, and timing unless the user explicitly requests a structural redesign.",
+  "- Replace content inside the selected template; never replace it with a generic hero, statistics row, feature cards, project grid, dashboard, or another standard scaffold.",
   "- Preserve the existing HTML skeleton and component structure when applying or adapting a design system; theme changes must flow through CSS custom properties, not a rewritten layout.",
   "- Use the iPolloWork HTML theme token contract for colors, typography, spacing, sizing, radii, shadows, cards, buttons, and backgrounds:",
   "  `--ipw-color-bg`, `--ipw-color-surface`, `--ipw-color-text`, `--ipw-color-muted`, `--ipw-color-border`, `--ipw-color-primary`, `--ipw-color-secondary`, `--ipw-color-accent`, `--ipw-color-success`, `--ipw-color-warning`, `--ipw-color-danger`, `--ipw-color-on-primary`, `--ipw-color-primary-soft`, `--ipw-bg-color`, `--ipw-bg-decoration-opacity`, `--ipw-bg-gradient`, `--ipw-bg-image`, `--ipw-bg-overlay`, `--ipw-font-display`, `--ipw-font-body`, `--ipw-type-scale`, `--ipw-body-line-height`, `--ipw-content-width`, `--ipw-page-padding`, `--ipw-section-space`, `--ipw-button-radius`, `--ipw-card-bg`, `--ipw-card-border`, `--ipw-card-radius`, `--ipw-card-shadow`, `--ipw-card-blur`.",
@@ -68,9 +68,8 @@ export function designHtmlThemeSystemContext(input?: {
       : null,
     `- Shared token stylesheet: ${tokenPath}.`,
     ...DESIGN_HTML_THEME_TOKEN_LINES,
-    "- On the initial brief application, first derive the artifact's information architecture, narrative, page count, or screen list from the brief. Treat the current template sections as reusable patterns: add, remove, reorder, repeat, or recombine them when the content requires it while preserving the visual, editor, export, and runtime contracts above.",
     input?.applyChecklist?.length
-      ? `- Apply the template checklist as quality and export guidance, not as a requirement to retain inherited sample content or structure: ${input.applyChecklist.join("; ")}.`
+      ? `- Template checklist still applies: ${input.applyChecklist.join("; ")}.`
       : null,
   ].filter((line): line is string => Boolean(line)).join("\n");
 }
