@@ -25,6 +25,70 @@ type DraftToPartsOptions = {
   supportsNativeAttachments?: boolean;
 };
 
+type InboxUploadClient = {
+  uploadInbox: (
+    workspaceId: string,
+    file: File,
+    options?: { path?: string },
+  ) => Promise<{ path: string }>;
+};
+
+export type PersistedComposerAttachment = {
+  attachmentId: string;
+  name: string;
+  workspacePath: string;
+};
+
+function safeAttachmentPathSegment(value: string, fallback: string): string {
+  const normalized = value
+    .normalize("NFKC")
+    .replace(/[\\/\u0000-\u001f\u007f]+/g, "-")
+    .replace(/^\.+/, "")
+    .replace(/^-+/, "")
+    .trim();
+  return normalized || fallback;
+}
+
+export async function persistComposerAttachments(input: {
+  attachments: ComposerAttachment[];
+  workspaceId: string;
+  sessionId: string;
+  client: InboxUploadClient;
+}): Promise<PersistedComposerAttachment[]> {
+  const workspaceId = input.workspaceId.trim();
+  if (!workspaceId || input.attachments.length === 0) return [];
+  const sessionSegment = safeAttachmentPathSegment(input.sessionId, "session");
+  const uploaded = await Promise.all(input.attachments.map(async (attachment) => {
+    const attachmentSegment = safeAttachmentPathSegment(attachment.id, "attachment");
+    const filename = safeAttachmentPathSegment(attachment.name, "file");
+    const requestedPath = `chat-attachments/${sessionSegment}/${attachmentSegment}-${filename}`;
+    try {
+      const result = await input.client.uploadInbox(workspaceId, attachment.file, { path: requestedPath });
+      const inboxPath = result.path.trim().replace(/^\/+/, "");
+      if (!inboxPath) return null;
+      return {
+        attachmentId: attachment.id,
+        name: attachment.name,
+        workspacePath: `.opencode/ipollowork/inbox/${inboxPath}`,
+      } satisfies PersistedComposerAttachment;
+    } catch (error) {
+      console.warn(`[composer-attachments] Could not persist ${attachment.name} to the workspace inbox`, error);
+      return null;
+    }
+  }));
+  return uploaded.filter((item): item is PersistedComposerAttachment => item !== null);
+}
+
+export function persistedAttachmentInstruction(items: PersistedComposerAttachment[]): string | null {
+  if (items.length === 0) return null;
+  const lines = items.map((item) => `- ${item.name}: ${item.workspacePath}`);
+  return [
+    "The user-provided chat attachments were also saved as local workspace files so tools and plugins can use them:",
+    ...lines,
+    "Use these workspace-relative paths when a tool or plugin asks for a local media path. Do not ask the user to upload the same files again.",
+  ].join("\n");
+}
+
 export function serializeSDKError(error: unknown): string {
   if (error instanceof Error) return error.message;
   if (typeof error === "string") return error;
