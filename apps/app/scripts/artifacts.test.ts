@@ -128,6 +128,89 @@ describe("getArtifactsFromMessages", () => {
     });
   });
 
+  it("turns an explicit absolute image link into the verified workspace artifact", () => {
+    const absolutePath = "/Users/test/Application Support/workspace/design/ses_card/reddit-post-card.png";
+    const messages: UIMessage[] = [{
+      id: "msg_image",
+      role: "assistant",
+      parts: [{
+        type: "text",
+        text: `可以，已导出为 PNG：\n[下载 Reddit Post Card 图片](<${absolutePath}>)`,
+        state: "done",
+      }],
+    }];
+    const targets: OpenTarget[] = [{
+      id: "file:design/ses_card/reddit-post-card.png",
+      kind: "file",
+      value: "design/ses_card/reddit-post-card.png",
+      name: "reddit-post-card.png",
+      preview: "image",
+      confidence: 65,
+      reason: "message",
+      exists: true,
+    }];
+
+    expect(getArtifactsFromMessages(messages, targets, { includeTargetFallbacks: false })).toEqual([
+      expect.objectContaining({
+        name: "reddit-post-card.png",
+        path: "design/ses_card/reddit-post-card.png",
+        type: "image",
+        target: expect.objectContaining({ value: "design/ses_card/reddit-post-card.png", exists: true }),
+      }),
+    ]);
+  });
+
+  it("keeps verified exports beside a template editor entry", () => {
+    const entry = {
+      id: "design/ses_card/entry.html",
+      name: "entry.html",
+      path: "design/ses_card/entry.html",
+      type: "html" as const,
+      messageId: "msg_image",
+      messageIndex: 0,
+      target: {
+        id: "file:design/ses_card/entry.html",
+        kind: "file" as const,
+        value: "design/ses_card/entry.html",
+        name: "entry.html",
+        preview: "html" as const,
+        confidence: 100,
+        reason: "template entry",
+        exists: true,
+      },
+    };
+    const image = {
+      ...entry,
+      id: "design/ses_card/reddit-post-card.png",
+      name: "reddit-post-card.png",
+      path: "design/ses_card/reddit-post-card.png",
+      type: "image" as const,
+      target: {
+        ...entry.target,
+        id: "file:design/ses_card/reddit-post-card.png",
+        value: "design/ses_card/reddit-post-card.png",
+        name: "reddit-post-card.png",
+        preview: "image" as const,
+        confidence: 65,
+        reason: "message",
+      },
+    };
+    const unrelatedImage = {
+      ...image,
+      id: "design/ses_other/unrelated.png",
+      name: "unrelated.png",
+      path: "design/ses_other/unrelated.png",
+      target: {
+        ...image.target,
+        id: "file:design/ses_other/unrelated.png",
+        value: "design/ses_other/unrelated.png",
+        name: "unrelated.png",
+      },
+    };
+
+    expect(selectTemplateEntryArtifacts([unrelatedImage, image, entry], entry.path)).toEqual([entry, image]);
+  });
+
   it("can list artifacts from assistant text without target fallbacks", () => {
     const messages: UIMessage[] = [{
       id: "msg_text",

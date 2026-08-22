@@ -50,7 +50,9 @@ export function packReferenceContext(files: ReferenceIngestionResult[], options:
     "When applying the selected template:",
     "- Prefer explicit facts from these excerpts.",
     "- Do not invent missing evidence.",
-    "- Preserve the selected template layout and visual contract.",
+    "- Treat the selected template as a visual and technical system, not a finished artifact to copy.",
+    "- Derive the content structure from the current brief; do not retain sample page or scene counts, order, subject matter, copy, or assets unless they fit that brief.",
+    "- Preserve the template's design tokens, distinctive visual language, editor hooks, and export/runtime contracts.",
   ].join("\n"));
 
   const promptText = truncate(sections.join("\n"), maxTotalChars, 12000);

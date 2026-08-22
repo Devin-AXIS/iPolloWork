@@ -189,6 +189,8 @@ import { resolveEngineSelectableChatModel } from "@/react-app/infra/preferred-ch
 import {
   designSelectionContextsForDraft,
   draftToParts,
+  persistedAttachmentInstruction,
+  persistComposerAttachments,
   promptDesignSelectionContexts,
   serializeSDKError,
 } from "./session-prompt";
@@ -1290,13 +1292,27 @@ export function SessionRoute() {
           useDesignAiSelectionStore,
           designSelectionScope,
         );
-        const parts = await draftToParts(
-          draft,
-          selectedWorkspaceRoot,
-          useDesignAiSelectionStore,
-          designSelectionScope,
-          { supportsNativeAttachments: effectiveModelSupportsAttachments },
-        );
+        const [parts, persistedAttachments] = await Promise.all([
+          draftToParts(
+            draft,
+            selectedWorkspaceRoot,
+            useDesignAiSelectionStore,
+            designSelectionScope,
+            { supportsNativeAttachments: effectiveModelSupportsAttachments },
+          ),
+          selectedWorkspaceEndpoint
+            ? persistComposerAttachments({
+                attachments: draft.attachments,
+                workspaceId: selectedWorkspaceEndpoint.workspaceId,
+                sessionId: targetSessionId,
+                client: selectedWorkspaceEndpoint.client,
+              })
+            : Promise.resolve([]),
+        ]);
+        const attachmentInstruction = persistedAttachmentInstruction(persistedAttachments);
+        if (attachmentInstruction) {
+          parts.push({ type: "text", text: attachmentInstruction, synthetic: true });
+        }
         const capabilitySystemContext = draft.capability?.instruction ?? null;
         // Template-session metadata is authoritative. The in-memory surface
         // cache is used only for legacy sessions created before that record

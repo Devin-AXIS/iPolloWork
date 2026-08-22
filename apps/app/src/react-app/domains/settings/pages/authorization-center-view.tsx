@@ -4,7 +4,6 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   AudioLines,
   CheckCircle2,
-  Clapperboard,
   Cloud,
   FolderCog,
   Image,
@@ -73,7 +72,7 @@ const SERVICES: Record<iPolloWorkAuthorizationServiceId, ServicePresentation> = 
     ],
   },
   "volcengine-video": {
-    icon: Clapperboard,
+    icon: Image,
     titleKey: "settings.authorization.service.volcengine_video.title",
     descriptionKey: "settings.authorization.service.volcengine_video.description",
     fields: [{ key: "ARK_API_KEY", label: "Ark API key", placeholder: "your Ark API key" }],

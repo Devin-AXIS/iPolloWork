@@ -1,0 +1,885 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>图片工作台</title>
+  <style>
+    :root {
+      color-scheme: light dark;
+      font: 13px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      --bg: #f4f4f2;
+      --surface: rgba(255, 255, 255, .78);
+      --surface-solid: #fff;
+      --surface-muted: rgba(255, 255, 255, .55);
+      --text: #18181b;
+      --muted: #71717a;
+      --line: rgba(24, 24, 27, .1);
+      --line-strong: rgba(24, 24, 27, .18);
+      --accent: #18181b;
+      --accent-text: #fff;
+      --selection: #6366f1;
+      --selection-soft: rgba(99, 102, 241, .28);
+      --success: #059669;
+      --danger: #dc2626;
+      --shadow: 0 18px 50px rgba(24, 24, 27, .08);
+      --radius: 14px;
+    }
+    * { box-sizing: border-box; }
+    [hidden] { display: none !important; }
+    html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; background: var(--bg); color: var(--text); }
+    button, input, select, textarea { font: inherit; color: inherit; }
+    button { cursor: pointer; }
+    button:disabled { cursor: not-allowed; opacity: .48; }
+    .app { display: grid; grid-template-rows: 52px minmax(0, 1fr); height: 100vh; }
+    .topbar {
+      display: flex; align-items: center; gap: 12px; padding: 0 14px;
+      border-bottom: 1px solid var(--line); background: var(--surface);
+      backdrop-filter: blur(22px) saturate(1.2); -webkit-backdrop-filter: blur(22px) saturate(1.2);
+    }
+    .brand { display: flex; align-items: center; gap: 9px; min-width: 150px; font-weight: 650; letter-spacing: -.01em; }
+    .brand-mark { display: grid; place-items: center; width: 27px; height: 27px; border-radius: 9px; color: #fff; background: #18181b; }
+    .mode-switch { display: flex; gap: 2px; padding: 3px; border: 1px solid var(--line); border-radius: 10px; background: rgba(127,127,127,.07); }
+    .mode-switch button { flex: 0 0 auto; border: 0; border-radius: 7px; background: transparent; padding: 5px 12px; color: var(--muted); white-space: nowrap; }
+    .mode-switch button.active { background: var(--surface-solid); color: var(--text); box-shadow: 0 1px 4px rgba(0,0,0,.07); }
+    .top-spacer { flex: 1; }
+    .source-meta { max-width: 180px; overflow: hidden; color: var(--muted); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+    .provider { display: flex; align-items: center; gap: 7px; color: var(--muted); font-size: 12px; white-space: nowrap; }
+    .provider-dot { width: 7px; height: 7px; border-radius: 999px; background: #a1a1aa; }
+    .provider.ready .provider-dot { background: var(--success); box-shadow: 0 0 0 3px rgba(5,150,105,.12); }
+    .shell { position: relative; min-height: 0; }
+    .workspace { position: absolute; inset: 0; min-width: 0; min-height: 0; overflow: hidden; }
+    .stage {
+      position: absolute; inset: 0; display: grid; place-items: center; overflow: auto;
+      background-color: var(--bg);
+      background-image: radial-gradient(circle at 1px 1px, rgba(113,113,122,.13) 1px, transparent 0);
+      background-size: 20px 20px;
+    }
+    .stage.panning { cursor: grabbing; user-select: none; }
+    .empty { display: grid; justify-items: center; width: min(520px, calc(100% - 40px)); text-align: center; }
+    .empty-orb { display: grid; place-items: center; width: 68px; height: 68px; border: 1px solid var(--line); border-radius: 23px; background: var(--surface); box-shadow: var(--shadow); backdrop-filter: blur(18px); }
+    .empty h2 { margin: 18px 0 6px; font-size: 20px; letter-spacing: -.025em; }
+    .empty p { margin: 0; max-width: 390px; color: var(--muted); }
+    .empty-actions { display: flex; gap: 8px; margin-top: 20px; }
+    .canvas-wrap { position: relative; display: none; margin: 72px; border-radius: 8px; overflow: hidden; background: #d4d4d8; box-shadow: 0 24px 72px rgba(0,0,0,.18); touch-action: none; }
+    .canvas-wrap.visible { display: block; }
+    .canvas-wrap canvas { position: absolute; inset: 0; display: block; width: 100%; height: 100%; }
+    #imageCanvas { position: relative; }
+    #selectionCanvas { opacity: .72; cursor: crosshair; }
+    #selectionCanvas[data-tool="smart"] { cursor: cell; }
+    #selectionCanvas[data-tool="hand"] { cursor: grab; }
+    #selectionCanvas[data-tool="hand"].dragging { cursor: grabbing; }
+    .toolbar {
+      position: absolute; z-index: 5; top: 14px; left: 50%; transform: translateX(-50%);
+      display: none; align-items: center; gap: 3px; max-width: calc(100% - 28px); padding: 5px; overflow-x: auto;
+      border: 1px solid var(--line); border-radius: 12px; background: var(--surface);
+      box-shadow: 0 10px 30px rgba(0,0,0,.09); backdrop-filter: blur(20px);
+      scrollbar-width: none;
+    }
+    .toolbar::-webkit-scrollbar { display: none; }
+    .toolbar.visible { display: flex; }
+    .tool { display: flex; align-items: center; gap: 6px; border: 0; border-radius: 8px; background: transparent; padding: 7px 9px; color: var(--muted); }
+    .tool.compact { justify-content: center; width: 31px; height: 31px; padding: 0; flex: 0 0 auto; }
+    .tool:hover { color: var(--text); background: rgba(127,127,127,.08); }
+    .tool.active { color: var(--accent-text); background: var(--accent); }
+    .tool-icon { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; stroke-width: 1.8; }
+    .separator { width: 1px; height: 22px; margin: 0 2px; background: var(--line); }
+    .operation-switch { display: flex; gap: 2px; padding: 2px; border: 1px solid var(--line); border-radius: 9px; background: rgba(127,127,127,.06); }
+    .operation-switch .tool { width: 27px; height: 27px; border-radius: 7px; }
+    .zoom-pill { min-width: 48px; color: var(--muted); text-align: center; font-variant-numeric: tabular-nums; }
+    button.zoom-pill { border: 0; border-radius: 7px; background: transparent; padding: 6px 4px; }
+    button.zoom-pill:hover { color: var(--text); background: rgba(127,127,127,.08); }
+    .button { flex: 0 0 auto; border: 1px solid var(--line); border-radius: 9px; background: var(--surface-solid); padding: 7px 10px; white-space: nowrap; }
+    .button:hover { border-color: var(--line-strong); }
+    .button.primary { border-color: var(--accent); background: var(--accent); color: var(--accent-text); }
+    .button.ghost { border-color: transparent; background: transparent; color: var(--muted); }
+    .button.full { width: 100%; }
+    .tool-options { display: flex; align-items: center; }
+    .tool-range { display: grid; grid-template-columns: auto 58px 22px; align-items: center; gap: 5px; padding: 0 5px; color: var(--muted); font-size: 10px; white-space: nowrap; }
+    input[type="range"] { width: 100%; accent-color: var(--accent); }
+    .range-value { color: var(--muted); text-align: right; font-variant-numeric: tabular-nums; }
+    .busy-layer { position: absolute; z-index: 8; inset: 0; display: none; place-items: center; background: rgba(244,244,242,.65); backdrop-filter: blur(9px); }
+    .busy-layer.visible { display: grid; }
+    .busy-card { display: flex; align-items: center; gap: 10px; padding: 11px 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface-solid); box-shadow: var(--shadow); }
+    .spinner { width: 16px; height: 16px; border: 2px solid var(--line-strong); border-top-color: var(--text); border-radius: 50%; animation: spin .8s linear infinite; }
+    .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    @media (max-width: 760px) {
+      .brand span:last-child { display: none; }
+      .brand { min-width: auto; }
+      .provider { display: none; }
+      .source-meta { display: none; }
+      .tool-range { display: none; }
+    }
+    @media (max-width: 420px) {
+      .topbar { gap: 6px; padding: 0 8px; }
+      .mode-switch button { padding-inline: 9px; }
+      .button { padding-inline: 8px; }
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #151515; --surface: rgba(27,27,28,.82); --surface-solid: #232325; --surface-muted: rgba(35,35,37,.58);
+        --text: #f4f4f5; --muted: #a1a1aa; --line: rgba(255,255,255,.1); --line-strong: rgba(255,255,255,.2);
+        --accent: #f4f4f5; --accent-text: #18181b; --shadow: 0 20px 60px rgba(0,0,0,.35);
+      }
+      .busy-layer { background: rgba(21,21,21,.64); }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <header class="topbar">
+      <div class="brand"><span class="brand-mark">✦</span><span data-i18n="title">图片工作台</span></div>
+      <div class="mode-switch" role="tablist" aria-label="工作模式">
+        <button id="editMode" type="button" role="tab" aria-selected="false" data-i18n="edit">编辑</button>
+        <button id="generateMode" class="active" type="button" role="tab" aria-selected="true" data-i18n="generate">生成</button>
+      </div>
+      <div class="top-spacer"></div>
+      <span id="sourceMeta" class="source-meta" hidden></span>
+      <button id="topImport" class="button ghost" type="button" data-i18n="openImage">打开图片</button>
+      <button id="parameters" class="button" type="button" data-i18n="parameters">参数</button>
+      <div id="provider" class="provider"><span class="provider-dot"></span><span id="providerText" data-i18n="checking">检查图片模型…</span></div>
+    </header>
+
+    <div class="shell">
+      <main class="workspace">
+        <div id="stage" class="stage">
+          <section id="empty" class="empty">
+            <div class="empty-orb" aria-hidden="true">
+              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="4"/><circle cx="15.5" cy="8.5" r="1.5"/><path d="m5 17 5-5 3.5 3.5 2-2L19 17"/></svg>
+            </div>
+            <h2 data-i18n="emptyTitle">生成一张图，或打开已有图片</h2>
+            <p data-i18n="emptyBody">使用智能选取、画笔或形状确定修改范围，结果会作为新文件保存。</p>
+            <div class="empty-actions">
+              <button id="emptyImport" class="button" type="button" data-i18n="openImage">打开图片</button>
+              <button id="emptyGenerate" class="button primary" type="button" data-i18n="startGenerate">开始生成</button>
+            </div>
+          </section>
+          <div id="canvasWrap" class="canvas-wrap">
+            <canvas id="imageCanvas"></canvas>
+            <canvas id="selectionCanvas"></canvas>
+          </div>
+        </div>
+
+        <div id="toolbar" class="toolbar" aria-label="选区工具栏">
+          <button class="tool compact" type="button" data-tool="hand" title="抓手" aria-label="抓手">
+            <svg class="tool-icon" viewBox="0 0 20 20"><path d="M6.4 9V5.8a1.2 1.2 0 0 1 2.4 0V9"/><path d="M8.8 8V4.9a1.2 1.2 0 0 1 2.4 0V8"/><path d="M11.2 8.4V6a1.2 1.2 0 0 1 2.4 0v3"/><path d="M13.6 8a1.2 1.2 0 0 1 2.4.2v2.5c0 3.5-2.2 5.8-5.7 5.8-2.4 0-3.7-1.2-4.7-2.7L3.8 11a1.2 1.2 0 0 1 1.8-1.5l.8.7Z"/></svg>
+          </button>
+          <button class="tool compact active" type="button" data-tool="smart" title="智能选取" aria-label="智能选取">
+            <svg class="tool-icon" viewBox="0 0 20 20"><path d="m7 13 6-6"/><path d="m5.5 14.5 1.8-1.8 2 2-1.8 1.8a1.4 1.4 0 0 1-2-2Z"/><path d="m12.7 7.3 1.1-1.1 2 2-1.1 1.1"/><path d="M5 4v2M4 5h2M14 14v2M13 15h2M14 3v1M13.5 3.5h1"/></svg>
+          </button>
+          <button class="tool compact" type="button" data-tool="brush" title="画笔选取" aria-label="画笔选取">
+            <svg class="tool-icon" viewBox="0 0 20 20"><path d="m13.5 3.5 3 3L8 15H5v-3l8.5-8.5Z"/><path d="M4 16c1.2 0 2-.7 2-2"/></svg>
+          </button>
+          <button class="tool compact" type="button" data-tool="rectangle" title="矩形选区" aria-label="矩形选区">
+            <svg class="tool-icon" viewBox="0 0 20 20"><rect x="4" y="4" width="12" height="12" rx="1" stroke-dasharray="2.5 2.5"/></svg>
+          </button>
+          <button class="tool compact" type="button" data-tool="ellipse" title="椭圆选区" aria-label="椭圆选区">
+            <svg class="tool-icon" viewBox="0 0 20 20"><ellipse cx="10" cy="10" rx="6" ry="5" stroke-dasharray="2.5 2.5"/></svg>
+          </button>
+          <div class="separator"></div>
+          <div class="operation-switch" aria-label="选区方式">
+            <button class="tool compact active" type="button" data-operation="add" title="加选" aria-label="加选">
+              <svg class="tool-icon" viewBox="0 0 20 20"><circle cx="10" cy="10" r="6"/><path d="M10 7v6M7 10h6"/></svg>
+            </button>
+            <button class="tool compact" type="button" data-operation="subtract" title="减选" aria-label="减选">
+              <svg class="tool-icon" viewBox="0 0 20 20"><circle cx="10" cy="10" r="6"/><path d="M7 10h6"/></svg>
+            </button>
+          </div>
+          <div class="separator"></div>
+          <button id="undo" class="tool compact" type="button" title="撤销" aria-label="撤销">
+            <svg class="tool-icon" viewBox="0 0 20 20"><path d="M7 6 3.5 9.5 7 13"/><path d="M4 9.5h6.5a5 5 0 0 1 5 5"/></svg>
+          </button>
+          <button id="redo" class="tool compact" type="button" title="重做" aria-label="重做">
+            <svg class="tool-icon" viewBox="0 0 20 20"><path d="m13 6 3.5 3.5L13 13"/><path d="M16 9.5H9.5a5 5 0 0 0-5 5"/></svg>
+          </button>
+          <button id="clearSelection" class="tool compact" type="button" title="取消选区" aria-label="取消选区">
+            <svg class="tool-icon" viewBox="0 0 20 20"><path d="m5 5 10 10M15 5 5 15"/></svg>
+          </button>
+          <div class="separator"></div>
+          <div id="smartOptions" class="tool-options">
+            <label class="tool-range"><span data-i18n="toleranceShort">范围</span><input id="tolerance" type="range" min="4" max="44" value="18"><span id="toleranceValue" class="range-value">18</span></label>
+          </div>
+          <div id="brushOptions" class="tool-options" hidden>
+            <label class="tool-range"><span data-i18n="brushSizeShort">大小</span><input id="brushSize" type="range" min="8" max="220" value="64"><span id="brushSizeValue" class="range-value">64</span></label>
+            <label class="tool-range"><span data-i18n="hardnessShort">硬度</span><input id="hardness" type="range" min="10" max="100" value="80"><span id="hardnessValue" class="range-value">80</span></label>
+          </div>
+          <div class="separator"></div>
+          <button id="zoomOut" class="tool compact" type="button" title="缩小" aria-label="缩小">−</button>
+          <button id="zoomValue" class="zoom-pill" type="button" title="适应画布">100%</button>
+          <button id="zoomIn" class="tool compact" type="button" title="放大" aria-label="放大">＋</button>
+        </div>
+        <div id="busyLayer" class="busy-layer"><div class="busy-card"><span class="spinner"></span><span id="busyText">正在处理图片…</span></div></div>
+      </main>
+    </div>
+  </div>
+  <input id="fileInput" class="sr-only" type="file" accept="image/png,image/jpeg,image/webp">
+
+  <script>
+    const HOST_CONTEXT_KEY = "ai.ipollo/workspace";
+    const INSPECTOR_CONTEXT_KEY = "ai.ipollo/inspector";
+    const MAX_CANVAS_DIMENSION = 4096;
+    const MAX_SMART_SELECTION_DIMENSION = 1024;
+    const MAX_SELECTION_HISTORY_BYTES = 64 * 1024 * 1024;
+    const state = {
+      mode: "generate", tool: "smart", operation: "add", zoom: 1, drawing: false, moved: false,
+      start: null, last: null, sourcePath: "", sourceName: "", sourceDataUrl: "",
+      imageWidth: 0, imageHeight: 0, selectionHistory: [], redoHistory: [], gestureBase: null, pan: null,
+      activeSubtract: false, temporaryTool: "", busy: false, providerReady: false,
+      locale: "zh", hostContext: null, prompt: "", model: "openai/gpt-image-2", models: [], style: "auto", camera: "auto", lighting: "auto", size: "auto", quality: "auto",
+      statusMessage: "", statusTone: "info", inspectorOpenRequest: "", inspectorRequestSequence: 0,
+    };
+    const pending = new Map();
+    let requestId = 0;
+    let contextTimer = 0;
+
+    const $ = (selector) => document.querySelector(selector);
+    const imageCanvas = $("#imageCanvas");
+    const selectionCanvas = $("#selectionCanvas");
+    const imageContext = imageCanvas.getContext("2d");
+    const selectionContext = selectionCanvas.getContext("2d", { willReadFrequently: true });
+
+    const copy = {
+      zh: {
+        title: "图片工作台", edit: "编辑", generate: "生成", checking: "检查图片模型…", ready: "图片模型已连接", unavailable: "图片模型未连接",
+        emptyTitle: "生成一张图，或打开已有图片", emptyBody: "使用智能选取、画笔或形状确定修改范围，结果会作为新文件保存。",
+        openImage: "打开图片", startGenerate: "开始生成", parameters: "参数", smart: "智能选取", hand: "抓手", brush: "画笔", subtract: "减选", rectangle: "矩形", ellipse: "椭圆", brushSizeShort: "大小", hardnessShort: "硬度", toleranceShort: "范围", source: "当前图片", replace: "替换",
+        importWorkspace: "从本地导入", instruction: "编辑指令", wholeImage: "整图", selectedArea: "已选区域", promptPlaceholder: "描述想生成或修改的内容…",
+        selection: "选区", nonDestructive: "不覆盖原图", brushSize: "画笔大小", hardness: "边缘硬度", variables: "画面参数", optional: "可选",
+        model: "图片模型", style: "风格", camera: "镜头", lighting: "光线", ratio: "画幅", quality: "质量", editImage: "生成编辑结果", generateImage: "生成图片",
+        imageParameters: "图片参数", generateDescription: "设置生成内容和画面参数", editDescription: "调整当前图片，原图不会被覆盖",
+        providerNotice: "请先在设置 → 授权中心连接所选图片模型。", openAiNotice: "请先在设置 → 授权中心连接 OpenAI 图片服务。", arkNotice: "请先在设置 → 授权中心连接火山引擎 Ark。",
+        modelConnected: "{name} 已连接", modelNotConnected: "{name} 未连接", notConnected: "未连接", notAvailable: "暂不可用",
+        midjourneyUnavailable: "Midjourney 官方暂未开放公共 API，当前不能在第三方工作台中直接调用。", regionUnsupported: "{name} 暂不支持选区编辑。", approximateSelection: "{name} 将按选区的大致范围编辑，边界精度取决于模型。",
+        loading: "正在打开图片…", importing: "正在导入图片…", processing: "正在处理图片…",
+        saved: "已另存为 {name}", selectionCleared: "选区已清除", smartSelected: "已生成智能选区，可继续加选或减选。", promptRequired: "请先描述想生成或修改的内容。", imageRequired: "请先打开一张图片，或切换到生成模式。",
+        tooLarge: "图片尺寸过大。精确选区目前支持最长边不超过 4096px。", failed: "操作失败", connected: "工作台已连接", dimensions: "{width} × {height}",
+      },
+      en: {
+        title: "Image Studio", edit: "Edit", generate: "Generate", checking: "Checking image model…", ready: "Image model connected", unavailable: "Image model not connected",
+        emptyTitle: "Generate an image or open one", emptyBody: "Use smart selection, brush, or shapes to target edits. Results are always saved as new files.",
+        openImage: "Open image", startGenerate: "Start generating", parameters: "Settings", smart: "Smart select", hand: "Hand", brush: "Brush", subtract: "Subtract", rectangle: "Rectangle", ellipse: "Ellipse", brushSizeShort: "Size", hardnessShort: "Edge", toleranceShort: "Range", source: "Current image", replace: "Replace",
+        importWorkspace: "Import from device", instruction: "Instruction", wholeImage: "Whole image", selectedArea: "Selected area", promptPlaceholder: "Describe what to generate or change…",
+        selection: "Selection", nonDestructive: "Original preserved", brushSize: "Brush size", hardness: "Edge hardness", variables: "Visual controls", optional: "Optional",
+        model: "Image model", style: "Style", camera: "Camera", lighting: "Lighting", ratio: "Aspect", quality: "Quality", editImage: "Generate edit", generateImage: "Generate image",
+        imageParameters: "Image settings", generateDescription: "Set the content and visual controls", editDescription: "Adjust this image while preserving the original",
+        providerNotice: "Connect the selected image model in Settings → Authorization Center first.", openAiNotice: "Connect OpenAI Images in Settings → Authorization Center first.", arkNotice: "Connect Volcengine Ark in Settings → Authorization Center first.",
+        modelConnected: "{name} connected", modelNotConnected: "{name} not connected", notConnected: "Not connected", notAvailable: "Unavailable",
+        midjourneyUnavailable: "Midjourney does not currently provide a public API for third-party workspaces.", regionUnsupported: "{name} does not support selected-region editing.", approximateSelection: "{name} will edit the approximate selected region; boundary precision depends on the model.",
+        loading: "Opening image…", importing: "Importing image…", processing: "Processing image…",
+        saved: "Saved as {name}", selectionCleared: "Selection cleared", smartSelected: "Smart selection created. Add or subtract to refine it.", promptRequired: "Describe what you want to generate or change first.", imageRequired: "Open an image first, or switch to Generate.",
+        tooLarge: "This image is too large. Precise selection currently supports a maximum side of 4096px.", failed: "Action failed", connected: "Studio connected", dimensions: "{width} × {height}",
+      },
+    };
+
+    function tr(key, values = {}) {
+      const dictionary = copy[state.locale] || copy.zh;
+      return String(dictionary[key] || copy.zh[key] || key).replace(/\{(\w+)\}/g, (_, name) => values[name] ?? "");
+    }
+    function localize() {
+      document.documentElement.lang = state.locale === "en" ? "en" : "zh-CN";
+      document.querySelectorAll("[data-i18n]").forEach((node) => { node.textContent = tr(node.dataset.i18n); });
+      document.querySelectorAll("[data-i18n-placeholder]").forEach((node) => { node.placeholder = tr(node.dataset.i18nPlaceholder); });
+      renderMode(); renderProvider(); renderSelectionState();
+    }
+    function post(message) { parent.postMessage(message, "*"); }
+    function respond(id, result) { post({ jsonrpc: "2.0", id, result }); }
+    function request(method, params) {
+      const id = ++requestId;
+      post({ jsonrpc: "2.0", id, method, params });
+      return new Promise((resolve, reject) => pending.set(id, { resolve, reject }));
+    }
+    async function callService(name, args = {}) {
+      const response = await request("tools/call", { name, arguments: args });
+      if (response?.isError) throw new Error(response.content?.map((item) => item.text || "").join("\n") || tr("failed"));
+      return response?.structuredContent || {};
+    }
+    function setStatus(message, error = false) {
+      state.statusMessage = message || "";
+      state.statusTone = error ? "error" : /已另存为|Saved as/.test(state.statusMessage) ? "success" : "info";
+      publishContext();
+    }
+    function setBusy(busy, message = tr("processing")) {
+      state.busy = busy;
+      $("#busyText").textContent = message;
+      $("#busyLayer").classList.toggle("visible", busy);
+      publishContext();
+    }
+    function selectedModel() {
+      return state.models.find((model) => model.id === state.model) || null;
+    }
+    function modelAuthorizationNotice(model) {
+      if (!model) return tr("providerNotice");
+      if (model.provider === "midjourney") return tr("midjourneyUnavailable");
+      if (model.authorizationService === "openai-images") return tr("openAiNotice");
+      if (model.authorizationService === "volcengine-video") return tr("arkNotice");
+      return tr("providerNotice");
+    }
+    function actionBlockedMessage() {
+      const model = selectedModel();
+      if (!model) return tr("providerNotice");
+      if (!model.available) return modelAuthorizationNotice(model);
+      if (!model.configured) return modelAuthorizationNotice(model);
+      const capability = state.mode === "edit" ? "edit" : "generate";
+      if (!model.capabilities?.[capability]) return `${model.label} does not support ${capability}.`;
+      if (state.mode === "edit" && selectionBounds() && !model.capabilities?.mask && !model.capabilities?.region) {
+        return tr("regionUnsupported", { name: model.label });
+      }
+      return "";
+    }
+    function syncProviderState() {
+      const model = selectedModel();
+      state.providerReady = Boolean(model?.available && model?.configured);
+    }
+    function renderProvider() {
+      syncProviderState();
+      const model = selectedModel();
+      $("#provider").classList.toggle("ready", state.providerReady);
+      $("#providerText").textContent = model
+        ? tr(state.providerReady ? "modelConnected" : "modelNotConnected", { name: model.label })
+        : tr("unavailable");
+      publishContext();
+    }
+    function renderMode() {
+      const editing = state.mode === "edit";
+      $("#editMode").classList.toggle("active", editing);
+      $("#generateMode").classList.toggle("active", !editing);
+      $("#editMode").setAttribute("aria-selected", String(editing));
+      $("#generateMode").setAttribute("aria-selected", String(!editing));
+      $("#toolbar").classList.toggle("visible", editing && Boolean(state.sourcePath));
+    }
+    function setMode(mode) {
+      state.mode = mode;
+      renderMode();
+      publishContext();
+    }
+    function requestInspector() {
+      state.inspectorRequestSequence += 1;
+      state.inspectorOpenRequest = `${Date.now()}:${state.inspectorRequestSequence}`;
+      publishContext();
+    }
+    function renderSource() {
+      const hasSource = Boolean(state.sourcePath);
+      $("#empty").hidden = hasSource;
+      $("#canvasWrap").classList.toggle("visible", hasSource);
+      $("#sourceMeta").hidden = !hasSource;
+      $("#sourceMeta").textContent = hasSource ? `${state.sourceName}  ${tr("dimensions", { width: state.imageWidth, height: state.imageHeight })}` : "";
+      applyZoom(); renderMode(); renderSelectionState();
+    }
+    function selectionBounds() {
+      if (!selectionCanvas.width || !selectionCanvas.height) return null;
+      const pixels = selectionContext.getImageData(0, 0, selectionCanvas.width, selectionCanvas.height).data;
+      let left = selectionCanvas.width, top = selectionCanvas.height, right = -1, bottom = -1;
+      for (let y = 0; y < selectionCanvas.height; y += 4) {
+        for (let x = 0; x < selectionCanvas.width; x += 4) {
+          if (pixels[(y * selectionCanvas.width + x) * 4 + 3] > 8) {
+            left = Math.min(left, x); top = Math.min(top, y); right = Math.max(right, x); bottom = Math.max(bottom, y);
+          }
+        }
+      }
+      return right >= 0 ? { left, top, right, bottom } : null;
+    }
+    function normalizedSelectionBounds() {
+      const bounds = selectionBounds();
+      if (!bounds) return undefined;
+      return {
+        left: bounds.left / selectionCanvas.width,
+        top: bounds.top / selectionCanvas.height,
+        right: (bounds.right + 1) / selectionCanvas.width,
+        bottom: (bounds.bottom + 1) / selectionCanvas.height,
+      };
+    }
+    function renderSelectionState() {
+      $("#undo").disabled = state.selectionHistory.length === 0;
+      $("#redo").disabled = state.redoHistory.length === 0;
+      $("#clearSelection").disabled = !selectionBounds();
+    }
+    function pushHistory(history, imageData) {
+      history.push(imageData);
+      let bytes = history.reduce((total, entry) => total + entry.data.byteLength, 0);
+      while (history.length > 1 && bytes > MAX_SELECTION_HISTORY_BYTES) {
+        bytes -= history.shift().data.byteLength;
+      }
+    }
+    function currentSelection() {
+      if (!selectionCanvas.width || !selectionCanvas.height) return null;
+      return selectionContext.getImageData(0, 0, selectionCanvas.width, selectionCanvas.height);
+    }
+    function snapshotSelection() {
+      const imageData = currentSelection();
+      if (!imageData) return null;
+      pushHistory(state.selectionHistory, imageData);
+      state.redoHistory = [];
+      return imageData;
+    }
+    function undoSelection() {
+      const imageData = state.selectionHistory.pop();
+      if (!imageData) return;
+      const current = currentSelection();
+      if (current) pushHistory(state.redoHistory, current);
+      selectionContext.putImageData(imageData, 0, 0);
+      renderSelectionState(); publishContext();
+    }
+    function redoSelection() {
+      const imageData = state.redoHistory.pop();
+      if (!imageData) return;
+      const current = currentSelection();
+      if (current) pushHistory(state.selectionHistory, current);
+      selectionContext.putImageData(imageData, 0, 0);
+      renderSelectionState(); publishContext();
+    }
+    function clearSelection(announce = true) {
+      if (!selectionCanvas.width || !selectionBounds()) return;
+      snapshotSelection();
+      selectionContext.clearRect(0, 0, selectionCanvas.width, selectionCanvas.height);
+      if (announce) setStatus(tr("selectionCleared"));
+      renderSelectionState(); publishContext();
+    }
+    function applyZoom() {
+      if (!state.imageWidth) return;
+      const maxWidth = Math.max(320, $(".workspace").clientWidth - 144);
+      const maxHeight = Math.max(260, $(".workspace").clientHeight - 144);
+      const fit = Math.min(maxWidth / state.imageWidth, maxHeight / state.imageHeight, 1);
+      const scale = fit * state.zoom;
+      $("#canvasWrap").style.width = `${Math.round(state.imageWidth * scale)}px`;
+      $("#canvasWrap").style.height = `${Math.round(state.imageHeight * scale)}px`;
+      $("#zoomValue").textContent = `${Math.round(scale * 100)}%`;
+    }
+    function pointForEvent(event) {
+      const rect = selectionCanvas.getBoundingClientRect();
+      return {
+        x: Math.max(0, Math.min(selectionCanvas.width, (event.clientX - rect.left) * selectionCanvas.width / rect.width)),
+        y: Math.max(0, Math.min(selectionCanvas.height, (event.clientY - rect.top) * selectionCanvas.height / rect.height)),
+      };
+    }
+    function dab(point, subtract) {
+      const size = Number($("#brushSize").value);
+      const hardness = Number($("#hardness").value) / 100;
+      const radius = size / 2;
+      selectionContext.save();
+      selectionContext.globalCompositeOperation = subtract ? "destination-out" : "source-over";
+      const gradient = selectionContext.createRadialGradient(point.x, point.y, radius * hardness, point.x, point.y, radius);
+      const color = subtract ? "rgba(0,0,0,1)" : "rgba(99,102,241,1)";
+      gradient.addColorStop(0, color);
+      gradient.addColorStop(Math.min(.999, hardness), color);
+      gradient.addColorStop(1, "rgba(99,102,241,0)");
+      selectionContext.fillStyle = gradient;
+      selectionContext.beginPath(); selectionContext.arc(point.x, point.y, radius, 0, Math.PI * 2); selectionContext.fill();
+      selectionContext.restore();
+    }
+    function strokeBetween(from, to, subtract) {
+      const distance = Math.hypot(to.x - from.x, to.y - from.y);
+      const step = Math.max(2, Number($("#brushSize").value) / 8);
+      const count = Math.max(1, Math.ceil(distance / step));
+      for (let index = 1; index <= count; index++) {
+        const amount = index / count;
+        dab({ x: from.x + (to.x - from.x) * amount, y: from.y + (to.y - from.y) * amount }, subtract);
+      }
+    }
+    function drawShape(from, to, shape, subtract) {
+      selectionContext.save();
+      selectionContext.globalCompositeOperation = subtract ? "destination-out" : "source-over";
+      selectionContext.fillStyle = "rgba(99,102,241,1)";
+      const left = Math.min(from.x, to.x);
+      const top = Math.min(from.y, to.y);
+      const width = Math.abs(to.x - from.x);
+      const height = Math.abs(to.y - from.y);
+      if (shape === "ellipse") {
+        selectionContext.beginPath();
+        selectionContext.ellipse(left + width / 2, top + height / 2, width / 2, height / 2, 0, 0, Math.PI * 2);
+        selectionContext.fill();
+      } else {
+        selectionContext.fillRect(left, top, width, height);
+      }
+      selectionContext.restore();
+    }
+    function smartSelect(point, subtract) {
+      const scale = Math.min(1, MAX_SMART_SELECTION_DIMENSION / Math.max(imageCanvas.width, imageCanvas.height));
+      const width = Math.max(1, Math.round(imageCanvas.width * scale));
+      const height = Math.max(1, Math.round(imageCanvas.height * scale));
+      const probe = document.createElement("canvas");
+      probe.width = width; probe.height = height;
+      const probeContext = probe.getContext("2d", { willReadFrequently: true });
+      probeContext.drawImage(imageCanvas, 0, 0, width, height);
+      const source = probeContext.getImageData(0, 0, width, height);
+      const seedX = Math.min(width - 1, Math.max(0, Math.floor(point.x * scale)));
+      const seedY = Math.min(height - 1, Math.max(0, Math.floor(point.y * scale)));
+      const seedOffset = (seedY * width + seedX) * 4;
+      const seedRed = source.data[seedOffset];
+      const seedGreen = source.data[seedOffset + 1];
+      const seedBlue = source.data[seedOffset + 2];
+      const seedAlpha = source.data[seedOffset + 3];
+      const tolerance = Number($("#tolerance").value) / 100;
+      const threshold = tolerance * tolerance * 255 * 255 * 3;
+      const total = width * height;
+      const visited = new Uint8Array(total);
+      const stack = new Int32Array(total);
+      const region = probeContext.createImageData(width, height);
+      let stackSize = 0;
+      const enqueue = (index) => {
+        if (visited[index]) return;
+        visited[index] = 1;
+        const offset = index * 4;
+        const red = source.data[offset] - seedRed;
+        const green = source.data[offset + 1] - seedGreen;
+        const blue = source.data[offset + 2] - seedBlue;
+        const alpha = source.data[offset + 3] - seedAlpha;
+        if (red * red + green * green + blue * blue + alpha * alpha <= threshold) stack[stackSize++] = index;
+      };
+      enqueue(seedY * width + seedX);
+      while (stackSize) {
+        const index = stack[--stackSize];
+        const offset = index * 4;
+        region.data[offset] = 99; region.data[offset + 1] = 102; region.data[offset + 2] = 241; region.data[offset + 3] = 255;
+        const x = index % width;
+        if (x > 0) enqueue(index - 1);
+        if (x + 1 < width) enqueue(index + 1);
+        if (index >= width) enqueue(index - width);
+        if (index + width < total) enqueue(index + width);
+      }
+      const regionCanvas = document.createElement("canvas");
+      regionCanvas.width = width; regionCanvas.height = height;
+      regionCanvas.getContext("2d").putImageData(region, 0, 0);
+      selectionContext.save();
+      selectionContext.globalCompositeOperation = subtract ? "destination-out" : "source-over";
+      selectionContext.imageSmoothingEnabled = true;
+      selectionContext.drawImage(regionCanvas, 0, 0, selectionCanvas.width, selectionCanvas.height);
+      selectionContext.restore();
+    }
+    function selectTool(tool) {
+      state.tool = tool;
+      document.querySelectorAll("[data-tool]").forEach((button) => button.classList.toggle("active", button.dataset.tool === tool));
+      selectionCanvas.dataset.tool = tool;
+      $("#smartOptions").hidden = tool !== "smart";
+      $("#brushOptions").hidden = tool !== "brush";
+    }
+    function selectOperation(operation) {
+      state.operation = operation;
+      document.querySelectorAll("[data-operation]").forEach((button) => button.classList.toggle("active", button.dataset.operation === operation));
+    }
+    function exportMask() {
+      if (!selectionBounds()) return "";
+      const output = document.createElement("canvas");
+      output.width = selectionCanvas.width; output.height = selectionCanvas.height;
+      const context = output.getContext("2d");
+      context.fillStyle = "#000"; context.fillRect(0, 0, output.width, output.height);
+      context.globalCompositeOperation = "destination-out";
+      context.drawImage(selectionCanvas, 0, 0);
+      return output.toDataURL("image/png");
+    }
+    function readFileAsDataUrl(file) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result || ""));
+        reader.onerror = () => reject(reader.error || new Error("File read failed"));
+        reader.readAsDataURL(file);
+      });
+    }
+    async function renderImage(payload) {
+      const image = new Image();
+      image.src = payload.dataUrl;
+      await image.decode();
+      if (image.naturalWidth > MAX_CANVAS_DIMENSION || image.naturalHeight > MAX_CANVAS_DIMENSION) throw new Error(tr("tooLarge"));
+      state.sourcePath = String(payload.path || ""); state.sourceName = String(payload.name || state.sourcePath.split("/").pop() || "image");
+      state.sourceDataUrl = String(payload.dataUrl || ""); state.imageWidth = image.naturalWidth; state.imageHeight = image.naturalHeight;
+      imageCanvas.width = selectionCanvas.width = image.naturalWidth;
+      imageCanvas.height = selectionCanvas.height = image.naturalHeight;
+      imageContext.clearRect(0, 0, imageCanvas.width, imageCanvas.height); imageContext.drawImage(image, 0, 0);
+      selectionContext.clearRect(0, 0, selectionCanvas.width, selectionCanvas.height);
+      state.selectionHistory = []; state.redoHistory = []; state.gestureBase = null; state.zoom = 1;
+      renderSource(); publishContext();
+    }
+    async function loadWorkspaceImage(sourcePath) {
+      if (!sourcePath || sourcePath === state.sourcePath || state.busy) return;
+      setBusy(true, tr("loading")); setStatus("");
+      try { await renderImage(await callService("load-image", { sourcePath })); setMode("edit"); }
+      catch (error) { setStatus(error instanceof Error ? error.message : tr("failed"), true); }
+      finally { setBusy(false); }
+    }
+    async function importImage(file) {
+      if (!file || state.busy) return;
+      setBusy(true, tr("importing")); setStatus("");
+      try {
+        const dataUrl = await readFileAsDataUrl(file);
+        await renderImage(await callService("import-image", { dataUrl, filename: file.name }));
+        setMode("edit");
+      } catch (error) { setStatus(error instanceof Error ? error.message : tr("failed"), true); }
+      finally { setBusy(false); $("#fileInput").value = ""; }
+    }
+    function actionArguments() {
+      return {
+        prompt: state.prompt.trim(), model: state.model, style: state.style, camera: state.camera,
+        lighting: state.lighting, size: state.size, quality: state.quality,
+      };
+    }
+    async function run() {
+      if (state.busy) return;
+      const args = actionArguments();
+      if (!args.prompt) { setStatus(tr("promptRequired"), true); return { ok: false, message: tr("promptRequired") }; }
+      if (state.mode === "edit" && !state.sourcePath) { setStatus(tr("imageRequired"), true); return { ok: false, message: tr("imageRequired") }; }
+      const blocked = actionBlockedMessage();
+      if (blocked) { setStatus(blocked, true); return { ok: false, message: blocked }; }
+      setBusy(true, tr("processing")); setStatus("");
+      try {
+        const result = state.mode === "edit"
+          ? await callService("edit-image", {
+              ...args,
+              sourcePath: state.sourcePath,
+              maskDataUrl: exportMask() || undefined,
+              selectionBounds: normalizedSelectionBounds(),
+            })
+          : await callService("generate-image", args);
+        await renderImage(result); setMode("edit"); setStatus(tr("saved", { name: result.name || state.sourceName }));
+        return { ok: true };
+      } catch (error) {
+        const message = error instanceof Error ? error.message : tr("failed");
+        setStatus(message, true);
+        return { ok: false, message };
+      }
+      finally { setBusy(false); }
+    }
+    function publishContext() {
+      clearTimeout(contextTimer);
+      contextTimer = setTimeout(() => {
+        const bounds = selectionBounds();
+        const english = state.locale === "en";
+        const selectOptions = {
+          model: state.models.map((model) => ({
+            value: model.id,
+            label: `${model.label}${!model.available ? ` · ${tr("notAvailable")}` : !model.configured ? ` · ${tr("notConnected")}` : ""}`,
+            disabled: !model.available,
+          })),
+          style: [
+            ["auto", english ? "Auto" : "自动"], ["photorealistic", english ? "Photorealistic" : "写实摄影"], ["editorial", english ? "Editorial" : "编辑视觉"],
+            ["cinematic", english ? "Cinematic" : "电影感"], ["illustration", english ? "Illustration" : "插画"], ["minimal", english ? "Minimal" : "极简"],
+          ],
+          camera: [
+            ["auto", english ? "Auto" : "自动"], ["wide angle", english ? "Wide angle" : "广角"], ["50mm natural perspective", "50mm"],
+            ["85mm portrait lens", "85mm"], ["macro close-up", english ? "Macro" : "微距"],
+          ],
+          lighting: [
+            ["auto", english ? "Auto" : "自动"], ["soft daylight", english ? "Soft daylight" : "柔和日光"], ["studio softbox", english ? "Studio softbox" : "影棚柔光"],
+            ["golden hour", english ? "Golden hour" : "黄金时刻"], ["dramatic rim light", english ? "Rim light" : "轮廓光"],
+          ],
+          size: [["auto", english ? "Auto" : "自动"], ["1024x1024", "1:1"], ["1536x1024", "3:2"], ["1024x1536", "2:3"]],
+          quality: [["auto", english ? "Auto" : "自动"], ["medium", english ? "Standard" : "标准"], ["high", english ? "High" : "高"], ["low", english ? "Fast" : "快速"]],
+        };
+        const option = ([value, label]) => ({ value, label });
+        const blocked = actionBlockedMessage();
+        const approximate = bounds && selectedModel()?.capabilities?.region && !selectedModel()?.capabilities?.mask
+          ? tr("approximateSelection", { name: selectedModel()?.label || "" })
+          : "";
+        const status = state.statusMessage
+          ? { message: state.statusMessage, tone: state.statusTone }
+          : blocked
+            ? { message: blocked, tone: "info" }
+            : approximate
+              ? { message: approximate, tone: "info" }
+            : undefined;
+        const inspector = {
+          schemaVersion: 1,
+          title: tr("imageParameters"),
+          description: tr(state.mode === "edit" ? "editDescription" : "generateDescription"),
+          updateTool: "set_prompt",
+          submitTool: "generate_or_edit",
+          submitLabel: tr(state.mode === "edit" ? "editImage" : "generateImage"),
+          submitDisabled: state.busy || Boolean(blocked),
+          openRequestId: state.inspectorOpenRequest || undefined,
+          fields: [
+            { id: "model", label: tr("model"), control: "select", value: state.model, live: true, options: selectOptions.model },
+            { id: "prompt", label: tr("instruction"), control: "textarea", value: state.prompt, placeholder: tr("promptPlaceholder") },
+            { id: "style", label: tr("style"), control: "select", value: state.style, options: selectOptions.style.map(option) },
+            { id: "camera", label: tr("camera"), control: "select", value: state.camera, options: selectOptions.camera.map(option) },
+            { id: "lighting", label: tr("lighting"), control: "select", value: state.lighting, options: selectOptions.lighting.map(option) },
+            { id: "size", label: tr("ratio"), control: "select", value: state.size, options: selectOptions.size.map(option) },
+            { id: "quality", label: tr("quality"), control: "select", value: state.quality, options: selectOptions.quality.map(option) },
+          ],
+          ...(status ? { status } : {}),
+        };
+        void request("ui/update-model-context", {
+          content: [{ type: "text", text: `Image Studio mode: ${state.mode}. Source: ${state.sourcePath || "none"}. Prompt: ${state.prompt.trim() || "none"}. Selection: ${bounds ? "active" : "whole image"}.` }],
+          structuredContent: { mode: state.mode, sourcePath: state.sourcePath || null, prompt: state.prompt.trim(), selection: bounds, [INSPECTOR_CONTEXT_KEY]: inspector },
+        }).catch(() => undefined);
+      }, 160);
+    }
+    async function applyHostContext(hostContext) {
+      if (!hostContext || typeof hostContext !== "object") return;
+      state.hostContext = hostContext;
+      const launch = hostContext.launch;
+      if (launch?.intent === "edit-image" && launch.source?.path) await loadWorkspaceImage(String(launch.source.path));
+    }
+    function toolResult(message) {
+      publishContext();
+      return { content: [{ type: "text", text: message }], structuredContent: { mode: state.mode, sourcePath: state.sourcePath || null, prompt: state.prompt.trim() } };
+    }
+
+    addEventListener("message", (event) => {
+      if (event.source !== parent || !event.data || event.data.jsonrpc !== "2.0") return;
+      const message = event.data;
+      if (message.id !== undefined && !message.method) {
+        const handler = pending.get(message.id); if (!handler) return;
+        pending.delete(message.id); message.error ? handler.reject(new Error(message.error.message)) : handler.resolve(message.result); return;
+      }
+      if (message.method === "tools/list") {
+        respond(message.id, { tools: [
+          { name: "set_prompt", description: "Set the current Image Studio model, instruction, and optional visual controls.", inputSchema: { type: "object", properties: { prompt: { type: "string" }, model: { type: "string" }, mode: { type: "string", enum: ["generate", "edit"] }, style: { type: "string" }, camera: { type: "string" }, lighting: { type: "string" }, size: { type: "string" }, quality: { type: "string" } } } },
+          { name: "open_image", description: "Open a workspace-relative image in Image Studio.", inputSchema: { type: "object", properties: { sourcePath: { type: "string" } }, required: ["sourcePath"] } },
+          { name: "generate_or_edit", description: "Run the current generation or edit after the user has reviewed the prompt and selection.", inputSchema: { type: "object", properties: {} } },
+          { name: "clear_selection", description: "Clear the active mask so the next edit applies to the whole image.", inputSchema: { type: "object", properties: {} } },
+        ] }); return;
+      }
+      if (message.method === "tools/call") {
+        const args = message.params?.arguments || {};
+        if (message.params?.name === "set_prompt") {
+          if (typeof args.prompt === "string") state.prompt = args.prompt;
+          if (args.mode === "generate" || args.mode === "edit") setMode(args.mode);
+          for (const key of ["model", "style", "camera", "lighting", "size", "quality"]) if (typeof args[key] === "string") state[key] = args[key];
+          syncProviderState(); renderProvider();
+          respond(message.id, toolResult("Image Studio parameters updated.")); return;
+        }
+        if (message.params?.name === "open_image") {
+          void loadWorkspaceImage(String(args.sourcePath || "")).then(() => respond(message.id, toolResult("Image opened."))).catch((error) => respond(message.id, { isError: true, content: [{ type: "text", text: error.message }] })); return;
+        }
+        if (message.params?.name === "generate_or_edit") {
+          void run().then((result) => respond(message.id, result.ok
+            ? toolResult("Image action finished.")
+            : { isError: true, content: [{ type: "text", text: result.message || "Image action failed." }] })); return;
+        }
+        if (message.params?.name === "clear_selection") { clearSelection(false); respond(message.id, toolResult("Selection cleared.")); return; }
+        respond(message.id, { isError: true, content: [{ type: "text", text: "Unknown Image Studio tool." }] }); return;
+      }
+      if (message.method === "ui/resource-teardown") respond(message.id, {});
+      if (message.method === "ui/notifications/host-context-changed") {
+        const params = message.params || {};
+        const host = params[HOST_CONTEXT_KEY] || params.hostContext?.[HOST_CONTEXT_KEY] || params;
+        if (params.theme) document.documentElement.style.colorScheme = params.theme;
+        void applyHostContext(host);
+      }
+    });
+
+    selectionCanvas.addEventListener("pointerdown", (event) => {
+      if (state.busy || state.mode !== "edit") return;
+      if (state.tool === "hand") {
+        state.pan = { pointerId: event.pointerId, x: event.clientX, y: event.clientY, left: $("#stage").scrollLeft, top: $("#stage").scrollTop };
+        $("#stage").classList.add("panning"); selectionCanvas.classList.add("dragging");
+        selectionCanvas.setPointerCapture(event.pointerId);
+        return;
+      }
+      const point = pointForEvent(event);
+      state.activeSubtract = state.operation === "subtract" || event.altKey;
+      if (state.tool === "smart") {
+        snapshotSelection(); smartSelect(point, state.activeSubtract); setStatus(tr("smartSelected"));
+        renderSelectionState(); publishContext();
+        return;
+      }
+      state.drawing = true; state.moved = false; state.start = state.last = point; state.gestureBase = snapshotSelection();
+      selectionCanvas.setPointerCapture(event.pointerId);
+      if (state.tool === "brush") dab(state.start, state.activeSubtract);
+    });
+    selectionCanvas.addEventListener("pointermove", (event) => {
+      if (state.pan?.pointerId === event.pointerId) {
+        $("#stage").scrollLeft = state.pan.left - (event.clientX - state.pan.x);
+        $("#stage").scrollTop = state.pan.top - (event.clientY - state.pan.y);
+        return;
+      }
+      if (!state.drawing || !state.last) return;
+      const point = pointForEvent(event); state.moved = true;
+      if (state.tool === "brush") strokeBetween(state.last, point, state.activeSubtract);
+      if ((state.tool === "rectangle" || state.tool === "ellipse") && state.start && state.gestureBase) {
+        selectionContext.putImageData(state.gestureBase, 0, 0);
+        drawShape(state.start, point, state.tool, state.activeSubtract);
+      }
+      state.last = point;
+    });
+    selectionCanvas.addEventListener("pointerup", (event) => {
+      if (state.pan?.pointerId === event.pointerId) {
+        state.pan = null; $("#stage").classList.remove("panning"); selectionCanvas.classList.remove("dragging");
+        return;
+      }
+      if (!state.drawing) return;
+      const point = pointForEvent(event);
+      if ((state.tool === "rectangle" || state.tool === "ellipse") && state.start && state.gestureBase) {
+        selectionContext.putImageData(state.gestureBase, 0, 0);
+        drawShape(state.start, point, state.tool, state.activeSubtract);
+      }
+      state.drawing = false; state.start = state.last = state.gestureBase = null; renderSelectionState(); publishContext();
+    });
+    selectionCanvas.addEventListener("pointercancel", () => {
+      if (state.pan) { state.pan = null; $("#stage").classList.remove("panning"); selectionCanvas.classList.remove("dragging"); }
+      if (state.drawing && state.gestureBase) {
+        selectionContext.putImageData(state.gestureBase, 0, 0);
+        state.selectionHistory.pop();
+      }
+      state.drawing = false; state.start = state.last = state.gestureBase = null; renderSelectionState();
+    });
+    document.querySelectorAll("[data-tool]").forEach((button) => button.addEventListener("click", () => selectTool(button.dataset.tool)));
+    document.querySelectorAll("[data-operation]").forEach((button) => button.addEventListener("click", () => selectOperation(button.dataset.operation)));
+    $("#brushSize").addEventListener("input", () => { $("#brushSizeValue").textContent = $("#brushSize").value; });
+    $("#hardness").addEventListener("input", () => { $("#hardnessValue").textContent = $("#hardness").value; });
+    $("#tolerance").addEventListener("input", () => { $("#toleranceValue").textContent = $("#tolerance").value; });
+    $("#undo").addEventListener("click", undoSelection);
+    $("#redo").addEventListener("click", redoSelection);
+    $("#clearSelection").addEventListener("click", () => clearSelection(true));
+    $("#zoomIn").addEventListener("click", () => { state.zoom = Math.min(3, state.zoom + .2); applyZoom(); });
+    $("#zoomOut").addEventListener("click", () => { state.zoom = Math.max(.4, state.zoom - .2); applyZoom(); });
+    $("#zoomValue").addEventListener("click", () => { state.zoom = 1; applyZoom(); });
+    $("#stage").addEventListener("wheel", (event) => {
+      if (!state.imageWidth || (!event.metaKey && !event.ctrlKey)) return;
+      event.preventDefault();
+      state.zoom = Math.max(.4, Math.min(3, state.zoom + (event.deltaY < 0 ? .12 : -.12)));
+      applyZoom();
+    }, { passive: false });
+    addEventListener("keydown", (event) => {
+      const target = event.target;
+      const editingText = target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement;
+      if (editingText) return;
+      const command = event.metaKey || event.ctrlKey;
+      if (command && event.key.toLowerCase() === "z") { event.preventDefault(); event.shiftKey ? redoSelection() : undoSelection(); return; }
+      if (command && event.key.toLowerCase() === "y") { event.preventDefault(); redoSelection(); return; }
+      if (event.code === "Space" && !event.repeat && state.tool !== "hand") {
+        event.preventDefault(); state.temporaryTool = state.tool; selectTool("hand"); return;
+      }
+      if (event.key === "0") { state.zoom = 1; applyZoom(); return; }
+      const shortcut = { w: "smart", b: "brush", r: "rectangle", o: "ellipse", h: "hand" }[event.key.toLowerCase()];
+      if (shortcut) selectTool(shortcut);
+    });
+    addEventListener("keyup", (event) => {
+      if (event.code !== "Space" || !state.temporaryTool) return;
+      const tool = state.temporaryTool; state.temporaryTool = ""; selectTool(tool);
+    });
+    $("#editMode").addEventListener("click", () => setMode("edit"));
+    $("#generateMode").addEventListener("click", () => setMode("generate"));
+    $("#parameters").addEventListener("click", requestInspector);
+    $("#emptyGenerate").addEventListener("click", () => { setMode("generate"); requestInspector(); });
+    for (const id of ["emptyImport", "topImport"]) $("#" + id).addEventListener("click", () => $("#fileInput").click());
+    $("#fileInput").addEventListener("change", () => void importImage($("#fileInput").files?.[0]));
+    addEventListener("resize", applyZoom);
+
+    selectTool(state.tool);
+    selectOperation(state.operation);
+
+    request("ui/initialize", {
+      protocolVersion: "2025-11-21",
+      appInfo: { name: "iPolloWork Image Studio", version: "0.1.8" },
+      appCapabilities: { tools: {}, availableDisplayModes: ["inline", "fullscreen"] },
+    }).then(async (host) => {
+      post({ jsonrpc: "2.0", method: "ui/notifications/initialized", params: {} });
+      state.locale = String(host.hostContext?.locale || "zh").toLowerCase().startsWith("en") ? "en" : "zh";
+      document.documentElement.style.colorScheme = host.hostContext?.theme || "light dark";
+      localize(); setStatus("");
+      const pluginContext = host.hostContext?.[HOST_CONTEXT_KEY];
+      await applyHostContext(pluginContext);
+      try {
+        const provider = await callService("status", {});
+        state.models = Array.isArray(provider.models) ? provider.models.filter((model) => model && typeof model.id === "string") : [];
+        const defaultModel = typeof provider.defaultModel === "string" ? provider.defaultModel : "";
+        if (state.models.some((model) => model.id === defaultModel)) state.model = defaultModel;
+        else if (!state.models.some((model) => model.id === state.model) && state.models[0]) state.model = state.models[0].id;
+        syncProviderState();
+      } catch { state.models = []; state.providerReady = false; }
+      renderProvider();
+      publishContext();
+    }).catch((error) => { setStatus(error.message || tr("failed"), true); });
+  </script>
+</body>
+</html>

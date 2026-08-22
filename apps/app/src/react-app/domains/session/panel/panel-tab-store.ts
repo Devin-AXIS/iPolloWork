@@ -3,6 +3,7 @@ import { createJSONStorage, persist } from "zustand/middleware";
 
 import { isCollectibleArtifactTarget, type OpenTarget, type OpenTargetPreview } from "../artifacts/open-target";
 import type { PluginUiSurface } from "@/react-app/plugin-ui/plugin-ui-contributions";
+import type { PluginUiHostContextV1 } from "@ipollowork/types/plugins";
 
 export const PERSISTED_PANEL_TAB_STORE_KEY = "ipollowork:panel-tabs:v1";
 
@@ -40,6 +41,7 @@ export type WorkspaceAppPanelTab = {
   label: string;
   sessionId: string;
   surface: PluginUiSurface;
+  launch?: PluginUiHostContextV1["launch"];
 };
 
 export type PluginStudioPanelTab = {
@@ -197,7 +199,10 @@ function isSameTab(left: PanelTab, right: PanelTab) {
   }
 
   if (left.type === "workspace-app" && right.type === "workspace-app") {
-    return left.label === right.label && left.sessionId === right.sessionId && left.surface.id === right.surface.id;
+    return left.label === right.label
+      && left.sessionId === right.sessionId
+      && left.surface.id === right.surface.id
+      && JSON.stringify(left.launch) === JSON.stringify(right.launch);
   }
 
   if (left.type === "plugin-studio" && right.type === "plugin-studio") {

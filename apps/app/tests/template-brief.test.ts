@@ -120,12 +120,13 @@ describe("template brief", () => {
     });
 
     expect(video).toContain("Decide whether narration materially helps");
-    expect(video).toContain("not a blank or unrelated project");
+    expect(video).toContain("content-led storyboard");
+    expect(video).toContain("add, remove, reorder, or retime scenes");
     expect(video).toContain("preserve its current theme as the visual source of truth");
     expect(video).toContain("do not change the managed theme block");
     expect(video).not.toContain("colorPalette");
-    expect(app).toContain("complete App prototype");
-    expect(app).toContain("do not turn it into a marketing website");
+    expect(app).toContain("build the complete prototype");
+    expect(app).toContain("or turn it into a marketing website");
   });
 
   test("assigns compatible slide navigation and responsive scaling to the Design panel", () => {
@@ -234,7 +235,7 @@ describe("template brief", () => {
     expect(surfaceSource).toContain("Continue the unfinished video delivery.");
   });
 
-  test("requires slide generation to retain the selected template's distinct composition", () => {
+  test("adapts slide structure to the brief while retaining the template's visual system", () => {
     const prompt = templateBriefPrompt({
       template: {
         category: "slides",
@@ -245,13 +246,15 @@ describe("template brief", () => {
       briefPath: "design/ses_xhs/brief.json",
     });
 
-    expect(prompt).toContain("existing HTML and CSS are the layout source of truth");
-    expect(prompt).toContain("Update existing elements in place");
-    expect(prompt).toContain("Do not replace the template with a generic deck");
-    expect(prompt).toContain("colored blocks, artwork, decorative elements, and template-specific components");
+    expect(prompt).toContain("reusable layout system rather than a finished deck");
+    expect(prompt).toContain("plan a coherent narrative and page count from the brief");
+    expect(prompt).toContain("select, repeat, recombine, adapt, remove, or reorder");
+    expect(prompt).toContain("Do not inherit the sample slide count");
+    expect(prompt).toContain("distinctive typography hierarchy, colored blocks, artwork");
+    expect(prompt).not.toContain("Do not add or remove slides");
   });
 
-  test("requires website generation to retain the selected template's distinct composition", () => {
+  test("adapts website structure to the brief while retaining the template's visual system", () => {
     const prompt = templateBriefPrompt({
       template: {
         category: "site",
@@ -262,10 +265,10 @@ describe("template brief", () => {
       briefPath: "design/ses_site/brief.json",
     });
 
-    expect(prompt).toContain("existing website HTML and CSS are the layout source of truth");
-    expect(prompt).toContain("Update existing elements in place");
-    expect(prompt).toContain("template-specific class names");
-    expect(prompt).toContain("do not rebuild it as a generic split hero");
+    expect(prompt).toContain("Plan the information architecture and section order from the brief");
+    expect(prompt).toContain("reuse, add, remove, or reorder the template's header");
+    expect(prompt).toContain("Do not retain inherited sections merely because they exist");
+    expect(prompt).toContain("do not rebuild the result as a generic split hero");
   });
 
 });

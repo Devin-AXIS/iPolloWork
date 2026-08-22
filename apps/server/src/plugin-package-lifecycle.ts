@@ -46,6 +46,8 @@ const TRUSTED_IMPORT_PUBLISHER_KEYS = new Map([
     "smart-future-school/smart-future-school-2026",
     [
       "MCowBQYDK2VwAyEARwKWW0VeQqnxh1WiOi8+kAutSITD476eRaRguDZkxYk=",
+      // Existing publisher packages and the local release signer use this previously trusted key.
+      "MCowBQYDK2VwAyEANqxN7w94IK3NWdYZWtoyz/Y6daP7MEqWnKrJHz+XAyI=",
     ],
   ],
 ]);

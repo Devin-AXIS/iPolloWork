@@ -74,6 +74,7 @@ type SidePanelProps = {
   onClose: () => void;
   onAskAi?: (context: DesignAiSelectionContext) => void;
   onSendWorkspaceAppMessage?: (input: { text: string; modelContext: WorkspaceAppModelContext | null }) => boolean | Promise<boolean>;
+  onEditImage?: (target: OpenTarget) => void;
   onSaveAsTemplate?: () => void;
   aiEditing?: boolean;
   expanded?: boolean;
@@ -559,6 +560,7 @@ export function SidePanel({
   launcherItems = [],
   onAskAi,
   onSendWorkspaceAppMessage,
+  onEditImage,
   onSaveAsTemplate,
   aiEditing = false,
   expanded = false,
@@ -863,6 +865,7 @@ export function SidePanel({
               workspaceId={workspaceId}
               workspaceRoot={workspaceRoot}
               sessionId={activeTab.sessionId}
+              launch={activeTab.launch}
               placement="workspace"
               displayMode={expanded ? "fullscreen" : "inline"}
               onDisplayModeChange={(mode) => onExpandedChange?.(mode === "fullscreen")}
@@ -879,6 +882,7 @@ export function SidePanel({
               workspaceId={workspaceId}
               workspaceRoot={workspaceRoot}
               isRemoteWorkspace={isRemoteWorkspace}
+              onEditImage={onEditImage}
               onClose={onClose}
             />
           </div>

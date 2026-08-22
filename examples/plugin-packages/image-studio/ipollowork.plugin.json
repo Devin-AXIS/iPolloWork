@@ -1,0 +1,206 @@
+{
+  "schemaVersion": 2,
+  "id": "image-studio",
+  "name": "图片工作台",
+  "description": "生成图片，并通过智能选取、涂抹和形状选区进行非破坏编辑。",
+  "category": "设计与创作",
+  "defaultEnabled": true,
+  "source": {
+    "format": "ipollowork-extension-manifest",
+    "origin": "builtin",
+    "trusted": true,
+    "reference": "https://github.com/Devin-AXIS/iPolloWork"
+  },
+  "icon": { "src": "ipollowork-mark.svg" },
+  "composer": {
+    "prompt": "打开图片工作台，在右侧生成图片，或对当前图片进行选区与涂抹编辑。"
+  },
+  "package": {
+    "version": "0.1.8",
+    "publisher": { "id": "ipollowork", "name": "iPolloWork" },
+    "compatibility": { "ipollowork": ">=0.21.0" },
+    "updateId": "ipollowork/image-studio"
+  },
+  "permissions": [
+    { "id": "workspace-read", "reason": "读取用户在当前工作区中选择的图片。" },
+    { "id": "workspace-write", "reason": "将导入、生成和编辑后的图片另存到当前工作区。" }
+  ],
+  "resources": [
+    {
+      "type": "ui",
+      "id": "studio",
+      "label": "图片工作台",
+      "description": "使用智能选取、画笔和形状选区精确编辑图片。",
+      "path": "ui/image-studio.html",
+      "required": true,
+      "ui": {
+        "uri": "ui://image-studio/studio",
+        "mimeType": "text/html;profile=mcp-app",
+        "prefersBorder": false
+      }
+    },
+    {
+      "type": "local-service",
+      "id": "image-studio-service",
+      "label": "图片工作台服务",
+      "description": "安全读取工作区图片，并通过统一 Host action 生成或编辑图片。",
+      "path": "service/image-studio.mjs",
+      "requires": [
+        "action:openai-image-generation/status",
+        "action:openai-image-generation/image_generate",
+        "action:openai-image-generation/image_edit"
+      ],
+      "provides": [
+        "action:status",
+        "action:load-image",
+        "action:import-image",
+        "action:generate-image",
+        "action:edit-image"
+      ],
+      "required": true,
+      "actions": [
+        {
+          "id": "status",
+          "title": "检查图片工作台",
+          "description": "检查图片工作台和当前图片提供方是否可用。",
+          "effect": "read",
+          "inputSchema": { "type": "object", "properties": {}, "additionalProperties": false }
+        },
+        {
+          "id": "load-image",
+          "title": "加载工作区图片",
+          "description": "读取当前工作区中的一张图片用于编辑。",
+          "effect": "read",
+          "inputSchema": {
+            "type": "object",
+            "properties": { "sourcePath": { "type": "string" } },
+            "required": ["sourcePath"],
+            "additionalProperties": false
+          }
+        },
+        {
+          "id": "import-image",
+          "title": "导入图片",
+          "description": "将用户选择的本地图片保存到当前工作区。",
+          "effect": "write",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "dataUrl": { "type": "string" },
+              "filename": { "type": "string" }
+            },
+            "required": ["dataUrl", "filename"],
+            "additionalProperties": false
+          }
+        },
+        {
+          "id": "generate-image",
+          "title": "生成图片",
+          "description": "使用已连接的图片提供方生成图片并保存到工作区。",
+          "effect": "write",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "prompt": { "type": "string" },
+              "model": { "type": "string" },
+              "filename": { "type": "string" },
+              "style": { "type": "string" },
+              "camera": { "type": "string" },
+              "lighting": { "type": "string" },
+              "quality": { "type": "string" },
+              "size": { "type": "string" }
+            },
+            "required": ["prompt"],
+            "additionalProperties": false
+          }
+        },
+        {
+          "id": "edit-image",
+          "title": "编辑图片",
+          "description": "使用提示词和可选蒙版编辑图片，结果另存为新文件。",
+          "effect": "write",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "sourcePath": { "type": "string" },
+              "prompt": { "type": "string" },
+              "model": { "type": "string" },
+              "maskDataUrl": { "type": "string" },
+              "selectionBounds": {
+                "type": "object",
+                "properties": {
+                  "left": { "type": "number", "minimum": 0, "maximum": 1 },
+                  "top": { "type": "number", "minimum": 0, "maximum": 1 },
+                  "right": { "type": "number", "minimum": 0, "maximum": 1 },
+                  "bottom": { "type": "number", "minimum": 0, "maximum": 1 }
+                },
+                "required": ["left", "top", "right", "bottom"],
+                "additionalProperties": false
+              },
+              "filename": { "type": "string" },
+              "style": { "type": "string" },
+              "camera": { "type": "string" },
+              "lighting": { "type": "string" },
+              "quality": { "type": "string" },
+              "size": { "type": "string" }
+            },
+            "required": ["sourcePath", "prompt"],
+            "additionalProperties": false
+          }
+        }
+      ]
+    },
+    {
+      "type": "skill",
+      "id": "image-generation",
+      "label": "图片生成",
+      "description": "把图片需求组织成清晰、可复用的生成参数。",
+      "path": "skills/image-generation/SKILL.md",
+      "provides": ["workflow:image-generation"]
+    },
+    {
+      "type": "skill",
+      "id": "image-editing",
+      "label": "图片编辑",
+      "description": "根据工作台选区和用户意图进行非破坏图片编辑。",
+      "path": "skills/image-editing/SKILL.md",
+      "provides": ["workflow:image-editing"]
+    }
+  ],
+  "contributions": [
+    {
+      "type": "workspace-app",
+      "ref": "studio",
+      "label": "图片工作台",
+      "description": "生成图片，或使用智能选取、涂抹和形状选区进行精确编辑。"
+    },
+    {
+      "type": "conversation-template",
+      "label": "生成或编辑图片",
+      "description": "在右侧打开图片工作台。",
+      "prompt": "打开图片工作台，帮助我生成一张图片；如果已经有图片，则保留原图并根据我的选区进行编辑。",
+      "mode": "design"
+    }
+  ],
+  "localization": {
+    "defaultLocale": "zh",
+    "translations": {
+      "en": {
+        "name": "Image Studio",
+        "description": "Generate images and edit them non-destructively with smart, brush, and shape selections.",
+        "category": "Design & Creative",
+        "composer": { "prompt": "Open Image Studio to generate an image or edit the selected image with a mask." },
+        "resources": {
+          "studio": { "label": "Image Studio", "description": "Precisely edit images with smart, brush, and shape selections." },
+          "image-studio-service": { "label": "Image Studio Service", "description": "Safely read workspace images and use provider-neutral host actions." },
+          "image-generation": { "label": "Image Generation", "description": "Turn image requests into clear, reusable generation parameters." },
+          "image-editing": { "label": "Image Editing", "description": "Edit images non-destructively from the active selection and user intent." }
+        },
+        "permissions": {
+          "workspace-read": { "reason": "Read images selected by the user in the current workspace." },
+          "workspace-write": { "reason": "Save imported, generated, and edited images as workspace files." }
+        }
+      }
+    }
+  }
+}

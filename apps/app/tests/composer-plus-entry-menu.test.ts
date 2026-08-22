@@ -110,8 +110,10 @@ describe("composer plus entry menu", () => {
     expect(sessionPageSource).toContain("only when this workbench exposes a relevant tool");
     expect(sessionPageSource).toContain("follow that instruction instead");
     expect(sessionPageSource).toContain("Do not inspect or operate unrelated Design");
-    expect(sessionPageSource).toContain("workspace_app.list_tools");
-    expect(sessionPageSource).toContain("workspace_app.call_tool");
+    expect(sessionPageSource).toContain('const WORKSPACE_APP_LIST_TOOLS_NAME = "ipollowork_workspace_app_list_tools"');
+    expect(sessionPageSource).toContain('const WORKSPACE_APP_CALL_TOOL_NAME = "ipollowork_workspace_app_call_tool"');
+    expect(sessionPageSource).not.toContain("Call workspace_app.list_tools");
+    expect(sessionPageSource).not.toContain("then call workspace_app.call_tool");
     expect(sessionPageSource).not.toContain("You must use its available workspace_app tools");
   });
 

@@ -298,6 +298,34 @@ describe("plugin package manifest", () => {
     });
   });
 
+  test("accepts Image Studio as a self-contained workspace app with independently managed skills", async () => {
+    const { validatePluginPackageManifest } = await import("./plugin-package-manifest.js");
+    const manifest = await Bun.file(new URL("../../../examples/plugin-packages/image-studio/ipollowork.plugin.json", import.meta.url)).json();
+    const workspaceUi = await Bun.file(new URL("../../../examples/plugin-packages/image-studio/ui/image-studio.html", import.meta.url)).text();
+
+    const result = validatePluginPackageManifest(manifest);
+
+    expect(result.success).toBe(true);
+    if (!result.success) throw new Error(JSON.stringify(result.issues));
+    expect(result.manifest.defaultEnabled).toBe(true);
+    expect(result.manifest.contributions).toEqual(expect.arrayContaining([
+      expect.objectContaining({ type: "workspace-app", ref: "studio" }),
+    ]));
+    expect(result.manifest.resources.filter((resource) => resource.type === "ui")).toHaveLength(1);
+    expect(result.manifest.resources.filter((resource) => resource.type === "local-service")).toHaveLength(1);
+    expect(result.manifest.resources.filter((resource) => resource.type === "skill").map((resource) => resource.id)).toEqual([
+      "image-generation",
+      "image-editing",
+    ]);
+    expect(result.manifest.package?.version).toBe("0.1.8");
+    expect(workspaceUi).toContain('data-tool="smart"');
+    expect(workspaceUi).toContain('data-tool="ellipse"');
+    expect(workspaceUi).toContain('data-operation="subtract"');
+    expect(workspaceUi).toContain('id="redo"');
+    expect(workspaceUi).toContain("normalizedSelectionBounds");
+    expect(workspaceUi).toContain("approximateSelection");
+  });
+
   test("accepts version 2 packages and rejects obsolete manifests", async () => {
     const { validatePluginPackageManifest } = await import("./plugin-package-manifest.js");
 
@@ -390,7 +418,7 @@ describe("plugin package manifest", () => {
       ...minimalManifest,
       source: { format: "ipollowork-extension-manifest", origin: "local", trusted: false },
       package: {
-        version: "0.1.0",
+        version: "0.1.1",
         updateId: "local/minimal-plugin",
       },
       engineBindings: [{ engine: "opencode", capabilities: [{ id: "minimal-runtime", kind: "plugin", path: "engines/opencode/plugins/minimal.ts", required: true }] }],

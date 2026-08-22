@@ -212,9 +212,9 @@ async function expectLegacyCallPassesThrough(base: string) {
 }
 
 function expectAllActions(actions: ActionItem[]) {
-  expect(actions).toHaveLength(33);
+  expect(actions).toHaveLength(34);
   expect(actions.filter((action) => action.extensionId === "google-workspace")).toHaveLength(14);
-  expect(actions.filter((action) => action.extensionId === "openai-image-generation")).toHaveLength(2);
+  expect(actions.filter((action) => action.extensionId === "openai-image-generation")).toHaveLength(3);
   expect(actions.filter((action) => action.extensionId === "media")).toHaveLength(15);
   expect(actions.filter((action) => action.extensionId === "storage")).toHaveLength(2);
 }
@@ -458,6 +458,7 @@ describe("extension and engine host tool gating", () => {
       "media/voice_clone_workspace_file",
       "media/voice_list",
       "media/voiceover_timeline_validate",
+      "openai-image-generation/image_edit",
       "openai-image-generation/image_generate",
       "openai-image-generation/status",
       "storage/status",

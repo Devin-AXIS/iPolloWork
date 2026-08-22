@@ -157,6 +157,7 @@ import { cn } from "@/lib/utils";
 import { useActiveEnterpriseConnection } from "@/react-app/domains/enterprise/use-active-enterprise-connection";
 import { useInstalledPluginContributions, type PluginConversationTemplate } from "@/react-app/plugin-ui/plugin-ui-contributions";
 import type { WorkspaceAppModelContext } from "@/react-app/plugin-ui/workspace-app-frame";
+import type { PluginUiHostContextV1 } from "@ipollowork/types/plugins";
 import { isProjectBuilderSession, ProjectOverview, WorkCenter } from "@/react-app/domains/work";
 import {
   mergePluginWorkshopInstruction,
@@ -169,7 +170,8 @@ import projectEngineOpenCodeIcon from "./assets/project-engine-opencode.svg";
 import projectEngineSelectedIcon from "./assets/project-engine-selected.svg";
 import projectEngineUnselectedIcon from "./assets/project-engine-unselected.svg";
 
-
+const WORKSPACE_APP_LIST_TOOLS_NAME = "ipollowork_workspace_app_list_tools";
+const WORKSPACE_APP_CALL_TOOL_NAME = "ipollowork_workspace_app_call_tool";
 const STARTUP_SKELETON_ROWS = [
   { id: "intro", titleWidth: "42%", bodyWidth: "88%" },
   { id: "middle", titleWidth: "56%", bodyWidth: "88%" },
@@ -198,7 +200,7 @@ type TemplateSessionData = {
 };
 
 function workspaceAppCapabilityInstruction(label: string) {
-  return `The user explicitly activated the ${label} plugin workbench for this request. Use workspace_app.list_tools and workspace_app.call_tool only when this workbench exposes a relevant tool. If the plugin capability instruction names another declared action path, follow that instruction instead. Do not inspect or operate unrelated Design, Video, Files, or other side-panel surfaces. If the workbench cannot complete the request, explain the concrete tool error.`;
+  return `The user explicitly activated the ${label} plugin workbench for this request. Use ${WORKSPACE_APP_LIST_TOOLS_NAME} and ${WORKSPACE_APP_CALL_TOOL_NAME} only when this workbench exposes a relevant tool. If the plugin capability instruction names another declared action path, follow that instruction instead. Do not inspect or operate unrelated Design, Video, Files, or other side-panel surfaces. If the workbench cannot complete the request, explain the concrete tool error.`;
 }
 
 function ProjectEngineBadge({
@@ -3134,7 +3136,7 @@ export function SessionPage(props: SessionPageProps) {
   const openVoiceRailPane = useCallback(() => {
     toggleCurrentSidePanel("voice");
   }, [toggleCurrentSidePanel]);
-  const openWorkspaceApp = useCallback((surface: (typeof workspaceApps)[number]) => {
+  const openWorkspaceApp = useCallback((surface: (typeof workspaceApps)[number], launch?: PluginUiHostContextV1["launch"]) => {
     if (!props.selectedSessionId) return;
     openTab(props.selectedSessionId, {
       id: `workspace-app:${surface.id}`,
@@ -3142,13 +3144,29 @@ export function SessionPage(props: SessionPageProps) {
       label: surface.label,
       sessionId: props.selectedSessionId,
       surface,
+      launch,
     });
     setCurrentSidePanel("panel");
   }, [openTab, props.selectedSessionId, setCurrentSidePanel]);
-  const openWorkspaceAppForPlugin = useCallback((pluginId: string) => {
+  const openWorkspaceAppForPlugin = useCallback((pluginId: string, launch?: PluginUiHostContextV1["launch"]) => {
     const surface = workspaceApps.find((entry) => entry.pluginId === pluginId);
-    if (surface) openWorkspaceApp(surface);
+    if (surface) {
+      openWorkspaceApp(surface, launch);
+      return;
+    }
+    if (pluginId === "image-studio") toast.error(t("artifact.image_studio_install_required"));
   }, [openWorkspaceApp, workspaceApps]);
+  const openImageStudio = useCallback((target: OpenTarget) => {
+    openWorkspaceAppForPlugin("image-studio", {
+      intent: "edit-image",
+      source: {
+        kind: "workspace-file",
+        path: target.value,
+        name: target.name,
+        preview: target.preview,
+      },
+    });
+  }, [openWorkspaceAppForPlugin]);
   const sendWorkspaceAppMessage = useCallback((input: {
     text: string;
     modelContext: WorkspaceAppModelContext | null;
@@ -4323,6 +4341,7 @@ export function SessionPage(props: SessionPageProps) {
                         aiEditing={isStreamingSessionStatus(props.sidebar.sessionStatusById[props.selectedSessionId])}
                         onAskAi={handleDesignAskAi}
                         onSendWorkspaceAppMessage={sendWorkspaceAppMessage}
+                        onEditImage={openImageStudio}
                         onSaveAsTemplate={hasTemplateSession && props.selectedWorkspaceDisplay.workspaceType === "local" ? openTemplateSave : undefined}
                         expanded={rightPanelExpanded}
                         titlebarInset={rightPanelExpanded && (!shellConfig.sidebar || !sidebarOpen)}

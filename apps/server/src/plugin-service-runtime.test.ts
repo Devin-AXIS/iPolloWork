@@ -185,6 +185,45 @@ export default async function createService(runtime) {
   }, null, 2), "utf8");
 }
 
+async function writeHostActionPackage(root: string): Promise<void> {
+  await mkdir(join(root, "service"), { recursive: true });
+  await writeFile(join(root, "service", "host-action.ts"), `
+export default async function createService(runtime) {
+  return {
+    actions: {
+      proxy: async (args) => runtime.host.callAction(args.reference, { value: args.value }),
+    },
+  };
+}
+`, "utf8");
+  await writeFile(join(root, "ipollowork.plugin.json"), JSON.stringify({
+    schemaVersion: 2,
+    id: "host-action-fixture",
+    name: "Host Action Fixture",
+    description: "Trusted host action fixture.",
+    source: { format: "ipollowork-extension-manifest", origin: "builtin", trusted: true },
+    package: { version: "1.0.0", updateId: "fixture/host-action" },
+    resources: [{
+      type: "local-service",
+      id: "host-action-service",
+      path: "service/host-action.ts",
+      requires: ["action:fixture-provider/run"],
+      provides: ["action:proxy"],
+      actions: [{
+        id: "proxy",
+        title: "Proxy host action",
+        description: "Call one explicitly declared host action.",
+        inputSchema: {
+          type: "object",
+          properties: { reference: { type: "string" }, value: { type: "string" } },
+          required: ["reference"],
+          additionalProperties: false,
+        },
+      }],
+    }],
+  }, null, 2), "utf8");
+}
+
 async function git(root: string, args: string[]): Promise<void> {
   const child = Bun.spawn(["git", ...args], { cwd: root, stdout: "pipe", stderr: "pipe" });
   const [code, stderr] = await Promise.all([child.exited, new Response(child.stderr).text()]);
@@ -272,6 +311,138 @@ afterEach(async () => {
 });
 
 describe("plugin service runtime", () => {
+  test("lets trusted built-in services call only declared host actions in the active request scope", async () => {
+    const workspaceRoot = await temporaryRoot("ipollowork-plugin-host-action-workspace-");
+    const packageRoot = await temporaryRoot("ipollowork-plugin-host-action-package-");
+    const runtimeRoot = await temporaryRoot("ipollowork-plugin-host-action-runtime-");
+    process.env.IPOLLOWORK_RUNTIME_DB = join(runtimeRoot, "runtime.sqlite");
+    await writeHostActionPackage(packageRoot);
+    const serverConfig = config(workspaceRoot);
+    await installPluginPackage({ serverConfig, packageRoot });
+
+    const allowed = await callPluginServiceAction({
+      config: serverConfig,
+      workspaceId: WORKSPACE_ID,
+      pluginId: "host-action-fixture",
+      action: "proxy",
+      args: { reference: "fixture-provider/run", value: "hello" },
+      context: {},
+      callHostAction: async (reference, args) => ({ reference, args }),
+    });
+    expect(allowed).toMatchObject({
+      result: { reference: "action:fixture-provider/run", args: { value: "hello" } },
+    });
+
+    await expect(callPluginServiceAction({
+      config: serverConfig,
+      workspaceId: WORKSPACE_ID,
+      pluginId: "host-action-fixture",
+      action: "proxy",
+      args: { reference: "fixture-provider/undeclared" },
+      context: {},
+      callHostAction: async () => ({}),
+    })).rejects.toMatchObject({ code: "plugin_host_action_denied" });
+
+    await expect(callPluginServiceAction({
+      config: serverConfig,
+      workspaceId: WORKSPACE_ID,
+      pluginId: "host-action-fixture",
+      action: "proxy",
+      args: { reference: "fixture-provider/run" },
+      context: {},
+    })).rejects.toMatchObject({ code: "plugin_host_action_unavailable" });
+  });
+
+  test("imports and reloads Image Studio assets while delegating provider work through its declared host action", async () => {
+    const workspaceRoot = await temporaryRoot("ipollowork-image-studio-workspace-");
+    const runtimeRoot = await temporaryRoot("ipollowork-image-studio-runtime-");
+    const packageRoot = fileURLToPath(new URL("../../../examples/plugin-packages/image-studio", import.meta.url));
+    process.env.IPOLLOWORK_RUNTIME_DB = join(runtimeRoot, "runtime.sqlite");
+    const serverConfig = config(workspaceRoot);
+    const env = new EnvService({ path: join(runtimeRoot, "env.json") });
+    const serviceModuleUrl = pathToFileURL(join(packageRoot, "service", "image-studio.mjs")).href;
+    const nodeImport = Bun.spawn(["node", "--input-type=module", "--eval", `await import(${JSON.stringify(serviceModuleUrl)})`], {
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    const [nodeImportCode, nodeImportError] = await Promise.all([
+      nodeImport.exited,
+      new Response(nodeImport.stderr).text(),
+    ]);
+    expect(nodeImportCode, nodeImportError).toBe(0);
+    await installPluginPackage({ serverConfig, packageRoot });
+
+    const imported = await callPluginServiceAction({
+      config: serverConfig,
+      env,
+      workspaceId: WORKSPACE_ID,
+      pluginId: "image-studio",
+      action: "import-image",
+      args: { dataUrl: `data:image/png;base64,${Buffer.from("png-fixture").toString("base64")}`, filename: "Reference Image.png" },
+      context: {},
+    });
+    expect(imported).toMatchObject({
+      result: { mimeType: "image/png", name: expect.stringMatching(/^reference-image-\d+\.png$/) },
+    });
+    const importedResult = record(imported.result);
+    const importedPath = typeof importedResult?.path === "string" ? importedResult.path : "";
+    expect(importedPath.startsWith("artifacts/image-studio/")).toBe(true);
+
+    const calls: Array<{ reference: string; args: Record<string, unknown> }> = [];
+    const generated = await callPluginServiceAction({
+      config: serverConfig,
+      env,
+      workspaceId: WORKSPACE_ID,
+      pluginId: "image-studio",
+      action: "generate-image",
+      args: { prompt: "A calm product image", model: "openai/gpt-image-2", style: "minimal", camera: "50mm natural perspective", quality: "high" },
+      context: {},
+      callHostAction: async (reference, args) => {
+        calls.push({ reference, args });
+        return { result: { path: importedPath, provider: "openai", model: "openai/gpt-image-2" } };
+      },
+    });
+    expect(calls).toEqual([{
+      reference: "action:openai-image-generation/image_generate",
+      args: expect.objectContaining({
+        prompt: "A calm product image\n\nStyle: minimal. Camera: 50mm natural perspective.",
+        model: "openai/gpt-image-2",
+        quality: "high",
+      }),
+    }]);
+    expect(generated).toMatchObject({ result: { path: importedPath, provider: "openai", model: "openai/gpt-image-2" } });
+
+    calls.length = 0;
+    await callPluginServiceAction({
+      config: serverConfig,
+      env,
+      workspaceId: WORKSPACE_ID,
+      pluginId: "image-studio",
+      action: "edit-image",
+      args: {
+        sourcePath: importedPath,
+        prompt: "Make the selected object blue",
+        model: "volcengine/seedream-5",
+        maskDataUrl: `data:image/png;base64,${Buffer.from("mask").toString("base64")}`,
+        selectionBounds: { left: 0.2, top: 0.1, right: 0.7, bottom: 0.8 },
+      },
+      context: {},
+      callHostAction: async (reference, args) => {
+        calls.push({ reference, args });
+        return { result: { path: importedPath, provider: "volcengine", model: "volcengine/seedream-5" } };
+      },
+    });
+    expect(calls).toEqual([{
+      reference: "action:openai-image-generation/image_edit",
+      args: expect.objectContaining({
+        sourcePath: importedPath,
+        prompt: "Make the selected object blue",
+        model: "volcengine/seedream-5",
+        selectionBounds: { left: 0.2, top: 0.1, right: 0.7, bottom: 0.8 },
+      }),
+    }]);
+  });
+
   test("exposes only declared environment values and removes plugin-owned data", async () => {
     const workspaceRoot = await temporaryRoot("ipollowork-plugin-capability-workspace-");
     const packageRoot = await temporaryRoot("ipollowork-plugin-capability-package-");

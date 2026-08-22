@@ -49,6 +49,7 @@ import { DesignGradientPicker } from "./design-gradient-picker";
 import { DesignImageFitSelect, type DesignImageFitMode } from "./design-image-fit-select";
 import { DesignPanelSelect } from "./design-panel-select";
 import panelSelectChevron from "./assets/panel-select-chevron.svg";
+import { StudioInspectorPanel } from "../panel/studio-inspector-panel";
 
 type DesignPropertiesInspectorProps = {
   selection: DesignSelection | null;
@@ -383,8 +384,9 @@ export function DesignSystemInspectorShell({ onClose, children }: Pick<DesignPro
 
 function InspectorShell({ activeTab, onActiveTabChange, onClose, children, designSystemOnly = false }: Pick<DesignPropertiesInspectorProps, "activeTab" | "onActiveTabChange" | "onClose" | "children"> & { designSystemOnly?: boolean }) {
   return (
-    <aside className="flex h-full w-[310px] shrink-0 flex-col overflow-hidden border-l border-border bg-background text-foreground" aria-label="Design inspector">
-      <header className="sticky left-0 top-0 z-20 flex h-[58px] w-full shrink-0 items-center border-b border-border bg-background !px-4">
+    <StudioInspectorPanel
+      ariaLabel="Design inspector"
+      header={<header className="relative flex h-[58px] w-full shrink-0 items-center border-b border-border bg-background px-4">
         <div className="flex w-[240px] shrink-0 gap-1">
           {!designSystemOnly ? <button type="button" onClick={() => onActiveTabChange("element")} className={cn("h-[35px] w-[118px] shrink-0 whitespace-nowrap rounded-lg px-2 text-[12px] font-semibold leading-none text-foreground transition-colors", activeTab === "element" ? "bg-muted" : "hover:bg-muted")} aria-pressed={activeTab === "element"}>{t("design.properties.tabs.element")}</button> : null}
           <button type="button" onClick={() => onActiveTabChange("design-system")} className={cn("h-[35px] w-[118px] shrink-0 whitespace-nowrap rounded-lg px-1 text-[12px] font-semibold leading-none text-foreground transition-colors", activeTab === "design-system" ? "bg-muted" : "hover:bg-muted")} aria-pressed={activeTab === "design-system"}>{t("design.properties.tabs.design_system")}</button>
@@ -392,11 +394,10 @@ function InspectorShell({ activeTab, onActiveTabChange, onClose, children, desig
         <button type="button" className="absolute right-4 grid size-8 place-items-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground" onClick={onClose} aria-label={t("design.properties.action.close")}>
           <X className="size-4" strokeWidth={1.7} />
         </button>
-      </header>
-      <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto">
-        {children}
-      </div>
-    </aside>
+      </header>}
+    >
+      {children}
+    </StudioInspectorPanel>
   );
 }
 

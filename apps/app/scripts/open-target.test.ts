@@ -4,6 +4,7 @@ import type { UIMessage } from "ai";
 import {
   deriveOpenTargets,
   isCollectibleArtifactTarget,
+  localFilePathFromHref,
 } from "../src/react-app/domains/session/artifacts/open-target";
 
 function message(id: string, role: "user" | "assistant", text: string): UIMessage {
@@ -124,6 +125,38 @@ describe("deriveOpenTargets", () => {
     ]);
 
     expect(targets.map((target) => target.value).sort()).toEqual(["reports/native-link.txt", "summary.md"]);
+  });
+
+  it("always resolves explicit local image links without relying on artifact prose", () => {
+    const imagePath = "/Users/test/Application Support/workspace/design/session/reddit-post-card.png";
+    const targets = deriveOpenTargets([
+      message("msg_1", "assistant", `可以，已导出为 PNG：\n[下载 Reddit Post Card 图片](<${imagePath}>)`),
+    ]);
+
+    expect(targets).toEqual([
+      expect.objectContaining({
+        kind: "file",
+        value: imagePath,
+        name: "reddit-post-card.png",
+        preview: "image",
+      }),
+    ]);
+  });
+
+  it("normalizes file URLs before resolving explicit local links", () => {
+    const targets = deriveOpenTargets([
+      message("msg_1", "assistant", "[查看图片](file:///Users/test/workspace/output%20image.png)"),
+    ]);
+
+    expect(targets[0]).toMatchObject({
+      value: "/Users/test/workspace/output image.png",
+      preview: "image",
+    });
+  });
+
+  it("decodes browser-normalized local file hrefs", () => {
+    expect(localFilePathFromHref("/Users/test/Application%20Support/workspace/card.png"))
+      .toBe("/Users/test/Application Support/workspace/card.png");
   });
 
   it("extracts PowerPoint decks from assistant artifact summaries", () => {
