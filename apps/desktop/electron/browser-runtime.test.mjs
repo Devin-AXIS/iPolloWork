@@ -24,6 +24,7 @@ function createFixture({ workspacePath = null, userDataPath = "/tmp" } = {}) {
   const flattenedNodes = [];
   const frameNodes = [];
   let attached = false;
+  let selectedOption = "writer";
   let url = "https://example.test/form";
   const nodes = [
     axNode({ nodeId: "root", role: "RootWebArea", name: "Fixture", childIds: ["heading", "title", "publish", "password"] }),
@@ -64,12 +65,24 @@ function createFixture({ workspacePath = null, userDataPath = "/tmp" } = {}) {
       if (method === "DOM.resolveNode") return { object: { objectId: `node-${params.backendNodeId}` } };
       if (method === "Runtime.callFunctionOn") {
         const backendNodeId = Number(String(params.objectId).replace("node-", ""));
+        if (String(params.functionDeclaration).includes("selectExactOption")) {
+          const option = params.arguments?.[0]?.value;
+          if (!["Writer", "Reviewer", "writer", "reviewer"].includes(option)) {
+            return { result: { value: { ok: false, reason: "not_found" } } };
+          }
+          const value = String(option).toLowerCase();
+          const changed = selectedOption !== value;
+          selectedOption = value;
+          return { result: { value: { ok: true, changed, label: value === "writer" ? "Writer" : "Reviewer", value } } };
+        }
         return {
           result: {
             value: {
-              buttonLike: backendNodeId === 12 || backendNodeId === 15,
+              buttonLike: [12, 15, 17, 18].includes(backendNodeId),
+              checkable: backendNodeId === 17,
               disabled: false,
               fileInput: backendNodeId === 14,
+              nativeSelect: backendNodeId === 16,
               unobstructed: true,
               text: backendNodeId === 15 ? "发布图文笔记" : "",
               visible: backendNodeId !== 14,
@@ -80,6 +93,7 @@ function createFixture({ workspacePath = null, userDataPath = "/tmp" } = {}) {
           },
         };
       }
+      if (method === "Runtime.evaluate") return { result: { value: "complete" } };
       return {};
     },
   };
@@ -91,7 +105,7 @@ function createFixture({ workspacePath = null, userDataPath = "/tmp" } = {}) {
     isDestroyed() { return false; },
     sendInputEvent(event) { inputEvents.push(event); },
   };
-  const tab = { tabId: "tab-1", view: { webContents } };
+  const tab = { tabId: "tab-1", view: { getBounds: () => ({ width: 640, height: 480 }), webContents } };
   const runtime = createBrowserRuntime({
     getTab: (tabId) => tabId === tab.tabId ? tab : null,
     selectTab() {},
@@ -100,7 +114,18 @@ function createFixture({ workspacePath = null, userDataPath = "/tmp" } = {}) {
     getUserDataPath: () => userDataPath,
     platform: "darwin",
   });
-  return { commands, flattenedNodes, frameNodes, inputEvents, nodes, runtime, setUrl(value) { url = value; } };
+  return { commands, flattenedNodes, frameNodes, inputEvents, nodes, runtime, selectedOption: () => selectedOption, setUrl(value) { url = value; } };
+}
+
+function addSemanticControls(fixture) {
+  fixture.nodes[0].childIds.push("role", "notifications", "hover");
+  fixture.nodes.push(
+    axNode({ nodeId: "role", role: "combobox", name: "Role", backendDOMNodeId: 16, value: "Writer", childIds: ["writer", "reviewer"] }),
+    axNode({ nodeId: "writer", role: "option", name: "Writer", backendDOMNodeId: 19, properties: [{ name: "selected", value: { value: true } }] }),
+    axNode({ nodeId: "reviewer", role: "option", name: "Reviewer", backendDOMNodeId: 20 }),
+    axNode({ nodeId: "notifications", role: "checkbox", name: "Enable notifications", backendDOMNodeId: 17, properties: [{ name: "checked", value: { value: false } }] }),
+    axNode({ nodeId: "hover", role: "button", name: "Open actions", backendDOMNodeId: 18 }),
+  );
 }
 
 it("creates bounded semantic snapshots with stable refs and protected-value redaction", async () => {
@@ -186,6 +211,97 @@ it("executes a bounded batch with real text and pointer input", async () => {
   assert.equal(result.snapshotRequired, true);
 });
 
+it("supports verified hover, native select, check, and bounded scroll actions", async () => {
+  const fixture = createFixture();
+  addSemanticControls(fixture);
+
+  let snapshot = await fixture.runtime.snapshot({ tabId: "tab-1" });
+  const hover = await fixture.runtime.act({
+    tabId: "tab-1",
+    snapshotId: snapshot.snapshotId,
+    actions: [{ type: "hover", ref: "@e8", expectedName: "Open actions" }],
+  });
+  assert.deepEqual(hover.results[0], { type: "hover", ref: "@e8", name: "Open actions" });
+  assert.equal(hover.snapshotRequired, true);
+
+  snapshot = await fixture.runtime.snapshot({ tabId: "tab-1" });
+  const select = await fixture.runtime.act({
+    tabId: "tab-1",
+    snapshotId: snapshot.snapshotId,
+    actions: [{ type: "select", ref: "@e4", expectedName: "Role", option: "Reviewer" }],
+  });
+  assert.deepEqual(select.results[0], {
+    type: "select",
+    ref: "@e4",
+    name: "Role",
+    option: "Reviewer",
+    value: "reviewer",
+    changed: true,
+  });
+  assert.equal(fixture.selectedOption(), "reviewer");
+
+  snapshot = await fixture.runtime.snapshot({ tabId: "tab-1" });
+  const check = await fixture.runtime.act({
+    tabId: "tab-1",
+    snapshotId: snapshot.snapshotId,
+    actions: [{ type: "check", ref: "@e7", expectedName: "Enable notifications", checked: true }],
+  });
+  assert.deepEqual(check.results[0], {
+    type: "check",
+    ref: "@e7",
+    name: "Enable notifications",
+    checked: true,
+    changed: true,
+  });
+
+  snapshot = await fixture.runtime.snapshot({ tabId: "tab-1" });
+  const scroll = await fixture.runtime.act({
+    tabId: "tab-1",
+    snapshotId: snapshot.snapshotId,
+    actions: [{ type: "scroll", direction: "down", amount: "small" }],
+  });
+  assert.deepEqual(scroll.results[0], { type: "scroll", direction: "down", amount: "small" });
+  assert.deepEqual(fixture.inputEvents.at(-1), {
+    type: "mouseWheel",
+    x: 320,
+    y: 240,
+    deltaX: 0,
+    deltaY: 320,
+  });
+});
+
+it("waits for bounded URL, text, ref, and document readiness conditions", async () => {
+  const fixture = createFixture();
+  const cases = [
+    { type: "waitFor", condition: "url", value: "https://example.test/form", match: "equals", timeoutMs: 100 },
+    { type: "waitFor", condition: "text", value: "Create post", timeoutMs: 100 },
+    { type: "waitFor", condition: "ref", ref: "@e2", state: "visible", timeoutMs: 100 },
+    { type: "waitFor", condition: "load", state: "complete", timeoutMs: 100 },
+  ];
+
+  for (const action of cases) {
+    const snapshot = await fixture.runtime.snapshot({ tabId: "tab-1" });
+    const result = await fixture.runtime.act({
+      tabId: "tab-1",
+      snapshotId: snapshot.snapshotId,
+      actions: [action],
+    });
+    assert.equal(result.results[0].type, "waitFor");
+    assert.equal(result.results[0].condition, action.condition);
+    assert.equal(result.snapshotRequired, true);
+  }
+
+  const snapshot = await fixture.runtime.snapshot({ tabId: "tab-1" });
+  await assert.rejects(
+    fixture.runtime.act({
+      tabId: "tab-1",
+      snapshotId: snapshot.snapshotId,
+      actions: [{ type: "waitFor", condition: "text", value: "Never appears", timeoutMs: 100 }],
+    }),
+    /timed out/i,
+  );
+});
+
 it("rejects stale snapshots and changed accessible names before input", async () => {
   const fixture = createFixture();
   const first = await fixture.runtime.snapshot({ tabId: "tab-1" });
@@ -229,9 +345,9 @@ it("invalidates refs when the host reports navigation", async () => {
   );
 });
 
-it("does not allow unscoped activation keys to bypass named clicks", async () => {
+it("requires stable named refs for Enter and Space activation keys", async () => {
   const fixture = createFixture();
-  const snapshot = await fixture.runtime.snapshot({ tabId: "tab-1" });
+  let snapshot = await fixture.runtime.snapshot({ tabId: "tab-1" });
 
   await assert.rejects(
     fixture.runtime.act({
@@ -239,8 +355,24 @@ it("does not allow unscoped activation keys to bypass named clicks", async () =>
       snapshotId: snapshot.snapshotId,
       actions: [{ type: "press", key: "Enter" }],
     }),
-    /unsupported browser key/i,
+    /require a stable ref/i,
   );
+
+  for (const key of ["Enter", "Space"]) {
+    snapshot = await fixture.runtime.snapshot({ tabId: "tab-1" });
+    const result = await fixture.runtime.act({
+      tabId: "tab-1",
+      snapshotId: snapshot.snapshotId,
+      actions: [{ type: "press", key, ref: "@e2", expectedName: "Publish" }],
+    });
+    assert.deepEqual(result.results[0], { type: "press", key, ref: "@e2", name: "Publish" });
+  }
+  assert.ok(fixture.commands.some((command) => (
+    command.method === "Input.dispatchKeyEvent" && command.params.code === "Enter"
+  )));
+  assert.ok(fixture.commands.some((command) => (
+    command.method === "Input.dispatchKeyEvent" && command.params.code === "Space"
+  )));
 });
 
 it("supplements hidden file inputs and uploads only registered-workspace files", async () => {

@@ -9,7 +9,10 @@ const MAX_UPLOAD_FILES = 20;
 const MAX_UPLOAD_FILE_BYTES = 1024 * 1024 * 1024;
 const MAX_INFERRED_CONTROLS = 32;
 const MAX_WAIT_MS = 2_000;
-const MAX_TOTAL_WAIT_MS = 5_000;
+const DEFAULT_WAIT_FOR_MS = 5_000;
+const MAX_WAIT_FOR_MS = 10_000;
+const MAX_TOTAL_WAIT_MS = 10_000;
+const WAIT_POLL_MS = 100;
 const MAX_EXPECTED_NAME = 200;
 const MAX_DEBUGGER_COMMAND_MS = 5_000;
 
@@ -34,7 +37,10 @@ const INTERACTIVE_ROLES = new Set([
 ]);
 const CONTENT_ROLES = new Set(["heading", "listitem", "paragraph", "StaticText"]);
 const WRITABLE_ROLES = new Set(["combobox", "searchbox", "textbox"]);
-const SAFE_KEYS = new Set([
+const CHECKABLE_ROLES = new Set(["checkbox", "menuitemcheckbox", "menuitemradio", "radio", "switch"]);
+const RADIO_ROLES = new Set(["menuitemradio", "radio"]);
+const ACTIVATABLE_ROLES = new Set(["button", "link", "menuitem", "option", "tab", "treeitem"]);
+const NAVIGATION_KEYS = new Set([
   "ArrowDown",
   "ArrowLeft",
   "ArrowRight",
@@ -46,6 +52,8 @@ const SAFE_KEYS = new Set([
   "PageUp",
   "Tab",
 ]);
+const ACTIVATION_KEYS = new Set(["Enter", "Space"]);
+const SCROLL_DISTANCE = { small: 320, page: 800 };
 
 function normalizeText(value) {
   return String(value ?? "").replace(/\s+/g, " ").trim();
@@ -162,7 +170,7 @@ function snapshotLine(node, ref, depth) {
 }
 
 function automationMetadataFunction() {
-  return `function (scrollIntoView) {
+  return `function inspectAutomationTarget(scrollIntoView) {
     if (scrollIntoView) this.scrollIntoView?.({ block: "center", inline: "center", behavior: "instant" });
     const tag = this.tagName?.toUpperCase?.() || "";
     const type = this.getAttribute?.("type")?.toLowerCase?.() || "";
@@ -203,15 +211,19 @@ function automationMetadataFunction() {
         currentWindow = frame.ownerDocument?.defaultView;
       }
     } catch { /* keep local coordinates if a frame boundary refuses access */ }
-    const buttonLike = tag === "BUTTON" || role === "button" || tag === "A"
-      || (tag === "INPUT" && ["button", "submit", "checkbox", "radio"].includes(type))
+    const checkable = ["checkbox", "radio"].includes(type)
+      || ["checkbox", "menuitemcheckbox", "menuitemradio", "radio", "switch"].includes(role);
+    const buttonLike = tag === "BUTTON" || role === "button" || tag === "A" || checkable
+      || (tag === "INPUT" && ["button", "submit"].includes(type))
       || style.cursor === "pointer";
     const writable = tag === "TEXTAREA" || (tag === "INPUT" && !["button", "submit", "checkbox", "radio", "file"].includes(type))
       || this.isContentEditable === true;
     return {
       buttonLike,
+      checkable,
       disabled: Boolean(this.disabled || this.readOnly || this.getAttribute?.("aria-disabled") === "true"),
       fileInput: tag === "INPUT" && type === "file",
+      nativeSelect: tag === "SELECT",
       visible: rect.width > 0 && rect.height > 0 && rect.right > 0 && rect.bottom > 0
         && rect.left < viewportWidth && rect.top < viewportHeight
         && style.display !== "none" && style.visibility !== "hidden" && style.pointerEvents !== "none",
@@ -221,6 +233,29 @@ function automationMetadataFunction() {
       x: (localPoint?.x ?? 0) + offsetX,
       y: (localPoint?.y ?? 0) + offsetY,
     };
+  }`;
+}
+
+function selectExactOptionFunction() {
+  return `function selectExactOption(requestedOption) {
+    if (this.tagName?.toUpperCase?.() !== "SELECT") return { ok: false, reason: "not_select" };
+    const normalize = (value) => String(value ?? "").replace(/\\s+/g, " ").trim();
+    const requested = normalize(requestedOption);
+    const options = Array.from(this.options ?? []);
+    const labelMatches = options.filter((option) => normalize(option.label || option.textContent) === requested);
+    const valueMatches = options.filter((option) => String(option.value) === requestedOption);
+    const matches = labelMatches.length > 0 ? labelMatches : valueMatches;
+    if (matches.length === 0) return { ok: false, reason: "not_found" };
+    if (matches.length > 1) return { ok: false, reason: "ambiguous" };
+    const option = matches[0];
+    const changed = this.value !== option.value;
+    if (changed) {
+      this.value = option.value;
+      option.selected = true;
+      this.dispatchEvent(new Event("input", { bubbles: true }));
+      this.dispatchEvent(new Event("change", { bubbles: true }));
+    }
+    return { ok: true, changed, label: normalize(option.label || option.textContent), value: String(option.value) };
   }`;
 }
 
@@ -450,6 +485,7 @@ export function createBrowserRuntime({
     const current = nodes.find((node) => Number(node?.backendDOMNodeId) === entry.backendNodeId) ?? nodes[0];
     if (!current || current.ignored) throw new Error("Browser reference is stale. Take a new snapshot.");
     return {
+      checked: axProperty(current, "checked"),
       name: boundedText(axValue(current.name), MAX_EXPECTED_NAME),
       role: String(axValue(current.role) ?? "unknown"),
     };
@@ -471,6 +507,103 @@ export function createBrowserRuntime({
       awaitPromise: true,
     });
     return inspected?.result?.value ?? null;
+  }
+
+  function requireExpectedName(action, current, actionName) {
+    const rawExpectedName = typeof action.expectedName === "string" ? action.expectedName.trim() : "";
+    if (!rawExpectedName || rawExpectedName.length > MAX_EXPECTED_NAME) {
+      throw new Error(`Browser ${actionName} requires the short exact accessible name from the latest snapshot.`);
+    }
+    const expectedName = boundedText(rawExpectedName, MAX_EXPECTED_NAME);
+    if (normalizeText(current.name) !== normalizeText(expectedName)) {
+      throw new Error("Browser target name changed. Take a new snapshot before acting.");
+    }
+  }
+
+  function focusBrowserTarget(tab) {
+    focusWindow?.();
+    selectTab?.(tab.tabId);
+    tab.view.webContents.focus();
+  }
+
+  function sendPointerClick(tab, metadata) {
+    focusBrowserTarget(tab);
+    const point = { x: Math.round(metadata.x), y: Math.round(metadata.y) };
+    tab.view.webContents.sendInputEvent({ type: "mouseMove", ...point });
+    tab.view.webContents.sendInputEvent({ type: "mouseDown", ...point, button: "left", clickCount: 1 });
+    tab.view.webContents.sendInputEvent({ type: "mouseUp", ...point, button: "left", clickCount: 1 });
+  }
+
+  async function waitUntil(check, timeoutMs, description) {
+    const startedAt = Date.now();
+    while (true) {
+      if (await check()) return Date.now() - startedAt;
+      const elapsedMs = Date.now() - startedAt;
+      if (elapsedMs >= timeoutMs) throw new Error(`Browser waitFor timed out waiting for ${description}.`);
+      await new Promise((resolve) => setTimeout(resolve, Math.min(WAIT_POLL_MS, timeoutMs - elapsedMs)));
+    }
+  }
+
+  async function performStructuredWait({ action, debuggerApi, state, tab }) {
+    const timeoutMs = action.timeoutMs === undefined ? DEFAULT_WAIT_FOR_MS : Number(action.timeoutMs);
+    if (!Number.isInteger(timeoutMs) || timeoutMs < WAIT_POLL_MS || timeoutMs > MAX_WAIT_FOR_MS) {
+      throw new Error(`Browser waitFor timeout must be between ${WAIT_POLL_MS} and ${MAX_WAIT_FOR_MS} ms.`);
+    }
+    const condition = typeof action.condition === "string" ? action.condition : "";
+    let elapsedMs;
+    if (condition === "url") {
+      const value = typeof action.value === "string" ? action.value.trim() : "";
+      const match = action.match === "contains" ? "contains" : "equals";
+      if (!value || value.length > 2_048) throw new Error("Browser waitFor URL requires a bounded non-empty value.");
+      elapsedMs = await waitUntil(() => {
+        const currentUrl = tab.view.webContents.getURL();
+        return match === "contains" ? currentUrl.includes(value) : currentUrl === value;
+      }, timeoutMs, `URL to ${match} ${value}`);
+    } else if (condition === "text") {
+      const value = typeof action.value === "string" ? normalizeText(action.value) : "";
+      if (!value || value.length > 500) throw new Error("Browser waitFor text requires a bounded non-empty value.");
+      const expected = value.toLocaleLowerCase();
+      elapsedMs = await waitUntil(async () => {
+        const trees = await readAccessibilityTrees(debuggerApi).catch(() => []);
+        return trees.some((tree) => tree.nodes.some((node) => {
+          if (node?.ignored) return false;
+          const name = normalizeText(axValue(node.name));
+          const protectedValue = axProperty(node, "protected") === true;
+          const currentValue = protectedValue ? "" : normalizeText(axValue(node.value));
+          return `${name} ${currentValue}`.toLocaleLowerCase().includes(expected);
+        }));
+      }, timeoutMs, `accessible text ${value}`);
+    } else if (condition === "ref") {
+      const { ref, entry } = requireRef(state, action);
+      const requestedState = action.state === "visible" ? "visible" : "attached";
+      elapsedMs = await waitUntil(async () => {
+        try {
+          await currentAccessibleEntry(debuggerApi, entry);
+          if (requestedState === "attached") return true;
+          const objectId = await resolvedNode(debuggerApi, entry);
+          const metadata = await inspectElement(debuggerApi, objectId);
+          return Boolean(metadata?.visible && !metadata.disabled);
+        } catch {
+          return false;
+        }
+      }, timeoutMs, `${ref} to be ${requestedState}`);
+    } else if (condition === "load") {
+      const requestedState = action.state === "interactive" ? "interactive" : "complete";
+      elapsedMs = await waitUntil(async () => {
+        const response = await debuggerCommand(debuggerApi, "Runtime.evaluate", {
+          expression: "document.readyState",
+          returnByValue: true,
+        }).catch(() => null);
+        const readyState = response?.result?.value;
+        return requestedState === "interactive"
+          ? readyState === "interactive" || readyState === "complete"
+          : readyState === "complete";
+      }, timeoutMs, `document readiness ${requestedState}`);
+    } else {
+      throw new Error("Unsupported browser waitFor condition.");
+    }
+    state.latestSnapshotId = null;
+    return { type: "waitFor", condition, elapsedMs };
   }
 
   async function resolveUploadFiles(rawPaths, rawWorkspaceRoot, rawExtensionId) {
@@ -521,15 +654,74 @@ export function createBrowserRuntime({
       await new Promise((resolve) => setTimeout(resolve, durationMs));
       return { type: "wait", durationMs };
     }
+    if (action.type === "waitFor") {
+      return performStructuredWait({ action, debuggerApi, state, tab });
+    }
     if (action.type === "press") {
       const key = typeof action.key === "string" ? action.key.trim() : "";
-      if (!SAFE_KEYS.has(key)) throw new Error("Unsupported browser key. Use fill for text input.");
-      focusWindow?.();
-      selectTab?.(tab.tabId);
-      tab.view.webContents.focus();
-      await debuggerCommand(debuggerApi, "Input.dispatchKeyEvent", { type: "keyDown", key });
-      await debuggerCommand(debuggerApi, "Input.dispatchKeyEvent", { type: "keyUp", key });
-      return { type: "press", key };
+      if (NAVIGATION_KEYS.has(key)) {
+        focusBrowserTarget(tab);
+        await debuggerCommand(debuggerApi, "Input.dispatchKeyEvent", { type: "keyDown", key });
+        await debuggerCommand(debuggerApi, "Input.dispatchKeyEvent", { type: "keyUp", key });
+        return { type: "press", key };
+      }
+      if (!ACTIVATION_KEYS.has(key)) throw new Error("Unsupported browser key. Use fill for text input.");
+      if (typeof action.ref !== "string" || !action.ref.trim() || typeof action.expectedName !== "string" || !action.expectedName.trim()) {
+        throw new Error("Browser Enter and Space require a stable ref and exact accessible name.");
+      }
+      const { ref, entry } = requireRef(state, action);
+      const objectId = await resolvedNode(debuggerApi, entry);
+      const metadata = await inspectElement(debuggerApi, objectId, { scrollIntoView: true });
+      const current = entry.inferred
+        ? { name: boundedText(metadata?.text, MAX_EXPECTED_NAME), role: "button" }
+        : await currentAccessibleEntry(debuggerApi, entry);
+      requireExpectedName(action, current, "activation key");
+      if (!metadata?.visible || metadata.disabled || (!metadata.buttonLike && !ACTIVATABLE_ROLES.has(current.role))) {
+        throw new Error("Browser activation-key target is not a visible enabled control.");
+      }
+      focusBrowserTarget(tab);
+      await debuggerCommand(debuggerApi, "DOM.focus", { backendNodeId: entry.backendNodeId });
+      const eventKey = key === "Space" ? " " : key;
+      const code = key === "Space" ? "Space" : "Enter";
+      const windowsVirtualKeyCode = key === "Space" ? 32 : 13;
+      await debuggerCommand(debuggerApi, "Input.dispatchKeyEvent", {
+        type: "keyDown",
+        key: eventKey,
+        code,
+        windowsVirtualKeyCode,
+      });
+      await debuggerCommand(debuggerApi, "Input.dispatchKeyEvent", {
+        type: "keyUp",
+        key: eventKey,
+        code,
+        windowsVirtualKeyCode,
+      });
+      state.latestSnapshotId = null;
+      return { type: "press", key, ref, name: current.name };
+    }
+    if (action.type === "scroll") {
+      const direction = typeof action.direction === "string" ? action.direction : "";
+      const amount = typeof action.amount === "string" ? action.amount : "";
+      const distance = SCROLL_DISTANCE[amount];
+      if (!distance || !["down", "left", "right", "up"].includes(direction)) {
+        throw new Error("Browser scroll requires a supported direction and amount.");
+      }
+      focusBrowserTarget(tab);
+      const bounds = tab.view.getBounds?.() ?? { width: 800, height: 600 };
+      const point = {
+        x: Math.max(1, Math.round(Number(bounds.width || 800) / 2)),
+        y: Math.max(1, Math.round(Number(bounds.height || 600) / 2)),
+      };
+      const signedDistance = direction === "up" || direction === "left" ? -distance : distance;
+      tab.view.webContents.sendInputEvent({ type: "mouseMove", ...point });
+      tab.view.webContents.sendInputEvent({
+        type: "mouseWheel",
+        ...point,
+        deltaX: direction === "left" || direction === "right" ? signedDistance : 0,
+        deltaY: direction === "up" || direction === "down" ? signedDistance : 0,
+      });
+      state.latestSnapshotId = null;
+      return { type: "scroll", direction, amount };
     }
 
     const { ref, entry } = requireRef(state, action);
@@ -555,24 +747,11 @@ export function createBrowserRuntime({
     }
 
     if (action.type === "click") {
-      const rawExpectedName = typeof action.expectedName === "string" ? action.expectedName.trim() : "";
-      if (!rawExpectedName || rawExpectedName.length > MAX_EXPECTED_NAME) {
-        throw new Error("Browser click requires the short exact accessible name from the latest snapshot.");
-      }
-      const expectedName = boundedText(rawExpectedName, MAX_EXPECTED_NAME);
-      if (!expectedName || normalizeText(current.name) !== normalizeText(expectedName)) {
-        throw new Error("Browser target name changed. Take a new snapshot before clicking.");
-      }
+      requireExpectedName(action, current, "click");
       if (!metadata.buttonLike || !metadata.unobstructed) {
         throw new Error("Browser click target is not an unobstructed interactive control.");
       }
-      focusWindow?.();
-      selectTab?.(tab.tabId);
-      tab.view.webContents.focus();
-      const point = { x: Math.round(metadata.x), y: Math.round(metadata.y) };
-      tab.view.webContents.sendInputEvent({ type: "mouseMove", ...point });
-      tab.view.webContents.sendInputEvent({ type: "mouseDown", ...point, button: "left", clickCount: 1 });
-      tab.view.webContents.sendInputEvent({ type: "mouseUp", ...point, button: "left", clickCount: 1 });
+      sendPointerClick(tab, metadata);
       state.latestSnapshotId = null;
       return { type: "click", ref, name: current.name };
     }
@@ -583,9 +762,7 @@ export function createBrowserRuntime({
       }
       const value = typeof action.value === "string" ? action.value : "";
       if (value.length > MAX_FILL_TEXT) throw new Error("Browser fill text is too long.");
-      focusWindow?.();
-      selectTab?.(tab.tabId);
-      tab.view.webContents.focus();
+      focusBrowserTarget(tab);
       await debuggerCommand(debuggerApi, "DOM.focus", { backendNodeId: entry.backendNodeId });
       const modifiers = platform === "darwin" ? 4 : 2;
       await debuggerCommand(debuggerApi, "Input.dispatchKeyEvent", {
@@ -606,6 +783,68 @@ export function createBrowserRuntime({
       return { type: "fill", ref, characters: Array.from(value).length };
     }
 
+    if (action.type === "hover") {
+      requireExpectedName(action, current, "hover");
+      if (!metadata.unobstructed) throw new Error("Browser hover target is obstructed.");
+      focusBrowserTarget(tab);
+      tab.view.webContents.sendInputEvent({
+        type: "mouseMove",
+        x: Math.round(metadata.x),
+        y: Math.round(metadata.y),
+      });
+      state.latestSnapshotId = null;
+      return { type: "hover", ref, name: current.name };
+    }
+
+    if (action.type === "select") {
+      requireExpectedName(action, current, "select");
+      if (!metadata.nativeSelect || !metadata.unobstructed || !["combobox", "listbox"].includes(current.role)) {
+        throw new Error("Browser select target is not a native select control.");
+      }
+      const option = typeof action.option === "string" ? action.option.trim() : "";
+      if (!option || option.length > 500) throw new Error("Browser select requires one bounded exact option label or value.");
+      const response = await debuggerCommand(debuggerApi, "Runtime.callFunctionOn", {
+        objectId,
+        functionDeclaration: selectExactOptionFunction(),
+        arguments: [{ value: option }],
+        returnByValue: true,
+        awaitPromise: true,
+      });
+      const selected = response?.result?.value;
+      if (!selected?.ok) {
+        const reason = selected?.reason === "ambiguous" ? "is ambiguous" : "was not found";
+        throw new Error(`Browser select option ${reason}. Take a new snapshot and use an exact option label or value.`);
+      }
+      if (selected.changed) state.latestSnapshotId = null;
+      return {
+        type: "select",
+        ref,
+        name: current.name,
+        option: selected.label,
+        value: selected.value,
+        changed: Boolean(selected.changed),
+      };
+    }
+
+    if (action.type === "check") {
+      requireExpectedName(action, current, "check");
+      if (!CHECKABLE_ROLES.has(current.role) || !metadata.checkable) {
+        throw new Error("Browser check target is not a checkbox, radio, or switch.");
+      }
+      const checked = action.checked;
+      if (typeof checked !== "boolean") throw new Error("Browser check requires a boolean checked state.");
+      if (RADIO_ROLES.has(current.role) && checked === false) {
+        throw new Error("Browser radio controls can only be checked; choose another option to change the selection.");
+      }
+      if (current.checked === checked) {
+        return { type: "check", ref, name: current.name, checked, changed: false };
+      }
+      if (!metadata.unobstructed) throw new Error("Browser check target is obstructed.");
+      sendPointerClick(tab, metadata);
+      state.latestSnapshotId = null;
+      return { type: "check", ref, name: current.name, checked, changed: true };
+    }
+
     throw new Error(`Unsupported browser action: ${String(action.type ?? "missing")}`);
   }
 
@@ -615,9 +854,13 @@ export function createBrowserRuntime({
     if (actions.length === 0 || actions.length > MAX_ACTIONS) {
       throw new Error(`Browser act requires 1-${MAX_ACTIONS} actions.`);
     }
-    const totalWait = actions.reduce((sum, action) => (
-      action?.type === "wait" ? sum + Number(action.durationMs || 0) : sum
-    ), 0);
+    const totalWait = actions.reduce((sum, action) => {
+      if (action?.type === "wait") return sum + Number(action.durationMs || 0);
+      if (action?.type === "waitFor") {
+        return sum + (action.timeoutMs === undefined ? DEFAULT_WAIT_FOR_MS : Number(action.timeoutMs));
+      }
+      return sum;
+    }, 0);
     if (!Number.isFinite(totalWait) || totalWait > MAX_TOTAL_WAIT_MS) {
       throw new Error(`Browser action batch may wait at most ${MAX_TOTAL_WAIT_MS} ms in total.`);
     }

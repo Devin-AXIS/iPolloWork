@@ -33,7 +33,8 @@ export const ENGINE_BROWSER_INSTRUCTION = `## Built-in Browser
 Use the iPolloWork browser tools only for external websites, never to control the iPolloWork app itself.
 Open a page with ipollowork_browser_open_url, read it with ipollowork_browser_snapshot, then act only through stable refs from that latest snapshot with ipollowork_browser_act.
 Never invent or reuse stale refs. Take a new snapshot after navigation, when snapshotRequired is true, or when a target changed.
-Prefer one bounded action batch when steps are independent. Clicking publish, send, submit, pay, buy, confirm, delete, or similar consequential controls requires user approval and must not be retried after denial.`;
+Prefer one bounded action batch when steps are independent. Use hover, select, check, scroll, or structured wait actions instead of guessing pointer coordinates or timing.
+Activating publish, send, submit, pay, buy, confirm, delete, or similar consequential controls by click, key, or check requires user approval and must not be retried after denial.`;
 
 const CONSEQUENTIAL_BROWSER_CONTROL = /(?:发布|发送|提交|付款|支付|购买|下单|确认|删除|移除|清空数据|授权)|(?:\b(?:publish|send|submit|pay|purchase|buy|checkout|confirm|delete|remove|authorize)\b)|(?:^post(?: now)?$)/i;
 
@@ -43,7 +44,10 @@ export function consequentialBrowserControlNames(value: unknown): string[] {
     .filter((action): action is Record<string, unknown> => (
       typeof action === "object" && action !== null && !Array.isArray(action)
     ))
-    .filter((action) => action.type === "click" && typeof action.expectedName === "string")
+    .filter((action) => (
+      ["check", "click", "press"].includes(String(action.type))
+      && typeof action.expectedName === "string"
+    ))
     .map((action) => String(action.expectedName).trim())
     .filter((name) => name && CONSEQUENTIAL_BROWSER_CONTROL.test(name));
 }
@@ -68,6 +72,34 @@ const browserActionSchema = {
       },
     }, ["type", "key"]),
     objectParameters({
+      type: { const: "press" },
+      key: { type: "string", enum: ["Enter", "Space"] },
+      ref: { type: "string", description: "Stable activatable-control ref from the latest browser snapshot." },
+      expectedName: { type: "string", maxLength: 200, description: "Exact accessible control name shown in the snapshot." },
+    }, ["type", "key", "ref", "expectedName"]),
+    objectParameters({
+      type: { const: "hover" },
+      ref: { type: "string", description: "Stable ref from the latest browser snapshot." },
+      expectedName: { type: "string", maxLength: 200, description: "Exact accessible target name shown in the snapshot." },
+    }, ["type", "ref", "expectedName"]),
+    objectParameters({
+      type: { const: "select" },
+      ref: { type: "string", description: "Stable native-select ref from the latest browser snapshot." },
+      expectedName: { type: "string", maxLength: 200, description: "Exact accessible select name shown in the snapshot." },
+      option: { type: "string", maxLength: 500, description: "Exact visible option label or option value." },
+    }, ["type", "ref", "expectedName", "option"]),
+    objectParameters({
+      type: { const: "check" },
+      ref: { type: "string", description: "Stable checkbox, radio, or switch ref from the latest browser snapshot." },
+      expectedName: { type: "string", maxLength: 200, description: "Exact accessible control name shown in the snapshot." },
+      checked: { type: "boolean", description: "Requested checked state. Radio controls accept true only." },
+    }, ["type", "ref", "expectedName", "checked"]),
+    objectParameters({
+      type: { const: "scroll" },
+      direction: { type: "string", enum: ["down", "left", "right", "up"] },
+      amount: { type: "string", enum: ["small", "page"] },
+    }, ["type", "direction", "amount"]),
+    objectParameters({
       type: { const: "upload" },
       ref: { type: "string", description: "File-input ref from the latest browser snapshot." },
       filePaths: {
@@ -83,6 +115,32 @@ const browserActionSchema = {
       type: { const: "wait" },
       durationMs: { type: "integer", minimum: 0, maximum: 2_000 },
     }, ["type", "durationMs"]),
+    objectParameters({
+      type: { const: "waitFor" },
+      condition: { const: "url" },
+      value: { type: "string", minLength: 1, maxLength: 2_048 },
+      match: { type: "string", enum: ["equals", "contains"] },
+      timeoutMs: { type: "integer", minimum: 100, maximum: 10_000 },
+    }, ["type", "condition", "value", "match"]),
+    objectParameters({
+      type: { const: "waitFor" },
+      condition: { const: "text" },
+      value: { type: "string", minLength: 1, maxLength: 500 },
+      timeoutMs: { type: "integer", minimum: 100, maximum: 10_000 },
+    }, ["type", "condition", "value"]),
+    objectParameters({
+      type: { const: "waitFor" },
+      condition: { const: "ref" },
+      ref: { type: "string", description: "Stable ref from the latest browser snapshot." },
+      state: { type: "string", enum: ["attached", "visible"] },
+      timeoutMs: { type: "integer", minimum: 100, maximum: 10_000 },
+    }, ["type", "condition", "ref", "state"]),
+    objectParameters({
+      type: { const: "waitFor" },
+      condition: { const: "load" },
+      state: { type: "string", enum: ["interactive", "complete"] },
+      timeoutMs: { type: "integer", minimum: 100, maximum: 10_000 },
+    }, ["type", "condition", "state"]),
   ],
 };
 
@@ -155,7 +213,7 @@ export const ENGINE_HOST_TOOLS: readonly EngineHostToolDescriptor[] = [
   },
   {
     name: ENGINE_HOST_TOOL_NAMES.browserAct,
-    description: "Execute one bounded action batch against refs from the latest semantic snapshot. Uses real pointer/keyboard input, validates current name/visibility/obstruction, and rejects stale refs.",
+    description: "Execute one bounded semantic action batch against the latest snapshot: click, fill, scoped key activation, hover, select, check, scroll, upload, or bounded waits. Validates names, state, visibility, obstruction, and stale refs.",
     parameters: objectParameters({
       tabId: { type: "string", description: "Built-in browser tab ID." },
       snapshotId: { type: "string", description: "Latest snapshot ID returned for this tab." },

@@ -52,7 +52,7 @@ async function transformedSystem(plugin: Awaited<ReturnType<typeof iPolloWorkExt
 }
 
 function startFakeiPolloWorkServer() {
-  const requests: Array<{ pathname: string; search: string; authorization: string | null }> = [];
+  const requests: Array<{ pathname: string; search: string; authorization: string | null; body?: unknown }> = [];
 
   const workspaceOne = { id: "ws_1", name: "Main", path: "/tmp/main" };
   const workspaceTwo = { id: "ws_2", name: "Archive", displayName: "Archive", path: "/tmp/archive" };
@@ -63,16 +63,22 @@ function startFakeiPolloWorkServer() {
   const server = Bun.serve({
     hostname: "127.0.0.1",
     port: 0,
-    fetch(request) {
+    async fetch(request) {
       const url = new URL(request.url);
+      const body = request.method === "POST" ? await request.json() : undefined;
       requests.push({
         pathname: url.pathname,
         search: url.search,
         authorization: request.headers.get("authorization"),
+        body,
       });
 
       if (request.headers.get("authorization") !== "Bearer test-token") {
         return Response.json({ message: "Unauthorized" }, { status: 401 });
+      }
+
+      if (url.pathname === "/engine-tools/call") {
+        return Response.json({ ok: true, received: body });
       }
 
       if (url.pathname === "/workspaces") {
@@ -256,6 +262,33 @@ describe("iPolloWorkExtensionsPreview UI control tools", () => {
 
     const system = await transformedSystem(plugin);
     expect(system).toContain("ipollowork_ui_execute_action");
+  });
+
+  test("accepts every semantic browser action exposed by the shared host descriptor", async () => {
+    const fake = startFakeiPolloWorkServer();
+    const plugin = await iPolloWorkExtensionsPreview();
+    const actions = [
+      { type: "hover", ref: "r1", expectedName: "Menu" },
+      { type: "select", ref: "r2", expectedName: "Channel", option: "Video" },
+      { type: "check", ref: "r3", expectedName: "Original", checked: true },
+      { type: "scroll", direction: "down", amount: "page" },
+      { type: "press", key: "Enter", ref: "r4", expectedName: "Continue" },
+      { type: "waitFor", condition: "url", value: "/published", match: "contains" },
+      { type: "waitFor", condition: "text", value: "Published" },
+      { type: "waitFor", condition: "load", state: "complete" },
+    ];
+
+    const output = await plugin.tool.ipollowork_browser_act.execute({
+      tabId: "tab-1",
+      snapshotId: "snapshot-1",
+      actions,
+    }, { directory: "/tmp/main" });
+
+    expect(JSON.parse(output)).toMatchObject({ ok: true });
+    expect(fake.requests.find((request) => request.pathname === "/engine-tools/call")?.body).toMatchObject({
+      name: "ipollowork_browser_act",
+      args: { actions },
+    });
   });
 
 });
