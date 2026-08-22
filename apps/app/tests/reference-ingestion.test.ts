@@ -182,6 +182,9 @@ describe("reference ingestion core", () => {
 
     expect(pack.promptText).toContain("product-plan.pdf");
     expect(pack.promptText).not.toContain("bad.pdf");
+    expect(pack.promptText).toContain("visual and technical system, not a finished artifact to copy");
+    expect(pack.promptText).toContain("Derive the content structure from the current brief");
+    expect(pack.promptText).toContain("Preserve the template's design tokens");
     expect(pack.totalChars).toBeLessThanOrEqual(1800);
     expect(pack.warnings).toContain("Excluded 1 low-quality reference file.");
   });

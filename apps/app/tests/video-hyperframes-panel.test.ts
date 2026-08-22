@@ -1211,7 +1211,7 @@ describe("HyperFrames Video Studio", () => {
     expect(contract).toContain("structural, multi-scene, or narrated edit");
   });
 
-  test("keeps an imported video template as the agent's editing source", () => {
+  test("uses an imported video template as an adaptable visual and runtime seed", () => {
     const contract = videoTaskSystemContext("ses_video_a", "/workspace/current", {
       id: "personal.launch-film",
       title: "Launch Film",
@@ -1219,9 +1219,11 @@ describe("HyperFrames Video Studio", () => {
       applyChecklist: ["Replace inherited copy", "Keep the visual language"],
     });
     expect(contract).toContain("source is template `Launch Film`");
-    expect(contract).toContain("edit it rather than starting over");
-    expect(contract).toContain("preserve the composition id");
-    expect(contract).toContain("at the start of every edit turn, re-read the current entry from disk");
+    expect(contract).toContain("editable visual and runtime seed");
+    expect(contract).toContain("let the content determine scene count, order, and timing");
+    expect(contract).toContain("quality and export guidance, not a requirement to retain sample structure");
+    expect(contract).toContain("preserve the root composition contract");
+    expect(contract).toContain("At the start of every edit turn, re-read the current entry from disk");
     expect(contract).toContain("Replace inherited copy; Keep the visual language");
   });
 });

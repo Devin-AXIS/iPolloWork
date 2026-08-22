@@ -202,8 +202,9 @@ export function videoTaskSystemContext(
     "Video task contract:",
     `- Own only \`${projectPath}\`; Video Studio displays \`${projectPath}/index.html\` at \`http://localhost:${studioPort}\` and hot-reloads saves.`,
     ...(template ? [
-      `- The copied source is template \`${template.title}\` (\`${template.id}\`), entry \`${projectPath}/${template.entry}\`; edit it rather than starting over.`,
-      `- Read \`${projectPath}/brief.json\`; at the start of every edit turn, re-read the current entry from disk, then preserve the composition id, variables, visual system, editable hierarchy, and checklist: ${template.applyChecklist.join("; ")}.`,
+      `- The copied source is template \`${template.title}\` (\`${template.id}\`), entry \`${projectPath}/${template.entry}\`; use it as the editable visual and runtime seed rather than discarding it for a blank or unrelated project.`,
+      `- Read \`${projectPath}/brief.json\`; on the initial brief application, let the content determine scene count, order, and timing while reusing the template's visual and motion language. Treat its checklist as quality and export guidance, not a requirement to retain sample structure: ${template.applyChecklist.join("; ")}.`,
+      `- At the start of every edit turn, re-read the current entry from disk and preserve the root composition contract, variables, design-token link, stable editor hooks, and deterministic timeline.`,
     ] : [
       `- At the start of every edit turn, re-read the current \`${projectPath}/index.html\` from disk. It is the prepared blank composition unless the user explicitly requests a template.`,
     ]),
@@ -215,7 +216,7 @@ export function videoTaskSystemContext(
     "- Keep internal planning terse and action-oriented. Do not spend the response comparing alternative scene counts, repeatedly estimating duration, drafting multiple narration versions, or explaining what you might do.",
     "- For a concrete make/edit request, use at most two read-only inspection calls before the first mutation or media action unless a returned error identifies a real blocker. Prefer a smaller complete valid result over an ambitious plan that is never applied.",
     "- A plan, outline, proposed scene list, or sentence such as 'let me structure' is never task completion. After inspecting, perform the requested edits in the same run; never end the run until the saved composition passes the required final validator or you report a concrete blocking error.",
-    "- Preserve unrelated scenes, media, timing, interactions, and user edits. Use freeform-patch only when the typed operations cannot express the request, and still obey the composition and validation contracts.",
+    "- After the initial content-led adaptation, preserve unrelated scenes, media, timing, interactions, and user edits. Use freeform-patch only when the typed operations cannot express the request, and still obey the composition and validation contracts.",
     "- Studio manual edits are user-owned source state. Preserve `data-hf-id`, `data-hf-studio-*`, `--hf-studio-*`, inline width/height/transform values, and existing GSAP position/scale/rotation writes unless the current request explicitly changes that exact element and property. Immediately before any whole-file write, re-read and merge the current disk bytes; never regenerate from an earlier response or cached HTML snapshot.",
     "Semantic motion contract:",
     "- For ordinary motion on an existing leaf text element, call `list_motion_presets` and then `mutate_motion`. The product determines the target type and compiles the preset into the current GSAP/HyperFrames timeline; do not hand-write equivalent GSAP.",

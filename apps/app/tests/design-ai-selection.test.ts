@@ -63,7 +63,7 @@ describe("Design AI selections", () => {
     expect(instruction).toContain("If the locator no longer resolves");
   });
 
-  test("keeps the active template structure in every Design AI turn", () => {
+  test("keeps the active visual system while allowing content-led initial structure", () => {
     const instruction = designHtmlThemeSystemContext({
       id: "ipollowork.site-atelier-architecture",
       category: "site",
@@ -76,7 +76,10 @@ describe("Design AI selections", () => {
     expect(instruction).toContain("current editable HTML file is the structural source of truth");
     expect(instruction).toContain("Manual Studio edits are user-owned source state");
     expect(instruction).toContain("data-hf-studio-*");
-    expect(instruction).toContain("Preserve the existing root classes, section hierarchy and order");
+    expect(instruction).toContain("For targeted or follow-up edits, preserve unrelated root classes");
+    expect(instruction).toContain("initial confirmed brief may require a new content structure");
+    expect(instruction).toContain("derive the artifact's information architecture");
+    expect(instruction).toContain("add, remove, reorder, repeat, or recombine");
     expect(instruction).toContain("never replace it with a generic hero");
   });
 
