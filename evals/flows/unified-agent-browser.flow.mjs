@@ -192,7 +192,7 @@ export default {
                 );
                 await ctx.control("session.create_task");
               }
-              await ctx.waitFor("/\/session\/[^/?#]+/.test(window.location.hash)", {
+              await ctx.waitFor(`window.location.hash.includes("/session/") && window.location.hash.split("/session/")[1]?.length > 0`, {
                 timeoutMs: 90_000,
                 label: "existing conversation route",
               });
