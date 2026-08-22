@@ -533,6 +533,12 @@ jobs:
           set -euo pipefail
           echo "::warning::Publishing unsigned Windows installer because SIGN_WINDOWS is not enabled."
 
+      - name: Build optional Agent engine packages
+        shell: bash
+        env:
+          TARGET: ${{ matrix.target_triple }}
+        run: node apps/desktop/scripts/package-engine-runtime.mjs --all --outdir apps/desktop/dist-electron
+
       - name: Upload Electron release assets
         env:
           GH_TOKEN: ${{ github.token }}

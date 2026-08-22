@@ -1,5 +1,5 @@
 import type { DynamicToolUIPart, UIMessage } from "ai";
-import { DEEPSEEK_HARNESS_INTERNAL_SYSTEM_PREFIX } from "@ipollowork/types/workspace";
+import { stripDeepSeekHarnessInternalContext } from "@ipollowork/types/workspace";
 
 import type { TodoItem } from "@/app/types";
 import { t } from "@/i18n";
@@ -41,7 +41,6 @@ type ToolState = {
   input: unknown;
 };
 
-const LEGACY_SYSTEM_BLOCK = /^<system>\n[\s\S]*\n<\/system>$/u;
 const INTERNAL_SESSION_TITLE = /^<system(?:>|\s)/iu;
 
 export type DeepSeekHarnessLiveState = {
@@ -188,18 +187,9 @@ function isVisibleUserMessage(message: Record<string, unknown>): boolean {
 function visibleUserContent(message: Record<string, unknown>): unknown {
   const content = message.content;
   if (!Array.isArray(content)) return content;
-  return content.flatMap((block, index) => {
+  return content.flatMap((block) => {
     if (!isRecord(block) || block.type !== "text" || typeof block.text !== "string") return [block];
-    if (index === 0 && content.length > 1 && LEGACY_SYSTEM_BLOCK.test(block.text.trim())) return [];
-    let text = block.text;
-    let start = text.indexOf(DEEPSEEK_HARNESS_INTERNAL_SYSTEM_PREFIX);
-    while (start !== -1) {
-      const end = text.indexOf("</system>", start + DEEPSEEK_HARNESS_INTERNAL_SYSTEM_PREFIX.length);
-      text = end === -1
-        ? text.slice(0, start)
-        : `${text.slice(0, start)}${text.slice(end + "</system>".length)}`;
-      start = text.indexOf(DEEPSEEK_HARNESS_INTERNAL_SYSTEM_PREFIX);
-    }
+    const text = stripDeepSeekHarnessInternalContext(block.text);
     return text.trim() ? [{ ...block, text }] : [];
   });
 }
@@ -418,6 +408,9 @@ export function mapDeepSeekHarnessSnapshot(snapshot: unknown): ConversationSnaps
 
 export function normalizeDeepSeekHarnessErrorText(value: unknown): string {
   const message = typeof value === "string" ? value.trim() : "";
+  if (/authentication token is expired|access token (?:is |has )?expired/i.test(message)) {
+    return t("session.provider_auth_expired");
+  }
   if (/no api key for provider route|missing[_ -]?credential/i.test(message)) {
     return t("session.deepseek_harness_missing_api_key");
   }

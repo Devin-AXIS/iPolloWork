@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { DEEPSEEK_HARNESS_INTERNAL_SYSTEM_PREFIX } from "@ipollowork/types/workspace";
 
 import type { DeepSeekHarnessRuntime } from "./deepseek-harness-runtime.js";
 import {
@@ -91,7 +92,7 @@ describe("DeepSeek Harness session read model", () => {
               role: "user",
               source: { kind: "user" },
               content: [
-                { type: "text", text: "<system>\nInternal runtime instructions\n</system>" },
+                { type: "text", text: `${DEEPSEEK_HARNESS_INTERNAL_SYSTEM_PREFIX}Internal runtime instructions\n</system>` },
                 { type: "text", text: "你好啊" },
               ],
             },
@@ -116,6 +117,33 @@ describe("DeepSeek Harness session read model", () => {
     expect(messages).toEqual([expect.objectContaining({
       info: expect.objectContaining({ id: "user-1", role: "user" }),
       parts: [expect.objectContaining({ text: "你好啊" })],
+    })]);
+  });
+
+  test("keeps marked template context out of Work message history", () => {
+    const messages = mapDeepSeekHarnessMessages("owned", {
+      hasMore: false,
+      events: [{
+        event: {
+          type: "user/message",
+          seq: 1,
+          time: 1,
+          data: {
+            id: "template-1",
+            role: "user",
+            source: { kind: "user" },
+            content: [
+              { type: "text", text: "已应用模板：Agent Command Center" },
+              { type: "text", text: `${DEEPSEEK_HARNESS_INTERNAL_SYSTEM_PREFIX}Read brief.json and apply every private checklist item.\n</system>` },
+              { type: "text", text: `${DEEPSEEK_HARNESS_INTERNAL_SYSTEM_PREFIX}Internal runtime instructions\n</system>` },
+            ],
+          },
+        },
+      }],
+    });
+
+    expect(messages).toEqual([expect.objectContaining({
+      parts: [expect.objectContaining({ text: "已应用模板：Agent Command Center" })],
     })]);
   });
 

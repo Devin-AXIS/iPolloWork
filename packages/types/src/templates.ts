@@ -170,6 +170,7 @@ export type TemplateAuthoringInput = {
   sessionId: string;
   category: TemplateCategory;
   pptxCompatibility?: PptxCompatibility;
+  purpose?: "template-authoring" | "artifact-delivery";
 };
 
 export type TemplateValidationIssue = {

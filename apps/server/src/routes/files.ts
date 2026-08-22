@@ -16,6 +16,7 @@ const FILE_SESSION_MAX_BATCH_ITEMS = 64;
 const FILE_SESSION_MAX_FILE_BYTES = 5_000_000;
 const FILE_SESSION_CATALOG_DEFAULT_LIMIT = 2000;
 const FILE_SESSION_CATALOG_MAX_LIMIT = 10000;
+const ARTIFACT_BASENAME_SCAN_MAX_ENTRIES = 10000;
 const FILE_SESSION_CATALOG_IGNORED_DIRS = new Set([
   ".git",
   ".hg",
@@ -24,7 +25,9 @@ const FILE_SESSION_CATALOG_IGNORED_DIRS = new Set([
   ".nuxt",
   ".pnpm",
   ".turbo",
+  ".venv",
   ".vite",
+  "__pycache__",
   "build",
   "coverage",
   "dist",
@@ -32,6 +35,7 @@ const FILE_SESSION_CATALOG_IGNORED_DIRS = new Set([
   "out",
   "target",
   "vendor",
+  "venv",
 ]);
 
 type JsonResponse = (data: unknown, status?: number) => Response;
@@ -215,10 +219,90 @@ function normalizeUrlTarget(value: string): string | null {
   }
 }
 
+function collectRequestedArtifactBasenames(targets: unknown[]) {
+  const basenames = new Set<string>();
+  for (const item of targets) {
+    if (!item || typeof item !== "object") continue;
+    const target = item as ArtifactTargetInput;
+    if (target.kind === "url" || typeof target.value !== "string" || isAbsolute(target.value)) continue;
+    try {
+      const relativePath = normalizeWorkspaceRelativePath(target.value, { allowSubdirs: true });
+      if (!relativePath.includes("/")) basenames.add(relativePath.toLowerCase());
+    } catch {
+      // Invalid targets are ignored by the resolver below as well.
+    }
+  }
+  return basenames;
+}
+
+async function collectMissingArtifactBasenames(workspaceRoot: string, targets: unknown[]) {
+  const requested = collectRequestedArtifactBasenames(targets);
+  const missing = await Promise.all([...requested].map(async (name) => {
+    const absolutePath = resolveSafeChildPath(workspaceRoot, name);
+    if (!(await exists(absolutePath))) return name;
+    try {
+      return (await stat(absolutePath)).isFile() ? null : name;
+    } catch {
+      return name;
+    }
+  }));
+  return new Set(missing.filter((name): name is string => name !== null));
+}
+
+async function findUniqueWorkspaceFilesByBasename(workspaceRoot: string, requestedBasenames: Set<string>) {
+  const matches = new Map<string, string>();
+  const ambiguous = new Set<string>();
+  const pendingDirectories = [resolve(workspaceRoot)];
+  let visitedEntries = 0;
+  let truncated = false;
+
+  while (pendingDirectories.length && !truncated) {
+    const directory = pendingDirectories.pop();
+    if (!directory) break;
+    let entries;
+    try {
+      entries = await readdir(directory, { withFileTypes: true });
+    } catch {
+      continue;
+    }
+
+    for (const entry of entries) {
+      visitedEntries += 1;
+      if (visitedEntries > ARTIFACT_BASENAME_SCAN_MAX_ENTRIES) {
+        truncated = true;
+        break;
+      }
+
+      const absolutePath = join(directory, entry.name);
+      if (entry.isDirectory()) {
+        if (!FILE_SESSION_CATALOG_IGNORED_DIRS.has(entry.name)) pendingDirectories.push(absolutePath);
+        continue;
+      }
+      if (!entry.isFile()) continue;
+
+      const key = entry.name.toLowerCase();
+      if (!requestedBasenames.has(key) || ambiguous.has(key)) continue;
+      const relativePath = normalizeWorkspaceRelativePath(relative(workspaceRoot, absolutePath), { allowSubdirs: true });
+      if (matches.has(key)) {
+        matches.delete(key);
+        ambiguous.add(key);
+      } else {
+        matches.set(key, relativePath);
+      }
+    }
+  }
+
+  return truncated ? new Map<string, string>() : matches;
+}
+
 export async function resolveWorkspaceArtifactTargets(workspaceRoot: string, input: unknown): Promise<Array<Record<string, unknown>>> {
   const targets = Array.isArray(input) ? input.slice(0, 80) : [];
   const results = new Map<string, Record<string, unknown>>();
   const workspaceResolved = resolve(workspaceRoot);
+  const requestedBasenames = await collectMissingArtifactBasenames(workspaceRoot, targets);
+  const basenameMatches = requestedBasenames.size
+    ? await findUniqueWorkspaceFilesByBasename(workspaceRoot, requestedBasenames)
+    : new Map<string, string>();
 
   for (const item of targets) {
     if (!item || typeof item !== "object") continue;
@@ -263,8 +347,15 @@ export async function resolveWorkspaceArtifactTargets(workspaceRoot: string, inp
     } catch {
       continue;
     }
+    let absPath = resolveSafeChildPath(workspaceRoot, relativePath);
+    if (!(await exists(absPath)) && !relativePath.includes("/")) {
+      const uniqueMatch = basenameMatches.get(relativePath.toLowerCase());
+      if (uniqueMatch) {
+        relativePath = uniqueMatch;
+        absPath = resolveSafeChildPath(workspaceRoot, relativePath);
+      }
+    }
     const key = `file:${relativePath.toLowerCase()}`;
-    const absPath = resolveSafeChildPath(workspaceRoot, relativePath);
     let existsFile = false;
     let size: number | undefined;
     let updatedAt: number | undefined;

@@ -28,6 +28,7 @@ import { ensureDir } from "./utils.js";
 
 export {
   openAiCodexOAuthCredential,
+  openAiCodexOAuthCredentialNeedsRefresh,
   refreshOpenAiCodexOAuthCredential,
   type OpenAiCodexOAuthCredential,
 } from "./openai-codex-oauth.js";

@@ -59,6 +59,7 @@ import { formatProviderAuthName } from "@/react-app/domains/connections/provider
 import ProviderAuthModal from "@/react-app/domains/connections/provider-auth/provider-auth-modal";
 import ConnectionsModals from "@/react-app/domains/connections/modals";
 import { AiSettingsView } from "@/react-app/domains/settings/pages/ai-view";
+import { EngineManagementView } from "@/react-app/domains/settings/pages/engine-management-view";
 // Side-effect imports: register extension config components into the registry.
 import "@/react-app/domains/settings/openai-image-gen-config";
 import "@/react-app/domains/settings/ollama-config";
@@ -253,6 +254,7 @@ export function parseSettingsPath(pathname: string): {
   switch (head) {
     case "general":
     case "ai":
+    case "engines":
     case "preferences":
     case "permissions":
     case "shell":
@@ -2109,6 +2111,8 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
             organizationServer={denSession}
           />
         );
+      case "engines":
+        return <EngineManagementView anyActiveRuns={activeReloadBlockingSessions.length > 0} />;
       case "appearance":
         return (
           <AppearanceView

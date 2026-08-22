@@ -93,6 +93,40 @@ export type EngineDoctorResult = {
   serveHelpStderr: string | null;
 };
 
+export type EnginePackageStatus =
+  | "not-installed"
+  | "downloading"
+  | "verifying"
+  | "installing"
+  | "uninstalling"
+  | "ready"
+  | "failed";
+
+export type EnginePackageSource =
+  | "bundled"
+  | "downloaded"
+  | "desktop-client"
+  | "system"
+  | "custom"
+  | "none";
+
+/** Machine-global Agent engine package state. Project and conversation data live elsewhere. */
+export type EnginePackageInfo = {
+  id: string;
+  name: string;
+  version: string;
+  status: EnginePackageStatus;
+  source: EnginePackageSource;
+  installed: boolean;
+  builtIn: boolean;
+  canInstall: boolean;
+  canUninstall: boolean;
+  installedBytes: number | null;
+  downloadedBytes: number | null;
+  totalBytes: number | null;
+  error: string | null;
+};
+
 export type WorkspaceList = {
   selectedId?: string;
   watchedId?: string | null;
@@ -412,6 +446,9 @@ export type DesktopCommandMap = {
   engineInfo: { args: []; result: EngineInfo };
   engineDoctor: { args: [projectDir?: string]; result: EngineDoctorResult };
   engineInstall: { args: []; result: unknown };
+  enginePackagesList: { args: []; result: EnginePackageInfo[] };
+  enginePackageInstall: { args: [engineId: string]; result: EnginePackageInfo };
+  enginePackageUninstall: { args: [engineId: string]; result: EnginePackageInfo };
   orchestratorStatus: { args: []; result: unknown };
   orchestratorWorkspaceActivate: { args: [input?: Record<string, unknown>]; result: unknown };
   orchestratorInstanceDispose: { args: [instanceId: string]; result: unknown };

@@ -20,29 +20,23 @@ export const DEFAULT_ENGINE_ID = "opencode";
 export const DEEPSEEK_HARNESS_ENGINE_ID = "deepseek-harness";
 export const CODEX_HARNESS_ENGINE_ID = "codex-harness";
 export const DEEPSEEK_HARNESS_INTERNAL_SYSTEM_PREFIX = "<system>\n<!-- ipollowork-internal-context -->\n";
-export const CODEX_HARNESS_LEGACY_SYSTEM_MARKER = "Long-running local process rule:";
-const CODEX_HARNESS_LEGACY_TEMPLATE_MARKERS = [
-  "Multi-artifact delivery contract:",
-  "Keep the template's visual language",
-  "ipollowork-internal-context",
-] as const;
 
 /**
- * Codex turns created before application context was sent out-of-band stored
- * that context as text entries before the authored prompt. Keep old threads
- * readable without exposing the internal context in the conversation surface.
+ * DeepSeek Harness persists every prompt block in its history. iPolloWork marks
+ * application-owned context before dispatch, then both the server snapshot and
+ * live event adapter use this parser to keep it out of authored messages.
  */
-export function visibleCodexHarnessUserText(entries: readonly string[]): string {
-  let internalContextIndex = -1;
-  entries.forEach((entry, index) => {
-    if (
-      entry.includes(CODEX_HARNESS_LEGACY_SYSTEM_MARKER)
-      || CODEX_HARNESS_LEGACY_TEMPLATE_MARKERS.some((marker) => entry.includes(marker))
-    ) internalContextIndex = index;
-  });
-  return entries
-    .slice(internalContextIndex >= 0 ? internalContextIndex + 1 : 0)
-    .join("\n");
+export function stripDeepSeekHarnessInternalContext(value: string): string {
+  let text = value;
+  let start = text.indexOf(DEEPSEEK_HARNESS_INTERNAL_SYSTEM_PREFIX);
+  while (start !== -1) {
+    const end = text.indexOf("</system>", start + DEEPSEEK_HARNESS_INTERNAL_SYSTEM_PREFIX.length);
+    text = end === -1
+      ? text.slice(0, start)
+      : `${text.slice(0, start)}${text.slice(end + "</system>".length)}`;
+    start = text.indexOf(DEEPSEEK_HARNESS_INTERNAL_SYSTEM_PREFIX);
+  }
+  return text;
 }
 
 export const BUILT_IN_WORKSPACE_ENGINE_IDS = [

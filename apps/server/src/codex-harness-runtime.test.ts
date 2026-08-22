@@ -98,7 +98,7 @@ describe("Codex Harness provider projection", () => {
     });
   });
 
-  test("removes legacy embedded application context from persisted user messages", () => {
+  test("preserves every authored Codex user text block", () => {
     const messages = mapCodexMessages({
       id: "codex-thread",
       turns: [{
@@ -109,9 +109,8 @@ describe("Codex Harness provider projection", () => {
           clientId: "ipollowork-user-1",
           type: "userMessage",
           content: [
-            { type: "text", text: "Legacy plugin guidance" },
-            { type: "text", text: "Long-running local process rule:\nRuntime guidance" },
-            { type: "text", text: "当前是什么模型和 agent" },
+            { type: "text", text: "Compare both notes" },
+            { type: "text", text: "Template applied: quoted source text" },
           ],
         }],
       }],
@@ -120,30 +119,7 @@ describe("Codex Harness provider projection", () => {
     expect(messages[0]?.info.id).toBe("ipollowork-user-1");
     expect(messages[0]?.parts).toEqual([expect.objectContaining({
       type: "text",
-      text: "当前是什么模型和 agent",
-    })]);
-  });
-
-  test("removes legacy template instructions from persisted user messages", () => {
-    const messages = mapCodexMessages({
-      id: "codex-template-thread",
-      turns: [{
-        id: "turn-template",
-        status: "completed",
-        items: [{
-          id: "user-template",
-          type: "userMessage",
-          content: [
-            { type: "text", text: "Keep the template's visual language.\nMulti-artifact delivery contract: internal" },
-            { type: "text", text: "给我做一个恒生银行的ppt和视频" },
-          ],
-        }],
-      }],
-    });
-
-    expect(messages[0]?.parts).toEqual([expect.objectContaining({
-      type: "text",
-      text: "给我做一个恒生银行的ppt和视频",
+      text: "Compare both notes\nTemplate applied: quoted source text",
     })]);
   });
 

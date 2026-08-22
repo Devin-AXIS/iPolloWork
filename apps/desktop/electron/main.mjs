@@ -21,6 +21,7 @@ import { app, BrowserWindow, dialog, ipcMain, nativeImage, nativeTheme, net as e
 import { configureFakeMediaForTests, installMediaPermissionHandlers } from "./media-permissions.mjs";
 import { registerMigrationIpc } from "./migration.mjs";
 import { createRuntimeManager } from "./runtime.mjs";
+import { createEnginePackageManager } from "./engine-package-manager.mjs";
 import { registerUpdaterIpc } from "./updater.mjs";
 import {
   checkComputerUsePermissions,
@@ -58,65 +59,24 @@ protectOutputStreamFromBrokenPipe(process.stderr);
 const require = createRequire(import.meta.url);
 const pty = require(["node", "pty"].join("-"));
 
-function configureBundledDshRuntime() {
-  try {
-    const runtimeRoot = app.isPackaged
-      ? path.join(process.resourcesPath, "dsh-runtime")
-      : path.resolve(__dirname, "..", "dsh-runtime");
-    const hostPluginPath = path.join(runtimeRoot, "ipollowork-host-tools.mjs");
-    if (!process.env.IPOLLOWORK_DSH_HOST_PLUGIN?.trim() && existsSync(hostPluginPath)) {
-      process.env.IPOLLOWORK_DSH_HOST_PLUGIN = hostPluginPath;
+function enginePackageVersions() {
+  const candidates = app.isPackaged
+    ? [path.join(process.resourcesPath, "server", "dist", "constants.json")]
+    : [path.resolve(__dirname, "../../..", "constants.json")];
+  for (const candidate of candidates) {
+    try {
+      const constants = require(candidate);
+      return {
+        opencode: constants.opencodeVersion,
+        deepseekHarness: constants.deepseekHarnessVersion,
+        codexHarness: constants.codexHarnessVersion,
+      };
+    } catch {
+      // The settings surface reports unknown versions if constants are absent.
     }
-    if (process.env.IPOLLOWORK_DSH_CLI?.trim()) return;
-    const packageRoot = path.join(runtimeRoot, "node_modules", "@deepseek-ai", "dsh");
-    const manifest = require(path.join(packageRoot, "package.json"));
-    const cliPath = path.join(packageRoot, "lib", "bin.js");
-    if (!existsSync(cliPath)) return;
-    process.env.IPOLLOWORK_DSH_CLI = cliPath;
-    if (typeof manifest.version === "string") process.env.IPOLLOWORK_DSH_CLI_VERSION = manifest.version;
-  } catch {
-    // The DSH plugin reports an unavailable runtime if packaging omitted it.
   }
+  return { opencode: "unknown", deepseekHarness: "unknown", codexHarness: "unknown" };
 }
-
-configureBundledDshRuntime();
-
-function configureBundledCodexRuntime() {
-  try {
-    if (process.env.IPOLLOWORK_CODEX_CLI?.trim()) return;
-    const runtimeRoot = app.isPackaged
-      ? path.join(process.resourcesPath, "codex-runtime")
-      : path.resolve(__dirname, "..", "codex-runtime");
-    const packageRoot = path.join(runtimeRoot, "node_modules", "@openai", "codex");
-    const manifest = require(path.join(packageRoot, "package.json"));
-    let cliPath = path.join(packageRoot, "bin", "codex.js");
-    if (process.platform === "win32") {
-      const target = process.arch === "arm64"
-        ? { packageName: "codex-win32-arm64", triple: "aarch64-pc-windows-msvc" }
-        : process.arch === "x64"
-          ? { packageName: "codex-win32-x64", triple: "x86_64-pc-windows-msvc" }
-          : null;
-      if (!target) return;
-      cliPath = path.join(
-        runtimeRoot,
-        "node_modules",
-        "@openai",
-        target.packageName,
-        "vendor",
-        target.triple,
-        "bin",
-        "codex.exe",
-      );
-    }
-    if (!existsSync(cliPath)) return;
-    process.env.IPOLLOWORK_CODEX_CLI = cliPath;
-    if (typeof manifest.version === "string") process.env.IPOLLOWORK_CODEX_CLI_VERSION = manifest.version;
-  } catch {
-    // The Codex adapter reports an unavailable runtime if packaging omitted it.
-  }
-}
-
-configureBundledCodexRuntime();
 const NATIVE_DEEP_LINK_EVENT = "ipollowork:deep-link-native";
 const DESKTOP_RESUMED_EVENT = "ipollowork:desktop-resumed";
 const TAURI_APP_IDENTIFIER = "com.differentai.ipollowork";
@@ -1741,6 +1701,16 @@ const runtimeManager = createRuntimeManager({
   desktopRoot: path.resolve(__dirname, ".."),
   listLocalWorkspacePaths: () => workspaceStore.listLocalWorkspacePaths(),
 });
+const enginePackageManager = createEnginePackageManager({
+  app,
+  desktopRoot: path.resolve(__dirname, ".."),
+  versions: enginePackageVersions(),
+  fetch: electronNet.fetch.bind(electronNet),
+  beforeUninstall: async () => {
+    const server = await runtimeManager.ipolloworkServerInfo();
+    if (server.running) await runtimeManager.ipolloworkServerRestart();
+  },
+});
 
 let runtimeDisposedForQuit = false;
 let runtimeDisposeInProgress = false;
@@ -2430,6 +2400,15 @@ const desktopCommandHandlers = {
   },
   "engineInstall": async (event, ...args) => {
       return runtimeManager.engineInstall();
+  },
+  "enginePackagesList": async (event, ...args) => {
+      return enginePackageManager.list();
+  },
+  "enginePackageInstall": async (event, ...args) => {
+      return enginePackageManager.install(String(args[0] ?? "").trim());
+  },
+  "enginePackageUninstall": async (event, ...args) => {
+      return enginePackageManager.uninstall(String(args[0] ?? "").trim());
   },
   "orchestratorStatus": async (event, ...args) => {
       return runtimeManager.orchestratorStatus();
@@ -4305,6 +4284,7 @@ if (!app.requestSingleInstanceLock()) {
 
   app.whenReady().then(async () => {
     console.info("[startup] Electron ready");
+    enginePackageManager.applyEnvironment();
     installDesktopPowerRecovery();
     installMediaPermissionHandlers(session, () => mainWindow);
     await workspaceStore.importBundledDesktopBootstrapConfigIfPreferred();
