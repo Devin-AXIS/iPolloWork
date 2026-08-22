@@ -175,13 +175,13 @@ test("atomic template replacement restores the original project after validation
   assert.equal(await readFile(resolve(target, "original.txt"), "utf8"), "preserve");
 });
 
-test("ships all 27 Video templates without applying the curated Design catalog filter", async () => {
+test("ships all 28 Video templates without applying the curated Design catalog filter", async () => {
   const pluginRoot = resolve(dirname(new URL(import.meta.url).pathname), "..");
   const templatesRoot = resolve(pluginRoot, "lib/templates");
   const manifests = await Promise.all((await readdir(templatesRoot)).map(async (name) => (
     JSON.parse(await readFile(resolve(templatesRoot, name, "manifest.json"), "utf8"))
   )));
-  assert.equal(manifests.length, 27);
+  assert.equal(manifests.length, 28);
   assert.equal(manifests.every((manifest) => manifest.surface === "video" && manifest.category === "video"), true);
   const pluginSource = await readFile(resolve(pluginRoot, "src/index.ts"), "utf8");
   assert.doesNotMatch(pluginSource, /isCustomerVisibleBundledTemplate/);
