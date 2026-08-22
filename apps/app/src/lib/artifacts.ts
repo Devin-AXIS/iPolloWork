@@ -186,11 +186,13 @@ export function selectArtifactContextOutputs(
 
 /** A template-backed turn keeps its canonical editor entry plus verified exported deliverables. */
 export function selectTemplateEntryArtifacts(artifacts: ArtifactItem[], templateEntryPath: string) {
+  const templateDirectory = artifactDirectoryPath(templateEntryPath);
   const exportedDeliverables = artifacts.filter((artifact) => (
     artifact.type !== "html"
     && artifact.type !== "text"
     && isConversationOutputArtifact(artifact)
     && canOpenArtifact(artifact)
+    && artifactPathIsWithinDirectory(artifact.path, templateDirectory)
   ));
   const exactEntries = artifacts.filter((artifact) => (
     artifact.type === "html" && artifactPathMatchesTarget(artifact.path, templateEntryPath)

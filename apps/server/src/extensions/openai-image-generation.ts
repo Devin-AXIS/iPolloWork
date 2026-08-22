@@ -1,8 +1,9 @@
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, realpath, stat, writeFile } from "node:fs/promises";
 import { basename, dirname, extname, resolve, sep } from "node:path";
 
 import { ApiError } from "../errors.js";
 import type { AuthorizationAccess, AuthorizationServiceId } from "../authorization-center.js";
+import { resolveWithinRoot } from "../paths.js";
 import type { ServerConfig, WorkspaceInfo } from "../types.js";
 
 export const OPENAI_IMAGE_GENERATION_EXTENSION_ID = "openai-image-generation";
@@ -563,11 +564,16 @@ async function editImageArtifact(config: ServerConfig, authorization: Authorizat
   if (!apiKey) throw new ApiError(400, "image_model_authorization_missing", modelMissingAuthorizationMessage(model));
 
   const workspace = workspaceForContext(config, context);
-  const sourceFile = resolveSafeChildPath(workspace.path, sourcePath);
-  const image = await readFile(sourceFile);
-  if (!image.length || image.byteLength > MAX_IMAGE_INPUT_BYTES) {
+  const sourceCandidate = resolveSafeChildPath(workspace.path, sourcePath);
+  const sourceFile = await realpath(await resolveWithinRoot(workspace.path, sourceCandidate));
+  const sourceStats = await stat(sourceFile);
+  if (!sourceStats.isFile()) {
+    throw new ApiError(400, "invalid_path", "Source path must point to a file");
+  }
+  if (!sourceStats.size || sourceStats.size > MAX_IMAGE_INPUT_BYTES) {
     throw new ApiError(413, "invalid_image", "Source image is empty or too large");
   }
+  const image = await readFile(sourceFile);
   const sourceBaseName = basename(sourcePath, extname(sourcePath));
   const requestedName = readStringField(args, "filename");
   const fileName = `${slugifyImageArtifactName(requestedName || `${sourceBaseName}-edited-${Date.now()}`)}.png`;

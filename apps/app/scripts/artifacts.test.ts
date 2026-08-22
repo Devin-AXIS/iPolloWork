@@ -195,8 +195,20 @@ describe("getArtifactsFromMessages", () => {
         reason: "message",
       },
     };
+    const unrelatedImage = {
+      ...image,
+      id: "design/ses_other/unrelated.png",
+      name: "unrelated.png",
+      path: "design/ses_other/unrelated.png",
+      target: {
+        ...image.target,
+        id: "file:design/ses_other/unrelated.png",
+        value: "design/ses_other/unrelated.png",
+        name: "unrelated.png",
+      },
+    };
 
-    expect(selectTemplateEntryArtifacts([image, entry], entry.path)).toEqual([entry, image]);
+    expect(selectTemplateEntryArtifacts([unrelatedImage, image, entry], entry.path)).toEqual([entry, image]);
   });
 
   it("can list artifacts from assistant text without target fallbacks", () => {

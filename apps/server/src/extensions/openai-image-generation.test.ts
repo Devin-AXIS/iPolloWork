@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, symlink, truncate, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -111,6 +111,51 @@ describe("OpenAI image editing", () => {
       { sourcePath: "../outside.png", prompt: "Change it" },
       { workspaceId: "workspace" },
     )).rejects.toMatchObject({ code: "invalid_path" });
+    expect(called).toBe(false);
+  });
+
+  test("rejects a workspace symlink that resolves outside the active workspace", async () => {
+    const root = await temporaryRoot();
+    const outsideRoot = await temporaryRoot();
+    await mkdir(join(root, "references"), { recursive: true });
+    const outsideImage = join(outsideRoot, "outside.png");
+    await writeFile(outsideImage, Buffer.from("outside-image"));
+    await symlink(outsideImage, join(root, "references", "linked.png"));
+    let called = false;
+    globalThis.fetch = Object.assign(async () => {
+      called = true;
+      return Response.json({});
+    }, { preconnect: originalFetch.preconnect });
+
+    await expect(callOpenAiImageGenerationExtensionAction(
+      config(root),
+      authorization,
+      "image_edit",
+      { sourcePath: "references/linked.png", prompt: "Change it" },
+      { workspaceId: "workspace" },
+    )).rejects.toMatchObject({ code: "path_escape" });
+    expect(called).toBe(false);
+  });
+
+  test("rejects an oversized source from metadata before calling the provider", async () => {
+    const root = await temporaryRoot();
+    await mkdir(join(root, "references"), { recursive: true });
+    const oversizedImage = join(root, "references", "too-large.png");
+    await writeFile(oversizedImage, "");
+    await truncate(oversizedImage, 25 * 1024 * 1024 + 1);
+    let called = false;
+    globalThis.fetch = Object.assign(async () => {
+      called = true;
+      return Response.json({});
+    }, { preconnect: originalFetch.preconnect });
+
+    await expect(callOpenAiImageGenerationExtensionAction(
+      config(root),
+      authorization,
+      "image_edit",
+      { sourcePath: "references/too-large.png", prompt: "Change it" },
+      { workspaceId: "workspace" },
+    )).rejects.toMatchObject({ code: "invalid_image", status: 413 });
     expect(called).toBe(false);
   });
 
