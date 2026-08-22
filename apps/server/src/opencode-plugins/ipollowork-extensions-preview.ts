@@ -68,7 +68,7 @@ const browserSnapshotArgsSchema = z.object({
   tabId: z.string().trim().min(1).describe("Built-in browser tab ID returned by ipollowork_browser_open_url."),
 });
 
-const browserActionSchema = z.discriminatedUnion("type", [
+const browserActionSchema = z.union([
   z.object({
     type: z.literal("click"),
     ref: z.string().trim().min(1),
@@ -80,12 +80,66 @@ const browserActionSchema = z.discriminatedUnion("type", [
     key: z.enum(["ArrowDown", "ArrowLeft", "ArrowRight", "ArrowUp", "End", "Escape", "Home", "PageDown", "PageUp", "Tab"]),
   }),
   z.object({
+    type: z.literal("press"),
+    key: z.enum(["Enter", "Space"]),
+    ref: z.string().trim().min(1),
+    expectedName: z.string().trim().min(1).max(200),
+  }),
+  z.object({
+    type: z.literal("hover"),
+    ref: z.string().trim().min(1),
+    expectedName: z.string().trim().min(1).max(200),
+  }),
+  z.object({
+    type: z.literal("select"),
+    ref: z.string().trim().min(1),
+    expectedName: z.string().trim().min(1).max(200),
+    option: z.string().max(500),
+  }),
+  z.object({
+    type: z.literal("check"),
+    ref: z.string().trim().min(1),
+    expectedName: z.string().trim().min(1).max(200),
+    checked: z.boolean(),
+  }),
+  z.object({
+    type: z.literal("scroll"),
+    direction: z.enum(["down", "left", "right", "up"]),
+    amount: z.enum(["small", "page"]),
+  }),
+  z.object({
     type: z.literal("upload"),
     ref: z.string().trim().min(1),
     filePaths: z.array(z.string().trim().min(1)).min(1).max(20),
     extensionId: z.string().trim().min(1).optional(),
   }),
   z.object({ type: z.literal("wait"), durationMs: z.number().int().min(0).max(2_000) }),
+  z.object({
+    type: z.literal("waitFor"),
+    condition: z.literal("url"),
+    value: z.string().min(1).max(2_048),
+    match: z.enum(["equals", "contains"]),
+    timeoutMs: z.number().int().min(100).max(10_000).optional(),
+  }),
+  z.object({
+    type: z.literal("waitFor"),
+    condition: z.literal("text"),
+    value: z.string().min(1).max(500),
+    timeoutMs: z.number().int().min(100).max(10_000).optional(),
+  }),
+  z.object({
+    type: z.literal("waitFor"),
+    condition: z.literal("ref"),
+    ref: z.string().trim().min(1),
+    state: z.enum(["attached", "visible"]),
+    timeoutMs: z.number().int().min(100).max(10_000).optional(),
+  }),
+  z.object({
+    type: z.literal("waitFor"),
+    condition: z.literal("load"),
+    state: z.enum(["interactive", "complete"]),
+    timeoutMs: z.number().int().min(100).max(10_000).optional(),
+  }),
 ]);
 
 const browserActArgsSchema = z.object({
