@@ -6,7 +6,7 @@ import { z } from "zod";
 import { Client as McpClient } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 
-import { consequentialBrowserControlNames } from "./engine-host-tools.js";
+import { consequentialBrowserControlNames, engineHostTool, ENGINE_HOST_TOOL_NAMES } from "./engine-host-tools.js";
 import { writeRuntimeOpencodeConfig } from "./runtime-opencode-config-store.js";
 import { startServer } from "./server.js";
 import type { ServerConfig } from "./types.js";
@@ -14,13 +14,26 @@ import type { ServerConfig } from "./types.js";
 const CLIENT_TOKEN = "owt_connect_client_token";
 const HOST_TOKEN = "owt_connect_host_token";
 
-test("browser host policy identifies only consequential verified clicks", () => {
+test("browser host policy identifies only consequential verified activations", () => {
   expect(consequentialBrowserControlNames([
     { type: "fill", ref: "@e1", value: "Publish" },
     { type: "click", ref: "@e2", expectedName: "Preview" },
     { type: "click", ref: "@e3", expectedName: "确认发布" },
     { type: "click", ref: "@e4", expectedName: "Delete post" },
-  ])).toEqual(["确认发布", "Delete post"]);
+    { type: "press", key: "Enter", ref: "@e5", expectedName: "Submit" },
+    { type: "check", ref: "@e6", expectedName: "Authorize access", checked: true },
+  ])).toEqual(["确认发布", "Delete post", "Submit", "Authorize access"]);
+});
+
+test("browser host action schema exposes one complete semantic action set", () => {
+  const tool = engineHostTool(ENGINE_HOST_TOOL_NAMES.browserAct);
+  const schema = JSON.stringify(tool?.parameters);
+  for (const action of ["check", "click", "fill", "hover", "press", "scroll", "select", "upload", "wait", "waitFor"]) {
+    expect(schema).toContain(`\"${action}\"`);
+  }
+  expect(schema).toContain("Enter");
+  expect(schema).toContain("Space");
+  for (const condition of ["load", "ref", "text", "url"]) expect(schema).toContain(`\"${condition}\"`);
 });
 
 const actionSchema = z.object({

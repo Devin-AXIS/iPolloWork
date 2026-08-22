@@ -48,7 +48,25 @@ Pass criteria:
 - Fill uses real text input and click uses real pointer events.
 - The final snapshot reflects the page change.
 
-## Flow 3 — stale and unsafe targets fail closed
+## Flow 3 — complete semantic actions and bounded waits
+
+1. Snapshot labelled hover, native select, checkbox, and scrollable controls.
+2. Hover by ref and wait for accessible text instead of sleeping blindly.
+3. Select one exact native option, check the requested state, and scroll by one
+   bounded amount, taking a fresh snapshot whenever requested.
+4. Use Enter or Space only with a stable ref and exact accessible name.
+
+Pass criteria:
+
+- Hover, select, check, scroll, and structured waits all use the same
+  `ipollowork_browser_act` contract for every engine.
+- URL, accessible text, ref visibility, and document readiness waits are
+  bounded to 10 seconds each and 10 seconds per action batch.
+- Select rejects missing or ambiguous options; check is idempotent; radios
+  cannot be unchecked; Enter and Space cannot bypass named-ref validation.
+- No engine-supplied JavaScript, CSS selector, or coordinate is accepted.
+
+## Flow 4 — stale and unsafe targets fail closed
 
 1. Take a snapshot, then navigate or replace the referenced control.
 2. Attempt to act with the old `snapshotId` or ref.
@@ -61,7 +79,7 @@ Pass criteria:
 - No selector fallback, synthetic DOM `.click()`, or arbitrary evaluation is
   used.
 
-## Flow 4 — modern document coverage
+## Flow 5 — modern document coverage
 
 Use a deterministic fixture containing an open/closed shadow tree, a same-origin
 frame, a cross-origin frame, an off-screen control, and a file input.
@@ -75,7 +93,7 @@ Pass criteria:
   data, at most 20 files and 1 GB per file.
 - Unsupported boundaries fail clearly without falling back to page scripts.
 
-## Flow 5 — engine switching keeps one browser session
+## Flow 6 — engine switching keeps one browser session
 
 1. Sign into a test site with one engine and keep the browser tab open.
 2. Switch engines in the same workspace.
@@ -86,7 +104,7 @@ Pass criteria:
 - The same tab, cookies, login state, proxy, and browser permissions remain.
 - A new engine does not start Chrome or create another browser runtime.
 
-## Flow 6 — consequential controls require approval
+## Flow 7 — consequential controls require approval
 
 1. Snapshot a page containing publish, send, submit, pay, buy, confirm, and
    delete controls.
@@ -99,7 +117,7 @@ Pass criteria:
 - The approved attempt performs exactly one verified click.
 - The workspace audit records the actor, tab, and browser action.
 
-## Flow 7 — extension UI remains optional
+## Flow 8 — extension UI remains optional
 
 1. Open the composer Extensions menu and select iPolloWork Browser.
 2. Disable/hide it, verify it disappears from the composer, then restore it.

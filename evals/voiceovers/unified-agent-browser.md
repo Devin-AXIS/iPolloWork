@@ -8,8 +8,10 @@
 
 4. I ask it to fill a title and open the preview, and the right-hand page updates through real keyboard and pointer input targeted by those stable references.
 
-5. I ask it to complete several safe steps, and it can fill, wait, and click as one bounded action; if the page changed, it observes again instead of acting on a stale reference.
+5. I ask it to use modern page controls, and the same host runtime can hover, choose an exact option, check a control, scroll, and wait for semantic page state without selector scripts or timing guesses.
 
-6. I switch to another supported engine and give the same instruction, and it uses the same browser session, element references, and permissions rather than a separate engine-specific browser.
+6. I ask it to complete several safe steps, and it can fill, wait, and click as one bounded action; if the page changed, it observes again instead of acting on a stale reference.
 
-7. With manual approval enabled, publishing, payment, deletion, or another consequential action pauses for confirmation and identifies the session or plugin requesting it.
+7. I switch to another supported engine and give the same instruction, and it uses the same browser session, element references, and permissions rather than a separate engine-specific browser.
+
+8. With manual approval enabled, publishing, payment, deletion, or another consequential action pauses for confirmation and identifies the session or plugin requesting it.

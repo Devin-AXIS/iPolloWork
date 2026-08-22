@@ -19,11 +19,13 @@ function startFixtureServer() {
       body { margin: 0; font-family: system-ui, sans-serif; background: #f5f3ef; color: #171717; }
       main { width: min(720px, calc(100% - 48px)); margin: 48px auto; padding: 32px; border-radius: 24px; background: white; box-shadow: 0 18px 60px #17233b1f; }
       label, button { display: block; margin-top: 18px; font-weight: 700; }
-      input { width: 100%; box-sizing: border-box; margin-top: 8px; padding: 13px 14px; border: 1px solid #a3a3a3; border-radius: 12px; font: inherit; }
+      input, select { width: 100%; box-sizing: border-box; margin-top: 8px; padding: 13px 14px; border: 1px solid #a3a3a3; border-radius: 12px; font: inherit; }
+      input[type='checkbox'] { display: inline-block; width: auto; margin-right: 8px; }
       button { padding: 11px 16px; border: 0; border-radius: 12px; background: #171717; color: white; cursor: pointer; }
       #publish { background: #b42318; }
       #result { margin-top: 24px; padding: 16px; border-radius: 12px; background: #eff6ff; }
       iframe { width: 100%; height: 84px; margin-top: 18px; border: 1px solid #d4d4d4; border-radius: 12px; }
+      .scroll-space { height: 900px; }
     </style>
   </head>
   <body>
@@ -33,16 +35,37 @@ function startFixtureServer() {
       <label for="title">Post title</label>
       <input id="title" autocomplete="off">
       <button id="preview" type="button">Preview</button>
+      <button id="actions" type="button">Open actions</button>
+      <label for="role">Role</label>
+      <select id="role"><option value="writer">Writer</option><option value="reviewer">Reviewer</option></select>
+      <label><input id="notifications" type="checkbox">Enable notifications</label>
       <div id="shadow-host"></div>
       <iframe title="Embedded editor" srcdoc="<!doctype html><button type='button'>Frame action</button>"></iframe>
       <input type="file" aria-label="Upload training asset" hidden>
       <button id="publish" type="button">Publish now</button>
       <p id="result">Waiting for an action</p>
+      <p id="hover-result">Hover idle</p>
+      <p id="select-result">Role unchanged</p>
+      <p id="check-result">Notifications unchanged</p>
+      <p id="scroll-result">Scroll idle</p>
+      <div class="scroll-space" aria-hidden="true"></div>
     </main>
     <script>
       const result = document.querySelector('#result');
       document.querySelector('#preview').addEventListener('click', () => {
         result.textContent = 'Preview ready: ' + document.querySelector('#title').value;
+      });
+      document.querySelector('#actions').addEventListener('mouseenter', () => {
+        setTimeout(() => { document.querySelector('#hover-result').textContent = 'Hover menu ready'; }, 120);
+      });
+      document.querySelector('#role').addEventListener('change', (event) => {
+        document.querySelector('#select-result').textContent = 'Selected role: ' + event.target.value;
+      });
+      document.querySelector('#notifications').addEventListener('change', (event) => {
+        document.querySelector('#check-result').textContent = event.target.checked ? 'Notifications enabled' : 'Notifications disabled';
+      });
+      window.addEventListener('scroll', () => {
+        if (window.scrollY > 0) document.querySelector('#scroll-result').textContent = 'Scrolled down';
       });
       document.querySelector('#publish').addEventListener('click', () => {
         result.textContent = 'Published';
@@ -160,23 +183,35 @@ export default {
             const route = await ctx.eval("window.location.hash");
             if (!/\/session\/[^/?#]+/.test(route)) {
               const sessions = await ctx.control("session.list_sessions");
-              ctx.assert(Array.isArray(sessions) && sessions.length > 0, "The browser proof needs one existing conversation.");
-              await ctx.control("session.open", { sessionId: sessions[0].sessionId });
+              if (Array.isArray(sessions) && sessions.length > 0) {
+                await ctx.control("session.open", { sessionId: sessions[0].sessionId });
+              } else {
+                await ctx.waitFor(
+                  `window.__ipolloworkControl.listActions().some((action) => action.id === "session.create_task" && !action.disabled)`,
+                  { timeoutMs: 30_000, label: "new browser proof conversation" },
+                );
+                await ctx.control("session.create_task");
+              }
               await ctx.waitFor("/\/session\/[^/?#]+/.test(window.location.hash)", {
-                timeoutMs: 30_000,
+                timeoutMs: 90_000,
                 label: "existing conversation route",
               });
             }
+            await ctx.client.send("Input.dispatchKeyEvent", { type: "keyDown", key: "Escape", code: "Escape", windowsVirtualKeyCode: 27, nativeVirtualKeyCode: 27 });
+            await ctx.client.send("Input.dispatchKeyEvent", { type: "keyUp", key: "Escape", code: "Escape", windowsVirtualKeyCode: 27, nativeVirtualKeyCode: 27 });
             await ctx.eval("window.__IPOLLOWORK_ELECTRON__.browser.closeAllTabs()", { awaitPromise: true });
             await ctx.waitFor(
               `window.__ipolloworkControl.listActions().some((action) => action.id === "eval.design.seed_html" && !action.disabled)`,
               { timeoutMs: 30_000, label: "Design seed action" },
             );
-            try {
-              await ctx.control("eval.design.seed_html");
-            } catch {
-              await ctx.trustedClick('button[aria-label="Select tab: entry.html"]');
-            }
+            await ctx.control("eval.design.seed_html").catch(() => undefined);
+            await ctx.client.send("Input.dispatchKeyEvent", { type: "keyDown", key: "Escape", code: "Escape", windowsVirtualKeyCode: 27, nativeVirtualKeyCode: 27 });
+            await ctx.client.send("Input.dispatchKeyEvent", { type: "keyUp", key: "Escape", code: "Escape", windowsVirtualKeyCode: 27, nativeVirtualKeyCode: 27 });
+            await ctx.waitFor(`Boolean(document.querySelector('button[aria-label="Select tab: entry.html"]'))`, {
+              timeoutMs: 30_000,
+              label: "seeded Design tab",
+            });
+            await ctx.trustedClick('button[aria-label="Select tab: entry.html"]');
             await ctx.waitFor(
               `Boolean(document.querySelector('button[aria-label="Select tab: entry.html"][aria-selected="true"]'))`,
               { timeoutMs: 30_000, label: "active Design tab before browser launch" },
@@ -202,6 +237,7 @@ export default {
               return {
                 label: button?.textContent?.trim() ?? "",
                 width: addressRect ? Math.round(addressRect.width) : 0,
+                left: addressRect ? Math.round(addressRect.left) : 0,
                 right: addressRect ? Math.round(addressRect.right) : 0,
                 inputVisible: Boolean(input),
                 profileVisible: Boolean(profileRect?.width),
@@ -233,11 +269,12 @@ export default {
             ctx.assert(tabs.some((tab) => tab.id === ctx.browser.opened.tabId), "The returned host tab is not open.");
             const activeTabId = await ctx.eval(`document.querySelector('button[aria-label^="Select tab:"][aria-selected="true"]')?.closest('[id]')?.id ?? null`);
             ctx.assert(activeTabId === ctx.browser.opened.tabId, "The existing Design surface stole focus from the browser opened by the host.");
-            ctx.assert(ctx.browser.compactAddress.width >= 240, "The resting site address does not use the available toolbar space.");
+            ctx.assert(ctx.browser.compactAddress.width >= 100, "The resting site address is too short to identify the current site.");
             ctx.assert(!ctx.browser.compactAddress.inputVisible, "The full URL input is visible before the user asks for it.");
             ctx.assert(ctx.browser.compactAddress.profileVisible, "The browser profile avatar is not visible.");
             ctx.assert(ctx.browser.compactAddress.profileWidth >= 24 && ctx.browser.compactAddress.profileWidth <= 40, "The browser profile avatar does not keep a compact fixed slot.");
             ctx.assert(ctx.browser.compactAddress.right <= ctx.browser.compactAddress.profileLeft, "The browser profile avatar is not reserved to the right of the address.");
+            ctx.assert(ctx.browser.compactAddress.profileLeft - ctx.browser.compactAddress.right <= 16, "The site address leaves unused toolbar space before the profile avatar.");
             ctx.assert(/Default profile|默认身份/.test(ctx.browser.profileMenuText), "The browser profile menu does not identify the active profile.");
             ctx.assert(/saved|保存/.test(ctx.browser.profileMenuText), "The browser profile menu does not explain sign-in persistence.");
           },
@@ -388,10 +425,79 @@ export default {
       },
     },
     {
+      name: "Modern semantic controls work without selectors or timing guesses",
+      run: async (ctx) => {
+        await ctx.prove("The host can hover, select, check, scroll, and wait for semantic page state", {
+          voiceover: vo[4],
+          action: async () => {
+            const waitForText = async (value) => {
+              const beforeWait = await ctx.control("browser.snapshot", { tabId: ctx.browser.opened.tabId });
+              const waited = await ctx.control("browser.act", {
+                tabId: ctx.browser.opened.tabId,
+                snapshotId: beforeWait.snapshotId,
+                actions: [{ type: "waitFor", condition: "text", value, timeoutMs: 2_000 }],
+              });
+              const afterWait = await ctx.control("browser.snapshot", { tabId: ctx.browser.opened.tabId });
+              ctx.assert(afterWait.tree.includes(value), `The page did not expose the expected state: ${value}`);
+              return waited.results[0];
+            };
+
+            let snapshot = await ctx.control("browser.snapshot", { tabId: ctx.browser.opened.tabId });
+            const hover = await ctx.control("browser.act", {
+              tabId: ctx.browser.opened.tabId,
+              snapshotId: snapshot.snapshotId,
+              actions: [{ type: "hover", ref: refFor(snapshot.tree, "Open actions"), expectedName: "Open actions" }],
+            });
+            const hoverWait = await waitForText("Hover menu ready");
+
+            snapshot = await ctx.control("browser.snapshot", { tabId: ctx.browser.opened.tabId });
+            const select = await ctx.control("browser.act", {
+              tabId: ctx.browser.opened.tabId,
+              snapshotId: snapshot.snapshotId,
+              actions: [{ type: "select", ref: refFor(snapshot.tree, "Role"), expectedName: "Role", option: "Reviewer" }],
+            });
+            await waitForText("Selected role: reviewer");
+
+            snapshot = await ctx.control("browser.snapshot", { tabId: ctx.browser.opened.tabId });
+            const check = await ctx.control("browser.act", {
+              tabId: ctx.browser.opened.tabId,
+              snapshotId: snapshot.snapshotId,
+              actions: [{ type: "check", ref: refFor(snapshot.tree, "Enable notifications"), expectedName: "Enable notifications", checked: true }],
+            });
+            await waitForText("Notifications enabled");
+
+            snapshot = await ctx.control("browser.snapshot", { tabId: ctx.browser.opened.tabId });
+            const scroll = await ctx.control("browser.act", {
+              tabId: ctx.browser.opened.tabId,
+              snapshotId: snapshot.snapshotId,
+              actions: [{ type: "scroll", direction: "down", amount: "page" }],
+            });
+            const scrollWait = await waitForText("Scrolled down");
+            ctx.browser.snapshot = await ctx.control("browser.snapshot", { tabId: ctx.browser.opened.tabId });
+            ctx.browser.semanticActions = { check, hover, hoverWait, scroll, scrollWait, select };
+            await showProofPanel(ctx, "现代语义动作已经统一可用", "悬停、原生下拉、勾选、滚动和条件等待都走同一套 Host 协议，不依赖 selector、坐标脚本或固定延时。", [
+              { label: "Hover + wait", value: `${hover.results[0].type} → ${hoverWait.type}:${hoverWait.condition}` },
+              { label: "Select", value: `${select.results[0].name} → ${select.results[0].option}` },
+              { label: "Check", value: `${check.results[0].name} = ${check.results[0].checked}` },
+              { label: "Scroll + wait", value: `${scroll.results[0].direction}/${scroll.results[0].amount} → ${scrollWait.type}:${scrollWait.condition}` },
+            ]);
+          },
+          assert: async () => {
+            ctx.assert(ctx.browser.semanticActions.hover.results[0].type === "hover", "Hover did not run through the host runtime.");
+            ctx.assert(ctx.browser.semanticActions.select.results[0].value === "reviewer", "Native select did not choose the exact option.");
+            ctx.assert(ctx.browser.semanticActions.check.results[0].checked === true, "Checkbox did not reach the requested state.");
+            ctx.assert(ctx.browser.semanticActions.scroll.results[0].type === "scroll", "Bounded scroll did not run.");
+            ctx.assert(ctx.browser.snapshot.tree.includes("Scrolled down"), "The page did not witness the real scroll input.");
+          },
+          screenshot: { name: "complete-semantic-actions", requireText: ["现代语义动作", "Role → Reviewer", "down/page → waitFor:text"] },
+        });
+      },
+    },
+    {
       name: "Bounded batches reject stale references",
       run: async (ctx) => {
         await ctx.prove("A bounded batch stops after page change and stale refs cannot be replayed", {
-          voiceover: vo[4],
+          voiceover: vo[5],
           action: async () => {
             const before = ctx.browser.snapshot;
             const titleRef = refFor(before.tree, "Post title");
@@ -437,7 +543,7 @@ export default {
       name: "Every engine reaches the same host session",
       run: async (ctx) => {
         await ctx.prove("The engine-facing host tool route returns the same tab and refs", {
-          voiceover: vo[5],
+          voiceover: vo[6],
           action: async () => {
             const serverInfo = await desktopServerInfo(ctx);
             const status = await fetch(`${serverInfo.baseUrl}/status`, { headers: clientHeaders(serverInfo) }).then((response) => response.json());
@@ -478,7 +584,7 @@ export default {
       name: "Consequential clicks require named approval",
       run: async (ctx) => {
         await ctx.prove("Manual approval pauses a publish click and names the requesting session", {
-          voiceover: vo[6],
+          voiceover: vo[7],
           action: async () => {
             const run = await execFile("pnpm", [
               "--filter", "ipollowork-server", "exec", "bun", "test", "src/extensions-connect-gating.test.ts",
