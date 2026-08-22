@@ -360,6 +360,16 @@ describe("plugin service runtime", () => {
     process.env.IPOLLOWORK_RUNTIME_DB = join(runtimeRoot, "runtime.sqlite");
     const serverConfig = config(workspaceRoot);
     const env = new EnvService({ path: join(runtimeRoot, "env.json") });
+    const serviceModuleUrl = pathToFileURL(join(packageRoot, "service", "image-studio.mjs")).href;
+    const nodeImport = Bun.spawn(["node", "--input-type=module", "--eval", `await import(${JSON.stringify(serviceModuleUrl)})`], {
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    const [nodeImportCode, nodeImportError] = await Promise.all([
+      nodeImport.exited,
+      new Response(nodeImport.stderr).text(),
+    ]);
+    expect(nodeImportCode, nodeImportError).toBe(0);
     await installPluginPackage({ serverConfig, packageRoot });
 
     const imported = await callPluginServiceAction({

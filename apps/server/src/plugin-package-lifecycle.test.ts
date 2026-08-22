@@ -1590,6 +1590,7 @@ describe("plugin package lifecycle", () => {
           { pluginId: "wechat-official", version: "0.1.4", installedVersion: null, updateAvailable: false },
           { pluginId: "design-agent", version: "0.3.2", installedVersion: "0.3.2", updateAvailable: false },
           { pluginId: "video-agent", version: "0.3.2", installedVersion: "0.3.2", updateAvailable: false },
+          { pluginId: "image-studio", version: "0.1.8", installedVersion: "0.1.8", updateAvailable: false },
           { pluginId: "deepseek-harness", version: "0.3.7", installedVersion: null, updateAvailable: false },
         ],
       });

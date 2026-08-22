@@ -317,7 +317,7 @@ describe("plugin package manifest", () => {
       "image-generation",
       "image-editing",
     ]);
-    expect(result.manifest.package?.version).toBe("0.1.7");
+    expect(result.manifest.package?.version).toBe("0.1.8");
     expect(workspaceUi).toContain('data-tool="smart"');
     expect(workspaceUi).toContain('data-tool="ellipse"');
     expect(workspaceUi).toContain('data-operation="subtract"');

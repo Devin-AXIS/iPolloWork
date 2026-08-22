@@ -16,7 +16,7 @@
     "prompt": "打开图片工作台，在右侧生成图片，或对当前图片进行选区与涂抹编辑。"
   },
   "package": {
-    "version": "0.1.7",
+    "version": "0.1.8",
     "publisher": { "id": "ipollowork", "name": "iPolloWork" },
     "compatibility": { "ipollowork": ">=0.21.0" },
     "updateId": "ipollowork/image-studio"
@@ -44,7 +44,7 @@
       "id": "image-studio-service",
       "label": "图片工作台服务",
       "description": "安全读取工作区图片，并通过统一 Host action 生成或编辑图片。",
-      "path": "service/image-studio.ts",
+      "path": "service/image-studio.mjs",
       "requires": [
         "action:openai-image-generation/status",
         "action:openai-image-generation/image_generate",

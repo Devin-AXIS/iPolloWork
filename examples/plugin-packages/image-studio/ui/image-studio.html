@@ -860,7 +860,7 @@
 
     request("ui/initialize", {
       protocolVersion: "2025-11-21",
-      appInfo: { name: "iPolloWork Image Studio", version: "0.1.7" },
+      appInfo: { name: "iPolloWork Image Studio", version: "0.1.8" },
       appCapabilities: { tools: {}, availableDisplayModes: ["inline", "fullscreen"] },
     }).then(async (host) => {
       post({ jsonrpc: "2.0", method: "ui/notifications/initialized", params: {} });
