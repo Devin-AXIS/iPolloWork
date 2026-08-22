@@ -38,7 +38,7 @@ const URL_PATTERN = /https?:\/\/[^\s)\]}>"'`]+/gi;
 const SOCKET_PATTERN = /(?:ws|wss):\/\/[^\s)\]}>"'`]+/gi;
 const SIDEBAR_ARTIFACT_FILE_PREVIEWS = new Set<OpenTargetPreview>(["markdown", "sheet", "slides", "image", "pdf", "html"]);
 const STYLESHEET_EXTENSIONS = new Set([".css", ".scss", ".sass", ".less"]);
-const MARKDOWN_LINK_PATTERN = /\[([^\]\n]+)\]\(([^)\s]+)\)/g;
+const MARKDOWN_LINK_PATTERN = /\[([^\]\n]+)\]\(\s*(?:<([^>\n]+)>|([^)\s]+))\s*\)/g;
 const ASSISTANT_ARTIFACT_MENTION_PATTERN = /(?:\b(?:artifact|complete|completed|created|deck|deliverable|exported|file|generated|open|opened|presentation|saved|skill|slides?|updated|wrote)\b|产物|创建|完成|打开|技能|文件|生成|路径|保存|输出|写入|更新)/i;
 const DISCOVERY_TOOL_NAMES = new Set(["glob", "grep", "search", "find"]);
 const ARTIFACT_METADATA_TOOL_NAMES = new Set(["ipollowork_extension_call"]);
@@ -104,9 +104,58 @@ function shouldScanAssistantFileMentions(text: string) {
   return ASSISTANT_ARTIFACT_MENTION_PATTERN.test(text);
 }
 
+export function localFilePathFromHref(href: string) {
+  const trimmed = href.trim();
+  if (!trimmed || trimmed.startsWith("#")) return "";
+
+  if (/^[A-Za-z]:[\\/]/.test(trimmed)) {
+    return trimmed.split(/[?#]/)[0] ?? trimmed;
+  }
+
+  if (/^file:/i.test(trimmed)) {
+    try {
+      const parsed = new URL(trimmed);
+      const host = decodeURIComponent(parsed.hostname);
+      const pathname = decodeURIComponent(parsed.pathname);
+      const localPath = /^\/[A-Za-z]:\//.test(pathname) ? pathname.slice(1) : pathname;
+
+      if (host && host !== "localhost") {
+        return `//${host}${localPath.startsWith("/") ? localPath : `/${localPath}`}`;
+      }
+
+      return localPath;
+    } catch {
+      return "";
+    }
+  }
+
+  if (/^[a-z][a-z0-9+.-]*:/i.test(trimmed)) return "";
+  const localPath = trimmed.split(/[?#]/)[0] ?? trimmed;
+  try {
+    return decodeURIComponent(localPath);
+  } catch {
+    return localPath;
+  }
+}
+
+function markdownLinkHref(match: RegExpMatchArray) {
+  return match[2] ?? match[3] ?? "";
+}
+
+function getMarkdownFileLinkPaths(text: string) {
+  const paths: string[] = [];
+  MARKDOWN_LINK_PATTERN.lastIndex = 0;
+  for (const match of text.matchAll(MARKDOWN_LINK_PATTERN)) {
+    const path = localFilePathFromHref(markdownLinkHref(match));
+    if (path) paths.push(path);
+  }
+  return paths;
+}
+
 export function getAssistantFileMentionPaths(text: string) {
-  if (!shouldScanAssistantFileMentions(text)) return [];
-  return getContextualFileMentionPaths(text);
+  const linkedPaths = getMarkdownFileLinkPaths(text);
+  if (!shouldScanAssistantFileMentions(text)) return linkedPaths;
+  return [...new Set([...linkedPaths, ...getContextualFileMentionPaths(text)])];
 }
 
 function getFileMentionPaths(text: string) {
@@ -160,9 +209,9 @@ function getContextualFileMentionPaths(text: string) {
 }
 
 function textWithoutRedundantMarkdownLinkLabels(text: string) {
-  return text.replace(MARKDOWN_LINK_PATTERN, (match, label: string, href: string) => {
+  return text.replace(MARKDOWN_LINK_PATTERN, (match, label: string, angleHref: string | undefined, bareHref: string | undefined) => {
     const cleanLabel = label.trim();
-    const cleanHref = href.trim();
+    const cleanHref = (angleHref ?? bareHref ?? "").trim();
     return cleanLabel === basename(cleanHref) ? `[](${cleanHref})` : match;
   });
 }
@@ -247,12 +296,13 @@ function scanText(
 
   MARKDOWN_LINK_PATTERN.lastIndex = 0;
   for (const match of text.matchAll(MARKDOWN_LINK_PATTERN)) {
-    const href = match[2];
+    const href = markdownLinkHref(match);
     if (!href) continue;
     if (/^(?:https?|wss?):\/\//i.test(href)) {
       addTarget(map, targetFromUrl(href, confidence, reason));
-    } else if (options.includeFiles) {
-      addTarget(map, targetFromFile(href, confidence, reason));
+    } else {
+      const path = localFilePathFromHref(href);
+      if (path) addTarget(map, targetFromFile(path, confidence, reason));
     }
   }
 

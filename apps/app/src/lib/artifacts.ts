@@ -184,13 +184,19 @@ export function selectArtifactContextOutputs(
   return outputs.filter((artifact) => canOpenArtifactInContext(artifact, context));
 }
 
-/** A template-backed chat turn exposes one final entry, never duplicate discovery records or implementation assets. */
+/** A template-backed turn keeps its canonical editor entry plus verified exported deliverables. */
 export function selectTemplateEntryArtifacts(artifacts: ArtifactItem[], templateEntryPath: string) {
+  const exportedDeliverables = artifacts.filter((artifact) => (
+    artifact.type !== "html"
+    && artifact.type !== "text"
+    && isConversationOutputArtifact(artifact)
+    && canOpenArtifact(artifact)
+  ));
   const exactEntries = artifacts.filter((artifact) => (
     artifact.type === "html" && artifactPathMatchesTarget(artifact.path, templateEntryPath)
   ));
   const exactEntry = exactEntries.sort(compareArtifactsForPrimary)[0];
-  if (exactEntry) return [exactEntry];
+  if (exactEntry) return [exactEntry, ...exportedDeliverables];
 
   const entryName = getArtifactName(normalizeArtifactPath(templateEntryPath)).toLowerCase();
   const candidates = artifacts.filter((artifact) => (
@@ -200,7 +206,7 @@ export function selectTemplateEntryArtifacts(artifacts: ArtifactItem[], template
     ?? candidates.find((artifact) => normalizeArtifactPath(artifact.path).toLowerCase() === normalizeArtifactPath(templateEntryPath).toLowerCase())
     ?? candidates[0];
 
-  return selected ? [selected] : [];
+  return selected ? [selected, ...exportedDeliverables] : exportedDeliverables;
 }
 
 function getArtifactName(path: string) {

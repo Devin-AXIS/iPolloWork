@@ -136,12 +136,19 @@ describe("session output issue regressions", () => {
       "utf8",
     );
     const clickHandler = source.slice(
-      source.indexOf('const link = event.target.closest("a[data-ipollowork-link-href]")'),
+      source.indexOf('const link = event.target.closest("[data-ipollowork-link-href]")'),
       source.indexOf('const button = event.target.closest("[data-ipollowork-image-toggle]")'),
+    );
+    const fileLinkRenderer = source.slice(
+      source.indexOf("if (isFilePath)"),
+      source.indexOf('return `<a href="${safe}"', source.indexOf("if (isFilePath)")),
     );
 
     expect(clickHandler).toContain("onOpenTarget(target);");
+    expect(clickHandler).toContain("event.preventDefault();");
     expect(clickHandler).not.toContain("external: true");
+    expect(fileLinkRenderer).toContain('<button type="button" data-ipollowork-link-href=');
+    expect(fileLinkRenderer).not.toContain('target="_blank"');
   });
 
   test("HTML files use persisted surface metadata and still offer explicit viewer overrides", () => {
