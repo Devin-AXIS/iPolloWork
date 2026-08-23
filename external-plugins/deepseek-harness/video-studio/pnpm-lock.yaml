@@ -4,6 +4,9 @@ settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
 
+overrides:
+  adm-zip: 0.6.0
+
 importers:
 
   .:
@@ -15,8 +18,8 @@ importers:
         specifier: ^3.0.6
         version: 3.2.0
       adm-zip:
-        specifier: ^0.5.16
-        version: 0.5.18
+        specifier: 0.6.0
+        version: 0.6.0
       compare-versions:
         specifier: ^6.1.1
         version: 6.1.1
@@ -1753,9 +1756,9 @@ packages:
     peerDependencies:
       vite: ^4.2.0 || ^5.0.0 || ^6.0.0 || ^7.0.0
 
-  adm-zip@0.5.18:
-    resolution: {integrity: sha512-ufJnssQGbxzLNS1Ho9bCtX4rQKCCvoVuDLHoJyc3F9dOGDB4BkWs2Ci0kv53lqocAEQ/Cbi+I2XCsNYGqVYqng==}
-    engines: {node: '>=12.0'}
+  adm-zip@0.6.0:
+    resolution: {integrity: sha512-XleryMhbuksdKtofnWZ9Sk+4CUTbms4Mb/EU32SZwToAyZ5RgVos/ki8n+yr0LWHOGKuakbXTuuYNHLQjhddgg==}
+    engines: {node: '>=14.0'}
 
   anser@2.3.5:
     resolution: {integrity: sha512-vcZjxvvVoxTeR5XBNJB38oTu/7eDCZlwdz32N1eNgpyPF7j/Z7Idf+CUwQOkKKpJ7RJyjxgLHCM7vdIK0iCNMQ==}
@@ -4183,7 +4186,7 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  adm-zip@0.5.18: {}
+  adm-zip@0.6.0: {}
 
   anser@2.3.5: {}
 
@@ -4927,7 +4930,7 @@ snapshots:
 
   onnxruntime-node@1.23.2:
     dependencies:
-      adm-zip: 0.5.18
+      adm-zip: 0.6.0
       global-agent: 3.0.0
       onnxruntime-common: 1.23.2
 

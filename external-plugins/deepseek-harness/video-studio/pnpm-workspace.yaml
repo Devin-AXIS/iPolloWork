@@ -10,3 +10,6 @@ allowBuilds:
   # HyperFrames may load the bundled ONNX runtime for media analysis.
   onnxruntime-node: true
   sharp: true
+
+overrides:
+  adm-zip: "0.6.0"
