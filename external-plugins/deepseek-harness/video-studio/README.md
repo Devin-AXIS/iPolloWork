@@ -20,7 +20,10 @@
 
 - DeepSeek Harness 对话中的原生 **Video** 视图
 - HyperFrames 时间线、可视化编辑、动画、素材和实时预览
-- 27 个内置可编辑 Video 模板
+- 28 个内置可编辑 Video 模板
+- 跟随主题的可复用组件库，可从 Studio 直接加入时间线
+- 统一的组件变量表单与 AI 可读数据契约
+- 西班牙、美国、美国六边形、世界、气泡和流向等 6 类地图组件
 - 整段视频与选区级 **Ask AI**
 - `ipollowork_video_validate` 自动校验工具
 - HyperFrames 原生视频导出
@@ -51,7 +54,7 @@ DeepSeek Harness Web 界面默认运行在 [http://127.0.0.1:3080](http://127.0.
 
 ```sh
 pnpm pack
-dsh plugin --profile web add ./deepseek-ivideo-0.1.1.tgz
+dsh plugin --profile web add ./deepseek-ivideo-0.5.0.tgz
 dsh web
 ```
 
@@ -92,7 +95,10 @@ Ask Harness to generate or revise the whole video, or select a heading, image, m
 
 - Native **Video** view in DeepSeek Harness conversations
 - HyperFrames timeline, direct manipulation, animation, media, and preview
-- 27 bundled editable Video templates
+- 28 bundled editable Video templates
+- Theme-aware reusable components that can be added directly to the timeline
+- One shared variable form backed by an AI-readable component data contract
+- Six map components covering Spain, US, US hex, world, bubble, and flow views
 - Whole-video and selection-aware **Ask AI**
 - `ipollowork_video_validate` model tool
 - Native HyperFrames video export
@@ -123,7 +129,7 @@ The Web UI is served at [http://127.0.0.1:3080](http://127.0.0.1:3080) by defaul
 
 ```sh
 pnpm pack
-dsh plugin --profile web add ./deepseek-ivideo-0.1.1.tgz
+dsh plugin --profile web add ./deepseek-ivideo-0.5.0.tgz
 dsh web
 ```
 
