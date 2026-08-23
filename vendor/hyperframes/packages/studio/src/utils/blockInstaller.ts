@@ -1,4 +1,9 @@
-import type { RegistryItem, RegistryVariable } from "@hyperframes/core/registry";
+import type {
+  BlockParam,
+  RegistryItem,
+  RegistryVariable,
+  RegistryVisualComponent,
+} from "@hyperframes/core/registry";
 import type { TimelineElement } from "../player";
 import {
   insertTimelineAssetIntoSource,
@@ -12,6 +17,20 @@ import type { EditHistoryKind } from "./editHistory";
 import { extendRootDurationInSource } from "./rootDuration";
 import { readRootCompositionDuration } from "./rootDuration";
 import { trackStudioEvent } from "./studioTelemetry";
+import { readAttributeByTarget } from "./sourcePatcher";
+
+export type BlockVariableValue = string | number | boolean;
+
+export interface InstalledComponentParams {
+  blockTitle: string;
+  params: BlockParam[];
+  variables: RegistryVariable[];
+  variableValues: Record<string, BlockVariableValue>;
+  visualComponent?: RegistryVisualComponent;
+  hostCompositionPath: string;
+  insertedElementId: string;
+  returnTab: "components";
+}
 
 interface AddBlockOptions {
   projectId: string;
@@ -57,6 +76,93 @@ function makeComponentDocumentBackgroundTransparent(source: string): string {
       return `${open}${transparentBody}${close}`;
     },
   );
+}
+
+export function normalizeBlockVariableValue(
+  variable: RegistryVariable,
+  value: BlockVariableValue,
+): BlockVariableValue {
+  if (variable.type === "number") {
+    const parsed = typeof value === "number" ? value : Number(value);
+    const finite = Number.isFinite(parsed) ? parsed : variable.default;
+    return Math.min(variable.max ?? finite, Math.max(variable.min ?? finite, finite));
+  }
+  if (variable.type === "boolean") {
+    return typeof value === "boolean" ? value : variable.default;
+  }
+  if (variable.type === "enum") {
+    return typeof value === "string" && variable.options.some((option) => option.value === value)
+      ? value
+      : variable.default;
+  }
+  if (typeof value !== "string") return variable.default;
+  if (variable.type === "color" && !/^#[0-9a-f]{6}$/i.test(value)) return variable.default;
+  return variable.type === "string" && variable.maxLength
+    ? value.slice(0, variable.maxLength)
+    : value;
+}
+
+function normalizeRegistryPath(path: string): string {
+  return path.replaceAll("\\", "/").replace(/^\.\//, "");
+}
+
+function readComponentVariableValues(
+  hostSource: string,
+  insertedElementId: string,
+  variables: RegistryVariable[],
+): Record<string, BlockVariableValue> {
+  const raw = readAttributeByTarget(hostSource, { id: insertedElementId }, "variable-values");
+  if (!raw) return {};
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return {};
+  }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
+
+  const values: Record<string, BlockVariableValue> = {};
+  for (const variable of variables) {
+    const value: unknown = Reflect.get(parsed, variable.id);
+    if (typeof value !== "string" && typeof value !== "number" && typeof value !== "boolean") {
+      continue;
+    }
+    values[variable.id] = normalizeBlockVariableValue(variable, value);
+  }
+  return values;
+}
+
+export function resolveInstalledComponentParams(input: {
+  catalog: RegistryItem[];
+  element: TimelineElement;
+  hostCompositionPath: string;
+  hostSource: string;
+}): InstalledComponentParams | null {
+  if (!input.element.compositionSrc) return null;
+  const compositionSrc = normalizeRegistryPath(input.element.compositionSrc);
+  const block = input.catalog.find(
+    (item) =>
+      item.visualComponent &&
+      item.files.some((file) => normalizeRegistryPath(file.target) === compositionSrc),
+  );
+  if (!block) return null;
+
+  const params = block.type === "hyperframes:block" ? (block.params ?? []) : [];
+  const variables = block.variables ?? [];
+  if (!params.length && !variables.length) return null;
+  const insertedElementId = input.element.domId ?? input.element.id;
+
+  return {
+    blockTitle: block.title,
+    params,
+    variables,
+    variableValues: readComponentVariableValues(input.hostSource, insertedElementId, variables),
+    visualComponent: block.visualComponent,
+    hostCompositionPath: input.hostCompositionPath,
+    insertedElementId,
+    returnTab: "components",
+  };
 }
 
 export function injectRegistryVariableDeclarations(

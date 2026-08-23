@@ -302,7 +302,9 @@ export function readAttributeByTarget(
   if (!match) return undefined;
 
   const fullAttr = attr.startsWith("data-") ? attr : `data-${attr}`;
-  const valueMatch = new RegExp(`\\b${fullAttr}=(["'])([^"']*)\\1`).exec(match.tag);
+  const valueMatch = new RegExp(`\\b${escapeRegex(fullAttr)}=(["'])([\\s\\S]*?)\\1`).exec(
+    match.tag,
+  );
   return valueMatch?.[2] != null ? unescapeHtmlAttribute(valueMatch[2]) : undefined;
 }
 

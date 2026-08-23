@@ -108,6 +108,12 @@ export default {
     {
       name: "One instance can be changed without editing the reusable source",
       run: async (ctx) => {
+        const reusableSourceBefore = await ctx.eval(
+          `fetch('/api/projects/' +
+          location.hash.match(/#?project\\/([^?]+)/)?.[1] +
+          '/files/compositions%2Froute-map.html').then((response) => response.json()).then((data) => data.content)`,
+          { awaitPromise: true },
+        );
         await ctx.prove(
           "A variable edit updates only the current Route Map instance and its preview",
           {
@@ -127,11 +133,17 @@ export default {
             },
             assert: async () => {
               const result = await ctx.eval(
-                `fetch('/api/projects/' +
+                `Promise.all([fetch('/api/projects/' +
               location.hash.match(/#?project\\/([^?]+)/)?.[1] +
-              '/files/index.html').then((response) => response.json()).then(({ content: source }) => ({
+              '/files/index.html').then((response) => response.json()), fetch('/api/projects/' +
+              location.hash.match(/#?project\\/([^?]+)/)?.[1] +
+              '/files/compositions%2Froute-map.html').then((response) => response.json())]).then(([host, component]) => ({
+                reusableSource: component.content,
+                source: host.content,
+              })).then(({ source, reusableSource }) => ({
                 instanceValue: source.includes('"title":"${UPDATED_TITLE}"'),
                 componentSource: source.includes('data-composition-src="compositions/route-map.html"'),
+                reusableSource,
               }))`,
                 { awaitPromise: true },
               );
@@ -142,6 +154,10 @@ export default {
               ctx.assert(
                 result.componentSource,
                 "The reusable component source reference was lost.",
+              );
+              ctx.assert(
+                result.reusableSource === reusableSourceBefore,
+                "The reusable Route Map source changed while editing one instance.",
               );
             },
             screenshot: {

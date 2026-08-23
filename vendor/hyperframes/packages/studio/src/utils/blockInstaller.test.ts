@@ -1,8 +1,12 @@
 // @vitest-environment happy-dom
 
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { addBlockToProject, injectRegistryVariableDeclarations } from "./blockInstaller";
-import type { RegistryVariable } from "@hyperframes/core/registry";
+import {
+  addBlockToProject,
+  injectRegistryVariableDeclarations,
+  resolveInstalledComponentParams,
+} from "./blockInstaller";
+import type { RegistryItem, RegistryVariable } from "@hyperframes/core/registry";
 import type { TimelineElement } from "../player";
 import { applyPatchByTarget } from "./sourcePatcher";
 
@@ -193,8 +197,68 @@ describe("addBlockToProject", () => {
 });
 
 describe("component instance variables", () => {
+  it("rehydrates an existing component's catalog contract and instance values", () => {
+    const variables: RegistryVariable[] = [
+      { id: "title", label: "Title", type: "string", default: "Route", maxLength: 12 },
+      { id: "speed", label: "Speed", type: "number", default: 1, min: 0.5, max: 2 },
+    ];
+    const catalog: RegistryItem[] = [
+      {
+        name: "route-map",
+        title: "Route Map",
+        description: "Reusable route",
+        type: "hyperframes:block",
+        dimensions: { width: 1920, height: 1080 },
+        duration: 10,
+        files: [
+          {
+            path: "route-map.html",
+            target: "compositions/route-map.html",
+            type: "hyperframes:composition",
+          },
+        ],
+        variables,
+        visualComponent: {
+          version: 1,
+          category: "maps",
+          surfaces: ["video"],
+          themeMode: "inherit",
+        },
+      },
+    ];
+    const element: TimelineElement = {
+      id: "route-map-runtime",
+      domId: "route-map_2",
+      tag: "div",
+      start: 0,
+      duration: 10,
+      track: 1,
+      compositionSrc: "./compositions/route-map.html",
+      sourceFile: "index.html",
+    };
+    const hostSource = [
+      '<main data-composition-id="root">',
+      '  <div id="route-map_2" data-variable-values=\'{"title":"A much longer route title","speed":9,"ignored":"x"}\'></div>',
+      "</main>",
+    ].join("\n");
+
+    expect(
+      resolveInstalledComponentParams({
+        catalog,
+        element,
+        hostCompositionPath: "index.html",
+        hostSource,
+      }),
+    ).toMatchObject({
+      blockTitle: "Route Map",
+      insertedElementId: "route-map_2",
+      hostCompositionPath: "index.html",
+      variableValues: { title: "A much longe", speed: 2 },
+    });
+  });
+
   it("derives composition declarations from the registry manifest once", () => {
-    const source = "<!doctype html><html lang=\"en\"><head></head><body></body></html>";
+    const source = '<!doctype html><html lang="en"><head></head><body></body></html>';
     const variables: RegistryVariable[] = [
       {
         id: "title",
