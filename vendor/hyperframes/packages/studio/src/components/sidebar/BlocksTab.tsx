@@ -10,17 +10,14 @@ import {
   type MouseEvent,
 } from "react";
 import { CaretDown, CaretRight, FunnelSimple } from "@phosphor-icons/react";
+import { formatVisualComponentDataForAi } from "@hyperframes/core/registry";
 import {
   useBlockCatalog,
   type CatalogItem,
   type CatalogSection,
   type CatalogSectionId,
 } from "../../hooks/useBlockCatalog";
-import {
-  getCategoryColors,
-  getCategoryLabel,
-  type BlockCategory,
-} from "../../utils/blockCategories";
+import { getCategoryColors, getCategoryLabel } from "../../utils/blockCategories";
 import { usePlayerStore } from "../../player";
 import { formatTime } from "../../player/lib/time";
 import { useStudioShellContext } from "../../contexts/StudioContext";
@@ -469,12 +466,27 @@ function buildAgentPrompt(block: CatalogItem, context: CompositionContext): stri
 
   if (block.visualComponent) {
     const slots = block.visualComponent.ai?.slots.join(", ") ?? "declared component slots";
+    const dataContract = block.visualComponent.data;
+    const dataVariable = dataContract
+      ? block.variables?.find((variable) => variable.id === dataContract.binding.variable)
+      : undefined;
+    const aiReadableData =
+      dataContract && dataVariable?.type === "string"
+        ? formatVisualComponentDataForAi(dataContract, dataVariable.default)
+        : undefined;
     return [
       `Using /hyperframes, add the reusable visual component "${title}" (registry: ${name}) to my composition.`,
       description,
       `Keep its theme mode as ${block.visualComponent.themeMode}. Prefer its declared variables for routine changes. AI-editable slots: ${slots}.`,
       block.visualComponent.ai?.instructions ??
         "Preserve its registered timeline and only make bounded layout or content adjustments.",
+      ...(aiReadableData
+        ? [
+            "## AI-readable component data",
+            "Use this semantic contract instead of guessing or editing the compact storage syntax. Respect column types, units, row limits, mode, and allowed operations.",
+            `\`\`\`json\n${aiReadableData}\n\`\`\``,
+          ]
+        : []),
       "",
       "## Current composition state",
       "",

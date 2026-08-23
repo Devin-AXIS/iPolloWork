@@ -2,10 +2,11 @@ import { lazy, Suspense, useCallback, useEffect, useRef, type MutableRefObject }
 import { PanelTabButton } from "./PanelTabButton";
 import { usePreviewVariablesStore } from "../hooks/previewVariablesStore";
 import type { RenderJob } from "./renders/useRenderQueue";
-import type {
-  BlockParam,
-  RegistryVariable,
-  RegistryVisualComponent,
+import {
+  formatVisualComponentDataForAi,
+  type BlockParam,
+  type RegistryVariable,
+  type RegistryVisualComponent,
 } from "@hyperframes/core/registry";
 import { STUDIO_INSPECTOR_PANELS_ENABLED } from "./editor/manualEditingAvailability";
 import type { Composition } from "@hyperframes/sdk";
@@ -77,6 +78,7 @@ export interface StudioRightPanelProps {
     variables: RegistryVariable[];
     variableValues: Record<string, string | number | boolean>;
     visualComponent?: RegistryVisualComponent;
+    insertedElementId: string;
   } | null;
   onCloseBlockParams?: () => void;
   onBlockVariableChange?: (variableId: string, value: string | number | boolean) => Promise<void>;
@@ -346,7 +348,11 @@ export function StudioRightPanel({
       onRemoveTextField={handleDomRemoveTextField}
       onAskAgent={
         singleDomEditSelection
-          ? () => postVideoAiSelectionToHost(singleDomEditSelection)
+          ? () =>
+              postVideoAiSelectionToHost(
+                singleDomEditSelection,
+                componentSemanticContext(activeBlockParams, singleDomEditSelection.id),
+              )
           : undefined
       }
       onImportAssets={handleImportFiles}
@@ -673,4 +679,21 @@ export function StudioRightPanel({
       </div>
     </>
   );
+}
+
+function componentSemanticContext(
+  activeBlockParams: StudioRightPanelProps["activeBlockParams"],
+  selectedElementId: string | null | undefined,
+): string | undefined {
+  if (!activeBlockParams || activeBlockParams.insertedElementId !== selectedElementId) {
+    return undefined;
+  }
+  const contract = activeBlockParams.visualComponent?.data;
+  if (!contract) return undefined;
+  const variable = activeBlockParams.variables.find(
+    (candidate) => candidate.id === contract.binding.variable,
+  );
+  if (!variable || variable.type !== "string") return undefined;
+  const value = activeBlockParams.variableValues[variable.id] ?? variable.default;
+  return formatVisualComponentDataForAi(contract, String(value));
 }

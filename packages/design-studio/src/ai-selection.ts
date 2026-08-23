@@ -13,6 +13,8 @@ export type DesignAiSelectionContext = {
     src: string;
     alt: string;
     styles: Record<string, string>;
+    /** Optional bounded, machine-readable context supplied by the owning Studio. */
+    semanticContext?: string;
   };
 };
 
@@ -113,6 +115,9 @@ export function designAiSelectionInstruction(context: DesignAiSelectionContext) 
     "- Do not modify any other element, page structure, slide, or file unless the user explicitly asks for a wider change.",
     "- If the locator no longer resolves in the file, stop without changing the file and ask the user to select the element again.",
     "- Preserve unrelated content and styles.",
+    ...(context.target.semanticContext
+      ? ["", "Selected element semantic context:", context.target.semanticContext]
+      : []),
     ...DESIGN_HTML_THEME_TOKEN_LINES,
   ].join("\n");
 }
