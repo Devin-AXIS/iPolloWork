@@ -163,23 +163,11 @@ function getPreferredClipAncestor(startEl: HTMLElement): HTMLElement | null {
 
 export function getEditableUnitSelectionTarget(
   startEl: HTMLElement,
-  options?: Pick<DomEditContextOptions, "isMasterView">,
+  _options?: Pick<DomEditContextOptions, "isMasterView">,
 ): HTMLElement | null {
   let editableUnit: HTMLElement | null = startEl;
   while (editableUnit) {
-    const compositionSource = getCompositionSourceForHost(editableUnit)?.replace(/\\/g, "/");
-    const compositionId = editableUnit.getAttribute("data-composition-id") ?? "";
-    const isEndingEffect =
-      compositionSource?.includes("/effects/effect-ending-") === true ||
-      compositionId.startsWith("effect-ending-");
-    // In the master composition, an ending effect is one movable/resizable
-    // visual. Promote clicks on its animated descendants to the parent-owned
-    // host so their own GSAP timelines cannot reset a canvas drag. Drilling
-    // into the effect still exposes every authored descendant for editing.
-    if (isEndingEffect && options?.isMasterView) return editableUnit;
-    if (editableUnit.hasAttribute("data-hf-edit-as-unit") && !isEndingEffect) {
-      return editableUnit;
-    }
+    if (editableUnit.hasAttribute("data-hf-edit-as-unit")) return editableUnit;
     editableUnit = editableUnit.parentElement;
   }
   return null;

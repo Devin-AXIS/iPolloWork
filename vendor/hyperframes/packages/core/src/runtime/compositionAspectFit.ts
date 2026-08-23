@@ -9,18 +9,6 @@ function readPositiveDimension(value: string | null | undefined): number | null 
   return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
 }
 
-function isEndingEffectCompositionHost(host: HTMLElement): boolean {
-  const source = (
-    host.getAttribute("data-composition-src") ??
-    host.getAttribute("data-composition-file") ??
-    ""
-  )
-    .replace(/\\/g, "/")
-    .toLowerCase();
-  const compositionId = (host.getAttribute("data-composition-id") ?? "").toLowerCase();
-  return source.includes("/effects/effect-ending-") || compositionId.startsWith("effect-ending-");
-}
-
 function findFlattenedInnerRoot(host: HTMLElement): HTMLElement | null {
   return (
     Array.from(host.children).find(
@@ -36,9 +24,7 @@ function findFlattenedInnerRoot(host: HTMLElement): HTMLElement | null {
  * the host cannot squash the effect or overwrite its animation transform.
  */
 export function applyAspectFitCompositionHost(host: HTMLElement): boolean {
-  if (!host.hasAttribute("data-hf-content-fit") && !isEndingEffectCompositionHost(host)) {
-    return false;
-  }
+  if (!host.hasAttribute("data-hf-content-fit")) return false;
   const innerRoot = findFlattenedInnerRoot(host);
   if (!innerRoot) return false;
 
@@ -72,15 +58,11 @@ export function applyAspectFitCompositionHost(host: HTMLElement): boolean {
   return true;
 }
 
-/** Install live aspect fitting for authored and already-bundled ending effects. */
+/** Install live aspect fitting for explicitly authored composition hosts. */
 export function installAspectFitCompositionHosts(root: ParentNode = document): () => void {
   const installed: HTMLElement[] = [];
   const hooked: AspectFitHost[] = [];
-  const candidates = Array.from(
-    root.querySelectorAll<HTMLElement>(
-      '[data-hf-content-fit], [data-composition-id^="effect-ending-"]',
-    ),
-  );
+  const candidates = Array.from(root.querySelectorAll<HTMLElement>("[data-hf-content-fit]"));
   for (const host of candidates) {
     const aspectFitHost = host as AspectFitHost;
     const refresh = () => applyAspectFitCompositionHost(host);

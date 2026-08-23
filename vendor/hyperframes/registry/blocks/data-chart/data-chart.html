@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-composition-variables='[{"id":"title","type":"string","label":"Title","default":"Monthly Revenue vs. Conversion Rate","maxLength":72},{"id":"barSeries","type":"string","label":"Bar data","default":"8,12,15,11,18,22","maxLength":72},{"id":"lineSeries","type":"string","label":"Line data","default":"2.1,2.8,3.2,2.9,3.8,4.2","maxLength":72},{"id":"source","type":"string","label":"Source","default":"Source: Internal analytics","maxLength":64}]'>
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=1920, height=1080" />
@@ -39,7 +39,7 @@
       <div class="chart-container">
         <!-- Header Section -->
         <div class="header">
-          <h1 class="headline">Monthly Revenue vs. Conversion Rate</h1>
+          <h1 class="headline" data-ipw-ai-slot="title">Monthly Revenue vs. Conversion Rate</h1>
           <p class="subtitle">Jan–Jun 2024, in thousands</p>
           <div class="key">
             <div class="key-item">
@@ -81,16 +81,16 @@
         </svg>
 
         <!-- Source Line -->
-        <div class="source">Source: Internal analytics</div>
+        <div class="source" data-ipw-ai-slot="source">Source: Internal analytics</div>
       </div>
 
       <style>
         [data-composition-id="data-chart"] {
           width: 1920px;
           height: 1080px;
-          background-color: #faf9f6;
-          font-family: "Libre Franklin", sans-serif;
-          color: #333;
+          background-color: var(--ipw-color-bg, #faf9f6);
+          font-family: var(--ipw-font-body, "Libre Franklin", sans-serif);
+          color: var(--ipw-color-text, #333);
           display: flex;
           justify-content: center;
           align-items: center;
@@ -113,7 +113,7 @@
         }
 
         [data-composition-id="data-chart"] .headline {
-          font-family: "Libre Baskerville", serif;
+          font-family: var(--ipw-font-display, "Libre Baskerville", serif);
           font-size: 42px;
           margin: 0;
           padding: 0;
@@ -144,13 +144,13 @@
         [data-composition-id="data-chart"] .key-box {
           width: 10px;
           height: 10px;
-          background-color: #5c5c5c;
+          background-color: var(--ipw-color-secondary, #5c5c5c);
         }
 
         [data-composition-id="data-chart"] .key-line {
           width: 16px;
           height: 1.5px;
-          background-color: #326fa8;
+          background-color: var(--ipw-color-primary, #326fa8);
         }
 
         [data-composition-id="data-chart"] .key-text {
@@ -186,7 +186,7 @@
         }
 
         [data-composition-id="data-chart"] .bar {
-          fill: #5c5c5c;
+          fill: var(--ipw-color-secondary, #5c5c5c);
         }
 
         [data-composition-id="data-chart"] .bar-label {
@@ -198,7 +198,7 @@
 
         [data-composition-id="data-chart"] .line-label {
           font-size: 14px;
-          fill: #326fa8;
+          fill: var(--ipw-color-primary, #326fa8);
           font-weight: 600;
           text-anchor: middle;
           opacity: 0;
@@ -207,13 +207,27 @@
 
       <script>
         (function () {
-          const svg = document.querySelector('[data-composition-id="data-chart"] .chart-svg');
+          const root = document.querySelector('[data-composition-id="data-chart"]');
+          const values = {
+            title: "Monthly Revenue vs. Conversion Rate",
+            barSeries: "8,12,15,11,18,22",
+            lineSeries: "2.1,2.8,3.2,2.9,3.8,4.2",
+            source: "Source: Internal analytics",
+            ...(window.__hyperframes?.getVariables?.() ?? {}),
+          };
+          root.querySelector(".headline").textContent = String(values.title);
+          root.querySelector(".source").textContent = String(values.source);
+          const svg = root.querySelector(".chart-svg");
           const tl = gsap.timeline({ paused: true });
 
           // Data
           const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun"];
-          const revenueData = [8, 12, 15, 11, 18, 22];
-          const conversionData = [2.1, 2.8, 3.2, 2.9, 3.8, 4.2];
+          const parseSeries = (input, fallback) => {
+            const parsed = String(input).split(/[,/\s]+/).map(Number).filter(Number.isFinite).slice(0, 6);
+            return parsed.length === 6 ? parsed : fallback;
+          };
+          const revenueData = parseSeries(values.barSeries, [8, 12, 15, 11, 18, 22]);
+          const conversionData = parseSeries(values.lineSeries, [2.1, 2.8, 3.2, 2.9, 3.8, 4.2]);
 
           // Chart Dimensions
           const chartWidth = 1400;

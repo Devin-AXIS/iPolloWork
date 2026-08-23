@@ -1,21 +1,16 @@
-import {
-  lazy,
-  Suspense,
-  useCallback,
-  useEffect,
-  useRef,
-  type MutableRefObject,
-} from "react";
+import { lazy, Suspense, useCallback, useEffect, useRef, type MutableRefObject } from "react";
 import { PanelTabButton } from "./PanelTabButton";
 import { usePreviewVariablesStore } from "../hooks/previewVariablesStore";
 import type { RenderJob } from "./renders/useRenderQueue";
-import type { BlockParam } from "@hyperframes/core/registry";
+import type {
+  BlockParam,
+  RegistryVariable,
+  RegistryVisualComponent,
+} from "@hyperframes/core/registry";
 import { STUDIO_INSPECTOR_PANELS_ENABLED } from "./editor/manualEditingAvailability";
 import type { Composition } from "@hyperframes/sdk";
 import type { EditHistoryKind } from "../utils/editHistory";
 import type { UseSlideshowPersistParams } from "../hooks/useSlideshowPersist";
-import type { EffectInsertIntent } from "../utils/blockInstaller";
-import type { IllustrationEffectData, IllustrationEffectId } from "../utils/illustrationEffect";
 
 import { useStudioPlaybackContext, useStudioShellContext } from "../contexts/StudioContext";
 import { usePanelLayoutContext } from "../contexts/PanelLayoutContext";
@@ -59,7 +54,7 @@ const RenderQueue = lazy(() =>
 const loadBlocksTab = () =>
   import("./sidebar/BlocksTab").then((module) => ({ default: module.BlocksTab }));
 const BlocksTab = lazy(loadBlocksTab);
-export const preloadStudioEffectsPanel = async (): Promise<void> => {
+export const preloadStudioComponentsPanel = async (): Promise<void> => {
   await Promise.all([
     loadBlocksTab(),
     import("../hooks/useBlockCatalog").then((module) => module.preloadBlockCatalog()),
@@ -77,12 +72,14 @@ const AssetsTab = lazy(() =>
 export interface StudioRightPanelProps {
   designPanelActive: boolean;
   activeBlockParams?: {
-    blockName: string;
     blockTitle: string;
     params: BlockParam[];
-    compositionPath: string;
+    variables: RegistryVariable[];
+    variableValues: Record<string, string | number | boolean>;
+    visualComponent?: RegistryVisualComponent;
   } | null;
   onCloseBlockParams?: () => void;
+  onBlockVariableChange?: (variableId: string, value: string | number | boolean) => Promise<void>;
   recordingState?: "idle" | "recording" | "preview";
   recordingDuration?: number;
   onToggleRecording?: () => void;
@@ -110,11 +107,7 @@ export interface StudioRightPanelProps {
     files: Record<string, { before: string; after: string }>;
   }) => Promise<void>;
   onToggleElementHidden?: ToggleHiddenHandler;
-  onAddBlock?: (blockName: string, intent?: EffectInsertIntent) => Promise<boolean>;
-  onInsertIllustration?: (
-    effectId: IllustrationEffectId,
-    data: IllustrationEffectData,
-  ) => Promise<boolean>;
+  onAddBlock?: (blockName: string) => Promise<boolean>;
 }
 
 // fallow-ignore-next-line complexity
@@ -122,6 +115,7 @@ export function StudioRightPanel({
   designPanelActive,
   activeBlockParams,
   onCloseBlockParams,
+  onBlockVariableChange,
   recordingState,
   recordingDuration,
   onToggleRecording,
@@ -133,7 +127,6 @@ export function StudioRightPanel({
   recordEdit,
   onToggleElementHidden,
   onAddBlock,
-  onInsertIllustration,
 }: StudioRightPanelProps) {
   const {
     rightWidth,
@@ -423,9 +416,9 @@ export function StudioRightPanel({
                 ? "animation.applied"
                 : status === "selection-required"
                   ? "animation.selectElement"
-                : status === "updated"
-                  ? "animation.updated"
-                  : "animation.removed",
+                  : status === "updated"
+                    ? "animation.updated"
+                    : "animation.removed",
             ),
             "notice",
           )
@@ -519,20 +512,14 @@ export function StudioRightPanel({
   useEffect(() => () => closeHostPanel(), [closeHostPanel]);
 
   const selectStudioPanel = (
-    panel:
-      | "design"
-      | "animation"
-      | "animation-properties"
-      | "assets"
-      | "catalog"
-      | "effects",
+    panel: "design" | "animation" | "animation-properties" | "assets" | "components",
   ) => {
     closeHostPanel();
     setRightPanelTab(panel);
   };
 
   const exportDrawer = rightPanelTab === "renders";
-  const effectsPanelActive = rightPanelTab === "catalog" || rightPanelTab === "effects";
+  const componentsPanelActive = rightPanelTab === "components";
 
   return (
     <>
@@ -596,18 +583,18 @@ export function StudioRightPanel({
                       onClick={() => openHostPanel("style")}
                     />
                     <PanelTabButton
+                      label={t("right.components")}
+                      tooltip={t("right.componentsTooltip")}
+                      active={componentsPanelActive}
+                      onClick={() => selectStudioPanel("components")}
+                    />
+                    <PanelTabButton
                       label={t("right.animation")}
                       tooltip={t("right.animationTooltip")}
                       active={animationPanelActive}
                       onClick={() => {
                         selectStudioPanel("animation");
                       }}
-                    />
-                    <PanelTabButton
-                      label={t("right.catalog")}
-                      tooltip={t("right.catalogTooltip")}
-                      active={effectsPanelActive}
-                      onClick={() => selectStudioPanel("catalog")}
                     />
                     <PanelTabButton
                       label={t("right.voice")}
@@ -646,18 +633,16 @@ export function StudioRightPanel({
                 <div key={rightPanelTab} className="h-full min-h-0 min-w-0 overflow-hidden">
                   {rightPanelTab === "block-params" && activeBlockParams ? (
                     <BlockParamsPanel
-                      blockName={activeBlockParams.blockName}
                       blockTitle={activeBlockParams.blockTitle}
                       params={activeBlockParams.params}
-                      compositionPath={activeBlockParams.compositionPath}
+                      variables={activeBlockParams.variables}
+                      variableValues={activeBlockParams.variableValues}
+                      visualComponent={activeBlockParams.visualComponent}
+                      onVariableChange={onBlockVariableChange ?? (async () => {})}
                       onClose={onCloseBlockParams ?? (() => {})}
                     />
-                  ) : effectsPanelActive ? (
-                    <BlocksTab
-                      page="effects"
-                      onAddBlock={onAddBlock}
-                      onInsertIllustration={onInsertIllustration}
-                    />
+                  ) : componentsPanelActive ? (
+                    <BlocksTab onAddBlock={onAddBlock} />
                   ) : animationPanelActive ? (
                     animationPanel
                   ) : rightPanelTab === "assets" ? (

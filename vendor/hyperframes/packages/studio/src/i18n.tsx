@@ -41,11 +41,9 @@ type TranslationKey =
   | "sidebar.code"
   | "sidebar.comps"
   | "sidebar.assets"
-  | "sidebar.catalog"
   | "sidebar.codeTooltip"
   | "sidebar.compsTooltip"
   | "sidebar.assetsTooltip"
-  | "sidebar.catalogTooltip"
   | "assets.import"
   | "assets.source"
   | "assets.sourceUnavailable"
@@ -96,16 +94,14 @@ type TranslationKey =
   | "right.voiceTooltip"
   | "right.style"
   | "right.styleTooltip"
+  | "right.components"
+  | "right.componentsTooltip"
   | "right.assets"
   | "right.assetsTooltip"
   | "right.animation"
   | "right.animationTooltip"
   | "right.animationTemplates"
   | "right.animationProperties"
-  | "right.catalog"
-  | "right.catalogTooltip"
-  | "right.effects"
-  | "right.effectsTooltip"
   | "right.layers"
   | "right.layersTooltip"
   | "right.renders"
@@ -164,11 +160,9 @@ const messages: Record<StudioLocale, Record<TranslationKey, string>> = {
     "sidebar.code": "Code",
     "sidebar.comps": "Comps",
     "sidebar.assets": "Assets",
-    "sidebar.catalog": "Catalog",
     "sidebar.codeTooltip": "Source code editor",
     "sidebar.compsTooltip": "Compositions and sub-compositions",
     "sidebar.assetsTooltip": "Videos, images, audio, fonts",
-    "sidebar.catalogTooltip": "Browse blocks and components",
     "assets.import": "Import",
     "assets.source": "Source",
     "assets.sourceUnavailable": "Source selection is not available yet",
@@ -219,16 +213,14 @@ const messages: Record<StudioLocale, Record<TranslationKey, string>> = {
     "right.voiceTooltip": "Voiceover settings",
     "right.style": "Style",
     "right.styleTooltip": "Video design system",
+    "right.components": "Components",
+    "right.componentsTooltip": "Reusable, theme-aware visual components",
     "right.assets": "Assets",
     "right.assetsTooltip": "Videos, images, audio, and fonts",
     "right.animation": "Animation",
     "right.animationTooltip": "Browse templates and edit selected-element animation",
     "right.animationTemplates": "Animation templates",
     "right.animationProperties": "Animation properties",
-    "right.catalog": "Effects",
-    "right.catalogTooltip": "Insert opening, ending, and transition effect clips",
-    "right.effects": "Scenes",
-    "right.effectsTooltip": "Browse transition and background scenes",
     "right.layers": "Layers",
     "right.layersTooltip": "Composition layer stack",
     "right.renders": "Export",
@@ -287,11 +279,9 @@ const messages: Record<StudioLocale, Record<TranslationKey, string>> = {
     "sidebar.code": "代码",
     "sidebar.comps": "合成",
     "sidebar.assets": "素材",
-    "sidebar.catalog": "组件",
     "sidebar.codeTooltip": "源代码编辑器",
     "sidebar.compsTooltip": "合成与子合成",
     "sidebar.assetsTooltip": "视频、图片、音频、字体",
-    "sidebar.catalogTooltip": "浏览区块和组件",
     "assets.import": "导入",
     "assets.source": "来源",
     "assets.sourceUnavailable": "暂不支持选择来源",
@@ -342,16 +332,14 @@ const messages: Record<StudioLocale, Record<TranslationKey, string>> = {
     "right.voiceTooltip": "视频配音设置",
     "right.style": "主题",
     "right.styleTooltip": "视频设计系统",
+    "right.components": "组件",
+    "right.componentsTooltip": "可复用并跟随主题的视觉组件",
     "right.assets": "素材",
     "right.assetsTooltip": "视频、图片、音频和字体",
     "right.animation": "动画",
     "right.animationTooltip": "浏览模板并编辑所选元素动画",
     "right.animationTemplates": "动画模板",
     "right.animationProperties": "动画属性",
-    "right.catalog": "特效",
-    "right.catalogTooltip": "插入开头、结尾和转场特效片段",
-    "right.effects": "场景",
-    "right.effectsTooltip": "浏览转场场景和背景场景",
     "right.layers": "图层",
     "right.layersTooltip": "合成图层堆栈",
     "right.renders": "导出",

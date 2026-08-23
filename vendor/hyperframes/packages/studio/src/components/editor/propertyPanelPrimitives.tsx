@@ -12,6 +12,11 @@ export function CommitField({
   liveCommit,
   align = "left",
   inputType = "text",
+  placeholder,
+  maxLength,
+  min,
+  max,
+  step,
   ariaLabel,
   onPreview,
   onCommit,
@@ -25,6 +30,11 @@ export function CommitField({
    *  right-hand box instead of lining up with every other row's value. */
   align?: "left" | "right";
   inputType?: "text" | "number";
+  placeholder?: string;
+  maxLength?: number;
+  min?: number;
+  max?: number;
+  step?: number;
   ariaLabel?: string;
   onPreview?: (nextValue: string) => void;
   onCommit: (nextValue: string) => void;
@@ -90,7 +100,11 @@ export function CommitField({
       ref={inputRef}
       type={inputType}
       inputMode={inputType === "number" ? "decimal" : undefined}
-      step={inputType === "number" ? "any" : undefined}
+      placeholder={placeholder}
+      maxLength={maxLength}
+      min={inputType === "number" ? min : undefined}
+      max={inputType === "number" ? max : undefined}
+      step={inputType === "number" ? (step ?? "any") : undefined}
       aria-label={ariaLabel}
       value={draft}
       disabled={disabled}

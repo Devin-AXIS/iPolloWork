@@ -58,12 +58,12 @@ describe("Studio right panel layout", () => {
 
     expect(header).not.toContain('data-testid="studio-ai-editing-status"');
     expect(preview).toContain('data-testid="studio-ai-editing-status"');
-    expect(preview).toContain('h-[34px] min-w-[241px]');
-    expect(preview).toContain('justify-center bg-transparent pb-2');
-    expect(preview).toContain('rounded-[6px] bg-[#087b82]');
-    expect(preview).toContain('text-[#a9e7ea]');
-    expect(preview).toContain('size-4 shrink-0 animate-spin text-[#a9e7ea]');
-    expect(preview).not.toContain('border-[#fff8e1]');
+    expect(preview).toContain("h-[34px] min-w-[241px]");
+    expect(preview).toContain("justify-center bg-transparent pb-2");
+    expect(preview).toContain("rounded-[6px] bg-[#087b82]");
+    expect(preview).toContain("text-[#a9e7ea]");
+    expect(preview).toContain("size-4 shrink-0 animate-spin text-[#a9e7ea]");
+    expect(preview).not.toContain("border-[#fff8e1]");
     expect(preview).toContain('t("preview.aiEditingWarning")');
     expect(preview.indexOf('data-testid="studio-ai-editing-status"')).toBeLessThan(
       preview.indexOf("<PlayerControls"),
@@ -80,27 +80,6 @@ describe("Studio right panel layout", () => {
       "shouldShowSelectedDomBounds: !isPlaying && !isGestureRecording",
     );
     expect(contextState).not.toContain("selectionOverlayPanelActive");
-  });
-
-  it("offers six selectable HTML illustration capabilities", () => {
-    const illustration = readFileSync(
-      new URL("./sidebar/IllustrationTab.tsx", import.meta.url),
-      "utf8",
-    );
-    const renderer = readFileSync(
-      new URL("../utils/illustrationEffect.ts", import.meta.url),
-      "utf8",
-    );
-    expect(renderer).toContain('"ian-xiaohei-illustrations"');
-    expect(renderer).toContain('"html-infographic"');
-    expect(renderer).toContain('"html-concept-explainer"');
-    expect(renderer).toContain('"html-kinetic-typography"');
-    expect(renderer).toContain('"html-svg-path"');
-    expect(renderer).toContain('"html-3d-space"');
-    expect(illustration).toContain("ILLUSTRATION_EFFECTS.map");
-    expect(illustration).toContain("srcDoc={previewHtml}");
-    expect(illustration).toContain("disabled={!canInsert || Boolean(insertingId)}");
-    expect(illustration).toContain("可预览全部插画");
   });
 
   it("orders populated inspector groups for the selected element type", () => {
@@ -295,7 +274,10 @@ describe("Studio right panel layout", () => {
   it("keeps dark property-panel text and interaction states visible", () => {
     const styles = readFileSync(new URL("../styles/studio.css", import.meta.url), "utf8");
     const theme = readFileSync(new URL("../ipolloworkTheme.ts", import.meta.url), "utf8");
-    const tailwindConfig = readFileSync(new URL("../../tailwind.config.js", import.meta.url), "utf8");
+    const tailwindConfig = readFileSync(
+      new URL("../../tailwind.config.js", import.meta.url),
+      "utf8",
+    );
     const primitives = readFileSync(
       new URL("./editor/propertyPanelFlatPrimitives.tsx", import.meta.url),
       "utf8",
@@ -561,13 +543,18 @@ describe("Studio right panel layout", () => {
     expect(layout).not.toContain('data-flat-kf-gutter="true"');
   });
 
-  it("separates selected-element animation editing from the effects catalog", () => {
+  it("separates selected-element animation editing from the component library", () => {
     const source = readFileSync(new URL("./StudioRightPanel.tsx", import.meta.url), "utf8");
     const toast = readFileSync(new URL("./StudioToast.tsx", import.meta.url), "utf8");
+    const blockParams = readFileSync(
+      new URL("./editor/BlockParamsPanel.tsx", import.meta.url),
+      "utf8",
+    );
 
     expect(source).toContain('label={t("right.design")}');
+    expect(source).toContain('label={t("right.components")}');
     expect(source).toContain('label={t("right.animation")}');
-    expect(source).toContain('label={t("right.catalog")}');
+    expect(source).not.toContain('label={t("right.catalog")}');
     expect(source).toContain('selectStudioPanel("animation");');
     expect(source).toContain('inspectorMode="properties"');
     expect(source).toContain("showInspectorChrome");
@@ -592,10 +579,12 @@ describe("Studio right panel layout", () => {
     expect(toast).toContain('? "0 8px 32px rgba(0,0,0,0.35)"');
     expect(source).not.toContain('setRightPanelTab("animation-properties")');
     expect(source).not.toContain("const showAnimationProperties =");
-    expect(source).toContain('rightPanelTab === "catalog"');
-    expect(source).toContain('rightPanelTab === "effects"');
-    expect(source).toContain('page="effects"');
-    expect(source).toContain("onInsertIllustration={onInsertIllustration}");
+    expect(source).not.toContain('rightPanelTab === "catalog"');
+    expect(source).not.toContain('rightPanelTab === "effects"');
+    expect(source).not.toContain('page="effects"');
+    expect(source).toContain("<BlocksTab onAddBlock={onAddBlock} />");
+    expect(blockParams).toContain('data-testid="block-params-panel"');
+    expect(blockParams).toContain("data-variable-id={variable.id}");
     expect(source).not.toContain("<LayersPanel />");
     expect(source).not.toContain("useInspectorSplitResize");
     expect(source).not.toContain('aria-label={t("right.resizePanes")}');
@@ -616,10 +605,6 @@ describe("Studio right panel layout", () => {
       new URL("./editor/manualEditingAvailability.ts", import.meta.url),
       "utf8",
     );
-    const effectsCatalog = readFileSync(
-      new URL("./sidebar/BlocksTab.tsx", import.meta.url),
-      "utf8",
-    );
     const tabButton = readFileSync(new URL("./PanelTabButton.tsx", import.meta.url), "utf8");
     const shell = readFileSync(new URL("./EditorShell.tsx", import.meta.url), "utf8");
     const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
@@ -631,31 +616,27 @@ describe("Studio right panel layout", () => {
     expect(translations).toContain('"right.animation": "Animation"');
     expect(translations).toContain('"right.animationTemplates": "Animation templates"');
     expect(translations).toContain('"right.animationProperties": "Animation properties"');
-    expect(translations).toContain('"right.catalog": "Effects"');
+    expect(translations).not.toContain('"right.catalog":');
     expect(translations).toContain('"right.style": "主题"');
+    expect(translations).toContain('"right.components": "组件"');
     expect(translations).not.toContain('"right.style": "风格"');
     expect(translations).toContain('"right.animation": "动画"');
     expect(translations).toContain('"right.animationTemplates": "动画模板"');
     expect(translations).toContain('"right.animationProperties": "动画属性"');
-    expect(translations).toContain('"right.catalog": "特效"');
     expect(panel).toContain('label={t("right.voice")}');
     expect(panel).toContain('label={t("right.style")}');
-    expect(panel).toContain('label={t("right.animation")}');
-    expect(panel).toContain('label={t("right.catalog")}');
-    expect(panel).toContain('label={t("right.assets")}');
-    expect(panel).not.toContain('label={t("right.illustration")}');
-    expect(panel).not.toContain('tooltip={t("right.illustrationTooltip")}');
-    expect(translations).not.toContain('"right.illustration":');
-    expect(panel).not.toContain("<IllustrationEffectsContent />");
-    expect(panel).toContain('selectStudioPanel("catalog")');
-    expect(effectsCatalog).toContain('const ILLUSTRATION_SECTION_FILTER = "illustration" as const');
-    expect(effectsCatalog).toContain('<option value={ILLUSTRATION_SECTION_FILTER}>');
-    expect(effectsCatalog).toContain('data-testid={`catalog-section-${ILLUSTRATION_SECTION_FILTER}`}');
-    expect(effectsCatalog).toContain(
-      "<IllustrationEffectsContent onInsert={onInsertIllustration} />",
+    expect(panel).toContain('label={t("right.components")}');
+    expect(panel.indexOf('label={t("right.components")}')).toBeGreaterThan(
+      panel.indexOf('label={t("right.style")}'),
     );
-    expect(featureFlags).not.toContain("STUDIO_ILLUSTRATION_PANEL_ENABLED");
-    expect(panel).not.toContain('rightPanelTab === "illustration"');
+    expect(panel.indexOf('label={t("right.components")}')).toBeLessThan(
+      panel.indexOf('label={t("right.animation")}'),
+    );
+    expect(panel).toContain('label={t("right.animation")}');
+    expect(panel).not.toContain('label={t("right.catalog")}');
+    expect(panel).toContain('label={t("right.assets")}');
+    expect(panel).not.toContain('selectStudioPanel("catalog")');
+    expect(featureFlags).not.toContain("STUDIO_BLOCKS_PANEL_ENABLED");
     expect(panel).not.toContain('label={t("right.renders")}');
     expect(panel).not.toContain('label={t("right.effects")}');
     expect(panel).toContain('const exportDrawer = rightPanelTab === "renders"');
@@ -717,7 +698,7 @@ describe("Studio right panel layout", () => {
 
   it("lazy mounts and destroys right-panel tab content", () => {
     const panel = readFileSync(new URL("./StudioRightPanel.tsx", import.meta.url), "utf8");
-    const effectsCatalog = readFileSync(
+    const componentCatalog = readFileSync(
       new URL("./sidebar/BlocksTab.tsx", import.meta.url),
       "utf8",
     );
@@ -726,9 +707,7 @@ describe("Studio right panel layout", () => {
     expect(panel).toContain("export const preloadStudioPropertyPanel");
     expect(panel).toContain("const BlocksTab = lazy(");
     expect(panel).toContain("const AssetsTab = lazy(");
-    expect(effectsCatalog).toContain(
-      "IllustrationEffectsContent",
-    );
+    expect(componentCatalog).toContain('testId="block-catalog-components"');
     expect(panel).toContain("<Suspense");
     expect(panel).toContain("key={rightPanelTab}");
     expect(panel).not.toContain('import { PropertyPanel } from "./editor/PropertyPanel"');
@@ -737,7 +716,7 @@ describe("Studio right panel layout", () => {
     expect(panel).toContain("propertyPanelContent");
   });
 
-  it("preloads and reuses the effects and animation panels before their tabs are opened", () => {
+  it("preloads and reuses the components and animation panels before their tabs are opened", () => {
     const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
     const panel = readFileSync(new URL("./StudioRightPanel.tsx", import.meta.url), "utf8");
     const catalogHook = readFileSync(
@@ -745,10 +724,10 @@ describe("Studio right panel layout", () => {
       "utf8",
     );
 
-    expect(app).toContain("module.preloadStudioEffectsPanel()");
+    expect(app).toContain("module.preloadStudioComponentsPanel()");
     expect(app).toContain("module.preloadStudioAnimationPanel()");
     expect(app).toContain("window.requestIdleCallback(preload, { timeout: 800 })");
-    expect(panel).toContain("export const preloadStudioEffectsPanel");
+    expect(panel).toContain("export const preloadStudioComponentsPanel");
     expect(panel).toContain("export const preloadStudioAnimationPanel");
     expect(panel).toContain("const BlocksTab = lazy(loadBlocksTab)");
     expect(panel).toContain("const AnimationTemplatesTab = lazy(loadAnimationTemplatesTab)");
@@ -898,12 +877,8 @@ describe("Studio right panel layout", () => {
       "utf8",
     );
 
-    expect(toolbar).toContain(
-      "width = 16,\n  height = width,",
-    );
-    expect(toolbar).toContain(
-      "<ToolbarIcon src={dividerIconSrc} width={6} height={16.667} />",
-    );
+    expect(toolbar).toContain("width = 16,\n  height = width,");
+    expect(toolbar).toContain("<ToolbarIcon src={dividerIconSrc} width={6} height={16.667} />");
     expect(toolbar).toContain("<ToolbarIcon src={diamondIconSrc} width={24} />");
     expect(toolbar).toContain("<ToolbarIcon src={trashIconSrc} width={24} />");
     expect(dividerIcon).toContain('width="6" height="16.6667"');
@@ -1085,20 +1060,11 @@ describe("Studio right panel layout", () => {
 
     expect(catalog).toContain("flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden");
     expect(catalog).toContain('data-testid="block-catalog-search"');
-    expect(catalog).toContain("Search effect clips…");
-    expect(catalog).toContain('aria-label={locale === "zh" ? "特效分类" : "Effect category"}');
-    expect(catalog).toContain('locale === "zh" ? "全部特效" : "All effects"');
+    expect(catalog).toContain("Search components…");
+    expect(catalog).toContain('locale === "zh" ? "组件分类" : "Component category"');
+    expect(catalog).toContain('locale === "zh" ? "全部组件" : "All components"');
     expect(catalog).toContain('const ALL_SECTIONS_FILTER = "all" as const');
-    expect(catalog).toContain('const ILLUSTRATION_SECTION_FILTER = "illustration" as const');
-    expect(catalog).toContain('<option value={ILLUSTRATION_SECTION_FILTER}>');
-    expect(catalog).toContain("ILLUSTRATION_SKILL_COUNT");
-    expect(catalog).toContain("<IllustrationEffectsContent onInsert={onInsertIllustration} />");
-    expect(catalog).toContain("if (activeSection === ILLUSTRATION_SECTION_FILTER) return [];");
-    expect(catalog).toContain('data-testid={`catalog-section-${ILLUSTRATION_SECTION_FILTER}`}');
     expect(catalog).toContain("<CatalogSectionHeader");
-    expect(catalog.indexOf("{sections.map((section)")).toBeLessThan(
-      catalog.indexOf("{showIllustration ? ("),
-    );
     expect(catalog).toContain("showSectionHeaders");
     expect(catalog).toContain("hf-block-catalog-scroll min-h-0 min-w-0 flex-1 overscroll-contain");
     expect(catalog).toContain("DEFAULT_CATALOG_COLUMN_COUNT: CatalogColumnCount = 2");
@@ -1112,7 +1078,7 @@ describe("Studio right panel layout", () => {
     expect(catalog).toContain('{ root: scrollRoot, rootMargin: "240px 0px", threshold: 0 }');
     expect(catalog).toContain("setTimeout(startPreview, 60)");
     expect(catalog).toContain("setPreviewing(true)");
-    expect(catalog).toContain('data-testid="effect-clip-placement-help"');
+    expect(catalog).toContain('"components-catalog-help"');
     expect(catalog).not.toContain('data-testid="apply-motion-preset"');
     expect(catalog).toContain("src={compositionPlaybackUrl}");
     expect(catalog).toContain('preload="auto"');

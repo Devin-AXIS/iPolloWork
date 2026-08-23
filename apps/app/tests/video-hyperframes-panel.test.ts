@@ -44,57 +44,6 @@ describe("HyperFrames Video Studio", () => {
     expect(previewSource).toContain('t("preview.aiEditingWarning")');
   });
 
-  test("generates illustration effects locally and inserts them at the playhead", () => {
-    const panelSource = readFileSync(
-      new URL("../src/react-app/domains/session/video/video-panel.tsx", import.meta.url),
-      "utf8",
-    );
-    const illustrationSource = readFileSync(
-      new URL("../../../vendor/hyperframes/packages/studio/src/components/sidebar/IllustrationTab.tsx", import.meta.url),
-      "utf8",
-    );
-    const rendererSource = readFileSync(
-      new URL("../../../vendor/hyperframes/packages/studio/src/utils/illustrationEffect.ts", import.meta.url),
-      "utf8",
-    );
-    const studioSource = readFileSync(
-      new URL("../../../vendor/hyperframes/packages/studio/src/App.tsx", import.meta.url),
-      "utf8",
-    );
-
-    expect(panelSource).not.toContain("ipollowork:hyperframes:illustration-reference");
-    expect(illustrationSource).not.toContain("postMessage");
-    expect(illustrationSource).toContain("srcDoc={previewHtml}");
-    expect(illustrationSource).toContain("disabled={!canInsert || Boolean(insertingId)}");
-    expect(rendererSource).toContain("assets/video-illustrations/");
-    expect(rendererSource).toContain('data-ipollowork-renderer="local-v1"');
-    expect(studioSource).toContain("fileManager.writeProjectFile(assetPath");
-    expect(studioSource).toContain("fileManager.refreshFileTree()");
-    expect(studioSource).toContain("start: playerState.currentTime");
-    expect(studioSource).toContain("resolveAvailableVisualTrack(targetElements");
-    expect(studioSource).toContain("timelineEditing.handleTimelineAssetDrop(");
-  });
-  test("keeps all six illustration styles in one offline renderer", () => {
-    const rendererSource = readFileSync(
-      new URL("../../../vendor/hyperframes/packages/studio/src/utils/illustrationEffect.ts", import.meta.url),
-      "utf8",
-    );
-    for (const id of [
-      "ian-xiaohei-illustrations",
-      "html-infographic",
-      "html-concept-explainer",
-      "html-kinetic-typography",
-      "html-svg-path",
-      "html-3d-space",
-    ]) {
-      expect(rendererSource).toContain(`"${id}"`);
-    }
-    expect(rendererSource).toContain("renderIllustrationEffectHtml");
-    expect(rendererSource).toContain("effectScene(id, data)");
-    expect(rendererSource).not.toContain("<script");
-    expect(rendererSource).not.toContain("http://");
-    expect(rendererSource).not.toContain("https://");
-  });
   test("reuses the embedded Design system inspector for the active video composition", () => {
     const panelSource = readFileSync(
       new URL("../src/react-app/domains/session/video/video-panel.tsx", import.meta.url),
@@ -219,7 +168,9 @@ describe("HyperFrames Video Studio", () => {
     expect(studioSource).toContain("function RightPanelLoadingFallback({ width }: { width: number })");
     expect(studioSource).toContain('t("right.openingProperties")');
     expect(studioSource).toContain("style={{ width }}");
-    expect(studioSource).toContain("Suspense fallback={<RightPanelLoadingFallback width={panelLayout.rightWidth} />}");
+    expect(studioSource).toMatch(
+      /<Suspense\s+fallback=\{<RightPanelLoadingFallback width=\{panelLayout\.rightWidth\} \/>\}/,
+    );
 
     const advancedBranchStart = desktopSource.indexOf("} else if (action === 'advanced') {");
     const advancedBranchEnd = desktopSource.indexOf(
@@ -1028,6 +979,12 @@ describe("HyperFrames Video Studio", () => {
 
   test("passes the app locale through the Studio hash route", () => {
     expect(hyperframesStudioUrl(3002, "video", "zh")).toBe("http://localhost:3002/#project/video?v=1&t=0&tab=design&rc=1&tv=1&locale=zh");
+  });
+
+  test("cache-busts the Studio document when its iframe revision changes", () => {
+    expect(hyperframesStudioUrl(3002, "video", "zh", "light", 3)).toBe(
+      "http://localhost:3002/?ipwReload=3#project/video?v=1&t=0&tab=design&rc=1&tv=1&locale=zh&ipolloworkTheme=light",
+    );
   });
 
   test("isolates each video task in a shell-safe project directory", () => {

@@ -436,7 +436,7 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
   const runtimePath = resolveRuntimePath();
   const watcher = createProjectWatcher(projectDir);
   // The bundled registry is immutable for one preview-server lifetime. The
-  // effects catalog is fetched before a user can insert from it, so keeping the
+  // component catalog is fetched before a user can insert from it, so keeping the
   // parsed items and name index here removes the same full disk scan from every
   // subsequent insertion. Restarting the preview server invalidates the cache.
   const bundledRegistryRoot = resolveBundledRegistryRoot();

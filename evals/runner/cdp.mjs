@@ -194,7 +194,10 @@ export async function evaluate(client, expression, { awaitPromise = false } = {}
   return result.result?.value;
 }
 
-export async function captureScreenshot(client) {
-  const result = await client.send("Page.captureScreenshot", { format: "png" });
+export async function captureScreenshot(client, { fromSurface } = {}) {
+  const result = await client.send("Page.captureScreenshot", {
+    format: "png",
+    ...(typeof fromSurface === "boolean" ? { fromSurface } : {}),
+  });
   return Buffer.from(result.data, "base64");
 }

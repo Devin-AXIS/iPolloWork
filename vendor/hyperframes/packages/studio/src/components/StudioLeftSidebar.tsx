@@ -8,35 +8,26 @@ import { useStudioShellContext } from "../contexts/StudioContext";
 import { useFileManagerContext } from "../contexts/FileManagerContext";
 import { getPersistedRenderSettings } from "./renders/renderSettings";
 import { useStudioI18n } from "../i18n";
-import type { EffectInsertIntent } from "../utils/blockInstaller";
-import type { IllustrationEffectData, IllustrationEffectId } from "../utils/illustrationEffect";
 
 export interface StudioLeftSidebarProps {
   leftSidebarRef: RefObject<LeftSidebarHandle | null>;
   onSelectComposition: (comp: string) => void;
-  onAddBlock: (blockName: string, intent?: EffectInsertIntent) => Promise<boolean>;
   onLint: () => void;
   linting: boolean;
   lintFindingCount?: number;
   lintFindingsByFile?: Map<string, { count: number; messages: string[] }>;
   onAddAssetToTimeline?: (path: string) => void;
-  onInsertIllustration?: (
-    effectId: IllustrationEffectId,
-    data: IllustrationEffectData,
-  ) => Promise<boolean>;
 }
 
 // fallow-ignore-next-line complexity
 export function StudioLeftSidebar({
   leftSidebarRef,
   onSelectComposition,
-  onAddBlock,
   onLint,
   linting,
   lintFindingCount,
   lintFindingsByFile,
   onAddAssetToTimeline,
-  onInsertIllustration,
 }: StudioLeftSidebarProps) {
   const {
     leftCollapsed,
@@ -153,8 +144,6 @@ export function StudioLeftSidebar({
         lintFindingCount={lintFindingCount}
         lintFindingsByFile={lintFindingsByFile}
         onToggleCollapse={toggleLeftSidebar}
-        onAddBlock={onAddBlock}
-        onInsertIllustration={onInsertIllustration}
         onAddAssetToTimeline={onAddAssetToTimeline}
       />
       {/* Vertical resize divider: 3px visible seam, 8px pointer-capture zone via

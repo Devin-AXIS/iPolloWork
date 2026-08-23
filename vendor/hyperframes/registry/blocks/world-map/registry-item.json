@@ -5,12 +5,21 @@
   "librarySection": "interface-animation",
   "title": "World Map",
   "description": "Animated world choropleth with country-by-country reveal, tooltip labels, and rotating globe inset — D3 Natural Earth projection",
-  "tags": ["data", "map", "geography", "world", "choropleth"],
+  "tags": ["component", "data", "map", "geography", "world", "choropleth", "theme"],
+  "version": "1.0.0", "author": "iPolloWork", "license": "Apache-2.0",
+  "source": { "provider": "HyperFrames", "label": "World Map", "url": "https://www.hyperframes.dev/catalog/blocks/world-map" },
+  "visualComponent": { "version": 1, "category": "maps", "surfaces": ["video"], "themeMode": "inherit", "ai": { "slots": ["title", "values", "highlight", "source"], "instructions": "AI may replace country values or annotate a highlighted country while preserving recognizable geography and map legibility." } },
   "dimensions": {
     "width": 1920,
     "height": 1080
   },
   "duration": 14,
+  "variables": [
+    { "id": "title", "label": "Title", "type": "string", "default": "Global GDP per Capita", "maxLength": 72, "update": "live" },
+    { "id": "values", "label": "Country data", "description": "Comma-separated Country:Value pairs.", "type": "string", "default": "United States:85373,China:13136,India:2731,Germany:54291,Japan:33950", "maxLength": 220, "update": "live" },
+    { "id": "highlight", "label": "Highlight", "type": "string", "default": "United States", "maxLength": 40, "update": "live" },
+    { "id": "source", "label": "Source", "type": "string", "default": "Source: International Monetary Fund", "maxLength": 72, "update": "live" }
+  ],
   "files": [
     {
       "path": "world-map.html",

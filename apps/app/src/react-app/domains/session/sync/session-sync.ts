@@ -304,7 +304,7 @@ export function seedQuestionState(
 }
 
 function getPartMetadataId(part: UIMessage["parts"][number]) {
-  if (part.type === "data-design-selection" || part.type === "data-animation-references" || part.type === "data-voice-reference" || part.type === "data-illustration-reference") {
+  if (part.type === "data-design-selection" || part.type === "data-animation-references" || part.type === "data-voice-reference") {
     const partId = part.data && typeof part.data === "object" && "partId" in part.data
       ? (part.data as { partId?: unknown }).partId
       : null;

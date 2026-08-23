@@ -129,7 +129,7 @@ export function VideoPanel({ title, sessionId, workspaceRoot, client, workspaceI
     videoProjectId(sessionId),
     currentLocale(),
     initialStudioThemeRef.current,
-    0,
+    revision,
   );
   const projectDirectory = videoProjectDirectory(sessionId);
   const compositionPath = `${projectDirectory}/index.html`;

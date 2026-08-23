@@ -46,12 +46,61 @@
         "opening-animation",
         "ending-animation",
         "transition-animation",
-        "caption-animation",
-        "opening-effect",
-        "ending-effect",
-        "transition-effect"
+        "caption-animation"
       ],
-      "description": "Explicit placement within the Studio animation and scene libraries."
+      "description": "Explicit placement within the Studio animation libraries."
+    },
+    "visualComponent": {
+      "type": "object",
+      "description": "Placement and capability metadata for Studio's reusable visual component library.",
+      "required": ["version", "category", "surfaces", "themeMode"],
+      "additionalProperties": false,
+      "properties": {
+        "version": { "const": 1 },
+        "category": {
+          "type": "string",
+          "enum": [
+            "intro",
+            "product",
+            "data",
+            "diagrams",
+            "flow",
+            "maps",
+            "compare",
+            "knowledge",
+            "people",
+            "proof",
+            "outro"
+          ]
+        },
+        "surfaces": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "enum": ["video", "slides", "web"]
+          }
+        },
+        "themeMode": { "const": "inherit" },
+        "ai": {
+          "type": "object",
+          "required": ["slots"],
+          "additionalProperties": false,
+          "properties": {
+            "slots": {
+              "type": "array",
+              "minItems": 1,
+              "uniqueItems": true,
+              "items": {
+                "type": "string",
+                "pattern": "^[A-Za-z_][A-Za-z0-9_-]*$"
+              }
+            },
+            "instructions": { "type": "string", "minLength": 1 }
+          }
+        }
+      }
     },
     "motionPreset": {
       "type": "object",

@@ -36,13 +36,14 @@ describe("composition aspect fitting", () => {
     document.body.innerHTML = "";
   });
 
-  it("contains an existing landscape ending effect inside a portrait host", () => {
+  it("contains an explicitly fitted landscape composition inside a portrait host", () => {
     const { host, inner } = buildHost({
-      id: "effect-ending-douyin-follow_2",
+      id: "fitted-composition",
       hostWidth: 1080,
       hostHeight: 1920,
       sourceWidth: 1920,
       sourceHeight: 1080,
+      explicitFit: true,
     });
 
     expect(applyAspectFitCompositionHost(host)).toBe(true);
@@ -92,11 +93,12 @@ describe("composition aspect fitting", () => {
 
   it("exposes a synchronous refit hook for Studio resize frames", () => {
     const { host, inner } = buildHost({
-      id: "effect-ending-douyin-follow_3",
+      id: "fitted-composition-refit",
       hostWidth: 960,
       hostHeight: 540,
       sourceWidth: 1920,
       sourceHeight: 1080,
+      explicitFit: true,
     });
     const cleanup = installAspectFitCompositionHosts(document);
     const fitHost = host as HTMLElement & { __hfAspectFit?: () => boolean };

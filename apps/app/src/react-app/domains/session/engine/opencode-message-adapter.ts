@@ -9,7 +9,6 @@ import { parseDesignAiSelectionDisplayMetadata } from "@ipollowork/design-studio
 import { parseHyperframesAnimationDisplayMetadata } from "@/app/lib/hyperframes-effect-params";
 import { t } from "@/i18n";
 import { parseVideoVoiceDisplayMetadata } from "../video/video-voice";
-import { parseVideoIllustrationDisplayMetadata } from "../video/video-illustration";
 import {
   parseDynamicToolUIPart,
   parseStructuredOutputUIPart,
@@ -211,11 +210,6 @@ export function mapOpencodePartToUIParts(part: Part): UIMessage["parts"] {
       if (voice) metadataParts.push({
         type: "data-voice-reference" as const,
         data: { ...voice, partId: `${part.id}:voice-reference` },
-      });
-      const illustration = parseVideoIllustrationDisplayMetadata(part.text);
-      if (illustration) metadataParts.push({
-        type: "data-illustration-reference" as const,
-        data: { ...illustration, partId: `${part.id}:illustration-reference` },
       });
       return metadataParts;
     }

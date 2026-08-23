@@ -1,0 +1,31 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "chart-story",
+  "version": "1.0.0",
+  "type": "hyperframes:block",
+  "title": "Chart Story",
+  "description": "A theme-aware bar and line chart that turns a short series into one clear data story.",
+  "tags": ["component", "data", "chart", "statistics", "theme"],
+  "author": "iPolloWork",
+  "license": "Apache-2.0",
+  "visualComponent": {
+    "version": 1,
+    "category": "data",
+    "surfaces": ["video"],
+    "themeMode": "inherit",
+    "ai": {
+      "slots": ["title", "series", "annotation", "source"],
+      "instructions": "AI may replace the short numeric series, explain the trend, or reframe the annotation while retaining a legible chart and one visual takeaway."
+    }
+  },
+  "dimensions": { "width": 1920, "height": 1080 },
+  "duration": 9,
+  "engine": { "name": "gsap", "version": "3.13.0", "seekable": true },
+  "files": [{ "path": "chart-story.html", "target": "compositions/chart-story.html", "type": "hyperframes:composition" }],
+  "variables": [
+    { "id": "title", "label": "Title", "type": "string", "default": "Momentum becomes visible", "maxLength": 72, "update": "live" },
+    { "id": "series", "label": "Series", "type": "string", "default": "42, 58, 71, 86", "maxLength": 48, "update": "live" },
+    { "id": "annotation", "label": "Takeaway", "type": "string", "default": "A steady climb after the first review", "maxLength": 84, "update": "live" },
+    { "id": "source", "label": "Source", "type": "string", "default": "Internal signal · Q3", "maxLength": 56, "update": "live" }
+  ]
+}

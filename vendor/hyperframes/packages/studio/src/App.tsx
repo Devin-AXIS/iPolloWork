@@ -57,13 +57,6 @@ import {
 } from "./utils/studioUrlState";
 import { trackStudioSessionStart } from "./telemetry/events";
 import { hasFiredSessionStart, markSessionStartFired } from "./telemetry/config";
-import {
-  createIllustrationAssetPath,
-  renderIllustrationEffectHtml,
-  type IllustrationEffectData,
-  type IllustrationEffectId,
-} from "./utils/illustrationEffect";
-import { resolveAvailableVisualTrack } from "./utils/timelineAssetDrop";
 const HIDE_LEFT_SIDEBAR = true;
 const HIDE_STORYBOARD_VIEW = true;
 const StudioLeftSidebar = lazy(() =>
@@ -198,7 +191,7 @@ export function StudioApp() {
       void loadStudioRightPanelModule()
         .then((module) =>
           Promise.all([
-            module.preloadStudioEffectsPanel(),
+            module.preloadStudioComponentsPanel(),
             module.preloadStudioAnimationPanel(),
           ]),
         )
@@ -286,47 +279,11 @@ export function StudioApp() {
     [timelineEditing.handleTimelineGroupMove],
   );
   const handleAddAssetAtPlayhead = useAddAssetAtPlayhead(timelineEditing.handleTimelineAssetDrop);
-  const handleInsertIllustration = useCallback(
-    async (effectId: IllustrationEffectId, data: IllustrationEffectData): Promise<boolean> => {
-      const assetPath = createIllustrationAssetPath(effectId, data, fileManager.fileTree);
-      try {
-        await fileManager.writeProjectFile(assetPath, renderIllustrationEffectHtml(effectId, data));
-        await fileManager.refreshFileTree();
-        const playerState = usePlayerStore.getState();
-        const targetPath = activeCompPathRef.current || "index.html";
-        const targetElements = playerState.elements.filter(
-          (element) => (element.sourceFile || targetPath) === targetPath,
-        );
-        await timelineEditing.handleTimelineAssetDrop(
-          assetPath,
-          {
-            start: playerState.currentTime,
-            track: resolveAvailableVisualTrack(targetElements, playerState.currentTime, data.duration),
-          },
-          data.duration,
-          true,
-        );
-        return true;
-      } catch (error) {
-        showToast(
-          error instanceof Error ? error.message : "Failed to create illustration",
-          "error",
-        );
-        return false;
-      }
-    },
-    [
-      fileManager.fileTree,
-      fileManager.refreshFileTree,
-      fileManager.writeProjectFile,
-      showToast,
-      timelineEditing.handleTimelineAssetDrop,
-    ],
-  );
   const {
     activeBlockParams,
     setActiveBlockParams,
     handleAddBlock,
+    handleBlockVariableChange,
     handleTimelineBlockDrop,
     handlePreviewBlockDrop,
   } = useBlockHandlers({
@@ -633,27 +590,29 @@ export function StudioApp() {
                             <StudioLeftSidebar
                               leftSidebarRef={leftSidebarRef}
                               onSelectComposition={handleSelectComposition}
-                              onAddBlock={handleAddBlock}
                               onLint={handleLint}
                               linting={linting}
                               lintFindingCount={lintModal?.length ?? findingsByFile.size}
                               lintFindingsByFile={findingsByFile}
                               onAddAssetToTimeline={handleAddAssetAtPlayhead}
-                              onInsertIllustration={handleInsertIllustration}
                             />
                           </Suspense>
                         )
                       }
                       right={
                         panelLayout.rightCollapsed ? null : (
-                          <Suspense fallback={<RightPanelLoadingFallback width={panelLayout.rightWidth} />}>
+                          <Suspense
+                            fallback={<RightPanelLoadingFallback width={panelLayout.rightWidth} />}
+                          >
                             <StudioRightPanel
                               designPanelActive={designPanelActive}
                               activeBlockParams={activeBlockParams}
                               onCloseBlockParams={() => {
+                                const returnTab = activeBlockParams?.returnTab ?? "design";
                                 setActiveBlockParams(null);
-                                panelLayout.setRightPanelTab("design");
+                                panelLayout.setRightPanelTab(returnTab);
                               }}
+                              onBlockVariableChange={handleBlockVariableChange}
                               recordingState={gestureState}
                               recordingDuration={gestureRecording.recordingDuration}
                               onToggleRecording={recordingToggle}
@@ -665,7 +624,6 @@ export function StudioApp() {
                               recordEdit={editHistory.recordEdit}
                               onToggleElementHidden={timelineEditing.handleToggleElementHidden}
                               onAddBlock={handleAddBlock}
-                              onInsertIllustration={handleInsertIllustration}
                             />
                           </Suspense>
                         )

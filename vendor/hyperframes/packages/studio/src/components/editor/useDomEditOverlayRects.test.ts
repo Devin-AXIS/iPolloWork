@@ -67,11 +67,11 @@ describe("composition-host edit coordinates", () => {
     const doc = iframe.contentDocument!;
     doc.body.innerHTML = `
       <main data-composition-id="master" data-width="1000" data-height="500">
-        <div id="ending" data-composition-src="compositions/effects/effect-ending-demo.html"
+        <div id="route-map" data-composition-src="compositions/components/route-map.html"
           data-width="1920" data-height="1080"></div>
       </main>
     `;
-    const host = doc.getElementById("ending") as HTMLElement;
+    const host = doc.getElementById("route-map") as HTMLElement;
     Object.defineProperty(overlay, "getBoundingClientRect", {
       value: () => ({ left: 0, top: 0, width: 500, height: 250 }),
     });

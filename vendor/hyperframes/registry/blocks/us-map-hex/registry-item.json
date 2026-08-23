@@ -5,12 +5,21 @@
   "librarySection": "interface-animation",
   "title": "US Hex Grid Map",
   "description": "Animated hexagonal tile grid map — each state as an equal-weight hex with data fill and abbreviation label",
-  "tags": ["data", "map", "geography", "usa", "hexgrid", "tilegrid"],
+  "tags": ["component", "data", "map", "geography", "usa", "hexgrid", "tilegrid", "theme"],
+  "version": "1.0.0", "author": "iPolloWork", "license": "Apache-2.0",
+  "source": { "provider": "HyperFrames", "label": "US Hex Grid Map", "url": "https://www.hyperframes.dev/catalog/blocks/us-map-hex" },
+  "visualComponent": { "version": 1, "category": "maps", "surfaces": ["video"], "themeMode": "inherit", "ai": { "slots": ["title", "values", "highlight", "source"], "instructions": "AI may replace state values or annotate a highlighted state while preserving the equal-weight hex grid." } },
   "dimensions": {
     "width": 1920,
     "height": 1080
   },
   "duration": 10,
+  "variables": [
+    { "id": "title", "label": "Title", "type": "string", "default": "Median Household Income by State", "maxLength": 72, "update": "live" },
+    { "id": "values", "label": "State data", "description": "Comma-separated ABBR:Value pairs.", "type": "string", "default": "MD:106998,NJ:101778,MA:101079,CA:89648,TX:70813", "maxLength": 180, "update": "live" },
+    { "id": "highlight", "label": "Highlight", "type": "string", "default": "MD", "maxLength": 4, "update": "live" },
+    { "id": "source", "label": "Source", "type": "string", "default": "Source: American Community Survey 2024", "maxLength": 72, "update": "live" }
+  ],
   "files": [
     {
       "path": "us-map-hex.html",

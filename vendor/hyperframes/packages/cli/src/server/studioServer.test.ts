@@ -15,9 +15,7 @@ afterEach(() => {
 function createProject(withLocalGsap: boolean, referenceLocalGsap = withLocalGsap): string {
   const projectDir = mkdtempSync(join(tmpdir(), "hyperframes-registry-install-"));
   temporaryProjects.push(projectDir);
-  const localGsapScript = referenceLocalGsap
-    ? '<script src="assets/gsap.min.js"></script>'
-    : "";
+  const localGsapScript = referenceLocalGsap ? '<script src="assets/gsap.min.js"></script>' : "";
   writeFileSync(
     join(projectDir, "index.html"),
     `${localGsapScript}<main data-composition-id="main" data-width="1280" data-height="720"></main>`,
@@ -29,7 +27,7 @@ function createProject(withLocalGsap: boolean, referenceLocalGsap = withLocalGsa
   return projectDir;
 }
 
-async function installFocusTitle(projectDir: string): Promise<string> {
+async function installRouteMap(projectDir: string): Promise<string> {
   const server = createStudioServer({
     projectDir,
     projectName: "registry-install-test",
@@ -44,7 +42,7 @@ async function installFocusTitle(projectDir: string): Promise<string> {
     };
     const result = await install({
       project,
-      blockName: "effect-opening-focus-title",
+      blockName: "route-map",
     });
     const installedPath = result.written[0];
     if (!installedPath) throw new Error("Registry install did not write a composition");
@@ -56,20 +54,20 @@ async function installFocusTitle(projectDir: string): Promise<string> {
 
 describe("bundled registry installation", () => {
   it("removes a redundant GSAP CDN script when the project owns GSAP", async () => {
-    const installed = await installFocusTitle(createProject(true));
+    const installed = await installRouteMap(createProject(true));
 
     expect(installed).not.toContain("cdn.jsdelivr.net/npm/gsap");
     expect(installed).toContain('content="width=1280, height=720"');
   });
 
   it("keeps the GSAP CDN fallback when the project has no local runtime", async () => {
-    const installed = await installFocusTitle(createProject(false));
+    const installed = await installRouteMap(createProject(false));
 
     expect(installed).toContain("cdn.jsdelivr.net/npm/gsap");
   });
 
   it("keeps the GSAP CDN fallback when a local runtime exists but is not referenced", async () => {
-    const installed = await installFocusTitle(createProject(true, false));
+    const installed = await installRouteMap(createProject(true, false));
 
     expect(installed).toContain("cdn.jsdelivr.net/npm/gsap");
   });
