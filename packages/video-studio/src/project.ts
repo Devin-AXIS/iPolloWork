@@ -15,17 +15,21 @@ export function hyperframesStudioUrl(
   theme?: "light" | "dark",
   reloadToken?: number,
 ) {
-  const params = new URLSearchParams({
+  const routeParams = new URLSearchParams({
     v: "1",
     t: "0",
     tab: "design",
     rc: "1",
     tv: "1",
   });
-  if (locale) params.set("locale", locale);
-  if (theme) params.set("ipolloworkTheme", theme);
-  if (reloadToken != null) params.set("reload", String(reloadToken));
-  return `http://localhost:${port}/#project/${encodeURIComponent(projectId)}?${params.toString()}`;
+  if (locale) routeParams.set("locale", locale);
+  if (theme) routeParams.set("ipolloworkTheme", theme);
+
+  const requestParams = new URLSearchParams();
+  if (reloadToken != null) requestParams.set("ipwReload", String(reloadToken));
+  const requestQuery = requestParams.size ? `?${requestParams.toString()}` : "";
+
+  return `http://localhost:${port}/${requestQuery}#project/${encodeURIComponent(projectId)}?${routeParams.toString()}`;
 }
 
 export function videoProjectEntryPath(sessionId: string) {

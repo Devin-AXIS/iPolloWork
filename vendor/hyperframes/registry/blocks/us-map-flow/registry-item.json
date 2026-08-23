@@ -5,12 +5,21 @@
   "librarySection": "interface-animation",
   "title": "US Flow Map",
   "description": "Animated connection arcs between US cities over a base map — composable origin-destination flow visualization",
-  "tags": ["data", "map", "geography", "usa", "flow", "connections", "arcs"],
+  "tags": ["component", "data", "map", "geography", "usa", "flow", "connections", "arcs", "theme"],
+  "version": "1.0.0", "author": "iPolloWork", "license": "Apache-2.0",
+  "source": { "provider": "HyperFrames", "label": "US Flow Map", "url": "https://www.hyperframes.dev/catalog/blocks/us-map-flow" },
+  "visualComponent": { "version": 1, "category": "maps", "surfaces": ["video"], "themeMode": "inherit", "ai": { "slots": ["title", "routes", "highlight", "source"], "instructions": "AI may replace routes and volumes while preserving valid named cities, readable arcs, and a deterministic timeline." } },
   "dimensions": {
     "width": 1920,
     "height": 1080
   },
   "duration": 12,
+  "variables": [
+    { "id": "title", "label": "Title", "type": "string", "default": "Interstate Flow Connections", "maxLength": 72, "update": "live" },
+    { "id": "routes", "label": "Routes", "description": "Comma-separated From>To:Volume pairs.", "type": "string", "default": "San Francisco>New York:100,Los Angeles>Chicago:85,Seattle>Austin:70", "maxLength": 240, "update": "live" },
+    { "id": "highlight", "label": "Highlight", "type": "string", "default": "San Francisco>New York", "maxLength": 64, "update": "live" },
+    { "id": "source", "label": "Source", "type": "string", "default": "Source: Illustrative data", "maxLength": 64, "update": "live" }
+  ],
   "files": [
     {
       "path": "us-map-flow.html",

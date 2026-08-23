@@ -67,8 +67,7 @@ export function useTimelineAssetDropOps({
 
       const kind = getTimelineAssetKind(assetPath);
       if (!kind) {
-        const message =
-          "Only illustration HTML, image, video, and audio assets can be dropped onto the timeline.";
+        const message = "Only image, video, and audio assets can be dropped onto the timeline.";
         showToast(message);
         if (propagateError) throw new Error(message);
         return;

@@ -11,19 +11,22 @@ function escapeStyleAttributeValue(value: string, quote: string): string {
   return quote === '"' ? value.replace(/"/g, "&quot;") : value.replace(/'/g, "&#39;");
 }
 
-/** Escape a string for safe use inside a double-quoted HTML attribute. */
-function escapeHtmlAttribute(value: string): string {
-  return value
+/** Keep component override JSON readable without changing unrelated attribute output. */
+function serializeHtmlAttribute(name: string, value: string): string {
+  const quote = name === "data-variable-values" && value.includes('"') ? "'" : '"';
+  const escaped = value
     .replace(/&/g, "&amp;")
-    .replace(/"/g, "&quot;")
+    .replace(quote === '"' ? /"/g : /'/g, quote === '"' ? "&quot;" : "&#39;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;");
+  return `${name}=${quote}${escaped}${quote}`;
 }
 
 /** Reverse escapeHtmlAttribute so callers get the original value. */
 function unescapeHtmlAttribute(value: string): string {
   return value
     .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
     .replace(/&lt;/g, "<")
     .replace(/&gt;/g, ">")
     .replace(/&amp;/g, "&");
@@ -335,13 +338,13 @@ function patchAttributeByTarget(
     return replaceTagAtMatch(html, match, newTag);
   }
 
-  const escaped = escapeHtmlAttribute(value);
+  const serialized = serializeHtmlAttribute(fullAttr, value);
   if (attrPattern.test(tag)) {
-    const newTag = tag.replace(attrPattern, `${fullAttr}="${escaped}"`);
+    const newTag = tag.replace(attrPattern, serialized);
     return replaceTagAtMatch(html, match, newTag);
   }
 
-  const newTag = appendAttributeToTag(tag, `${fullAttr}="${escaped}"`);
+  const newTag = appendAttributeToTag(tag, serialized);
   return replaceTagAtMatch(html, match, newTag);
 }
 
@@ -370,14 +373,14 @@ function patchAttribute(
     return html.replace(tag, newTag);
   }
 
-  const escaped = escapeHtmlAttribute(value);
+  const serialized = serializeHtmlAttribute(fullAttr, value);
   if (attrPattern.test(tag)) {
     // Update existing attribute
-    const newTag = tag.replace(attrPattern, `${fullAttr}="${escaped}"`);
+    const newTag = tag.replace(attrPattern, serialized);
     return html.replace(tag, newTag);
   } else {
     // Add new attribute
-    const newTag = appendAttributeToTag(tag, `${fullAttr}="${escaped}"`);
+    const newTag = appendAttributeToTag(tag, serialized);
     return html.replace(tag, newTag);
   }
 }
@@ -472,13 +475,13 @@ function patchHtmlAttributeInTag(
     return html.replace(tag, newTag);
   }
 
-  const escaped = escapeHtmlAttribute(value);
+  const serialized = serializeHtmlAttribute(attr, value);
   if (attrPattern.test(tag)) {
-    const newTag = tag.replace(attrPattern, `${attr}="${escaped}"`);
+    const newTag = tag.replace(attrPattern, serialized);
     return html.replace(tag, newTag);
   }
 
-  const newTag = tag + ` ${attr}="${escaped}"`;
+  const newTag = tag + ` ${serialized}`;
   return html.replace(tag, newTag);
 }
 

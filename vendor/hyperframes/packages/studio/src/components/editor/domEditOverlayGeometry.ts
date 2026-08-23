@@ -237,7 +237,7 @@ function toOverlayRect(
   // A composition HOST is positioned in its parent's coordinate system. Its
   // own data-width/data-height describe the CHILD source mounted inside it,
   // not the coordinate system used by left/top or GSAP x/y on the host. Using
-  // the child scale here makes an edit-as-unit host (notably ending effects)
+  // the child scale here makes an edit-as-unit host
   // travel too far and then persist at a different-looking drop position.
   // Descendants drilled into the sub-composition still need the child scale.
   const nestedSourceBoundary = sourceBoundary && sourceBoundary !== element ? sourceBoundary : null;

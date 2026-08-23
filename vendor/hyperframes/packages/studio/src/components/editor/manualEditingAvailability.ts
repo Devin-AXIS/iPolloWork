@@ -52,12 +52,6 @@ export const STUDIO_INSPECTOR_PANELS_ENABLED = resolveStudioBooleanEnvFlag(
   true,
 );
 
-export const STUDIO_BLOCKS_PANEL_ENABLED = resolveStudioBooleanEnvFlag(
-  env,
-  ["VITE_STUDIO_ENABLE_BLOCKS_PANEL", "VITE_STUDIO_BLOCKS_PANEL_ENABLED"],
-  true,
-);
-
 export const STUDIO_GSAP_PANEL_ENABLED = resolveStudioBooleanEnvFlag(
   env,
   ["VITE_STUDIO_ENABLE_GSAP_PANEL", "VITE_STUDIO_GSAP_PANEL_ENABLED"],
@@ -116,7 +110,7 @@ export const STUDIO_SDK_RESOLVER_SHADOW_ENABLED = resolveStudioBooleanEnvFlag(
 // Studio inspector redesign ("Ledger, flat" — design_handoff_studio_inspector):
 // The Figma inspector is now the only supported Layer-panel implementation.
 // Keeping it behind an environment switch caused existing desktop sessions to
-// silently render the retired Effects / Clip / Transparency groups instead.
+// silently render retired property groups instead.
 export const STUDIO_FLAT_INSPECTOR_ENABLED = true;
 
 export const STUDIO_MANUAL_EDITING_DISABLED_TITLE = "Manual editing is temporarily disabled";

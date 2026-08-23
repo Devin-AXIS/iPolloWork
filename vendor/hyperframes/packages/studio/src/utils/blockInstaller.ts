@@ -1,7 +1,6 @@
-import type { RegistryItem } from "@hyperframes/core/registry";
+import type { RegistryItem, RegistryVariable } from "@hyperframes/core/registry";
 import type { TimelineElement } from "../player";
 import {
-  fitTimelineAssetGeometry,
   insertTimelineAssetIntoSource,
   resolveTimelineAssetCompositionSize,
 } from "./timelineAssetDrop";
@@ -12,10 +11,7 @@ import { saveProjectFilesWithHistory } from "./studioFileHistory";
 import type { EditHistoryKind } from "./editHistory";
 import { extendRootDurationInSource } from "./rootDuration";
 import { readRootCompositionDuration } from "./rootDuration";
-import { applyPatchByTarget } from "./sourcePatcher";
 import { trackStudioEvent } from "./studioTelemetry";
-
-export type EffectInsertIntent = "playhead" | "opening" | "ending" | "transition";
 
 interface AddBlockOptions {
   projectId: string;
@@ -24,8 +20,6 @@ interface AddBlockOptions {
   placement?: { start: number; track: number };
   visualPosition?: { left: number; top: number };
   currentTime?: number;
-  effectIntent?: EffectInsertIntent;
-  selectedElementId?: string | null;
   timelineElements: TimelineElement[];
   readProjectFile: (path: string) => Promise<string>;
   writeProjectFile: (path: string, content: string) => Promise<void>;
@@ -39,147 +33,6 @@ interface AddBlockOptions {
   refreshFileTree: () => Promise<void>;
   reloadPreview: () => void;
   showToast: (msg: string) => void;
-}
-
-interface EffectPlacement {
-  start: number;
-  track: number;
-  shiftExistingBy: number;
-}
-
-function elementKey(element: TimelineElement): string {
-  return element.key ?? element.id;
-}
-
-function rootTimelineElements(elements: TimelineElement[], targetPath: string): TimelineElement[] {
-  return elements.filter(
-    (element) =>
-      (element.sourceFile || targetPath) === targetPath &&
-      element.expandedParentStart == null &&
-      Number.isFinite(element.start) &&
-      Number.isFinite(element.duration) &&
-      element.duration > 0,
-  );
-}
-
-function uniqueSortedStarts(elements: TimelineElement[]): number[] {
-  return [...new Set(elements.map((element) => Number(element.start.toFixed(4))))].sort(
-    (a, b) => a - b,
-  );
-}
-
-function buildElementPatchTarget(element: TimelineElement) {
-  if (element.domId) {
-    return {
-      id: element.domId,
-      hfId: element.hfId,
-      selector: element.selector,
-      selectorIndex: element.selectorIndex,
-    };
-  }
-  if (element.hfId) {
-    return {
-      hfId: element.hfId,
-      selector: element.selector,
-      selectorIndex: element.selectorIndex,
-    };
-  }
-  if (element.selector) {
-    return { selector: element.selector, selectorIndex: element.selectorIndex };
-  }
-  if (/^[A-Za-z][\w:-]*$/.test(element.id)) return { id: element.id };
-  return null;
-}
-
-export function resolveEffectPlacement(input: {
-  intent: EffectInsertIntent;
-  duration: number;
-  currentTime: number;
-  rootDuration: number;
-  targetPath: string;
-  timelineElements: TimelineElement[];
-  selectedElementId?: string | null;
-}): EffectPlacement | null {
-  const elements = rootTimelineElements(input.timelineElements, input.targetPath);
-  const highestTrack = elements.reduce(
-    (highest, element) => Math.max(highest, element.authoredTrack ?? element.track),
-    0,
-  );
-  const contentEnd = elements.reduce(
-    (end, element) => Math.max(end, element.start + element.duration),
-    input.rootDuration,
-  );
-
-  if (input.intent === "opening") {
-    return { start: 0, track: 0, shiftExistingBy: input.duration };
-  }
-  if (input.intent === "ending") {
-    return { start: contentEnd, track: 0, shiftExistingBy: 0 };
-  }
-  if (input.intent === "playhead") {
-    return { start: Math.max(0, input.currentTime), track: highestTrack + 1, shiftExistingBy: 0 };
-  }
-
-  if (elements.length < 2) return null;
-  const selected = input.selectedElementId
-    ? elements.find((element) => elementKey(element) === input.selectedElementId)
-    : undefined;
-  const starts = uniqueSortedStarts(elements).filter((start) => start > 0.001);
-  const selectedEnd = selected ? selected.start + selected.duration : undefined;
-  const selectedNextStart = selected
-    ? (starts.find((start) => start >= (selectedEnd ?? 0) - 0.05) ??
-      starts.find((start) => start > selected.start + 0.001))
-    : undefined;
-  const boundary =
-    selectedNextStart ??
-    starts.reduce<number | undefined>((closest, start) => {
-      if (closest == null) return start;
-      return Math.abs(start - input.currentTime) < Math.abs(closest - input.currentTime)
-        ? start
-        : closest;
-    }, undefined);
-  if (boundary == null) return null;
-  return {
-    start: Math.max(0, boundary - input.duration / 2),
-    track: highestTrack + 1,
-    shiftExistingBy: 0,
-  };
-}
-
-export function shiftTimelineContentInSource(
-  source: string,
-  elements: TimelineElement[],
-  targetPath: string,
-  amount: number,
-): string {
-  if (!(amount > 0)) return source;
-  let patched = source;
-  const visited = new Set<string>();
-  for (const element of rootTimelineElements(elements, targetPath)) {
-    const target = buildElementPatchTarget(element);
-    if (!target) continue;
-    const targetKey = JSON.stringify(target);
-    if (visited.has(targetKey)) continue;
-    visited.add(targetKey);
-    patched = applyPatchByTarget(patched, target, {
-      type: "attribute",
-      property: "start",
-      value: formatTimelineAttributeNumber(element.start + amount),
-    });
-    if (element.timingSource === "implicit") {
-      patched = applyPatchByTarget(patched, target, {
-        type: "attribute",
-        property: "duration",
-        value: formatTimelineAttributeNumber(element.duration),
-      });
-      patched = applyPatchByTarget(patched, target, {
-        type: "attribute",
-        property: "hf-preserve-flow",
-        value: "1",
-      });
-    }
-  }
-  return patched;
 }
 
 function buildUniqueCompositionId(baseName: string, existingIds: Iterable<string>): string {
@@ -206,9 +59,28 @@ function makeComponentDocumentBackgroundTransparent(source: string): string {
   );
 }
 
+export function injectRegistryVariableDeclarations(
+  source: string,
+  variables: RegistryVariable[],
+): string {
+  if (!variables.length || /\bdata-composition-variables\s*=/.test(source)) return source;
+
+  const declarations = variables.map(({ update: _update, ...declaration }) => declaration);
+  const serialized = JSON.stringify(declarations)
+    .replaceAll("&", "&amp;")
+    .replaceAll("'", "&#39;")
+    .replaceAll("<", "\\u003c")
+    .replaceAll(">", "\\u003e");
+
+  return source.replace(/<html(?=[\s>])[^>]*>/i, (openTag) =>
+    openTag.replace(/>$/, ` data-composition-variables='${serialized}'>`),
+  );
+}
+
 export async function addBlockToProject(opts: AddBlockOptions): Promise<{
   block: RegistryItem;
   compositionPath: string;
+  hostCompositionPath: string;
   insertedStart: number;
   insertedElementId: string;
 } | null> {
@@ -262,11 +134,15 @@ export async function addBlockToProject(opts: AddBlockOptions): Promise<{
       return null;
     }
 
-    if (block.type === "hyperframes:component") {
+    if (block.visualComponent) {
       const compContent = await readProjectFile(compositionFile);
-      const transparentContent = makeComponentDocumentBackgroundTransparent(compContent);
-      if (transparentContent !== compContent) {
-        await writeProjectFile(compositionFile, transparentContent);
+      const declaredContent = injectRegistryVariableDeclarations(
+        compContent,
+        block.variables ?? [],
+      );
+      const normalizedContent = makeComponentDocumentBackgroundTransparent(declaredContent);
+      if (normalizedContent !== compContent) {
+        await writeProjectFile(compositionFile, normalizedContent);
       }
     }
 
@@ -285,8 +161,6 @@ export async function addBlockToProject(opts: AddBlockOptions): Promise<{
         (te) => (te.sourceFile || activeCompPath || "index.html") === resolvedTargetPath,
       );
 
-      const isBlock = block.type === "hyperframes:block";
-      const isEndingEffect = isBlock && block.librarySection === "ending-effect";
       const { width: hostWidth, height: hostHeight } =
         resolveTimelineAssetCompositionSize(originalContent);
       const hostDims = { left: 0, top: 0, width: hostWidth, height: hostHeight };
@@ -301,35 +175,13 @@ export async function addBlockToProject(opts: AddBlockOptions): Promise<{
           10,
         );
       const rootDuration = readRootCompositionDuration(originalContent) ?? 0;
-      const effectPlacement = placement
-        ? null
-        : resolveEffectPlacement({
-            intent: opts.effectIntent ?? "playhead",
-            duration,
-            currentTime,
-            rootDuration,
-            targetPath: resolvedTargetPath,
-            timelineElements: relevantElements,
-            selectedElementId: opts.selectedElementId,
-          });
-      if (!placement && !effectPlacement) {
-        showToast(
-          "Select a timeline clip that has another clip after it, then insert the transition",
-        );
-        return null;
-      }
       const start = Number(
-        formatTimelineAttributeNumber(placement?.start ?? effectPlacement?.start ?? currentTime),
+        formatTimelineAttributeNumber(placement?.start ?? Math.max(0, currentTime)),
       );
       insertedStart = start;
       const track =
         placement?.track ??
-        effectPlacement?.track ??
-        (isBlock
-          ? 0
-          : relevantElements.length > 0
-            ? Math.max(...relevantElements.map((te) => te.track)) + 1
-            : 1);
+        (relevantElements.length > 0 ? Math.max(...relevantElements.map((te) => te.track)) + 1 : 1);
 
       // Timeline discovery already resolves authored and computed z-indexes.
       // Reusing that snapshot avoids a synchronous getComputedStyle() walk over
@@ -339,9 +191,7 @@ export async function addBlockToProject(opts: AddBlockOptions): Promise<{
         relevantElements.reduce((highest, element) => Math.max(highest, element.zIndex ?? 0), 0) +
         1;
 
-      const geometry = isEndingEffect
-        ? fitTimelineAssetGeometry(block.dimensions, hostDims)
-        : hostDims;
+      const geometry = hostDims;
       const width = geometry.width;
       const height = geometry.height;
 
@@ -362,28 +212,18 @@ export async function addBlockToProject(opts: AddBlockOptions): Promise<{
         `  data-track-index="${track}"`,
         `  data-width="${width}"`,
         `  data-height="${height}"`,
-        ...(isEndingEffect
-          ? [`  data-hf-edit-as-unit=""`, `  data-hf-content-fit="contain"`]
-          : []),
         `  style="position: absolute; left: ${left}px; top: ${top}px; width: ${width}px; height: ${height}px; z-index: ${zIndex}"`,
         `></div>`,
       ].join("\n");
 
-      const shiftExistingBy = effectPlacement?.shiftExistingBy ?? 0;
-      const shiftedContent = shiftTimelineContentInSource(
-        originalContent,
-        relevantElements,
-        resolvedTargetPath,
-        shiftExistingBy,
-      );
-      let patchedContent = insertTimelineAssetIntoSource(shiftedContent, subCompHtml);
+      let patchedContent = insertTimelineAssetIntoSource(originalContent, subCompHtml);
       const originalContentEnd = relevantElements.reduce(
         (end, element) => Math.max(end, element.start + element.duration),
         rootDuration,
       );
       patchedContent = extendRootDurationInSource(
         patchedContent,
-        Math.max(start + duration, originalContentEnd + shiftExistingBy),
+        Math.max(start + duration, originalContentEnd),
       );
       hostPatchMs = performance.now() - hostPatchStartedAt;
 
@@ -391,7 +231,7 @@ export async function addBlockToProject(opts: AddBlockOptions): Promise<{
       const persistStartedAt = performance.now();
       await saveProjectFilesWithHistory({
         projectId,
-        label: `Add ${isBlock ? "block" : "component"}: ${block.title}`,
+        label: `Add component: ${block.title}`,
         kind: "timeline",
         files: { [targetPath]: patchedContent },
         readFile: async () => originalContent,
@@ -413,7 +253,6 @@ export async function addBlockToProject(opts: AddBlockOptions): Promise<{
 
     trackStudioEvent("block_install_timing", {
       block_name: blockName,
-      effect_intent: opts.effectIntent ?? "playhead",
       registry_install_ms: Math.round(registryInstallMs),
       host_patch_ms: Math.round(hostPatchMs),
       persist_ms: Math.round(persistMs),
@@ -421,7 +260,13 @@ export async function addBlockToProject(opts: AddBlockOptions): Promise<{
       timeline_element_count: timelineElements.length,
     });
 
-    return { block, compositionPath: compositionFile, insertedStart, insertedElementId };
+    return {
+      block,
+      compositionPath: compositionFile,
+      hostCompositionPath: activeCompPath || "index.html",
+      insertedStart,
+      insertedElementId,
+    };
   } catch (error) {
     trackStudioEvent("block_install_failed", {
       block_name: blockName,

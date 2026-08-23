@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=1920,height=1080"/>
+<title>Decline Chart</title>
+<style>*{box-sizing:border-box}html,body{margin:0;width:1920px;height:1080px;overflow:hidden;background:transparent}#decline-chart{position:relative;width:1920px;height:1080px;padding:118px 150px;background:var(--ipw-color-bg,#f4f6f8);color:var(--ipw-color-text,#15171a);font-family:var(--ipw-font-display,Inter,sans-serif)}.metric{color:var(--ipw-color-muted,#68717c);font:800 18px/1 var(--ipw-font-body,Inter,sans-serif);letter-spacing:.15em;text-transform:uppercase}.value{margin-top:26px;font-size:190px;font-weight:820;line-height:.9;letter-spacing:-.09em}.note{margin-top:34px;max-width:650px;font-size:34px;font-weight:720;line-height:1.08;letter-spacing:-.04em}.card{position:absolute;right:145px;top:145px;width:870px;height:790px;padding:55px;border:1px solid var(--ipw-color-border,#d8dde3);border-radius:var(--ipw-card-radius,34px);background:var(--ipw-card-bg,var(--ipw-color-surface,#fff));box-shadow:var(--ipw-card-shadow,0 24px 58px rgba(20,30,40,.12))}.card svg{width:100%;height:100%;overflow:visible}.grid{stroke:var(--ipw-color-border,#d8dde3);stroke-width:2}.line{fill:none;stroke:var(--ipw-color-danger,#e45d6b);stroke-width:14;stroke-linecap:round;stroke-linejoin:round}.dot{fill:var(--ipw-color-danger,#e45d6b)}</style>
+<style>.value{margin-top:40px;line-height:1}</style>
+</head>
+<body>
+<main id="decline-chart" data-composition-id="decline-chart" data-width="1920" data-height="1080" data-start="0" data-duration="8">
+<section>
+<div class="metric" data-ipw-variable="title" data-ipw-ai-slot="title">
+</div>
+<div class="value">
+<span>
+</span>%</div>
+<div class="note" data-ipw-variable="note" data-ipw-ai-slot="note">
+</div>
+</section>
+<section class="card">
+<svg viewBox="0 0 760 680">
+<path class="grid" d="M20 140H740M20 340H740M20 540H740"/>
+<path class="line" d="M30 70C120 90 160 150 230 178S340 250 400 300S500 410 560 465S660 555 730 620"/>
+<circle class="dot" cx="730" cy="620" r="18"/>
+</svg>
+</section>
+</main>
+<script src="https://cdn.jsdelivr.net/npm/gsap@3.13.0/dist/gsap.min.js">
+</script>
+<script>window.__timelines=window.__timelines||{};(function(){const root=document.getElementById("decline-chart"),values={title:"Retention",startValue:82,endValue:34,note:"The drop concentrates after the midpoint",...(window.__hyperframes?.getVariables?.()??{})},start=Number(values.startValue)||0,end=Number(values.endValue)||0,value=root.querySelector(".value span"),line=root.querySelector(".line"),length=line.getTotalLength(),state={value:start};root.querySelectorAll("[data-ipw-variable]").forEach(el=>el.textContent=String(values[el.dataset.ipwVariable]??""));line.style.strokeDasharray=`${length} ${length}`;const tl=gsap.timeline({paused:true});tl.from(root.querySelectorAll(".metric,.value,.note"),{y:24,opacity:0,stagger:.1,duration:.48,ease:"power3.out"}).fromTo(line,{strokeDashoffset:length},{strokeDashoffset:0,duration:1.25,ease:"power2.inOut"},.18).to(state,{value:end,duration:1.25,ease:"power2.inOut",onUpdate:()=>{value.textContent=String(Math.round(state.value))}},.18).from(root.querySelector(".dot"),{scale:0,opacity:0,duration:.35,ease:"back.out(1.6)"},1.2);window.__timelines["decline-chart"]=tl;tl.seek(0)})();</script>
+</body>
+</html>

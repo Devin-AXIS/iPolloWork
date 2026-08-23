@@ -6,10 +6,41 @@ import { useCallback, useMemo, useRef, useState } from "react";
 import type { TimelineElement } from "../player";
 import { usePlayerStore } from "../player";
 import { addBlockToProject } from "../utils/blockInstaller";
-import type { EffectInsertIntent } from "../utils/blockInstaller";
-import type { BlockParam } from "@hyperframes/core/registry";
+import type {
+  BlockParam,
+  RegistryVariable,
+  RegistryVisualComponent,
+} from "@hyperframes/core/registry";
 import type { EditHistoryKind } from "../utils/editHistory";
 import { resolveTimelineSelectionSeekTime, type RightPanelTab } from "../utils/studioHelpers";
+import { applyPatchByTarget } from "../utils/sourcePatcher";
+import { saveProjectFilesWithHistory } from "../utils/studioFileHistory";
+
+type BlockVariableValue = string | number | boolean;
+
+function normalizeVariableValue(
+  variable: RegistryVariable,
+  value: BlockVariableValue,
+): BlockVariableValue {
+  if (variable.type === "number") {
+    const parsed = typeof value === "number" ? value : Number(value);
+    const finite = Number.isFinite(parsed) ? parsed : variable.default;
+    return Math.min(variable.max ?? finite, Math.max(variable.min ?? finite, finite));
+  }
+  if (variable.type === "boolean") {
+    return typeof value === "boolean" ? value : variable.default;
+  }
+  if (variable.type === "enum") {
+    return typeof value === "string" && variable.options.some((option) => option.value === value)
+      ? value
+      : variable.default;
+  }
+  if (typeof value !== "string") return variable.default;
+  if (variable.type === "color" && !/^#[0-9a-f]{6}$/i.test(value)) return variable.default;
+  return variable.type === "string" && variable.maxLength
+    ? value.slice(0, variable.maxLength)
+    : value;
+}
 
 interface BlockCtxDeps {
   activeCompPath: string | null;
@@ -38,15 +69,20 @@ interface UseBlockHandlersParams {
 
 export interface UseBlockHandlersResult {
   activeBlockParams: {
-    blockName: string;
     blockTitle: string;
     params: BlockParam[];
-    compositionPath: string;
+    variables: RegistryVariable[];
+    variableValues: Record<string, BlockVariableValue>;
+    visualComponent?: RegistryVisualComponent;
+    hostCompositionPath: string;
+    insertedElementId: string;
+    returnTab: "components";
   } | null;
   setActiveBlockParams: React.Dispatch<
     React.SetStateAction<UseBlockHandlersResult["activeBlockParams"]>
   >;
-  handleAddBlock: (blockName: string, intent?: EffectInsertIntent) => Promise<boolean>;
+  handleAddBlock: (blockName: string) => Promise<boolean>;
+  handleBlockVariableChange: (variableId: string, value: BlockVariableValue) => Promise<void>;
   handleTimelineBlockDrop: (blockName: string, placement: { start: number; track: number }) => void;
   handlePreviewBlockDrop: (blockName: string, position: { left: number; top: number }) => void;
 }
@@ -60,6 +96,9 @@ export function useBlockHandlers({
 }: UseBlockHandlersParams): UseBlockHandlersResult {
   const [activeBlockParams, setActiveBlockParams] =
     useState<UseBlockHandlersResult["activeBlockParams"]>(null);
+  const activeBlockParamsRef = useRef(activeBlockParams);
+  activeBlockParamsRef.current = activeBlockParams;
+  const variableWriteQueueRef = useRef<Promise<void>>(Promise.resolve());
 
   const blockCtx = useMemo(
     () => ({
@@ -114,7 +153,7 @@ export function useBlockHandlers({
   );
 
   const handleAddBlock = useCallback(
-    async (blockName: string, intent: EffectInsertIntent = "playhead") => {
+    async (blockName: string) => {
       if (!projectId) return false;
       const result = await runBlockInstall(blockName, () =>
         addBlockToProject({
@@ -122,8 +161,6 @@ export function useBlockHandlers({
           blockName,
           ...blockCtx,
           currentTime: usePlayerStore.getState().currentTime,
-          selectedElementId: usePlayerStore.getState().selectedElementId,
-          effectIntent: intent,
         }),
       );
       if (result === null) return false;
@@ -138,13 +175,18 @@ export function useBlockHandlers({
         compositionSrc: result.compositionPath,
       });
       usePlayerStore.getState().requestSeek(previewTime ?? result.insertedStart);
-      const params = result.block.type === "hyperframes:block" ? result.block.params : undefined;
-      if (params?.length) {
+      const params = result.block.type === "hyperframes:block" ? (result.block.params ?? []) : [];
+      const variables = result.block.variables ?? [];
+      if (params.length || variables.length) {
         setActiveBlockParams({
-          blockName: result.block.name,
           blockTitle: result.block.title,
           params,
-          compositionPath: result.compositionPath,
+          variables,
+          variableValues: {},
+          visualComponent: result.block.visualComponent,
+          hostCompositionPath: result.hostCompositionPath,
+          insertedElementId: result.insertedElementId,
+          returnTab: "components",
         });
         setRightCollapsed(false);
         setRightPanelTab("block-params");
@@ -152,6 +194,62 @@ export function useBlockHandlers({
       return true;
     },
     [projectId, blockCtx, runBlockInstall, setRightCollapsed, setRightPanelTab],
+  );
+
+  const handleBlockVariableChange = useCallback(
+    (variableId: string, value: BlockVariableValue): Promise<void> => {
+      const save = async () => {
+        const active = activeBlockParamsRef.current;
+        if (!active || !projectId) return;
+        const variable = active.variables.find((candidate) => candidate.id === variableId);
+        if (!variable) return;
+
+        const normalized = normalizeVariableValue(variable, value);
+        const nextValues = { ...active.variableValues };
+        if (normalized === variable.default) delete nextValues[variableId];
+        else nextValues[variableId] = normalized;
+
+        const original = await blockCtx.readProjectFile(active.hostCompositionPath);
+        const patched = applyPatchByTarget(
+          original,
+          { id: active.insertedElementId },
+          {
+            type: "attribute",
+            property: "variable-values",
+            value: Object.keys(nextValues).length ? JSON.stringify(nextValues) : null,
+          },
+        );
+        if (patched === original) return;
+
+        blockCtx.markStudioWrite();
+        await saveProjectFilesWithHistory({
+          projectId,
+          label: `Configure component: ${active.blockTitle}`,
+          kind: "source",
+          coalesceKey: `component-variables:${active.insertedElementId}`,
+          files: { [active.hostCompositionPath]: patched },
+          readFile: async () => original,
+          writeFile: blockCtx.writeProjectFile,
+          recordEdit: blockCtx.recordEdit,
+        });
+        const nextActive = { ...active, variableValues: nextValues };
+        activeBlockParamsRef.current = nextActive;
+        setActiveBlockParams((current) =>
+          current?.insertedElementId === active.insertedElementId ? nextActive : current,
+        );
+        blockCtx.reloadPreview();
+      };
+
+      const queued = variableWriteQueueRef.current.then(save);
+      variableWriteQueueRef.current = queued.catch((error: unknown) => {
+        blockCtx.showToast(
+          error instanceof Error ? error.message : "Failed to update component variables",
+          "error",
+        );
+      });
+      return variableWriteQueueRef.current;
+    },
+    [blockCtx, projectId],
   );
 
   const handleTimelineBlockDrop = useCallback(
@@ -190,6 +288,7 @@ export function useBlockHandlers({
     activeBlockParams,
     setActiveBlockParams,
     handleAddBlock,
+    handleBlockVariableChange,
     handleTimelineBlockDrop,
     handlePreviewBlockDrop,
   };

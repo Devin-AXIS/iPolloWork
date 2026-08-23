@@ -519,7 +519,9 @@ export class EvalContext {
       closeClients.push(client);
     }
     try {
-      const buffer = preCapturedBuffer ?? await captureScreenshot(screenshotClient);
+      const buffer = preCapturedBuffer ?? await captureScreenshot(screenshotClient, {
+        fromSurface: options.fromSurface,
+      });
       await writeFile(join(this.outDir, fileName), buffer);
       this.screenshots.push(fileName);
       const bodyText = await evaluate(textClient, "document.body.innerText").catch(() => "");

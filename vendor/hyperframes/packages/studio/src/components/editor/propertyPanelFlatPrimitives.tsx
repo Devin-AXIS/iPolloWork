@@ -22,6 +22,11 @@ export function FlatRow({
   suffix,
   dropdown,
   inputType,
+  placeholder,
+  maxLength,
+  min,
+  max,
+  step,
   large = true,
   onPreview,
   onCommit,
@@ -36,6 +41,11 @@ export function FlatRow({
   /** Renders a trailing 10px caret-down, for select-backed rows. */
   dropdown?: boolean;
   inputType?: "text" | "number";
+  placeholder?: string;
+  maxLength?: number;
+  min?: number;
+  max?: number;
+  step?: number;
   /** Figma's 34px inspector control used by the expanded Layer sections. */
   large?: boolean;
   onPreview?: (nextValue: string) => void;
@@ -74,6 +84,11 @@ export function FlatRow({
             liveCommit={liveCommit}
             align="right"
             inputType={inputType}
+            placeholder={placeholder}
+            maxLength={maxLength}
+            min={min}
+            max={max}
+            step={step}
             ariaLabel={tx(label)}
             onPreview={onPreview}
             onCommit={(nextValue) => {

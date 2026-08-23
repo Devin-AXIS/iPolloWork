@@ -227,18 +227,18 @@ describe("preview editing interactions", () => {
   it("uses a visible proof frame when a timeline selection lands on a clip boundary", () => {
     expect(
       resolveTimelineSelectionSeekTime(0, {
-        id: "effect-ending-bilibili-triple",
+        id: "route-map",
         start: 0,
         duration: 3.4,
-        compositionSrc: "compositions/effects/effect-ending-bilibili-triple.html",
+        compositionSrc: "compositions/components/route-map.html",
       }),
     ).toBe(1.7);
     expect(
       resolveTimelineSelectionSeekTime(8, {
-        id: "effect-transition-iris-pulse",
+        id: "timeline-overlay",
         start: 3,
         duration: 1.1,
-        timelineKind: "effect",
+        timelineKind: "html",
       }),
     ).toBeCloseTo(3.55);
     expect(resolveTimelineSelectionSeekTime(0, { start: 0, duration: 3.4 })).toBe(1.7);
@@ -316,7 +316,6 @@ describe("preview editing interactions", () => {
     expect(editorShellSource).toContain("onPreviewAssetDrop={handlePreviewAssetDrop}");
     expect(editorShellSource).toContain("onPreviewBlockDrop={onPreviewBlockDrop}");
     expect(assetCardSource).toContain("setData(TIMELINE_ASSET_MIME");
-    expect(assetCardSource).toContain("HtmlIllustrationPreview");
     expect(catalogSource).toContain("event.dataTransfer.setData(");
     expect(catalogSource).toContain("TIMELINE_BLOCK_MIME,");
     expect(catalogSource).toContain("dimensions: block.dimensions");
@@ -400,78 +399,22 @@ describe("preview editing interactions", () => {
     expect(source).toContain("width: ${geometry.width}px");
     expect(source).toContain("height: ${geometry.height}px");
     expect(source).toContain('id="${input.id}" data-hf-id="${input.hfId}"');
-    expect(source).toContain('input.kind === "html"');
-    expect(source).toContain("pointer-events: none; position: absolute");
-    expect(getTimelineAssetKind("assets/video-illustrations/idea.html")).toBe("html");
-    const htmlAsset = buildTimelineAssetInsertHtml({
-      id: "idea",
-      hfId: "hf-idea",
-      assetPath: "assets/video-illustrations/idea.html",
-      kind: "html",
+    expect(source).not.toContain('input.kind === "html"');
+    expect(getTimelineAssetKind("assets/embed.html")).toBeNull();
+    const imageAsset = buildTimelineAssetInsertHtml({
+      id: "cover",
+      hfId: "hf-cover",
+      assetPath: "assets/cover.png",
+      kind: "image",
       start: 0,
       duration: 5,
       track: 0,
       zIndex: 2,
       geometry: { left: 120, top: 80, width: 480, height: 270 },
     });
-    expect(htmlAsset).toContain("<iframe");
-    expect(htmlAsset).toContain("left: 120px");
-    expect(htmlAsset).toContain("width: 480px");
-    expect(htmlAsset).toContain('data-hf-lock-aspect-ratio="16:9"');
-    expect(htmlAsset).toContain('data-hf-asset-kind="html"');
-    expect(htmlAsset).toContain('width="1600" height="900"');
-    expect(htmlAsset).toContain("new ResizeObserver(r)");
-    expect(htmlAsset).toContain("Math.min(p.clientWidth/1600,p.clientHeight/900)");
-    expect(htmlAsset).toContain("CSS.supports('scale','1')");
-    expect(htmlAsset).toContain("f.style.scale=s");
-    expect(htmlAsset).toContain("f.__hfRescale=r");
-  });
-
-  it("keeps embedded HTML illustrations scaled after their container is resized", () => {
-    const htmlAsset = buildTimelineAssetInsertHtml({
-      id: "spatial-cards",
-      hfId: "hf-spatial-cards",
-      assetPath: "assets/video-illustrations/3d-space.html",
-      kind: "html",
-      start: 0,
-      duration: 5,
-      track: 0,
-      zIndex: 2,
-      geometry: { left: 0, top: 0, width: 1600, height: 900 },
-    });
-    const onload = htmlAsset.match(/\bonload="([^"]+)"/)?.[1];
-    expect(onload).toBeTruthy();
-
-    const parent = { clientWidth: 480, clientHeight: 270 };
-    const iframe = {
-      parentElement: parent,
-      style: { scale: "1", transform: "none" },
-    } as {
-      parentElement: typeof parent;
-      style: { scale: string; transform: string };
-      __hfRescale?: () => void;
-      __hfResizeObserver?: { disconnect(): void };
-    };
-    class FakeResizeObserver {
-      constructor(private readonly callback: () => void) {}
-      observe() {
-        this.callback();
-      }
-      disconnect() {}
-    }
-
-    const runOnload = new Function("ResizeObserver", "CSS", onload ?? "") as (
-      this: typeof iframe,
-      ResizeObserverCtor: typeof FakeResizeObserver,
-      css: { supports: () => boolean },
-    ) => void;
-    runOnload.call(iframe, FakeResizeObserver, { supports: () => true });
-    expect(iframe.style.scale).toBe("0.3");
-    expect(iframe.style.transform).toBe("none");
-
-    parent.clientHeight = 180;
-    iframe.__hfRescale?.();
-    expect(iframe.style.scale).toBe("0.2");
+    expect(imageAsset).toContain("<img");
+    expect(imageAsset).toContain("left: 120px");
+    expect(imageAsset).toContain("width: 480px");
   });
 
   it("uploads OS files dropped anywhere in the right-side assets area", () => {

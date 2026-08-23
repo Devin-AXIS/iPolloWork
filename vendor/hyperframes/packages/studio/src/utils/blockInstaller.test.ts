@@ -1,12 +1,10 @@
 // @vitest-environment happy-dom
 
 import { afterEach, describe, expect, it, vi } from "vitest";
-import {
-  addBlockToProject,
-  resolveEffectPlacement,
-  shiftTimelineContentInSource,
-} from "./blockInstaller";
+import { addBlockToProject, injectRegistryVariableDeclarations } from "./blockInstaller";
+import type { RegistryVariable } from "@hyperframes/core/registry";
 import type { TimelineElement } from "../player";
+import { applyPatchByTarget } from "./sourcePatcher";
 
 const originalFetch = globalThis.fetch;
 
@@ -47,49 +45,7 @@ describe("addBlockToProject", () => {
     },
   ];
 
-  it("resolves opening, ending, and transition effect placement semantics", () => {
-    expect(
-      resolveEffectPlacement({
-        intent: "opening",
-        duration: 3,
-        currentTime: 2,
-        rootDuration: 9,
-        targetPath: "index.html",
-        timelineElements: clips,
-      }),
-    ).toEqual({ start: 0, track: 0, shiftExistingBy: 3 });
-    expect(
-      resolveEffectPlacement({
-        intent: "ending",
-        duration: 3,
-        currentTime: 2,
-        rootDuration: 9,
-        targetPath: "index.html",
-        timelineElements: clips,
-      }),
-    ).toEqual({ start: 9, track: 0, shiftExistingBy: 0 });
-    expect(
-      resolveEffectPlacement({
-        intent: "transition",
-        duration: 1,
-        currentTime: 0,
-        rootDuration: 9,
-        targetPath: "index.html",
-        timelineElements: clips,
-        selectedElementId: "scene-a",
-      }),
-    ).toEqual({ start: 3.5, track: 6, shiftExistingBy: 0 });
-  });
-
-  it("shifts authored clips when an opening effect is inserted", () => {
-    const source =
-      '<main data-composition-id="root" data-duration="9"><div id="scene-a" data-start="0" data-duration="4"></div><div id="scene-b" data-start="4" data-duration="5"></div></main>';
-    const shifted = shiftTimelineContentInSource(source, clips, "index.html", 3);
-    expect(shifted).toContain('id="scene-a" data-start="3"');
-    expect(shifted).toContain('id="scene-b" data-start="7"');
-  });
-
-  it("makes installed component document backgrounds transparent without removing inner effect backgrounds", async () => {
+  it("makes installed component document backgrounds transparent without removing inner backgrounds", async () => {
     const files: Record<string, string> = {
       "index.html": [
         '<div id="root" data-composition-id="root" data-width="1920" data-height="1080" data-duration="6">',
@@ -119,6 +75,12 @@ describe("addBlockToProject", () => {
           name: "morph-text",
           title: "Morph Text",
           type: "hyperframes:component",
+          visualComponent: {
+            version: 1,
+            category: "intro",
+            surfaces: ["video"],
+            themeMode: "inherit",
+          },
         },
       }),
     } as Response);
@@ -159,10 +121,10 @@ describe("addBlockToProject", () => {
     globalThis.fetch = vi.fn().mockResolvedValue({
       ok: true,
       json: async () => ({
-        written: ["compositions/effects/focus-title.html"],
+        written: ["compositions/components/route-map.html"],
         block: {
-          name: "focus-title",
-          title: "Focus Title",
+          name: "route-map",
+          title: "Route Map",
           type: "hyperframes:block",
           duration: 3.2,
         },
@@ -172,9 +134,8 @@ describe("addBlockToProject", () => {
     let writtenIndex = "";
     await addBlockToProject({
       projectId: "project-1",
-      blockName: "focus-title",
+      blockName: "route-map",
       activeCompPath: "index.html",
-      effectIntent: "ending",
       timelineElements: clips,
       readProjectFile: async () =>
         '<main data-composition-id="root" data-width="1920" data-height="1080" data-duration="9"></main>',
@@ -191,58 +152,14 @@ describe("addBlockToProject", () => {
     expect(writtenIndex).toContain("z-index: 13");
   });
 
-  it("fits a landscape ending effect into a portrait composition without changing its aspect", async () => {
-    globalThis.fetch = vi.fn().mockResolvedValue({
-      ok: true,
-      json: async () => ({
-        written: ["compositions/effects/effect-ending-douyin-follow.html"],
-        block: {
-          name: "effect-ending-douyin-follow",
-          title: "Douyin Follow",
-          type: "hyperframes:block",
-          librarySection: "ending-effect",
-          dimensions: { width: 1920, height: 1080 },
-          duration: 3.2,
-        },
-      }),
-    } as Response);
-
-    let writtenIndex = "";
-    await addBlockToProject({
-      projectId: "project-1",
-      blockName: "effect-ending-douyin-follow",
-      activeCompPath: "index.html",
-      effectIntent: "ending",
-      timelineElements: [],
-      readProjectFile: async () =>
-        '<main data-composition-id="root" data-width="1080" data-height="1920" data-duration="6"></main>',
-      writeProjectFile: async (_path, content) => {
-        writtenIndex = content;
-      },
-      recordEdit: vi.fn(),
-      markStudioWrite: vi.fn(),
-      refreshFileTree: vi.fn(),
-      reloadPreview: vi.fn(),
-      showToast: vi.fn(),
-    });
-
-    expect(writtenIndex).toContain('data-width="1080"');
-    expect(writtenIndex).toContain('data-height="608"');
-    expect(writtenIndex).toContain('data-hf-edit-as-unit=""');
-    expect(writtenIndex).toContain('data-hf-content-fit="contain"');
-    expect(writtenIndex).toContain(
-      "left: 0px; top: 656px; width: 1080px; height: 608px",
-    );
-  });
-
   it("starts the preview reload before refreshing the file tree", async () => {
     globalThis.fetch = vi.fn().mockResolvedValue({
       ok: true,
       json: async () => ({
-        written: ["compositions/effects/focus-title.html"],
+        written: ["compositions/components/route-map.html"],
         block: {
-          name: "focus-title",
-          title: "Focus Title",
+          name: "route-map",
+          title: "Route Map",
           type: "hyperframes:block",
           duration: 3.2,
         },
@@ -252,9 +169,8 @@ describe("addBlockToProject", () => {
     const calls: string[] = [];
     await addBlockToProject({
       projectId: "project-1",
-      blockName: "focus-title",
+      blockName: "route-map",
       activeCompPath: "index.html",
-      effectIntent: "opening",
       timelineElements: [],
       readProjectFile: async () =>
         '<main data-composition-id="root" data-width="1920" data-height="1080" data-duration="6"></main>',
@@ -273,5 +189,90 @@ describe("addBlockToProject", () => {
     });
 
     expect(calls).toEqual(["mark-write", "mark-write", "preview", "file-tree"]);
+  });
+});
+
+describe("component instance variables", () => {
+  it("derives composition declarations from the registry manifest once", () => {
+    const source = "<!doctype html><html lang=\"en\"><head></head><body></body></html>";
+    const variables: RegistryVariable[] = [
+      {
+        id: "title",
+        label: "Title",
+        type: "string",
+        default: "Founder&#39;s route",
+        maxLength: 72,
+        update: "live",
+      },
+      {
+        id: "progress",
+        label: "Progress",
+        type: "number",
+        default: 76,
+        min: 0,
+        max: 100,
+      },
+    ];
+
+    const injected = injectRegistryVariableDeclarations(source, variables);
+    const declaration = injected.match(/data-composition-variables='([^']+)'/)?.[1];
+
+    expect(declaration).toBeTruthy();
+    expect(JSON.parse(declaration?.replaceAll("&amp;", "&") ?? "[]")).toEqual([
+      {
+        id: "title",
+        label: "Title",
+        type: "string",
+        default: "Founder&#39;s route",
+        maxLength: 72,
+      },
+      {
+        id: "progress",
+        label: "Progress",
+        type: "number",
+        default: 76,
+        min: 0,
+        max: 100,
+      },
+    ]);
+    expect(injectRegistryVariableDeclarations(injected, variables)).toBe(injected);
+  });
+
+  it("writes valid per-instance JSON without changing sibling instances", () => {
+    const source = [
+      '<main data-composition-id="root">',
+      '  <div id="route-map" data-composition-src="compositions/route-map.html"></div>',
+      '  <div id="route-map_2" data-composition-src="compositions/route-map.html"></div>',
+      "</main>",
+    ].join("\n");
+    const values = JSON.stringify({ title: "Founder's route", speed: 1.2 });
+    const serializedValues = values.replace("'", "&#39;");
+    const patched = applyPatchByTarget(
+      source,
+      { id: "route-map_2" },
+      {
+        type: "attribute",
+        property: "variable-values",
+        value: values,
+      },
+    );
+
+    expect(patched).toContain(
+      `id="route-map_2" data-composition-src="compositions/route-map.html" data-variable-values='${serializedValues}'`,
+    );
+    expect(patched).not.toContain(
+      'id="route-map" data-composition-src="compositions/route-map.html" data-variable-values',
+    );
+
+    const ordinaryAttribute = applyPatchByTarget(
+      source,
+      { id: "route-map" },
+      {
+        type: "attribute",
+        property: "title",
+        value: 'Say "hello"',
+      },
+    );
+    expect(ordinaryAttribute).toContain('data-title="Say &quot;hello&quot;"');
   });
 });

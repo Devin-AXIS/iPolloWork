@@ -1,7 +1,7 @@
 // fallow-ignore-file code-duplication
 import { memo, useState, useCallback, useRef, useMemo, useEffect } from "react";
 import { CaretDown } from "@phosphor-icons/react";
-import { MEDIA_EXT, FONT_EXT, isHtmlIllustrationAsset } from "../../utils/mediaTypes";
+import { MEDIA_EXT, FONT_EXT } from "../../utils/mediaTypes";
 import { copyTextToClipboard } from "../../utils/clipboard";
 import { usePlayerStore } from "../../player/store/playerStore";
 import { type MediaCategory, CATEGORY_LABELS, getCategory, FILTER_ORDER } from "./assetHelpers";
@@ -285,7 +285,7 @@ export const AssetsTab = memo(function AssetsTab({
   const elements = usePlayerStore((s) => s.elements);
   const usedPaths = useMemo(() => deriveUsedPaths(elements), [elements]);
   const allMediaAssets = useMemo(
-    () => assets.filter((a) => MEDIA_EXT.test(a) || FONT_EXT.test(a) || isHtmlIllustrationAsset(a)),
+    () => assets.filter((a) => MEDIA_EXT.test(a) || FONT_EXT.test(a)),
     [assets],
   );
   const mediaAssets = useMemo(() => {
@@ -307,7 +307,7 @@ export const AssetsTab = memo(function AssetsTab({
     });
   }, [allMediaAssets, searchQuery, manifest, usageFilter, usedPaths]);
   const categorized = useMemo(() => {
-    const groups: Record<MediaCategory, string[]> = { audio: [], illustrations: [], images: [], video: [], fonts: [] };
+    const groups: Record<MediaCategory, string[]> = { audio: [], images: [], video: [], fonts: [] };
     for (const a of mediaAssets) {
       const cat = getCategory(a);
       if (cat) groups[cat].push(a);
@@ -359,8 +359,12 @@ export const AssetsTab = memo(function AssetsTab({
       {dragOver && (
         <div className="pointer-events-none absolute inset-2 z-50 grid place-items-center rounded-lg border-2 border-dashed border-panel-accent/70 bg-panel-bg/90">
           <div className="flex flex-col items-center gap-1 text-center">
-            <span className="text-xs font-semibold text-panel-accent">{tx("Drop files to upload")}</span>
-            <span className="text-[10px] text-panel-text-3">{tx("Images, video, audio, and fonts")}</span>
+            <span className="text-xs font-semibold text-panel-accent">
+              {tx("Drop files to upload")}
+            </span>
+            <span className="text-[10px] text-panel-text-3">
+              {tx("Images, video, audio, and fonts")}
+            </span>
           </div>
         </div>
       )}
@@ -478,7 +482,9 @@ export const AssetsTab = memo(function AssetsTab({
               <polyline points="17 8 12 3 7 8" strokeLinecap="round" strokeLinejoin="round" />
               <line x1="12" y1="3" x2="12" y2="15" strokeLinecap="round" />
             </svg>
-            <p className="text-[10px] text-neutral-600 text-center">{tx("Drop media files here")}</p>
+            <p className="text-[10px] text-neutral-600 text-center">
+              {tx("Drop media files here")}
+            </p>
           </div>
         ) : (
           visibleCategories.map((cat) => (
@@ -527,7 +533,7 @@ export const AssetsTab = memo(function AssetsTab({
                     )}
                   />
                 ))}
-              {!collapsedCategories.has(cat) && (cat === "illustrations" || cat === "images" || cat === "video") && (
+              {!collapsedCategories.has(cat) && (cat === "images" || cat === "video") && (
                 <div className="grid grid-cols-2 gap-x-[10px] gap-y-[14px] px-4 pb-6 pt-[14px]">
                   {categorized[cat].map((a) => (
                     <VirtualAssetSlot

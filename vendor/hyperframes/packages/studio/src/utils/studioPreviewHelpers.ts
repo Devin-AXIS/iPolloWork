@@ -13,48 +13,6 @@ interface PreviewLocalPointer {
   viewport: DomEditViewport;
 }
 
-type EmbeddedHtmlAssetIframe = HTMLIFrameElement & {
-  __hfRescale?: () => void;
-  __hfResizeObserver?: { disconnect(): void };
-};
-
-/**
- * Upgrade both new and already-authored HTML illustration clips to the stable
- * iframe scaling channel. Older clips stored their fit scale in `transform`,
- * which preview/GSAP refreshes can replace. The individual `scale` longhand is
- * independent from that transform channel, so a resized 1600x900 illustration
- * remains fitted while editing and playing.
- */
-export function installEmbeddedHtmlAssetScaling(doc: Document): void {
-  const win = doc.defaultView;
-  const ResizeObserverCtor = win?.ResizeObserver;
-  if (!win || !ResizeObserverCtor) return;
-
-  for (const container of doc.querySelectorAll<HTMLElement>('[data-hf-asset-kind="html"]')) {
-    const iframe = container.querySelector<EmbeddedHtmlAssetIframe>(":scope > iframe");
-    if (!iframe) continue;
-
-    const rescale = () => {
-      const scale = String(
-        Math.max(0.001, Math.min(container.clientWidth / 1600, container.clientHeight / 900)),
-      );
-      if (win.CSS?.supports?.("scale", "1")) {
-        iframe.style.scale = scale;
-        iframe.style.transform = "none";
-      } else {
-        iframe.style.transform = `scale(${scale})`;
-      }
-    };
-
-    iframe.__hfResizeObserver?.disconnect();
-    iframe.__hfRescale = rescale;
-    rescale();
-    const observer = new ResizeObserverCtor(rescale);
-    observer.observe(container);
-    iframe.__hfResizeObserver = observer;
-  }
-}
-
 // An element is "full-bleed" when its box spans nearly the whole composition on
 // BOTH axes. Such elements (scene wrappers, backdrops) are excluded from canvas
 // click-picking so a click lands on inner content — or deselects on empty area —
@@ -83,17 +41,8 @@ export function coversComposition(
   );
 }
 
-function isEmbeddedHtmlAssetContainer(el: HTMLElement): boolean {
-  const source = (el.getAttribute("src") ?? "").replace(/\\/g, "/");
-  return (
-    el.getAttribute("data-hf-asset-kind") === "html" ||
-    (el.hasAttribute("data-hf-lock-aspect-ratio") && /\.html?$/i.test(source))
-  );
-}
-
 export function isFullBleedTarget(el: HTMLElement, viewport: DomEditViewport): boolean {
   if (FULL_BLEED_SELECTABLE_MEDIA_TAGS.has(el.tagName.toLowerCase())) return false;
-  if (isEmbeddedHtmlAssetContainer(el)) return false;
   return coversComposition(el.getBoundingClientRect(), viewport);
 }
 
@@ -208,14 +157,6 @@ function filterAuthorInteractiveTargets(
   return resolveAllVisualDomEditTargets(elements, { activeCompositionPath });
 }
 
-/** HTML illustration iframes are viewports; the surrounding clip owns geometry. */
-export function resolveEmbeddedHtmlAssetSelectionTarget(target: HTMLElement): HTMLElement {
-  if (target.tagName.toLowerCase() !== "iframe") return target;
-  const parent = target.parentElement;
-  if (!parent) return target;
-  return isEmbeddedHtmlAssetContainer(parent) ? parent : target;
-}
-
 // Animated group members can move outside their wrapper's static layout box, so
 // the empty space inside a group's *visual* bounds (the member-union the overlay
 // draws) doesn't hit-test to the group via elementsFromPoint. Recover it: if the
@@ -277,7 +218,7 @@ export function getPreviewTargetFromPointer(
       const candidates = filterAuthorInteractiveTargets(elements, activeCompositionPath);
       const visualTarget =
         candidates.find((el) => !isFullBleedTarget(el, localPointer.viewport)) ?? null;
-      if (visualTarget) return resolveEmbeddedHtmlAssetSelectionTarget(visualTarget);
+      if (visualTarget) return visualTarget;
     }
 
     // Belt-and-suspenders: elementsFromPoint is universally supported in the
@@ -296,14 +237,14 @@ export function getPreviewTargetFromPointer(
       !hasAuthorPointerEventsNone(groupHit) &&
       getDomLayerPatchTarget(groupHit, activeCompositionPath)
     )
-      return resolveEmbeddedHtmlAssetSelectionTarget(groupHit);
+      return groupHit;
 
     const fallback = getEventTargetElement(doc.elementFromPoint(localPointer.x, localPointer.y));
     if (!fallback || !getDomLayerPatchTarget(fallback, activeCompositionPath)) return null;
     if (hasAuthorPointerEventsNone(fallback)) return null;
     if (!isElementComputedVisible(fallback)) return null;
     if (isFullBleedTarget(fallback, localPointer.viewport)) return null;
-    return resolveEmbeddedHtmlAssetSelectionTarget(fallback);
+    return fallback;
   } finally {
     removePointerEventsOverride(overrideStyle);
   }

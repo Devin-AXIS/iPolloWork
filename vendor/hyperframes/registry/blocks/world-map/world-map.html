@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-composition-variables='[{"id":"title","type":"string","label":"Title","default":"Global GDP per Capita","maxLength":72},{"id":"values","type":"string","label":"Country data","default":"United States:85373,China:13136,India:2731,Germany:54291,Japan:33950","maxLength":220},{"id":"highlight","type":"string","label":"Highlight","default":"United States","maxLength":40},{"id":"source","type":"string","label":"Source","default":"Source: International Monetary Fund","maxLength":72}]'>
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=1920, height=1080" />
@@ -149,6 +149,10 @@
         font-weight: 600;
         margin-left: 6px;
       }
+      #world-map { background: var(--ipw-color-bg, #0f172a); color: var(--ipw-color-text, #f0fdfa); font-family: var(--ipw-font-body, Inter, sans-serif); }
+      #world-map .headline { color: var(--ipw-color-text, #f0fdfa); font-family: var(--ipw-font-display, Inter, sans-serif); }
+      #world-map .subtitle, #world-map .legend-labels, #world-map .source { color: var(--ipw-color-muted, #94a3b8); }
+      #world-map .country-path, #world-map .graticule { stroke: var(--ipw-color-border, #1e293b); }
     </style>
   </head>
   <body>
@@ -160,7 +164,7 @@
       data-start="0"
       data-duration="14"
     >
-      <h1 class="headline">Global GDP per Capita</h1>
+      <h1 class="headline" data-ipw-ai-slot="title">Global GDP per Capita</h1>
       <p class="subtitle">Nominal GDP per capita, 2024 IMF estimates</p>
 
       <div class="map-container">
@@ -180,13 +184,29 @@
         </div>
       </div>
 
-      <p class="source">Source: International Monetary Fund</p>
+      <p class="source" data-ipw-ai-slot="source">Source: International Monetary Fund</p>
 
       <div class="tooltip"></div>
     </div>
 
     <script>
       (function () {
+        var root = document.querySelector("#world-map");
+        var values = Object.assign(
+          {
+            title: "Global GDP per Capita",
+            values: "United States:85373,China:13136,India:2731,Germany:54291,Japan:33950",
+            highlight: "United States",
+            source: "Source: International Monetary Fund",
+          },
+          window.__hyperframes && window.__hyperframes.getVariables
+            ? window.__hyperframes.getVariables()
+            : {},
+        );
+        root.querySelector(".headline").textContent = String(values.title);
+        root.querySelector(".source").textContent = String(values.source);
+        var themeAccent =
+          getComputedStyle(root).getPropertyValue("--ipw-color-primary").trim() || "#22d3ee";
         /* ── GDP per capita data (2024 IMF estimates, USD) ── */
         /* Keys are ISO 3166-1 numeric codes as strings (3-digit, zero-padded) */
         var gdpData = {
@@ -221,6 +241,18 @@
           586: { name: "Pakistan", gdp: 1658 },
           "050": { name: "Bangladesh", gdp: 2688 },
         };
+        String(values.values)
+          .split(",")
+          .forEach(function (entry) {
+            var separator = entry.lastIndexOf(":");
+            var name = entry.slice(0, separator).trim();
+            var amount = Number(entry.slice(separator + 1));
+            var code = Object.keys(gdpData).find(function (key) { return gdpData[key].name === name; });
+            if (code && Number.isFinite(amount)) gdpData[code].gdp = amount;
+          });
+        var highlightedCode = Object.keys(gdpData).find(function (key) {
+          return gdpData[key].name === String(values.highlight).trim();
+        });
 
         /* Top 5 GDP countries for highlight pulse */
         var top5Codes = ["756", "578", "840", "036", "752"];
@@ -295,6 +327,7 @@
               .attr("fill", function (d) {
                 var code = String(d.id).padStart(3, "0");
                 if (gdpData[code]) {
+                  if (code === highlightedCode) return themeAccent;
                   return gdpToColor(gdpData[code].gdp);
                 }
                 return defaultFill;

@@ -1,0 +1,21 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "brand-headline",
+  "version": "1.0.0",
+  "type": "hyperframes:block",
+  "title": "Brand Headline",
+  "description": "A theme-linked opening statement with an editorial frame and a decisive brand lockup.",
+  "tags": ["component", "intro", "headline", "brand", "theme"],
+  "author": "iPolloWork",
+  "license": "Apache-2.0",
+  "visualComponent": { "version": 1, "category": "intro", "surfaces": ["video"], "themeMode": "inherit", "ai": { "slots": ["kicker", "headline", "supporting"], "instructions": "AI may rewrite the message, preserve the short three-line hierarchy, and reposition the lockup without changing the seekable opening timeline." } },
+  "dimensions": { "width": 1920, "height": 1080 },
+  "duration": 8,
+  "engine": { "name": "gsap", "version": "3.13.0", "seekable": true },
+  "files": [{ "path": "brand-headline.html", "target": "compositions/brand-headline.html", "type": "hyperframes:composition" }],
+  "variables": [
+    { "id": "kicker", "label": "Kicker", "type": "string", "default": "A clearer way forward", "maxLength": 48, "update": "live" },
+    { "id": "headline", "label": "Headline", "type": "string", "default": "Build the work that moves people.", "maxLength": 80, "update": "live" },
+    { "id": "supporting", "label": "Supporting line", "type": "string", "default": "One focused idea. Made visible.", "maxLength": 96, "update": "live" }
+  ]
+}

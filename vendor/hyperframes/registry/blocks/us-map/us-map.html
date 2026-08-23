@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-composition-variables='[{"id":"title","type":"string","label":"Title","default":"Population Density by State","maxLength":72},{"id":"values","type":"string","label":"State data","default":"CA:253.9,TX:112.8,FL:410.5,NY:415.3,NJ:1263","maxLength":180},{"id":"highlight","type":"string","label":"Highlight","default":"NJ","maxLength":4},{"id":"source","type":"string","label":"Source","default":"Source: U.S. Census Bureau","maxLength":64}]'>
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=1920, height=1080" />
@@ -40,7 +40,7 @@
     >
       <div class="map-container">
         <div class="header">
-          <h1 class="headline">Population Density by State</h1>
+          <h1 class="headline" data-ipw-ai-slot="title">Population Density by State</h1>
           <p class="subtitle">Residents per square mile, 2024 Census estimates</p>
         </div>
 
@@ -55,7 +55,7 @@
           <span class="legend-label legend-high">High</span>
         </div>
 
-        <div class="source">Source: U.S. Census Bureau</div>
+        <div class="source" data-ipw-ai-slot="source">Source: U.S. Census Bureau</div>
       </div>
 
       <style>
@@ -154,10 +154,26 @@
           color: #475569;
           opacity: 0;
         }
+        #us-map { background: var(--ipw-color-bg, #0f172a); color: var(--ipw-color-text, #e2e8f0); font-family: var(--ipw-font-body, Inter, sans-serif); }
+        #us-map .headline { color: var(--ipw-color-text, #f8fafc); font-family: var(--ipw-font-display, Inter, sans-serif); }
+        #us-map .subtitle, #us-map .legend-labels, #us-map .source { color: var(--ipw-color-muted, #94a3b8); }
+        #us-map .state-path { stroke: var(--ipw-color-border, #1e293b); }
       </style>
 
       <script>
         (function () {
+          const root = document.querySelector("#us-map");
+          const values = {
+            title: "Population Density by State",
+            values: "CA:253.9,TX:112.8,FL:410.5,NY:415.3,NJ:1263",
+            highlight: "NJ",
+            source: "Source: U.S. Census Bureau",
+            ...(window.__hyperframes?.getVariables?.() ?? {}),
+          };
+          root.querySelector(".headline").textContent = String(values.title);
+          root.querySelector(".source").textContent = String(values.source);
+          const themeAccent =
+            getComputedStyle(root).getPropertyValue("--ipw-color-primary").trim() || "#2563eb";
           const US_TOPO_URL = "https://cdn.jsdelivr.net/npm/us-atlas@3/states-10m.json";
 
           const stateData = {
@@ -212,6 +228,15 @@
             55: { name: "Wisconsin", abbr: "WI", density: 108.8 },
             56: { name: "Wyoming", abbr: "WY", density: 5.8 },
           };
+          String(values.values)
+            .split(",")
+            .forEach((entry) => {
+              const separator = entry.lastIndexOf(":");
+              const abbr = entry.slice(0, separator).trim().toUpperCase();
+              const density = Number(entry.slice(separator + 1));
+              const match = Object.values(stateData).find((state) => state.abbr === abbr);
+              if (match && Number.isFinite(density)) match.density = density;
+            });
 
           const maxDensity = 500;
 
@@ -272,6 +297,10 @@
                 el.setAttribute("data-state", info.abbr);
                 el.setAttribute("data-density", info.density);
                 el.style.fill = densityToColor(info.density);
+                if (info.abbr === String(values.highlight).trim().toUpperCase()) {
+                  el.style.fill = themeAccent;
+                  el.style.strokeWidth = "4";
+                }
                 statesGroup.appendChild(el);
 
                 const centroid = path.centroid(feature);
