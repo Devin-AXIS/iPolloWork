@@ -35,7 +35,6 @@ const DESIGN_HTML_THEME_TOKEN_LINES = [
   "- The current editable HTML file is the structural source of truth. Read it before editing and update its existing DOM and CSS in place.",
   "- Manual Studio edits are user-owned source state. Preserve `data-hf-id`, `data-hf-studio-*`, `--hf-studio-*`, inline geometry/transform values, and existing GSAP position/scale/rotation writes unless the request explicitly changes that exact element and property; never rebuild from an earlier or cached HTML snapshot.",
   "- Preserve the existing root classes, section hierarchy and order, template-specific class names, component geometry, artwork, responsive behavior, animation, and timing unless the user explicitly requests a structural redesign.",
-  "- For targeted or follow-up edits, preserve unrelated root classes, sections, template-specific class names, component geometry, artwork, responsive behavior, animation, and timing. The initial confirmed brief may require a new content structure.",
   "- Replace content inside the selected template; never replace it with a generic hero, statistics row, feature cards, project grid, dashboard, or another standard scaffold.",
   "- Preserve the existing HTML skeleton and component structure when applying or adapting a design system; theme changes must flow through CSS custom properties, not a rewritten layout.",
   "- Use the iPolloWork HTML theme token contract for colors, typography, spacing, sizing, radii, shadows, cards, buttons, and backgrounds:",
@@ -46,7 +45,6 @@ const DESIGN_HTML_THEME_TOKEN_LINES = [
   "- In slide decks, every `[data-ipw-slide]`, `.slide`, and `.slide-frame` uses the shared theme canvas and text tokens by default. Do not assign a separate hardcoded or primary-color background to cover/title/closing slides unless the user explicitly requests alternating slide treatments.",
   "- Before finishing a generated Design HTML file, scan its CSS and inline `style` attributes. Themeable declarations must resolve through `var(--ipw-...)`; hardcoded colors are allowed only for non-theme artwork, photographs, logos, or data whose literal color carries meaning.",
   "- If a needed visual role is missing, add a new semantic `--ipw-*` token to `design-tokens.css` first, then reference it from HTML/CSS. Do not reference OpenDesign source token names directly in generated HTML.",
-  "- On the initial brief application, first derive the artifact's information architecture, narrative, page count, or screen list from the brief. Treat the current template sections as reusable patterns: add, remove, reorder, repeat, or recombine them when the content requires it while preserving the visual, editor, export, and runtime contracts above.",
 ];
 
 export function designHtmlThemeSystemContext(input?: {
