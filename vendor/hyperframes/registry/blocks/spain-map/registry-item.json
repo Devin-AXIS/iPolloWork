@@ -8,7 +8,7 @@
   "tags": ["component", "data", "map", "geography", "spain", "europe", "choropleth", "theme"],
   "version": "1.0.0", "author": "iPolloWork", "license": "Apache-2.0",
   "source": { "provider": "HyperFrames", "label": "Spain Map", "url": "https://www.hyperframes.dev/catalog/blocks/spain-map" },
-  "visualComponent": { "version": 1, "category": "maps", "surfaces": ["video"], "themeMode": "inherit", "ai": { "slots": ["title", "values", "highlight", "source"], "instructions": "AI may replace regional values or add a short annotation, but must retain valid region abbreviations and map legibility." } },
+  "visualComponent": { "version": 1, "category": "maps", "surfaces": ["video"], "themeMode": "inherit", "data": { "version": 1, "kind": "region-value", "mode": "override", "rowId": "region", "binding": { "variable": "values", "encoding": "key-value-list" }, "columns": [{ "id": "region", "label": "Region code", "labelZh": "地区代码", "type": "string", "role": "id", "required": true }, { "id": "value", "label": "GDP per capita", "labelZh": "人均 GDP", "type": "number", "role": "value", "required": true }], "minRows": 1, "maxRows": 19, "highlightVariable": "highlight", "valueFormat": { "unit": "EUR", "precision": 0, "notation": "currency", "currency": "EUR" } }, "ai": { "slots": ["title", "values", "highlight", "source"], "instructions": "AI may replace regional values or add a short annotation, but must retain valid region abbreviations and map legibility." } },
   "dimensions": {
     "width": 1920,
     "height": 1080
@@ -16,7 +16,7 @@
   "duration": 12,
   "variables": [
     { "id": "title", "label": "Title", "type": "string", "default": "PIB per cápita por Comunidad Autónoma", "maxLength": 76, "update": "live" },
-    { "id": "values", "label": "Regional data", "description": "Comma-separated ABBR:Value pairs.", "type": "string", "default": "MAD:38100,PVA:36800,NAV:35200,CAT:33700,AND:20200", "maxLength": 180, "update": "live" },
+    { "id": "values", "label": "Regional data", "description": "Regional GDP overrides, edited as structured rows.", "type": "string", "default": "MAD:38100,PVA:36800,NAV:35200,CAT:33700,AND:20200", "maxLength": 2000, "update": "live" },
     { "id": "highlight", "label": "Highlight", "type": "string", "default": "MAD", "maxLength": 8, "update": "live" },
     { "id": "source", "label": "Source", "type": "string", "default": "Fuente: Instituto Nacional de Estadística", "maxLength": 72, "update": "live" }
   ],

@@ -30,6 +30,29 @@ export type {
   BlockParam,
 } from "./types.js";
 
+export type {
+  ParsedVisualComponentData,
+  RegistryVisualComponentDataBinding,
+  RegistryVisualComponentDataColumn,
+  RegistryVisualComponentDataColumnRole,
+  RegistryVisualComponentDataColumnType,
+  RegistryVisualComponentDataContract,
+  RegistryVisualComponentDataEncoding,
+  RegistryVisualComponentDataKind,
+  RegistryVisualComponentValueFormat,
+  VisualComponentDataCell,
+  VisualComponentDataDocument,
+  VisualComponentDataIssue,
+  VisualComponentDataRow,
+} from "./componentData.js";
+
+export {
+  createVisualComponentDataRow,
+  formatVisualComponentDataForAi,
+  parseVisualComponentData,
+  serializeVisualComponentData,
+} from "./componentData.js";
+
 export {
   ITEM_TYPES,
   FILE_TYPES,

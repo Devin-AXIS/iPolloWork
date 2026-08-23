@@ -26,6 +26,7 @@ const context: DesignAiSelectionContext = {
     src: "",
     alt: "",
     styles: { color: "black" },
+    semanticContext: '{"kind":"region-value","data":{"rows":[{"region":"CA","value":321}]}}',
   },
 };
 
@@ -61,6 +62,8 @@ describe("Design AI selections", () => {
     expect(instruction).toContain("body > h1:nth-of-type(1)");
     expect(instruction).toContain("Do not modify any other element");
     expect(instruction).toContain("If the locator no longer resolves");
+    expect(instruction).toContain("Selected element semantic context:");
+    expect(instruction).toContain('"region":"CA"');
   });
 
   test("keeps the active visual system while allowing content-led initial structure", () => {

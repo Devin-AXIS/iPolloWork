@@ -83,6 +83,88 @@
           }
         },
         "themeMode": { "const": "inherit" },
+        "data": {
+          "type": "object",
+          "description": "Normalized AI-facing row contract with a storage binding for this component.",
+          "required": ["version", "kind", "mode", "rowId", "binding", "columns"],
+          "additionalProperties": false,
+          "properties": {
+            "version": { "const": 1 },
+            "kind": {
+              "type": "string",
+              "enum": [
+                "category-value",
+                "region-value",
+                "point-value",
+                "route-value",
+                "series-value"
+              ]
+            },
+            "mode": { "type": "string", "enum": ["replace", "override"] },
+            "rowId": {
+              "type": "string",
+              "pattern": "^[A-Za-z_][A-Za-z0-9_-]*$"
+            },
+            "binding": {
+              "type": "object",
+              "required": ["variable", "encoding"],
+              "additionalProperties": false,
+              "properties": {
+                "variable": {
+                  "type": "string",
+                  "pattern": "^[A-Za-z_][A-Za-z0-9_-]*$"
+                },
+                "encoding": {
+                  "type": "string",
+                  "enum": ["json", "key-value-list", "route-value-list"]
+                }
+              }
+            },
+            "columns": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 8,
+              "items": {
+                "type": "object",
+                "required": ["id", "label", "type", "role"],
+                "additionalProperties": false,
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "pattern": "^[A-Za-z_][A-Za-z0-9_-]*$"
+                  },
+                  "label": { "type": "string", "minLength": 1 },
+                  "labelZh": { "type": "string", "minLength": 1 },
+                  "type": { "type": "string", "enum": ["string", "number"] },
+                  "role": {
+                    "type": "string",
+                    "enum": ["id", "label", "value", "source", "target"]
+                  },
+                  "required": { "type": "boolean" }
+                }
+              }
+            },
+            "minRows": { "type": "integer", "minimum": 0 },
+            "maxRows": { "type": "integer", "minimum": 1 },
+            "highlightVariable": {
+              "type": "string",
+              "pattern": "^[A-Za-z_][A-Za-z0-9_-]*$"
+            },
+            "valueFormat": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "unit": { "type": "string" },
+                "precision": { "type": "integer", "minimum": 0, "maximum": 12 },
+                "notation": {
+                  "type": "string",
+                  "enum": ["standard", "compact", "percent", "currency"]
+                },
+                "currency": { "type": "string", "pattern": "^[A-Z]{3}$" }
+              }
+            }
+          }
+        },
         "ai": {
           "type": "object",
           "required": ["slots"],

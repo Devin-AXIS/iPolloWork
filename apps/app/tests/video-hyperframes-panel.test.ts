@@ -589,6 +589,7 @@ describe("HyperFrames Video Studio", () => {
     expect(panelSource).toContain("event.source !== studioFrameRef.current?.contentWindow");
     expect(panelSource).toContain('event.data?.type !== "ipollowork:hyperframes:ask-ai-selection"');
     expect(panelSource).toContain("resolveVideoAiSelectionTarget(event.data.target)");
+    expect(panelSource).toContain("event.data.semanticContext.slice(0, 20_000)");
     expect(panelSource).toContain("onExpandedChange?.(false)");
     expect(panelSource).toContain("video-ai-${crypto.randomUUID()}");
     expect(sessionPageSource).toContain("onAskAi={handleDesignAskAi}");

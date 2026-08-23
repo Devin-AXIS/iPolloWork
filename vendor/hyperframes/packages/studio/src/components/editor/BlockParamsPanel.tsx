@@ -1,6 +1,15 @@
-import { memo, useCallback, useState, type ReactNode } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import {
+  createVisualComponentDataRow,
+  parseVisualComponentData,
+  serializeVisualComponentData,
+} from "@hyperframes/core/registry";
 import type {
   BlockParam,
+  RegistryVisualComponentDataColumn,
+  RegistryVisualComponentDataContract,
+  VisualComponentDataDocument,
+  VisualComponentDataRow,
   RegistryVariable,
   RegistryVisualComponent,
 } from "@hyperframes/core/registry";
@@ -103,16 +112,39 @@ export const BlockParamsPanel = memo(function BlockParamsPanel({
 
         <DesignPanelInputProvider ui="flat" section="component-variables">
           <div className="space-y-3">
-            {variables.map((variable) => (
-              <VariableFormField
-                key={variable.id}
-                variable={variable}
-                value={variableValues[variable.id] ?? variable.default}
-                saving={savingVariable === variable.id}
-                locale={locale}
-                onCommit={(value) => handleVariableCommit(variable.id, value)}
-              />
-            ))}
+            {variables.map((variable) => {
+              const dataContract = visualComponent?.data;
+              if (dataContract?.binding.variable === variable.id) {
+                return (
+                  <ComponentDataFormField
+                    key={variable.id}
+                    contract={dataContract}
+                    value={String(variableValues[variable.id] ?? variable.default)}
+                    saving={savingVariable === variable.id}
+                    locale={locale}
+                    onCommit={(value) => handleVariableCommit(variable.id, value)}
+                  />
+                );
+              }
+              const dataValue = dataContract
+                ? String(
+                    variableValues[dataContract.binding.variable] ??
+                      variables.find((candidate) => candidate.id === dataContract.binding.variable)
+                        ?.default ??
+                      "",
+                  )
+                : "";
+              return (
+                <VariableFormField
+                  key={variable.id}
+                  variable={createDataHighlightVariable(variable, dataContract, dataValue)}
+                  value={variableValues[variable.id] ?? variable.default}
+                  saving={savingVariable === variable.id}
+                  locale={locale}
+                  onCommit={(value) => handleVariableCommit(variable.id, value)}
+                />
+              );
+            })}
           </div>
         </DesignPanelInputProvider>
 
@@ -153,6 +185,185 @@ export const BlockParamsPanel = memo(function BlockParamsPanel({
     </div>
   );
 });
+
+function ComponentDataFormField({
+  contract,
+  value,
+  saving,
+  locale,
+  onCommit,
+}: {
+  contract: RegistryVisualComponentDataContract;
+  value: string;
+  saving: boolean;
+  locale: "en" | "zh";
+  onCommit: (value: string) => void;
+}) {
+  const parsed = useMemo(() => parseVisualComponentData(contract, value), [contract, value]);
+  const [rows, setRows] = useState<VisualComponentDataRow[]>(parsed.document.rows);
+  const rowsRef = useRef(parsed.document.rows);
+
+  useEffect(() => {
+    rowsRef.current = parsed.document.rows;
+    setRows(parsed.document.rows);
+  }, [parsed.document.rows]);
+
+  const currentDocument: VisualComponentDataDocument = {
+    version: 1,
+    kind: contract.kind,
+    rows,
+  };
+  const currentValue = serializeVisualComponentData(contract, currentDocument);
+  const issues = parseVisualComponentData(contract, currentValue).issues;
+
+  const commitRows = (nextRows: VisualComponentDataRow[]) => {
+    rowsRef.current = nextRows;
+    setRows(nextRows);
+    onCommit(
+      serializeVisualComponentData(contract, {
+        version: 1,
+        kind: contract.kind,
+        rows: nextRows,
+      }),
+    );
+  };
+
+  const updateCell = (
+    rowIndex: number,
+    column: RegistryVisualComponentDataColumn,
+    rawValue: string,
+  ) => {
+    setRows((currentRows) => {
+      const nextRows = currentRows.map((row, index) =>
+        index === rowIndex
+          ? {
+              ...row,
+              [column.id]:
+                column.type === "number" && rawValue !== "" && Number.isFinite(Number(rawValue))
+                  ? Number(rawValue)
+                  : rawValue,
+            }
+          : row,
+      );
+      rowsRef.current = nextRows;
+      return nextRows;
+    });
+  };
+
+  return (
+    <section
+      className="space-y-2 rounded-lg border border-panel-border bg-panel-input/35 p-2.5"
+      data-component-data-contract={contract.kind}
+    >
+      <div className="flex items-center justify-between gap-2">
+        <div>
+          <div className="text-[10px] font-semibold text-panel-text-1">
+            {locale === "zh"
+              ? contract.mode === "override"
+                ? "数据覆盖"
+                : "结构化数据"
+              : contract.mode === "override"
+                ? "Data overrides"
+                : "Structured data"}
+          </div>
+          <div className="mt-0.5 text-[8px] uppercase tracking-[0.1em] text-[#2abec3]">
+            {locale === "zh" ? "AI 可读取 · 实时校验" : "AI-readable · validated"}
+          </div>
+        </div>
+        <span className="rounded-full bg-panel-bg px-2 py-1 text-[8px] text-panel-text-3">
+          {rows.length} {locale === "zh" ? "行" : "rows"}
+        </span>
+      </div>
+
+      <div className="space-y-2">
+        {rows.map((row, rowIndex) => (
+          <div
+            key={`${String(row[contract.rowId] ?? "row")}-${rowIndex}`}
+            className="rounded-md border border-panel-border bg-panel-bg/75 p-2"
+            data-component-data-row={rowIndex}
+          >
+            <div className="grid gap-2">
+              {contract.columns.map((column) => (
+                <label key={column.id} className="grid gap-1">
+                  <span className="text-[8px] font-medium text-panel-text-3">
+                    {locale === "zh" ? (column.labelZh ?? column.label) : column.label}
+                  </span>
+                  <input
+                    type={column.type === "number" ? "number" : "text"}
+                    value={row[column.id] ?? ""}
+                    disabled={saving}
+                    aria-label={`${locale === "zh" ? (column.labelZh ?? column.label) : column.label} ${rowIndex + 1}`}
+                    onChange={(event) => updateCell(rowIndex, column, event.target.value)}
+                    onBlur={() => commitRows(rowsRef.current)}
+                    className="h-7 min-w-0 rounded-md border border-panel-border bg-panel-input px-2 text-[10px] text-panel-text-1 outline-none transition-colors focus:border-[#1FBAC0]/60 disabled:opacity-60"
+                  />
+                </label>
+              ))}
+            </div>
+            <div className="mt-2 flex justify-end">
+              <button
+                type="button"
+                disabled={saving || rows.length <= (contract.minRows ?? 0)}
+                onClick={() => commitRows(rows.filter((_, index) => index !== rowIndex))}
+                className="rounded px-1.5 py-1 text-[8px] text-panel-text-3 transition-colors hover:bg-panel-input hover:text-panel-text-1 disabled:opacity-35"
+                aria-label={`${locale === "zh" ? "删除数据行" : "Remove data row"} ${rowIndex + 1}`}
+              >
+                {locale === "zh" ? "删除" : "Remove"}
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <button
+        type="button"
+        disabled={saving || (contract.maxRows !== undefined && rows.length >= contract.maxRows)}
+        onClick={() => commitRows([...rows, createVisualComponentDataRow(contract)])}
+        className="h-7 w-full rounded-md border border-dashed border-panel-border text-[9px] font-medium text-panel-text-3 transition-colors hover:border-[#1FBAC0]/45 hover:text-[#2abec3] disabled:opacity-35"
+      >
+        + {locale === "zh" ? "添加数据行" : "Add data row"}
+      </button>
+
+      {issues.length ? (
+        <p className="text-[8px] leading-4 text-red-500" role="alert">
+          {issues[0]?.message}
+        </p>
+      ) : null}
+      <div className="text-right text-[8px] uppercase text-panel-text-4">
+        {saving ? (locale === "zh" ? "保存中" : "Saving") : contract.kind}
+      </div>
+    </section>
+  );
+}
+
+function createDataHighlightVariable(
+  variable: RegistryVariable,
+  contract: RegistryVisualComponentDataContract | undefined,
+  value: string,
+): RegistryVariable {
+  if (!contract?.highlightVariable || variable.id !== contract.highlightVariable) return variable;
+  const rows = parseVisualComponentData(contract, value).document.rows;
+  const sourceColumn = contract.columns.find((column) => column.role === "source");
+  const targetColumn = contract.columns.find((column) => column.role === "target");
+  const labelColumn = contract.columns.find((column) => ["label", "id"].includes(column.role));
+  const options = rows.flatMap((row) => {
+    const rowId = row[contract.rowId];
+    if (rowId === undefined || rowId === "") return [];
+    const label =
+      sourceColumn && targetColumn
+        ? `${row[sourceColumn.id] ?? ""} → ${row[targetColumn.id] ?? ""}`
+        : String(labelColumn ? (row[labelColumn.id] ?? rowId) : rowId);
+    return [{ label, value: String(rowId) }];
+  });
+  if (!options.length) return variable;
+  return {
+    id: variable.id,
+    label: variable.label,
+    type: "enum",
+    default: String(variable.default),
+    options,
+  };
+}
 
 function VariableFormField({
   variable,

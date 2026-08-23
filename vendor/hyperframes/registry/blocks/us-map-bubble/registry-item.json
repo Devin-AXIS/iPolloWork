@@ -8,7 +8,7 @@
   "tags": ["component", "data", "map", "geography", "usa", "bubble", "cities", "theme"],
   "version": "1.0.0", "author": "iPolloWork", "license": "Apache-2.0",
   "source": { "provider": "HyperFrames", "label": "US Bubble Map", "url": "https://www.hyperframes.dev/catalog/blocks/us-map-bubble" },
-  "visualComponent": { "version": 1, "category": "maps", "surfaces": ["video"], "themeMode": "inherit", "ai": { "slots": ["title", "cities", "highlight", "source"], "instructions": "AI may replace city values or annotate the highlighted city while retaining valid city names and proportional bubbles." } },
+  "visualComponent": { "version": 1, "category": "maps", "surfaces": ["video"], "themeMode": "inherit", "data": { "version": 1, "kind": "point-value", "mode": "override", "rowId": "city", "binding": { "variable": "cities", "encoding": "key-value-list" }, "columns": [{ "id": "city", "label": "City", "labelZh": "城市", "type": "string", "role": "id", "required": true }, { "id": "value", "label": "Population", "labelZh": "人口", "type": "number", "role": "value", "required": true }], "minRows": 1, "maxRows": 100, "highlightVariable": "highlight", "valueFormat": { "unit": "people", "precision": 0, "notation": "compact" } }, "ai": { "slots": ["title", "cities", "highlight", "source"], "instructions": "AI may replace city values or annotate the highlighted city while retaining valid city names and proportional bubbles." } },
   "dimensions": {
     "width": 1920,
     "height": 1080
@@ -16,7 +16,7 @@
   "duration": 12,
   "variables": [
     { "id": "title", "label": "Title", "type": "string", "default": "Top US Cities by Population", "maxLength": 72, "update": "live" },
-    { "id": "cities", "label": "City data", "description": "Comma-separated City:Value pairs.", "type": "string", "default": "New York:8300000,Los Angeles:3900000,Chicago:2700000,Houston:2300000", "maxLength": 220, "update": "live" },
+    { "id": "cities", "label": "City data", "description": "City population overrides, edited as structured rows.", "type": "string", "default": "New York:8300000,Los Angeles:3900000,Chicago:2700000,Houston:2300000", "maxLength": 2000, "update": "live" },
     { "id": "highlight", "label": "Highlight", "type": "string", "default": "New York", "maxLength": 32, "update": "live" },
     { "id": "source", "label": "Source", "type": "string", "default": "Source: U.S. Census Bureau, 2024", "maxLength": 72, "update": "live" }
   ],

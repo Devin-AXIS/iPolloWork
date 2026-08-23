@@ -576,6 +576,9 @@ export function VideoPanel({ title, sessionId, workspaceRoot, client, workspaceI
         const text = typeof event.data.text === "string" ? event.data.text.trim() : "";
         const src = typeof event.data.src === "string" ? event.data.src : "";
         const alt = typeof event.data.alt === "string" ? event.data.alt : "";
+        const semanticContext = typeof event.data.semanticContext === "string"
+          ? event.data.semanticContext.slice(0, 20_000)
+          : undefined;
         const summary = (text || alt || src || target.locator).replace(/\s+/g, " ").trim().slice(0, 80);
         const styles = event.data.styles && typeof event.data.styles === "object"
           ? Object.fromEntries(Object.entries(event.data.styles).filter((entry): entry is [string, string] => typeof entry[0] === "string" && typeof entry[1] === "string"))
@@ -595,6 +598,7 @@ export function VideoPanel({ title, sessionId, workspaceRoot, client, workspaceI
             src,
             alt,
             styles,
+            semanticContext,
           },
         });
         onExpandedChange?.(false);

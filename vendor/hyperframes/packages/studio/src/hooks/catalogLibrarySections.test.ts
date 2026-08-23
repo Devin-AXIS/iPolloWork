@@ -2,6 +2,11 @@ import { readdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
+import {
+  formatVisualComponentDataForAi,
+  parseVisualComponentData,
+  type RegistryVisualComponentDataContract,
+} from "@hyperframes/core/registry";
 
 const REGISTRY_ROOT = fileURLToPath(new URL("../../../../registry", import.meta.url));
 const REMOVED_EFFECT_SECTIONS = ["opening-effect", "ending-effect", "transition-effect"];
@@ -57,6 +62,15 @@ const OFFICIAL_DATA_COMPONENTS = [
   ["world-map", "maps"],
 ] as const;
 
+const STRUCTURED_MAP_COMPONENTS = [
+  "spain-map",
+  "us-map",
+  "us-map-bubble",
+  "us-map-flow",
+  "us-map-hex",
+  "world-map",
+] as const;
+
 interface MotionManifest {
   name: string;
   librarySection?: string;
@@ -69,6 +83,7 @@ interface MotionManifest {
     category: string;
     surfaces: string[];
     themeMode: string;
+    data?: RegistryVisualComponentDataContract;
     ai?: { slots: string[] };
   };
   variables?: Array<{ id: string; default: string | number | boolean }>;
@@ -166,9 +181,11 @@ describe("component catalog registry", () => {
       expect(manifest.visualComponent?.ai?.slots).toEqual(
         manifest.variables?.map((variable) => variable.id),
       );
-      expect(Array.isArray(declarations) ? declarations.filter(isVariableEntry).map((variable) => variable.id) : []).toEqual(
-        manifest.variables?.map((variable) => variable.id),
-      );
+      expect(
+        Array.isArray(declarations)
+          ? declarations.filter(isVariableEntry).map((variable) => variable.id)
+          : [],
+      ).toEqual(manifest.variables?.map((variable) => variable.id));
       expect(html).toMatch(/gsap\.timeline\(\{\s*paused:\s*true/);
     }
   });
@@ -198,6 +215,32 @@ describe("component catalog registry", () => {
       expect(html).toContain("window.__hyperframes");
       expect(html).toContain("var(--ipw-color-");
       expect(html).toMatch(/gsap\.timeline\(\{\s*paused:\s*true/);
+    }
+  });
+
+  it("gives data-driven maps a validated semantic contract for forms and AI", () => {
+    for (const name of STRUCTURED_MAP_COMPONENTS) {
+      const manifest = parseManifest(join(REGISTRY_ROOT, "blocks", name, "registry-item.json"));
+      const contract = manifest.visualComponent?.data;
+      expect(contract).toBeDefined();
+      if (!contract) continue;
+
+      const variable = manifest.variables?.find(
+        (candidate) => candidate.id === contract.binding.variable,
+      );
+      const highlightVariable = manifest.variables?.find(
+        (candidate) => candidate.id === contract.highlightVariable,
+      );
+      expect(typeof variable?.default).toBe("string");
+      expect(highlightVariable).toBeDefined();
+      const value = String(variable?.default ?? "");
+      const parsed = parseVisualComponentData(contract, value);
+
+      expect(parsed.issues).toEqual([]);
+      expect(parsed.document.rows.length).toBeGreaterThan(0);
+      expect(formatVisualComponentDataForAi(contract, value)).toContain(
+        `"kind": "${contract.kind}"`,
+      );
     }
   });
 

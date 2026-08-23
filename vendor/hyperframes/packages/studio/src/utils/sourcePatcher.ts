@@ -318,6 +318,25 @@ function appendAttributeToTag(tag: string, attribute: string): string {
   return `${tag.slice(0, -1).trimEnd()} ${attribute} /`;
 }
 
+function patchSerializedAttributeInTag(tag: string, attr: string, value: string | null): string {
+  const attrPattern = new RegExp(`\\s+${escapeRegex(attr)}=(["'])([\\s\\S]*?)\\1`, "g");
+  const matches = Array.from(tag.matchAll(attrPattern));
+
+  if (value === null) {
+    return matches.length > 0 ? tag.replace(attrPattern, "") : tag;
+  }
+
+  const serialized = serializeHtmlAttribute(attr, value);
+  if (matches.length === 0) return appendAttributeToTag(tag, serialized);
+
+  let replaced = false;
+  return tag.replace(attrPattern, () => {
+    if (replaced) return "";
+    replaced = true;
+    return ` ${serialized}`;
+  });
+}
+
 function patchAttributeByTarget(
   html: string,
   target: PatchTarget,
@@ -328,25 +347,8 @@ function patchAttributeByTarget(
   if (!match) return html;
 
   const fullAttr = attr.startsWith("data-") ? attr : `data-${attr}`;
-  const attrPattern = new RegExp(`\\b${escapeRegex(fullAttr)}=(["'])([^"']*)\\1`);
   const tag = match.tag;
-
-  if (value === null) {
-    // Remove the attribute if present
-    const boolAttrPattern = new RegExp(`\\b${escapeRegex(fullAttr)}(?:=(["'])[^"']*\\1)?`);
-    if (!boolAttrPattern.test(tag)) return html;
-    const removePattern = new RegExp(`\\s+${escapeRegex(fullAttr)}(?:=(["'])[^"']*\\1)?`);
-    const newTag = tag.replace(removePattern, "");
-    return replaceTagAtMatch(html, match, newTag);
-  }
-
-  const serialized = serializeHtmlAttribute(fullAttr, value);
-  if (attrPattern.test(tag)) {
-    const newTag = tag.replace(attrPattern, serialized);
-    return replaceTagAtMatch(html, match, newTag);
-  }
-
-  const newTag = appendAttributeToTag(tag, serialized);
+  const newTag = patchSerializedAttributeInTag(tag, fullAttr, value);
   return replaceTagAtMatch(html, match, newTag);
 }
 
@@ -365,26 +367,8 @@ function patchAttribute(
 
   const tag = match[1];
   const fullAttr = attr.startsWith("data-") ? attr : `data-${attr}`;
-  const attrPattern = new RegExp(`\\b${escapeRegex(fullAttr)}=(["'])([^"']*)\\1`);
-
-  if (value === null) {
-    const boolAttrPattern = new RegExp(`\\b${escapeRegex(fullAttr)}(?:=(["'])[^"']*\\1)?`);
-    if (!boolAttrPattern.test(tag)) return html;
-    const removePattern = new RegExp(`\\s+${escapeRegex(fullAttr)}(?:=(["'])[^"']*\\1)?`);
-    const newTag = tag.replace(removePattern, "");
-    return html.replace(tag, newTag);
-  }
-
-  const serialized = serializeHtmlAttribute(fullAttr, value);
-  if (attrPattern.test(tag)) {
-    // Update existing attribute
-    const newTag = tag.replace(attrPattern, serialized);
-    return html.replace(tag, newTag);
-  } else {
-    // Add new attribute
-    const newTag = appendAttributeToTag(tag, serialized);
-    return html.replace(tag, newTag);
-  }
+  const newTag = patchSerializedAttributeInTag(tag, fullAttr, value);
+  return html.replace(tag, newTag);
 }
 
 /**
@@ -469,21 +453,12 @@ function patchHtmlAttributeInTag(
     return html.replace(tag, newTag);
   }
 
-  const attrPattern = new RegExp(`\\b${escapeRegex(attr)}=(["'])([^"']*)\\1`);
   if (value === null) {
-    if (!attrPattern.test(tag)) return html;
-    const removePattern = new RegExp(`\\s+${escapeRegex(attr)}=(["'])[^"']*\\1`);
-    const newTag = tag.replace(removePattern, "");
+    const newTag = patchSerializedAttributeInTag(tag, attr, null);
     return html.replace(tag, newTag);
   }
 
-  const serialized = serializeHtmlAttribute(attr, value);
-  if (attrPattern.test(tag)) {
-    const newTag = tag.replace(attrPattern, serialized);
-    return html.replace(tag, newTag);
-  }
-
-  const newTag = tag + ` ${serialized}`;
+  const newTag = patchSerializedAttributeInTag(tag, attr, value);
   return html.replace(tag, newTag);
 }
 

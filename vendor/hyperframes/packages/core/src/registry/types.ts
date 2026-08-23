@@ -1,4 +1,5 @@
 import type { CompositionVariable } from "../core.types";
+import type { RegistryVisualComponentDataContract } from "./componentData";
 
 // The `enum` arrays in `packages/core/schemas/registry*.json` must match
 // `ITEM_TYPES` / `FILE_TYPES` below — `types.test.ts` is the drift guard.
@@ -80,6 +81,8 @@ export interface RegistryVisualComponent {
   category: RegistryVisualComponentCategory;
   surfaces: RegistryVisualComponentSurface[];
   themeMode: "inherit";
+  /** Optional normalized data contract shared by Studio, renderers, and agents. */
+  data?: RegistryVisualComponentDataContract;
   ai?: RegistryVisualComponentAi;
 }
 

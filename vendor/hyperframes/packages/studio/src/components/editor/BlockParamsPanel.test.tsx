@@ -89,4 +89,79 @@ describe("BlockParamsPanel", () => {
     flushSync(() => gridToggle.click());
     expect(onVariableChange).toHaveBeenCalledWith("grid", false);
   });
+
+  it("edits compact component data through normalized rows and derives highlight options", () => {
+    const onVariableChange = vi.fn(async () => undefined);
+    const variables: RegistryVariable[] = [
+      {
+        id: "values",
+        type: "string",
+        label: "State data",
+        default: "CA:253.9,TX:112.8",
+        maxLength: 2000,
+      },
+      { id: "highlight", type: "string", label: "Highlight", default: "CA" },
+    ];
+    flushSync(() =>
+      root.render(
+        <BlockParamsPanel
+          blockTitle="US Map"
+          params={[]}
+          variables={variables}
+          variableValues={{}}
+          visualComponent={{
+            version: 1,
+            category: "maps",
+            surfaces: ["video"],
+            themeMode: "inherit",
+            data: {
+              version: 1,
+              kind: "region-value",
+              mode: "override",
+              rowId: "region",
+              binding: { variable: "values", encoding: "key-value-list" },
+              columns: [
+                {
+                  id: "region",
+                  label: "State code",
+                  labelZh: "州代码",
+                  type: "string",
+                  role: "id",
+                  required: true,
+                },
+                {
+                  id: "value",
+                  label: "Population density",
+                  labelZh: "人口密度",
+                  type: "number",
+                  role: "value",
+                  required: true,
+                },
+              ],
+              minRows: 1,
+              maxRows: 51,
+              highlightVariable: "highlight",
+            },
+          }}
+          onVariableChange={onVariableChange}
+          onClose={vi.fn()}
+        />,
+      ),
+    );
+
+    expect(container.querySelector('[data-component-data-contract="region-value"]')).not.toBeNull();
+    expect(container.querySelectorAll("[data-component-data-row]")).toHaveLength(2);
+    expect(container.querySelector('button[aria-label="Highlight"]')).not.toBeNull();
+
+    const density = container.querySelector('input[aria-label="Population density 1"]');
+    if (!(density instanceof HTMLInputElement)) throw new Error("Density input missing");
+    const setInputValue = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set;
+    if (!setInputValue) throw new Error("Input value setter missing");
+    flushSync(() => {
+      setInputValue.call(density, "300");
+      density.dispatchEvent(new Event("input", { bubbles: true }));
+      density.dispatchEvent(new FocusEvent("focusout", { bubbles: true }));
+    });
+    expect(onVariableChange).toHaveBeenCalledWith("values", "CA:300,TX:112.8");
+  });
 });
