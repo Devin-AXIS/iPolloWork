@@ -51,7 +51,7 @@ DeepSeek Design 不是另一个聊天机器人，也不会替换 DeepSeek Harnes
 | --- | --- | --- |
 | [`deepseek-idesign`](https://www.npmjs.com/package/deepseek-idesign) | 网站、App 原型、海报、信息卡、数据报告、杂志与其他非幻灯片设计 | Design 模板市场、桌面/移动预览、可视化元素编辑、主题与设计令牌、选区 Ask AI |
 | [`deepseek-ippt`](https://www.npmjs.com/package/deepseek-ippt) | 演示文稿与幻灯片 | 独立 PPT 模板市场、逐页编辑、可视化精调、选区 Ask AI、PDF/PPTX 导出 |
-| [`deepseek-ivideo`](https://www.npmjs.com/package/deepseek-ivideo) | 动态视觉、产品演示、数据故事与短视频 | HyperFrames 时间线、动画与素材、27 个 Video 模板、选区 Ask AI、自动校验、视频导出 |
+| [`deepseek-ivideo`](https://www.npmjs.com/package/deepseek-ivideo) | 动态视觉、产品演示、数据故事与短视频 | HyperFrames 时间线、主题组件与统一变量表单、28 个 Video 模板、选区 Ask AI、自动校验、视频导出 |
 
 三个插件可以单独安装，也可以一起使用。它们共享 iPolloWork Studio 契约和模板协议，但项目目录彼此隔离，因此不会相互覆盖。只安装所选 npm 包，不会下载另外两个插件。
 
@@ -199,7 +199,7 @@ Brief → AI generation → Studio preview → Visual edit / Ask AI → Workspac
 | --- | --- | --- |
 | [`deepseek-idesign`](https://www.npmjs.com/package/deepseek-idesign) | Websites, app prototypes, posters, cards, data reports, magazines, and other non-slide designs | Curated Design templates, desktop/mobile preview, direct element editing, themes and design tokens, selection-aware Ask AI |
 | [`deepseek-ippt`](https://www.npmjs.com/package/deepseek-ippt) | Presentations and slide decks | Dedicated slide templates, page-by-page editing, visual refinement, selection-aware Ask AI, PDF/PPTX export |
-| [`deepseek-ivideo`](https://www.npmjs.com/package/deepseek-ivideo) | Motion design, product demos, data stories, and short video | HyperFrames timeline, animation and media, 27 Video templates, selection-aware Ask AI, validation, and video export |
+| [`deepseek-ivideo`](https://www.npmjs.com/package/deepseek-ivideo) | Motion design, product demos, data stories, and short video | HyperFrames timeline, theme-aware components and shared variable forms, 28 Video templates, selection-aware Ask AI, validation, and video export |
 
 Install any plugin independently or use all three. They share iPolloWork Studio contracts and template protocols while keeping project directories isolated. Installing one package never downloads the other two.
 

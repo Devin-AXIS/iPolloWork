@@ -1,6 +1,6 @@
 {
   "name": "deepseek-ivideo",
-  "version": "0.1.1",
+  "version": "0.5.0",
   "description": "iPolloWork HyperFrames Video Studio and 28 editable video templates as a native DeepSeek Harness conversation view.",
   "type": "module",
   "main": "lib/index.js",
