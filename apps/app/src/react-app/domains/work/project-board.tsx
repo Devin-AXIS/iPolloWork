@@ -103,7 +103,7 @@ function BoardCard({
       }}
       onDragEnd={onDragEnd}
       className={cn(
-        "group rounded-xl border border-white/40 bg-dls-surface/95 shadow-[0_8px_24px_rgba(35,55,82,0.08),inset_0_1px_0_rgba(255,255,255,0.7)] transition-[transform,box-shadow,opacity] hover:-translate-y-0.5 hover:shadow-[0_14px_30px_rgba(35,55,82,0.13)] dark:border-white/[0.07] dark:shadow-[0_10px_28px_rgba(0,0,0,0.24)]",
+        "group rounded-xl border border-dls-border/70 bg-white transition-[border-color,background-color,opacity] hover:border-dls-border dark:bg-dls-surface",
         dragging && "opacity-45",
       )}
     >
@@ -114,29 +114,29 @@ function BoardCard({
         onClick={onOpen ?? undefined}
       >
         <div className="flex items-start justify-between gap-3">
-          <h3 className="line-clamp-2 text-[13px] font-medium leading-5 text-dls-text">{entry.item.title}</h3>
+          <h3 className="line-clamp-2 text-[14px] font-semibold leading-5 text-dls-text">{entry.item.title}</h3>
           {runtimeStatus && RuntimeStatusIcon ? (
-            <span className={cn("mt-0.5 inline-flex shrink-0 items-center gap-1 rounded-md px-1.5 py-0.5 text-[9px] font-medium", runtimeStatus.className)}>
+            <span className={cn("mt-0.5 inline-flex shrink-0 items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] font-medium leading-[15px]", runtimeStatus.className)}>
               <RuntimeStatusIcon className={cn("size-3", entry.executionRecord?.status === "running" && "animate-spin")} />
               {runtimeStatus.label}
             </span>
           ) : entry.item.priority === "urgent" || entry.item.priority === "high" ? (
-            <span className={cn("mt-0.5 shrink-0 rounded-md px-1.5 py-0.5 text-[9px] font-medium", entry.item.priority === "urgent" ? "bg-red-4 text-red-11" : "bg-amber-4 text-amber-11")}>
+            <span className={cn("mt-0.5 shrink-0 rounded-md px-1.5 py-0.5 text-[11px] font-medium leading-[15px]", entry.item.priority === "urgent" ? "bg-red-4 text-red-11" : "bg-amber-4 text-amber-11")}>
               {priorityLabel(entry.item.priority)}
             </span>
           ) : null}
         </div>
-        {entry.item.description ? <p className="mt-1.5 line-clamp-2 text-[11px] leading-4 text-dls-secondary">{entry.item.description}</p> : null}
+        {entry.item.description ? <p className="mt-1.5 line-clamp-2 text-[11px] leading-[15px] text-dls-secondary">{entry.item.description}</p> : null}
         {visibleFields.length ? (
           <div className="mt-2 flex flex-wrap gap-1">
             {visibleFields.map((field) => (
-              <span key={field.id} className="max-w-full truncate rounded-md bg-dls-hover px-1.5 py-0.5 text-[9px] text-dls-secondary">
+              <span key={field.id} className="max-w-full truncate rounded-md bg-dls-hover px-1.5 py-0.5 text-[11px] leading-[15px] text-dls-secondary">
                 {field.label}: {String(entry.item.customFields[field.id])}
               </span>
             ))}
           </div>
         ) : null}
-        <div className="mt-3 flex items-center gap-2 text-[10px] text-dls-tertiary">
+        <div className="mt-3 flex items-center gap-2 text-[11px] leading-[15px] text-dls-text/45">
           {executionBound ? <span className="flex shrink-0 items-center gap-1" title={t("work.execution.immutable")}><LockKeyhole className="size-3" />{t("work.execution.bound")}</span> : null}
           {entry.item.assignee ? <span className="flex min-w-0 items-center gap-1">{entry.executionRecord ? <Bot className="size-3" /> : <UserRound className="size-3" />}<span className="truncate">{entry.item.assignee}</span></span> : null}
           {runtimeTokens ? <span className="ml-auto shrink-0 tabular-nums">{runtimeTokens} Token</span> : null}
@@ -174,7 +174,7 @@ export function ProjectBoard({
         return (
           <section
             key={column.id}
-            className="flex min-h-0 w-[286px] shrink-0 flex-col rounded-2xl border border-white/20 bg-dls-hover/45 shadow-[inset_0_1px_0_rgba(255,255,255,0.45)] backdrop-blur-xl dark:border-white/[0.055]"
+            className="flex min-h-0 w-[286px] shrink-0 flex-col rounded-2xl border border-dls-border/70 bg-white dark:bg-dls-surface"
             data-status={column.id}
             onDragOver={(event) => {
               event.preventDefault();
@@ -192,8 +192,8 @@ export function ProjectBoard({
           >
             <header className="flex h-11 shrink-0 items-center gap-2 px-3">
               <span className={cn("h-4 w-1 rounded-full", COLUMN_TONE_CLASS[column.tone])} aria-hidden="true" />
-              <h2 className="text-[12px] font-medium text-dls-text">{column.label}</h2>
-              <span className="text-[10px] tabular-nums text-dls-tertiary">{columnItems.length}</span>
+              <h2 className="text-[14px] font-semibold leading-5 text-dls-text">{column.label}</h2>
+              <span className="text-[11px] leading-[15px] tabular-nums text-dls-text/45">{columnItems.length}</span>
               <Button type="button" variant="ghost" size="icon-sm" className="ml-auto size-7" aria-label={t("work.add_to_column", { column: column.label })} onClick={() => onCreate(column.id)}>
                 <Plus className="size-3.5" />
               </Button>
@@ -213,7 +213,7 @@ export function ProjectBoard({
               {!columnItems.length ? (
                 <button
                   type="button"
-                  className="flex min-h-24 w-full items-center justify-center rounded-xl border border-dashed border-dls-border px-4 text-xs text-dls-tertiary transition hover:bg-dls-surface/45 hover:text-dls-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  className="flex min-h-24 w-full items-center justify-center rounded-xl border border-dashed border-dls-border px-4 text-[11px] leading-[15px] text-dls-text/45 transition hover:bg-dls-surface/45 hover:text-dls-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   onClick={() => onCreate(column.id)}
                 >
                   {moving && dragged ? t("work.board.moving") : t("work.board.empty_column")}

@@ -206,18 +206,15 @@ export function ProjectOrchestrationGraph(props: ProjectOrchestrationGraphProps)
 
   return (
     <section
-      className="overflow-hidden rounded-2xl border border-white/35 bg-dls-surface/76 shadow-[0_18px_50px_rgba(31,50,72,0.06),inset_0_1px_0_rgba(255,255,255,0.52)] backdrop-blur-xl dark:border-white/[0.065]"
+      className="overflow-hidden rounded-2xl border border-dls-border/70 bg-white dark:bg-dls-surface"
       data-testid="project-orchestration-graph"
     >
       <header className="flex flex-wrap items-center justify-between gap-3 border-b border-dls-border/70 px-4 py-3">
         <div className="flex items-center gap-2">
           <Network className="size-4 text-dls-secondary" />
-          <div>
-            <h2 className="text-[12px] font-medium">{t("project_overview.orchestration")}</h2>
-            <p className="mt-0.5 text-[9px] text-dls-tertiary">{t("project_overview.orchestration_description")}</p>
-          </div>
+          <h2 className="text-[14px] font-semibold leading-5 text-dls-text">{t("project_overview.orchestration")}</h2>
         </div>
-        <div className="flex items-center gap-3 text-[8px] text-dls-tertiary">
+        <div className="flex items-center gap-3 text-[11px] leading-[15px] text-dls-text/45">
           <span className="flex items-center gap-1.5"><span className="h-px w-5 bg-primary/65" />{t("project_overview.dependency")}</span>
           <span className="flex items-center gap-1.5"><span className="w-5 border-t border-dashed border-violet-9/65" />{t("project_overview.parallel")}</span>
         </div>
@@ -229,7 +226,7 @@ export function ProjectOrchestrationGraph(props: ProjectOrchestrationGraphProps)
             <div
               key={`parallel-group:${stage.level}`}
               aria-hidden="true"
-              className="pointer-events-none absolute rounded-2xl border border-dashed border-violet-9/20 bg-violet-9/[0.025] shadow-[inset_0_1px_0_rgba(255,255,255,0.38)]"
+              className="pointer-events-none absolute rounded-2xl border border-dashed border-violet-9/20 bg-violet-9/[0.025]"
               data-testid="project-orchestration-parallel-group"
               style={{
                 height: graph.canvasHeight - 20,
@@ -242,7 +239,7 @@ export function ProjectOrchestrationGraph(props: ProjectOrchestrationGraphProps)
 
           <svg
             aria-hidden="true"
-            className="pointer-events-none absolute inset-0 overflow-visible text-dls-tertiary"
+            className="pointer-events-none absolute inset-0 overflow-visible text-dls-text/45"
             data-testid="project-orchestration-relations"
             height={graph.canvasHeight}
             viewBox={`0 0 ${graph.canvasWidth} ${graph.canvasHeight}`}
@@ -330,7 +327,7 @@ export function ProjectOrchestrationGraph(props: ProjectOrchestrationGraphProps)
               key={stage.level}
               className={cn(
                 "pointer-events-none absolute z-10 inline-flex h-4 items-center gap-1 rounded-full border bg-dls-surface/82 px-2 text-[7px] font-medium backdrop-blur-md",
-                stage.parallel ? "border-violet-9/20 text-violet-11" : "border-primary/15 text-dls-tertiary",
+                stage.parallel ? "border-violet-9/20 text-violet-11" : "border-primary/15 text-dls-text/45",
               )}
               data-stage-type={stage.parallel ? "parallel" : "sequential"}
               data-testid="project-orchestration-stage"
@@ -350,7 +347,7 @@ export function ProjectOrchestrationGraph(props: ProjectOrchestrationGraphProps)
                 key={node.agent.id}
                 type="button"
                 className={cn(
-                  "absolute z-10 flex items-center gap-2.5 rounded-xl border bg-dls-surface/92 px-3 text-left shadow-[0_8px_26px_rgba(31,50,72,0.055)] transition-colors hover:bg-dls-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                  "absolute z-10 flex items-center gap-2.5 rounded-xl border bg-white px-3 text-left transition-colors hover:bg-dls-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring dark:bg-dls-surface",
                   primary ? "border-primary/35" : "border-dls-border/75",
                 )}
                 onClick={() => props.onOpenAgent(node.agent)}
@@ -367,11 +364,11 @@ export function ProjectOrchestrationGraph(props: ProjectOrchestrationGraphProps)
                 <AgentAvatar agent={node.agent} className="size-7" />
                 <span className="min-w-0 flex-1">
                   <span className="flex items-center gap-1.5">
-                    <span className="truncate text-[10px] font-medium">{node.agent.name}</span>
-                    {primary ? <span className="rounded bg-primary/10 px-1 py-0.5 text-[7px] text-primary">{t("project_overview.entry")}</span> : null}
+                    <span className="truncate text-[14px] font-semibold leading-5 text-dls-text">{node.agent.name}</span>
+                    {primary ? <span className="rounded bg-primary/10 px-1 py-0.5 text-[11px] leading-[15px] text-primary">{t("project_overview.entry")}</span> : null}
                   </span>
-                  <span className="mt-0.5 block truncate text-[8px] text-dls-tertiary">{node.agent.role || t("project_overview.agent_no_role")}</span>
-                  <span className="mt-1 block text-[7px] tabular-nums text-dls-tertiary">{t("project_overview.assigned_task_count", { count: node.taskCount })}</span>
+                  <span className="mt-0.5 block truncate text-[11px] leading-[15px] text-dls-secondary">{node.agent.role || t("project_overview.agent_no_role")}</span>
+                  <span className="mt-1 block text-[11px] leading-[15px] tabular-nums text-dls-text/45">{t("project_overview.assigned_task_count", { count: node.taskCount })}</span>
                 </span>
               </button>
             );
@@ -380,7 +377,7 @@ export function ProjectOrchestrationGraph(props: ProjectOrchestrationGraphProps)
       </div>
 
       {graph.edges.length === 0 ? (
-        <p className="border-t border-dls-border/60 px-4 py-2.5 text-[9px] text-dls-tertiary">
+        <p className="border-t border-dls-border/60 px-4 py-2.5 text-[11px] leading-[15px] text-dls-text/45">
           {t("project_overview.no_orchestration_relations_description")}
         </p>
       ) : null}
