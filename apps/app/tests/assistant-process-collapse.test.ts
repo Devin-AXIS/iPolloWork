@@ -54,6 +54,22 @@ describe("assistant process collapse sections", () => {
     expect(getActiveAssistantMessageId(respondingToFollowUp)).toBe("assistant-2");
   });
 
+  test("keeps the waiting placeholder when OpenCode has only emitted an empty assistant shell", () => {
+    const awaitingAssistantParts = [
+      { id: "user-1", role: "user", parts: [{ type: "text", text: "1" }] },
+      { id: "assistant-shell", role: "assistant", parts: [] },
+    ] satisfies Parameters<typeof getActiveAssistantMessageId>[0];
+
+    expect(getActiveAssistantMessageId(awaitingAssistantParts)).toBeUndefined();
+
+    const reasoningStarted = [
+      { id: "user-1", role: "user", parts: [{ type: "text", text: "1" }] },
+      { id: "assistant-shell", role: "assistant", parts: [{ type: "reasoning", text: "正在处理", state: "streaming" }] },
+    ] satisfies Parameters<typeof getActiveAssistantMessageId>[0];
+
+    expect(getActiveAssistantMessageId(reasoningStarted)).toBe("assistant-shell");
+  });
+
   test("moves completed pre-result work into a collapsible process section", () => {
     const groups = getAssistantRenderGroups([
       {

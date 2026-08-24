@@ -161,16 +161,20 @@ describe("route workspaces", () => {
           title: "New session - 2026-08-06T04:00:00.000Z",
           time: { created: 3000, updated: 3500 },
         }),
-        routeSession("named", {
+        routeSession("named-empty", {
           title: "Real work",
           time: { created: 4000, updated: 4000 },
+        }),
+        routeSession("named-active", {
+          title: "Real work",
+          time: { created: 5000, updated: 5500 },
         }),
       ],
     };
 
     expect(userVisibleSessionsByWorkspaceId(sessions).ws.map((session) => session.id)).toEqual([
       "active-default",
-      "named",
+      "named-active",
     ]);
   });
 

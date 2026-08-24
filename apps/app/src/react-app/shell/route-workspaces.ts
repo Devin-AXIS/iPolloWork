@@ -98,6 +98,32 @@ export function describeRouteError(error: unknown) {
   return serialized && serialized !== "{}" ? serialized : t("app.unknown_error");
 }
 
+export function isModelUnavailableError(message: string | null | undefined) {
+  const value = (message ?? "").toLowerCase();
+  return (
+    value.includes("providermodelnotfounderror") ||
+    value.includes("model not found") ||
+    value.includes("model_not_found") ||
+    value.includes("model is not available") ||
+    (value.includes("model") && value.includes("did you mean"))
+  );
+}
+
+export function isSidecarLaunchBlockedError(message: string | null | undefined) {
+  const value = (message ?? "").toLowerCase();
+  return value.includes("spawn eperm") || (value.includes("spawn") && value.includes("eperm"));
+}
+
+export function describeWorkspaceUnavailableTitle(input: {
+  message: string | null | undefined;
+  workspaceType?: string | null;
+}) {
+  if (isModelUnavailableError(input.message)) return "Model unavailable";
+  if (isSidecarLaunchBlockedError(input.message)) return "OpenCode launch blocked";
+  if (input.workspaceType === "remote") return "Remote workspace unavailable";
+  return "OpenCode unavailable";
+}
+
 export function describeWorkspaceCreateError(error: unknown) {
   const message = describeRouteError(error);
   const lower = message.toLowerCase();
@@ -214,10 +240,9 @@ export function isInternalSubtaskSession(session: RouteSession) {
   return Boolean(parentID && agent.trim() && agent !== "orchestrator");
 }
 
-export function isBlankDefaultSession(session: RouteSession) {
+export function isUnstartedSession(session: RouteSession) {
   const title = session.title?.trim() ?? "";
   const hasDefaultTitle = isDefaultSessionTitle(title);
-  if (!hasDefaultTitle) return false;
 
   const created = session.time?.created;
   const updated = session.time?.updated ?? created;
@@ -225,7 +250,16 @@ export function isBlankDefaultSession(session: RouteSession) {
     typeof created === "number" &&
     typeof updated === "number" &&
     created === updated &&
-    !isInternalSubtaskSession(session)
+    !isInternalSubtaskSession(session) &&
+    (
+      hasDefaultTitle ||
+      !session.summary ||
+      (
+        typeof session.summary === "object" &&
+        !Array.isArray(session.summary) &&
+        Object.keys(session.summary).length === 0
+      )
+    )
   );
 }
 
@@ -237,7 +271,7 @@ export function userVisibleSessionsByWorkspaceId(
       workspaceId,
       sessions.filter((session) => (
         !isInternalSubtaskSession(session) &&
-        !isBlankDefaultSession(session)
+        !isUnstartedSession(session)
       )),
     ]),
   );

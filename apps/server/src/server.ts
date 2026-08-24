@@ -1068,6 +1068,9 @@ function unwrapOpencodeResult<T, E>(result: OpencodeClientResult<T, E>, path: st
   if (result.data != null) {
     return result.data;
   }
+  if (result.error === undefined && result.response.status === 204) {
+    return {} as NonNullable<T>;
+  }
   if (result.error === undefined) {
     throw new ApiError(502, "opencode_empty_response", "OpenCode returned an empty response", { path });
   }

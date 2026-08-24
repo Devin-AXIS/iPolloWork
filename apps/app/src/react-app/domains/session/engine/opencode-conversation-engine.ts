@@ -27,6 +27,28 @@ function hasMethod(value: unknown, name: string) {
   return isRecord(value) && typeof value[name] === "function";
 }
 
+type OpenCodeAgentInfo = {
+  name: string;
+  description?: string;
+  hidden?: boolean;
+  mode?: string | null;
+};
+
+function isVisibleSessionAgent(agent: OpenCodeAgentInfo): boolean {
+  return !agent.hidden && agent.mode !== "subagent";
+}
+
+function resolveVisibleSessionAgentName(
+  agents: OpenCodeAgentInfo[],
+  requested: string | null | undefined,
+): string | undefined {
+  const requestedMode = requested?.trim();
+  if (!requestedMode) return undefined;
+  const visibleAgents = agents.filter(isVisibleSessionAgent);
+  if (visibleAgents.some((agent) => agent.name === requestedMode)) return requestedMode;
+  return visibleAgents.find((agent) => agent.name === "build")?.name ?? visibleAgents[0]?.name;
+}
+
 function isOpenCodeClient(value: unknown): value is Client {
   if (!isRecord(value)) return false;
   return (
@@ -146,11 +168,21 @@ function openCodeConnection(input: { baseUrl: string; token?: string; directory?
       if (result.error !== undefined) unwrap(result);
     },
     async sendPrompt(input) {
+      let agent = input.mode?.trim() || undefined;
+      if (agent) {
+        try {
+          agent = resolveVisibleSessionAgentName(unwrap(await client.app.agents()), agent);
+        } catch {
+          // Older persisted preferences can point at hidden orchestration-only
+          // agents. Dropping that stale value lets OpenCode use its default.
+          if (agent === "orchestrator") agent = undefined;
+        }
+      }
       const result = await client.session.promptAsync({
         sessionID: input.sessionId,
         parts: input.parts,
         model: input.model,
-        agent: input.mode,
+        agent,
         ...(input.reasoningEffort
           ? { reasoning_effort: input.reasoningEffort }
           : input.variant
@@ -178,7 +210,7 @@ function openCodeConnection(input: { baseUrl: string; token?: string; directory?
     async listModes() {
       const agents = unwrap(await client.app.agents());
       return agents
-        .filter((agent) => !agent.hidden && agent.mode !== "subagent")
+        .filter(isVisibleSessionAgent)
         .map((agent) => ({
           id: agent.name,
           label: agent.name === "build"
