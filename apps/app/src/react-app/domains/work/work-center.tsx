@@ -28,7 +28,11 @@ import {
   type WorkCalendarItem,
   type WorkCalendarView,
 } from "./work-calendar";
-import { WorkItemSheet, type WorkItemEditorValue } from "./work-item-sheet";
+import {
+  WorkItemSheet,
+  type WorkItemEditorValue,
+  type WorkItemScheduleDraft,
+} from "./work-item-sheet";
 import { BoardConfigDialog } from "./board-config-dialog";
 import { ProjectBoard, type ProjectBoardItem } from "./project-board";
 import { ProjectPickerDialog } from "./project-picker-dialog";
@@ -164,19 +168,19 @@ function GlobalWorkSummary(props: {
     { label: t("work.global.unscheduled"), value: counts.unscheduled },
   ];
   return (
-    <section className="mb-3 shrink-0 rounded-2xl border border-white/25 bg-dls-surface/75 px-4 py-3 shadow-[0_12px_36px_rgba(30,48,74,0.055),inset_0_1px_0_rgba(255,255,255,0.5)] backdrop-blur-xl dark:border-white/[0.065]" data-testid="global-work-summary">
+    <section className="mb-3 shrink-0 rounded-2xl border border-dls-border/70 bg-white px-4 py-3 dark:bg-dls-surface" data-testid="global-work-summary">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
-          <h2 className="text-[12px] font-medium text-dls-text">{t("work.global.summary")}</h2>
-          <p className="mt-0.5 text-[9px] text-dls-tertiary">{t("work.global.summary_description")}</p>
+          <h2 className="text-[14px] font-semibold leading-5 text-dls-text">{t("work.global.summary")}</h2>
+          <p className="mt-0.5 text-[13px] leading-5 text-dls-secondary">{t("work.global.summary_description")}</p>
         </div>
-        {props.loading ? <span className="text-[9px] text-dls-tertiary">{t("work.global.syncing")}</span> : null}
+        {props.loading ? <span className="text-[11px] leading-[15px] text-dls-text/45">{t("work.global.syncing")}</span> : null}
       </div>
       <div className="mt-3 grid grid-cols-2 gap-y-3 sm:grid-cols-6">
         {metrics.map((metric) => (
           <div key={metric.label} className="min-w-0 border-dls-border/70 sm:border-l sm:px-4 sm:first:border-l-0 sm:first:pl-0">
             <div className="text-[18px] font-semibold tracking-[-0.45px] tabular-nums text-dls-text">{metric.value}</div>
-            <div className="mt-0.5 truncate text-[9px] text-dls-tertiary">{metric.label}</div>
+            <div className="mt-0.5 truncate text-[11px] leading-[15px] text-dls-text/45">{metric.label}</div>
           </div>
         ))}
       </div>
@@ -192,6 +196,7 @@ export function WorkCenter(props: WorkCenterProps) {
   const [editorOpen, setEditorOpen] = React.useState(false);
   const [editingEntry, setEditingEntry] = React.useState<ResolvedWorkItem | null>(null);
   const [createEndpoint, setCreateEndpoint] = React.useState<WorkEndpoint | null>(null);
+  const [createSchedule, setCreateSchedule] = React.useState<WorkItemScheduleDraft | null>(null);
   const [createStatus, setCreateStatus] = React.useState("planned");
   const [projectPickerOpen, setProjectPickerOpen] = React.useState(false);
   const [boardSettingsOpen, setBoardSettingsOpen] = React.useState(false);
@@ -424,22 +429,24 @@ export function WorkCenter(props: WorkCenterProps) {
     onError: (error) => toast.error(t("work.save_failed"), { description: error instanceof Error ? error.message : undefined }),
   });
 
-  const openCreate = (endpoint: WorkEndpoint, status = "planned") => {
+  const openCreate = (endpoint: WorkEndpoint, status = "planned", schedule: WorkItemScheduleDraft | null = null) => {
     setEditingEntry(null);
     setCreateEndpoint(endpoint);
     setCreateStatus(status);
+    setCreateSchedule(schedule);
     setEditorOpen(true);
   };
 
-  const requestCreate = () => {
+  const requestCreate = (schedule: WorkItemScheduleDraft | null = null) => {
     if (props.mode === "project") {
-      if (selectedEndpoint) openCreate(selectedEndpoint, board.columns[0]?.id ?? "planned");
+      if (selectedEndpoint) openCreate(selectedEndpoint, board.columns[0]?.id ?? "planned", schedule);
       return;
     }
     if (allEndpoints.length === 1) {
-      openCreate(allEndpoints[0]);
+      openCreate(allEndpoints[0], "planned", schedule);
       return;
     }
+    setCreateSchedule(schedule);
     setProjectPickerOpen(true);
   };
 
@@ -461,13 +468,18 @@ export function WorkCenter(props: WorkCenterProps) {
 
   return (
     <div className="relative flex h-full min-h-0 flex-col overflow-hidden bg-[radial-gradient(circle_at_18%_0%,rgba(74,158,178,0.11),transparent_34%),radial-gradient(circle_at_86%_8%,rgba(99,116,165,0.08),transparent_30%),var(--dls-surface)] text-dls-text">
-      <header className="flex min-h-16 shrink-0 flex-wrap items-center gap-3 border-b border-white/20 bg-dls-surface/72 px-4 py-3 backdrop-blur-2xl dark:border-white/[0.06] sm:px-6">
+      <header
+        className={cn(
+          "flex min-h-16 shrink-0 flex-wrap items-center gap-3 border-b border-white/20 bg-dls-surface/72 py-3 backdrop-blur-2xl dark:border-white/[0.06]",
+          props.mode === "global" ? "ps-4 pe-12 sm:ps-6 sm:pe-14" : "px-4 sm:px-6",
+        )}
+      >
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
             {props.mode === "global" ? <CalendarRange className="size-4 text-dls-secondary" /> : <LayoutDashboard className="size-4 text-dls-secondary" />}
-            <h1 className="truncate text-[16px] font-semibold tracking-[-0.35px]">{title}</h1>
+            <h1 className="truncate text-[24px] font-semibold leading-8 tracking-[-0.35px] text-dls-text">{title}</h1>
           </div>
-          <p className="mt-0.5 truncate text-[11px] text-dls-secondary">{subtitle}</p>
+          <p className="mt-0.5 truncate text-[13px] leading-5 text-dls-secondary">{subtitle}</p>
         </div>
 
         {props.mode === "project" ? (
@@ -486,7 +498,7 @@ export function WorkCenter(props: WorkCenterProps) {
             <Settings2 className="size-4" />{t("work.fields")}
           </Button>
         ) : null}
-        <Button type="button" size="sm" className="rounded-lg" onClick={requestCreate} disabled={props.mode === "project" ? !selectedEndpoint : !allEndpoints.length}>
+        <Button type="button" size="sm" className="rounded-lg" onClick={() => requestCreate()} disabled={props.mode === "project" ? !selectedEndpoint : !allEndpoints.length}>
           <Plus className="size-4" />{props.mode === "global" ? t("work.new_schedule") : t("work.new_item")}
         </Button>
       </header>
@@ -527,8 +539,10 @@ export function WorkCenter(props: WorkCenterProps) {
               items={calendarItems}
               anchorDate={anchorDate}
               view={calendarView}
+              canCreateSchedule={props.mode === "project" ? Boolean(selectedEndpoint) : allEndpoints.length > 0}
               onAnchorDateChange={setAnchorDate}
               onViewChange={setCalendarView}
+              onCreateSchedule={requestCreate}
               onSelectItem={(entry) => {
                 const resolved = items.find((candidate) => candidate.key === entry.key);
                 if (!resolved) return;
@@ -546,6 +560,8 @@ export function WorkCenter(props: WorkCenterProps) {
         item={editingEntry?.item ?? null}
         board={editorBoard}
         defaultStatus={createStatus || editorBoard.columns[0]?.id || "planned"}
+        scheduleMode={props.mode === "global" || projectView === "schedule"}
+        initialSchedule={createSchedule}
         saving={createMutation.isPending || updateMutation.isPending}
         deleting={deleteMutation.isPending}
         onOpenChange={(open) => {
@@ -553,6 +569,7 @@ export function WorkCenter(props: WorkCenterProps) {
           if (!open) {
             setEditingEntry(null);
             setCreateEndpoint(null);
+            setCreateSchedule(null);
           }
         }}
         onSave={(value) => {
@@ -589,7 +606,7 @@ export function WorkCenter(props: WorkCenterProps) {
         onOpenChange={setProjectPickerOpen}
         onSelect={(endpoint) => {
           setProjectPickerOpen(false);
-          openCreate(endpoint);
+          openCreate(endpoint, "planned", createSchedule);
         }}
       />
     </div>

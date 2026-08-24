@@ -5,6 +5,8 @@ import {
   projectAgentSchema,
 } from "./project-workspace.js";
 
+export const WORK_ITEM_TITLE_MAX_LENGTH = 80;
+
 export const workItemPrioritySchema = z.enum(["low", "normal", "high", "urgent"]);
 export type WorkItemPriority = z.infer<typeof workItemPrioritySchema>;
 
@@ -23,7 +25,7 @@ export const workItemCustomFieldsSchema = z.record(
 });
 
 export const workItemCreateSchema = z.object({
-  title: z.string().trim().min(1).max(160),
+  title: z.string().trim().min(1).max(WORK_ITEM_TITLE_MAX_LENGTH),
   description: z.string().trim().max(4_000).nullable().optional(),
   status: z.string().trim().min(1).max(48).regex(/^[a-zA-Z0-9_-]+$/).default("planned"),
   assignee: z.string().trim().max(120).nullable().optional(),
@@ -42,7 +44,7 @@ export type WorkItemCreateInput = z.input<typeof workItemCreateSchema>;
 
 export const workItemUpdateSchema = z.object({
   expectedVersion: z.number().int().nonnegative(),
-  title: z.string().trim().min(1).max(160).optional(),
+  title: z.string().trim().min(1).max(WORK_ITEM_TITLE_MAX_LENGTH).optional(),
   description: z.string().trim().max(4_000).nullable().optional(),
   status: z.string().trim().min(1).max(48).regex(/^[a-zA-Z0-9_-]+$/).optional(),
   assignee: z.string().trim().max(120).nullable().optional(),
@@ -72,14 +74,14 @@ export const projectSessionExecutionSchema = z.object({
 });
 
 export const projectSessionExecutionStartSchema = z.object({
-  title: z.string().trim().min(1).max(160),
+  title: z.string().trim().min(1).max(WORK_ITEM_TITLE_MAX_LENGTH),
   agentId: z.string().trim().min(1).max(64).regex(/^[a-zA-Z0-9_-]+$/).optional(),
   runtime: projectSessionExecutionRuntimeSchema,
 });
 
 export const projectSessionExecutionFinishSchema = z.object({
   status: z.enum(["done", "failed"]),
-  title: z.string().trim().min(1).max(160).optional(),
+  title: z.string().trim().min(1).max(WORK_ITEM_TITLE_MAX_LENGTH).optional(),
   error: z.string().trim().max(2_000).nullable().optional(),
 });
 
