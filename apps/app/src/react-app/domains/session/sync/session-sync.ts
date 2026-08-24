@@ -323,7 +323,15 @@ function getPartMetadataId(part: UIMessage["parts"][number]) {
 
 function upsertMessage(messages: UIMessage[], next: UIMessage) {
   const index = messages.findIndex((message) => message.id === next.id);
-  if (index === -1) return [...messages, next];
+  if (index === -1) {
+    const optimisticIndex = findMatchingOptimisticUserMessageIndex(messages, next);
+    if (optimisticIndex !== -1) {
+      return messages.map((message, messageIndex) =>
+        messageIndex === optimisticIndex ? next : message,
+      );
+    }
+    return [...messages, next];
+  }
   return messages.map((message, messageIndex) =>
     messageIndex === index
       ? {
@@ -339,6 +347,41 @@ function isOptimisticUserMessage(message: UIMessage | undefined) {
   if (message?.role !== "user" || !message.metadata || typeof message.metadata !== "object") return false;
   const metadata = "ipollowork" in message.metadata ? message.metadata.ipollowork : null;
   return Boolean(metadata && typeof metadata === "object" && "optimistic" in metadata && metadata.optimistic === true);
+}
+
+function messageVisibleText(message: UIMessage) {
+  return message.parts
+    .map((part) => {
+      if (part.type === "text" || part.type === "reasoning") return part.text;
+      return "";
+    })
+    .join("")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function findMatchingOptimisticUserMessageIndex(messages: UIMessage[], next: UIMessage) {
+  if (next.role !== "user") return -1;
+  const nextText = messageVisibleText(next);
+  if (!nextText) return -1;
+  return messages.findIndex((message) =>
+    message.id !== next.id &&
+    isOptimisticUserMessage(message) &&
+    messageVisibleText(message) === nextText
+  );
+}
+
+function removeAcknowledgedOptimisticUserMessages(messages: UIMessage[]) {
+  const acknowledgedUserTexts = new Set(
+    messages
+      .filter((message) => message.role === "user" && !isOptimisticUserMessage(message))
+      .map(messageVisibleText)
+      .filter(Boolean),
+  );
+  if (acknowledgedUserTexts.size === 0) return messages;
+  return messages.filter((message) =>
+    !isOptimisticUserMessage(message) || !acknowledgedUserTexts.has(messageVisibleText(message))
+  );
 }
 
 function createClientUserMessageId() {
@@ -716,7 +759,7 @@ function applyEvent(entry: SyncEntry, workspaceId: string, event: ConversationEv
         const attachmentId = getPartMetadataId(attachment);
         if (attachmentId) next = upsertPart(next, event.messageId, attachmentId, attachment);
       }
-      return next;
+      return removeAcknowledgedOptimisticUserMessages(next);
     });
     if (pending) entry.pendingDeltas.delete(event.partId);
     return;
@@ -966,7 +1009,17 @@ export function seedSessionState(workspaceId: string, snapshot: ConversationSnap
   const queryClient = getReactQueryClient();
   const key = transcriptKey(workspaceId, snapshot.session.id);
   const incoming = snapshot.messages;
-  const existing = queryClient.getQueryData<UIMessage[]>(key);
+  const existingRaw = queryClient.getQueryData<UIMessage[]>(key);
+  const existing = existingRaw && incoming.length > 0
+    ? existingRaw.filter((message) =>
+        !isOptimisticUserMessage(message) ||
+        !incoming.some((snapshotMessage) =>
+          snapshotMessage.role === "user" &&
+          !isOptimisticUserMessage(snapshotMessage) &&
+          messageVisibleText(snapshotMessage) === messageVisibleText(message)
+        )
+      )
+    : existingRaw;
   const preserveOptimisticBusy = snapshot.status.type === "idle"
     && existing?.some(isOptimisticUserMessage) === true;
 

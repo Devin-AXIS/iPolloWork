@@ -319,6 +319,58 @@ describe("session transcript sync", () => {
     ]);
   });
 
+  test("replaces an optimistic user prompt when an OpenCode event confirms the same text", () => {
+    const cleanup = __createWorkspaceSessionSyncForTest(syncInput);
+    const releaseSession = trackWorkspaceSessionSync(syncInput, "session-a");
+    beginOptimisticSessionPrompt("workspace-a", "session-a", "立即开始处理", "ipollowork-user-1");
+
+    try {
+      applyOpenCodeEvent(syncInput, {
+        type: "message.updated",
+        properties: { info: { id: "msg-user", role: "user", sessionID: "session-a" } },
+      } as any);
+      applyOpenCodeEvent(syncInput, {
+        type: "message.part.updated",
+        properties: {
+          part: {
+            id: "part-user",
+            type: "text",
+            text: "立即开始处理",
+            sessionID: "session-a",
+            messageID: "msg-user",
+          },
+        },
+      } as any);
+
+      expect(getReactQueryClient().getQueryData<UIMessage[]>(transcriptKey("workspace-a", "session-a"))).toEqual([
+        expect.objectContaining({
+          id: "msg-user",
+          role: "user",
+          parts: [expect.objectContaining({ text: "立即开始处理" })],
+        }),
+      ]);
+    } finally {
+      releaseSession();
+      cleanup();
+    }
+  });
+
+  test("replaces an optimistic user prompt when a snapshot confirms the same text", () => {
+    beginOptimisticSessionPrompt("workspace-a", "session-a", "snapshot prompt", "ipollowork-user-1");
+
+    seedSessionState("workspace-a", snapshotWithMessages([
+      { id: "msg-user", role: "user", text: "snapshot prompt" },
+    ]));
+
+    expect(getReactQueryClient().getQueryData<UIMessage[]>(transcriptKey("workspace-a", "session-a"))).toEqual([
+      expect.objectContaining({
+        id: "msg-user",
+        role: "user",
+        parts: [expect.objectContaining({ text: "snapshot prompt" })],
+      }),
+    ]);
+  });
+
   test("rolls back only a prompt that the engine has not acknowledged", () => {
     beginOptimisticSessionPrompt("workspace-a", "session-a", "will fail", "ipollowork-user-1");
     expect(rollbackOptimisticSessionPrompt("workspace-a", "session-a", "ipollowork-user-1")).toBe(true);

@@ -11,7 +11,6 @@ import type { UIMessage } from "ai";
 import { toast } from "@/components/ui/sonner";
 import type { PptxCompatibility, TemplateCategory, TemplateSessionSnapshot } from "@ipollowork/types/templates";
 import {
-  CODEX_HARNESS_ENGINE_ID,
   DEEPSEEK_HARNESS_ENGINE_ID,
   DEFAULT_ENGINE_ID,
   type BuiltInWorkspaceEngineId,
@@ -64,7 +63,7 @@ import {
   resolveModelDisplayName,
   safeStringify,
 } from "@/app/utils";
-import { t } from "@/i18n";
+import { currentLocale, t } from "@/i18n";
 import {
   buildTaskPaletteSessionOptions,
   describeRouteError,
@@ -192,6 +191,7 @@ import {
   persistedAttachmentInstruction,
   persistComposerAttachments,
   promptDesignSelectionContexts,
+  responseLanguageSystemContext,
   serializeSDKError,
 } from "./session-prompt";
 
@@ -1215,21 +1215,19 @@ export function SessionRoute() {
           return false;
         }
 
+        let pendingTitlePersist: string | null = null;
         const targetSession = (sessionsByWorkspaceId[selectedWorkspaceId] ?? [])
           .find((session) => session.id === targetSessionId);
         if (text && (!targetSession || isDefaultSessionTitle(targetSession.title))) {
           const initialTitle = sessionTitleFromFirstPrompt(text);
           if (initialTitle) {
+            pendingTitlePersist = initialTitle;
             setSessionsByWorkspaceId((current) => ({
               ...current,
               [selectedWorkspaceId]: (current[selectedWorkspaceId] ?? []).map((session) => (
                 session.id === targetSessionId ? { ...session, title: initialTitle } : session
               )),
             }));
-            // The title is presentation metadata. Persist it concurrently so
-            // the first prompt is not queued behind another runtime RPC.
-            void conversation.rename(targetSessionId, initialTitle, selectedWorkspaceRoot || undefined)
-              .catch((error) => console.warn("[session-title] Could not persist the first-prompt title", error));
           }
         }
 
@@ -1463,7 +1461,8 @@ export function SessionRoute() {
           }
           return templateAuthoringSystemContext(template, selectedDesignSystemGuide);
         }));
-        const systemContext = [projectSystemContext, envSystemContext, ...videoSystemContexts, ...designSystemContexts, ...authoringSystemContexts, capabilitySystemContext]
+        const languageSystemContext = responseLanguageSystemContext(currentLocale());
+        const systemContext = [projectSystemContext, envSystemContext, ...videoSystemContexts, ...designSystemContexts, ...authoringSystemContexts, capabilitySystemContext, languageSystemContext]
           .filter((value): value is string => Boolean(value?.trim()))
           .join("\n\n");
         // Version history is a site-only workflow. Slides and every other
@@ -1575,6 +1574,13 @@ export function SessionRoute() {
           navigateToWorkspaceSession(selectedWorkspaceId, effectiveSessionId, { replace: true });
           void conversation.rename(effectiveSessionId, replacementTitle, selectedWorkspaceRoot || undefined)
             .catch((error) => console.warn("[session-rebind] Could not persist the replacement task title", error));
+        } else if (pendingTitlePersist) {
+          // OpenCode 1.18.x can fail the first prompt when an empty session is
+          // patched before SessionPrompt creates the initial user message.
+          // Keep the optimistic local title, but persist it after the run is
+          // accepted so title metadata never races the first message write.
+          void conversation.rename(targetSessionId, pendingTitlePersist, selectedWorkspaceRoot || undefined)
+            .catch((error) => console.warn("[session-title] Could not persist the first-prompt title", error));
         }
         return true;
         } catch (error) {
@@ -1990,6 +1996,55 @@ export function SessionRoute() {
     return true;
   }, [pendingInitialProjectTask, workspaces]);
 
+  const cleanupFailedInitialProjectTask = useCallback(async (pending: PendingInitialProjectTask) => {
+    const sessionId = pending.sessionId;
+    if (!sessionId) return;
+    if (pending.runtimeWorkspaceId) {
+      rollbackOptimisticSessionPrompt(
+        pending.runtimeWorkspaceId,
+        sessionId,
+        pending.clientUserMessageId,
+      );
+    }
+
+    const workspace = workspaces.find((item) => item.id === pending.workspaceId);
+    const endpoint = workspace ? resolveWorkspaceEndpoint(workspace, {
+      baseUrl,
+      token,
+      hostToken: ipolloworkServerHostInfoState?.hostToken,
+    }) : null;
+    if (endpoint) {
+      await endpoint.client.deleteSession(endpoint.workspaceId, sessionId)
+        .catch((error) => console.warn("[session-create] Could not delete failed initial task", error));
+    }
+    forgetProjectBuilderSession(pending.workspaceId, sessionId);
+    useDesignAiSelectionStore.getState().resetSession(sessionId);
+    setSessionsByWorkspaceId((current) => {
+      const next = {
+        ...current,
+        [pending.workspaceId]: (current[pending.workspaceId] ?? []).filter((session) => session.id !== sessionId),
+      };
+      sessionsByWorkspaceIdRef.current = next;
+      return next;
+    });
+    writeLastSessionFor(pending.workspaceId, null);
+    if (selectedWorkspaceId === pending.workspaceId && selectedSessionId === sessionId) {
+      navigateToWorkspaceSession(pending.workspaceId, null, { replace: true });
+    }
+    await refreshRouteState();
+  }, [
+    baseUrl,
+    ipolloworkServerHostInfoState?.hostToken,
+    navigateToWorkspaceSession,
+    refreshRouteState,
+    selectedSessionId,
+    selectedWorkspaceId,
+    sessionsByWorkspaceIdRef,
+    setSessionsByWorkspaceId,
+    token,
+    workspaces,
+  ]);
+
   useEffect(() => {
     const pending = pendingInitialProjectTask;
     if (!pending || pending.sessionId || initialProjectSessionCreatingRef.current) return;
@@ -2010,7 +2065,7 @@ export function SessionRoute() {
         token,
         hostToken: ipolloworkServerHostInfoState?.hostToken,
       }) : null;
-      const clientUserMessageId = workspace?.engineId === CODEX_HARNESS_ENGINE_ID && endpoint
+      const clientUserMessageId = endpoint
         ? beginOptimisticSessionPrompt(endpoint.workspaceId, sessionId, pending.draft.text)
         : null;
       setPendingInitialProjectTask((current) => current?.workspaceId === pending.workspaceId
@@ -2048,30 +2103,20 @@ export function SessionRoute() {
       pending.sessionId,
       pending.clientUserMessageId ? { clientUserMessageId: pending.clientUserMessageId } : undefined,
     ))
-      .then((dispatched) => {
-        if (!dispatched && pending.runtimeWorkspaceId) {
-          rollbackOptimisticSessionPrompt(
-            pending.runtimeWorkspaceId,
-            pending.sessionId!,
-            pending.clientUserMessageId,
-          );
+      .then(async (dispatched) => {
+        if (!dispatched) {
+          await cleanupFailedInitialProjectTask(pending);
         }
       })
-      .catch((error) => {
-        if (pending.runtimeWorkspaceId) {
-          rollbackOptimisticSessionPrompt(
-            pending.runtimeWorkspaceId,
-            pending.sessionId!,
-            pending.clientUserMessageId,
-          );
-        }
+      .catch(async (error) => {
+        await cleanupFailedInitialProjectTask(pending);
         toast.error(error instanceof Error ? error.message : t("app.unknown_error"));
       })
       .finally(() => {
         initialProjectDraftSendingRef.current = false;
         setPendingInitialProjectTask(null);
       });
-  }, [pendingInitialProjectTask, selectedSessionId, selectedWorkspaceId, surfaceProps]);
+  }, [cleanupFailedInitialProjectTask, pendingInitialProjectTask, selectedSessionId, selectedWorkspaceId, surfaceProps]);
 
   // Full-screen first-run loader. Armed once per app launch from the very
   // first render of a brand-new profile (no active-workspace memory yet) and
