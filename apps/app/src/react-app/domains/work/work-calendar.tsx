@@ -1,6 +1,6 @@
 /** @jsxImportSource react */
 import * as React from "react";
-import { CalendarDays, ChevronLeft, ChevronRight, Clock3 } from "lucide-react";
+import { CalendarDays, ChevronLeft, ChevronRight, Clock3, Timer } from "lucide-react";
 import type { WorkItem } from "@ipollowork/types/work-items";
 
 import { Button } from "@/components/ui/button";
@@ -187,7 +187,10 @@ function AgendaList({ items, onSelectItem }: Pick<WorkCalendarProps, "items" | "
             </div>
             <span className={cn("h-8 w-1 shrink-0 rounded-full border", projectTone(entry.projectName))} aria-hidden="true" />
             <span className="min-w-0 flex-1">
-              <span className="block truncate text-[13px] font-medium text-dls-text">{entry.item.title}</span>
+              <span className="flex items-center gap-1.5 text-[13px] font-medium text-dls-text">
+                <span className="truncate">{entry.item.title}</span>
+                {entry.item.automation?.enabled ? <Timer className="size-3 shrink-0" aria-label={t("work.automation.enabled")} /> : null}
+              </span>
               <span className="mt-0.5 block truncate text-[11px] text-dls-secondary">{entry.projectName}</span>
             </span>
           </button>
@@ -260,7 +263,10 @@ function WeekGrid({ items, anchorDate, onSelectItem }: Pick<WorkCalendarProps, "
                       style={{ top, height, left: 5 + index % 3 * 4, right: 5 }}
                       onClick={() => onSelectItem(entry)}
                     >
-                      <span className="block truncate text-[11px] font-semibold">{entry.item.title}</span>
+                      <span className="flex items-center gap-1 text-[11px] font-semibold">
+                        <span className="truncate">{entry.item.title}</span>
+                        {entry.item.automation?.enabled ? <Timer className="size-3 shrink-0" aria-label={t("work.automation.enabled")} /> : null}
+                      </span>
                       <span className="mt-0.5 block truncate text-[9px] opacity-70">{formatTime(timestamp)} {entry.projectName}</span>
                     </button>
                   );
@@ -313,7 +319,10 @@ function MonthGrid({ items, anchorDate, onSelectItem }: Pick<WorkCalendarProps, 
                         className={cn("block w-full truncate rounded-md border px-1.5 py-1 text-left text-[10px] font-medium transition hover:-translate-y-px", projectTone(entry.projectName))}
                         onClick={() => onSelectItem(entry)}
                       >
-                        {timestamp === null ? "" : formatTime(timestamp)} {entry.item.title}
+                        <span className="flex items-center gap-1">
+                          {entry.item.automation?.enabled ? <Timer className="size-3 shrink-0" aria-label={t("work.automation.enabled")} /> : null}
+                          <span className="truncate">{timestamp === null ? "" : formatTime(timestamp)} {entry.item.title}</span>
+                        </span>
                       </button>
                     );
                   })}

@@ -439,4 +439,59 @@ describe("project overview", () => {
     expect(pluginAuthorizationDialogSource).toContain("client.pollPluginDeviceAuthorization");
     expect(pluginAuthorizationDialogSource).toContain("client.getPluginAuthorization");
   });
+
+  test("supports opt-in mouse panning without replacing task drag and drop", () => {
+    expect(workCenterSource).toContain("const [boardPanEnabled, setBoardPanEnabled] = React.useState(false);");
+    expect(workCenterSource).toContain("aria-pressed={boardPanEnabled}");
+    expect(workCenterSource).toContain("panEnabled={boardPanEnabled}");
+    expect(projectBoardSource).toContain("event.currentTarget.setPointerCapture(event.pointerId);");
+    expect(projectBoardSource).toContain("event.currentTarget.scrollLeft = start.scrollLeft - (event.clientX - start.clientX);");
+    expect(projectBoardSource).toContain('panEnabled && "select-none [&>*]:pointer-events-none"');
+    expect(projectBoardSource).toContain('panEnabled && (panning ? "cursor-grabbing" : "cursor-grab")');
+    expect(projectBoardSource).toContain("draggable={!executionBound}");
+  });
+
+  test("closes the task deletion confirmation after a successful delete", () => {
+    const deleteMutationSource = workCenterSource.slice(
+      workCenterSource.indexOf("const deleteMutation = useMutation"),
+      workCenterSource.indexOf("const boardMutation = useMutation"),
+    );
+
+    expect(deleteMutationSource).toContain("onSuccess: async () => {\n      setPendingDelete(null);");
+    expect(deleteMutationSource).toContain('onError: (error) => toast.error(t("work.delete_failed")');
+  });
+
+  test("uses separate native date and time pickers for task scheduling", () => {
+    expect(workItemSheetSource).toContain("function DateTimePickerField");
+    expect(workItemSheetSource).toContain('data-testid="work-item-time-pickers"');
+    expect(workItemSheetSource).toContain('type="date"');
+    expect(workItemSheetSource).toContain('type="time"');
+    expect(workItemSheetSource).toContain("updateDatePart(props.timestamp");
+    expect(workItemSheetSource).toContain("updateTimePart(props.timestamp");
+    expect(workItemSheetSource).toContain("event.currentTarget.showPicker();");
+    expect(workItemSheetSource.match(/onClick=\{openNativePicker\}/g)).toHaveLength(2);
+    expect(workItemSheetSource).not.toContain('type="datetime-local"');
+  });
+
+  test("configures automatic execution from the shared task schedule sheet", () => {
+    expect(workItemSheetSource).toContain('data-testid="work-item-automation"');
+    expect(workItemSheetSource).toContain('checked={value.automation?.enabled === true}');
+    expect(workItemSheetSource).toContain('t("work.automation.recurrence")');
+    expect(workItemSheetSource).toContain('current.automation?.recurrence ?? "once"');
+    expect(workItemSheetSource).toContain('id="work-item-automation-model"');
+    expect(workItemSheetSource).toContain('t("work.automation.follow_project_model")');
+    expect(workItemSheetSource).toContain("automationModelFromValue");
+    expect(workCenterSource).toContain("connectedProviderIds={props.connectedProviderIds}");
+    expect(workItemSheetSource).toContain("invalidAutomation");
+  });
+
+  test("selects task owners from the current project's Agent configuration", () => {
+    expect(workCenterSource).toContain('["work-item-project-agents", editorEndpoint?.key, editorEndpoint?.workspaceId]');
+    expect(workCenterSource).toContain("readProjectWorkspaceConfig(response.ipollowork, editorEndpoint.workspace.engineId).agents");
+    expect(workCenterSource).toContain("agents={editorAgentsQuery.data ?? []}");
+    expect(workItemSheetSource).toContain('<select\n              id="work-item-assignee"');
+    expect(workItemSheetSource).toContain("props.agents.map((agent)");
+    expect(workItemSheetSource).toContain('<option key={agent.id} value={agent.id}>{agent.name}</option>');
+    expect(workItemSheetSource).not.toContain('placeholder={t("work.field.assignee_placeholder")}');
+  });
 });

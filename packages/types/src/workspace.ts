@@ -21,6 +21,29 @@ export const DEEPSEEK_HARNESS_ENGINE_ID = "deepseek-harness";
 export const CODEX_HARNESS_ENGINE_ID = "codex-harness";
 export const DEEPSEEK_HARNESS_INTERNAL_SYSTEM_PREFIX = "<system>\n<!-- ipollowork-internal-context -->\n";
 
+export type DeepSeekHarnessModelDirectory = {
+  groups: ReadonlyArray<{
+    id: string;
+    models: ReadonlyArray<{ id: string }>;
+  }>;
+};
+
+/** Resolve the account-level OpenAI provider to the concrete DSH runtime route. */
+export function deepSeekHarnessRuntimeProviderId(
+  providerId: string,
+  modelId: string,
+  directory: DeepSeekHarnessModelDirectory | null | undefined,
+): string {
+  if (providerId.trim().toLowerCase() !== "openai" || !directory) return providerId;
+  const hasModel = (candidate: string) => directory.groups.some((group) => (
+    group.id === candidate && group.models.some((model) => model.id === modelId)
+  ));
+  if (hasModel("openai")) return "openai";
+  if (hasModel("openai-codex-priority")) return "openai-codex-priority";
+  if (hasModel("openai-codex")) return "openai-codex";
+  return providerId;
+}
+
 /**
  * DeepSeek Harness persists every prompt block in its history. iPolloWork marks
  * application-owned context before dispatch, then both the server snapshot and

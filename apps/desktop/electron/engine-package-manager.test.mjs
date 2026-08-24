@@ -70,6 +70,18 @@ test("installs and removes an optional engine package without touching Work data
   await writeFile(`${archivePath}.sha256`, `${checksum}  ${name}\n`);
 
   let beforeUninstallCalls = 0;
+  let resumeRuntimeCalls = 0;
+  /** @type {NodeJS.ProcessEnv} */
+  const managerEnvironment = {
+    ...process.env,
+    PATH: path.dirname(tarPath),
+    APPDATA: path.join(temporaryRoot, "app-data"),
+    LOCALAPPDATA: path.join(temporaryRoot, "local-app-data"),
+    ProgramFiles: path.join(temporaryRoot, "program-files"),
+    IPOLLOWORK_ENGINE_PACK_SOURCE_DIR: sourceDirectory,
+  };
+  delete managerEnvironment.IPOLLOWORK_CODEX_CLI;
+  delete managerEnvironment.IPOLLOWORK_CODEX_CLI_VERSION;
   try {
     process.env.PATH = path.dirname(tarPath);
     process.env.IPOLLOWORK_ENGINE_PACK_SOURCE_DIR = sourceDirectory;
@@ -86,10 +98,15 @@ test("installs and removes an optional engine package without touching Work data
       },
       desktopRoot: path.join(temporaryRoot, "desktop"),
       versions: { opencode: "1.2.3", deepseekHarness: "4.5.6", codexHarness: version },
+      env: managerEnvironment,
+      homeDir: path.join(temporaryRoot, "home"),
       fetch: async () => { throw new Error("fixture should not use the network"); },
       beforeUninstall: async () => {
         beforeUninstallCalls += 1;
-        assert.equal(process.env.IPOLLOWORK_CODEX_CLI, undefined);
+        assert.equal(managerEnvironment.IPOLLOWORK_CODEX_CLI, undefined);
+        return () => {
+          resumeRuntimeCalls += 1;
+        };
       },
     });
 
@@ -108,19 +125,21 @@ test("installs and removes an optional engine package without touching Work data
     assert.equal(installed.source, "downloaded");
     assert.equal(installed.canUninstall, true);
     assert.ok(installed.installedBytes > 0);
-    assert.ok(process.env.IPOLLOWORK_CODEX_CLI?.includes(path.join("engine-packs", "codex-harness")));
+    assert.ok(managerEnvironment.IPOLLOWORK_CODEX_CLI?.includes(path.join("engine-packs", "codex-harness")));
     assert.equal(await readFile(sentinelPath, "utf8"), '{"kept":true}\n');
 
     process.env.PATH = `${clientResources}${path.delimiter}${path.dirname(tarPath)}`;
+    managerEnvironment.PATH = process.env.PATH;
     const managedPreferred = (await manager.list()).find((engine) => engine.id === "codex-harness");
     assert.equal(managedPreferred?.source, "downloaded");
     assert.equal(managedPreferred?.canUninstall, true);
 
     const removed = await manager.uninstall("codex-harness");
     assert.equal(removed.installed, true);
-    assert.equal(removed.source, "desktop-client");
+    assert.equal(removed.source, "official");
     assert.equal(removed.canUninstall, false);
     assert.equal(beforeUninstallCalls, 1);
+    assert.equal(resumeRuntimeCalls, 1);
     assert.equal(await readFile(sentinelPath, "utf8"), '{"kept":true}\n');
     assert.equal(existsSync(path.join(userData, "engine-packs", "codex-harness")), false);
   } finally {
@@ -136,7 +155,7 @@ test("installs and removes an optional engine package without touching Work data
   }
 });
 
-test("identifies Codex supplied by a desktop client and leaves it externally managed", async () => {
+test("identifies an official Codex client resource and leaves it externally managed", async () => {
   const temporaryRoot = await mkdtemp(path.join(os.tmpdir(), "ipollowork-codex-client-test-"));
   const clientResources = path.join(temporaryRoot, "ChatGPT.app", "Contents", "Resources");
   const previousPath = process.env.PATH;
@@ -164,7 +183,7 @@ test("identifies Codex supplied by a desktop client and leaves it externally man
 
     const codex = (await manager.list()).find((engine) => engine.id === "codex-harness");
     assert.equal(codex?.installed, true);
-    assert.equal(codex?.source, "desktop-client");
+    assert.equal(codex?.source, "official");
     assert.equal(codex?.canInstall, false);
     assert.equal(codex?.canUninstall, false);
   } finally {
@@ -172,6 +191,212 @@ test("identifies Codex supplied by a desktop client and leaves it externally man
     else process.env.PATH = previousPath;
     if (previousCodexCli === undefined) delete process.env.IPOLLOWORK_CODEX_CLI;
     else process.env.IPOLLOWORK_CODEX_CLI = previousCodexCli;
+    await rm(temporaryRoot, { recursive: true, force: true });
+  }
+});
+
+test("discovers an official Codex client outside the inherited PATH", async () => {
+  const temporaryRoot = await mkdtemp(path.join(os.tmpdir(), "ipollowork-codex-discovery-test-"));
+  const homeDir = path.join(temporaryRoot, "home");
+  /** @type {NodeJS.ProcessEnv} */
+  const environment = {
+    ...process.env,
+    PATH: path.join(temporaryRoot, "empty-bin"),
+    APPDATA: path.join(temporaryRoot, "app-data"),
+    LOCALAPPDATA: path.join(temporaryRoot, "local-app-data"),
+    ProgramFiles: path.join(temporaryRoot, "program-files"),
+  };
+  delete environment.IPOLLOWORK_DSH_CLI;
+  delete environment.IPOLLOWORK_CODEX_CLI;
+  const codexPath = process.platform === "win32"
+    ? path.join(environment.ProgramFiles, "WindowsApps", "OpenAI.Codex_1.2.3.0_x64__official", "app", "resources", "codex.exe")
+    : process.platform === "darwin"
+      ? path.join(homeDir, "Applications", "Codex.app", "Contents", "Resources", "codex")
+      : path.join(homeDir, ".local", "bin", "codex");
+
+  try {
+    await mkdir(path.dirname(codexPath), { recursive: true });
+    await writeFile(codexPath, "official-runtime\n");
+    const manager = createEnginePackageManager({
+      app: {
+        getPath(name) {
+          assert.equal(name, "userData");
+          return path.join(temporaryRoot, "user-data");
+        },
+        getVersion() { return "1.0.0"; },
+        isPackaged: true,
+      },
+      desktopRoot: path.join(temporaryRoot, "desktop"),
+      versions: { opencode: "1.2.3", deepseekHarness: "4.5.6", codexHarness: "7.8.9" },
+      env: environment,
+      homeDir,
+      fetch: async () => { throw new Error("fixture should not use the network"); },
+    });
+
+    await manager.applyEnvironment();
+    const codex = (await manager.list()).find((engine) => engine.id === "codex-harness");
+    assert.equal(codex?.source, "official");
+    assert.equal(codex?.canInstall, false);
+    assert.equal(codex?.canUninstall, false);
+    assert.equal(environment.IPOLLOWORK_CODEX_CLI, codexPath);
+  } finally {
+    await rm(temporaryRoot, { recursive: true, force: true });
+  }
+});
+
+test("uses an official DeepSeek Harness installation without offering another download", async () => {
+  const temporaryRoot = await mkdtemp(path.join(os.tmpdir(), "ipollowork-dsh-official-test-"));
+  const homeDir = path.join(temporaryRoot, "home");
+  const appData = path.join(temporaryRoot, "app-data");
+  const binDirectory = process.platform === "win32"
+    ? path.join(appData, "npm")
+    : path.join(homeDir, ".local", "bin");
+  const dshCommand = path.join(binDirectory, process.platform === "win32" ? "dsh.cmd" : "dsh");
+  const dshEntrypoint = path.join(binDirectory, "node_modules", "@deepseek-ai", "dsh", "lib", "bin.js");
+  /** @type {NodeJS.ProcessEnv} */
+  const environment = {
+    ...process.env,
+    PATH: path.join(temporaryRoot, "empty-bin"),
+    APPDATA: appData,
+    LOCALAPPDATA: path.join(temporaryRoot, "local-app-data"),
+    ProgramFiles: path.join(temporaryRoot, "program-files"),
+  };
+  delete environment.IPOLLOWORK_DSH_CLI;
+  delete environment.IPOLLOWORK_CODEX_CLI;
+
+  try {
+    await mkdir(path.dirname(dshEntrypoint), { recursive: true });
+    await writeFile(dshCommand, process.platform === "win32" ? "@echo off\r\n" : "#!/usr/bin/env node\n");
+    await writeFile(dshEntrypoint, "#!/usr/bin/env node\n");
+    const manager = createEnginePackageManager({
+      app: {
+        getPath(name) {
+          assert.equal(name, "userData");
+          return path.join(temporaryRoot, "user-data");
+        },
+        getVersion() { return "1.0.0"; },
+        isPackaged: true,
+      },
+      desktopRoot: path.join(temporaryRoot, "desktop"),
+      versions: { opencode: "1.2.3", deepseekHarness: "4.5.6", codexHarness: "7.8.9" },
+      env: environment,
+      homeDir,
+      fetch: async () => { throw new Error("fixture should not use the network"); },
+    });
+
+    await manager.applyEnvironment();
+    const dsh = (await manager.list()).find((engine) => engine.id === "deepseek-harness");
+    assert.equal(dsh?.installed, true);
+    assert.equal(dsh?.source, "official");
+    assert.equal(dsh?.canInstall, false);
+    assert.equal(dsh?.canUninstall, false);
+    assert.equal(environment.IPOLLOWORK_DSH_CLI, process.platform === "win32" ? dshEntrypoint : dshCommand);
+  } finally {
+    await rm(temporaryRoot, { recursive: true, force: true });
+  }
+});
+
+test("discovers official Codex and DeepSeek resources in macOS installation locations", async () => {
+  const temporaryRoot = await mkdtemp(path.join(os.tmpdir(), "ipollowork-macos-engine-discovery-test-"));
+  const homeDir = path.join(temporaryRoot, "home");
+  const codexPath = path.join(homeDir, "Applications", "Codex.app", "Contents", "Resources", "codex");
+  const dshPath = path.join(
+    homeDir,
+    ".npm-global",
+    "lib",
+    "node_modules",
+    "@deepseek-ai",
+    "dsh",
+    "lib",
+    "bin.js",
+  );
+  /** @type {NodeJS.ProcessEnv} */
+  const environment = {
+    ...process.env,
+    PATH: path.join(temporaryRoot, "empty-bin"),
+    APPDATA: path.join(temporaryRoot, "app-data"),
+    LOCALAPPDATA: path.join(temporaryRoot, "local-app-data"),
+    ProgramFiles: path.join(temporaryRoot, "program-files"),
+  };
+  delete environment.IPOLLOWORK_DSH_CLI;
+  delete environment.IPOLLOWORK_CODEX_CLI;
+
+  try {
+    await mkdir(path.dirname(codexPath), { recursive: true });
+    await mkdir(path.dirname(dshPath), { recursive: true });
+    await writeFile(codexPath, "official-codex-runtime\n");
+    await writeFile(dshPath, "#!/usr/bin/env node\n");
+    const manager = createEnginePackageManager({
+      app: {
+        getPath(name) {
+          assert.equal(name, "userData");
+          return path.join(temporaryRoot, "user-data");
+        },
+        getVersion() { return "1.0.0"; },
+        isPackaged: true,
+      },
+      desktopRoot: path.join(temporaryRoot, "desktop"),
+      versions: { opencode: "1.2.3", deepseekHarness: "4.5.6", codexHarness: "7.8.9" },
+      platform: "darwin",
+      architecture: "arm64",
+      env: environment,
+      homeDir,
+      fetch: async () => { throw new Error("fixture should not use the network"); },
+    });
+
+    await manager.applyEnvironment();
+    const optionalEngines = (await manager.list()).filter((engine) => engine.id !== "opencode");
+    assert.deepEqual(optionalEngines.map((engine) => engine.source), ["official", "official"]);
+    assert.deepEqual(optionalEngines.map((engine) => engine.canUninstall), [false, false]);
+    assert.equal(environment.IPOLLOWORK_DSH_CLI, dshPath);
+    assert.equal(environment.IPOLLOWORK_CODEX_CLI, codexPath);
+  } finally {
+    await rm(temporaryRoot, { recursive: true, force: true });
+  }
+});
+
+test("does not treat unrelated commands with official engine names as official resources", async () => {
+  const temporaryRoot = await mkdtemp(path.join(os.tmpdir(), "ipollowork-engine-impostor-test-"));
+  const binDirectory = path.join(temporaryRoot, "unrelated-tools");
+  const commandExtension = process.platform === "win32" ? ".exe" : "";
+  /** @type {NodeJS.ProcessEnv} */
+  const environment = {
+    ...process.env,
+    PATH: binDirectory,
+    APPDATA: path.join(temporaryRoot, "app-data"),
+    LOCALAPPDATA: path.join(temporaryRoot, "local-app-data"),
+    ProgramFiles: path.join(temporaryRoot, "program-files"),
+  };
+  delete environment.IPOLLOWORK_DSH_CLI;
+  delete environment.IPOLLOWORK_CODEX_CLI;
+
+  try {
+    await mkdir(binDirectory, { recursive: true });
+    await writeFile(path.join(binDirectory, `codex${commandExtension}`), "unrelated-runtime\n");
+    await writeFile(path.join(binDirectory, `dsh${commandExtension}`), "unrelated-runtime\n");
+    const manager = createEnginePackageManager({
+      app: {
+        getPath(name) {
+          assert.equal(name, "userData");
+          return path.join(temporaryRoot, "user-data");
+        },
+        getVersion() { return "1.0.0"; },
+        isPackaged: true,
+      },
+      desktopRoot: path.join(temporaryRoot, "desktop"),
+      versions: { opencode: "1.2.3", deepseekHarness: "4.5.6", codexHarness: "7.8.9" },
+      env: environment,
+      homeDir: path.join(temporaryRoot, "home"),
+      fetch: async () => { throw new Error("fixture should not use the network"); },
+    });
+
+    await manager.applyEnvironment();
+    const optionalEngines = (await manager.list()).filter((engine) => engine.id !== "opencode");
+    assert.deepEqual(optionalEngines.map((engine) => engine.source), ["none", "none"]);
+    assert.deepEqual(optionalEngines.map((engine) => engine.canInstall), [true, true]);
+    assert.equal(environment.IPOLLOWORK_DSH_CLI, undefined);
+    assert.equal(environment.IPOLLOWORK_CODEX_CLI, undefined);
+  } finally {
     await rm(temporaryRoot, { recursive: true, force: true });
   }
 });

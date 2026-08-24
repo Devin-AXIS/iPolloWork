@@ -14,6 +14,7 @@ import {
   completeConversationMessage,
   conversationMessageMetadata,
 } from "./conversation-engine";
+import { createSessionErrorUIMessage } from "./opencode-message-adapter";
 import type { DeepSeekHarnessServerRequest } from "@/app/lib/deepseek-harness-client";
 
 type DshEvent = {
@@ -341,6 +342,7 @@ export function mapDeepSeekHarnessSnapshot(snapshot: unknown): ConversationSnaps
   const messages: UIMessage[] = [];
   const tools = new Map<string, ToolState>();
   const completedTurns = new Map<number, number>();
+  const turnErrors: Array<{ turn: number; text: string; time: number }> = [];
   let todos: TodoItem[] = [];
   for (const { event } of source.history.events) {
     if (event.type === "user/message" || event.type === "assistant/message") {
@@ -379,7 +381,11 @@ export function mapDeepSeekHarnessSnapshot(snapshot: unknown): ConversationSnaps
       continue;
     }
     if (event.type === "todo/write") todos = mapTodos(source.session.id, data);
-    if (event.type === "turn/end" && typeof data.turn === "number") completedTurns.set(data.turn, event.time);
+    if (event.type === "turn/end" && typeof data.turn === "number") {
+      completedTurns.set(data.turn, event.time);
+      const text = turnErrorText(data);
+      if (text) turnErrors.push({ turn: data.turn, text, time: event.time });
+    }
   }
   for (let index = 0; index < messages.length; index += 1) {
     const message = messages[index];
@@ -390,6 +396,23 @@ export function mapDeepSeekHarnessSnapshot(snapshot: unknown): ConversationSnaps
     const turn = ipollowork && typeof ipollowork.dshTurn === "number" ? ipollowork.dshTurn : null;
     const completedAt = turn === null ? undefined : completedTurns.get(turn);
     if (typeof completedAt === "number") messages[index] = completeConversationMessage(message, completedAt);
+  }
+  for (const error of turnErrors) {
+    const assistant = [...messages].reverse().find((message) => {
+      if (message.role !== "assistant") return false;
+      const ipollowork = isRecord(message.metadata) && isRecord(message.metadata.ipollowork)
+        ? message.metadata.ipollowork
+        : null;
+      return ipollowork?.dshTurn === error.turn;
+    });
+    upsertMessage(
+      messages,
+      createSessionErrorUIMessage(
+        assistant?.id ?? `${source.session.id}:turn:${error.turn}`,
+        error.text,
+        { created: error.time },
+      ),
+    );
   }
   const session = mapDeepSeekHarnessSession(source.session);
   if (INTERNAL_SESSION_TITLE.test(session.title)) {

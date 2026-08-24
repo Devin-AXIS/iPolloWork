@@ -85,6 +85,7 @@ function waitForCommittedRouteState(): Promise<void> {
 }
 
 let STARTUP_ROUTE_TIMING_REPORTED = false;
+const SELECTED_WORKSPACE_SESSION_SYNC_INTERVAL_MS = 15_000;
 
 export function useWorkspaceRouteState(input: UseWorkspaceRouteStateInput) {
   const { workContextId, onServerSettingsChanged, onHostInfo } = input;
@@ -664,6 +665,30 @@ export function useWorkspaceRouteState(input: UseWorkspaceRouteStateInput) {
       Object.entries(sessionsByWorkspaceId).filter(([workspaceId]) => visibleWorkspaceIds.has(workspaceId)),
     ));
   }, [sessionsByWorkspaceId, workspaces]);
+
+  useEffect(() => {
+    if (loading || !selectedWorkspace) return;
+    let disposed = false;
+    let syncInFlight = false;
+    const syncSelectedWorkspaceSessions = async () => {
+      if (disposed || syncInFlight || document.visibilityState === "hidden") return;
+      syncInFlight = true;
+      try {
+        await loadWorkspaceSessionsInBackground([selectedWorkspace]);
+      } finally {
+        syncInFlight = false;
+      }
+    };
+    void syncSelectedWorkspaceSessions();
+    const interval = window.setInterval(
+      () => void syncSelectedWorkspaceSessions(),
+      SELECTED_WORKSPACE_SESSION_SYNC_INTERVAL_MS,
+    );
+    return () => {
+      disposed = true;
+      window.clearInterval(interval);
+    };
+  }, [loadWorkspaceSessionsInBackground, loading, selectedWorkspace]);
 
   const handleRemoteWorkspaceConnectionSaved = useCallback(
     async (workspaceId: string) => {

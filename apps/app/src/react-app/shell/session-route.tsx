@@ -168,7 +168,7 @@ import {
   projectBuilderSessionId,
   scopeProjectBuilderDraft,
 } from "@/react-app/domains/work/project-builder-session";
-import { projectExecutionSystemContext } from "@/react-app/domains/work/project-execution";
+import { projectExecutionSystemContext } from "@ipollowork/types/work-items";
 import { useSessionControlActions } from "@/react-app/domains/session/control/session-control-actions";
 import type { ConversationStatus } from "@/react-app/domains/session/engine/conversation-engine";
 import { conversationEngineAdapters } from "@/react-app/domains/session/engine/conversation-engines";

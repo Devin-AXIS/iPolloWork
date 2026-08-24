@@ -1,12 +1,16 @@
 /** @jsxImportSource react */
 import * as React from "react";
-import { CalendarClock, ChevronDown, LockKeyhole, Trash2 } from "lucide-react";
+import { CalendarClock, ChevronDown, LockKeyhole, Timer, Trash2 } from "lucide-react";
 import type {
   WorkBoardConfig,
   WorkItem,
+  WorkItemAutomation,
+  WorkItemAutomationRecurrence,
   WorkItemPriority,
 } from "@ipollowork/types/work-items";
+import type { ProjectAgent, ProjectAgentModel } from "@ipollowork/types/project-workspace";
 
+import type { ProviderListItem } from "@/app/types";
 import { Button } from "@/components/ui/button";
 import {
   Collapsible,
@@ -24,6 +28,7 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { Textarea } from "@/components/ui/textarea";
+import { Switch } from "@/components/ui/switch";
 import { t } from "@/i18n";
 
 export type WorkItemEditorValue = {
@@ -34,6 +39,7 @@ export type WorkItemEditorValue = {
   priority: WorkItemPriority;
   startAt: number | null;
   dueAt: number | null;
+  automation: WorkItemAutomation | null;
   customFields: Record<string, string | number | boolean | null>;
 };
 
@@ -44,6 +50,9 @@ type WorkItemSheetProps = {
   defaultStatus: string;
   saving: boolean;
   deleting: boolean;
+  agents: ProjectAgent[];
+  providers: ProviderListItem[];
+  connectedProviderIds: string[];
   onOpenChange: (open: boolean) => void;
   onSave: (value: WorkItemEditorValue) => void;
   onDelete?: () => void;
@@ -51,22 +60,107 @@ type WorkItemSheetProps = {
 
 const fieldClassName = "h-9 w-full rounded-lg border border-border bg-background px-3 text-[13px] text-foreground outline-none transition focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/30";
 
-function toDateTimeInput(timestamp: number | null): string {
+function toDateInput(timestamp: number | null): string {
   if (timestamp === null) return "";
   const date = new Date(timestamp);
-  const local = new Date(date.getTime() - date.getTimezoneOffset() * 60_000);
-  return local.toISOString().slice(0, 16);
+  const year = String(date.getFullYear()).padStart(4, "0");
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
 }
 
-function fromDateTimeInput(value: string): number | null {
-  if (!value) return null;
-  const timestamp = new Date(value).getTime();
+function toTimeInput(timestamp: number | null): string {
+  if (timestamp === null) return "";
+  const date = new Date(timestamp);
+  const hours = String(date.getHours()).padStart(2, "0");
+  const minutes = String(date.getMinutes()).padStart(2, "0");
+  return `${hours}:${minutes}`;
+}
+
+function fromDateAndTime(dateValue: string, timeValue: string): number | null {
+  if (!dateValue || !timeValue) return null;
+  const timestamp = new Date(`${dateValue}T${timeValue}`).getTime();
   return Number.isFinite(timestamp) ? timestamp : null;
+}
+
+function updateDatePart(timestamp: number | null, dateValue: string): number | null {
+  if (!dateValue) return null;
+  return fromDateAndTime(dateValue, toTimeInput(timestamp) || "09:00");
+}
+
+function updateTimePart(timestamp: number | null, timeValue: string): number | null {
+  if (!timeValue) return null;
+  return fromDateAndTime(toDateInput(timestamp) || toDateInput(Date.now()), timeValue);
+}
+
+type DateTimePickerFieldProps = {
+  id: string;
+  label: string;
+  timestamp: number | null;
+  invalid?: boolean;
+  onChange: (timestamp: number | null) => void;
+};
+
+function openNativePicker(event: React.MouseEvent<HTMLInputElement>) {
+  event.currentTarget.showPicker();
+}
+
+function DateTimePickerField(props: DateTimePickerFieldProps) {
+  return (
+    <fieldset className="space-y-2">
+      <legend className="text-xs font-medium text-foreground">{props.label}</legend>
+      <div className="grid grid-cols-[minmax(0,1fr)_7rem] gap-2">
+        <Input
+          id={`${props.id}-date`}
+          type="date"
+          value={toDateInput(props.timestamp)}
+          aria-label={`${props.label} · ${t("work.time.date_picker")}`}
+          aria-invalid={props.invalid || undefined}
+          onClick={openNativePicker}
+          onChange={(event) => props.onChange(updateDatePart(props.timestamp, event.currentTarget.value))}
+        />
+        <Input
+          id={`${props.id}-time`}
+          type="time"
+          value={toTimeInput(props.timestamp)}
+          aria-label={`${props.label} · ${t("work.time.time_picker")}`}
+          aria-invalid={props.invalid || undefined}
+          onClick={openNativePicker}
+          onChange={(event) => props.onChange(updateTimePart(props.timestamp, event.currentTarget.value))}
+        />
+      </div>
+    </fieldset>
+  );
 }
 
 function priorityFromValue(value: string): WorkItemPriority {
   if (value === "low" || value === "high" || value === "urgent") return value;
   return "normal";
+}
+
+function automationRecurrenceFromValue(value: string): WorkItemAutomationRecurrence {
+  if (value === "daily" || value === "weekly") return value;
+  return "once";
+}
+
+function automationModelValue(model: ProjectAgentModel | null | undefined): string {
+  return model ? JSON.stringify([model.providerId, model.modelId]) : "";
+}
+
+function automationModelFromValue(value: string): ProjectAgentModel | null {
+  if (!value) return null;
+  try {
+    const parsed: unknown = JSON.parse(value);
+    if (
+      !Array.isArray(parsed)
+      || parsed.length !== 2
+      || typeof parsed[0] !== "string"
+      || typeof parsed[1] !== "string"
+    ) return null;
+    return { providerId: parsed[0], modelId: parsed[1] };
+  } catch {
+    return null;
+  }
 }
 
 function timeSummary(startAt: number | null, dueAt: number | null): string {
@@ -92,6 +186,7 @@ function emptyEditorValue(status: string): WorkItemEditorValue {
     priority: "normal",
     startAt: null,
     dueAt: null,
+    automation: null,
     customFields: {},
   };
 }
@@ -110,12 +205,27 @@ export function WorkItemSheet(props: WorkItemSheetProps) {
       priority: props.item.priority,
       startAt: props.item.startAt,
       dueAt: props.item.dueAt,
+      automation: props.item.automation,
       customFields: props.item.customFields,
     } : emptyEditorValue(props.defaultStatus));
-    setTimeOpen(Boolean(props.item && (props.item.startAt !== null || props.item.dueAt !== null)));
+    setTimeOpen(Boolean(props.item && (
+      props.item.startAt !== null
+      || props.item.dueAt !== null
+      || props.item.automation !== null
+    )));
   }, [props.defaultStatus, props.item, props.open]);
 
   const invalidRange = value.startAt !== null && value.dueAt !== null && value.dueAt < value.startAt;
+  const invalidAutomation = value.automation?.enabled === true && value.startAt === null;
+  const connectedProviders = new Set(props.connectedProviderIds);
+  const modelProviders = props.providers.filter((provider) => (
+    connectedProviders.has(provider.id) && Object.keys(provider.models).length > 0
+  ));
+  const selectedAutomationModel = value.automation?.model;
+  const selectedAutomationModelAvailable = !selectedAutomationModel || modelProviders.some((provider) => (
+    provider.id === selectedAutomationModel.providerId && selectedAutomationModel.modelId in provider.models
+  ));
+  const selectedAssigneeAvailable = !value.assignee || props.agents.some((agent) => agent.id === value.assignee);
   const updateCustomField = (fieldId: string, next: string | number | boolean | null) => {
     setValue((current) => ({
       ...current,
@@ -222,15 +332,23 @@ export function WorkItemSheet(props: WorkItemSheetProps) {
 
           {!props.item?.execution ? <div className="space-y-2">
             <Label htmlFor="work-item-assignee">{t("work.field.assignee")}</Label>
-            <Input
+            <select
               id="work-item-assignee"
               value={value.assignee ?? ""}
-              placeholder={t("work.field.assignee_placeholder")}
+              className={fieldClassName}
               onChange={(event) => {
                 const assignee = event.currentTarget.value || null;
                 setValue((current) => ({ ...current, assignee }));
               }}
-            />
+            >
+              <option value="">{t("project_overview.unassigned")}</option>
+              {!selectedAssigneeAvailable && value.assignee ? (
+                <option value={value.assignee}>{value.assignee}</option>
+              ) : null}
+              {props.agents.map((agent) => (
+                <option key={agent.id} value={agent.id}>{agent.name}</option>
+              ))}
+            </select>
           </div> : null}
 
           <Collapsible open={timeOpen} onOpenChange={setTimeOpen} className="rounded-xl border border-dls-border/75 bg-dls-surface/45">
@@ -241,34 +359,125 @@ export function WorkItemSheet(props: WorkItemSheetProps) {
               <ChevronDown className="size-3.5 shrink-0 text-dls-tertiary transition-transform group-aria-expanded:rotate-180" />
             </CollapsibleTrigger>
             <CollapsibleContent className="border-t border-dls-border/70 px-3.5 py-3">
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                <div className="space-y-2">
-                  <Label htmlFor="work-item-start">{t("work.field.start")}</Label>
-                  <Input
-                    id="work-item-start"
-                    type="datetime-local"
-                    value={toDateTimeInput(value.startAt)}
-                    onInput={(event) => {
-                      const startAt = fromDateTimeInput(event.currentTarget.value);
-                      setValue((current) => ({ ...current, startAt }));
-                    }}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="work-item-due">{t("work.field.due")}</Label>
-                  <Input
-                    id="work-item-due"
-                    type="datetime-local"
-                    value={toDateTimeInput(value.dueAt)}
-                    aria-invalid={invalidRange}
-                    onInput={(event) => {
-                      const dueAt = fromDateTimeInput(event.currentTarget.value);
-                      setValue((current) => ({ ...current, dueAt }));
-                    }}
-                  />
-                </div>
+              <div className="space-y-3" data-testid="work-item-time-pickers">
+                <DateTimePickerField
+                  id="work-item-start"
+                  label={t("work.field.start")}
+                  timestamp={value.startAt}
+                  onChange={(startAt) => setValue((current) => ({ ...current, startAt }))}
+                />
+                <DateTimePickerField
+                  id="work-item-due"
+                  label={t("work.field.due")}
+                  timestamp={value.dueAt}
+                  invalid={invalidRange}
+                  onChange={(dueAt) => setValue((current) => ({ ...current, dueAt }))}
+                />
               </div>
               {invalidRange ? <p className="mt-2 text-xs text-destructive">{t("work.field.invalid_range")}</p> : null}
+              {!props.item?.execution ? (
+                <div className="mt-4 border-t border-dls-border/70 pt-4" data-testid="work-item-automation">
+                  <div className="flex items-center gap-3">
+                    <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-dls-hover text-dls-secondary">
+                      <Timer className="size-4" />
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block text-[12px] font-medium text-dls-text">{t("work.automation.title")}</span>
+                      <span className="mt-0.5 block text-[9px] leading-4 text-dls-tertiary">{t("work.automation.description")}</span>
+                    </span>
+                    <Switch
+                      checked={value.automation?.enabled === true}
+                      aria-label={t("work.automation.title")}
+                      onCheckedChange={(enabled) => setValue((current) => ({
+                        ...current,
+                        automation: {
+                          enabled,
+                          recurrence: current.automation?.recurrence ?? "once",
+                          model: current.automation?.model ?? null,
+                        },
+                      }))}
+                    />
+                  </div>
+
+                  {value.automation?.enabled ? (
+                    <div className="mt-3 space-y-2">
+                      <Label htmlFor="work-item-automation-recurrence">{t("work.automation.recurrence")}</Label>
+                      <select
+                        id="work-item-automation-recurrence"
+                        value={value.automation.recurrence}
+                        className={fieldClassName}
+                        onChange={(event) => {
+                          const recurrence = automationRecurrenceFromValue(event.currentTarget.value);
+                          setValue((current) => ({
+                            ...current,
+                            automation: { enabled: true, recurrence, model: current.automation?.model ?? null },
+                          }));
+                        }}
+                      >
+                        <option value="once">{t("work.automation.once")}</option>
+                        <option value="daily">{t("work.automation.daily")}</option>
+                        <option value="weekly">{t("work.automation.weekly")}</option>
+                      </select>
+                      <Label htmlFor="work-item-automation-model">{t("work.automation.model")}</Label>
+                      <select
+                        id="work-item-automation-model"
+                        value={automationModelValue(value.automation.model)}
+                        className={fieldClassName}
+                        onChange={(event) => {
+                          const model = automationModelFromValue(event.currentTarget.value);
+                          setValue((current) => ({
+                            ...current,
+                            automation: current.automation
+                              ? { ...current.automation, model }
+                              : { enabled: true, recurrence: "once", model },
+                          }));
+                        }}
+                      >
+                        <option value="">{t("work.automation.follow_project_model")}</option>
+                        {!selectedAutomationModelAvailable && selectedAutomationModel ? (
+                          <option value={automationModelValue(selectedAutomationModel)}>
+                            {selectedAutomationModel.providerId} · {selectedAutomationModel.modelId}
+                          </option>
+                        ) : null}
+                        {modelProviders.map((provider) => (
+                          <optgroup key={provider.id} label={provider.name || provider.id}>
+                            {Object.values(provider.models).map((model) => (
+                              <option key={model.id} value={automationModelValue({ providerId: provider.id, modelId: model.id })}>
+                                {model.name || model.id}
+                              </option>
+                            ))}
+                          </optgroup>
+                        ))}
+                      </select>
+                      {modelProviders.length === 0 ? (
+                        <p className="text-[9px] leading-4 text-dls-tertiary">{t("work.automation.no_models")}</p>
+                      ) : null}
+                    </div>
+                  ) : null}
+
+                  {invalidAutomation ? (
+                    <p className="mt-2 text-xs text-destructive">{t("work.automation.start_required")}</p>
+                  ) : null}
+                  {props.item?.automationLastRunAt ? (
+                    <p className="mt-2 text-[9px] leading-4 text-dls-tertiary">
+                      {t("work.automation.last_started", {
+                        time: new Intl.DateTimeFormat(undefined, {
+                          month: "short",
+                          day: "numeric",
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        }).format(props.item.automationLastRunAt),
+                      })}
+                    </p>
+                  ) : null}
+                  {props.item?.automationLastError ? (
+                    <p className="mt-2 text-[9px] leading-4 text-destructive">
+                      {t("work.automation.last_failed", { error: props.item.automationLastError })}
+                    </p>
+                  ) : null}
+                  <p className="mt-2 text-[9px] leading-4 text-dls-tertiary">{t("work.automation.runtime_notice")}</p>
+                </div>
+              ) : null}
             </CollapsibleContent>
           </Collapsible>
 
@@ -348,7 +557,7 @@ export function WorkItemSheet(props: WorkItemSheetProps) {
             <Button
               type="button"
               size="sm"
-              disabled={!value.title.trim() || invalidRange || props.saving || props.deleting}
+              disabled={!value.title.trim() || invalidRange || invalidAutomation || props.saving || props.deleting}
               onClick={() => props.onSave({ ...value, title: value.title.trim() })}
             >
               {props.saving ? t("common.saving") : t("common.save")}

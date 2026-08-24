@@ -38,7 +38,7 @@ function sourceLabel(engine: EnginePackageInfo) {
   switch (engine.source) {
     case "bundled": return t("settings.engine_manager.source_bundled");
     case "downloaded": return t("settings.engine_manager.source_downloaded");
-    case "desktop-client": return t("settings.engine_manager.source_desktop_client");
+    case "official": return t("settings.engine_manager.source_official");
     case "system": return t("settings.engine_manager.source_system");
     case "custom": return t("settings.engine_manager.source_custom");
     default: return t("settings.engine_manager.source_none");
@@ -47,8 +47,8 @@ function sourceLabel(engine: EnginePackageInfo) {
 
 function externalSourceNotice(engine: EnginePackageInfo) {
   switch (engine.source) {
-    case "desktop-client":
-      return t("settings.engine_manager.external_desktop_client_notice");
+    case "official":
+      return t("settings.engine_manager.external_official_notice", { name: engine.name });
     case "system":
       return t("settings.engine_manager.external_system_notice", { name: engine.name });
     case "custom":
@@ -59,7 +59,7 @@ function externalSourceNotice(engine: EnginePackageInfo) {
 }
 
 function hasManagedVersion(engine: EnginePackageInfo) {
-  return !["desktop-client", "system", "custom"].includes(engine.source);
+  return !["official", "system", "custom"].includes(engine.source);
 }
 
 function EngineProgress({ engine }: { engine: EnginePackageInfo }) {

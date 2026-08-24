@@ -15,6 +15,7 @@ import {
 import { listPortablePluginPromptCapabilities } from "../plugin-package-lifecycle.js";
 import { StdioJsonRpcError } from "../stdio-json-rpc-runtime.js";
 import type { ServerConfig, TokenScope, WorkspaceInfo } from "../types.js";
+import { buildCodexHarnessAdditionalContext } from "../workspace-session-runtime.js";
 import { addRoute, type RequestContext, type Route } from "./registry.js";
 
 type ReadJsonBody = (request: Request) => Promise<Record<string, unknown>>;
@@ -140,21 +141,6 @@ async function providerList(runtime: ReturnType<CodexHarnessRuntimePool["forWork
   // Codex here makes the picker slow and can surface a console window on
   // Windows. Runtime validation happens when the user actually sends a turn.
   return projectCodexHarnessProviderList(providers, []);
-}
-
-export function buildCodexHarnessAdditionalContext(
-  system: unknown,
-  pluginInstructions: readonly string[],
-): Record<string, { value: string; kind: "application" }> | undefined {
-  const context: Record<string, { value: string; kind: "application" }> = {};
-  if (typeof system === "string" && system.trim()) {
-    context["ipollowork.runtime"] = { value: system.trim(), kind: "application" };
-  }
-  const pluginText = pluginInstructions.map((instruction) => instruction.trim()).filter(Boolean).join("\n\n");
-  if (pluginText) {
-    context["ipollowork.plugins"] = { value: pluginText, kind: "application" };
-  }
-  return Object.keys(context).length > 0 ? context : undefined;
 }
 
 export function registerCodexHarnessRoutes(options: RegisterCodexHarnessRoutesOptions): void {

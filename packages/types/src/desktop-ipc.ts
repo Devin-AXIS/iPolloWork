@@ -105,7 +105,7 @@ export type EnginePackageStatus =
 export type EnginePackageSource =
   | "bundled"
   | "downloaded"
-  | "desktop-client"
+  | "official"
   | "system"
   | "custom"
   | "none";

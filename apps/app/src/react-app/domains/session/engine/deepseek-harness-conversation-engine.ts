@@ -1,6 +1,8 @@
 import {
+  deepSeekHarnessRuntimeProviderId,
   DEEPSEEK_HARNESS_ENGINE_ID,
   DEEPSEEK_HARNESS_INTERNAL_SYSTEM_PREFIX,
+  type DeepSeekHarnessModelDirectory,
 } from "@ipollowork/types/workspace";
 
 import { DeepSeekHarnessClient } from "@/app/lib/deepseek-harness-client";
@@ -30,13 +32,6 @@ type AgentPresetList = {
     name?: string;
     description?: string;
     broken?: string;
-  }>;
-};
-
-type ModelDirectory = {
-  groups: Array<{
-    id: string;
-    models: Array<{ id: string }>;
   }>;
 };
 
@@ -187,23 +182,15 @@ function deepSeekHarnessConnection(input: {
     const reasoningEffort = request.reasoningEffort || request.variant;
     const selectionKey = `${request.model.providerID}/${request.model.modelID}/${reasoningEffort ?? ""}`;
     if (selectedModels.get(request.sessionId) === selectionKey) return;
-    let directory: ModelDirectory | null = null;
-    let runtimeProviderId = request.model.providerID;
-    if (runtimeProviderId === "openai") {
-      directory = await client.call<ModelDirectory>("llm.models", {}).catch(() => null);
-      const nativeOpenAiHasModel = directory?.groups.some((group) => (
-        group.id === "openai" && group.models.some((model) => model.id === request.model?.modelID)
-      ));
-      const codexHasModel = directory?.groups.some((group) => (
-        group.id === "openai-codex" && group.models.some((model) => model.id === request.model?.modelID)
-      ));
-      const priorityCodexHasModel = directory?.groups.some((group) => (
-        group.id === "openai-codex-priority"
-        && group.models.some((model) => model.id === request.model?.modelID)
-      ));
-      if (!nativeOpenAiHasModel && priorityCodexHasModel) runtimeProviderId = "openai-codex-priority";
-      else if (!nativeOpenAiHasModel && codexHasModel) runtimeProviderId = "openai-codex";
+    let directory: DeepSeekHarnessModelDirectory | null = null;
+    if (request.model.providerID.trim().toLowerCase() === "openai") {
+      directory = await client.call<DeepSeekHarnessModelDirectory>("llm.models", {}).catch(() => null);
     }
+    const runtimeProviderId = deepSeekHarnessRuntimeProviderId(
+      request.model.providerID,
+      request.model.modelID,
+      directory,
+    );
     try {
       await client.call("session.selectModel", {
         sessionId: request.sessionId,
@@ -212,7 +199,7 @@ function deepSeekHarnessConnection(input: {
         ...(reasoningEffort ? { reasoningEffort } : {}),
       });
     } catch (error) {
-      directory ??= await client.call<ModelDirectory>("llm.models", {}).catch(() => null);
+      directory ??= await client.call<DeepSeekHarnessModelDirectory>("llm.models", {}).catch(() => null);
       const modelAvailable = directory?.groups.some((group) => (
         group.id === runtimeProviderId
         && group.models.some((model) => model.id === request.model?.modelID)

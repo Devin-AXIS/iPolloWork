@@ -3945,6 +3945,8 @@ export function SessionPage(props: SessionPageProps) {
                   selectedClient={props.ipolloworkServerClient}
                   environmentClient={props.environmentClient ?? null}
                   workspaces={props.workspaces}
+                  providers={props.providers ?? []}
+                  connectedProviderIds={props.providerConnectedIds}
                 />
               ) : mainWorkspaceView === "extensions" && props.settingsSlot ? (
                 <div className="flex h-full min-h-0 flex-col overflow-y-auto bg-background">

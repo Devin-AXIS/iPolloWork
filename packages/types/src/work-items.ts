@@ -8,6 +8,17 @@ import {
 export const workItemPrioritySchema = z.enum(["low", "normal", "high", "urgent"]);
 export type WorkItemPriority = z.infer<typeof workItemPrioritySchema>;
 
+export const workItemAutomationRecurrenceSchema = z.enum(["once", "daily", "weekly"]);
+
+export const workItemAutomationSchema = z.object({
+  enabled: z.boolean(),
+  recurrence: workItemAutomationRecurrenceSchema,
+  model: projectAgentModelSchema.nullable().optional(),
+});
+
+export type WorkItemAutomation = z.infer<typeof workItemAutomationSchema>;
+export type WorkItemAutomationRecurrence = z.infer<typeof workItemAutomationRecurrenceSchema>;
+
 export const workItemCustomValueSchema = z.union([
   z.string().max(500),
   z.number().finite(),
@@ -30,11 +41,15 @@ export const workItemCreateSchema = z.object({
   priority: workItemPrioritySchema.default("normal"),
   startAt: z.number().int().nonnegative().nullable().optional(),
   dueAt: z.number().int().nonnegative().nullable().optional(),
+  automation: workItemAutomationSchema.nullable().default(null),
   position: z.number().finite().optional(),
   customFields: workItemCustomFieldsSchema.default({}),
 }).superRefine((value, context) => {
   if (value.startAt !== null && value.startAt !== undefined && value.dueAt !== null && value.dueAt !== undefined && value.dueAt < value.startAt) {
     context.addIssue({ code: "custom", path: ["dueAt"], message: "Due time cannot be earlier than start time" });
+  }
+  if (value.automation?.enabled && (value.startAt === null || value.startAt === undefined)) {
+    context.addIssue({ code: "custom", path: ["automation"], message: "Automatic execution requires a start time" });
   }
 });
 
@@ -49,6 +64,7 @@ export const workItemUpdateSchema = z.object({
   priority: workItemPrioritySchema.optional(),
   startAt: z.number().int().nonnegative().nullable().optional(),
   dueAt: z.number().int().nonnegative().nullable().optional(),
+  automation: workItemAutomationSchema.nullable().optional(),
   position: z.number().finite().optional(),
   customFields: workItemCustomFieldsSchema.optional(),
 });
@@ -88,6 +104,26 @@ export type ProjectSessionExecutionRuntime = z.infer<typeof projectSessionExecut
 export type ProjectSessionExecutionStartInput = z.infer<typeof projectSessionExecutionStartSchema>;
 export type ProjectSessionExecutionFinishInput = z.infer<typeof projectSessionExecutionFinishSchema>;
 
+export function projectExecutionSystemContext(execution: ProjectSessionExecution): string {
+  const resources = [
+    execution.agent.pluginIds.length
+      ? `Assigned plugins: ${execution.agent.pluginIds.join(", ")}`
+      : null,
+    execution.agent.skillIds.length
+      ? `Assigned skills: ${execution.agent.skillIds.join(", ")}`
+      : null,
+  ].filter((value): value is string => Boolean(value));
+
+  return [
+    `You are ${execution.agent.name}, the project Agent bound to this task.`,
+    execution.agent.role ? `Responsibility: ${execution.agent.role}` : null,
+    execution.projectGoal ? `Project goal: ${execution.projectGoal}` : null,
+    execution.agent.prompt ? `Agent instructions:\n${execution.agent.prompt}` : null,
+    resources.length ? resources.join("\n") : null,
+    "Keep this task within the assigned responsibility. Use the configured project resources when they are relevant, and preserve the task's bound runtime for this conversation.",
+  ].filter((value): value is string => Boolean(value?.trim())).join("\n\n");
+}
+
 export type WorkItem = {
   id: string;
   workspaceId: string;
@@ -98,6 +134,10 @@ export type WorkItem = {
   priority: WorkItemPriority;
   startAt: number | null;
   dueAt: number | null;
+  automation: WorkItemAutomation | null;
+  automationLastRunAt: number | null;
+  automationLastSessionId: string | null;
+  automationLastError: string | null;
   position: number;
   customFields: Record<string, string | number | boolean | null>;
   execution: ProjectSessionExecution | null;
