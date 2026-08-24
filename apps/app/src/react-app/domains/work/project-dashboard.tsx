@@ -54,6 +54,12 @@ type ProjectDashboardProps = {
   onOpenTasks: () => void;
 };
 
+// Remove after persisted project configs no longer contain localized starter roles.
+const LEGACY_GENERIC_AGENT_ROLES = new Set([
+  "Own one clear project responsibility",
+  "负责一项明确的项目职责",
+]);
+
 function formatDate(timestamp: number | null): string | null {
   if (timestamp === null) return null;
   return new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric" }).format(timestamp);
@@ -108,7 +114,7 @@ function Metric({ label, value, tone = "default", title }: { label: string; valu
         tone === "success" && "text-emerald-11",
         tone === "danger" && "text-rose-11",
       )}>{value}</div>
-      <div className="mt-0.5 truncate text-[10px] text-dls-tertiary">{label}</div>
+      <div className="mt-0.5 truncate text-[11px] leading-[15px] text-dls-text/45">{label}</div>
     </div>
   );
 }
@@ -162,7 +168,7 @@ export function ProjectDashboard(props: ProjectDashboardProps) {
       ? { label: t("project_overview.health_setup"), description: t("project_overview.health_setup_description", { count: missingConnections.length }), tone: "violet" }
       : metrics.overdue > 0
         ? { label: t("project_overview.health_attention"), description: t("project_overview.health_attention_description", { count: metrics.overdue }), tone: "amber" }
-        : { label: t("project_overview.health_good"), description: t("project_overview.health_good_description"), tone: "green" };
+        : { label: t("project_overview.health_good"), description: null, tone: "green" };
   const recentItems = [...props.items].sort((left, right) => right.updatedAt - left.updatedAt).slice(0, 5);
   const upcomingItems = props.items
     .filter((item) => item.startAt !== null || item.dueAt !== null)
@@ -170,21 +176,19 @@ export function ProjectDashboard(props: ProjectDashboardProps) {
     .slice(0, 4);
 
   return (
-    <div className="relative flex h-full min-h-0 flex-col overflow-hidden bg-[radial-gradient(circle_at_10%_0%,rgba(74,158,178,0.10),transparent_30%),radial-gradient(circle_at_92%_6%,rgba(108,120,163,0.07),transparent_28%),var(--dls-surface)] text-dls-text" data-testid="project-overview">
+    <div className="relative flex h-full min-h-0 flex-col overflow-hidden bg-[radial-gradient(circle_at_10%_0%,rgba(74,158,178,0.10),transparent_30%),radial-gradient(circle_at_92%_6%,rgba(108,120,163,0.07),transparent_28%),var(--dls-surface)] text-dls-text [--primary:#1FBAC0]" data-testid="project-overview">
       <header className="shrink-0 border-b border-white/25 bg-dls-surface/68 px-4 py-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.45)] backdrop-blur-2xl backdrop-saturate-150 dark:border-white/[0.06] sm:px-6">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="min-w-0">
             <div className="flex items-center gap-2">
-              <Sparkles className="size-4 text-dls-secondary" />
-              <h1 className="truncate text-[17px] font-semibold tracking-[-0.45px]">{props.projectName}</h1>
-              <span className="rounded-full bg-dls-hover px-2 py-0.5 text-[9px] font-medium text-dls-tertiary">{t("project_overview.title")}</span>
+              <h1 className="truncate text-[24px] font-semibold leading-8 tracking-[-0.45px] text-dls-text">{props.projectName}</h1>
             </div>
-            <p className="mt-1 max-w-2xl text-[11px] leading-5 text-dls-secondary">
+            <p className="mt-1 max-w-2xl text-[13px] leading-5 text-dls-secondary">
               {props.config.goal || t("project_overview.default_goal")}
             </p>
           </div>
           <div className={cn(
-            "flex items-center gap-2 rounded-full border px-3 py-1.5 text-[11px] shadow-sm backdrop-blur-xl",
+            "flex items-center gap-2 rounded-full border px-3 py-1.5 text-[11px] leading-[15px]",
             health.tone === "green" && "border-emerald-6/50 bg-emerald-3/70 text-emerald-11",
             health.tone === "amber" && "border-amber-6/50 bg-amber-3/70 text-amber-11",
             health.tone === "violet" && "border-violet-6/50 bg-violet-3/70 text-violet-11",
@@ -204,17 +208,17 @@ export function ProjectDashboard(props: ProjectDashboardProps) {
           {hasLeftRail ? (
           <div className="min-w-0 space-y-4">
             {sections.has("health") ? (
-            <section className="rounded-2xl border border-white/35 bg-dls-surface/76 p-4 shadow-[0_18px_50px_rgba(31,50,72,0.07),inset_0_1px_0_rgba(255,255,255,0.55)] backdrop-blur-xl dark:border-white/[0.065]" data-testid="project-task-health">
+            <section className="rounded-2xl border border-dls-border/70 bg-white p-4 dark:bg-dls-surface" data-testid="project-task-health">
               <div className="flex flex-wrap items-center justify-between gap-4">
                 <div>
-                  <div className="flex items-center gap-2 text-[12px] font-medium">
+                  <h2 className="flex items-center gap-2 text-[14px] font-semibold leading-5 text-dls-text">
                     <Activity className="size-4 text-dls-secondary" />{t("project_overview.task_health")}
-                  </div>
-                  <p className="mt-1 text-[10px] text-dls-tertiary">{health.description}</p>
+                  </h2>
+                  {health.description ? <p className="mt-1 text-[13px] leading-5 text-dls-secondary">{health.description}</p> : null}
                 </div>
                 <div className="text-right">
                   <div className="text-[24px] font-semibold tracking-[-0.8px] tabular-nums">{metrics.completion}%</div>
-                  <div className="text-[9px] text-dls-tertiary">{t("project_overview.completion")}</div>
+                  <div className="text-[11px] leading-[15px] text-dls-text/45">{t("project_overview.completion")}</div>
                 </div>
               </div>
               <div className="mt-4 h-1.5 overflow-hidden rounded-full bg-dls-hover">
@@ -229,13 +233,14 @@ export function ProjectDashboard(props: ProjectDashboardProps) {
             ) : null}
 
             {sections.has("tasks") ? (
-            <section className="overflow-hidden rounded-2xl border border-dls-border/80 bg-dls-surface/84">
+            <section className="overflow-hidden rounded-2xl border border-dls-border/70 bg-white dark:bg-dls-surface">
               <header className="flex items-center justify-between gap-3 border-b border-dls-border/70 px-4 py-3">
                 <div>
-                  <h2 className="text-[12px] font-medium">{t("project_overview.task_activity")}</h2>
-                  <p className="mt-0.5 text-[9px] text-dls-tertiary">{t("project_overview.task_activity_description")}</p>
+                  <h2 className="flex items-center gap-2 text-[14px] font-semibold leading-5 text-dls-text">
+                    <ListTodo className="size-4 text-dls-secondary" />{t("project_overview.task_activity")}
+                  </h2>
                 </div>
-                <Button type="button" variant="ghost" size="sm" className="h-7 rounded-lg text-[11px]" onClick={props.onOpenTasks}>
+                <Button type="button" variant="ghost" size="sm" className="h-7 rounded-lg text-[13px] leading-5" onClick={props.onOpenTasks}>
                   {t("project_overview.open_tasks")}<ArrowUpRight className="size-3.5" />
                 </Button>
               </header>
@@ -245,21 +250,21 @@ export function ProjectDashboard(props: ProjectDashboardProps) {
                     const column = props.board.columns.find((candidate) => candidate.id === item.status);
                     return (
                       <div key={item.id} className="flex items-center gap-3 px-4 py-3">
-                        <CircleDot className="size-3.5 shrink-0 text-dls-tertiary" />
+                        <CircleDot className="size-3.5 shrink-0 text-dls-text/45" />
                         <div className="min-w-0 flex-1">
-                          <p className="truncate text-[12px] font-medium">{item.title}</p>
-                          <p className="mt-0.5 truncate text-[9px] text-dls-tertiary">{item.assignee || t("project_overview.unassigned")}</p>
+                          <p className="truncate text-[14px] font-semibold leading-5 text-dls-text">{item.title}</p>
+                          <p className="mt-0.5 truncate text-[11px] leading-[15px] text-dls-text/45">{item.assignee || t("project_overview.unassigned")}</p>
                         </div>
-                        <span className="shrink-0 rounded-full bg-dls-hover px-2 py-1 text-[9px] text-dls-secondary">{column?.label || item.status}</span>
+                        <span className="shrink-0 rounded-full bg-dls-hover px-2 py-1 text-[11px] leading-[15px] text-dls-secondary">{column?.label || item.status}</span>
                       </div>
                     );
                   })}
                 </div>
               ) : (
                 <button type="button" className="flex w-full flex-col items-center px-5 py-10 text-center hover:bg-dls-hover/30" onClick={props.onOpenTasks}>
-                  <CheckCircle2 className="size-5 text-dls-tertiary" />
-                  <span className="mt-2 text-xs font-medium">{t("project_overview.no_tasks")}</span>
-                  <span className="mt-1 text-[10px] text-dls-tertiary">{t("project_overview.no_tasks_description")}</span>
+                  <CheckCircle2 className="size-5 text-dls-text/45" />
+                  <span className="mt-2 text-[14px] font-semibold leading-5">{t("project_overview.no_tasks")}</span>
+                  <span className="mt-1 text-[11px] leading-[15px] text-dls-secondary">{t("project_overview.no_tasks_description")}</span>
                 </button>
               )}
             </section>
@@ -284,12 +289,12 @@ export function ProjectDashboard(props: ProjectDashboardProps) {
           {hasRightRail ? (
           <div className="min-w-0 space-y-4 xl:sticky xl:top-0 xl:self-start">
             {sections.has("agents") ? (
-            <section className="overflow-hidden rounded-2xl border border-white/35 bg-dls-surface/78 shadow-[0_16px_46px_rgba(31,50,72,0.055),inset_0_1px_0_rgba(255,255,255,0.5)] backdrop-blur-xl dark:border-white/[0.065]" data-testid="project-agent-activity-panel">
+            <section className="overflow-hidden rounded-2xl border border-dls-border/70 bg-white dark:bg-dls-surface" data-testid="project-agent-activity-panel">
               <header className="flex items-center justify-between gap-3 border-b border-dls-border/70 px-4 py-3">
                 <div className="flex items-center gap-2">
                   <Bot className="size-4 text-dls-secondary" />
-                  <h2 className="text-[12px] font-medium">{t("project_overview.agents")}</h2>
-                  <span className="text-[9px] tabular-nums text-dls-tertiary">{props.config.agents.length}</span>
+                  <h2 className="text-[14px] font-semibold leading-5 text-dls-text">{t("project_overview.agents")}</h2>
+                  <span className="text-[11px] leading-[15px] tabular-nums text-dls-text/45">{props.config.agents.length}</span>
                 </div>
                 <Button type="button" variant="ghost" size="icon-sm" className="size-7 rounded-lg" aria-label={t("project_overview.add_agent")} onClick={props.onAddAgent}>
                   <Plus className="size-3.5" />
@@ -328,7 +333,10 @@ export function ProjectDashboard(props: ProjectDashboardProps) {
                               : recentRuntimeConversation
                                 ? t("project_overview.execution_recorded")
                                 : t("project_overview.standby");
+                  const showAgentTaskState = agentTaskState === t("project_overview.active_tasks")
+                    || agentTaskState === t("project_overview.failed_tasks");
                   const primary = agent.id === props.config.orchestration.entryAgentId;
+                  const genericRole = LEGACY_GENERIC_AGENT_ROLES.has(agent.role);
                   const agentNeedsSetup = agent.pluginIds.some((pluginId) => {
                     const item = installedById.get(pluginId);
                     return !item || pluginNeedsConfiguration(item, props.authorizations[pluginId]);
@@ -339,10 +347,7 @@ export function ProjectDashboard(props: ProjectDashboardProps) {
                       key={agent.id}
                       type="button"
                       aria-pressed={selected}
-                      className={cn(
-                        "group block w-full px-4 py-3 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
-                        selected ? "bg-dls-hover/52" : "hover:bg-dls-hover/34",
-                      )}
+                      className="group block w-full bg-white px-4 py-3 text-left transition-colors hover:bg-dls-hover/34 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring dark:bg-dls-surface"
                       onClick={() => props.onOpenAgent(agent)}
                       data-testid="project-agent-tab"
                     >
@@ -350,23 +355,23 @@ export function ProjectDashboard(props: ProjectDashboardProps) {
                         <AgentAvatar agent={agent} className="size-9" />
                         <span className="min-w-0 flex-1">
                           <span className="flex min-w-0 items-center gap-2">
-                            <span className="truncate text-[12px] font-medium">{agent.name}</span>
-                            {primary ? <span className="shrink-0 rounded bg-primary/10 px-1.5 py-0.5 text-[8px] font-medium text-primary">{t("project_overview.primary")}</span> : null}
+                            <span className="truncate text-[14px] font-semibold leading-5 text-dls-text">{agent.name}</span>
+                            {primary ? <span className="shrink-0 rounded bg-primary/10 px-1.5 py-0.5 text-[11px] font-medium leading-[15px] text-primary">{t("project_overview.primary")}</span> : null}
                           </span>
-                          <span className="mt-0.5 block truncate text-[9px] text-dls-tertiary">{agent.role || t("project_overview.agent_no_role")}</span>
+                          {genericRole ? null : <span className="mt-0.5 block truncate text-[11px] leading-[15px] text-dls-secondary">{agent.role || t("project_overview.agent_no_role")}</span>}
                         </span>
-                        <Settings2 className="mt-0.5 size-3.5 shrink-0 text-dls-tertiary transition-colors group-hover:text-dls-text" />
+                        <Settings2 className="mt-0.5 size-3.5 shrink-0 text-dls-text/45 transition-colors group-hover:text-dls-text" />
                       </span>
                       <span className="mt-3 flex items-center gap-2 rounded-xl bg-dls-hover/46 px-2.5 py-2">
-                        <ListTodo className="size-3.5 shrink-0 text-dls-tertiary" />
+                        <ListTodo className="size-3.5 shrink-0 text-dls-text/45" />
                         <span className="min-w-0 flex-1">
-                          <span className="block text-[8px] font-medium uppercase tracking-[0.08em] text-dls-tertiary">{t("project_overview.recent_task")}</span>
-                          <span className="mt-0.5 block truncate text-[10px] text-dls-secondary">
+                          <span className="block text-[11px] font-medium leading-[15px] uppercase tracking-[0.08em] text-dls-text/45">{t("project_overview.recent_task")}</span>
+                          <span className="mt-0.5 block truncate text-[11px] leading-[15px] text-dls-secondary">
                             {recentItem?.title || recentRuntimeConversation?.title || t("project_overview.no_agent_tasks")}
                           </span>
                         </span>
                         {recentItem || recentRuntimeConversation ? (
-                          <span className="shrink-0 rounded-full bg-dls-surface/80 px-2 py-0.5 text-[8px] text-dls-tertiary">
+                          <span className="shrink-0 rounded-full bg-dls-surface/80 px-2 py-0.5 text-[11px] leading-[15px] text-dls-text/45">
                             {recentItem
                               ? recentColumn?.label || recentItem.status
                               : recentRuntimeConversation?.status === "running"
@@ -390,7 +395,7 @@ export function ProjectDashboard(props: ProjectDashboardProps) {
                             />
                           ) : null) : null}
                         </span>
-                        <span className="mt-2 grid grid-cols-3 gap-1 text-[8px] text-dls-tertiary">
+                        <span className="mt-2 grid grid-cols-3 gap-1 text-[11px] leading-[15px] text-dls-text/45">
                           {taskSegments.map((segment) => (
                             <span key={segment.id} className="flex min-w-0 items-center gap-1" title={segment.label}>
                               <span className={cn("size-1.5 shrink-0 rounded-full", segment.className)} />
@@ -400,13 +405,15 @@ export function ProjectDashboard(props: ProjectDashboardProps) {
                           ))}
                         </span>
                       </span>
-                      <span className="mt-2.5 flex items-center gap-3 text-[9px] text-dls-tertiary">
+                      <span className="mt-2.5 flex items-center gap-3 text-[11px] leading-[15px] text-dls-text/45">
                         <span className="inline-flex items-center gap-1"><Package className="size-3" />{t("project_overview.plugin_count", { count: agent.pluginIds.length })}</span>
                         <span className="inline-flex items-center gap-1"><Sparkles className="size-3" />{t("project_overview.skill_count", { count: agent.skillIds.length })}</span>
-                        <span className={cn("ms-auto flex items-center gap-1", agentNeedsSetup ? "text-amber-11" : "text-dls-tertiary")}>
-                          {agentNeedsSetup ? <KeyRound className="size-3" /> : null}
-                          {agentNeedsSetup ? t("project_overview.needs_configuration") : agentTaskState}
-                        </span>
+                        {agentNeedsSetup || showAgentTaskState ? (
+                          <span className={cn("ms-auto flex items-center gap-1", agentNeedsSetup ? "text-amber-11" : "text-dls-text/45")}>
+                            {agentNeedsSetup ? <KeyRound className="size-3" /> : null}
+                            {agentNeedsSetup ? t("project_overview.needs_configuration") : agentTaskState}
+                          </span>
+                        ) : null}
                       </span>
                     </button>
                   );
@@ -417,24 +424,24 @@ export function ProjectDashboard(props: ProjectDashboardProps) {
 
             {sections.has("schedule") ? (
             <section
-              className="overflow-hidden rounded-2xl border border-white/35 bg-dls-surface/78 shadow-[0_16px_46px_rgba(31,50,72,0.055),inset_0_1px_0_rgba(255,255,255,0.5)] backdrop-blur-xl dark:border-white/[0.065]"
+              className="overflow-hidden rounded-2xl border border-dls-border/70 bg-white dark:bg-dls-surface"
               data-testid="project-upcoming"
             >
               <header className="flex items-center gap-2 border-b border-dls-border/70 px-4 py-3">
                 <CalendarClock className="size-4 text-dls-secondary" />
-                <h2 className="text-[12px] font-medium">{t("project_overview.upcoming")}</h2>
+                <h2 className="text-[14px] font-semibold leading-5 text-dls-text">{t("project_overview.upcoming")}</h2>
               </header>
               {upcomingItems.length ? <div className="divide-y divide-dls-border/60">
                 {upcomingItems.map((item) => (
                   <div key={item.id} className="flex items-center gap-3 px-4 py-3">
                     <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-dls-hover text-dls-secondary"><Clock3 className="size-3.5" /></span>
                     <div className="min-w-0 flex-1">
-                      <p className="truncate text-[11px] font-medium">{item.title}</p>
-                      <p className="mt-0.5 text-[9px] text-dls-tertiary">{formatDate(item.startAt ?? item.dueAt)}</p>
+                      <p className="truncate text-[14px] font-semibold leading-5 text-dls-text">{item.title}</p>
+                      <p className="mt-0.5 text-[11px] leading-[15px] text-dls-text/45">{formatDate(item.startAt ?? item.dueAt)}</p>
                     </div>
                   </div>
                 ))}
-              </div> : <p className="px-4 py-6 text-center text-[10px] text-dls-tertiary">{t("project_overview.no_upcoming")}</p>}
+              </div> : <p className="px-4 py-6 text-center text-[11px] leading-[15px] text-dls-text/45">{t("project_overview.no_upcoming")}</p>}
             </section>
             ) : null}
           </div>

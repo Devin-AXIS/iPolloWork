@@ -28,6 +28,14 @@ describe("assistant process collapse sections", () => {
     expect(source).toContain("const isLiveGroup = isStreaming && items.some");
     expect(source).toContain("itemRenderData.map(renderProcessItem)");
     expect(source).toContain("hideProcess");
+    expect(source).toContain("isStreaming={group.isStreaming}");
+
+    const markdownSource = readFileSync(
+      new URL("../src/components/markdown/markdown.tsx", import.meta.url),
+      "utf8",
+    );
+    expect(markdownSource).toContain("STREAMING_MARKDOWN_RENDER_INTERVAL_MS = 50");
+    expect(markdownSource).toContain("return streaming ? renderedText : text");
   });
 
   test("keeps a follow-up waiting state off the completed assistant turn", () => {

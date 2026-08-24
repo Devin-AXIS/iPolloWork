@@ -306,6 +306,13 @@ html:lang(zh) .composer-design-selection {
   font-weight: 500;
 }
 
+html:lang(zh) [data-testid="project-overview"] :where(
+  .text-dls-secondary,
+  [class~="text-dls-text/45"]
+) {
+  font-weight: 500;
+}
+
 [data-settings-shell] :where(
   button:not([role="switch"]):not([role="checkbox"]):not([role="radio"]),
   [role="button"]:not([role="switch"]):not([role="checkbox"]):not([role="radio"]),

@@ -2,6 +2,13 @@
 import { useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
 import { Check, ChevronDown } from "lucide-react";
 
+import {
+  menuDensityClassNames,
+  menuInteractionClassName,
+  menuSurfaceClassName,
+} from "@/components/ui/menu-styles";
+import { cn } from "@/lib/utils";
+
 export type SelectMenuOption = {
   value: string;
   label: string;
@@ -21,11 +28,17 @@ type SelectMenuProps = {
 const triggerClass =
   "flex h-[34px] w-full items-center justify-between gap-1.5 rounded-[8px] border border-transparent bg-[#f5f6f9] px-3 text-left text-[13px] text-dls-text shadow-none transition-colors hover:bg-[#f6f7fb] focus:border-[#1FBAC0] focus:outline-none focus:ring-2 focus:ring-[#1FBAC0]/20 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-white/[0.06] dark:hover:bg-white/[0.09]";
 
-const panelClass =
-  "absolute left-0 right-0 top-[calc(100%+4px)] z-[100] max-h-56 overflow-auto rounded-[8px] border border-dls-border bg-white p-1 shadow-[0_8px_24px_rgba(0,0,0,0.12)] dark:bg-[#202226]";
+const panelClass = cn(
+  menuSurfaceClassName,
+  menuInteractionClassName,
+  menuDensityClassNames.compact.content,
+  "absolute left-0 right-0 top-[calc(100%+4px)] z-[100] max-h-56 overflow-auto",
+);
 
-const optionRowClass =
-  "flex h-8 w-full items-center gap-2 rounded-[6px] px-2 text-left text-[12px] text-dls-secondary transition-colors hover:bg-[#f6f7fb] hover:text-dls-text dark:hover:bg-white/[0.08]";
+const optionRowClass = cn(
+  menuDensityClassNames.compact.item,
+  "flex w-full items-center gap-2 text-left text-dls-secondary transition-colors hover:bg-foreground/10 hover:text-dls-text",
+);
 
 export function SelectMenu(props: SelectMenuProps) {
   const [open, setOpen] = useState(false);

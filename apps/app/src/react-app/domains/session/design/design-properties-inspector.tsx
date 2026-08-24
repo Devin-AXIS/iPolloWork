@@ -683,7 +683,7 @@ function FontFamilyPicker({ value, onChange, mixed = false }: { value: string; o
         <span className="min-w-0 flex-1 truncate text-left text-[12px]" style={mixed ? undefined : { fontFamily: currentFamily }}>{mixed ? t("design.properties.mixed") : currentFamily}</span>
         <img src={panelSelectChevron} alt="" className={cn("size-4 shrink-0 transition-transform", open && "rotate-180")} />
       </PopoverTrigger>
-      <PopoverContent align="start" sideOffset={12} initialFocus={false} className="w-[276px] gap-2 rounded-xl border-border bg-popover p-3 text-popover-foreground shadow-[0_8px_18px_rgba(37,41,49,0.11)] before:hidden">
+      <PopoverContent align="start" sideOffset={12} initialFocus={false} className="w-[276px] gap-2 p-3">
         <Input
           autoFocus
           value={query}

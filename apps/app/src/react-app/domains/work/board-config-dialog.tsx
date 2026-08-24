@@ -18,13 +18,43 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { t } from "@/i18n";
-
-const FIELD_CLASS_NAME = "h-9 w-full rounded-lg border border-border bg-background px-3 text-[13px] text-foreground outline-none transition focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/30";
 
 function fieldTypeFromValue(value: string): WorkBoardField["type"] {
   if (value === "number" || value === "select" || value === "date" || value === "checkbox") return value;
   return "text";
+}
+
+function FieldTypeSelect(props: {
+  value: WorkBoardField["type"];
+  onChange: (value: WorkBoardField["type"]) => void;
+}) {
+  return (
+    <Select
+      value={props.value}
+      onValueChange={(nextValue) => {
+        if (nextValue) props.onChange(fieldTypeFromValue(nextValue));
+      }}
+    >
+      <SelectTrigger className="w-full" aria-label={t("work.field_type")}>
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent align="start">
+        <SelectItem value="text">{t("work.field_type.text")}</SelectItem>
+        <SelectItem value="number">{t("work.field_type.number")}</SelectItem>
+        <SelectItem value="select">{t("work.field_type.select")}</SelectItem>
+        <SelectItem value="date">{t("work.field_type.date")}</SelectItem>
+        <SelectItem value="checkbox">{t("work.field_type.checkbox")}</SelectItem>
+      </SelectContent>
+    </Select>
+  );
 }
 
 function newFieldId(label: string): string {
@@ -129,12 +159,9 @@ export function BoardConfigDialog(props: {
                         }));
                       }}
                     />
-                    <select
+                    <FieldTypeSelect
                       value={field.type}
-                      className={FIELD_CLASS_NAME}
-                      aria-label={t("work.field_type")}
-                      onChange={(event) => {
-                        const type = fieldTypeFromValue(event.currentTarget.value);
+                      onChange={(type) => {
                         setValue((current) => ({
                           ...current,
                           fields: current.fields.map((item, itemIndex) => (
@@ -142,13 +169,7 @@ export function BoardConfigDialog(props: {
                           )),
                         }));
                       }}
-                    >
-                      <option value="text">{t("work.field_type.text")}</option>
-                      <option value="number">{t("work.field_type.number")}</option>
-                      <option value="select">{t("work.field_type.select")}</option>
-                      <option value="date">{t("work.field_type.date")}</option>
-                      <option value="checkbox">{t("work.field_type.checkbox")}</option>
-                    </select>
+                    />
                     <Button
                       type="button"
                       variant="ghost"
@@ -186,13 +207,7 @@ export function BoardConfigDialog(props: {
 
             <div className="grid gap-2 rounded-xl bg-dls-hover/35 p-3 sm:grid-cols-[minmax(0,1fr)_130px_auto]">
               <Input value={fieldLabel} placeholder={t("work.field_name_placeholder")} onChange={(event) => setFieldLabel(event.currentTarget.value)} />
-              <select value={fieldType} className={FIELD_CLASS_NAME} onChange={(event) => setFieldType(fieldTypeFromValue(event.currentTarget.value))}>
-                <option value="text">{t("work.field_type.text")}</option>
-                <option value="number">{t("work.field_type.number")}</option>
-                <option value="select">{t("work.field_type.select")}</option>
-                <option value="date">{t("work.field_type.date")}</option>
-                <option value="checkbox">{t("work.field_type.checkbox")}</option>
-              </select>
+              <FieldTypeSelect value={fieldType} onChange={setFieldType} />
               <Button type="button" variant="outline" size="sm" disabled={!fieldLabel.trim() || value.fields.length >= 12} onClick={addField}>
                 <Plus className="size-4" />{t("common.add")}
               </Button>

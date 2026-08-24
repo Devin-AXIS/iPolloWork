@@ -251,12 +251,14 @@ describe("settings route parsing", () => {
     expect(selectSource).toContain('type SelectStyleScope = "default" | "settings"');
     expect(selectSource).toContain('h-[34px] w-fit items-center justify-between');
     expect(selectSource).toContain('w-max min-w-(--anchor-width) max-w-[min(320px,var(--available-width))]');
-    expect(selectSource).toContain('rounded-[8px] border border-dls-border bg-white p-1');
-    expect(selectSource).toContain('h-8 w-full cursor-default items-center gap-2 rounded-[6px]');
-    expect(selectSource).toContain('data-highlighted:bg-[#f6f7fb]');
+    expect(selectSource).toContain('menuDensityClassNames.compact.content');
+    expect(selectSource).toContain('menuDensityClassNames.compact.item');
+    expect(selectSource).toContain('menuSurfaceClassName');
     expect(selectSource).toContain('styleScope === "settings" && "text-[#1FBAC0]"');
     expect(selectMenuSource).toContain('h-[34px] w-full items-center justify-between');
-    expect(selectMenuSource).toContain('rounded-[8px] border border-dls-border bg-white p-1');
+    expect(selectMenuSource).toContain('menuDensityClassNames.compact.content');
+    expect(selectMenuSource).toContain('menuDensityClassNames.compact.item');
+    expect(selectMenuSource).toContain('menuSurfaceClassName');
     expect(selectMenuSource).toContain('text-[#1FBAC0]');
     expect(skillsViewSource).toContain('data-testid="skills-status-filter"');
     expect(skillsViewSource).not.toContain('<select\n              data-testid="skills-status-filter"');
