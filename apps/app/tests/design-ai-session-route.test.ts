@@ -11,6 +11,14 @@ const runtimeUrl = new URL(
   "../src/react-app/domains/session/sync/runtime-sync.tsx",
   import.meta.url,
 );
+const engineUrl = new URL(
+  "../src/react-app/domains/session/engine/opencode-conversation-engine.ts",
+  import.meta.url,
+);
+const surfaceUrl = new URL(
+  "../src/react-app/domains/session/surface/session-surface.tsx",
+  import.meta.url,
+);
 
 const lifecycleContext: DesignAiSelectionContext = {
   id: "design-ai-lifecycle",
@@ -37,11 +45,83 @@ describe("Design AI session lifecycle", () => {
 
   test("persists the first user request as the initial session title", async () => {
     const routeSource = await Bun.file(routeUrl).text();
+    const promptIndex = routeSource.indexOf("const promptResult = await promptDesignSelectionContexts");
+    const persistIndex = routeSource.indexOf("void conversation.rename(targetSessionId, pendingTitlePersist");
 
     expect(routeSource).toContain("isDefaultSessionTitle(targetSession.title)");
     expect(routeSource).toContain("sessionTitleFromFirstPrompt(text)");
-    expect(routeSource).toContain("void conversation.rename(targetSessionId, initialTitle");
-    expect(routeSource).toContain("the first prompt is not queued behind another runtime RPC");
+    expect(routeSource).toContain("let pendingTitlePersist: string | null = null;");
+    expect(routeSource).toContain("pendingTitlePersist = initialTitle;");
+    expect(persistIndex).toBeGreaterThan(promptIndex);
+    expect(routeSource).toContain("patched before SessionPrompt creates the initial user message");
+  });
+
+  test("removes the newly created task when the initial draft fails to dispatch", async () => {
+    const routeSource = await Bun.file(routeUrl).text();
+    const cleanupIndex = routeSource.indexOf("const cleanupFailedInitialProjectTask = useCallback");
+    const deleteIndex = routeSource.indexOf("endpoint.client.deleteSession(endpoint.workspaceId, sessionId)");
+    const localRemoveIndex = routeSource.indexOf("(current[pending.workspaceId] ?? []).filter((session) => session.id !== sessionId)");
+    const undispatchedIndex = routeSource.indexOf("if (!dispatched) {");
+    const catchIndex = routeSource.indexOf(".catch(async (error) => {");
+
+    expect(cleanupIndex).toBeGreaterThan(-1);
+    expect(deleteIndex).toBeGreaterThan(cleanupIndex);
+    expect(localRemoveIndex).toBeGreaterThan(cleanupIndex);
+    expect(routeSource.indexOf("writeLastSessionFor(pending.workspaceId, null);")).toBeGreaterThan(cleanupIndex);
+    expect(routeSource.indexOf("navigateToWorkspaceSession(pending.workspaceId, null, { replace: true });")).toBeGreaterThan(cleanupIndex);
+    expect(routeSource.indexOf("await cleanupFailedInitialProjectTask(pending);", undispatchedIndex)).toBeGreaterThan(undispatchedIndex);
+    expect(routeSource.indexOf("await cleanupFailedInitialProjectTask(pending);", catchIndex)).toBeGreaterThan(catchIndex);
+  });
+
+  test("drops stale hidden OpenCode agents before sending a prompt", async () => {
+    const engineSource = await Bun.file(engineUrl).text();
+    const resolveIndex = engineSource.indexOf("function resolveVisibleSessionAgentName");
+    const promptIndex = engineSource.indexOf("client.session.promptAsync");
+
+    expect(resolveIndex).toBeGreaterThan(-1);
+    expect(engineSource).toContain('agent.mode !== "subagent"');
+    expect(engineSource).toContain('agent.name === "build"');
+    expect(engineSource).toContain("agent = resolveVisibleSessionAgentName(unwrap(await client.app.agents()), agent);");
+    expect(engineSource).toContain('if (agent === "orchestrator") agent = undefined;');
+    expect(engineSource.indexOf("agent,", promptIndex)).toBeGreaterThan(promptIndex);
+  });
+
+  test("sends the live composer draft from the control action", async () => {
+    const surfaceSource = await Bun.file(surfaceUrl).text();
+    const sendControlIndex = surfaceSource.indexOf('id: "composer.send"');
+    const liveDraftIndex = surfaceSource.indexOf("getComposerDraft(useComposerStateStore.getState(), props.sessionId)", sendControlIndex);
+
+    expect(sendControlIndex).toBeGreaterThan(-1);
+    expect(liveDraftIndex).toBeGreaterThan(sendControlIndex);
+    expect(surfaceSource.indexOf("await handleSend(liveDraft);", liveDraftIndex)).toBeGreaterThan(liveDraftIndex);
+  });
+
+  test("starts the optimistic busy state for OpenCode prompts immediately", async () => {
+    const routeSource = await Bun.file(routeUrl).text();
+    const surfaceSource = await Bun.file(surfaceUrl).text();
+    const sendIndex = surfaceSource.indexOf("const sendDraft = useCallback");
+    const optimisticIndex = surfaceSource.indexOf("beginOptimisticSessionPrompt(props.workspaceId, props.sessionId, nextDraft.text)", sendIndex);
+    const initialTaskIndex = routeSource.indexOf("const clientUserMessageId = endpoint");
+
+    expect(surfaceSource).not.toContain("CODEX_HARNESS_ENGINE_ID");
+    expect(optimisticIndex).toBeGreaterThan(sendIndex);
+    expect(surfaceSource.indexOf("!recoveryDraft", sendIndex)).toBeGreaterThan(sendIndex);
+    expect(routeSource.indexOf("beginOptimisticSessionPrompt(endpoint.workspaceId, sessionId, pending.draft.text)", initialTaskIndex))
+      .toBeGreaterThan(initialTaskIndex);
+  });
+
+  test("adds the current app language to the model system context", async () => {
+    const routeSource = await Bun.file(routeUrl).text();
+    const languageContextIndex = routeSource.indexOf("const languageSystemContext = responseLanguageSystemContext(currentLocale())");
+    const systemContextIndex = routeSource.indexOf("const systemContext = [projectSystemContext");
+
+    expect(sessionPrompt.responseLanguageSystemContext("zh")).toContain("Simplified Chinese");
+    expect(sessionPrompt.responseLanguageSystemContext("zh")).toContain("generated session/task titles");
+    expect(routeSource).toContain('import { currentLocale, t } from "@/i18n";');
+    expect(routeSource).toContain("responseLanguageSystemContext,");
+    expect(languageContextIndex).toBeGreaterThan(-1);
+    expect(systemContextIndex).toBeGreaterThan(languageContextIndex);
+    expect(routeSource.indexOf("languageSystemContext]", systemContextIndex)).toBeGreaterThan(systemContextIndex);
   });
 
   test("expands the selected Design chip to a synthetic scoped agent instruction", async () => {

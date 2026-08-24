@@ -3,7 +3,6 @@ import { useCallback, useEffect, useEffectEvent, useMemo, useRef, useState, type
 import type { UIMessage } from "ai";
 import { useQuery } from "@tanstack/react-query";
 import type { TemplateCatalogItem } from "@ipollowork/types/templates";
-import { CODEX_HARNESS_ENGINE_ID } from "@ipollowork/types/workspace";
 import { Check, Minimize2, X } from "lucide-react";
 import { toast } from "@/components/ui/sonner";
 
@@ -1072,7 +1071,7 @@ export function SessionSurface(props: SessionSurfaceProps) {
     setSending(true);
     setAwaitingAssistantBaseline(renderedMessages.length);
     const recoveryDraft = nextDraft.capability?.instruction.includes("authoritative delivery validation") === true;
-    const clientUserMessageId = props.engineId === CODEX_HARNESS_ENGINE_ID && !recoveryDraft
+    const clientUserMessageId = !recoveryDraft
       ? beginOptimisticSessionPrompt(props.workspaceId, props.sessionId, nextDraft.text)
       : null;
     const templateEntryPath = props.templateEntryPath?.replace(/\\/g, "/") ?? "";
@@ -1231,8 +1230,8 @@ export function SessionSurface(props: SessionSurfaceProps) {
 
   // Initial send (agent idle) and explicit "Steer" follow-up (agent busy)
   // share the same immediate path.
-  const handleSend = useCallback(async () => {
-    const text = draft.trim();
+  const handleSend = useCallback(async (draftOverride?: string) => {
+    const text = (draftOverride ?? draft).trim();
     if (!text && attachments.length === 0 && selectedAnimations.length === 0 && !selectedVoiceReference) return;
     // A user can select Video and type directly into the centred first-prompt
     // composer. Mark it before the request is sent so SessionPage opens the
@@ -1534,10 +1533,11 @@ export function SessionSurface(props: SessionSurfaceProps) {
     disabled: props.modelUnavailable || (!draft.trim() && attachments.length === 0 && selectedAnimations.length === 0 && !selectedVoiceReference) || model.transitionState !== "idle",
     targetRef: composerShellRef,
     execute: async () => {
-      await handleSend();
+      const liveDraft = getComposerDraft(useComposerStateStore.getState(), props.sessionId);
+      await handleSend(liveDraft);
       return true;
     },
-  }), [attachments.length, draft, handleSend, model.transitionState, props.modelUnavailable, selectedAnimations.length, selectedVoiceReference]);
+  }), [attachments.length, draft, handleSend, model.transitionState, props.modelUnavailable, props.sessionId, selectedAnimations.length, selectedVoiceReference]);
   useControlAction(composerSendControlAction);
 
   const composerStopControlAction = useMemo<iPolloWorkControlAction>(() => ({

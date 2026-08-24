@@ -37,7 +37,7 @@ function auth(token: string) {
   return { Authorization: `Bearer ${token}` };
 }
 
-function startMockOpencode(input?: { invalidList?: boolean; holdCommand?: Promise<void> }) {
+function startMockOpencode(input?: { invalidList?: boolean; holdCommand?: Promise<void>; promptAsyncNoContent?: boolean }) {
   const requests: Array<{
     method: string;
     pathname: string;
@@ -138,6 +138,9 @@ function startMockOpencode(input?: { invalidList?: boolean; holdCommand?: Promis
       }
 
       if (url.pathname === "/session/ses_created/prompt_async" && request.method === "POST") {
+        if (input?.promptAsyncNoContent) {
+          return new Response(null, { status: 204 });
+        }
         return Response.json(true);
       }
 
@@ -502,6 +505,28 @@ describe("workspace session write APIs", () => {
       agent: "review",
       variant: "high",
     });
+  });
+
+  test("accepts an OpenCode async prompt when the engine returns 204", async () => {
+    const workspaceRoot = await createWorkspaceRoot();
+    const mock = startMockOpencode({ promptAsyncNoContent: true });
+    const ipollowork = await startiPolloWorkServer({
+      workspaceRoot,
+      opencodeBaseUrl: `http://127.0.0.1:${mock.server.port}`,
+      readOnly: false,
+    });
+    const base = `http://127.0.0.1:${ipollowork.server.port}`;
+    const headers = { ...auth(ipollowork.token), "Content-Type": "application/json" };
+
+    const promptResponse = await fetch(`${base}/workspace/ws_1/sessions/ses_created/prompt`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ text: "Review this change" }),
+    });
+
+    expect(promptResponse.status).toBe(202);
+    await expect(promptResponse.json()).resolves.toEqual({ ok: true, accepted: true, sessionId: "ses_created" });
+    expect(mock.requests.some((request) => request.pathname === "/session/ses_created/prompt_async")).toBe(true);
   });
 
   test("rejects an empty unified prompt before calling the engine", async () => {

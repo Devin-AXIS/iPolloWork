@@ -163,6 +163,15 @@ export function isInternalContinuationMessage(message: UIMessage): boolean {
   return message.role === "user" && message.parts.length === 0
 }
 
+function assistantMessageHasRenderableContent(message: UIMessage) {
+  if (message.role !== "assistant") return false
+  return message.parts.some((part) => {
+    if (part.type === "text" || part.type === "reasoning") return part.text.trim().length > 0
+    if (part.type === "file") return true
+    return isToolUIPart(part)
+  })
+}
+
 export function getActiveAssistantMessageId(
   messages: UIMessage[],
   activeMessageBaseline?: number | null,
@@ -173,6 +182,7 @@ export function getActiveAssistantMessageId(
   const turnStart = activeMessageBaseline ?? Math.max(0, latestVisibleUserIndex)
   return messages.slice(turnStart).findLast(
     (message) => message.role === "assistant"
+      && assistantMessageHasRenderableContent(message)
       && !message.id.startsWith(SYNTHETIC_SESSION_ERROR_MESSAGE_PREFIX),
   )?.id
 }

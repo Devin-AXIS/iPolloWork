@@ -214,10 +214,9 @@ export function isInternalSubtaskSession(session: RouteSession) {
   return Boolean(parentID && agent.trim() && agent !== "orchestrator");
 }
 
-export function isBlankDefaultSession(session: RouteSession) {
+export function isUnstartedSession(session: RouteSession) {
   const title = session.title?.trim() ?? "";
   const hasDefaultTitle = isDefaultSessionTitle(title);
-  if (!hasDefaultTitle) return false;
 
   const created = session.time?.created;
   const updated = session.time?.updated ?? created;
@@ -225,7 +224,16 @@ export function isBlankDefaultSession(session: RouteSession) {
     typeof created === "number" &&
     typeof updated === "number" &&
     created === updated &&
-    !isInternalSubtaskSession(session)
+    !isInternalSubtaskSession(session) &&
+    (
+      hasDefaultTitle ||
+      !session.summary ||
+      (
+        typeof session.summary === "object" &&
+        !Array.isArray(session.summary) &&
+        Object.keys(session.summary).length === 0
+      )
+    )
   );
 }
 
@@ -237,7 +245,7 @@ export function userVisibleSessionsByWorkspaceId(
       workspaceId,
       sessions.filter((session) => (
         !isInternalSubtaskSession(session) &&
-        !isBlankDefaultSession(session)
+        !isUnstartedSession(session)
       )),
     ]),
   );

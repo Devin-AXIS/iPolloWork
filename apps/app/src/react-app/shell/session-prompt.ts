@@ -1,5 +1,6 @@
 import type { ComposerAttachment, ComposerDraft } from "@/app/types";
 import type { ConversationPromptPart } from "@/react-app/domains/session/engine/conversation-engine";
+import type { Language } from "@/i18n";
 import {
   designAiSelectionInstruction,
   type DesignAiSelectionContext,
@@ -32,6 +33,29 @@ type InboxUploadClient = {
     options?: { path?: string },
   ) => Promise<{ path: string }>;
 };
+
+const RESPONSE_LANGUAGE_LABELS: Record<Language, string> = {
+  en: "English",
+  ja: "Japanese",
+  zh: "Simplified Chinese (简体中文)",
+  vi: "Vietnamese",
+  "pt-BR": "Brazilian Portuguese",
+  th: "Thai",
+  fr: "French",
+  ca: "Catalan",
+  es: "Spanish",
+  ru: "Russian",
+};
+
+export function responseLanguageSystemContext(locale: Language) {
+  const language = RESPONSE_LANGUAGE_LABELS[locale] ?? RESPONSE_LANGUAGE_LABELS.en;
+  return [
+    "User interface language preference:",
+    `- Current app language: ${language}.`,
+    `- Reply in ${language} by default, including clarifying questions, visible reasoning summaries, final answers, and generated session/task titles.`,
+    "- If the user's latest message explicitly asks for a different language, follow that request.",
+  ].join("\n");
+}
 
 export type PersistedComposerAttachment = {
   attachmentId: string;
