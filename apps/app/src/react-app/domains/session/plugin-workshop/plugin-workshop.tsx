@@ -27,6 +27,13 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { toast } from "@/components/ui/sonner";
 import { t } from "@/i18n";
 import { cn } from "@/lib/utils";
@@ -117,22 +124,24 @@ function PluginWorkshopBlankState(props: {
           {t("plugin_workshop.blank_description")}
         </p>
         {props.projects.length ? (
-          <select
-            defaultValue=""
-            className="mt-6 h-9 w-full rounded-lg border border-input bg-muted/20 px-3 text-sm text-foreground outline-none transition-colors hover:bg-muted/40 focus:border-ring focus:ring-2 focus:ring-ring/20"
-            aria-label={t("plugin_workshop.select_plugin")}
-            onChange={(event) => {
-              const project = props.projects.find((entry) => entry.directoryId === event.currentTarget.value);
+          <Select
+            value=""
+            onValueChange={(directoryId) => {
+              const project = props.projects.find((entry) => entry.directoryId === directoryId);
               if (project) props.onSelectProject(project);
             }}
           >
-            <option value="" disabled>{t("plugin_workshop.select_plugin_placeholder")}</option>
-            {props.projects.map((project) => (
-              <option key={project.directoryId} value={project.directoryId}>
-                {project.manifest?.name ?? project.directoryId}
-              </option>
-            ))}
-          </select>
+            <SelectTrigger className="mt-6 w-full" aria-label={t("plugin_workshop.select_plugin")}>
+              <SelectValue placeholder={t("plugin_workshop.select_plugin_placeholder")} />
+            </SelectTrigger>
+            <SelectContent>
+              {props.projects.map((project) => (
+                <SelectItem key={project.directoryId} value={project.directoryId}>
+                  {project.manifest?.name ?? project.directoryId}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         ) : null}
         <div className="mt-7 flex flex-wrap items-center gap-3">
           <Button type="button" variant="default" size="sm" className="rounded-lg" disabled={props.importing} onClick={props.onImport}>
@@ -544,14 +553,17 @@ export function PluginWorkshopPanel(props: PluginWorkshopPanelProps) {
       {overwriteImportDialog}
       <div className="flex h-full min-h-0 flex-col bg-background" data-testid="plugin-workshop-studio">
       <div className="flex min-h-12 shrink-0 items-center gap-2 border-b border-border px-3">
-        <select
+        <Select
           value={selectedProject?.directoryId ?? ""}
-          onChange={(event) => selectProject(projects.find((project) => project.directoryId === event.currentTarget.value))}
-          className="h-8 min-w-0 flex-1 rounded-lg border border-input bg-background px-2 text-sm outline-none focus:ring-2 focus:ring-ring"
-          aria-label={t("plugin_workshop.select_plugin")}
+          onValueChange={(directoryId) => selectProject(projects.find((project) => project.directoryId === directoryId))}
         >
-          {projects.map((project) => <option key={project.directoryId} value={project.directoryId}>{project.manifest?.name ?? project.directoryId}</option>)}
-        </select>
+          <SelectTrigger size="sm" className="min-w-0 flex-1" aria-label={t("plugin_workshop.select_plugin")}>
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent align="start">
+            {projects.map((project) => <SelectItem key={project.directoryId} value={project.directoryId}>{project.manifest?.name ?? project.directoryId}</SelectItem>)}
+          </SelectContent>
+        </Select>
         <Button variant="ghost" size="icon-sm" onClick={() => void refreshAll()} disabled={busyAction !== null} aria-label={t("plugin_workshop.refresh_preview")} title={t("plugin_workshop.refresh")}>
           <RefreshCw className={cn("size-4", busyAction === "refresh" && "animate-spin")} />
         </Button>

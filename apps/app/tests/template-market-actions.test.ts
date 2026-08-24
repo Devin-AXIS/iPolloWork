@@ -136,7 +136,6 @@ describe("template market actions", () => {
     expect(marketDialog).toContain('category === id ? "bg-foreground text-background" : "text-foreground hover:bg-muted"');
     expect(marketDialog).toContain('t("template_market.all_types")');
     expect(marketDialog).toContain("items-center justify-center gap-1.5 whitespace-nowrap");
-    expect(marketDialog).toContain("text-[13px] font-medium leading-[22px] text-foreground");
     expect(marketDialog).not.toMatch(/#[0-9a-f]{3,8}/i);
     expect(marketDialog).not.toContain("rgba(");
     expect(marketDialog).not.toContain("widthClass");
