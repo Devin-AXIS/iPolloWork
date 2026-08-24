@@ -114,6 +114,7 @@ function renderAssistantGroup(group: ReturnType<typeof getAssistantRenderGroups>
         key={`reasoning-${index}`}
         className="text-muted-foreground prose w-full min-w-0 flex-1 rounded-lg bg-transparent p-0"
         markdown
+        isStreaming={group.isStreaming}
       >
         {group.text}
       </MessageContent>

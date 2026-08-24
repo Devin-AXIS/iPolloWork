@@ -224,9 +224,19 @@ export function useSessionScrollController(
         return;
       }
 
+      // Let the browser own the scroll position while the user is actively
+      // scrolling. Replaying the same position through scrollIntoView on every
+      // event fights native momentum scrolling and makes streaming content
+      // appear to flash or jump as its height changes.
+      if (userGestured) {
+        saveScrollPosition(container);
+        lastKnownScrollTopRef.current = currentTop;
+        return;
+      }
+
       syncCurrentScrollPosition(container);
 
-      if (!userGestured && !scrolledUp) {
+      if (!scrolledUp) {
         if (isExactlyAtBottom(container)) {
           setStickyBottom(selectedSessionId, latestMessageTopClippedId(container));
         } else {
