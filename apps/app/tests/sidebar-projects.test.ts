@@ -264,14 +264,15 @@ describe("sidebar projects", () => {
     expect(sessionPageSource).toContain('data-testid="project-engine-option"');
     expect(sessionPageSource).not.toContain("onConfigureDeepSeek");
     expect(sessionPageSource).not.toContain('t("projects.configure_deepseek_key")');
-    expect(sessionPageSource).toContain('max-w-[516px]');
+    expect(sessionPageSource).toContain('max-w-[748px]');
     expect(sessionPageSource).toContain('t("projects.engine_locked_notice")');
     expect(sessionPageSource).toContain("<RadioGroup");
     expect(sessionPageSource).toContain("projectEngineSelectedIcon");
     expect(sessionPageSource).toContain("projectEngineOpenCodeIcon");
     expect(sessionPageSource).toContain("projectEngineDeepSeekIcon");
     expect(sessionPageSource).toContain('data-state={selected ? "selected" : "default"}');
-    expect(sessionPageSource).toContain("grid w-full grid-cols-1 gap-4 sm:grid-cols-3");
+    expect(sessionPageSource).toContain("grid w-full auto-rows-fr grid-cols-[repeat(auto-fit,minmax(min(100%,204px),1fr))] gap-4");
+    expect(sessionPageSource).toContain("relative flex h-full min-h-[120px] w-full");
     expect(sessionPageSource).toContain("min-h-[120px]");
     expect(sessionPageSource).toContain('iconClassName: "h-6 w-[19px] dark:invert"');
     expect(sessionPageSource).toContain('iconClassName: "h-6 w-[33px]"');
@@ -307,6 +308,9 @@ describe("sidebar projects", () => {
   });
 
   test("keeps header actions right-aligned and exposes the current project", () => {
+    const compactTriggerIndex = sessionPageSource.indexOf('data-testid="session-header-work-navigation-compact"');
+    const compactTriggerSource = sessionPageSource.slice(compactTriggerIndex, compactTriggerIndex + 700);
+
     expect(sessionPageSource).toContain('data-testid="session-header-project"');
     expect(sessionPageSource).toContain("<ProjectHeaderButton projectName={selectedProjectName} onClick={openProjectOverview} />");
     expect(sessionPageSource).toContain('publicAssetUrl("sidebar-icon/figma-folder-closed.svg")');
@@ -314,10 +318,28 @@ describe("sidebar projects", () => {
     expect(sessionPageSource).toContain('<TooltipContent side="bottom" align="start">{projectName}</TooltipContent>');
     expect(sessionPageSource).toContain("(showWorkspaceSetupEmptyState || props.selectedSessionId || showSelectedProjectNavigation)");
     expect(sessionPageSource).toContain('data-testid="session-header-actions"');
-    expect(sessionPageSource).toContain("md:col-start-3 md:justify-self-end");
+    expect(sessionPageSource).toContain("col-start-3 flex items-center gap-1.5 justify-self-end");
     expect(sessionPageSource).toContain('data-testid="session-header-work-navigation"');
     expect(sessionPageSource).toContain('data-testid="session-header-project-overview"');
     expect(sessionPageSource).toContain('data-testid="session-header-work-tasks"');
+    expect(sessionPageSource).toContain('className="inline-flex shrink-0 items-center gap-2 @max-[560px]/titlebar:hidden"');
+    expect(sessionPageSource).toContain('className="relative z-20 col-start-2 row-start-1 justify-self-center mac:titlebar-no-drag"');
+    expect(sessionPageSource).toContain('data-testid="session-header-work-navigation-compact"');
+    expect(sessionPageSource).toContain('@max-[560px]/titlebar:inline-flex');
+    expect(compactTriggerSource).toContain('rounded-lg bg-transparent px-3');
+    expect(compactTriggerSource).not.toContain('border');
+    expect(compactTriggerSource).not.toContain('shadow');
+    expect(sessionPageSource).toContain('<DropdownMenuItem onClick={onOpenOverview} data-testid="session-header-project-overview-compact">');
+    expect(sessionPageSource).toContain('data-testid="session-header-more-actions"');
+    expect(sessionPageSource).toContain('data-testid="session-header-project-region"');
+    expect(sessionPageSource).toContain('grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)]');
+    expect(sessionPageSource).toContain('mainHeaderHidden ? "hidden!" : "grid"');
+    expect(sessionPageSource).toContain('@max-[700px]/titlebar:hidden');
+    expect(sessionPageSource).toContain('min-w-0 shrink truncate text-[14px] font-medium text-dls-text @max-[560px]/titlebar:hidden');
+    expect(sessionPageSource).toContain('overflow-hidden justify-self-stretch');
+    expect(sessionPageSource).toContain('ml-12 md:ml-10 mac:ml-28 mac:md:ml-[104px]');
+    expect(sessionPageSource).toContain('? "h-7 rounded-lg bg-[#f3f3f4] text-[#161e24]');
+    expect(sessionPageSource).toContain(': "h-8 rounded-md text-[#5a6774]');
     expect(sessionPageSource).toContain("activeView={projectWorkActiveView}");
     expect(sidebarSource).toContain('data-testid="project-builder-open"');
     expect(sidebarSource).toContain("onCreateProjectBuilder(workspace.id)");

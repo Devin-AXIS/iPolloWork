@@ -108,9 +108,9 @@ export default {
                 radio: { width: images[1]?.getBoundingClientRect().width || 0, height: images[1]?.getBoundingClientRect().height || 0 },
               };
             })`);
-            ctx.assert(cards.length === 2, `Expected two engine cards, found ${cards.length}.`);
+            ctx.assert(cards.length === 3, `Expected three engine cards, found ${cards.length}.`);
             ctx.assert(cards.every((card) => card.width >= 204 && card.height >= 119), "Engine cards should fill the available dialog width and remain at least 120px high.");
-            ctx.assert(Math.abs(cards[0].width - cards[1].width) <= 1, "Engine cards should share the dialog width evenly.");
+            ctx.assert(Math.max(...cards.map((card) => card.width)) - Math.min(...cards.map((card) => card.width)) <= 1, "Engine cards should share the dialog width evenly.");
             ctx.assert(Math.abs(cards[0].brandIcon.width - 19) <= 1 && Math.abs(cards[0].brandIcon.height - 24) <= 1, "OpenCode should use the 19×24 Figma icon.");
             ctx.assert(Math.abs(cards[1].brandIcon.width - 33) <= 1 && Math.abs(cards[1].brandIcon.height - 24) <= 1, "DeepSeek Harness should use the 33×24 Figma icon.");
             ctx.assert(cards.every((card) => Math.abs(card.radio.width - 16) <= 1 && Math.abs(card.radio.height - 16) <= 1), "Each card should expose a 16px radio state.");
@@ -120,7 +120,7 @@ export default {
           },
           screenshot: {
             name: "new-project-engine-cards-light",
-            requireText: ["OpenCode", "DeepSeek Harness"],
+            requireText: ["OpenCode", "DeepSeek Harness", "Codex Harness"],
             rejectText: ["Something went wrong", "Ungrouped", "未分组"],
           },
         });
