@@ -66,9 +66,11 @@ import {
 import { currentLocale, t } from "@/i18n";
 import {
   buildTaskPaletteSessionOptions,
+  describeWorkspaceUnavailableTitle,
   describeRouteError,
   getSessionStatus,
   isActiveSessionStatus,
+  isSidecarLaunchBlockedError,
   isTransientStartupError,
   toProjectSessionLists,
   userVisibleSessionsByWorkspaceId,
@@ -198,6 +200,9 @@ import {
 function describeTaskCreateError(error: unknown) {
   const message = describeRouteError(error);
   const lower = message.toLowerCase();
+  if (isSidecarLaunchBlockedError(message)) {
+    return "Windows denied starting the OpenCode sidecar (spawn EPERM). Check whether antivirus, Controlled Folder Access, app permissions, or a quarantined opencode.exe is blocking iPolloWork, then retry or restart the app.";
+  }
   if (
     lower.includes("failed to fetch") ||
     lower.includes("connection") ||
@@ -1862,7 +1867,10 @@ export function SessionRoute() {
       }
       setRouteError(message);
       setErrorsByWorkspaceId((current) => ({ ...current, [workspaceId]: message }));
-      toast.error("OpenCode unavailable", {
+      toast.error(describeWorkspaceUnavailableTitle({
+        message,
+        workspaceType: workspace.workspaceType,
+      }), {
         id: taskCreateUnavailableToastId(workspaceId),
         description: message,
         action: {
@@ -2625,6 +2633,13 @@ export function SessionRoute() {
         onOpenSessionSearch: () => setSessionSearchOpen(true),
       }}
       surface={surfaceProps}
+      initialTaskDraftPending={
+        pendingInitialProjectTask &&
+        !selectedSessionId &&
+        pendingInitialProjectTask.workspaceId === selectedWorkspaceId
+          ? pendingInitialProjectTask.draft
+          : null
+      }
       history={{
         canUndo: false,
         canRedo: false,

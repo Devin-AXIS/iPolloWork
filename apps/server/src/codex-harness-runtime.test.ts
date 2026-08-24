@@ -721,8 +721,9 @@ readline.createInterface({ input: process.stdin }).on("line", (line) => {
           api: "openai-responses",
           baseURL: "https://opencode.ai/zen/v1",
           models: [
-            { id: "big-pickle", name: "Big Pickle" },
+            { id: "north-mini-code-free", name: "North Mini Code Free" },
             { id: "deepseek-v4-flash-free", name: "DeepSeek V4 Flash Free" },
+            { id: "big-pickle", name: "Big Pickle" },
             { id: "paid-model", name: "Paid model" },
           ],
         }),

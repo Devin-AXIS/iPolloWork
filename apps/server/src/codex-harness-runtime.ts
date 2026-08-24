@@ -74,6 +74,9 @@ const PROVIDER_DEFAULTS: Record<string, { api: SharedProviderProtocol; baseURL: 
 };
 
 const OPENAI_CODEX_OAUTH_BASE_URL = "https://chatgpt.com/backend-api/codex";
+const UNSUPPORTED_CODEX_HARNESS_OPENCODE_MODELS = new Set([
+  "north-mini-code-free",
+]);
 
 function tomlString(value: string): string {
   return JSON.stringify(value);
@@ -116,7 +119,20 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function publicOpenCodeModel(model: SharedProviderModelProfile): boolean {
-  return model.id === "big-pickle" || model.id.endsWith("-free");
+  return (
+    !UNSUPPORTED_CODEX_HARNESS_OPENCODE_MODELS.has(model.id) &&
+    (model.id === "big-pickle" || model.id.endsWith("-free"))
+  );
+}
+
+function codexHarnessOpenCodeModels(models: SharedProviderModelProfile[]): SharedProviderModelProfile[] {
+  return models
+    .filter(publicOpenCodeModel)
+    .sort((left, right) => {
+      if (left.id === "big-pickle") return -1;
+      if (right.id === "big-pickle") return 1;
+      return 0;
+    });
 }
 
 async function readAccountProviderCatalog(config: ServerConfig): Promise<AccountProviderCatalog> {
@@ -168,7 +184,7 @@ export async function codexHarnessProviders(input: {
   providers.set(OPENCODE_PROVIDER.id, {
     ...OPENCODE_PROVIDER,
     name: catalogOpenCode?.name ?? OPENCODE_PROVIDER.name,
-    models: openCodeModels.filter(publicOpenCodeModel),
+    models: codexHarnessOpenCodeModels(openCodeModels),
     upstream: {
       providerId: OPENCODE_PROVIDER.id,
       protocol: "openai-completions",
