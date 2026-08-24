@@ -187,7 +187,7 @@
     "acorn": "^8.18.0",
     "acorn-walk": "^8.3.5",
     "linkedom": "^0.18.12",
-    "magic-string": "^1.2.0",
+    "magic-string": "^1.2.2",
     "recast": "^0.24.0"
   },
   "devDependencies": {

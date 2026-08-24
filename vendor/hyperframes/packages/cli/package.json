@@ -36,7 +36,7 @@
     "esbuild": "^0.28.2",
     "fontkit": "^2.0.4",
     "giget": "^3.2.0",
-    "hono": "^4.13.2",
+    "hono": "^4.13.3",
     "onnxruntime-node": "1.27.0",
     "open": "^11.0.1",
     "postcss": "^8.5.26",
