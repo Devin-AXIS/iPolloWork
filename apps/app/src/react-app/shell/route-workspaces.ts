@@ -98,6 +98,32 @@ export function describeRouteError(error: unknown) {
   return serialized && serialized !== "{}" ? serialized : t("app.unknown_error");
 }
 
+export function isModelUnavailableError(message: string | null | undefined) {
+  const value = (message ?? "").toLowerCase();
+  return (
+    value.includes("providermodelnotfounderror") ||
+    value.includes("model not found") ||
+    value.includes("model_not_found") ||
+    value.includes("model is not available") ||
+    (value.includes("model") && value.includes("did you mean"))
+  );
+}
+
+export function isSidecarLaunchBlockedError(message: string | null | undefined) {
+  const value = (message ?? "").toLowerCase();
+  return value.includes("spawn eperm") || (value.includes("spawn") && value.includes("eperm"));
+}
+
+export function describeWorkspaceUnavailableTitle(input: {
+  message: string | null | undefined;
+  workspaceType?: string | null;
+}) {
+  if (isModelUnavailableError(input.message)) return "Model unavailable";
+  if (isSidecarLaunchBlockedError(input.message)) return "OpenCode launch blocked";
+  if (input.workspaceType === "remote") return "Remote workspace unavailable";
+  return "OpenCode unavailable";
+}
+
 export function describeWorkspaceCreateError(error: unknown) {
   const message = describeRouteError(error);
   const lower = message.toLowerCase();

@@ -103,6 +103,11 @@ import {
 import { OwDotTicker } from "../../../shell/dot-ticker";
 import { IPolloLoadingArtwork } from "../../../shell/loading-overlay";
 import { useReactRenderWatchdog } from "../../../shell/react-render-watchdog";
+import {
+  describeWorkspaceUnavailableTitle,
+  isModelUnavailableError,
+  isSidecarLaunchBlockedError,
+} from "../../../shell/route-workspaces";
 import { useShellConfig } from "../../../shell/shell-config";
 import { type SidePanelItem, useUiStateStore } from "../../../shell/ui-state-store";
 import { workspaceSettingsRoute } from "../../../shell/workspace-routes";
@@ -612,6 +617,46 @@ type InitialProjectComposerTooling = Pick<
   | "listExternalAgents"
   | "onUploadInboxFiles"
 >;
+
+function buildWorkspaceRepairScript(input: {
+  message: string;
+  workspaceRoot: string;
+}) {
+  const lines = [
+    "$ErrorActionPreference = 'Stop'",
+    "Write-Host 'iPolloWork repair started'",
+  ];
+  if (isSidecarLaunchBlockedError(input.message)) {
+    lines.push(
+      "$codexNative = Join-Path $env:APPDATA 'npm\\node_modules\\@openai\\codex\\node_modules\\@openai\\codex-win32-x64\\vendor\\x86_64-pc-windows-msvc\\bin\\codex.exe'",
+      "if (!(Test-Path -LiteralPath $codexNative)) {",
+      "  Write-Host 'Installing Codex CLI package...'",
+      "  npm install -g @openai/codex",
+      "}",
+      "if (Test-Path -LiteralPath $codexNative) {",
+      "  Unblock-File -LiteralPath $codexNative -ErrorAction SilentlyContinue",
+      "  [Environment]::SetEnvironmentVariable('IPOLLOWORK_CODEX_CLI', $codexNative, 'User')",
+      "  Write-Host \"Set IPOLLOWORK_CODEX_CLI=$codexNative\"",
+      "} else {",
+      "  throw 'Codex native executable was not found after install.'",
+      "}",
+      "Get-Process codex,opencode -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue",
+    );
+  }
+  if (isModelUnavailableError(input.message)) {
+    lines.push(
+      "Write-Host 'Model selection needs to be changed inside iPolloWork.'",
+      "Write-Host 'Use a supported Codex Harness model such as big-pickle or mimo-v2.5-free, then reload the engine.'",
+    );
+  }
+  if (input.workspaceRoot.trim()) {
+    lines.push(`Write-Host 'Workspace: ${input.workspaceRoot.replaceAll("'", "''")}'`);
+  }
+  lines.push(
+    "Write-Host 'Repair script finished. Restart iPolloWork or reload the workspace engine.'",
+  );
+  return lines.join("\r\n");
+}
 type InitialProjectMcpResult = {
   servers: McpServerEntry[];
   statuses: McpStatusMap;
@@ -660,6 +705,7 @@ export type SessionPageProps = {
   onOpenHelp: () => void;
   sidebar: SessionPageSidebarProps;
   surface?: SessionPageSurfaceProps | null;
+  initialTaskDraftPending?: ComposerDraft | null;
   history?: SessionPageHistoryControls | null;
   todos: TodoItem[];
   sessionLoadingById: (sessionId: string | null) => boolean;
@@ -697,6 +743,7 @@ function InitialProjectTaskStarter({
   onUseTemplate,
   onInstallTemplate,
   onRequestTemplates,
+  pendingDraft,
   onSubmit,
 }: {
   surface: SessionPageSurfaceProps;
@@ -713,6 +760,7 @@ function InitialProjectTaskStarter({
   onUseTemplate?: (templateId: string, surface: "design" | "video") => void;
   onInstallTemplate?: (templateId: string) => void;
   onRequestTemplates?: () => void;
+  pendingDraft?: ComposerDraft | null;
   onSubmit: (draft: ComposerDraft) => Promise<boolean>;
 }) {
   const [draft, setDraft] = useState("");
@@ -721,6 +769,7 @@ function InitialProjectTaskStarter({
   const [starterMode, setStarterMode] = useState<NewConversationMode>("work");
   const [starterCapability, setStarterCapability] = useState<StarterCapability | null>(null);
   const [sending, setSending] = useState(false);
+  const [submittedDraft, setSubmittedDraft] = useState<ComposerDraft | null>(null);
   const [toolSkills, setToolSkills] = useState<SkillCard[]>([]);
   const [toolMcpServers, setToolMcpServers] = useState<McpServerEntry[]>([]);
   const [toolMcpStatus, setToolMcpStatus] = useState<string | null>(null);
@@ -860,9 +909,13 @@ function InitialProjectTaskStarter({
 
   const submitDraft = async (composerDraft: ComposerDraft) => {
     setSending(true);
+    setSubmittedDraft(composerDraft);
     try {
       const created = await onSubmit(composerDraft);
-      if (!created) return false;
+      if (!created) {
+        setSubmittedDraft(null);
+        return false;
+      }
       clearSubmittedDraft(composerDraft.attachments);
       setPastedText([]);
       return true;
@@ -870,6 +923,10 @@ function InitialProjectTaskStarter({
       setSending(false);
     }
   };
+
+  const visiblePendingDraft = pendingDraft ?? (sending ? submittedDraft : null);
+  const pendingText = visiblePendingDraft?.text.trim() ?? "";
+  const composerBusy = sending || Boolean(pendingDraft);
 
   const submit = async () => {
     const text = draft.trim();
@@ -925,29 +982,45 @@ function InitialProjectTaskStarter({
   return (
     <div className="flex h-full min-h-0 justify-center overflow-y-auto bg-background px-5" data-testid="initial-project-task-starter">
       <div className="flex min-h-full w-full max-w-[800px] flex-col justify-center pb-[max(64px,env(safe-area-inset-bottom))] pt-8 has-[[data-testid=new-conversation-template-strip]]:justify-start">
-        <div data-testid="new-conversation-starter-slot" className="shrink-0">
-          <NewConversationStarter
-            selectedMode={starterMode}
-            selectedCapabilityId={starterCapability?.id}
-            promptTemplates={promptTemplates}
-            templates={templates}
-            templatesLoading={templatesLoading}
-            templateBusyId={templateBusyId}
-            getTemplateCover={getTemplateCover}
-            onUseTemplate={onUseTemplate}
-            onInstallTemplate={onInstallTemplate}
-            onRequestTemplates={onRequestTemplates}
-            onSelectMode={(mode) => {
-              setStarterMode(mode);
-              setStarterCapability(null);
-            }}
-            onSelectPrompt={(prompt, capability) => {
-              setStarterCapability(capability ?? null);
-              if (prompt) setDraft(prompt);
-              window.dispatchEvent(new Event("ipollowork:focusPrompt"));
-            }}
-          />
-        </div>
+        {visiblePendingDraft ? (
+          <div className="w-full space-y-4" role="status" aria-live="polite" data-testid="initial-project-task-pending">
+            {pendingText ? (
+              <div className="flex justify-end">
+                <div className="max-w-[min(640px,88%)] rounded-2xl bg-dls-text px-4 py-3 text-sm leading-6 text-dls-surface shadow-sm">
+                  {pendingText}
+                </div>
+              </div>
+            ) : null}
+            <div className="flex items-center gap-2 px-1 text-xs text-dls-secondary">
+              <LoaderCircle className="size-3.5 animate-spin" aria-hidden />
+              <span>{t("session.status_running")}</span>
+            </div>
+          </div>
+        ) : (
+          <div data-testid="new-conversation-starter-slot" className="shrink-0">
+            <NewConversationStarter
+              selectedMode={starterMode}
+              selectedCapabilityId={starterCapability?.id}
+              promptTemplates={promptTemplates}
+              templates={templates}
+              templatesLoading={templatesLoading}
+              templateBusyId={templateBusyId}
+              getTemplateCover={getTemplateCover}
+              onUseTemplate={onUseTemplate}
+              onInstallTemplate={onInstallTemplate}
+              onRequestTemplates={onRequestTemplates}
+              onSelectMode={(mode) => {
+                setStarterMode(mode);
+                setStarterCapability(null);
+              }}
+              onSelectPrompt={(prompt, capability) => {
+                setStarterCapability(capability ?? null);
+                if (prompt) setDraft(prompt);
+                window.dispatchEvent(new Event("ipollowork:focusPrompt"));
+              }}
+            />
+          </div>
+        )}
         <div data-testid="new-conversation-starter-composer-shell" className="mt-6 w-full shrink-0">
           {(surface.providerConnectedCount ?? 0) === 0 ? (
             <button
@@ -966,10 +1039,10 @@ function InitialProjectTaskStarter({
             onSend={submit}
             onQueue={submit}
             onStop={() => {}}
-            busy={sending}
+            busy={composerBusy}
             queuedCount={0}
-            disabled={sending || Boolean(surface.modelUnavailable)}
-            inputDisabled={sending}
+            disabled={composerBusy || Boolean(surface.modelUnavailable)}
+            inputDisabled={composerBusy}
             modelUnavailable={Boolean(surface.modelUnavailable)}
             statusLabel=""
             modelPickerOpen={surface.modelPickerOpen}
@@ -3469,10 +3542,41 @@ export function SessionPage(props: SessionPageProps) {
     selectedWorkspaceProjectError ||
     "";
   const showSelectedWorkspaceError = Boolean(selectedWorkspaceErrorMessage);
-  const selectedWorkspaceErrorTitle =
-    props.selectedWorkspaceDisplay.workspaceType === "remote"
-      ? "Remote workspace unavailable"
-      : "OpenCode unavailable";
+  const selectedWorkspaceErrorTitle = describeWorkspaceUnavailableTitle({
+    message: selectedWorkspaceErrorMessage,
+    workspaceType: props.selectedWorkspaceDisplay.workspaceType,
+  });
+  const [workspaceRepairBusy, setWorkspaceRepairBusy] = useState(false);
+  const workspaceRepairScript = useMemo(() => buildWorkspaceRepairScript({
+    message: selectedWorkspaceErrorMessage,
+    workspaceRoot: props.selectedWorkspaceRoot,
+  }), [props.selectedWorkspaceRoot, selectedWorkspaceErrorMessage]);
+  const copyWorkspaceRepairScript = useCallback(async () => {
+    try {
+      await navigator.clipboard.writeText(workspaceRepairScript);
+      toast.success("Repair script copied");
+    } catch (error) {
+      toast.error("Could not copy repair script", {
+        description: error instanceof Error ? error.message : t("app.unknown_error"),
+      });
+    }
+  }, [workspaceRepairScript]);
+  const runWorkspaceRepair = useCallback(async () => {
+    if (workspaceRepairBusy) return;
+    setWorkspaceRepairBusy(true);
+    try {
+      await Promise.resolve(props.sidebar.onRecoverWorkspace(props.selectedWorkspaceId));
+      await Promise.resolve(props.sidebar.onTestWorkspaceConnection(props.selectedWorkspaceId));
+      await Promise.resolve(props.sidebar.onCreateTaskInWorkspace(props.selectedWorkspaceId));
+      toast.success("Repair attempted");
+    } catch (error) {
+      toast.error("Repair failed", {
+        description: error instanceof Error ? error.message : t("app.unknown_error"),
+      });
+    } finally {
+      setWorkspaceRepairBusy(false);
+    }
+  }, [props.selectedWorkspaceId, props.sidebar, workspaceRepairBusy]);
 
   const reactSessionBaseUrl = props.opencodeBaseUrl?.trim() ?? "";
   const reactSessionToken =
@@ -4015,6 +4119,7 @@ export function SessionPage(props: SessionPageProps) {
                   }}
                   onInstallTemplate={(templateId) => void installStarterTemplate(templateId)}
                   onRequestTemplates={() => void refreshStarterTemplateCatalog()}
+                  pendingDraft={props.initialTaskDraftPending}
                   onSubmit={selectedProject && !selectedProject.workspace.isDefault
                     ? (draft) => props.sidebar.onCreateTaskFromDraft(props.selectedWorkspaceId, draft)
                     : (draft) => props.sidebar.onCreateInitialProjectTask(draft)}
@@ -4199,6 +4304,22 @@ export function SessionPage(props: SessionPageProps) {
                             onClick={() => props.sidebar.onCreateTaskInWorkspace(props.selectedWorkspaceId)}
                           >
                             Retry
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            disabled={workspaceRepairBusy}
+                            onClick={() => void runWorkspaceRepair()}
+                          >
+                            {workspaceRepairBusy ? <LoaderCircle className="size-3.5 animate-spin" /> : null}
+                            Auto repair
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => void copyWorkspaceRepairScript()}
+                          >
+                            Copy repair script
                           </Button>
                           <Button
                             variant="outline"
