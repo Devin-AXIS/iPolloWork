@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   CalendarDays,
   CalendarRange,
+  Hand,
   LayoutDashboard,
   Plus,
   Settings2,
@@ -17,6 +18,7 @@ import {
 
 import type { WorkspaceInfo } from "@/app/lib/desktop";
 import type { iPolloWorkServerClient } from "@/app/lib/ipollowork-server";
+import type { ProviderListItem } from "@/app/types";
 import { isRemoteWorkspace } from "@/app/lib/workspace-endpoint";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -57,6 +59,8 @@ type WorkCenterProps = {
   selectedClient: iPolloWorkServerClient | null;
   environmentClient: iPolloWorkServerClient | null;
   workspaces: WorkspaceInfo[];
+  providers: ProviderListItem[];
+  connectedProviderIds: string[];
 };
 
 type ResolvedWorkItem = ProjectBoardItem & {
@@ -130,6 +134,10 @@ function runtimeTaskItems(endpoint: WorkEndpoint, snapshot: RuntimeTaskSnapshot)
         priority: "normal",
         startAt: null,
         dueAt: null,
+        automation: null,
+        automationLastRunAt: null,
+        automationLastSessionId: null,
+        automationLastError: null,
         position: record.updatedAt,
         customFields: {},
         execution: null,
@@ -191,6 +199,7 @@ function GlobalWorkSummary(props: {
 export function WorkCenter(props: WorkCenterProps) {
   const queryClient = useQueryClient();
   const [projectView, setProjectView] = React.useState<ProjectView>("board");
+  const [boardPanEnabled, setBoardPanEnabled] = React.useState(false);
   const [calendarView, setCalendarView] = React.useState<WorkCalendarView>("week");
   const [anchorDate, setAnchorDate] = React.useState(() => new Date());
   const [editorOpen, setEditorOpen] = React.useState(false);
@@ -230,6 +239,14 @@ export function WorkCenter(props: WorkCenterProps) {
       props.mode === "project" ? selectedEndpoint?.key : endpointGroups.map((group) => `${group.key}:${group.endpoints.map((endpoint) => endpoint.workspaceId).join(",")}`).join("|"),
     ],
     enabled: props.mode === "project" ? Boolean(selectedEndpoint) : endpointGroups.length > 0,
+    refetchInterval: (query) => {
+      const items = query.state.data;
+      const lifecycleActive = items?.some(({ item }) => (
+        item.status === "running"
+        || Boolean(item.automation?.enabled && item.startAt !== null && item.startAt <= Date.now() + 60_000)
+      ));
+      return lifecycleActive ? 1_000 : 30_000;
+    },
     queryFn: async (): Promise<ResolvedWorkItem[]> => {
       const groups = props.mode === "project" && selectedEndpoint
         ? [{ key: selectedEndpoint.key, client: selectedEndpoint.client, endpoints: [selectedEndpoint] }]
@@ -370,6 +387,16 @@ export function WorkCenter(props: WorkCenterProps) {
       return editorEndpoint.client.getWorkBoard(editorEndpoint.workspaceId);
     },
   });
+  const editorAgentsQuery = useQuery({
+    queryKey: ["work-item-project-agents", editorEndpoint?.key, editorEndpoint?.workspaceId],
+    enabled: editorOpen && Boolean(editorEndpoint),
+    staleTime: 30_000,
+    queryFn: async () => {
+      if (!editorEndpoint) throw new Error("Project endpoint is unavailable");
+      const response = await editorEndpoint.client.getConfig(editorEndpoint.workspaceId);
+      return readProjectWorkspaceConfig(response.ipollowork, editorEndpoint.workspace.engineId).agents;
+    },
+  });
 
   const board = localizedBoard(projectBoardQuery.data ?? defaultBoard(selectedEndpoint?.workspaceId ?? ""));
   const editorBoard = localizedBoard(editorBoardQuery.data ?? (editorEndpoint?.workspaceId === selectedEndpoint?.workspaceId ? board : defaultBoard(editorEndpoint?.workspaceId ?? "")));
@@ -410,6 +437,7 @@ export function WorkCenter(props: WorkCenterProps) {
   const deleteMutation = useMutation({
     mutationFn: async (entry: ResolvedWorkItem) => entry.endpoint.client.deleteWorkItem(entry.endpoint.workspaceId, entry.item.id, entry.item.version),
     onSuccess: async () => {
+      setPendingDelete(null);
       setEditorOpen(false);
       setEditingEntry(null);
       await invalidateWork();
@@ -493,6 +521,20 @@ export function WorkCenter(props: WorkCenterProps) {
           </div>
         ) : null}
 
+        {showBoard ? (
+          <Button
+            type="button"
+            variant={boardPanEnabled ? "secondary" : "ghost"}
+            size="sm"
+            className="rounded-lg"
+            aria-pressed={boardPanEnabled}
+            title={t("work.board.pan_hint")}
+            onClick={() => setBoardPanEnabled((enabled) => !enabled)}
+          >
+            <Hand className="size-4" />{t("work.board.pan")}
+          </Button>
+        ) : null}
+
         {props.mode === "project" ? (
           <Button type="button" variant="ghost" size="sm" className="rounded-lg" onClick={() => setBoardSettingsOpen(true)} disabled={!selectedEndpoint}>
             <Settings2 className="size-4" />{t("work.fields")}
@@ -510,6 +552,7 @@ export function WorkCenter(props: WorkCenterProps) {
           <ProjectBoard
             items={boardItems}
             board={board}
+            panEnabled={boardPanEnabled}
             moving={updateMutation.isPending}
             onMove={(entryKey, status, position) => {
               const entry = items.find((candidate) => candidate.key === entryKey);
@@ -564,6 +607,9 @@ export function WorkCenter(props: WorkCenterProps) {
         initialSchedule={createSchedule}
         saving={createMutation.isPending || updateMutation.isPending}
         deleting={deleteMutation.isPending}
+        agents={editorAgentsQuery.data ?? []}
+        providers={props.providers}
+        connectedProviderIds={props.connectedProviderIds}
         onOpenChange={(open) => {
           setEditorOpen(open);
           if (!open) {

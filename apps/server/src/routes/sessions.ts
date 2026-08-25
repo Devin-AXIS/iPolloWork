@@ -1,17 +1,14 @@
 import type { createOpencodeClient } from "@opencode-ai/sdk/v2/client";
 import { CODEX_HARNESS_ENGINE_ID, DEEPSEEK_HARNESS_ENGINE_ID } from "@ipollowork/types/workspace";
 import {
-  codexHarnessRuntimeProviderId,
   CodexHarnessUnavailableError,
   type CodexHarnessRuntimePool,
 } from "../codex-harness-runtime.js";
 import {
   listCodexHarnessSessions,
-  mapCodexThread,
   readCodexHarnessMessages,
   readCodexHarnessSession,
   readCodexHarnessSnapshot,
-  type CodexThread,
 } from "../codex-harness-session-read-model.js";
 import {
   DeepSeekHarnessRpcError,
@@ -28,6 +25,7 @@ import { ApiError } from "../errors.js";
 import { StdioJsonRpcError } from "../stdio-json-rpc-runtime.js";
 import { buildSession, buildSessionList, buildSessionMessages, buildSessionSnapshot } from "../session-read-model.js";
 import type { ServerConfig, TokenScope, WorkspaceInfo } from "../types.js";
+import type { WorkspaceSessionRuntime } from "../workspace-session-runtime.js";
 import { addRoute, type RequestContext, type Route } from "./registry.js";
 
 type JsonResponse = (data: unknown, status?: number) => Response;
@@ -56,6 +54,7 @@ interface RegisterSessionRoutesOptions {
   unwrapOpencodeResult: UnwrapOpencodeResult;
   deepseekHarness: DeepSeekHarnessRuntimePool;
   codexHarness: CodexHarnessRuntimePool;
+  sessionRuntime: WorkspaceSessionRuntime;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -124,21 +123,8 @@ export function registerSessionRoutes(options: RegisterSessionRoutesOptions): vo
     unwrapOpencodeResult,
     deepseekHarness,
     codexHarness,
+    sessionRuntime,
   } = options;
-  const freshCodexThreadLimit = 500;
-  const freshCodexThreads = new Map<string, { providerID: string; modelID: string }>();
-  const codexThreadKey = (workspaceId: string, threadId: string) => `${workspaceId}\u0000${threadId}`;
-  const rememberFreshCodexThread = (
-    key: string,
-    model: { providerID: string; modelID: string },
-  ) => {
-    freshCodexThreads.set(key, model);
-    while (freshCodexThreads.size > freshCodexThreadLimit) {
-      const oldest = freshCodexThreads.keys().next().value;
-      if (typeof oldest !== "string") break;
-      freshCodexThreads.delete(oldest);
-    }
-  };
 
   function remapSessionReadError(error: unknown): never {
     if (error instanceof DeepSeekHarnessUnavailableError) {
@@ -277,166 +263,21 @@ export function registerSessionRoutes(options: RegisterSessionRoutesOptions): vo
     }
   }
 
-  async function createWorkspaceSession(
-    workspace: WorkspaceInfo,
-    title?: string,
-    model?: { providerID: string; modelID: string },
-  ) {
-    try {
-      if (workspace.engineId === DEEPSEEK_HARNESS_ENGINE_ID) {
-        const runtime = deepseekHarness.forWorkspace(workspace);
-        const result = await runtime.call<{ sessionId: string; agentPreset?: string }>("session.create", {
-          cwd: workspace.path,
-        });
-        const sessionId = result.sessionId?.trim();
-        if (!sessionId) {
-          throw new ApiError(502, "deepseek_harness_invalid_response", "DeepSeek Harness returned an invalid session");
-        }
-        if (title) await runtime.call("session.rename", { sessionId, title });
-        const now = Date.now();
-        return {
-          id: sessionId,
-          title: title || "New conversation",
-          slug: sessionId,
-          directory: workspace.path,
-          time: { created: now, updated: now },
-          dsh: {
-            running: false,
-            blank: true,
-            ...(result.agentPreset ? { agentPreset: result.agentPreset } : {}),
-          },
-        };
-      }
-      if (workspace.engineId === CODEX_HARNESS_ENGINE_ID) {
-        const runtime = codexHarness.forWorkspace(workspace);
-        const result = await runtime.startThread<{
-          thread?: CodexThread;
-          model?: string;
-          modelProvider?: string;
-        }>({
-          cwd: workspace.path,
-          approvalPolicy: "on-request",
-          sandbox: "workspace-write",
-          ...(model ? {
-            modelProvider: codexHarnessRuntimeProviderId(model.providerID),
-            model: model.modelID,
-            allowProviderModelFallback: false,
-          } : {}),
-        });
-        if (!result.thread?.id) {
-          throw new ApiError(502, "codex_harness_invalid_response", "Codex Harness returned an invalid thread");
-        }
-        rememberFreshCodexThread(codexThreadKey(workspace.id, result.thread.id), {
-          providerID: model?.providerID || result.modelProvider?.trim() || "",
-          modelID: result.model?.trim() || model?.modelID || "",
-        });
-        if (title) await runtime.call("thread/name/set", { threadId: result.thread.id, name: title });
-        return mapCodexThread({ ...result.thread, ...(title ? { name: title } : {}) });
-      }
-      const opencode = createWorkspaceOpencodeClient(config, workspace);
-      return buildSession(
-        unwrapOpencodeResult(
-          await opencode.session.create({ directory: workspace.path, title }),
-          "/session",
-        ),
-      );
-    } catch (error) {
-      remapSessionReadError(error);
-    }
-  }
-
-  async function promptWorkspaceSession(
-    workspace: WorkspaceInfo,
-    sessionId: string,
-    input: ReturnType<typeof sessionPromptInput>,
-  ) {
-    try {
-      if (workspace.engineId === DEEPSEEK_HARNESS_ENGINE_ID) {
-        const runtime = deepseekHarness.forWorkspace(workspace);
-        if (input.mode) {
-          await runtime.call("agentPreset.select", {
-            sessionId,
-            agentPreset: input.mode,
-          });
-        }
-        if (input.model) {
-          await runtime.call("session.selectModel", {
-            sessionId,
-            provider: input.model.providerID,
-            model: input.model.modelID,
-            ...(input.reasoningEffort ? { reasoningEffort: input.reasoningEffort } : {}),
-          });
-        }
-        await runtime.call("session.prompt", {
-          sessionId,
-          mode: "queue",
-          content: [{ type: "text", text: input.text }],
-          clientTimeZone: input.clientTimeZone || Intl.DateTimeFormat().resolvedOptions().timeZone,
-        });
-        return sessionId;
-      }
-      if (workspace.engineId === CODEX_HARNESS_ENGINE_ID) {
-        const runtime = codexHarness.forWorkspace(workspace);
-        const freshKey = codexThreadKey(workspace.id, sessionId);
-        const fresh = freshCodexThreads.get(freshKey);
-        const freshMatchesSelection = Boolean(
-          fresh
-          && (!input.model || (
-            fresh.providerID === input.model.providerID
-            && fresh.modelID === input.model.modelID
-          )),
-        );
-        let effectiveSessionId = sessionId;
-        if (!freshMatchesSelection) {
-          const resumed = await runtime.resumeThread({
-            threadId: sessionId,
-            cwd: workspace.path,
-            ...(input.model ? {
-              modelProvider: codexHarnessRuntimeProviderId(input.model.providerID),
-              model: input.model.modelID,
-            } : {}),
-          });
-          const resumedThread = resumed && isRecord(resumed.thread) ? resumed.thread : null;
-          if (typeof resumedThread?.id === "string" && resumedThread.id.trim()) {
-            effectiveSessionId = resumedThread.id.trim();
-          }
-        }
-        await runtime.call("turn/start", {
-          threadId: effectiveSessionId,
-          input: [{ type: "text", text: input.text, text_elements: [] }],
-          ...(input.model ? { model: input.model.modelID } : {}),
-          ...(input.reasoningEffort ? { effort: input.reasoningEffort } : {}),
-        });
-        freshCodexThreads.delete(freshKey);
-        return effectiveSessionId;
-      }
-      const opencode = createWorkspaceOpencodeClient(config, workspace);
-      unwrapOpencodeResult(
-        await opencode.session.promptAsync({
-          sessionID: sessionId,
-          parts: [{ type: "text", text: input.text }],
-          model: input.model,
-          agent: input.mode,
-          variant: input.reasoningEffort,
-        }),
-        `/session/${encodeURIComponent(sessionId)}/prompt_async`,
-      );
-      return sessionId;
-    } catch (error) {
-      remapSessionReadError(error);
-    }
-  }
-
   addRoute(routes, "POST", "/workspace/:id/sessions", "client", async (ctx) => {
     ensureWritable(config);
     requireClientScope(ctx, "collaborator");
     const workspace = await resolveWorkspace(config, ctx.params.id);
     const body = await readJsonBody(ctx.request);
-    const item = await createWorkspaceSession(
-      workspace,
-      optionalString(body, "title", 500),
-      sessionModelInput(body),
-    );
+    let item;
+    try {
+      item = await sessionRuntime.create(
+        workspace,
+        optionalString(body, "title", 500),
+        sessionModelInput(body),
+      );
+    } catch (error) {
+      remapSessionReadError(error);
+    }
     return jsonResponse({ item }, 201);
   });
 
@@ -493,11 +334,16 @@ export function registerSessionRoutes(options: RegisterSessionRoutesOptions): vo
     if (!sessionId) {
       throw new ApiError(400, "invalid_payload", "sessionId is required");
     }
-    const effectiveSessionId = await promptWorkspaceSession(
-      workspace,
-      sessionId,
-      sessionPromptInput(await readJsonBody(ctx.request)),
-    );
+    let effectiveSessionId;
+    try {
+      effectiveSessionId = await sessionRuntime.prompt(
+        workspace,
+        sessionId,
+        sessionPromptInput(await readJsonBody(ctx.request)),
+      );
+    } catch (error) {
+      remapSessionReadError(error);
+    }
     return jsonResponse({ ok: true, accepted: true, sessionId: effectiveSessionId }, 202);
   });
 
@@ -511,26 +357,7 @@ export function registerSessionRoutes(options: RegisterSessionRoutesOptions): vo
       throw new ApiError(400, "invalid_payload", "sessionId is required");
     }
 
-    if (workspace.engineId === DEEPSEEK_HARNESS_ENGINE_ID) {
-      throw new ApiError(
-        501,
-        "session_delete_unsupported",
-        "DeepSeek Harness supports session archiving but not permanent deletion",
-      );
-    }
-
-    if (workspace.engineId === CODEX_HARNESS_ENGINE_ID) {
-      freshCodexThreads.delete(codexThreadKey(workspace.id, sessionId));
-      await codexHarness.forWorkspace(workspace).call("thread/delete", { threadId: sessionId });
-      return jsonResponse({ ok: true });
-    }
-
-    const opencode = createWorkspaceOpencodeClient(config, workspace);
-    unwrapOpencodeResult(
-      await opencode.session.delete({ sessionID: sessionId }),
-      `/session/${encodeURIComponent(sessionId)}`,
-    );
-
+    await sessionRuntime.delete(workspace, sessionId);
     return jsonResponse({ ok: true });
   });
 }

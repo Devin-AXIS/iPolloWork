@@ -127,6 +127,14 @@ describe("startup session loading", () => {
     expect(desktopConfigSource).toContain("void desktopConfigHandler()");
   });
 
+  test("discovers sessions created in the selected project outside the current UI", () => {
+    expect(routeStateSource).toContain("const SELECTED_WORKSPACE_SESSION_SYNC_INTERVAL_MS = 15_000;");
+    expect(routeStateSource).toContain("await loadWorkspaceSessionsInBackground([selectedWorkspace]);");
+    expect(routeStateSource).toContain('document.visibilityState === "hidden"');
+    expect(routeStateSource).toContain("syncInFlight = true;");
+    expect(routeStateSource).toContain("window.clearInterval(interval);");
+  });
+
   test("trusts workspace-scoped session results instead of filtering by path aliases", () => {
     expect(routeStateSource).toContain("const items = fetchedItems;");
     expect(routeStateSource).toContain("const sessions = cachedSessions;");

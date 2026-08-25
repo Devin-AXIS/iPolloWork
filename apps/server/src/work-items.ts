@@ -3,21 +3,33 @@ import {
   DEFAULT_WORK_BOARD_CONFIG,
   projectSessionExecutionSchema,
   workBoardConfigValueSchema,
+  workItemAutomationSchema,
   workItemCreateSchema,
   workItemPrioritySchema,
   type WorkBoardConfig,
   type WorkBoardConfigValue,
   type WorkItem,
+  type WorkItemAutomation,
   type WorkItemCreateInput,
   type WorkItemListResponse,
   type WorkItemUpdateInput,
   type ProjectSessionExecution,
   type ProjectSessionExecutionFinishInput,
+  type ProjectSessionExecutionRuntime,
+  type ProjectSessionExecutionStartInput,
 } from "@ipollowork/types/work-items";
+import {
+  createDefaultProjectWorkspaceConfig,
+  projectWorkspaceConfigSchema,
+  type ProjectAgent,
+} from "@ipollowork/types/project-workspace";
+import { DEFAULT_ENGINE_ID, isHarnessWorkspaceEngineId } from "@ipollowork/types/workspace";
 
+import { ApiError } from "./errors.js";
+import { readiPolloWorkWorkspaceConfig } from "./ipollowork-workspace-config-store.js";
 import { importNodeSqlite } from "./node-sqlite.js";
 import { runtimeDbPath } from "./runtime-storage.js";
-import type { ServerConfig } from "./types.js";
+import type { ServerConfig, WorkspaceInfo } from "./types.js";
 import { ensureDir, shortId } from "./utils.js";
 
 type SqlValue = string | number | null;
@@ -40,6 +52,12 @@ type WorkItemRow = {
   priority: string;
   start_at: number | null;
   due_at: number | null;
+  automation_json: string | null;
+  automation_enabled: number;
+  automation_lease_until: number | null;
+  automation_last_run_at: number | null;
+  automation_last_session_id: string | null;
+  automation_last_error: string | null;
   position: number;
   custom_fields_json: string;
   session_id: string | null;
@@ -118,6 +136,12 @@ function normalizeWorkItemRow(value: unknown): WorkItemRow | null {
     priority: readString(value, "priority"),
     start_at: readNullableNumber(value, "start_at"),
     due_at: readNullableNumber(value, "due_at"),
+    automation_json: readNullableString(value, "automation_json"),
+    automation_enabled: readNumber(value, "automation_enabled"),
+    automation_lease_until: readNullableNumber(value, "automation_lease_until"),
+    automation_last_run_at: readNullableNumber(value, "automation_last_run_at"),
+    automation_last_session_id: readNullableString(value, "automation_last_session_id"),
+    automation_last_error: readNullableString(value, "automation_last_error"),
     position: readNumber(value, "position"),
     custom_fields_json: readString(value, "custom_fields_json"),
     session_id: readNullableString(value, "session_id"),
@@ -171,6 +195,17 @@ function parseExecution(json: string | null): ProjectSessionExecution | null {
   }
 }
 
+function parseAutomation(json: string | null): WorkItemAutomation | null {
+  if (!json) return null;
+  try {
+    const parsed: unknown = JSON.parse(json);
+    const automation = workItemAutomationSchema.safeParse(parsed);
+    return automation.success ? automation.data : null;
+  } catch {
+    return null;
+  }
+}
+
 function publicWorkItem(row: WorkItemRow): WorkItem {
   const priority = workItemPrioritySchema.safeParse(row.priority);
   return {
@@ -183,6 +218,10 @@ function publicWorkItem(row: WorkItemRow): WorkItem {
     priority: priority.success ? priority.data : "normal",
     startAt: row.start_at,
     dueAt: row.due_at,
+    automation: parseAutomation(row.automation_json),
+    automationLastRunAt: row.automation_last_run_at,
+    automationLastSessionId: row.automation_last_session_id,
+    automationLastError: row.automation_last_error,
     position: row.position,
     customFields: parseCustomFields(row.custom_fields_json),
     execution: parseExecution(row.execution_json),
@@ -224,6 +263,12 @@ function createSchema(db: SqlExecutor): void {
       priority TEXT NOT NULL,
       start_at INTEGER,
       due_at INTEGER,
+      automation_json TEXT,
+      automation_enabled INTEGER NOT NULL DEFAULT 0,
+      automation_lease_until INTEGER,
+      automation_last_run_at INTEGER,
+      automation_last_session_id TEXT,
+      automation_last_error TEXT,
       position REAL NOT NULL,
       custom_fields_json TEXT NOT NULL,
       session_id TEXT,
@@ -267,10 +312,25 @@ function createSchema(db: SqlExecutor): void {
   addColumn("last_error", "TEXT");
   addColumn("run_started_at", "INTEGER");
   addColumn("run_completed_at", "INTEGER");
+  addColumn("automation_json", "TEXT");
+  addColumn("automation_enabled", "INTEGER NOT NULL DEFAULT 0");
+  addColumn("automation_lease_until", "INTEGER");
+  addColumn("automation_last_run_at", "INTEGER");
+  addColumn("automation_last_session_id", "TEXT");
+  addColumn("automation_last_error", "TEXT");
   db.exec(`
     CREATE UNIQUE INDEX IF NOT EXISTS work_items_workspace_session_idx
       ON work_items(workspace_id, session_id)
       WHERE session_id IS NOT NULL;
+    CREATE INDEX IF NOT EXISTS work_items_automation_due_idx
+      ON work_items(automation_enabled, start_at, automation_lease_until, id);
+    UPDATE work_items
+       SET status = 'ready', version = version + 1,
+           updated_at = CAST(strftime('%s', 'now') AS INTEGER) * 1000
+     WHERE automation_enabled = 1
+       AND automation_json IS NOT NULL
+       AND execution_json IS NULL
+       AND status = 'planned';
   `);
 }
 
@@ -392,27 +452,31 @@ export async function createWorkItem(
   const db = await workItemDb(config);
   const now = Date.now();
   const id = `work_${shortId()}`;
+  const status = parsed.automation?.enabled ? "ready" : parsed.status;
   const nextPositionRow = db.get(
     "SELECT COALESCE(MAX(position), 0) + 1024 AS position FROM work_items WHERE workspace_id = ? AND status = ?",
-    [workspaceId, parsed.status],
+    [workspaceId, status],
   );
   const nextPosition = isRecord(nextPositionRow) ? readNumber(nextPositionRow, "position") : 1024;
   const position = parsed.position ?? nextPosition;
   db.run(
     `INSERT INTO work_items (
       id, workspace_id, title, description, status, assignee, priority,
-      start_at, due_at, position, custom_fields_json, version, created_at, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)`,
+      start_at, due_at, automation_json, automation_enabled,
+      position, custom_fields_json, version, created_at, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)`,
     [
       id,
       workspaceId,
       parsed.title,
       parsed.description ?? null,
-      parsed.status,
+      status,
       parsed.assignee ?? null,
       parsed.priority,
       parsed.startAt ?? null,
       parsed.dueAt ?? null,
+      parsed.automation ? JSON.stringify(parsed.automation) : null,
+      parsed.automation?.enabled ? 1 : 0,
       Number.isFinite(position) ? position : 1024,
       JSON.stringify(parsed.customFields),
       now,
@@ -493,6 +557,103 @@ export async function startProjectSessionExecution(
   return created;
 }
 
+function resolveProjectExecutionRuntime(input: {
+  engineId: string;
+  agent: ProjectAgent;
+  requested: ProjectSessionExecutionRuntime;
+}): ProjectSessionExecutionRuntime {
+  const selectedModel = input.requested.model ?? input.agent.runtime.model;
+  const mode = input.agent.runtime.mode === "auto" || isHarnessWorkspaceEngineId(input.engineId)
+    ? input.requested.mode
+    : input.agent.runtime.mode === "plan"
+      ? "plan"
+      : "build";
+  return {
+    engineId: input.engineId,
+    model: selectedModel,
+    mode,
+    modelVariant: input.requested.model
+      ? input.requested.modelVariant
+      : input.agent.runtime.model
+        ? input.agent.runtime.modelVariant
+        : input.requested.modelVariant,
+  };
+}
+
+export async function resolveProjectExecutionPlan(
+  config: ServerConfig,
+  workspace: WorkspaceInfo,
+  input: Pick<ProjectSessionExecutionStartInput, "agentId" | "runtime">,
+): Promise<Omit<ProjectSessionExecution, "sessionId" | "boundAt">> {
+  const projectEngineId = workspace.engineId?.trim() || DEFAULT_ENGINE_ID;
+  const stored = await readiPolloWorkWorkspaceConfig(config, workspace.id);
+  const configured = projectWorkspaceConfigSchema.safeParse(stored.project);
+  const project = configured.success
+    ? configured.data
+    : createDefaultProjectWorkspaceConfig({ engineId: workspace.engineId });
+  const agentId = input.agentId ?? project.orchestration.entryAgentId;
+  const agent = project.agents.find((candidate) => candidate.id === agentId);
+  if (!agent) throw new ApiError(409, "project_agent_missing", "The selected project Agent no longer exists");
+
+  const agentEngineId = agent.runtime.engineId?.trim() || projectEngineId;
+  if (agentEngineId !== projectEngineId || input.runtime.engineId !== projectEngineId) {
+    throw new ApiError(
+      409,
+      "project_agent_engine_mismatch",
+      "Project tasks must use the project's engine. Change the project engine before starting a new task.",
+    );
+  }
+  return {
+    projectRevision: project.revision,
+    projectGoal: project.goal,
+    agent,
+    runtime: resolveProjectExecutionRuntime({
+      engineId: projectEngineId,
+      agent,
+      requested: input.runtime,
+    }),
+  };
+}
+
+export async function bindProjectSessionExecution(
+  config: ServerConfig,
+  workspace: WorkspaceInfo,
+  sessionId: string,
+  input: ProjectSessionExecutionStartInput,
+): Promise<WorkItem> {
+  const projectEngineId = workspace.engineId?.trim() || DEFAULT_ENGINE_ID;
+  const existing = await readProjectSessionWorkItem(config, workspace.id, sessionId);
+  if (existing?.execution) {
+    if (
+      existing.execution.runtime.engineId !== projectEngineId
+      || input.runtime.engineId !== existing.execution.runtime.engineId
+    ) {
+      throw new ApiError(
+        409,
+        "project_session_engine_changed",
+        "This task is bound to its original engine. Start a new conversation to use the project's current engine.",
+      );
+    }
+    return startProjectSessionExecution(config, workspace.id, input.title, {
+      ...existing.execution,
+      runtime: resolveProjectExecutionRuntime({
+        engineId: projectEngineId,
+        agent: existing.execution.agent,
+        requested: input.runtime,
+      }),
+      boundAt: Date.now(),
+    });
+  }
+
+  const plan = await resolveProjectExecutionPlan(config, workspace, input);
+  const now = Date.now();
+  return startProjectSessionExecution(config, workspace.id, input.title, {
+    sessionId,
+    ...plan,
+    boundAt: now,
+  });
+}
+
 export async function finishProjectSessionExecution(
   config: ServerConfig,
   workspaceId: string,
@@ -501,26 +662,58 @@ export async function finishProjectSessionExecution(
 ): Promise<WorkItem | null> {
   const current = await readProjectSessionWorkItem(config, workspaceId, sessionId);
   if (!current) return null;
-  if (current.status !== "running") return current;
   const db = await workItemDb(config);
   const now = Date.now();
-  const changes = db.run(
-    `UPDATE work_items SET
-      title = ?, status = ?, last_error = ?, run_completed_at = ?,
-      version = version + 1, updated_at = ?
-     WHERE workspace_id = ? AND session_id = ? AND status = 'running'`,
-    [
-      input.title ?? current.title,
-      input.status,
-      input.status === "failed" ? input.error ?? "Task failed" : null,
-      now,
-      now,
-      workspaceId,
-      sessionId,
-    ],
-  );
-  if (changes === 0) return readProjectSessionWorkItem(config, workspaceId, sessionId);
+  let transactionOpen = false;
+  try {
+    db.exec("BEGIN IMMEDIATE");
+    transactionOpen = true;
+    if (current.status === "running") {
+      db.run(
+        `UPDATE work_items SET
+          title = ?, status = ?, last_error = ?, run_completed_at = ?,
+          version = version + 1, updated_at = ?
+         WHERE workspace_id = ? AND session_id = ? AND status = 'running'`,
+        [
+          input.title ?? current.title,
+          input.status,
+          input.status === "failed" ? input.error ?? "Task failed" : null,
+          now,
+          now,
+          workspaceId,
+          sessionId,
+        ],
+      );
+    }
+    finishAutomationWorkItemForSession(db, workspaceId, sessionId, input, now);
+    db.exec("COMMIT");
+    transactionOpen = false;
+  } catch (error) {
+    if (transactionOpen) db.exec("ROLLBACK");
+    throw error;
+  }
   return readProjectSessionWorkItem(config, workspaceId, sessionId);
+}
+
+function finishAutomationWorkItemForSession(
+  db: SqlExecutor,
+  workspaceId: string,
+  sessionId: string,
+  input: ProjectSessionExecutionFinishInput,
+  now: number,
+): void {
+  const error = input.status === "failed" ? input.error ?? "Task failed" : null;
+  db.run(
+    `UPDATE work_items SET
+      status = ?, automation_last_error = ?,
+      version = version + 1, updated_at = ?
+     WHERE workspace_id = ?
+       AND automation_last_session_id = ?
+       AND automation_json IS NOT NULL
+       AND execution_json IS NULL
+       AND status = 'running'`,
+    [input.status === "done" ? "review" : "failed", error, now, workspaceId, sessionId],
+  );
 }
 
 export async function updateWorkItem(
@@ -535,8 +728,9 @@ export async function updateWorkItem(
   if (current.execution && (
     (input.status !== undefined && input.status !== current.status)
     || (input.assignee !== undefined && input.assignee !== current.assignee)
+    || input.automation !== undefined
   )) {
-    throw new WorkItemConflictError("Execution-bound task status and Agent are controlled by the runtime");
+    throw new WorkItemConflictError("Execution-bound task status, Agent, and automation are controlled by the runtime");
   }
   const next = workItemCreateSchema.parse({
     title: input.title ?? current.title,
@@ -546,24 +740,38 @@ export async function updateWorkItem(
     priority: input.priority ?? current.priority,
     startAt: input.startAt === undefined ? current.startAt : input.startAt,
     dueAt: input.dueAt === undefined ? current.dueAt : input.dueAt,
+    automation: input.automation === undefined ? current.automation : input.automation,
     position: input.position ?? current.position,
     customFields: input.customFields ?? current.customFields,
   });
+  const wasAutomationEnabled = current.automation?.enabled === true;
+  const willAutomationBeEnabled = next.automation?.enabled === true;
+  const status = !wasAutomationEnabled && willAutomationBeEnabled
+    ? "ready"
+    : wasAutomationEnabled
+        && !willAutomationBeEnabled
+        && current.status === "ready"
+        && input.status === undefined
+      ? "planned"
+      : next.status;
   const db = await workItemDb(config);
   const changes = db.run(
     `UPDATE work_items SET
       title = ?, description = ?, status = ?, assignee = ?, priority = ?,
-      start_at = ?, due_at = ?, position = ?, custom_fields_json = ?,
+      start_at = ?, due_at = ?, automation_json = ?, automation_enabled = ?,
+      position = ?, custom_fields_json = ?,
       version = version + 1, updated_at = ?
     WHERE workspace_id = ? AND id = ? AND version = ?`,
     [
       next.title,
       next.description ?? null,
-      next.status,
+      status,
       next.assignee ?? null,
       next.priority,
       next.startAt ?? null,
       next.dueAt ?? null,
+      next.automation ? JSON.stringify(next.automation) : null,
+      next.automation?.enabled ? 1 : 0,
       next.position ?? current.position,
       JSON.stringify(next.customFields),
       Date.now(),
@@ -590,6 +798,211 @@ export async function deleteWorkItem(
   if (changes === 1) return true;
   if (await readWorkItem(config, workspaceId, id)) throw new WorkItemConflictError();
   return false;
+}
+
+type ClaimedWorkItemAutomation = {
+  item: WorkItem;
+  scheduledAt: number;
+  leaseUntil: number;
+};
+
+export type WorkItemAutomationDispatcher = (item: WorkItem) => Promise<string>;
+
+async function claimDueWorkItemAutomation(
+  config: ServerConfig,
+  now: number,
+  leaseMs: number,
+): Promise<ClaimedWorkItemAutomation | null> {
+  const db = await workItemDb(config);
+  let transactionOpen = false;
+  try {
+    db.exec("BEGIN IMMEDIATE");
+    transactionOpen = true;
+    const row = normalizeWorkItemRow(db.get(
+      `SELECT * FROM work_items
+       WHERE automation_enabled = 1
+         AND automation_json IS NOT NULL
+         AND execution_json IS NULL
+         AND start_at IS NOT NULL
+         AND start_at <= ?
+         AND (automation_lease_until IS NULL OR automation_lease_until <= ?)
+       ORDER BY start_at ASC, id ASC
+       LIMIT 1`,
+      [now, now],
+    ));
+    if (!row) {
+      db.exec("COMMIT");
+      transactionOpen = false;
+      return null;
+    }
+    const leaseUntil = now + leaseMs;
+    const changes = db.run(
+      `UPDATE work_items SET
+        status = 'running', automation_lease_until = ?, automation_last_error = NULL,
+        version = version + 1, updated_at = ?
+       WHERE id = ?
+         AND automation_enabled = 1
+         AND (automation_lease_until IS NULL OR automation_lease_until <= ?)`,
+      [leaseUntil, now, row.id, now],
+    );
+    if (changes !== 1) {
+      db.exec("ROLLBACK");
+      transactionOpen = false;
+      return null;
+    }
+    const claimedRow = normalizeWorkItemRow(db.get("SELECT * FROM work_items WHERE id = ?", [row.id]));
+    db.exec("COMMIT");
+    transactionOpen = false;
+    if (!claimedRow || claimedRow.start_at === null) return null;
+    return { item: publicWorkItem(claimedRow), scheduledAt: claimedRow.start_at, leaseUntil };
+  } catch (error) {
+    if (transactionOpen) db.exec("ROLLBACK");
+    throw error;
+  }
+}
+
+function nextAutomationStartAt(
+  automation: WorkItemAutomation,
+  scheduledAt: number,
+  now: number,
+): number | null {
+  if (automation.recurrence === "once") return null;
+  const interval = automation.recurrence === "daily" ? 86_400_000 : 604_800_000;
+  const occurrences = Math.max(1, Math.floor((now - scheduledAt) / interval) + 1);
+  return scheduledAt + occurrences * interval;
+}
+
+async function completeWorkItemAutomation(
+  config: ServerConfig,
+  claimed: ClaimedWorkItemAutomation,
+  sessionId: string,
+  now: number,
+): Promise<void> {
+  const automation = claimed.item.automation;
+  if (!automation) return;
+  const nextStartAt = nextAutomationStartAt(automation, claimed.scheduledAt, now);
+  const nextEnabled = nextStartAt !== null;
+  const duration = claimed.item.dueAt === null
+    ? null
+    : Math.max(0, claimed.item.dueAt - claimed.scheduledAt);
+  const nextDueAt = nextStartAt === null || duration === null ? claimed.item.dueAt : nextStartAt + duration;
+  const db = await workItemDb(config);
+  const changes = db.run(
+    `UPDATE work_items SET
+      automation_json = ?, automation_enabled = ?, automation_lease_until = NULL,
+      automation_last_run_at = ?, automation_last_session_id = ?, automation_last_error = NULL,
+      start_at = ?, due_at = ?, version = version + 1, updated_at = ?
+     WHERE id = ? AND automation_lease_until = ?
+       AND automation_json = ? AND start_at = ?`,
+    [
+      JSON.stringify({ ...automation, enabled: nextEnabled }),
+      nextEnabled ? 1 : 0,
+      now,
+      sessionId,
+      nextStartAt ?? claimed.item.startAt,
+      nextDueAt,
+      now,
+      claimed.item.id,
+      claimed.leaseUntil,
+      JSON.stringify(automation),
+      claimed.scheduledAt,
+    ],
+  );
+  if (changes === 0) {
+    db.run(
+      `UPDATE work_items SET
+        automation_lease_until = NULL, automation_last_run_at = ?,
+        automation_last_session_id = ?, automation_last_error = NULL,
+        version = version + 1, updated_at = ?
+       WHERE id = ? AND automation_lease_until = ?`,
+      [now, sessionId, now, claimed.item.id, claimed.leaseUntil],
+    );
+  }
+  const executionRow = normalizeWorkItemRow(db.get(
+    "SELECT * FROM work_items WHERE workspace_id = ? AND session_id = ?",
+    [claimed.item.workspaceId, sessionId],
+  ));
+  if (executionRow?.status === "done" || executionRow?.status === "failed") {
+    finishAutomationWorkItemForSession(db, claimed.item.workspaceId, sessionId, {
+      status: executionRow.status,
+      ...(executionRow.last_error ? { error: executionRow.last_error } : {}),
+    }, now);
+  }
+}
+
+async function failWorkItemAutomation(
+  config: ServerConfig,
+  claimed: ClaimedWorkItemAutomation,
+  error: unknown,
+  now: number,
+  retryMs: number,
+): Promise<void> {
+  const message = error instanceof Error ? error.message : "Automatic execution failed";
+  const db = await workItemDb(config);
+  db.run(
+    `UPDATE work_items SET
+      status = 'failed', automation_lease_until = ?, automation_last_error = ?,
+      version = version + 1, updated_at = ?
+     WHERE id = ? AND automation_lease_until = ?`,
+    [now + retryMs, message.slice(0, 2_000), now, claimed.item.id, claimed.leaseUntil],
+  );
+}
+
+export async function runDueWorkItemAutomationsOnce(input: {
+  config: ServerConfig;
+  dispatch: WorkItemAutomationDispatcher;
+  now?: number;
+  limit?: number;
+  leaseMs?: number;
+  retryMs?: number;
+}): Promise<number> {
+  const now = input.now ?? Date.now();
+  const limit = Math.min(Math.max(input.limit ?? 10, 1), 50);
+  const leaseMs = Math.max(input.leaseMs ?? 60_000, 5_000);
+  const retryMs = Math.max(input.retryMs ?? 300_000, 5_000);
+  let attempted = 0;
+  while (attempted < limit) {
+    const claimed = await claimDueWorkItemAutomation(input.config, now, leaseMs);
+    if (!claimed) break;
+    attempted += 1;
+    try {
+      const sessionId = await input.dispatch(claimed.item);
+      await completeWorkItemAutomation(input.config, claimed, sessionId, now);
+    } catch (error) {
+      await failWorkItemAutomation(input.config, claimed, error, now, retryMs);
+    }
+  }
+  return attempted;
+}
+
+export function startWorkItemAutomationScheduler(input: {
+  config: ServerConfig;
+  dispatch: WorkItemAutomationDispatcher;
+  intervalMs?: number;
+  onError?: (error: unknown) => void;
+}): { close: () => Promise<void> } {
+  const intervalMs = Math.max(input.intervalMs ?? 15_000, 1_000);
+  let active: Promise<void> | null = null;
+  let closed = false;
+  const tick = () => {
+    if (closed || active) return;
+    active = runDueWorkItemAutomationsOnce({ config: input.config, dispatch: input.dispatch })
+      .then(() => undefined)
+      .catch((error) => input.onError?.(error))
+      .finally(() => {
+        active = null;
+      });
+  };
+  const timer = setInterval(tick, intervalMs);
+  timer.unref?.();
+  tick();
+  return {
+    close: async () => {
+      closed = true;
+      clearInterval(timer);
+      await active;
+    },
+  };
 }
 
 export async function readWorkBoardConfig(config: ServerConfig, workspaceId: string): Promise<WorkBoardConfig> {

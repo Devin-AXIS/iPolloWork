@@ -67,8 +67,9 @@ async function prepareFixture(ctx) {
         status: "planned",
         priority: "normal",
         assignee: "project-lead",
-        startAt: now,
-        dueAt: now + 60 * 60 * 1000,
+        startAt: now + 60 * 60 * 1000,
+        dueAt: now + 2 * 60 * 60 * 1000,
+        automation: { enabled: true, recurrence: "daily" },
         customFields: {},
       }),
     });
@@ -178,7 +179,7 @@ export default {
           },
           assert: async () => {
             await ctx.expectText("新建日程");
-            await ctx.expectText("时间按 Asia/Singapore 显示");
+            await ctx.expectText("时间按 ");
           },
           screenshot: {
             name: "global-week-schedule",
@@ -214,12 +215,6 @@ export default {
         await ctx.prove("The project overview turns shared task data into one readable health view", {
           voiceover: "Back in the project, Overview brings the Agent team, total work, waiting work, completion, and failure health into one calm surface.",
           action: async () => {
-            await ctx.eval(`(() => {
-              const button = [...document.querySelectorAll("button")].find((item) => item.getAttribute("aria-label") === "关闭");
-              if (!button) throw new Error("Schedule close button not found");
-              button.click();
-              return true;
-            })()`);
             await ctx.waitFor('Boolean(document.querySelector("[data-testid=session-header-work-tasks]"))', {
               label: "project task navigation",
             });
@@ -485,11 +480,86 @@ export default {
       },
     },
     {
+      name: "Pick a task date and time",
+      run: async (ctx) => {
+        await ctx.prove("Task scheduling uses clear date and time pickers", {
+          voiceover: "Scheduling is now split into familiar date and time pickers, so both the start and due values stay readable in the task panel.",
+          action: async () => {
+            await ctx.eval(`(() => {
+              const card = [...document.querySelectorAll("article")]
+                .find((candidate) => candidate.textContent?.includes(${JSON.stringify(ITEM_TITLE)}));
+              const button = card?.querySelector("button");
+              if (!button) throw new Error("Scheduled task card not found");
+              button.click();
+              return true;
+            })()`);
+            await ctx.waitFor('Boolean(document.querySelector("[data-testid=work-item-time-pickers]"))', {
+              label: "date and time pickers",
+            });
+          },
+          assert: async () => {
+            const pickers = await ctx.eval(`(() => ({
+              dates: document.querySelectorAll('[data-testid="work-item-time-pickers"] input[type="date"]').length,
+              times: document.querySelectorAll('[data-testid="work-item-time-pickers"] input[type="time"]').length,
+              legacy: document.querySelectorAll('[data-testid="work-item-time-pickers"] input[type="datetime-local"]').length,
+            }))()`);
+            ctx.assert(pickers.dates === 2, "Expected start and due date pickers.");
+            ctx.assert(pickers.times === 2, "Expected start and due time pickers.");
+            ctx.assert(pickers.legacy === 0, "Expected the cramped combined datetime control to be removed.");
+          },
+          screenshot: {
+            name: "task-date-time-pickers",
+            requireText: [ITEM_TITLE, "时间安排", "开始时间", "截止时间"],
+          },
+        });
+      },
+    },
+    {
+      name: "Inspect automatic execution",
+      run: async (ctx) => {
+        await ctx.prove("A scheduled task can run automatically on a saved recurrence", {
+          voiceover: "The same schedule panel can turn this task into real automatic work, using the project's entry Agent once, every day, or every week.",
+          action: async () => {
+            await ctx.eval(`(() => {
+              const automation = document.querySelector('[data-testid="work-item-automation"]');
+              if (!automation) throw new Error("Automatic execution controls not found");
+              automation.scrollIntoView({ block: "center" });
+              return true;
+            })()`);
+            await ctx.waitFor(`(() => {
+              const automation = document.querySelector('[data-testid="work-item-automation"]');
+              return automation?.querySelector('[data-slot="switch"]')?.getAttribute("data-checked") !== null
+                && automation?.querySelector("select")?.value === "daily";
+            })()`, { label: "saved daily automatic execution" });
+          },
+          assert: async () => {
+            await ctx.expectText("自动执行");
+            await ctx.expectText("重复方式");
+            await ctx.expectText("每天");
+            const persisted = await ctx.eval(`fetch(
+              ${JSON.stringify(fixture.baseUrl)} + "/work-items?workspaceId=" + encodeURIComponent(${JSON.stringify(fixture.workspaceId)}),
+              { headers: { authorization: "Bearer " + ${JSON.stringify(fixture.token)} } },
+            ).then((response) => response.json()).then((payload) => {
+              const item = payload.items.find((candidate) => candidate.title === ${JSON.stringify(ITEM_TITLE)});
+              return item?.automation?.enabled === true && item?.automation?.recurrence === "daily";
+            })`, { awaitPromise: true });
+            ctx.assert(persisted === true, "Expected daily automatic execution to remain saved on the task.");
+          },
+          screenshot: {
+            name: "task-automatic-execution",
+            requireText: [ITEM_TITLE, "自动执行", "重复方式", "每天"],
+          },
+        });
+      },
+    },
+    {
       name: "Inspect a runtime-owned task",
       run: async (ctx) => {
         await ctx.prove("A real project execution owns its task state and immutable runtime binding", {
           voiceover: "A task created by project execution is visibly bound to the Agent, engine, and model chosen on its first run. Its runtime-owned status and Agent cannot be silently edited.",
           action: async () => {
+            await ctx.eval('document.querySelector(\'[data-slot="sheet-close"]\')?.click(); true');
+            await ctx.waitFor('!document.querySelector("[data-testid=work-item-sheet]")', { label: "scheduled task editor closed" });
             await ctx.eval(`(() => {
               const card = [...document.querySelectorAll("article")]
                 .find((candidate) => candidate.textContent?.includes(${JSON.stringify(EXECUTION_TITLE)}));

@@ -21,6 +21,7 @@ import {
   finishProjectSessionExecution,
   listWorkItems,
   readWorkBoardConfig,
+  runDueWorkItemAutomationsOnce,
   startProjectSessionExecution,
   updateWorkItem,
   writeWorkBoardConfig,
@@ -225,6 +226,217 @@ describe("work item store", () => {
 
       expect(await deleteWorkItem(config, "project_one", created.id, 2)).toBe(true);
       expect((await listWorkItems(config, { workspaceIds: ["project_one"] })).items).toEqual([]);
+    } finally {
+      await disposeWorkItemStore(config);
+    }
+  });
+
+  test("dispatches due automatic work once and advances recurring schedules", async () => {
+    const { config } = await testContext();
+    try {
+      const scheduledAt = new Date("2026-08-20T09:00:00.000Z").getTime();
+      const dueAt = scheduledAt + 60 * 60 * 1_000;
+      const now = scheduledAt + 5 * 60 * 1_000;
+      const created = await createWorkItem(config, "project_one", {
+        title: "Publish daily report",
+        startAt: scheduledAt,
+        dueAt,
+        automation: {
+          enabled: true,
+          recurrence: "daily",
+          model: { providerId: "openai", modelId: "gpt-test" },
+        },
+      });
+      expect(created.status).toBe("ready");
+      const dispatched: Array<{ id: string; model: { providerId: string; modelId: string } | null }> = [];
+      const execution: ProjectSessionExecution = {
+        sessionId: "session_scheduled",
+        projectRevision: 1,
+        projectGoal: "Publish reports",
+        agent: {
+          id: "project-lead",
+          name: "Project lead",
+          avatarSeed: "project-lead",
+          role: "Own the report",
+          prompt: "Complete the scheduled report.",
+          skillIds: [],
+          pluginIds: [],
+          runtime: {
+            engineId: DEFAULT_ENGINE_ID,
+            model: { providerId: "openai", modelId: "gpt-test" },
+            mode: "auto",
+            modelVariant: null,
+          },
+        },
+        runtime: {
+          engineId: DEFAULT_ENGINE_ID,
+          model: { providerId: "openai", modelId: "gpt-test" },
+          mode: null,
+          modelVariant: null,
+        },
+        boundAt: now,
+      };
+
+      expect(await runDueWorkItemAutomationsOnce({
+        config,
+        now,
+        dispatch: async (item) => {
+          expect(item.status).toBe("running");
+          dispatched.push({ id: item.id, model: item.automation?.model ?? null });
+          await startProjectSessionExecution(config, "project_one", item.title, execution);
+          return execution.sessionId;
+        },
+      })).toBe(1);
+      expect(dispatched).toEqual([{
+        id: created.id,
+        model: { providerId: "openai", modelId: "gpt-test" },
+      }]);
+
+      const updated = (await listWorkItems(config, { workspaceIds: ["project_one"] })).items
+        .find((item) => item.id === created.id);
+      expect(updated).toMatchObject({
+        id: created.id,
+        status: "running",
+        automation: {
+          enabled: true,
+          recurrence: "daily",
+          model: { providerId: "openai", modelId: "gpt-test" },
+        },
+        automationLastRunAt: now,
+        automationLastSessionId: "session_scheduled",
+        automationLastError: null,
+        startAt: scheduledAt + 24 * 60 * 60 * 1_000,
+        dueAt: dueAt + 24 * 60 * 60 * 1_000,
+      });
+      await finishProjectSessionExecution(config, "project_one", execution.sessionId, { status: "done" });
+      const finished = (await listWorkItems(config, { workspaceIds: ["project_one"] })).items;
+      expect(finished.find((item) => item.id === created.id)).toMatchObject({ status: "review" });
+      expect(finished.find((item) => item.execution?.sessionId === execution.sessionId)).toMatchObject({ status: "done" });
+      expect(await runDueWorkItemAutomationsOnce({
+        config,
+        now,
+        dispatch: async () => {
+          throw new Error("must not run twice");
+        },
+      })).toBe(0);
+
+      const queuedFailure = await createWorkItem(config, "project_one", {
+        title: "Record a queued execution failure",
+        startAt: scheduledAt,
+        automation: { enabled: true, recurrence: "once" },
+      });
+      const failedExecution = { ...execution, sessionId: "session_queued_failure" };
+      expect(await runDueWorkItemAutomationsOnce({
+        config,
+        now,
+        dispatch: async (item) => {
+          await startProjectSessionExecution(config, "project_one", item.title, failedExecution);
+          await finishProjectSessionExecution(config, "project_one", failedExecution.sessionId, {
+            status: "failed",
+            error: "Authentication expired",
+          });
+          return failedExecution.sessionId;
+        },
+      })).toBe(1);
+      expect((await listWorkItems(config, { workspaceIds: ["project_one"] })).items
+        .find((item) => item.id === queuedFailure.id)).toMatchObject({
+        status: "failed",
+        automationLastSessionId: failedExecution.sessionId,
+        automationLastError: "Authentication expired",
+      });
+    } finally {
+      await disposeWorkItemStore(config);
+    }
+  });
+
+  test("disables one-time automation after dispatch and backs off after failures", async () => {
+    const { config } = await testContext();
+    try {
+      const scheduledAt = new Date("2026-08-20T09:00:00.000Z").getTime();
+      const now = scheduledAt + 1_000;
+      const oneTime = await createWorkItem(config, "project_one", {
+        title: "Publish once",
+        startAt: scheduledAt,
+        automation: { enabled: true, recurrence: "once" },
+      });
+      expect(oneTime.status).toBe("ready");
+
+      expect(await runDueWorkItemAutomationsOnce({
+        config,
+        now,
+        dispatch: async () => "session_once",
+      })).toBe(1);
+      expect((await listWorkItems(config, { workspaceIds: ["project_one"] })).items[0]).toMatchObject({
+        id: oneTime.id,
+        status: "running",
+        startAt: scheduledAt,
+        automation: { enabled: false, recurrence: "once" },
+        automationLastRunAt: now,
+        automationLastSessionId: "session_once",
+      });
+
+      const failing = await createWorkItem(config, "project_one", {
+        title: "Retry later",
+        startAt: scheduledAt,
+        automation: { enabled: true, recurrence: "once" },
+      });
+      expect(await runDueWorkItemAutomationsOnce({
+        config,
+        now,
+        retryMs: 5_000,
+        dispatch: async () => {
+          throw new Error("Engine unavailable");
+        },
+      })).toBe(1);
+      const failed = (await listWorkItems(config, { workspaceIds: ["project_one"] })).items
+        .find((item) => item.id === failing.id);
+      expect(failed).toMatchObject({
+        status: "failed",
+        automation: { enabled: true, recurrence: "once" },
+        automationLastRunAt: null,
+        automationLastSessionId: null,
+        automationLastError: "Engine unavailable",
+      });
+      expect(await runDueWorkItemAutomationsOnce({
+        config,
+        now,
+        dispatch: async () => "too_soon",
+      })).toBe(0);
+    } finally {
+      await disposeWorkItemStore(config);
+    }
+  });
+
+  test("preserves a user's automation change while a claimed task starts", async () => {
+    const { config } = await testContext();
+    try {
+      const scheduledAt = new Date("2026-08-20T09:00:00.000Z").getTime();
+      const now = scheduledAt + 1_000;
+      const created = await createWorkItem(config, "project_one", {
+        title: "Disable while starting",
+        startAt: scheduledAt,
+        automation: { enabled: true, recurrence: "daily" },
+      });
+
+      expect(await runDueWorkItemAutomationsOnce({
+        config,
+        now,
+        dispatch: async (claimed) => {
+          await updateWorkItem(config, "project_one", claimed.id, {
+            expectedVersion: claimed.version,
+            automation: { enabled: false, recurrence: "daily" },
+          });
+          return "session_in_flight";
+        },
+      })).toBe(1);
+      const updated = (await listWorkItems(config, { workspaceIds: ["project_one"] })).items[0];
+      expect(updated).toMatchObject({
+        id: created.id,
+        startAt: scheduledAt,
+        automation: { enabled: false, recurrence: "daily" },
+        automationLastRunAt: now,
+        automationLastSessionId: "session_in_flight",
+      });
     } finally {
       await disposeWorkItemStore(config);
     }

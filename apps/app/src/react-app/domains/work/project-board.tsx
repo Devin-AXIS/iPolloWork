@@ -150,6 +150,7 @@ function BoardCard({
 export function ProjectBoard({
   items,
   board,
+  panEnabled,
   moving,
   onMove,
   onOpen,
@@ -157,16 +158,55 @@ export function ProjectBoard({
 }: {
   items: ProjectBoardItem[];
   board: WorkBoardConfig;
+  panEnabled: boolean;
   moving: boolean;
   onMove: (entryKey: string, status: string, position: number) => void;
   onOpen: (entryKey: string) => void;
   onCreate: (status: string) => void;
 }) {
   const [draggingKey, setDraggingKey] = React.useState<string | null>(null);
+  const [panning, setPanning] = React.useState(false);
+  const panStartRef = React.useRef<{ pointerId: number; clientX: number; scrollLeft: number } | null>(null);
   const columns = itemStatusColumns(board, items);
   const dragged = draggingKey ? items.find((entry) => entry.key === draggingKey) ?? null : null;
+
+  const stopPanning = (element: HTMLDivElement, pointerId: number) => {
+    if (panStartRef.current?.pointerId !== pointerId) return;
+    panStartRef.current = null;
+    if (element.hasPointerCapture(pointerId)) element.releasePointerCapture(pointerId);
+    setPanning(false);
+  };
+
   return (
-    <div className="no-scrollbar flex min-h-0 flex-1 gap-3 overflow-x-auto pb-2" data-testid="project-board">
+    <div
+      className={cn(
+        "no-scrollbar flex min-h-0 flex-1 gap-3 overflow-x-auto pb-2",
+        panEnabled && "select-none [&>*]:pointer-events-none",
+        panEnabled && (panning ? "cursor-grabbing" : "cursor-grab"),
+      )}
+      data-pan-enabled={panEnabled}
+      data-testid="project-board"
+      onPointerDown={(event) => {
+        if (!panEnabled || event.button !== 0) return;
+        panStartRef.current = {
+          pointerId: event.pointerId,
+          clientX: event.clientX,
+          scrollLeft: event.currentTarget.scrollLeft,
+        };
+        event.currentTarget.setPointerCapture(event.pointerId);
+        setPanning(true);
+        event.preventDefault();
+      }}
+      onPointerMove={(event) => {
+        const start = panStartRef.current;
+        if (!start || start.pointerId !== event.pointerId) return;
+        event.currentTarget.scrollLeft = start.scrollLeft - (event.clientX - start.clientX);
+        event.preventDefault();
+      }}
+      onPointerUp={(event) => stopPanning(event.currentTarget, event.pointerId)}
+      onPointerCancel={(event) => stopPanning(event.currentTarget, event.pointerId)}
+      onLostPointerCapture={(event) => stopPanning(event.currentTarget, event.pointerId)}
+    >
       {columns.map((column) => {
         const columnItems = items
           .filter((entry) => entry.item.status === column.id)

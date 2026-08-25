@@ -5,6 +5,7 @@ import { dirname, join, relative, resolve, sep } from "node:path";
 import { createOpencodeClient } from "@opencode-ai/sdk/v2/client";
 import { IPOLLOWORK_PACKAGE_EXTENSION, IPOLLOWORK_PACKAGE_MEDIA_TYPE, templateCategorySchema } from "@ipollowork/types/templates";
 import { CODEX_HARNESS_ENGINE_ID, DEEPSEEK_HARNESS_ENGINE_ID } from "@ipollowork/types/workspace";
+import { projectExecutionSystemContext } from "@ipollowork/types/work-items";
 import { DEFAULT_ENGINE_ID, type ApprovalRequest, type Capabilities, type ServerConfig, type WorkspaceInfo, type Actor, type ReloadReason, type ReloadTrigger, type TokenScope } from "./types.js";
 import { ApprovalService } from "./approvals.js";
 import { sanitizePortableOpencodeConfig } from "./portable-opencode.js";
@@ -35,6 +36,7 @@ import { TokenService } from "./tokens.js";
 import { EnvService } from "./env-file.js";
 import { DeepSeekHarnessRuntimePool } from "./deepseek-harness-runtime.js";
 import { CodexHarnessRuntimePool } from "./codex-harness-runtime.js";
+import { WorkspaceSessionRuntime } from "./workspace-session-runtime.js";
 import { pluginEngineAdapters, pluginEngineCompatibility } from "./plugin-engine-adapter.js";
 import type { PluginPackageManifest } from "./plugin-package-manifest.js";
 
@@ -128,7 +130,13 @@ import {
   writeiPolloWorkWorkspaceConfig,
 } from "./ipollowork-workspace-config-store.js";
 import { buildiPolloWorkRuntimeConfigObject } from "./ipollowork-runtime-config.js";
-import { disposeWorkItemStore } from "./work-items.js";
+import {
+  disposeWorkItemStore,
+  finishProjectSessionExecution,
+  resolveProjectExecutionPlan,
+  startProjectSessionExecution,
+  startWorkItemAutomationScheduler,
+} from "./work-items.js";
 import {
   MAX_TEMPLATE_PACKAGE_BYTES,
   adoptLegacyVideoSession,
@@ -731,6 +739,13 @@ export async function startServer(config: ServerConfig): Promise<ServeResult> {
   const env = new EnvService({ processEnv: process.env });
   const deepseekHarness = new DeepSeekHarnessRuntimePool({ config, env });
   const codexHarness = new CodexHarnessRuntimePool({ config, env });
+  const sessionRuntime = new WorkspaceSessionRuntime({
+    config,
+    createWorkspaceOpencodeClient,
+    unwrapOpencodeResult,
+    deepseekHarness,
+    codexHarness,
+  });
   const logger = createServerLogger(config);
   let watcherHandle = startReloadWatchers({ config, reloadEvents, logger });
   const refreshWorkspaceReloadBaseline = (workspaceId: string, reasons?: ReloadReason[]) =>
@@ -745,7 +760,16 @@ export async function startServer(config: ServerConfig): Promise<ServeResult> {
     reloadWatcherRestart = reloadWatcherRestart.then(restart, restart);
     return reloadWatcherRestart;
   };
-  const routes = createRoutes(config, approvals, tokens, env, deepseekHarness, codexHarness, restartReloadWatchers);
+  const routes = createRoutes(
+    config,
+    approvals,
+    tokens,
+    env,
+    deepseekHarness,
+    codexHarness,
+    sessionRuntime,
+    restartReloadWatchers,
+  );
 
   const serverOptions: {
     hostname: string;
@@ -892,10 +916,91 @@ export async function startServer(config: ServerConfig): Promise<ServeResult> {
     idleTimeout: 120,
   });
   config.port = server.port;
+  const automationMonitorAbort = new AbortController();
+  const automationMonitors = new Map<string, Promise<void>>();
+  const monitorAutomationSession = (workspace: WorkspaceInfo, sessionId: string): void => {
+    const key = `${workspace.id}\u0000${sessionId}`;
+    if (automationMonitors.has(key)) return;
+    let monitor: Promise<void>;
+    monitor = (async () => {
+      try {
+        const completion = await sessionRuntime.waitForCompletion(workspace, sessionId, {
+          signal: automationMonitorAbort.signal,
+        });
+        await finishProjectSessionExecution(config, workspace.id, sessionId, completion);
+      } catch (error) {
+        if (automationMonitorAbort.signal.aborted) return;
+        const message = error instanceof Error ? error.message : "Automatic task monitoring failed";
+        try {
+          await finishProjectSessionExecution(config, workspace.id, sessionId, {
+            status: "failed",
+            error: message,
+          });
+        } catch (finishError) {
+          console.error("[work-item-automation] Failed to persist task completion", finishError);
+        }
+      }
+    })().finally(() => {
+      if (automationMonitors.get(key) === monitor) automationMonitors.delete(key);
+    });
+    automationMonitors.set(key, monitor);
+  };
+  const workItemAutomationScheduler = startWorkItemAutomationScheduler({
+    config,
+    dispatch: async (item) => {
+      const workspace = await resolveWorkspace(config, item.workspaceId);
+      const requestedRuntime = {
+        engineId: workspace.engineId?.trim() || DEFAULT_ENGINE_ID,
+        model: item.automation?.model ?? null,
+        mode: null,
+        modelVariant: null,
+      };
+      const plan = await resolveProjectExecutionPlan(config, workspace, {
+        agentId: item.assignee ?? undefined,
+        runtime: requestedRuntime,
+      });
+      const session = await sessionRuntime.create(workspace, item.title, plan.runtime.model ? {
+        providerID: plan.runtime.model.providerId,
+        modelID: plan.runtime.model.modelId,
+      } : undefined);
+      const execution = {
+        sessionId: session.id,
+        ...plan,
+        boundAt: Date.now(),
+      };
+      await startProjectSessionExecution(config, workspace.id, item.title, execution);
+      try {
+        const promptedSessionId = await sessionRuntime.prompt(workspace, session.id, {
+          text: item.description?.trim() || item.title,
+          ...(execution.runtime.model ? {
+            model: {
+              providerID: execution.runtime.model.providerId,
+              modelID: execution.runtime.model.modelId,
+            },
+          } : {}),
+          ...(execution.runtime.mode ? { mode: execution.runtime.mode } : {}),
+          ...(execution.runtime.modelVariant ? { reasoningEffort: execution.runtime.modelVariant } : {}),
+          system: projectExecutionSystemContext(execution),
+        });
+        monitorAutomationSession(workspace, promptedSessionId);
+        return promptedSessionId;
+      } catch (error) {
+        await finishProjectSessionExecution(config, workspace.id, session.id, {
+          status: "failed",
+          error: error instanceof Error ? error.message : "Automatic execution failed",
+        });
+        return session.id;
+      }
+    },
+    onError: (error) => console.error("[work-item-automation] Scheduler tick failed", error),
+  });
 
   return {
     ...server,
     stop: async () => {
+      await workItemAutomationScheduler.close();
+      automationMonitorAbort.abort(new Error("Server stopped"));
+      await Promise.allSettled(automationMonitors.values());
       await reloadWatcherRestart;
       await watcherHandle.close();
       reloadBaselineRefreshers.delete(config);
@@ -1447,6 +1552,7 @@ function createRoutes(
   env: EnvService,
   deepseekHarness: DeepSeekHarnessRuntimePool,
   codexHarness: CodexHarnessRuntimePool,
+  sessionRuntime: WorkspaceSessionRuntime,
   onWorkspacesChanged: () => Promise<void>,
 ): Route[] {
   const routes: Route[] = [];
@@ -1511,6 +1617,7 @@ function createRoutes(
     unwrapOpencodeResult,
     deepseekHarness,
     codexHarness,
+    sessionRuntime,
   });
 
   registerDeepSeekHarnessRoutes({

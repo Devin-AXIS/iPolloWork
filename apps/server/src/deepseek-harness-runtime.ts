@@ -571,7 +571,13 @@ export class DeepSeekHarnessRuntime {
       new Promise<void>((resolve) => child.once("exit", () => resolve())),
       new Promise<void>((resolve) => setTimeout(resolve, 3_000)),
     ]);
-    if (child.exitCode === null) child.kill("SIGKILL");
+    if (child.exitCode === null) {
+      child.kill("SIGKILL");
+      await Promise.race([
+        new Promise<void>((resolve) => child.once("exit", () => resolve())),
+        new Promise<void>((resolve) => setTimeout(resolve, 2_000)),
+      ]);
+    }
   }
 
   async #ensureStarted(): Promise<string> {

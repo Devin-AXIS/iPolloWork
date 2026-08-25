@@ -7,6 +7,11 @@ import { DEEPSEEK_HARNESS_ENGINE_ID } from "@ipollowork/types/workspace";
 import { startServer } from "./server.js";
 import { DeepSeekHarnessRuntime } from "./deepseek-harness-runtime.js";
 import type { ServerConfig } from "./types.js";
+import {
+  codexHarnessCompletion,
+  deepSeekHarnessCompletion,
+  opencodeCompletion,
+} from "./workspace-session-runtime.js";
 
 type Served = {
   port: number;
@@ -207,6 +212,45 @@ async function waitUntil(predicate: () => boolean) {
   }
   return predicate();
 }
+
+describe("workspace session completion projection", () => {
+  test("maps successful and failed engine runs into the shared lifecycle", () => {
+    expect(deepSeekHarnessCompletion({
+      hasMore: false,
+      events: [{
+        event: {
+          type: "turn/end",
+          seq: 2,
+          time: 20,
+          data: { turn: 1, reason: { kind: "completed" } },
+        },
+      }],
+    })).toEqual({ status: "done" });
+    expect(deepSeekHarnessCompletion({
+      hasMore: false,
+      events: [{
+        event: {
+          type: "turn/end",
+          seq: 2,
+          time: 20,
+          data: { turn: 1, reason: { kind: "error", error: { message: "Token expired" } } },
+        },
+      }],
+    })).toEqual({ status: "failed", error: "Token expired" });
+    expect(codexHarnessCompletion({
+      id: "thread_1",
+      turns: [{ id: "turn_1", status: "completed", items: [] }],
+    })).toEqual({ status: "done" });
+    expect(opencodeCompletion({
+      sessionId: "session_1",
+      statuses: { session_1: { type: "idle" } },
+      messages: [{
+        info: { id: "message_1", sessionID: "session_1", role: "assistant" },
+        parts: [],
+      }],
+    })).toEqual({ status: "done" });
+  });
+});
 
 describe("workspace session read APIs", () => {
   test("rejects permanent deletion for DeepSeek Harness sessions", async () => {
@@ -558,6 +602,8 @@ describe("workspace session write APIs", () => {
         calls.push({ method, payload });
         const value = method === "session.create"
           ? { sessionId: "dsh_created", agentPreset: "standard" }
+          : method === "llm.models"
+            ? { groups: [{ id: "openai-codex", models: [{ id: "gpt-test" }] }] }
           : undefined;
         return value as T;
       },
@@ -595,7 +641,7 @@ describe("workspace session write APIs", () => {
         headers,
         body: JSON.stringify({
           text: "Review this change",
-          model: { providerID: "deepseek", modelID: "deepseek-chat" },
+          model: { providerID: "openai", modelID: "gpt-test" },
           mode: "code",
           reasoningEffort: "high",
           clientTimeZone: "Asia/Shanghai",
@@ -606,12 +652,13 @@ describe("workspace session write APIs", () => {
         { method: "session.create", payload: { cwd: workspaceRoot } },
         { method: "session.rename", payload: { sessionId: "dsh_created", title: "Harness review" } },
         { method: "agentPreset.select", payload: { sessionId: "dsh_created", agentPreset: "code" } },
+        { method: "llm.models", payload: {} },
         {
           method: "session.selectModel",
           payload: {
             sessionId: "dsh_created",
-            provider: "deepseek",
-            model: "deepseek-chat",
+            provider: "openai-codex",
+            model: "gpt-test",
             reasoningEffort: "high",
           },
         },

@@ -1687,7 +1687,11 @@ const enginePackageManager = createEnginePackageManager({
   fetch: electronNet.fetch.bind(electronNet),
   beforeUninstall: async () => {
     const server = await runtimeManager.ipolloworkServerInfo();
-    if (server.running) await runtimeManager.ipolloworkServerRestart();
+    if (!server.running) return null;
+    await runtimeManager.dispose();
+    return () => runtimeManager.ipolloworkServerRestart({
+      remoteAccessEnabled: server.remoteAccessEnabled,
+    });
   },
 });
 
@@ -4263,7 +4267,7 @@ if (!app.requestSingleInstanceLock()) {
 
   app.whenReady().then(async () => {
     console.info("[startup] Electron ready");
-    enginePackageManager.applyEnvironment();
+    await enginePackageManager.applyEnvironment();
     installDesktopPowerRecovery();
     installMediaPermissionHandlers(session, () => mainWindow);
     await workspaceStore.importBundledDesktopBootstrapConfigIfPreferred();

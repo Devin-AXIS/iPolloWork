@@ -623,6 +623,56 @@ describe("conversation engine adapters", () => {
     expect(snapshot.todos).toEqual([expect.objectContaining({ content: "Verify", status: "in_progress" })]);
   });
 
+  test("surfaces a DeepSeek Harness snapshot failure as an assistant reply", () => {
+    const snapshot = mapDeepSeekHarnessSnapshot({
+      engineId: DEEPSEEK_HARNESS_ENGINE_ID,
+      session: { id: "dsh-expired", title: "Scheduled task", dsh: { running: false } },
+      history: {
+        hasMore: false,
+        events: [
+          {
+            event: {
+              type: "user/message",
+              seq: 1,
+              time: 10,
+              data: {
+                id: "user-expired",
+                role: "user",
+                source: { kind: "user" },
+                content: [{ type: "text", text: "Create the report" }],
+              },
+            },
+          },
+          {
+            event: {
+              type: "turn/end",
+              seq: 2,
+              time: 20,
+              data: {
+                turn: 1,
+                reason: {
+                  kind: "error",
+                  error: { message: "Provided authentication token is expired." },
+                },
+              },
+            },
+          },
+        ],
+      },
+    });
+
+    expect(snapshot.messages).toEqual([
+      expect.objectContaining({ id: "user-expired", role: "user" }),
+      expect.objectContaining({
+        role: "assistant",
+        parts: [expect.objectContaining({
+          type: "text",
+          text: expect.stringContaining("sign-in"),
+        })],
+      }),
+    ]);
+  });
+
   test("maps DeepSeek Harness approvals without offering unsupported persistent grants", () => {
     const events = mapDeepSeekHarnessEnvelope({
       type: "server-request",
@@ -667,7 +717,7 @@ describe("conversation engine adapters", () => {
     expect(normalizeDeepSeekHarnessErrorText("错误")).not.toBe("错误");
 
     const expired = normalizeDeepSeekHarnessErrorText("Provided authentication token is expired.");
-    expect(expired).toContain("iPolloWork");
+    expect(expired.toLowerCase()).toContain("sign in");
     expect(expired).not.toContain("Provided authentication token");
   });
 

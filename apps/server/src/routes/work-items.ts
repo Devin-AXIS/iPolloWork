@@ -5,31 +5,18 @@ import {
   workItemCreateSchema,
   workItemUpdateSchema,
 } from "@ipollowork/types/work-items";
-import {
-  createDefaultProjectWorkspaceConfig,
-  projectWorkspaceConfigSchema,
-  type ProjectAgent,
-} from "@ipollowork/types/project-workspace";
-import type { ProjectSessionExecutionRuntime } from "@ipollowork/types/work-items";
-import {
-  DEFAULT_ENGINE_ID,
-  isHarnessWorkspaceEngineId,
-} from "@ipollowork/types/workspace";
-
 import { recordAudit } from "../audit.js";
 import { ApiError } from "../errors.js";
-import { readiPolloWorkWorkspaceConfig } from "../ipollowork-workspace-config-store.js";
 import type { ServerConfig, TokenScope, WorkspaceInfo } from "../types.js";
 import { shortId } from "../utils.js";
 import {
   WorkItemConflictError,
+  bindProjectSessionExecution,
   createWorkItem,
   deleteWorkItem,
   finishProjectSessionExecution,
   listWorkItems,
   readWorkBoardConfig,
-  readProjectSessionWorkItem,
-  startProjectSessionExecution,
   updateWorkItem,
   writeWorkBoardConfig,
 } from "../work-items.js";
@@ -70,31 +57,6 @@ function schemaError(message: string, issues: Array<{ path: PropertyKey[]; messa
   return new ApiError(400, "invalid_payload", message, {
     issues: issues.map((issue) => ({ path: issue.path.join("."), message: issue.message })),
   });
-}
-
-function resolveProjectExecutionRuntime(input: {
-  engineId: string;
-  agent: ProjectAgent;
-  requested: ProjectSessionExecutionRuntime;
-}): ProjectSessionExecutionRuntime {
-  const selectedModel = input.requested.model ?? input.agent.runtime.model;
-  const mode = input.agent.runtime.mode === "auto" || isHarnessWorkspaceEngineId(input.engineId)
-    ? input.requested.mode
-    : input.agent.runtime.mode === "plan"
-      ? "plan"
-      : "build";
-  return {
-    engineId: input.engineId,
-    // The composer is the user's explicit per-task selection. The Agent model
-    // is only the default when the composer has no model selected.
-    model: selectedModel,
-    mode,
-    modelVariant: input.requested.model
-      ? input.requested.modelVariant
-      : input.agent.runtime.model
-        ? input.agent.runtime.modelVariant
-        : input.requested.modelVariant,
-  };
 }
 
 async function withConflictHandling<T>(operation: () => Promise<T>): Promise<T> {
@@ -176,65 +138,7 @@ export function registerWorkItemRoutes(options: RegisterWorkItemRoutesOptions): 
     const parsed = projectSessionExecutionStartSchema.safeParse(await readJsonBody(ctx.request));
     if (!parsed.success) throw schemaError("Project session execution is invalid", parsed.error.issues);
 
-    const projectEngineId = workspace.engineId?.trim() || DEFAULT_ENGINE_ID;
-    const existing = await readProjectSessionWorkItem(config, workspace.id, sessionId);
-    if (existing?.execution) {
-      if (
-        existing.execution.runtime.engineId !== projectEngineId
-        || parsed.data.runtime.engineId !== existing.execution.runtime.engineId
-      ) {
-        throw new ApiError(
-          409,
-          "project_session_engine_changed",
-          "This task is bound to its original engine. Start a new conversation to use the project's current engine.",
-        );
-      }
-      return jsonResponse(await startProjectSessionExecution(
-        config,
-        workspace.id,
-        parsed.data.title,
-        {
-          ...existing.execution,
-          runtime: resolveProjectExecutionRuntime({
-            engineId: projectEngineId,
-            agent: existing.execution.agent,
-            requested: parsed.data.runtime,
-          }),
-          boundAt: Date.now(),
-        },
-      ));
-    }
-
-    const stored = await readiPolloWorkWorkspaceConfig(config, workspace.id);
-    const configured = projectWorkspaceConfigSchema.safeParse(stored.project);
-    const project = configured.success
-      ? configured.data
-      : createDefaultProjectWorkspaceConfig({ engineId: workspace.engineId });
-    const agentId = parsed.data.agentId ?? project.orchestration.entryAgentId;
-    const agent = project.agents.find((candidate) => candidate.id === agentId);
-    if (!agent) throw new ApiError(409, "project_agent_missing", "The selected project Agent no longer exists");
-
-    const agentEngineId = agent.runtime.engineId?.trim() || projectEngineId;
-    if (agentEngineId !== projectEngineId || parsed.data.runtime.engineId !== projectEngineId) {
-      throw new ApiError(
-        409,
-        "project_agent_engine_mismatch",
-        "Project tasks must use the project's engine. Change the project engine before starting a new task.",
-      );
-    }
-    const now = Date.now();
-    const item = await startProjectSessionExecution(config, workspace.id, parsed.data.title, {
-      sessionId,
-      projectRevision: project.revision,
-      projectGoal: project.goal,
-      agent,
-      runtime: resolveProjectExecutionRuntime({
-        engineId: projectEngineId,
-        agent,
-        requested: parsed.data.runtime,
-      }),
-      boundAt: now,
-    });
+    const item = await bindProjectSessionExecution(config, workspace, sessionId, parsed.data);
     return jsonResponse(item);
   });
 

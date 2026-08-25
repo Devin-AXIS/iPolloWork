@@ -137,11 +137,12 @@ describe("settings route parsing", () => {
     expect(settingsRouteSource).toContain("<EngineManagementView anyActiveRuns=");
     expect(engineManagementSource).toContain('data-testid="engine-package-row"');
     expect(engineManagementSource).toContain('t("settings.engine_manager.data_retained")');
-    expect(engineManagementSource).toContain('case "desktop-client"');
-    expect(engineManagementSource).toContain('t("settings.engine_manager.external_desktop_client_notice")');
+    expect(engineManagementSource).toContain('case "official"');
+    expect(engineManagementSource).toContain('t("settings.engine_manager.external_official_notice"');
     expect(engineManagementSource).toContain("engine.canUninstall");
-    expect(englishLocaleSource).toContain('"settings.engine_manager.source_desktop_client": "Provided by Codex client"');
-    expect(chineseLocaleSource).toContain('"settings.engine_manager.source_desktop_client": "由 Codex 客户端提供"');
+    expect(englishLocaleSource).toContain('"settings.engine_manager.source_official": "Using official installation"');
+    expect(chineseLocaleSource).toContain('"settings.engine_manager.source_official": "使用官方安装资源"');
+    expect(chineseLocaleSource).toContain("该资源由官方安装程序管理，因此不支持在 iPolloWork 中卸载");
   });
 
   test("recognizes an installed plugin detail as its own extensions route", () => {

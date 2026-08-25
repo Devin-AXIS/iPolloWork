@@ -26,10 +26,8 @@ import {
 } from "./codex-harness-session-read-model.js";
 import { CodexProviderGateway } from "./codex-provider-gateway.js";
 import { EnvService } from "./env-file.js";
-import {
-  buildCodexHarnessAdditionalContext,
-  projectCodexHarnessProviderList,
-} from "./routes/codex-harness.js";
+import { projectCodexHarnessProviderList } from "./routes/codex-harness.js";
+import { buildCodexHarnessAdditionalContext } from "./workspace-session-runtime.js";
 import { disposeRuntimeOpencodeConfigStore } from "./runtime-opencode-config-store.js";
 import type { ServerConfig, WorkspaceInfo } from "./types.js";
 
