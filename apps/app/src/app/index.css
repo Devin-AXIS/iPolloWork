@@ -313,6 +313,14 @@ html:lang(zh) [data-testid="project-overview"] :where(
   font-weight: 500;
 }
 
+html:lang(zh) [data-testid="work-center"] :where(
+  .text-dls-secondary,
+  .text-dls-tertiary,
+  [class~="text-dls-text/45"]
+) {
+  font-weight: 500;
+}
+
 [data-settings-shell] :where(
   button:not([role="switch"]):not([role="checkbox"]):not([role="radio"]),
   [role="button"]:not([role="switch"]):not([role="checkbox"]):not([role="radio"]),

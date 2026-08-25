@@ -8,7 +8,13 @@ import {
   projectWorkspaceConfigSchema,
   type ProjectWorkspaceConfig,
 } from "@ipollowork/types/project-workspace";
+import {
+  workItemPrioritySchema,
+  type WorkItemCreateInput,
+  type WorkItemPriority,
+} from "@ipollowork/types/work-items";
 import { DEFAULT_ENGINE_ID } from "@ipollowork/types/workspace";
+import { z } from "zod";
 import { recordAudit } from "../audit.js";
 import {
   getConnectSnapshot,
@@ -60,6 +66,7 @@ import {
 import type { Capabilities, ServerConfig, WorkspaceInfo } from "../types.js";
 import { shortId } from "../utils.js";
 import { addRoute, type RequestContext, type Route } from "./registry.js";
+import { createWorkItems } from "../work-items.js";
 
 type JsonResponse = (data: unknown, status?: number) => Response;
 type ReadJsonBody = (request: Request) => Promise<Record<string, unknown>>;
@@ -89,6 +96,61 @@ interface RegisterCoreRoutesOptions {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+const scheduleDateTimeSchema = z.string().trim().max(40).superRefine((value, context) => {
+  if (!/(?:Z|[+-]\d{2}:\d{2})$/.test(value)) {
+    context.addIssue({ code: "custom", message: "Date-time must include an explicit Z or ±HH:mm time zone" });
+    return;
+  }
+  const timestamp = Date.parse(value);
+  if (!Number.isFinite(timestamp)) {
+    context.addIssue({ code: "custom", message: "Date-time must be valid ISO 8601" });
+    return;
+  }
+  const date = new Date(timestamp);
+  if (date.getUTCMinutes() % 15 !== 0 || date.getUTCSeconds() !== 0 || date.getUTCMilliseconds() !== 0) {
+    context.addIssue({ code: "custom", message: "Date-time must align to a 15-minute boundary" });
+  }
+});
+
+const schedulePreviewInputSchema = z.object({
+  tasks: z.array(z.object({
+    title: z.string().trim().min(1).max(80),
+    description: z.string().trim().max(4_000).optional(),
+    startAt: scheduleDateTimeSchema,
+    dueAt: scheduleDateTimeSchema,
+    priority: workItemPrioritySchema.default("normal"),
+  }).strict()).min(1).max(50),
+}).strict();
+
+type PendingScheduleTask = {
+  title: string;
+  description: string | null;
+  startAt: number;
+  dueAt: number;
+  priority: WorkItemPriority;
+};
+
+type PendingSchedulePreview = {
+  workspaceId: string;
+  tasks: PendingScheduleTask[];
+  expiresAt: number;
+};
+
+const SCHEDULE_PREVIEW_TTL_MS = 15 * 60 * 1_000;
+const SCHEDULE_PREVIEW_LIMIT = 200;
+const pendingSchedulePreviews = new Map<string, PendingSchedulePreview>();
+
+function pruneSchedulePreviews(now = Date.now()): void {
+  for (const [id, preview] of pendingSchedulePreviews) {
+    if (preview.expiresAt <= now) pendingSchedulePreviews.delete(id);
+  }
+  while (pendingSchedulePreviews.size >= SCHEDULE_PREVIEW_LIMIT) {
+    const oldest = pendingSchedulePreviews.keys().next();
+    if (oldest.done) break;
+    pendingSchedulePreviews.delete(oldest.value);
+  }
 }
 
 function browserActionRecords(value: unknown): Record<string, unknown>[] {
@@ -311,6 +373,96 @@ export function registerCoreRoutes(options: RegisterCoreRoutesOptions): void {
         timestamp: Date.now(),
       });
       return { ok: true, workspaceId: workspace.id, project, updatedAt: Date.now() };
+    },
+    [ENGINE_HOST_TOOL_NAMES.schedulePreview]: async (_ctx, args, context) => {
+      const workspace = await resolveEngineToolWorkspace(context);
+      const parsed = schedulePreviewInputSchema.safeParse(args);
+      if (!parsed.success) {
+        throw new ApiError(400, "invalid_schedule_preview", "Schedule preview contains invalid tasks", {
+          issues: parsed.error.issues.map((issue) => ({ path: issue.path.join("."), message: issue.message })),
+        });
+      }
+      const tasks = parsed.data.tasks.map((task): PendingScheduleTask => ({
+        title: task.title,
+        description: task.description || null,
+        startAt: Date.parse(task.startAt),
+        dueAt: Date.parse(task.dueAt),
+        priority: task.priority,
+      }));
+      const invalidTaskIndex = tasks.findIndex((task) => task.dueAt < task.startAt);
+      if (invalidTaskIndex >= 0) {
+        throw new ApiError(400, "invalid_schedule_range", "Schedule task due time cannot be earlier than its start time", {
+          taskIndex: invalidTaskIndex,
+        });
+      }
+      pruneSchedulePreviews();
+      const previewId = `schedule_${shortId()}`;
+      const expiresAt = Date.now() + SCHEDULE_PREVIEW_TTL_MS;
+      pendingSchedulePreviews.set(previewId, { workspaceId: workspace.id, tasks, expiresAt });
+      return {
+        ok: true,
+        previewId,
+        workspaceId: workspace.id,
+        workspaceName: workspace.name,
+        expiresAt,
+        confirmationRequired: true,
+        confirmationPrompt: `Add ${tasks.length} planned task${tasks.length === 1 ? "" : "s"} to ${workspace.name}'s iPolloWork Schedule?`,
+        tasks: tasks.map((task) => ({
+          ...task,
+          startAt: new Date(task.startAt).toISOString(),
+          dueAt: new Date(task.dueAt).toISOString(),
+        })),
+      };
+    },
+    [ENGINE_HOST_TOOL_NAMES.scheduleApply]: async (ctx, args, context) => {
+      if (ctx.actor?.scope === "viewer") {
+        throw new ApiError(403, "forbidden", "Viewer tokens cannot add tasks to iPolloWork Schedule");
+      }
+      ensureWritable(config);
+      const workspace = await resolveEngineToolWorkspace(context);
+      const previewId = typeof args.previewId === "string" ? args.previewId.trim() : "";
+      const preview = pendingSchedulePreviews.get(previewId);
+      if (!preview) {
+        throw new ApiError(404, "schedule_preview_not_found", "Schedule preview was not found or was already applied");
+      }
+      if (preview.expiresAt <= Date.now()) {
+        pendingSchedulePreviews.delete(previewId);
+        throw new ApiError(410, "schedule_preview_expired", "Schedule preview expired; create a new preview before importing");
+      }
+      if (preview.workspaceId !== workspace.id) {
+        throw new ApiError(403, "schedule_preview_workspace_mismatch", "Schedule preview belongs to a different workspace");
+      }
+      const approval = await ctx.approvals.requestApproval({
+        workspaceId: workspace.id,
+        action: "schedule.import.apply",
+        summary: `Add ${preview.tasks.length} planned task${preview.tasks.length === 1 ? "" : "s"} to iPolloWork Schedule`,
+        paths: [],
+        actor: ctx.actor ?? { type: "remote" },
+      });
+      if (!approval.allowed) {
+        throw new ApiError(403, "write_denied", "Schedule import was not approved", {
+          requestId: approval.id,
+          reason: approval.reason,
+        });
+      }
+      const inputs: WorkItemCreateInput[] = preview.tasks.map((task) => ({
+        ...task,
+        status: "planned",
+        automation: null,
+        customFields: {},
+      }));
+      const items = await createWorkItems(config, workspace.id, inputs);
+      pendingSchedulePreviews.delete(previewId);
+      await recordAudit(workspace.path, {
+        id: shortId(),
+        workspaceId: workspace.id,
+        actor: ctx.actor ?? { type: "remote" },
+        action: "schedule.import.apply",
+        target: previewId,
+        summary: `Added ${items.length} planned task${items.length === 1 ? "" : "s"} to iPolloWork Schedule`,
+        timestamp: Date.now(),
+      });
+      return { ok: true, previewId, workspaceId: workspace.id, items };
     },
     [ENGINE_HOST_TOOL_NAMES.workspaceAppListTools]: async () => uiControlRequest("/execute", {
       method: "POST",

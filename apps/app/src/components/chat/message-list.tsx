@@ -3,6 +3,7 @@
 import * as React from "react"
 import {
   AlertTriangle,
+  CalendarDays,
   Check,
   ChevronDown,
   Copy,
@@ -86,7 +87,7 @@ import {
   getActiveToolLabel,
 } from "@/lib/tool-activity"
 import { cn } from "@/lib/utils"
-import { assistantResponseMarkdownFilename, buildAssistantResponseMarkdown, buildQuoteFollowUpPrompt, getActiveAssistantMessageId, getAssistantProcessState, groupMessages, isMessageGroup, getLastTextPart, getAssistantRenderGroups, getFileTitle, getMediaBadge, getMessageCompleted, getMessageCreated, formatMessageTimestamp, formatProcessDuration, type UIMessageWithIndex, getMessagesText, splitAssistantRenderGroups, type AssistantProcessRenderGroup } from "./utils"
+import { assistantResponseMarkdownFilename, buildAssistantResponseMarkdown, buildQuoteFollowUpPrompt, getActiveAssistantMessageId, getAssistantProcessState, getScheduleApplyResult, groupMessages, isMessageGroup, getLastTextPart, getAssistantRenderGroups, getFileTitle, getMediaBadge, getMessageCompleted, getMessageCreated, formatMessageTimestamp, formatProcessDuration, type ScheduleApplyResult, type UIMessageWithIndex, getMessagesText, splitAssistantRenderGroups, type AssistantProcessRenderGroup } from "./utils"
 
 const SEARCH_HIGHLIGHT_MARK_CLASS = "rounded px-0.5 bg-amber-4/70 text-current"
 
@@ -150,6 +151,30 @@ function MessageTimestamp({ message, className }: { message: UIMessage; classNam
     >
       {formatMessageTimestamp(created)}
     </span>
+  )
+}
+
+function ScheduleApplyResultCard({ result }: { result: ScheduleApplyResult }) {
+  const { onOpenSchedule } = useMessageList()
+  if (!onOpenSchedule) return null
+
+  return (
+    <div
+      className="mx-auto flex w-full max-w-[800px] items-center gap-3 rounded-xl border border-teal-7/35 bg-teal-3/30 px-4 py-3"
+      data-testid="schedule-import-result"
+    >
+      <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-teal-5/45 text-teal-11">
+        <Check className="size-4" />
+      </span>
+      <div className="min-w-0 flex-1">
+        <p className="text-sm font-medium text-foreground">{t("work.schedule_import.success")}</p>
+        <p className="mt-0.5 text-xs text-muted-foreground">{t("work.schedule_import.count", { count: result.itemCount })}</p>
+      </div>
+      <Button type="button" variant="outline" size="sm" className="shrink-0 rounded-lg" onClick={() => onOpenSchedule(result.focusAt)}>
+        <CalendarDays className="size-3.5" />
+        {t("work.schedule_import.view")}
+      </Button>
+    </div>
   )
 }
 
@@ -1014,6 +1039,10 @@ function MessageGroup({
     () => getAssistantGroupArtifactMessages(items),
     [items],
   )
+  const scheduleApplyResult = React.useMemo(
+    () => getScheduleApplyResult(artifactMessages),
+    [artifactMessages],
+  )
 
   // Keep the capped step run pinned to the latest step while streaming.
   React.useEffect(() => {
@@ -1125,6 +1154,7 @@ function MessageGroup({
           />
         </div>
       ) : null}
+      {!isLiveGroup && scheduleApplyResult ? <ScheduleApplyResultCard result={scheduleApplyResult} /> : null}
       {lastTextMessage && !isStreaming && (
         <div className="mx-auto flex w-full max-w-[800px] flex-wrap items-center gap-2 px-2 opacity-0 transition-opacity duration-150 group-hover/message-group:opacity-100 md:px-8">
           <MessageActions className="flex gap-0">

@@ -448,44 +448,74 @@ export async function createWorkItem(
   workspaceId: string,
   input: WorkItemCreateInput,
 ): Promise<WorkItem> {
-  const parsed = workItemCreateSchema.parse(input);
-  const db = await workItemDb(config);
-  const now = Date.now();
-  const id = `work_${shortId()}`;
-  const status = parsed.automation?.enabled ? "ready" : parsed.status;
-  const nextPositionRow = db.get(
-    "SELECT COALESCE(MAX(position), 0) + 1024 AS position FROM work_items WHERE workspace_id = ? AND status = ?",
-    [workspaceId, status],
-  );
-  const nextPosition = isRecord(nextPositionRow) ? readNumber(nextPositionRow, "position") : 1024;
-  const position = parsed.position ?? nextPosition;
-  db.run(
-    `INSERT INTO work_items (
-      id, workspace_id, title, description, status, assignee, priority,
-      start_at, due_at, automation_json, automation_enabled,
-      position, custom_fields_json, version, created_at, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)`,
-    [
-      id,
-      workspaceId,
-      parsed.title,
-      parsed.description ?? null,
-      status,
-      parsed.assignee ?? null,
-      parsed.priority,
-      parsed.startAt ?? null,
-      parsed.dueAt ?? null,
-      parsed.automation ? JSON.stringify(parsed.automation) : null,
-      parsed.automation?.enabled ? 1 : 0,
-      Number.isFinite(position) ? position : 1024,
-      JSON.stringify(parsed.customFields),
-      now,
-      now,
-    ],
-  );
-  const created = await readWorkItem(config, workspaceId, id);
+  const [created] = await createWorkItems(config, workspaceId, [input]);
   if (!created) throw new Error("Created work item could not be read");
   return created;
+}
+
+export async function createWorkItems(
+  config: ServerConfig,
+  workspaceId: string,
+  inputs: readonly WorkItemCreateInput[],
+): Promise<WorkItem[]> {
+  const parsedItems = inputs.map((input) => workItemCreateSchema.parse(input));
+  if (!parsedItems.length) return [];
+  const db = await workItemDb(config);
+  const now = Date.now();
+  const nextPositions = new Map<string, number>();
+  const created: WorkItem[] = [];
+  db.exec("BEGIN IMMEDIATE");
+  try {
+    for (const parsed of parsedItems) {
+      const id = `work_${shortId()}`;
+      const status = parsed.automation?.enabled ? "ready" : parsed.status;
+      let nextPosition = nextPositions.get(status);
+      if (nextPosition === undefined) {
+        const nextPositionRow = db.get(
+          "SELECT COALESCE(MAX(position), 0) + 1024 AS position FROM work_items WHERE workspace_id = ? AND status = ?",
+          [workspaceId, status],
+        );
+        nextPosition = isRecord(nextPositionRow) ? readNumber(nextPositionRow, "position") : 1024;
+      }
+      const position = parsed.position ?? nextPosition;
+      nextPositions.set(status, Math.max(nextPosition, position) + 1024);
+      db.run(
+        `INSERT INTO work_items (
+          id, workspace_id, title, description, status, assignee, priority,
+          start_at, due_at, automation_json, automation_enabled,
+          position, custom_fields_json, version, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)`,
+        [
+          id,
+          workspaceId,
+          parsed.title,
+          parsed.description ?? null,
+          status,
+          parsed.assignee ?? null,
+          parsed.priority,
+          parsed.startAt ?? null,
+          parsed.dueAt ?? null,
+          parsed.automation ? JSON.stringify(parsed.automation) : null,
+          parsed.automation?.enabled ? 1 : 0,
+          Number.isFinite(position) ? position : 1024,
+          JSON.stringify(parsed.customFields),
+          now,
+          now,
+        ],
+      );
+      const row = normalizeWorkItemRow(db.get(
+        "SELECT * FROM work_items WHERE workspace_id = ? AND id = ?",
+        [workspaceId, id],
+      ));
+      if (!row) throw new Error("Created work item could not be read");
+      created.push(publicWorkItem(row));
+    }
+    db.exec("COMMIT");
+    return created;
+  } catch (error) {
+    db.exec("ROLLBACK");
+    throw error;
+  }
 }
 
 export async function startProjectSessionExecution(
