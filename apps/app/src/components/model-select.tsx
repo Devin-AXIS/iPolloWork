@@ -19,7 +19,7 @@ import {
 import { useWorkspace } from "@/react-app/shell/workspace-provider";
 import { useCheckDesktopRestriction } from "@/react-app/domains/cloud/desktop-config-provider";
 import {
-  getRunnableChatModelEntries,
+  getEngineChatModelEntries,
   mergeProviderListResponses,
   projectAccountProviderConnections,
   type ProviderListQueryInput,
@@ -55,6 +55,7 @@ function useModelOptions(open: boolean) {
     modelCatalogSources,
     opencodeBaseUrl,
     connectedProviderIds,
+    hiddenProviderIds,
     selectedWorkspaceRoot,
   } = useWorkspace();
   const checkDesktopRestriction = useCheckDesktopRestriction();
@@ -88,31 +89,39 @@ function useModelOptions(open: boolean) {
     const restrictToCloud = checkDesktopRestriction({
       restriction: "allowCustomProviders",
     });
+    const hidden = new Set(
+      hiddenProviderIds.map((providerId) => providerId.trim().toLowerCase()),
+    );
 
     const catalogValue = projectAccountProviderConnections(
       mergeProviderListResponses([catalogQuery.data, runtimeQuery.data]),
       connectedProviderIds,
     );
-    const configuredProviderIds = new Set(catalogValue?.connected ?? []);
-    const options = getRunnableChatModelEntries({
+    const options = getEngineChatModelEntries({
       catalog: catalogValue,
       runtime: runtimeQuery.data,
       engineId,
-    }).map(({ provider, modelId, model, runtime }) => ({
-      providerID: provider.id,
-      modelID: modelId,
-      title: model.name,
-      description: provider.name,
-      behaviorTitle: t("model_behavior.title_reasoning_effort"),
-      behaviorLabel: t("settings.provider_default_label"),
-      behaviorDescription: "",
-      behaviorValue: null,
-      isFree: provider.id.trim().toLowerCase() === "opencode",
-      isConnected: configuredProviderIds.has(provider.id),
-      supportsVision: runtime.capabilities?.vision === true,
-    }));
+    }).map(({ provider, modelId, model, runtime }) => {
+      const runtimeReady = runtime.status === "ready";
+      return {
+        providerID: provider.id,
+        modelID: modelId,
+        title: model.name,
+        description: provider.name,
+        behaviorTitle: t("model_behavior.title_reasoning_effort"),
+        behaviorLabel: t("settings.provider_default_label"),
+        behaviorDescription: "",
+        behaviorValue: null,
+        isFree: provider.id.trim().toLowerCase() === "opencode",
+        isConnected: runtimeReady,
+        disabled: !runtimeReady,
+        footer: runtimeReady ? undefined : t("model_picker.connect_provider_hint"),
+        supportsVision: runtime.capabilities?.vision === true,
+      };
+    });
 
     return options.filter((option) => {
+      if (hidden.has(option.providerID.trim().toLowerCase())) return false;
       if (
         isDesktopProviderBlocked({
           providerId: option.providerID,
@@ -128,7 +137,7 @@ function useModelOptions(open: boolean) {
 
       return true;
     });
-  }, [catalogQuery.data, checkDesktopRestriction, connectedProviderIds, engineId, runtimeQuery.data]);
+  }, [catalogQuery.data, checkDesktopRestriction, connectedProviderIds, engineId, hiddenProviderIds, runtimeQuery.data]);
 
   return {
     options,

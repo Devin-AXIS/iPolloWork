@@ -94,11 +94,11 @@ describe("Composer model and reasoning menu", () => {
     expect(source).toContain("mergeProviderListResponses([data, runtimeData])");
     expect(source).toContain("filterProviderList(");
     expect(source).toContain("disabledProviderIds = []");
-    expect(source).toContain("getRunnableChatModelEntries({");
+    expect(source).toContain("getEngineChatModelEntries({");
     expect(source).toContain("runtime: runtimeData");
-    expect(source).toContain("const configuredProviderIds = new Set(accountData.connected)");
-    expect(source).toContain("isConnected: configuredProviderIds.has(provider.id)");
-    expect(source).not.toContain('disabled: runtime.status !== "ready"');
+    expect(source).toContain('const runtimeReady = runtime.status === "ready"');
+    expect(source).toContain("isConnected: runtimeReady");
+    expect(source).toContain("disabled: !runtimeReady");
     expect(source).toContain("setLoadedOptions({ scopeKey: optionScopeKey, options })");
   });
 
@@ -121,12 +121,13 @@ describe("Composer model and reasoning menu", () => {
     expect(model).toContain("useMergedProviderListQuery");
     expect(model).not.toContain("await refetch()");
     expect(model).not.toContain("refreshProviderListQueries");
-    expect(model).toContain("getRunnableChatModelEntries({");
+    expect(model).toContain("getEngineChatModelEntries({");
     expect(model).toContain("mergeProviderListResponses([catalogQuery.data, runtimeQuery.data])");
     expect(model).toContain('t("settings.loading_providers")');
     expect(model).toContain('t("model_picker.no_models_available")');
-    expect(model).toContain("const configuredProviderIds = new Set(catalogValue?.connected ?? [])");
-    expect(model).toContain("isConnected: configuredProviderIds.has(provider.id)");
+    expect(model).toContain('const runtimeReady = runtime.status === "ready"');
+    expect(model).toContain("isConnected: runtimeReady");
+    expect(model).toContain("disabled: !runtimeReady");
     expect(model).toContain("disabled={option.disabled && (option.isConnected || !onConfigureModels)}");
     expect(model).toContain("if (option.disabled)");
     expect(model).toContain("onConfigureModels?.(option.providerID)");

@@ -1,7 +1,9 @@
 import { describe, expect, test } from "bun:test";
+import { join } from "node:path";
 import {
   serializeSharedProviderProfile,
   sharedProviderCredentialEnvKey,
+  sharedProviderDisconnectedEnvKey,
   sharedProviderProfileEnvKey,
 } from "@ipollowork/types/provider-credentials";
 
@@ -15,6 +17,12 @@ import {
   refreshOpenAiCodexOAuthCredential,
   sharedProviderApiCredentials,
 } from "./deepseek-harness-runtime.js";
+import {
+  officialCodexOAuthCredential,
+  orderOpenAiCodexOAuthCredentials,
+  resolveOpenAiCodexOAuthSession,
+  resolveOfficialCodexAuthPath,
+} from "./openai-codex-oauth.js";
 
 describe("DeepSeek Harness provider credential sync", () => {
   const accessToken = (issuedAt: number, expiresAt: number) => [
@@ -63,6 +71,24 @@ describe("DeepSeek Harness provider credential sync", () => {
       ["anthropic", "sk-anthropic"],
       ["azure_openai", "sk-azure"],
     ]);
+  });
+
+  test("keeps explicitly disconnected providers out of every shared runtime bridge", () => {
+    expect([...sharedProviderApiCredentials([
+      { key: sharedProviderCredentialEnvKey("openai"), value: "sk-openai" },
+      { key: sharedProviderDisconnectedEnvKey("openai"), value: "1" },
+      { key: sharedProviderCredentialEnvKey("anthropic"), value: "sk-anthropic" },
+    ])]).toEqual([["anthropic", "sk-anthropic"]]);
+    expect(deepSeekHarnessChildEnvironment([
+      { key: sharedProviderDisconnectedEnvKey("openai"), value: "1" },
+      { key: "CUSTOM_RUNTIME_FLAG", value: "enabled" },
+    ])).toEqual({ CUSTOM_RUNTIME_FLAG: "enabled" });
+  });
+
+  test("does not import official Codex OAuth after an explicit OpenAI disconnect", async () => {
+    await expect(resolveOpenAiCodexOAuthSession({} as never, {
+      explicitlyDisconnected: true,
+    })).resolves.toBeNull();
   });
 
   test("does not turn the media-center DashScope credential into a chat provider", () => {
@@ -144,6 +170,49 @@ describe("DeepSeek Harness provider credential sync", () => {
     });
     expect(String(requests[0]?.body)).toContain("grant_type=refresh_token");
     expect(requests[0]?.signal).toBeInstanceOf(AbortSignal);
+  });
+
+  test("imports the freshest official Codex login into the shared account credential", () => {
+    const officialAccess = accessToken(2_000, 4_000);
+    const official = officialCodexOAuthCredential({
+      auth_mode: "chatgpt",
+      OPENAI_API_KEY: null,
+      tokens: {
+        access_token: officialAccess,
+        refresh_token: "official-refresh",
+        account_id: "account-official",
+      },
+      last_refresh: "2026-08-25T02:56:59.807Z",
+    });
+    const account = openAiCodexOAuthCredential({
+      type: "oauth",
+      access: accessToken(1_000, 1_500),
+      refresh: "account-refresh",
+      expires: 1_500,
+      accountId: "account-stale",
+    });
+    expect(official).not.toBeNull();
+    expect(account).not.toBeNull();
+
+    expect(official).toEqual({
+      type: "oauth",
+      access: officialAccess,
+      refresh: "official-refresh",
+      expires: 4_000_000,
+      accountId: "account-official",
+    });
+    expect(orderOpenAiCodexOAuthCredentials({ account: account!, officialCodex: official! }))
+      .toEqual([
+        { source: "official-codex", credential: official! },
+        { source: "account", credential: account! },
+      ]);
+  });
+
+  test("resolves the same official Codex auth store on Windows and macOS homes", () => {
+    expect(resolveOfficialCodexAuthPath({ homeDir: "C:/Users/Ada" }))
+      .toBe(join("C:/Users/Ada", ".codex", "auth.json"));
+    expect(resolveOfficialCodexAuthPath({ codexHome: "/Users/ada/.codex" }))
+      .toBe(join("/Users/ada/.codex", "auth.json"));
   });
 
   test("refreshes a shared Codex OAuth token halfway through its advertised lifetime", () => {

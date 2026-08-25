@@ -6,6 +6,7 @@ import { join } from "node:path";
 import {
   providerApiKeyCredentialRef,
   serializeSharedProviderProfile,
+  sharedProviderDisconnectedIdsFromEnvKeys,
   sharedProviderProfileEnvKey,
   sharedProviderProfiles,
   type SharedProviderProfile,
@@ -310,10 +311,13 @@ export class DeepSeekHarnessRuntime {
   }
 
   async #performSharedProviderApiCredentialSync(baseUrl: string): Promise<void> {
-    const [records, openAiCodexOAuth] = await Promise.all([
-      this.#env.list(),
-      resolveOpenAiCodexOAuthSession(this.#config),
-    ]);
+    const records = await this.#env.list();
+    const disconnected = new Set(
+      sharedProviderDisconnectedIdsFromEnvKeys(records.map((record) => record.key)),
+    );
+    const openAiCodexOAuth = await resolveOpenAiCodexOAuthSession(this.#config, {
+      explicitlyDisconnected: disconnected.has(OPENAI_CODEX_AUTH_PROVIDER_ID),
+    });
     if (
       openAiCodexOAuth
       && !sharedProviderProfiles(records).has(OPENAI_CODEX_AUTH_PROVIDER_ID)
@@ -334,6 +338,7 @@ export class DeepSeekHarnessRuntime {
     const compatibleProfiles = deepSeekHarnessCompatibleProviderProfiles(
       await readRuntimeProviderChannels(this.#config).catch(() => ({})),
     );
+    for (const providerId of disconnected) compatibleProfiles.delete(providerId);
     const fingerprint = createHash("sha256")
       .update(JSON.stringify({
         credentials: [...credentials.entries()].sort(([a], [b]) => a.localeCompare(b)),

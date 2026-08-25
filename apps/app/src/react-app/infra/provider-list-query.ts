@@ -267,13 +267,13 @@ export type RunnableChatModelEntry = {
 };
 
 /**
- * Return the account catalog entries that the active agent runtime can
- * execute now. The account catalog owns labels and metadata; the active
- * runtime response is the authority for provider connection and model-route
- * support. Model pickers must consume this intersection instead of rendering
- * unsupported account models as disabled rows.
+ * Return models that the active engine declares in its provider directory.
+ * A directory entry can be ready or temporarily disconnected; callers may
+ * render the latter with a reconnect action. Providers and models absent from
+ * the active directory remain hidden because that engine did not declare
+ * support for them.
  */
-export function getRunnableChatModelEntries(input: {
+export function getEngineChatModelEntries(input: {
   catalog: ProviderListResponse | null | undefined;
   runtime: ProviderListResponse | null | undefined;
   engineId?: string | null;
@@ -286,11 +286,26 @@ export function getRunnableChatModelEntries(input: {
         { providerID: provider.id, modelID: modelId },
         input.engineId,
       );
-      return runtime.status === "ready"
+      return runtime.status === "ready" || runtime.status === "provider-disconnected"
         ? [{ provider, modelId, model, runtime }]
         : [];
     })
   ));
+}
+
+/**
+ * Return the account catalog entries that the active agent runtime can
+ * execute now. The account catalog owns labels and metadata; the active
+ * runtime response is the authority for provider connection and model-route
+ * support. Model pickers must consume this intersection instead of rendering
+ * unsupported account models as disabled rows.
+ */
+export function getRunnableChatModelEntries(input: {
+  catalog: ProviderListResponse | null | undefined;
+  runtime: ProviderListResponse | null | undefined;
+  engineId?: string | null;
+}): RunnableChatModelEntry[] {
+  return getEngineChatModelEntries(input).filter(({ runtime }) => runtime.status === "ready");
 }
 
 export function getConnectedProviderSnapshot(

@@ -14,6 +14,7 @@ import { getReactQueryClient } from "../src/react-app/infra/query-client";
 import {
   ensureMergedProviderListQuery,
   getChatProviderCatalogItems,
+  getEngineChatModelEntries,
   getRunnableChatModelEntries,
   getSelectableChatProviderItems,
   mergeProviderListResponses,
@@ -25,6 +26,7 @@ import { CODEX_HARNESS_ENGINE_ID, DEEPSEEK_HARNESS_ENGINE_ID, DEFAULT_ENGINE_ID 
 import {
   parseSharedProviderProfile,
   sharedProviderCredentialEnvKey,
+  sharedProviderDisconnectedEnvKey,
   sharedProviderProfileEnvKey,
 } from "@ipollowork/types/provider-credentials";
 import { iPolloWorkServerError } from "../src/app/lib/ipollowork-server";
@@ -423,6 +425,16 @@ describe("model runtime adapters", () => {
     }).map(({ provider, modelId }) => `${provider.id}:${modelId}`)).toEqual([
       "deepseek-official:deepseek-v4-flash",
     ]);
+    expect(getEngineChatModelEntries({
+      catalog,
+      runtime: dshRuntime,
+      engineId: DEEPSEEK_HARNESS_ENGINE_ID,
+    }).map(({ provider, modelId, runtime }) => (
+      `${provider.id}:${modelId}:${runtime.status}`
+    ))).toEqual([
+      "openai:gpt-5.6-sol:provider-disconnected",
+      "deepseek-official:deepseek-v4-flash:ready",
+    ]);
 
     const codexRuntime = {
       all: [{
@@ -571,12 +583,17 @@ describe("model runtime adapters", () => {
     accountServerAvailable = true;
     expect(await store.disconnectProvider("openai")).toContain("openai");
     expect(envDeleteAttempts).toEqual([
+      sharedProviderDisconnectedEnvKey("openai"),
       sharedProviderCredentialEnvKey("openai"),
       sharedProviderProfileEnvKey("openai"),
       "OPENAI_API_KEY",
     ]);
-    expect(envKeys).toEqual([]);
+    expect(envKeys).toEqual([sharedProviderDisconnectedEnvKey("openai")]);
     expect(disabledProviderIds).toEqual([]);
+    expect(store.getSnapshot().connectedProviderIds).not.toContain("openai");
+    oauthConnected = true;
+    await store.refreshProviders({ force: true });
+    expect(store.getSnapshot().explicitlyDisconnectedProviderIds).toContain("openai");
     expect(store.getSnapshot().connectedProviderIds).not.toContain("openai");
     store.dispose();
     queryClient.clear();
@@ -612,6 +629,7 @@ describe("model runtime adapters", () => {
     let manualReloadRequests = 0;
     const serverClient = {
       listUserEnvKeys: async () => ({ keys: [], oauthProviderIds: [] }),
+      upsertUserEnv: async () => ({ updated: [] }),
       deleteUserEnv: async (key: string) => {
         deletedEnvKeys.push(key);
         return { ok: true };
@@ -1231,6 +1249,7 @@ describe("model runtime adapters", () => {
               mirroredCredentials.push(...entries);
               return { updated: entries.map((entry) => entry.key) };
             },
+            deleteUserEnv: async () => ({ ok: true }),
           } as never,
           ipolloworkServerCapabilities: { config: { read: true, write: true } },
         }),
@@ -1365,6 +1384,7 @@ describe("model runtime adapters", () => {
         mirroredCredentials.push(...entries);
         return { updated: entries.map((entry) => entry.key) };
       },
+      deleteUserEnv: async () => ({ ok: true }),
     };
     const store = createProviderAuthStore({
       client: () => client,
@@ -1482,6 +1502,7 @@ describe("model runtime adapters", () => {
         mirroredCredentials.push(...entries);
         return { updated: entries.map((entry) => entry.key) };
       },
+      deleteUserEnv: async () => ({ ok: true }),
     };
     const store = createProviderAuthStore({
       client: () => client,
@@ -1778,6 +1799,7 @@ describe("model runtime adapters", () => {
         deletedEnvKeys.push(key);
         return { deleted: [key] };
       },
+      upsertUserEnv: async () => ({ updated: [] }),
     };
     const store = createProviderAuthStore({
       client: () => client,

@@ -8,12 +8,14 @@ import { dirname, join } from "node:path";
 import {
   serializeSharedProviderProfile,
   sharedProviderCredentialEnvKey,
+  sharedProviderDisconnectedEnvKey,
   sharedProviderProfileEnvKey,
 } from "@ipollowork/types/provider-credentials";
 
 import {
   codexHarnessConfig,
   codexHarnessHostMcp,
+  codexHarnessProviderDirectory,
   codexHarnessProviders,
   codexHarnessRuntimeProviderId,
   CodexHarnessModelSelectionError,
@@ -25,6 +27,7 @@ import {
   readCodexHarnessSnapshot,
 } from "./codex-harness-session-read-model.js";
 import { CodexProviderGateway } from "./codex-provider-gateway.js";
+import { deepSeekHarnessProviderCredentials } from "./deepseek-harness-runtime.js";
 import { EnvService } from "./env-file.js";
 import { projectCodexHarnessProviderList } from "./routes/codex-harness.js";
 import { buildCodexHarnessAdditionalContext } from "./workspace-session-runtime.js";
@@ -707,6 +710,84 @@ readline.createInterface({ input: process.stdin }).on("line", (line) => {
     expect(result.default).toEqual({ openai: "gpt-configured" });
   });
 
+  test("keeps supported account providers visible when their credentials need reconnecting", () => {
+    const records = [
+      {
+        key: sharedProviderProfileEnvKey("openai"),
+        value: serializeSharedProviderProfile({
+          schemaVersion: 1,
+          providerId: "openai",
+          displayName: "OpenAI",
+          models: [{ id: "gpt-5.6-sol", name: "GPT-5.6 Sol" }],
+        }),
+      },
+      {
+        key: sharedProviderProfileEnvKey("acme-compatible"),
+        value: serializeSharedProviderProfile({
+          schemaVersion: 1,
+          providerId: "acme-compatible",
+          displayName: "Acme Compatible",
+          api: "openai-completions",
+          baseURL: "https://models.acme.test/v1",
+          models: [{ id: "acme-chat", name: "Acme Chat" }],
+        }),
+      },
+    ];
+    const directory = codexHarnessProviderDirectory({
+      records,
+      providers: [{
+        id: "opencode",
+        name: "iPolloWork Built-in Models",
+        api: "openai-responses",
+        baseURL: "https://opencode.ai/zen/v1",
+        apiKey: "public",
+        models: [{ id: "big-pickle", name: "Big Pickle" }],
+      }],
+    });
+    const result = projectCodexHarnessProviderList(
+      directory.all,
+      [],
+      directory.connected,
+    );
+
+    expect(directory.all.map((provider) => provider.id)).toEqual([
+      "opencode",
+      "openai",
+      "acme-compatible",
+    ]);
+    expect(result.connected).toEqual(["opencode"]);
+    expect(Object.keys(result.all.find((provider) => provider.id === "openai")?.models ?? {}))
+      .toEqual(["gpt-5.6-sol"]);
+  });
+
+  test("removes an explicitly disconnected provider from the Codex directory", async () => {
+    const config = await testConfig();
+    const records = [
+      { key: sharedProviderCredentialEnvKey("openai"), value: "sk-openai" },
+      {
+        key: sharedProviderProfileEnvKey("openai"),
+        value: serializeSharedProviderProfile({
+          schemaVersion: 1,
+          providerId: "openai",
+          displayName: "OpenAI",
+          api: "openai-responses",
+          baseURL: "https://api.openai.com/v1",
+          models: [{ id: "gpt-5.6-sol", name: "GPT-5.6 Sol" }],
+        }),
+      },
+      { key: sharedProviderDisconnectedEnvKey("openai"), value: "1" },
+    ];
+    const providers = await codexHarnessProviders({
+      config,
+      records,
+      openAiCodexOAuth: { accessToken: "official-token" },
+    });
+    const directory = codexHarnessProviderDirectory({ records, providers });
+
+    expect(providers.map((provider) => provider.id)).not.toContain("openai");
+    expect(directory.all.map((provider) => provider.id)).not.toContain("openai");
+  });
+
   test("projects every configured provider protocol and public built-in models", async () => {
     const config = await testConfig();
     const records = [
@@ -770,6 +851,13 @@ readline.createInterface({ input: process.stdin }).on("line", (line) => {
         apiKey: "chat-key",
       },
     });
+
+    // The account record is the source of truth. A DSH binary (downloaded or
+    // official) consumes the same provider IDs and secrets without a second
+    // engine-specific connection.
+    const deepSeekCredentials = deepSeekHarnessProviderCredentials(records);
+    expect(deepSeekCredentials.get("openai")?.apiKey).toBe("sk-openai");
+    expect(deepSeekCredentials.get("chat-only")?.apiKey).toBe("chat-key");
   });
 
   test("projects the shared OpenAI OAuth session into Codex Harness", async () => {

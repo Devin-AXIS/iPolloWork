@@ -739,6 +739,15 @@ export function SessionRoute() {
       setProviderConnectedIds,
       setDisabledProviderIds,
     });
+  const hiddenProviderIds = useMemo(
+    () => [
+      ...new Set([
+        ...disabledProviderIds,
+        ...sessionProviderAuthSnapshot.explicitlyDisconnectedProviderIds,
+      ]),
+    ].sort(),
+    [disabledProviderIds, sessionProviderAuthSnapshot.explicitlyDisconnectedProviderIds],
+  );
   const providerListQuery = useMergedProviderListQuery({
     sources: modelCatalogSources,
     enabled: modelCatalogSources.length > 0,
@@ -764,10 +773,10 @@ export function SessionRoute() {
       mergeProviderListResponses([providerListQuery.data, activeProviderListQuery.data]),
       sessionProviderAuthSnapshot.connectedProviderIds,
     ) ?? mergeProviderListResponses([]),
-    disabledProviderIds,
+    hiddenProviderIds,
   );
   const activeProviderList = activeProviderListQuery.data
-    ? filterProviderList(activeProviderListQuery.data, disabledProviderIds)
+    ? filterProviderList(activeProviderListQuery.data, hiddenProviderIds)
     : undefined;
   const modelPicker = useModelPicker({
     client: engineProviderClient,
@@ -777,7 +786,7 @@ export function SessionRoute() {
     catalogSources: modelCatalogSources,
     runtimeSource: activeProviderSource,
     connectedProviderIds: sessionProviderAuthSnapshot.connectedProviderIds,
-    disabledProviderIds,
+    disabledProviderIds: hiddenProviderIds,
   });
   const setSelectedModel = useCallback((model: ModelRef) => {
     local.setPrefs((previous) => updateModelPreferences(
@@ -2458,6 +2467,7 @@ export function SessionRoute() {
       selectedWorkspaceRoot={selectedWorkspaceRoot}
       modelCatalogSources={modelCatalogSources}
       connectedProviderIds={sessionProviderAuthSnapshot.connectedProviderIds}
+      hiddenProviderIds={hiddenProviderIds}
     >
     {conversation && selectedWorkspaceEndpoint && opencodeBaseUrl && selectedWorkspaceServerToken ? (
       <ReactSessionRuntime
@@ -2779,7 +2789,7 @@ export function SessionRoute() {
           preferredProviderId: providerId,
         });
       }}
-      disabledProviders={disabledProviderIds}
+      disabledProviders={hiddenProviderIds}
       onBehaviorChange={() => {}}
       onToggleProvider={async (providerId, enable) => {
         if (!sharedProviderClient) return;

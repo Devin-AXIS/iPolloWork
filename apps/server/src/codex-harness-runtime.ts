@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { createOpencodeClient } from "@opencode-ai/sdk/v2/client";
 
 import {
+  sharedProviderDisconnectedIdsFromEnvKeys,
   sharedProviderProfiles,
   type SharedProviderModelProfile,
 } from "@ipollowork/types/provider-credentials";
@@ -50,6 +51,16 @@ export type CodexHarnessProvider = {
   models: SharedProviderModelProfile[];
   httpHeaders?: Record<string, string>;
   upstream?: CodexProviderGatewayUpstream;
+};
+
+export type CodexHarnessProviderCatalogItem = Pick<
+  CodexHarnessProvider,
+  "id" | "name" | "models"
+>;
+
+export type CodexHarnessProviderDirectory = {
+  all: CodexHarnessProviderCatalogItem[];
+  connected: string[];
 };
 
 export type CodexHarnessEvent = StdioJsonRpcEvent;
@@ -255,6 +266,48 @@ export async function codexHarnessProviders(input: {
   return [...providers.values()];
 }
 
+/**
+ * Describe every account provider that Codex Harness knows how to route,
+ * including providers whose credential is currently unavailable. Runtime
+ * configuration still receives only `connected` providers with usable
+ * secrets; this directory exists so clients can keep configured models
+ * visible and offer a reconnect action instead of silently hiding them.
+ */
+export function codexHarnessProviderDirectory(input: {
+  records: ReadonlyArray<{ key: string; value: string }>;
+  providers: readonly CodexHarnessProvider[];
+  catalog?: AccountProviderCatalog;
+}): CodexHarnessProviderDirectory {
+  const profiles = sharedProviderProfiles(input.records);
+  const all = new Map<string, CodexHarnessProviderCatalogItem>(
+    input.providers.map((provider) => [provider.id, {
+      id: provider.id,
+      name: provider.name,
+      models: provider.models,
+    }]),
+  );
+
+  for (const [providerId, profile] of profiles) {
+    if (all.has(providerId)) continue;
+    const defaults = PROVIDER_DEFAULTS[providerId];
+    const api = normalizeProviderApi(profile.api) ?? defaults?.api;
+    const baseURL = profile.baseURL ?? defaults?.baseURL;
+    const catalogProvider = input.catalog?.get(providerId);
+    const models = profile.models.length ? profile.models : catalogProvider?.models ?? [];
+    if (!api || !baseURL || models.length === 0) continue;
+    all.set(providerId, {
+      id: providerId,
+      name: profile.displayName || catalogProvider?.name || providerId,
+      models,
+    });
+  }
+
+  return {
+    all: [...all.values()],
+    connected: input.providers.map((provider) => provider.id),
+  };
+}
+
 function codexMcpConfig(name: string, value: Record<string, unknown>): string[] {
   if (value.enabled === false) return [];
   const table = `[mcp_servers.${tomlString(name)}]`;
@@ -420,6 +473,12 @@ export class CodexHarnessRuntime {
     const { providers } = await this.#readSourceProviders();
     this.#providers = providers;
     return providers;
+  }
+
+  async providerDirectory(): Promise<CodexHarnessProviderDirectory> {
+    const { catalog, providers, records } = await this.#readSourceProviders();
+    this.#providers = providers;
+    return codexHarnessProviderDirectory({ records, providers, catalog });
   }
 
   async respond(id: string | number, result: unknown): Promise<void> {
@@ -671,14 +730,21 @@ export class CodexHarnessRuntime {
   async #readSourceProviders(): Promise<{
     records: Awaited<ReturnType<EnvService["list"]>>;
     providers: CodexHarnessProvider[];
+    catalog: AccountProviderCatalog;
   }> {
-    const [records, openAiCodexOAuth, catalog] = await Promise.all([
-      this.#env.list(),
-      resolveOpenAiCodexOAuthSession(this.#config),
+    const records = await this.#env.list();
+    const disconnected = new Set(
+      sharedProviderDisconnectedIdsFromEnvKeys(records.map((record) => record.key)),
+    );
+    const [openAiCodexOAuth, catalog] = await Promise.all([
+      resolveOpenAiCodexOAuthSession(this.#config, {
+        explicitlyDisconnected: disconnected.has("openai"),
+      }),
       readAccountProviderCatalog(this.#config).catch(() => new Map()),
     ]);
     return {
       records,
+      catalog,
       providers: await codexHarnessProviders({
         config: this.#config,
         records,

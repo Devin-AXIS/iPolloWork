@@ -1,6 +1,7 @@
 const SHARED_PROVIDER_CREDENTIAL_PREFIX = "AGENT_PROVIDER_"
 const SHARED_PROVIDER_CREDENTIAL_SUFFIX = "_API_KEY"
 const SHARED_PROVIDER_PROFILE_SUFFIX = "_PROFILE"
+const SHARED_PROVIDER_DISCONNECTED_SUFFIX = "_DISCONNECTED"
 
 export type SharedProviderModelProfile = {
   id: string
@@ -61,13 +62,34 @@ export function sharedProviderIdFromCredentialEnvKey(key: string): string | null
   return providerIdFromEnvKey(key, SHARED_PROVIDER_CREDENTIAL_SUFFIX)
 }
 
+/** Durable account-level opt-out that takes precedence over credential discovery. */
+export function sharedProviderDisconnectedEnvKey(providerId: string): string {
+  return `${SHARED_PROVIDER_CREDENTIAL_PREFIX}${encodedProviderId(providerId)}${SHARED_PROVIDER_DISCONNECTED_SUFFIX}`
+}
+
+export function sharedProviderIdFromDisconnectedEnvKey(key: string): string | null {
+  return providerIdFromEnvKey(key, SHARED_PROVIDER_DISCONNECTED_SUFFIX)
+}
+
+export function sharedProviderDisconnectedIdsFromEnvKeys(keys: readonly string[]): string[] {
+  return [
+    ...new Set(
+      keys.flatMap((key) => {
+        const providerId = sharedProviderIdFromDisconnectedEnvKey(key)
+        return providerId ? [providerId] : []
+      }),
+    ),
+  ].sort()
+}
+
 /** Provider connections owned by the current iPolloWork user account. */
 export function sharedProviderIdsFromEnvKeys(keys: readonly string[]): string[] {
+  const disconnected = new Set(sharedProviderDisconnectedIdsFromEnvKeys(keys))
   return [
     ...new Set(
       keys.flatMap((key) => {
         const providerId = sharedProviderIdFromCredentialEnvKey(key)
-        return providerId ? [providerId] : []
+        return providerId && !disconnected.has(providerId) ? [providerId] : []
       }),
     ),
   ].sort()
@@ -92,6 +114,7 @@ export function sharedConfiguredProviderIdsFromEnvKeys(
   oauthProviderIds?: readonly string[],
 ): string[] {
   const hasAuthoritativeOAuthDirectory = oauthProviderIds !== undefined
+  const disconnected = new Set(sharedProviderDisconnectedIdsFromEnvKeys(keys))
   return [
     ...new Set(
       [
@@ -103,7 +126,7 @@ export function sharedConfiguredProviderIdsFromEnvKeys(
         ...(oauthProviderIds ?? [])
           .map((providerId) => providerId.trim().toLowerCase())
           .filter(Boolean),
-      ],
+      ].filter((providerId) => !disconnected.has(providerId)),
     ),
   ].sort()
 }
@@ -164,11 +187,19 @@ export function parseSharedProviderProfile(value: string): SharedProviderProfile
 export function sharedProviderProfiles(
   records: ReadonlyArray<SharedProviderEnvRecord>,
 ): Map<string, SharedProviderProfile> {
+  const disconnected = new Set(
+    sharedProviderDisconnectedIdsFromEnvKeys(records.map((record) => record.key)),
+  )
   const profiles = new Map<string, SharedProviderProfile>()
   for (const record of records) {
     const providerId = providerIdFromEnvKey(record.key, SHARED_PROVIDER_PROFILE_SUFFIX)
     const profile = parseSharedProviderProfile(record.value)
-    if (!providerId || !profile || profile.providerId !== providerId) continue
+    if (
+      !providerId
+      || disconnected.has(providerId)
+      || !profile
+      || profile.providerId !== providerId
+    ) continue
     profiles.set(providerId, profile)
   }
   return profiles

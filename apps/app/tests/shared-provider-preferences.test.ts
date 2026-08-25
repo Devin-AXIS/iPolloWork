@@ -4,6 +4,8 @@ import { DEEPSEEK_HARNESS_ENGINE_ID, DEFAULT_ENGINE_ID } from "@ipollowork/types
 import {
   sharedConfiguredProviderIdsFromEnvKeys,
   sharedProviderCredentialEnvKey,
+  sharedProviderDisconnectedEnvKey,
+  sharedProviderDisconnectedIdsFromEnvKeys,
   sharedProviderIdsFromEnvKeys,
   sharedProviderProfileEnvKey,
 } from "@ipollowork/types/provider-credentials";
@@ -98,9 +100,9 @@ describe("shared AI provider preferences", () => {
     expect(sessionRouteSource).toContain("sources: modelCatalogSources");
     expect(sessionRouteSource).toContain("enabled: modelCatalogSources.length > 0");
     expect(sessionRouteSource).toContain("const accountProviderList = filterProviderList(");
-    expect(sessionRouteSource).toContain("? filterProviderList(activeProviderListQuery.data, disabledProviderIds)");
+    expect(sessionRouteSource).toContain("? filterProviderList(activeProviderListQuery.data, hiddenProviderIds)");
     expect(sessionRouteSource).toContain("connectedProviderIds: sessionProviderAuthSnapshot.connectedProviderIds");
-    expect(sessionRouteSource).toContain("disabledProviderIds,");
+    expect(sessionRouteSource).toContain("disabledProviderIds: hiddenProviderIds");
     expect(settingsRouteSource).toContain("catalogSources: modelCatalogSources");
     expect(settingsRouteSource).toContain("runtimeSource: activeModelProviderSource");
     expect(settingsRouteSource).toContain("connectedProviderIds: providerAuthSnapshot.connectedProviderIds");
@@ -153,5 +155,18 @@ describe("shared AI provider preferences", () => {
     expect(sharedConfiguredProviderIdsFromEnvKeys([
       sharedProviderProfileEnvKey("openai"),
     ], ["openai"])).toEqual(["openai"]);
+  });
+
+  test("lets an explicit account disconnect override every discovered credential source", () => {
+    const disconnectedKey = sharedProviderDisconnectedEnvKey("openai");
+    const keys = [
+      sharedProviderCredentialEnvKey("openai"),
+      sharedProviderProfileEnvKey("openai"),
+      disconnectedKey,
+    ];
+
+    expect(sharedProviderDisconnectedIdsFromEnvKeys(keys)).toEqual(["openai"]);
+    expect(sharedProviderIdsFromEnvKeys(keys)).toEqual([]);
+    expect(sharedConfiguredProviderIdsFromEnvKeys(keys, ["openai"])).toEqual([]);
   });
 });
