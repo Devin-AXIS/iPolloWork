@@ -1,6 +1,6 @@
 /** @jsxImportSource react */
 import * as React from "react";
-import { CalendarClock, ChevronDown, LockKeyhole, Timer, Trash2 } from "lucide-react";
+import { CalendarClock, CalendarDays, ChevronDown, LockKeyhole, Timer, Trash2 } from "lucide-react";
 import {
   WORK_ITEM_TITLE_MAX_LENGTH,
   type WorkBoardConfig,
@@ -23,7 +23,9 @@ import { Label } from "@/components/ui/label";
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
+  SelectLabel,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
@@ -79,10 +81,21 @@ const filledValueClassName = "font-medium text-dls-accent dark:text-dls-text";
 const placeholderClassName = "placeholder:font-normal placeholder:text-dls-secondary/60";
 const compactInputClassName = `h-[34px] rounded-lg px-2 text-[13px] ${filledValueClassName} ${placeholderClassName}`;
 const compactSelectTriggerClassName = `h-[34px] w-full rounded-lg border-border bg-background px-2 py-2 text-[13px] shadow-none data-[size=default]:h-[34px] ${filledValueClassName}`;
+const UNASSIGNED_ASSIGNEE_VALUE = "__unassigned__";
+const FOLLOW_PROJECT_MODEL_VALUE = "__follow_project_model__";
 const UNSET_CUSTOM_FIELD_VALUE = "__unset__";
 const SCHEDULE_SLOT_MS = 30 * 60 * 1_000;
 const DEFAULT_SCHEDULE_DURATION_MS = 60 * 60 * 1_000;
-const nativeSelectClassName = `h-[34px] w-full rounded-lg border border-border bg-background px-2 text-[13px] outline-none transition focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/30 ${filledValueClassName}`;
+const TIME_PICKER_INTERVAL_MINUTES = 15;
+const TIME_OPTIONS_15_MINUTES = Array.from(
+  { length: (24 * 60) / TIME_PICKER_INTERVAL_MINUTES },
+  (_, index) => {
+    const totalMinutes = index * TIME_PICKER_INTERVAL_MINUTES;
+    const hour = String(Math.floor(totalMinutes / 60)).padStart(2, "0");
+    const minute = String(totalMinutes % 60).padStart(2, "0");
+    return `${hour}:${minute}`;
+  },
+);
 
 function toDateInput(timestamp: number | null): string {
   if (timestamp === null) return "";
@@ -117,6 +130,11 @@ function updateTimePart(timestamp: number | null, timeValue: string): number | n
   return fromDateAndTime(toDateInput(timestamp) || toDateInput(Date.now()), timeValue);
 }
 
+function timePickerOptions(selectedTime: string): string[] {
+  if (!selectedTime || TIME_OPTIONS_15_MINUTES.includes(selectedTime)) return TIME_OPTIONS_15_MINUTES;
+  return [...TIME_OPTIONS_15_MINUTES, selectedTime].sort();
+}
+
 type DateTimePickerFieldProps = {
   id: string;
   label: string;
@@ -133,6 +151,65 @@ function openNativePicker(event: React.MouseEvent<HTMLInputElement>) {
   event.currentTarget.showPicker();
 }
 
+type TimePicker24HourProps = {
+  id: string;
+  label: string;
+  timestamp: number | null;
+  minimumTime?: string;
+  required?: boolean;
+  invalid?: boolean;
+  describedBy?: string;
+  onChange: (timestamp: number | null) => void;
+};
+
+function TimePicker24Hour(props: TimePicker24HourProps) {
+  const time = toTimeInput(props.timestamp);
+
+  return (
+    <div data-testid={`${props.id}-time-picker-24h`}>
+      <Select
+        value={time || undefined}
+        onValueChange={(nextTime) => {
+          if (!nextTime) return;
+          props.onChange(updateTimePart(props.timestamp, nextTime));
+        }}
+      >
+        <SelectTrigger
+          id={`${props.id}-time`}
+          className={cn(
+            compactSelectTriggerClassName,
+            "rounded-[8px] border-[#EBEBEB] pe-4 leading-[18px] dark:border-border [&_svg]:text-[#858A94] [&_svg]:[stroke-width:1.333]",
+            !time && "font-normal text-dls-secondary",
+          )}
+          aria-label={`${props.label} · ${t("work.time.time_picker")}`}
+          aria-required={props.required || undefined}
+          aria-invalid={props.invalid || undefined}
+          aria-describedby={props.describedBy}
+        >
+          <SelectValue>{time || "--:--"}</SelectValue>
+        </SelectTrigger>
+        <SelectContent
+          side="bottom"
+          align="end"
+          collisionAvoidance={{ side: "none", align: "shift", fallbackAxisSide: "none" }}
+          className="max-h-64 w-(--anchor-width) min-w-(--anchor-width) p-1"
+        >
+          {timePickerOptions(time).map((option) => (
+            <SelectItem
+              key={option}
+              value={option}
+              disabled={Boolean(props.minimumTime && option < props.minimumTime)}
+              className="h-8 px-2 py-0 text-[13px] font-normal"
+            >
+              {option}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    </div>
+  );
+}
+
 function DateTimePickerField(props: DateTimePickerFieldProps) {
   const minimumDate = toDateInput(props.min ?? null);
   const minimumTime = minimumDate && minimumDate === toDateInput(props.timestamp)
@@ -143,33 +220,40 @@ function DateTimePickerField(props: DateTimePickerFieldProps) {
       <legend className="text-sm font-semibold leading-5 text-foreground">
         {props.label}{props.required ? <RequiredMark /> : null}
       </legend>
-      <div className="grid grid-cols-[minmax(0,1fr)_7rem] gap-2">
-        <Input
-          ref={props.inputRef}
-          id={`${props.id}-date`}
-          type="date"
+      <div className="grid grid-cols-2 gap-2">
+        <div className="relative min-w-0">
+          <Input
+            ref={props.inputRef}
+            id={`${props.id}-date`}
+            type="date"
+            required={props.required}
+            min={minimumDate || undefined}
+            value={toDateInput(props.timestamp)}
+            className={cn(
+              compactInputClassName,
+              "rounded-[8px] border-[#EBEBEB] pe-10 leading-[18px] dark:border-border [&::-webkit-calendar-picker-indicator]:opacity-0",
+            )}
+            aria-label={`${props.label} · ${t("work.time.date_picker")}`}
+            aria-invalid={props.invalid || undefined}
+            aria-describedby={props.describedBy}
+            onClick={openNativePicker}
+            onChange={(event) => props.onChange(updateDatePart(props.timestamp, event.currentTarget.value))}
+          />
+          <CalendarDays
+            aria-hidden="true"
+            strokeWidth={1}
+            className="pointer-events-none absolute end-4 top-1/2 size-3.5 -translate-y-1/2 text-black dark:text-dls-text"
+          />
+        </div>
+        <TimePicker24Hour
+          id={props.id}
+          label={props.label}
+          timestamp={props.timestamp}
+          minimumTime={minimumTime}
           required={props.required}
-          min={minimumDate || undefined}
-          value={toDateInput(props.timestamp)}
-          className={compactInputClassName}
-          aria-label={`${props.label} · ${t("work.time.date_picker")}`}
-          aria-invalid={props.invalid || undefined}
-          aria-describedby={props.describedBy}
-          onClick={openNativePicker}
-          onChange={(event) => props.onChange(updateDatePart(props.timestamp, event.currentTarget.value))}
-        />
-        <Input
-          id={`${props.id}-time`}
-          type="time"
-          required={props.required}
-          min={minimumTime}
-          value={toTimeInput(props.timestamp)}
-          className={compactInputClassName}
-          aria-label={`${props.label} · ${t("work.time.time_picker")}`}
-          aria-invalid={props.invalid || undefined}
-          aria-describedby={props.describedBy}
-          onClick={openNativePicker}
-          onChange={(event) => props.onChange(updateTimePart(props.timestamp, event.currentTarget.value))}
+          invalid={props.invalid}
+          describedBy={props.describedBy}
+          onChange={props.onChange}
         />
       </div>
     </fieldset>
@@ -186,12 +270,12 @@ function automationRecurrenceFromValue(value: string): WorkItemAutomationRecurre
   return "once";
 }
 
-function automationModelValue(model: ProjectAgentModel | null | undefined): string {
-  return model ? JSON.stringify([model.providerId, model.modelId]) : "";
+function automationModelValue(model: ProjectAgentModel): string {
+  return JSON.stringify([model.providerId, model.modelId]);
 }
 
 function automationModelFromValue(value: string): ProjectAgentModel | null {
-  if (!value) return null;
+  if (value === FOLLOW_PROJECT_MODEL_VALUE) return null;
   try {
     const parsed: unknown = JSON.parse(value);
     if (
@@ -247,13 +331,21 @@ function editorValuesEqual(left: WorkItemEditorValue, right: WorkItemEditorValue
     && JSON.stringify(left.customFields) === JSON.stringify(right.customFields);
 }
 
+function shouldInitiallyOpenTimePanel(item: WorkItem | null, scheduleMode: boolean): boolean {
+  return item === null
+    || scheduleMode
+    || item.startAt !== null
+    || item.dueAt !== null
+    || item.automation !== null;
+}
+
 function RequiredMark() {
   return <span className="text-destructive" aria-hidden="true"> *</span>;
 }
 
 export function WorkItemSheet(props: WorkItemSheetProps) {
   const [value, setValue] = React.useState<WorkItemEditorValue>(() => emptyEditorValue(props.defaultStatus, props.scheduleMode, props.initialSchedule));
-  const [timeOpen, setTimeOpen] = React.useState(false);
+  const [timeOpen, setTimeOpen] = React.useState(() => shouldInitiallyOpenTimePanel(props.item, props.scheduleMode));
   const [validationAttempted, setValidationAttempted] = React.useState(false);
   const [discardConfirmOpen, setDiscardConfirmOpen] = React.useState(false);
   const initialValueRef = React.useRef(value);
@@ -276,11 +368,7 @@ export function WorkItemSheet(props: WorkItemSheetProps) {
     } : emptyEditorValue(props.defaultStatus, props.scheduleMode, props.initialSchedule);
     initialValueRef.current = nextValue;
     setValue(nextValue);
-    setTimeOpen(props.scheduleMode || Boolean(props.item && (
-      props.item.startAt !== null
-      || props.item.dueAt !== null
-      || props.item.automation !== null
-    )));
+    setTimeOpen(shouldInitiallyOpenTimePanel(props.item, props.scheduleMode));
     setValidationAttempted(false);
     setDiscardConfirmOpen(false);
   }, [props.defaultStatus, props.initialSchedule, props.item, props.open, props.scheduleMode]);
@@ -299,7 +387,16 @@ export function WorkItemSheet(props: WorkItemSheetProps) {
   const selectedAutomationModelAvailable = !selectedAutomationModel || modelProviders.some((provider) => (
     provider.id === selectedAutomationModel.providerId && selectedAutomationModel.modelId in provider.models
   ));
-  const selectedAssigneeAvailable = !value.assignee || props.agents.some((agent) => agent.id === value.assignee);
+  const selectedAutomationProvider = selectedAutomationModel
+    ? modelProviders.find((provider) => provider.id === selectedAutomationModel.providerId)
+    : undefined;
+  const selectedAutomationModelName = selectedAutomationModel
+    ? selectedAutomationProvider?.models[selectedAutomationModel.modelId]?.name || selectedAutomationModel.modelId
+    : t("work.automation.follow_project_model");
+  const selectedAssignee = value.assignee
+    ? props.agents.find((agent) => agent.id === value.assignee)
+    : undefined;
+  const selectedAssigneeAvailable = !value.assignee || Boolean(selectedAssignee);
   const isDirty = !editorValuesEqual(value, initialValueRef.current);
   const requestClose = () => {
     if (props.saving || props.deleting) return;
@@ -455,30 +552,32 @@ export function WorkItemSheet(props: WorkItemSheetProps) {
 
           {!props.item?.execution ? <div className="space-y-3">
             <Label htmlFor="work-item-assignee" className="text-sm font-semibold leading-5">{t("work.field.assignee")}</Label>
-            <select
-              id="work-item-assignee"
-              value={value.assignee ?? ""}
-              className={nativeSelectClassName}
-              onChange={(event) => {
-                const assignee = event.currentTarget.value || null;
+            <Select
+              value={value.assignee ?? UNASSIGNED_ASSIGNEE_VALUE}
+              onValueChange={(nextAssignee) => {
+                if (!nextAssignee) return;
+                const assignee = nextAssignee === UNASSIGNED_ASSIGNEE_VALUE ? null : nextAssignee;
                 setValue((current) => ({ ...current, assignee }));
               }}
             >
-              <option value="">{t("project_overview.unassigned")}</option>
-              {!selectedAssigneeAvailable && value.assignee ? (
-                <option value={value.assignee}>{value.assignee}</option>
-              ) : null}
-              {props.agents.map((agent) => (
-                <option key={agent.id} value={agent.id}>{agent.name}</option>
-              ))}
-            </select>
+              <SelectTrigger id="work-item-assignee" className={compactSelectTriggerClassName}>
+                <SelectValue>{value.assignee ? selectedAssignee?.name ?? value.assignee : t("project_overview.unassigned")}</SelectValue>
+              </SelectTrigger>
+              <SelectContent align="start">
+                <SelectItem value={UNASSIGNED_ASSIGNEE_VALUE}>{t("project_overview.unassigned")}</SelectItem>
+                {!selectedAssigneeAvailable && value.assignee ? (
+                  <SelectItem value={value.assignee}>{value.assignee}</SelectItem>
+                ) : null}
+                {props.agents.map((agent) => (
+                  <SelectItem key={agent.id} value={agent.id}>{agent.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div> : null}
 
           <Collapsible
-            open={scheduleRequired || timeOpen}
-            onOpenChange={(open) => {
-              if (!scheduleRequired) setTimeOpen(open);
-            }}
+            open={timeOpen}
+            onOpenChange={setTimeOpen}
             className="rounded-xl border border-dls-border/75 bg-dls-surface/45"
           >
             <CollapsibleTrigger className="group flex min-h-11 w-full items-center gap-2 px-3.5 py-2.5 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring/40">
@@ -530,7 +629,6 @@ export function WorkItemSheet(props: WorkItemSheetProps) {
                     </span>
                     <span className="min-w-0 flex-1">
                       <span className="block text-[12px] font-medium text-dls-text">{t("work.automation.title")}</span>
-                      <span className="mt-0.5 block text-[9px] leading-4 text-dls-tertiary">{t("work.automation.description")}</span>
                     </span>
                     <Switch
                       checked={value.automation?.enabled === true}
@@ -549,29 +647,34 @@ export function WorkItemSheet(props: WorkItemSheetProps) {
                   {value.automation?.enabled ? (
                     <div className="mt-3 space-y-2">
                       <Label htmlFor="work-item-automation-recurrence">{t("work.automation.recurrence")}</Label>
-                      <select
-                        id="work-item-automation-recurrence"
+                      <Select
                         value={value.automation.recurrence}
-                        className={nativeSelectClassName}
-                        onChange={(event) => {
-                          const recurrence = automationRecurrenceFromValue(event.currentTarget.value);
+                        onValueChange={(nextRecurrence) => {
+                          if (!nextRecurrence) return;
+                          const recurrence = automationRecurrenceFromValue(nextRecurrence);
                           setValue((current) => ({
                             ...current,
                             automation: { enabled: true, recurrence, model: current.automation?.model ?? null },
                           }));
                         }}
                       >
-                        <option value="once">{t("work.automation.once")}</option>
-                        <option value="daily">{t("work.automation.daily")}</option>
-                        <option value="weekly">{t("work.automation.weekly")}</option>
-                      </select>
+                        <SelectTrigger id="work-item-automation-recurrence" className={compactSelectTriggerClassName}>
+                          <SelectValue>{t(`work.automation.${value.automation.recurrence}`)}</SelectValue>
+                        </SelectTrigger>
+                        <SelectContent align="start">
+                          <SelectItem value="once">{t("work.automation.once")}</SelectItem>
+                          <SelectItem value="daily">{t("work.automation.daily")}</SelectItem>
+                          <SelectItem value="weekly">{t("work.automation.weekly")}</SelectItem>
+                        </SelectContent>
+                      </Select>
                       <Label htmlFor="work-item-automation-model">{t("work.automation.model")}</Label>
-                      <select
-                        id="work-item-automation-model"
-                        value={automationModelValue(value.automation.model)}
-                        className={nativeSelectClassName}
-                        onChange={(event) => {
-                          const model = automationModelFromValue(event.currentTarget.value);
+                      <Select
+                        value={selectedAutomationModel
+                          ? automationModelValue(selectedAutomationModel)
+                          : FOLLOW_PROJECT_MODEL_VALUE}
+                        onValueChange={(nextModel) => {
+                          if (!nextModel) return;
+                          const model = automationModelFromValue(nextModel);
                           setValue((current) => ({
                             ...current,
                             automation: current.automation
@@ -580,22 +683,28 @@ export function WorkItemSheet(props: WorkItemSheetProps) {
                           }));
                         }}
                       >
-                        <option value="">{t("work.automation.follow_project_model")}</option>
-                        {!selectedAutomationModelAvailable && selectedAutomationModel ? (
-                          <option value={automationModelValue(selectedAutomationModel)}>
-                            {selectedAutomationModel.providerId} · {selectedAutomationModel.modelId}
-                          </option>
-                        ) : null}
-                        {modelProviders.map((provider) => (
-                          <optgroup key={provider.id} label={provider.name || provider.id}>
-                            {Object.values(provider.models).map((model) => (
-                              <option key={model.id} value={automationModelValue({ providerId: provider.id, modelId: model.id })}>
-                                {model.name || model.id}
-                              </option>
-                            ))}
-                          </optgroup>
-                        ))}
-                      </select>
+                        <SelectTrigger id="work-item-automation-model" className={compactSelectTriggerClassName}>
+                          <SelectValue>{selectedAutomationModelName}</SelectValue>
+                        </SelectTrigger>
+                        <SelectContent align="start">
+                          <SelectItem value={FOLLOW_PROJECT_MODEL_VALUE}>{t("work.automation.follow_project_model")}</SelectItem>
+                          {!selectedAutomationModelAvailable && selectedAutomationModel ? (
+                            <SelectItem value={automationModelValue(selectedAutomationModel)}>
+                              {selectedAutomationModel.providerId} · {selectedAutomationModel.modelId}
+                            </SelectItem>
+                          ) : null}
+                          {modelProviders.map((provider) => (
+                            <SelectGroup key={provider.id}>
+                              <SelectLabel>{provider.name || provider.id}</SelectLabel>
+                              {Object.values(provider.models).map((model) => (
+                                <SelectItem key={model.id} value={automationModelValue({ providerId: provider.id, modelId: model.id })}>
+                                  {model.name || model.id}
+                                </SelectItem>
+                              ))}
+                            </SelectGroup>
+                          ))}
+                        </SelectContent>
+                      </Select>
                       {modelProviders.length === 0 ? (
                         <p className="text-[9px] leading-4 text-dls-tertiary">{t("work.automation.no_models")}</p>
                       ) : null}

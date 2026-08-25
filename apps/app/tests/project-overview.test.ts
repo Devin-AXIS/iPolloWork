@@ -435,11 +435,14 @@ describe("project overview", () => {
     expect(workItemSheetSource).toContain("maxLength={WORK_ITEM_TITLE_MAX_LENGTH}");
     expect(workItemSheetSource).toContain("scheduleRequired = props.scheduleMode");
     expect(workItemSheetSource).not.toContain("props.scheduleMode && props.item === null");
-    expect(workItemSheetSource).toContain("setTimeOpen(props.scheduleMode");
+    expect(workItemSheetSource).toContain("shouldInitiallyOpenTimePanel(props.item, props.scheduleMode)");
+    expect(workItemSheetSource).toContain("return item === null");
     expect(workItemSheetSource).toContain("showCloseButton");
     expect(workItemSheetSource).toContain('w-[min(396px,100vw)]');
     expect(workItemSheetSource).toContain('<SelectTrigger id="work-item-status"');
-    expect(workItemSheetSource).toContain("open={scheduleRequired || timeOpen}");
+    expect(workItemSheetSource).toContain("open={timeOpen}");
+    expect(workItemSheetSource).toContain("onOpenChange={setTimeOpen}");
+    expect(workItemSheetSource).not.toContain("open={scheduleRequired || timeOpen}");
     expect(workItemSheetSource).toContain("required={scheduleRequired}");
     expect(workItemSheetSource).toContain('placeholder={t("work.field.title_placeholder")}');
     expect(workItemSheetSource).toContain('placeholder={t("work.field.description_placeholder")}');
@@ -552,15 +555,29 @@ describe("project overview", () => {
     expect(deleteMutationSource).toContain('onError: (error) => toast.error(t("work.delete_failed")');
   });
 
-  test("uses separate native date and time pickers for task scheduling", () => {
+  test("uses a native date picker and a 15-minute 24-hour time menu for task scheduling", () => {
     expect(workItemSheetSource).toContain("function DateTimePickerField");
+    expect(workItemSheetSource).toContain("function TimePicker24Hour");
     expect(workItemSheetSource).toContain('data-testid="work-item-time-pickers"');
     expect(workItemSheetSource).toContain('type="date"');
-    expect(workItemSheetSource).toContain('type="time"');
+    expect(workItemSheetSource).not.toContain('type="time"');
+    expect(workItemSheetSource).toContain("const TIME_PICKER_INTERVAL_MINUTES = 15;");
+    expect(workItemSheetSource).toContain("TIME_OPTIONS_15_MINUTES");
+    expect(workItemSheetSource).toContain("timePickerOptions(time).map");
+    expect(workItemSheetSource).toContain('id={`${props.id}-time`}');
+    expect(workItemSheetSource).toContain("option < props.minimumTime");
+    expect(workItemSheetSource).toContain('side="bottom"');
+    expect(workItemSheetSource).toContain('collisionAvoidance={{ side: "none", align: "shift", fallbackAxisSide: "none" }}');
+    expect(workItemSheetSource).toContain('className="max-h-64 w-(--anchor-width) min-w-(--anchor-width) p-1"');
+    expect(workItemSheetSource).toContain('className="grid grid-cols-2 gap-2"');
+    expect(workItemSheetSource).toContain("<CalendarDays");
+    expect(workItemSheetSource).toContain("strokeWidth={1}");
+    expect(workItemSheetSource).toContain('rounded-[8px] border-[#EBEBEB] pe-4 leading-[18px]');
+    expect(workItemSheetSource).toContain('[&_svg]:text-[#858A94] [&_svg]:[stroke-width:1.333]');
     expect(workItemSheetSource).toContain("updateDatePart(props.timestamp");
     expect(workItemSheetSource).toContain("updateTimePart(props.timestamp");
     expect(workItemSheetSource).toContain("event.currentTarget.showPicker();");
-    expect(workItemSheetSource.match(/onClick=\{openNativePicker\}/g)).toHaveLength(2);
+    expect(workItemSheetSource.match(/onClick=\{openNativePicker\}/g)).toHaveLength(1);
     expect(workItemSheetSource).not.toContain('type="datetime-local"');
   });
 
@@ -569,20 +586,30 @@ describe("project overview", () => {
     expect(workItemSheetSource).toContain('checked={value.automation?.enabled === true}');
     expect(workItemSheetSource).toContain('t("work.automation.recurrence")');
     expect(workItemSheetSource).toContain('current.automation?.recurrence ?? "once"');
-    expect(workItemSheetSource).toContain('id="work-item-automation-model"');
+    expect(workItemSheetSource).toContain('SelectTrigger id="work-item-automation-recurrence"');
+    expect(workItemSheetSource).toContain('SelectTrigger id="work-item-automation-model"');
+    expect(workItemSheetSource).toContain('<SelectItem value={FOLLOW_PROJECT_MODEL_VALUE}>');
+    expect(workItemSheetSource).toContain('<SelectGroup key={provider.id}>');
+    expect(workItemSheetSource).toContain('<SelectLabel>{provider.name || provider.id}</SelectLabel>');
     expect(workItemSheetSource).toContain('t("work.automation.follow_project_model")');
     expect(workItemSheetSource).toContain("automationModelFromValue");
     expect(workCenterSource).toContain("connectedProviderIds={props.connectedProviderIds}");
     expect(workItemSheetSource).toContain("invalidAutomation");
+    expect(workItemSheetSource).not.toContain("work.automation.description");
+    expect(workItemSheetSource).toContain("work.automation.runtime_notice");
   });
 
   test("selects task owners from the current project's Agent configuration", () => {
     expect(workCenterSource).toContain('["work-item-project-agents", editorEndpoint?.key, editorEndpoint?.workspaceId]');
     expect(workCenterSource).toContain("readProjectWorkspaceConfig(response.ipollowork, editorEndpoint.workspace.engineId).agents");
     expect(workCenterSource).toContain("agents={editorAgentsQuery.data ?? []}");
-    expect(workItemSheetSource).toContain('<select\n              id="work-item-assignee"');
+    expect(workItemSheetSource).toContain('SelectTrigger id="work-item-assignee"');
+    expect(workItemSheetSource).toContain('<SelectItem value={UNASSIGNED_ASSIGNEE_VALUE}>');
     expect(workItemSheetSource).toContain("props.agents.map((agent)");
-    expect(workItemSheetSource).toContain('<option key={agent.id} value={agent.id}>{agent.name}</option>');
+    expect(workItemSheetSource).toContain('<SelectItem key={agent.id} value={agent.id}>{agent.name}</SelectItem>');
+    expect(workItemSheetSource).not.toContain("nativeSelectClassName");
+    expect(workItemSheetSource).not.toContain("<select");
+    expect(workItemSheetSource).not.toContain("<SelectValue />");
     expect(workItemSheetSource).not.toContain('placeholder={t("work.field.assignee_placeholder")}');
   });
 });

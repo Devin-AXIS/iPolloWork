@@ -2010,7 +2010,7 @@ export function DesignPanel({
     <Label className={cn("flex shrink-0 items-center gap-2 text-xs", !branding && "order-1")}>
       <Switch
         size="sm"
-        className="border-[#AEB2B9] bg-transparent shadow-none data-checked:!border-[#0A84FF] data-checked:!bg-[#0A84FF] data-unchecked:!border-[#AEB2B9] data-unchecked:!bg-transparent [&_[data-slot=switch-thumb]]:!shadow-none [&_[data-slot=switch-thumb][data-checked]]:!bg-white [&_[data-slot=switch-thumb][data-unchecked]]:!bg-[#62666D]"
+        className="border-[#AEB2B9] bg-transparent shadow-none data-unchecked:!border-[#AEB2B9] data-unchecked:!bg-transparent [&_[data-slot=switch-thumb]]:!shadow-none [&_[data-slot=switch-thumb][data-checked]]:!bg-white [&_[data-slot=switch-thumb][data-unchecked]]:!bg-[#62666D]"
         checked={editing}
         onCheckedChange={(checked) => {
           setEditing(checked);

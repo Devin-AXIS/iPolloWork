@@ -846,7 +846,6 @@ export default {
   "work.time.date_picker": "Date",
   "work.time.time_picker": "Time",
   "work.automation.title": "Run automatically",
-  "work.automation.description": "At the start time, the project's entry Agent runs the task title and description.",
   "work.automation.enabled": "Automatic execution enabled",
   "work.automation.recurrence": "Repeat",
   "work.automation.model": "Execution model",
