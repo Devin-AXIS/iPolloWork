@@ -3,6 +3,7 @@ import * as React from "react";
 import { ArrowLeftRight, ChevronDown, Pipette, X } from "lucide-react";
 
 import { Popover, PopoverClose, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import type { DesignColorFormat } from "./design-color-field";
 
@@ -266,12 +267,16 @@ function ColorValues({ color, hsb, onStart, onChange }: { color: RgbaColor; hsb:
 
   return (
     <div className={cn("mt-3 grid h-9 overflow-hidden rounded-lg border border-[#e5e5e5] bg-[#f5f5f5]", format === "hex" ? "grid-cols-[58px_1fr_48px]" : "grid-cols-[58px_1fr_1fr_1fr_48px]")}>
-      <label className="relative min-w-0 border-r border-white">
-        <select value={format} onChange={(event) => { const next = event.currentTarget.value; if (next === "hsb" || next === "rgb" || next === "hex") setFormat(next); }} className="h-full w-full appearance-none bg-transparent px-3 pr-5 text-[12px] outline-none" aria-label="Gradient color format">
-          {COLOR_FORMAT_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
-        </select>
-        <ChevronDown className="pointer-events-none absolute right-1.5 top-1/2 size-3 -translate-y-1/2" strokeWidth={1.5} />
-      </label>
+      <div className="min-w-0 border-r border-white">
+        <Select value={format} onValueChange={(next) => { if (next === "hsb" || next === "rgb" || next === "hex") setFormat(next); }}>
+          <SelectTrigger className="h-full w-full border-0 bg-transparent px-3 text-[12px] shadow-none focus-visible:ring-0 data-[size=default]:h-full" aria-label="Gradient color format">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent align="start" className="min-w-24">
+            {COLOR_FORMAT_OPTIONS.map((option) => <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>)}
+          </SelectContent>
+        </Select>
+      </div>
       {format === "hsb" ? <>
         <ColorNumberInput label="Hue" value={Math.round(hsb.hue)} max={360} onFocus={onStart} onChange={(value) => applyHsb("hue", value)} />
         <ColorNumberInput label="Saturation" value={Math.round(hsb.saturation)} max={100} onFocus={onStart} onChange={(value) => applyHsb("saturation", value)} />

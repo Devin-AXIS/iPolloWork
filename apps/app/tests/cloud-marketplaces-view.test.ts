@@ -106,6 +106,9 @@ describe("Cloud marketplace row visibility", () => {
     expect(segmentedTabsSource).toContain('disabled:pointer-events-none disabled:opacity-50');
     expect(segmentedTabsSource).not.toContain('variant?:');
     expect(panelSource).not.toContain('variant="standalone"');
+    expect(panelSource).toContain('useState<"marketplace" | "personal">("personal")');
+    expect(panelSource.indexOf('{ value: "personal", label: t("plugin_library.personal") }'))
+      .toBeLessThan(panelSource.indexOf('{ value: "marketplace", label: t("plugin_library.marketplace") }'));
     expect(routeSource).toContain('data-testid="plugin-library-navigation-actions"');
     expect(routeSource).toContain('showNotifications={route.tab !== "extensions"}');
     expect(routeSource).toContain('hideShellHeader={Boolean(route.pluginPackageId)}');

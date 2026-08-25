@@ -18,9 +18,16 @@ describe("session scroll controller", () => {
     expect(controllerSource).not.toContain('container.scrollTo({ top: clampedTop, behavior: "auto" })');
   });
 
-  test("synchronizes every transcript scroll event before it updates scroll state", () => {
-    expect(controllerSource).toContain("syncCurrentScrollPosition(container)");
-    expect(controllerSource).toContain("const syncCurrentScrollPosition = useCallback");
+  test("does not replay the scroll position while a user gesture is active", () => {
+    const gestureBranch = controllerSource.indexOf("if (userGestured)");
+    const gestureBranchEnd = controllerSource.indexOf("syncCurrentScrollPosition(container)", gestureBranch);
+    const gestureSource = controllerSource.slice(gestureBranch, gestureBranchEnd);
+
+    expect(gestureBranch).toBeGreaterThan(-1);
+    expect(gestureBranchEnd).toBeGreaterThan(gestureBranch);
+    expect(gestureSource).toContain("saveScrollPosition(container)");
+    expect(gestureSource).toContain("lastKnownScrollTopRef.current = currentTop");
+    expect(gestureSource).toContain("return");
   });
 
   test("does not interrupt an anchor-driven smooth scroll with a second immediate scroll", () => {

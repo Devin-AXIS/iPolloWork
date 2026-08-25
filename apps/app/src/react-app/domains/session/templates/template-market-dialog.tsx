@@ -334,8 +334,8 @@ export function TemplateMarketDialog(props: TemplateMarketDialogProps) {
               <DropdownMenuTrigger render={<button type="button" className={cn("inline-flex h-7 shrink-0 items-center justify-center gap-1 whitespace-nowrap rounded-[28px] bg-transparent px-2 font-['PingFang_SC',sans-serif] text-[13px] font-medium leading-[22px] transition-colors", moreCategoryActive ? "bg-foreground text-background" : "text-foreground hover:bg-muted")} />}>
                 {t("template_market.more")}<ChevronDown className="size-3.5" />
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="start" alignOffset={4} sideOffset={7} positionerClassName="z-[90]" className="flex w-[196px] min-w-[196px] flex-col gap-1 rounded-lg p-2">
-                {MORE_CATEGORIES.map(({ id, labelKey, icon: Icon }) => <DropdownMenuItem key={id} className={cn("h-7 whitespace-nowrap rounded-[28px] px-2 font-['PingFang_SC',sans-serif] text-[13px] font-medium leading-[22px] text-foreground", category === id && "bg-muted")} onClick={() => setCategory(id)}><Icon className="size-3.5" />{t(labelKey)}</DropdownMenuItem>)}
+              <DropdownMenuContent align="start" alignOffset={4} sideOffset={7} positionerClassName="z-[90]" className="w-[196px] min-w-[196px]">
+                {MORE_CATEGORIES.map(({ id, labelKey, icon: Icon }) => <DropdownMenuItem key={id} className={cn("whitespace-nowrap font-['PingFang_SC',sans-serif] text-foreground", category === id && "bg-muted")} onClick={() => setCategory(id)}><Icon className="size-3.5" />{t(labelKey)}</DropdownMenuItem>)}
               </DropdownMenuContent>
             </DropdownMenu>
             </div> : <>

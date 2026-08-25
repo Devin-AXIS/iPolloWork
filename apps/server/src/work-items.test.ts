@@ -4,7 +4,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DEEPSEEK_HARNESS_ENGINE_ID, DEFAULT_ENGINE_ID } from "@ipollowork/types/workspace";
 import { createDefaultProjectWorkspaceConfig } from "@ipollowork/types/project-workspace";
-import type { ProjectSessionExecution } from "@ipollowork/types/work-items";
+import {
+  WORK_ITEM_TITLE_MAX_LENGTH,
+  type ProjectSessionExecution,
+} from "@ipollowork/types/work-items";
 
 import { writeiPolloWorkWorkspaceConfig } from "./ipollowork-workspace-config-store.js";
 import type { ServerConfig } from "./types.js";
@@ -434,6 +437,17 @@ describe("work item store", () => {
         automationLastRunAt: now,
         automationLastSessionId: "session_in_flight",
       });
+    } finally {
+      await disposeWorkItemStore(config);
+    }
+  });
+
+  test("rejects task titles longer than the shared limit", async () => {
+    const { config } = await testContext();
+    try {
+      await expect(createWorkItem(config, "project_one", {
+        title: "x".repeat(WORK_ITEM_TITLE_MAX_LENGTH + 1),
+      })).rejects.toThrow();
     } finally {
       await disposeWorkItemStore(config);
     }

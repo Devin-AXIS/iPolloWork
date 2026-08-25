@@ -178,7 +178,7 @@ export const PluginPackagesPanel = forwardRef<PluginPackagesPanelHandle, PluginP
   const [authorizationEditor, setAuthorizationEditor] = useState<PluginAuthorizationEditor | null>(null);
   const [mcpConnectionFeedbacks, setMcpConnectionFeedbacks] = useState<Record<string, McpConnectionFeedback>>({});
   const [loaded, setLoaded] = useState(false);
-  const [source, setSource] = useState<"marketplace" | "personal">("marketplace");
+  const [source, setSource] = useState<"marketplace" | "personal">("personal");
   const [search, setSearch] = useState("");
   const [marketplaceCategory, setMarketplaceCategory] = useState<MarketplaceCategoryFilter>("all");
   const [marketplaceStatus, setMarketplaceStatus] = useState<MarketplaceStatusFilter>("all");
@@ -918,8 +918,8 @@ export const PluginPackagesPanel = forwardRef<PluginPackagesPanelHandle, PluginP
               value={source}
               ariaLabel={t("plugin_library.source_label")}
               items={[
-                { value: "marketplace", label: t("plugin_library.marketplace") },
                 { value: "personal", label: t("plugin_library.personal") },
+                { value: "marketplace", label: t("plugin_library.marketplace") },
               ]}
               onValueChange={setSource}
             />

@@ -24,7 +24,7 @@ function formatTokens(value: number | null): string {
 
 function usageColor(index: number): string {
   switch (index % 6) {
-    case 0: return "bg-blue-9";
+    case 0: return "bg-primary";
     case 1: return "bg-violet-9";
     case 2: return "bg-amber-9";
     case 3: return "bg-emerald-9";
@@ -51,12 +51,12 @@ function DataMetric(props: {
   const Icon = props.icon;
   return (
     <div className="min-w-0 border-e border-dls-border/60 pe-3 last:border-e-0 last:pe-0">
-      <div className="flex items-center gap-2 text-[9px] text-dls-tertiary">
+      <div className="flex items-center gap-2 text-[11px] leading-[15px] text-dls-text/45">
         <Icon className="size-3" />
         <span className="truncate">{props.label}</span>
       </div>
       <div className="mt-1 text-[18px] font-semibold tracking-[-0.5px] tabular-nums">{props.value}</div>
-      <p className="mt-0.5 truncate text-[9px] text-dls-tertiary">{props.detail}</p>
+      <p className="mt-0.5 truncate text-[11px] leading-[15px] text-dls-text/45">{props.detail}</p>
     </div>
   );
 }
@@ -95,25 +95,22 @@ export function ProjectRuntimeData(props: ProjectRuntimeDataProps) {
         ? t("project_overview.runtime_data_partial", { count: metrics.unmeteredConversationCount })
         : unavailable
           ? t("project_overview.runtime_data_unavailable")
-          : t("project_overview.runtime_data_current");
+          : null;
 
   return (
     <section
-      className="overflow-hidden rounded-2xl border border-white/35 bg-dls-surface/76 shadow-[0_18px_50px_rgba(31,50,72,0.06),inset_0_1px_0_rgba(255,255,255,0.52)] backdrop-blur-xl dark:border-white/[0.065]"
+      className="overflow-hidden rounded-2xl border border-dls-border/70 bg-white dark:bg-dls-surface"
       data-testid="project-runtime-data"
     >
       <header className="flex flex-wrap items-center justify-between gap-3 border-b border-dls-border/70 px-4 py-3">
         <div className="flex items-center gap-2">
           <BarChart3 className="size-4 text-dls-secondary" />
-          <div>
-            <h2 className="text-[12px] font-medium">{t("project_overview.runtime_data")}</h2>
-            <p className="mt-0.5 text-[9px] text-dls-tertiary">{t("project_overview.runtime_data_description")}</p>
-          </div>
+          <h2 className="text-[14px] font-semibold leading-5 text-dls-text">{t("project_overview.runtime_data")}</h2>
         </div>
-        <span className={cn(
-          "rounded-full px-2.5 py-1 text-[9px]",
-          unavailable ? "bg-dls-hover text-dls-tertiary" : metrics?.status === "partial" ? "bg-amber-3 text-amber-11" : "bg-emerald-3 text-emerald-11",
-        )}>{statusLabel}</span>
+        {statusLabel ? <span className={cn(
+          "rounded-full px-2.5 py-1 text-[11px] leading-[15px]",
+          unavailable ? "bg-dls-hover text-dls-text/45" : metrics?.status === "partial" ? "bg-amber-3 text-amber-11" : "bg-emerald-3 text-emerald-11",
+        )}>{statusLabel}</span> : null}
       </header>
 
       <div className="p-4">
@@ -151,12 +148,9 @@ export function ProjectRuntimeData(props: ProjectRuntimeDataProps) {
 
         {showAgentUsage ? <div className={cn(summaryMetrics.length && "mt-3 border-t border-dls-border/60 pt-3")} data-testid="project-agent-usage-chart">
           <div className="flex items-center justify-between gap-3">
-            <div>
-              <h3 className="text-[11px] font-medium">{t("project_overview.agent_usage")}</h3>
-              <p className="mt-0.5 text-[9px] text-dls-tertiary">{t("project_overview.agent_usage_description")}</p>
-            </div>
+            <h3 className="text-[14px] font-semibold leading-5 text-dls-text">{t("project_overview.agent_usage")}</h3>
             <div className="shrink-0 text-right">
-              <p className="text-[8px] text-dls-tertiary">{t("project_overview.total_token_usage")}</p>
+              <p className="text-[11px] leading-[15px] text-dls-text/45">{t("project_overview.total_token_usage")}</p>
               <p className="text-[13px] font-semibold tabular-nums">{props.loading ? "···" : formatTokens(totalTokens)}</p>
             </div>
           </div>
@@ -183,11 +177,11 @@ export function ProjectRuntimeData(props: ProjectRuntimeDataProps) {
             {usageSegments.map((segment) => {
               const percentage = usagePercentage(segment.tokens, totalTokens ?? 0);
               return (
-                <div key={segment.id} className="grid min-w-0 grid-cols-[auto_minmax(0,1fr)_auto_auto] items-center gap-2 text-[9px]">
+                <div key={segment.id} className="grid min-w-0 grid-cols-[auto_minmax(0,1fr)_auto_auto] items-center gap-2 text-[11px] leading-[15px]">
                   <span className={cn("size-2 rounded-sm", segment.color)} />
                   <span className="truncate font-medium">{segment.label}</span>
                   <span className="tabular-nums text-dls-secondary">{formatTokens(segment.tokens)}</span>
-                  <span className="w-9 text-right tabular-nums text-dls-tertiary">{formatPercentage(percentage)}</span>
+                  <span className="w-9 text-right tabular-nums text-dls-text/45">{formatPercentage(percentage)}</span>
                 </div>
               );
             })}

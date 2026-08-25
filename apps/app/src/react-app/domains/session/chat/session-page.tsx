@@ -4,7 +4,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import type { UIMessage } from "ai";
 import { useNavigate } from "react-router-dom";
 import { createClient, unwrap } from "@/app/lib/opencode";
-import { Code2, Download, Ellipsis, Eye, FileText, Film, Folder, FolderPlus, Globe, Image, LoaderCircle, Lock, Mic2, Palette, PanelRightClose, PanelRightOpen, Pencil, Presentation, Search, Settings2, Trash2, Upload, X, Zap } from "lucide-react";
+import { Check, ChevronDown, Code2, Download, Ellipsis, Eye, FileText, Film, Folder, FolderPlus, Globe, Image, LoaderCircle, Lock, Mic2, Palette, PanelRightClose, PanelRightOpen, Pencil, Presentation, Search, Settings2, Trash2, Upload, X, Zap } from "lucide-react";
 import { MAX_TEMPLATE_PACKAGE_BYTES, TEMPLATE_PACKAGE_FILE_ACCEPT, isPptxCompatibleTemplate, type PptxCompatibility, type TemplateCatalogItem, type TemplateCategory, type TemplateManifestV1, type TemplateSessionSnapshot, type TemplateSessionState, type TemplateValidationReport } from "@ipollowork/types/templates";
 import {
   CODEX_HARNESS_ENGINE_ID,
@@ -281,55 +281,92 @@ function ProjectWorkNavigation({
   onOpenOverview: () => void;
   onOpenTasks: () => void;
 }) {
+  const activeLabel = activeView === "conversation"
+    ? t("work.conversation")
+    : activeView === "overview"
+      ? t("work.overview")
+      : t("work.tasks");
   return (
-    <nav
-      data-testid="session-header-work-navigation"
-      aria-label={t("work.navigation")}
-      className="ml-1 inline-flex h-7 shrink-0 items-center rounded-lg border border-white/35 bg-white/30 p-0.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.48)] backdrop-blur-xl dark:border-white/[0.07] dark:bg-white/[0.045] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.08)] mac:titlebar-no-drag"
-    >
-      <button
-        type="button"
-        data-testid="session-header-work-conversation"
-        aria-current={activeView === "conversation" ? "page" : undefined}
-        className={cn(
-          "h-6 rounded-md px-2.5 text-[11px] font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-          activeView === "conversation"
-            ? "bg-dls-surface/90 text-dls-text shadow-sm"
-            : "text-dls-secondary hover:bg-white/35 hover:text-dls-text dark:hover:bg-white/[0.07]",
-        )}
-        onClick={onOpenConversation}
+    <div className="relative z-20 col-start-2 row-start-1 justify-self-center mac:titlebar-no-drag">
+      <nav
+        data-testid="session-header-work-navigation"
+        aria-label={t("work.navigation")}
+        className="inline-flex shrink-0 items-center gap-2 @max-[560px]/titlebar:hidden"
       >
-        {t("work.conversation")}
-      </button>
-      <button
-        type="button"
-        data-testid="session-header-project-overview"
-        aria-current={activeView === "overview" ? "page" : undefined}
-        className={cn(
-          "h-6 rounded-md px-2.5 text-[11px] font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-          activeView === "overview"
-            ? "bg-dls-surface/90 text-dls-text shadow-sm"
-            : "text-dls-secondary hover:bg-white/35 hover:text-dls-text dark:hover:bg-white/[0.07]",
-        )}
-        onClick={onOpenOverview}
-      >
-        {t("work.overview")}
-      </button>
-      <button
-        type="button"
-        data-testid="session-header-work-tasks"
-        aria-current={activeView === "tasks" ? "page" : undefined}
-        className={cn(
-          "h-6 rounded-md px-2.5 text-[11px] font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-          activeView === "tasks"
-            ? "bg-dls-surface/90 text-dls-text shadow-sm"
-            : "text-dls-secondary hover:bg-white/35 hover:text-dls-text dark:hover:bg-white/[0.07]",
-        )}
-        onClick={onOpenTasks}
-      >
-        {t("work.tasks")}
-      </button>
-    </nav>
+        <button
+          type="button"
+          data-testid="session-header-work-conversation"
+          aria-current={activeView === "conversation" ? "page" : undefined}
+          className={cn(
+            "flex items-center justify-center whitespace-nowrap px-3 text-[13px] font-medium leading-[18px] transition-[color,background-color] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30",
+            activeView === "conversation"
+              ? "h-7 rounded-lg bg-[#f3f3f4] text-[#161e24] dark:bg-dls-hover dark:text-dls-text"
+              : "h-8 rounded-md text-[#5a6774] hover:bg-[#f6f7fb] active:bg-[#e7e7e9] active:text-[#161e24] dark:text-dls-secondary dark:hover:bg-dls-hover dark:active:bg-dls-hover/80 dark:active:text-dls-text",
+          )}
+          onClick={onOpenConversation}
+        >
+          {t("work.conversation")}
+        </button>
+        <button
+          type="button"
+          data-testid="session-header-project-overview"
+          aria-current={activeView === "overview" ? "page" : undefined}
+          className={cn(
+            "flex items-center justify-center whitespace-nowrap px-3 text-[13px] font-medium leading-[18px] transition-[color,background-color] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30",
+            activeView === "overview"
+              ? "h-7 rounded-lg bg-[#f3f3f4] text-[#161e24] dark:bg-dls-hover dark:text-dls-text"
+              : "h-8 rounded-md text-[#5a6774] hover:bg-[#f6f7fb] active:bg-[#e7e7e9] active:text-[#161e24] dark:text-dls-secondary dark:hover:bg-dls-hover dark:active:bg-dls-hover/80 dark:active:text-dls-text",
+          )}
+          onClick={onOpenOverview}
+        >
+          {t("work.overview")}
+        </button>
+        <button
+          type="button"
+          data-testid="session-header-work-tasks"
+          aria-current={activeView === "tasks" ? "page" : undefined}
+          className={cn(
+            "flex items-center justify-center whitespace-nowrap px-3 text-[13px] font-medium leading-[18px] transition-[color,background-color] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30",
+            activeView === "tasks"
+              ? "h-7 rounded-lg bg-[#f3f3f4] text-[#161e24] dark:bg-dls-hover dark:text-dls-text"
+              : "h-8 rounded-md text-[#5a6774] hover:bg-[#f6f7fb] active:bg-[#e7e7e9] active:text-[#161e24] dark:text-dls-secondary dark:hover:bg-dls-hover dark:active:bg-dls-hover/80 dark:active:text-dls-text",
+          )}
+          onClick={onOpenTasks}
+        >
+          {t("work.tasks")}
+        </button>
+      </nav>
+
+      <DropdownMenu>
+        <DropdownMenuTrigger
+          render={(
+            <button
+              type="button"
+              data-testid="session-header-work-navigation-compact"
+              className="hidden h-8 items-center gap-1.5 rounded-lg bg-transparent px-3 text-[13px] font-medium leading-[18px] text-[#161e24] transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 dark:text-dls-text @max-[560px]/titlebar:inline-flex"
+              aria-label={`${t("work.navigation")} · ${activeLabel}`}
+            >
+              <span>{activeLabel}</span>
+              <ChevronDown className="size-3.5 text-[#5a6774] dark:text-dls-secondary" aria-hidden />
+            </button>
+          )}
+        />
+        <DropdownMenuContent align="center" className="w-32 min-w-32">
+          <DropdownMenuItem onClick={onOpenConversation} data-testid="session-header-work-conversation-compact">
+            {activeView === "conversation" ? <Check className="size-3.5" /> : <span className="size-3.5" />}
+            {t("work.conversation")}
+          </DropdownMenuItem>
+          <DropdownMenuItem onClick={onOpenOverview} data-testid="session-header-project-overview-compact">
+            {activeView === "overview" ? <Check className="size-3.5" /> : <span className="size-3.5" />}
+            {t("work.overview")}
+          </DropdownMenuItem>
+          <DropdownMenuItem onClick={onOpenTasks} data-testid="session-header-work-tasks-compact">
+            {activeView === "tasks" ? <Check className="size-3.5" /> : <span className="size-3.5" />}
+            {t("work.tasks")}
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </div>
   );
 }
 
@@ -353,7 +390,7 @@ function ProjectEngineOptions({
         }}
         disabled={disabled}
         aria-label={t("projects.default_engine")}
-        className="grid w-full grid-cols-1 gap-4 sm:grid-cols-3"
+        className="grid w-full auto-rows-fr grid-cols-[repeat(auto-fit,minmax(min(100%,204px),1fr))] gap-4"
       >
         {[
           {
@@ -394,7 +431,7 @@ function ProjectEngineOptions({
               data-engine-id={engine.id}
               data-state={selected ? "selected" : "default"}
               className={cn(
-                "relative flex min-h-[120px] w-full cursor-pointer flex-col gap-2 rounded-lg border-2 bg-transparent p-4 text-left transition-colors has-focus-visible:ring-3 has-focus-visible:ring-ring/30",
+                "relative flex h-full min-h-[120px] w-full cursor-pointer flex-col gap-2 rounded-lg border-2 bg-transparent p-4 text-left transition-colors has-focus-visible:ring-3 has-focus-visible:ring-ring/30",
                 selected
                   ? "border-[var(--project-dialog-accent)]"
                   : "border-[var(--project-dialog-option-border)] hover:bg-dls-canvas",
@@ -407,16 +444,11 @@ function ProjectEngineOptions({
                 className="absolute inset-0 z-10 size-full cursor-pointer opacity-0"
               />
               <span className="flex items-start justify-between gap-3">
-                <span className="flex flex-col items-start gap-1.5">
-                  <img
-                    src={engine.icon}
-                    alt=""
-                    className={cn("shrink-0 object-contain", engine.iconClassName)}
-                  />
-                  <span className="text-sm font-semibold leading-6 text-foreground">
-                    {engine.name}
-                  </span>
-                </span>
+                <img
+                  src={engine.icon}
+                  alt=""
+                  className={cn("shrink-0 object-contain", engine.iconClassName)}
+                />
                 <span className="flex items-center gap-2">
                   {packageLabel ? (
                     <span className={cn(
@@ -432,6 +464,9 @@ function ProjectEngineOptions({
                     className={cn("size-4 shrink-0", selected && "dark:invert")}
                   />
                 </span>
+              </span>
+              <span className="text-sm font-semibold leading-6 text-foreground">
+                {engine.name}
               </span>
               <span className="text-xs leading-[22px] text-muted-foreground">{engine.description}</span>
             </label>
@@ -3828,7 +3863,10 @@ export function SessionPage(props: SessionPageProps) {
                     <Button
                       variant="ghost"
                       size="icon-sm"
-                      className="absolute top-2 z-50 rounded-lg bg-background/80 text-muted-foreground shadow-sm backdrop-blur transition-colors hover:bg-muted hover:text-foreground mac:titlebar-no-drag"
+                      className={cn(
+                        "absolute z-50 rounded-lg bg-background/80 text-muted-foreground shadow-sm backdrop-blur transition-colors hover:bg-muted hover:text-foreground mac:titlebar-no-drag",
+                        mainWorkspaceView === "schedule" ? "top-[17px]" : "top-2",
+                      )}
                       style={{ right: floatingRightPanelToggleOffset }}
                       aria-label={floatingHeaderActionLabel}
                       title={floatingHeaderActionLabel}
@@ -3863,9 +3901,8 @@ export function SessionPage(props: SessionPageProps) {
             >
               <main className="flex h-full min-w-0 flex-col overflow-hidden border-r border-border/40 dark:border-white/[0.055]">
           <header className={cn(
-            "relative z-10 h-10 shrink-0 items-center justify-between border-b border-white/30 bg-background/80 px-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.4)] backdrop-blur-2xl backdrop-saturate-150 [border-bottom-width:0.5px] dark:border-white/[0.06] dark:bg-background/72 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] md:grid md:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] md:px-6 mac:titlebar-drag @container/titlebar",
-            mainHeaderHidden ? "hidden!" : "flex",
-            sidebarVisuallyCollapsed && shellConfig.sidebar ? "!pl-16 mac:!pl-32" : "",
+            "relative z-10 h-10 shrink-0 grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center border-b border-white/30 bg-background/80 px-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.4)] backdrop-blur-2xl backdrop-saturate-150 [border-bottom-width:0.5px] dark:border-white/[0.06] dark:bg-background/72 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] md:px-6 mac:titlebar-drag @container/titlebar",
+            mainHeaderHidden ? "hidden!" : "grid",
           )}>
             {shellConfig.sidebar && sidebarVisuallyCollapsed ? (
               <Button
@@ -3881,24 +3918,24 @@ export function SessionPage(props: SessionPageProps) {
                 <img src={publicAssetUrl("sidebar-left-expand.svg")} alt="" className="h-3 w-4 shrink-0 dark:invert" />
               </Button>
             ) : null}
-            <div className="relative z-10 flex min-w-0 max-w-full items-center gap-1 md:justify-self-start">
+            <div className={cn(
+              "relative z-10 flex min-w-0 max-w-full items-center gap-1 overflow-hidden justify-self-stretch",
+              sidebarVisuallyCollapsed && shellConfig.sidebar
+                ? "ml-12 md:ml-10 mac:ml-28 mac:md:ml-[104px]"
+                : "",
+            )} data-testid="session-header-project-region">
               {showMainHeaderTitle ? (
                 <>
                   {showSelectedProjectNavigation ? (
                     <ProjectHeaderButton projectName={selectedProjectName} onClick={openProjectOverview} />
                   ) : null}
-                  <h1 className="truncate text-[14px] font-medium text-dls-text">
+                  <h1 className="min-w-0 shrink truncate text-[14px] font-medium text-dls-text @max-[560px]/titlebar:hidden">
                     {showWorkspaceSetupEmptyState
                       ? t("workspace.empty_state_header")
                       : props.selectedSessionId
                         ? selectedSessionTitle || t("session.default_title")
                         : selectedProjectName}
                   </h1>
-                  {projectBuilderActive ? (
-                    <span className="shrink-0 rounded-full bg-primary/10 px-2 py-0.5 text-[9px] font-medium text-primary" data-testid="project-builder-badge">
-                      {t("project_builder.title")}
-                    </span>
-                  ) : null}
                 </>
               ) : null}
 
@@ -3909,7 +3946,8 @@ export function SessionPage(props: SessionPageProps) {
                       <Button
                         variant="ghost"
                         size="icon-sm"
-                        className="rounded-lg text-[#8A8A8A] hover:bg-muted hover:text-[#8A8A8A] mac:titlebar-no-drag"
+                        className="shrink-0 rounded-lg text-[#8A8A8A] hover:bg-muted hover:text-[#8A8A8A] mac:titlebar-no-drag"
+                        data-testid="session-header-more-actions"
                         aria-label={t("session.palette_title_actions")}
                         title={t("session.palette_title_actions")}
                       >
@@ -3970,17 +4008,24 @@ export function SessionPage(props: SessionPageProps) {
                 </DropdownMenu>
               ) : null}
 
-              {showSelectedProjectNavigation ? (
-                <ProjectWorkNavigation
-                  activeView={projectWorkActiveView}
-                  onOpenConversation={closeMainWorkspaceView}
-                  onOpenOverview={openProjectOverview}
-                  onOpenTasks={openProjectBoard}
-                />
+              {showMainHeaderTitle && projectBuilderActive ? (
+                <span className="shrink-0 rounded-full bg-primary/10 px-2 py-0.5 text-[9px] font-medium text-primary @max-[700px]/titlebar:hidden" data-testid="project-builder-badge">
+                  {t("project_builder.title")}
+                </span>
               ) : null}
+
             </div>
 
-            <div data-testid="session-header-actions" className="relative z-10 flex items-center gap-1.5 text-gray-10 md:col-start-3 md:justify-self-end mac:titlebar-no-drag">
+            {showSelectedProjectNavigation ? (
+              <ProjectWorkNavigation
+                activeView={projectWorkActiveView}
+                onOpenConversation={closeMainWorkspaceView}
+                onOpenOverview={openProjectOverview}
+                onOpenTasks={openProjectBoard}
+              />
+            ) : null}
+
+            <div data-testid="session-header-actions" className="relative z-10 col-start-3 flex items-center gap-1.5 justify-self-end text-gray-10 mac:titlebar-no-drag">
               <ConversationOutputTrigger
                 active={activeSidePanel === "outputs"}
                 disabled={!conversationMessages.length && !designTemplateEntryPath}
@@ -4560,7 +4605,7 @@ export function SessionPage(props: SessionPageProps) {
       <Dialog open={createProjectOpen} onOpenChange={(open) => { if (!open && !createProjectBusy) setCreateProjectOpen(false); }}>
         <DialogContent
           data-testid="create-project-dialog"
-          className="max-h-[calc(100dvh-32px)] w-[calc(100%-32px)] max-w-[516px] gap-4 overflow-y-auto rounded-[16px] p-6 ring-0 dark:ring-1 dark:ring-border"
+          className="max-h-[calc(100dvh-32px)] w-[calc(100%-32px)] max-w-[748px] gap-4 overflow-y-auto rounded-[16px] p-6 ring-0 dark:ring-1 dark:ring-border"
         >
           <DialogHeader className="gap-1.5">
             <DialogTitle className="pe-8 text-base leading-6">{t("projects.create")}</DialogTitle>

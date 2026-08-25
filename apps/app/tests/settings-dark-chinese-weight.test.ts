@@ -22,7 +22,7 @@ describe("desktop typography contract", () => {
     expect(css).toContain("--font-mono: var(--ipollowork-font-mono);");
   });
 
-  test("does not change font weight by language or theme", () => {
+  test("does not change global font weight by language or theme", () => {
     expect(css).not.toContain('[lang="zh"]');
     expect(css).not.toContain("font-weight: 450;");
   });

@@ -56,7 +56,7 @@ function newAgent(): ProjectAgent {
     id,
     name: t("project_overview.new_agent_name"),
     avatarSeed: id,
-    role: t("project_overview.new_agent_role"),
+    role: "",
     prompt: "",
     skillIds: [],
     pluginIds: [],

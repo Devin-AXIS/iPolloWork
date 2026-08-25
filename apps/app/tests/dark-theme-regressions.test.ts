@@ -19,9 +19,14 @@ describe("dark theme regressions", () => {
   test("keeps design inspector chrome on semantic theme surfaces", () => {
     const source = readAppSource("design/design-properties-inspector.tsx");
     const sharedInspectorSource = readAppSource("panel/studio-inspector-panel.tsx");
+    const sharedPopoverSource = readFileSync(
+      new URL("../src/components/ui/popover.tsx", import.meta.url),
+      "utf8",
+    );
 
     expect(sharedInspectorSource).toContain('border-l border-border bg-background text-foreground');
-    expect(source).toContain('border-border bg-popover');
+    expect(sharedPopoverSource).toContain("menuSurfaceClassName");
+    expect(source).toContain('className="w-[276px] gap-2 p-3"');
     expect(source).not.toContain('aria-label="Design inspector">\n      <header className="sticky left-0 top-0 z-20 flex h-[58px] w-full shrink-0 items-center border-b border-[#ebebeb] bg-white');
   });
 });

@@ -350,6 +350,56 @@ type MarkdownBlockInnerProps = {
   "ref" | "className" | "children" | "dangerouslySetInnerHTML"
 >;
 
+const STREAMING_MARKDOWN_RENDER_INTERVAL_MS = 50;
+
+function useStreamingMarkdownText(text: string, streaming: boolean | undefined) {
+  const [renderedText, setRenderedText] = useState(text);
+  const latestTextRef = useRef(text);
+  const lastRenderAtRef = useRef(0);
+  const renderTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+
+  latestTextRef.current = text;
+
+  useEffect(() => {
+    if (!streaming) {
+      if (renderTimerRef.current !== undefined) {
+        clearTimeout(renderTimerRef.current);
+        renderTimerRef.current = undefined;
+      }
+      setRenderedText(text);
+      return;
+    }
+
+    const now = Date.now();
+    const elapsed = now - lastRenderAtRef.current;
+    if (elapsed >= STREAMING_MARKDOWN_RENDER_INTERVAL_MS) {
+      if (renderTimerRef.current !== undefined) {
+        clearTimeout(renderTimerRef.current);
+        renderTimerRef.current = undefined;
+      }
+      lastRenderAtRef.current = now;
+      setRenderedText(text);
+      return;
+    }
+
+    if (renderTimerRef.current !== undefined) return;
+
+    renderTimerRef.current = setTimeout(() => {
+      renderTimerRef.current = undefined;
+      lastRenderAtRef.current = Date.now();
+      setRenderedText(latestTextRef.current);
+    }, STREAMING_MARKDOWN_RENDER_INTERVAL_MS - elapsed);
+  }, [streaming, text]);
+
+  useEffect(() => () => {
+    if (renderTimerRef.current !== undefined) {
+      clearTimeout(renderTimerRef.current);
+    }
+  }, []);
+
+  return streaming ? renderedText : text;
+}
+
 function MarkdownBlockInner({
   className,
   text,
@@ -360,26 +410,27 @@ function MarkdownBlockInner({
   const rootRef = useRef<HTMLDivElement>(null);
   const { openTargets, onOpenTarget } = useOpenTargets();
   const [linkMenu, setLinkMenu] = useState<{ target: OpenTarget; rect: DOMRect } | null>(null);
+  const renderedText = useStreamingMarkdownText(text, streaming);
   const syncHtml = useMemo(() => {
-    if (!text.trim()) {
+    if (!renderedText.trim()) {
       return "";
     }
-    return sanitizeMarkdownHtml(markdownParser.parse(text, { async: false }));
-  }, [text]);
+    return sanitizeMarkdownHtml(markdownParser.parse(renderedText, { async: false }));
+  }, [renderedText]);
   const [highlightedHtml, setHighlightedHtml] = useState<{ text: string; html: string } | null>(null);
 
   useEffect(() => {
-    if (streaming || !hasFencedCodeBlock(text)) {
+    if (streaming || !hasFencedCodeBlock(renderedText)) {
       setHighlightedHtml(null);
       return;
     }
 
     let cancelled = false;
-    void highlightedMarkdownParser.parse(text, { async: true }).then((html) => {
+    void highlightedMarkdownParser.parse(renderedText, { async: true }).then((html) => {
       const sanitizedHtml = sanitizeMarkdownHtml(html);
 
       if (!cancelled && sanitizedHtml.trim()) {
-        setHighlightedHtml({ text, html: sanitizedHtml });
+        setHighlightedHtml({ text: renderedText, html: sanitizedHtml });
       }
     }).catch(() => {
       if (!cancelled) {
@@ -389,9 +440,9 @@ function MarkdownBlockInner({
     return () => {
       cancelled = true;
     };
-  }, [streaming, text]);
+  }, [renderedText, streaming]);
 
-  const html = !streaming && highlightedHtml?.text === text ? highlightedHtml.html : syncHtml;
+  const html = !streaming && highlightedHtml?.text === renderedText ? highlightedHtml.html : syncHtml;
 
   // Re-apply search highlights after EVERY render (no dependency array on
   // purpose): motion.div re-sets dangerouslySetInnerHTML on unrelated

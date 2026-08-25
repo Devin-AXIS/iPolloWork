@@ -49,6 +49,13 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { resolveHyperframesEffectVariableValues } from "@ipollowork/types/hyperframes";
 import {
   hyperframesSelectionUpdateMode,
@@ -537,15 +544,19 @@ function AnimationVariableControl({
         </div>
       ) : null}
       {variable.type === "enum" ? (
-        <select
-          id={inputId}
+        <Select
           value={typeof value === "string" ? value : variable.default}
-          aria-label={variable.label}
-          className="h-9 w-full rounded-lg border border-border bg-background px-3 text-[12px] text-foreground"
-          onChange={(event) => onChange(event.target.value)}
+          onValueChange={(nextValue) => {
+            if (nextValue) onChange(nextValue);
+          }}
         >
-          {variable.options.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
-        </select>
+          <SelectTrigger id={inputId} aria-label={variable.label} className="w-full text-[12px]">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {variable.options.map((option) => <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>)}
+          </SelectContent>
+        </Select>
       ) : null}
       {variable.type === "string" ? (
         <input

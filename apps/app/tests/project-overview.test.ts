@@ -2,9 +2,15 @@ import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { projectWorkspaceConfigSchema } from "@ipollowork/types/project-workspace";
 import type { iPolloWorkServerClient } from "../src/app/lib/ipollowork-server";
+import en from "../src/i18n/locales/en";
+import zh from "../src/i18n/locales/zh";
 import { loadProjectRuntimeMetrics } from "../src/react-app/domains/work/project-runtime-metrics";
 import { scopeProjectBuilderDraft } from "../src/react-app/domains/work/project-builder-session";
 import { projectExecutionSystemContext } from "../src/react-app/domains/work/project-execution";
+import {
+  snapWorkCalendarSlot,
+  workCalendarScheduleRange,
+} from "../src/react-app/domains/work/work-calendar";
 
 const overviewSource = readFileSync(
   new URL("../src/react-app/domains/work/project-overview.tsx", import.meta.url),
@@ -38,8 +44,16 @@ const projectBoardSource = readFileSync(
   new URL("../src/react-app/domains/work/project-board.tsx", import.meta.url),
   "utf8",
 ).replaceAll("\r\n", "\n");
+const appStylesSource = readFileSync(
+  new URL("../src/app/index.css", import.meta.url),
+  "utf8",
+).replaceAll("\r\n", "\n");
 const workItemSheetSource = readFileSync(
   new URL("../src/react-app/domains/work/work-item-sheet.tsx", import.meta.url),
+  "utf8",
+).replaceAll("\r\n", "\n");
+const workCalendarSource = readFileSync(
+  new URL("../src/react-app/domains/work/work-calendar.tsx", import.meta.url),
   "utf8",
 ).replaceAll("\r\n", "\n");
 const modelBehaviorMenuSource = readFileSync(
@@ -418,9 +432,86 @@ describe("project overview", () => {
     expect(workItemSheetSource).toContain('data-testid="work-item-sheet"');
     expect(workItemSheetSource).toContain("!props.item?.execution ? <div");
     expect(workItemSheetSource).toContain("<Collapsible");
+    expect(workItemSheetSource).toContain("maxLength={WORK_ITEM_TITLE_MAX_LENGTH}");
+    expect(workItemSheetSource).toContain("scheduleRequired = props.scheduleMode");
+    expect(workItemSheetSource).not.toContain("props.scheduleMode && props.item === null");
+    expect(workItemSheetSource).toContain("setTimeOpen(props.scheduleMode");
+    expect(workItemSheetSource).toContain("showCloseButton");
+    expect(workItemSheetSource).toContain('w-[min(396px,100vw)]');
+    expect(workItemSheetSource).toContain('<SelectTrigger id="work-item-status"');
+    expect(workItemSheetSource).toContain("open={scheduleRequired || timeOpen}");
+    expect(workItemSheetSource).toContain("required={scheduleRequired}");
+    expect(workItemSheetSource).toContain('placeholder={t("work.field.title_placeholder")}');
+    expect(workItemSheetSource).toContain('placeholder={t("work.field.description_placeholder")}');
+    expect(workItemSheetSource).toContain('filledValueClassName = "font-medium text-dls-accent dark:text-dls-text"');
+    expect(workItemSheetSource).toContain('placeholderClassName = "placeholder:font-normal placeholder:text-dls-secondary/60"');
+    expect(workItemSheetSource).toContain("initialSchedule: WorkItemScheduleDraft | null");
+    expect(workCalendarSource).toContain('data-testid="work-calendar-slot-preview"');
+    expect(workCalendarSource).toContain("<ContextMenu>");
+    expect(workCalendarSource).toContain("onCreateSchedule(workCalendarScheduleRange");
+    expect(zh["work.calendar.today"]).toBe("今天");
+    expect(zh["work.calendar.back_to_today"]).toBe("回到今天");
+    expect(en["work.calendar.today"]).toBe("Today");
+    expect(en["work.calendar.back_to_today"]).toBe("Back to today");
+    expect(workCalendarSource).toContain('t(isToday ? "work.calendar.today" : "work.calendar.back_to_today")');
+    expect(workCenterSource).toContain("onCreateSchedule={requestCreate}");
+    expect(workItemSheetSource).toContain("<ConfirmModal");
+    expect(workItemSheetSource).toContain("editorValuesEqual(value, initialValueRef.current)");
+    expect(workCenterSource).toContain('scheduleMode={props.mode === "global" || projectView === "schedule"}');
     expect(dashboardSource).not.toContain('t("project_overview.token_usage_unavailable")');
     expect(modelBehaviorMenuSource).toContain("<ModelListContent");
     expect(`${overviewSource}\n${inspectorSource}`).not.toContain("apiKey:");
+  });
+
+  test("snaps empty calendar positions to 30-minute one-hour schedules", () => {
+    const gridHeight = 1_088;
+    const eighteenThirtyOffset = gridHeight * 390 / 1_020;
+    expect(snapWorkCalendarSlot(eighteenThirtyOffset, gridHeight)).toBe(390);
+    expect(snapWorkCalendarSlot(gridHeight, gridHeight)).toBe(960);
+
+    const schedule = workCalendarScheduleRange(new Date(2026, 7, 26), 750);
+    expect(new Date(schedule.startAt).getHours()).toBe(18);
+    expect(new Date(schedule.startAt).getMinutes()).toBe(30);
+    expect(schedule.dueAt - schedule.startAt).toBe(60 * 60_000);
+  });
+
+  test("uses the same semantic typography hierarchy across overview and tasks", () => {
+    expect(dashboardSource).toContain('text-[24px] font-semibold leading-8 tracking-[-0.45px] text-dls-text');
+    expect(workCenterSource).toContain('text-[24px] font-semibold leading-8 tracking-[-0.35px] text-dls-text');
+    expect(dashboardSource).toContain('props.config.goal || t("project_overview.default_goal")');
+    expect(dashboardSource).toContain('[--primary:#1FBAC0]');
+    expect(runtimeDataSource).toContain('case 0: return "bg-primary";');
+    expect(dashboardSource).not.toContain('<Sparkles className="size-4 text-dls-secondary" />');
+    expect(dashboardSource).toContain('<ListTodo className="size-4 text-dls-secondary" />{t("project_overview.task_activity")}');
+    expect(dashboardSource).toContain('group block w-full bg-white');
+    expect(dashboardSource).not.toContain('selected ? "bg-dls-hover/52"');
+    expect(appStylesSource).toContain('html:lang(zh) [data-testid="project-overview"] :where(');
+    expect(appStylesSource).toContain('[class~="text-dls-text/45"]');
+    expect(dashboardSource).not.toContain('project_overview.title');
+    expect(dashboardSource).not.toContain('project_overview.task_activity_description');
+    expect(runtimeDataSource).not.toContain('project_overview.runtime_data_description');
+    expect(runtimeDataSource).not.toContain('project_overview.runtime_data_current');
+    expect(runtimeDataSource).not.toContain('project_overview.agent_usage_description');
+    expect(orchestrationSource).not.toContain('project_overview.orchestration_description');
+    expect(dashboardSource).toContain('description: null, tone: "green"');
+    expect(overviewSource).toContain('role: ""');
+    expect(dashboardSource).toContain('LEGACY_GENERIC_AGENT_ROLES.has(agent.role)');
+    expect(dashboardSource).toContain('agentNeedsSetup || showAgentTaskState');
+    expect(dashboardSource).toContain('text-[13px] leading-5 text-dls-secondary');
+    expect(workCenterSource).toContain('text-[13px] leading-5 text-dls-secondary');
+    expect(dashboardSource).toContain('text-[14px] font-semibold leading-5');
+    expect(runtimeDataSource).toContain('text-[14px] font-semibold leading-5');
+    expect(orchestrationSource).toContain('text-[14px] font-semibold leading-5');
+    expect(projectBoardSource).toContain('text-[14px] font-semibold leading-5');
+    expect(dashboardSource).toContain('text-[11px] leading-[15px] text-dls-text/45');
+    expect(projectBoardSource).toContain('text-[11px] leading-[15px] text-dls-text/45');
+    expect(`${dashboardSource}\n${runtimeDataSource}\n${orchestrationSource}\n${projectBoardSource}\n${workCenterSource}`).not.toContain('text-dls-tertiary');
+    expect(dashboardSource).toContain('border border-dls-border/70 bg-white');
+    expect(runtimeDataSource).toContain('border border-dls-border/70 bg-white');
+    expect(orchestrationSource).toContain('border border-dls-border/70 bg-white');
+    expect(projectBoardSource).toContain('border border-dls-border/70 bg-white');
+    expect(projectBoardSource).not.toContain('hover:shadow-');
+    expect(runtimeDataSource).not.toContain('shadow-[');
   });
 
   test("opens the same plugin authorization dialog in place instead of navigating to settings", () => {

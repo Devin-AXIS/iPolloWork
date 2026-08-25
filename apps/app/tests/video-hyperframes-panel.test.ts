@@ -893,7 +893,8 @@ describe("HyperFrames Video Studio", () => {
       "utf8",
     );
 
-    expect(sessionPageSource).toContain('sidebarVisuallyCollapsed && shellConfig.sidebar ? "!pl-16 mac:!pl-32" : ""');
+    expect(sessionPageSource).toContain('sidebarVisuallyCollapsed && shellConfig.sidebar');
+    expect(sessionPageSource).toContain('ml-12 md:ml-10 mac:ml-28 mac:md:ml-[104px]');
   });
 
   test("preserves the right panel state without leaving a blank condensed gutter", () => {
@@ -1021,7 +1022,7 @@ describe("HyperFrames Video Studio", () => {
     expect(sessionRouteSource).toContain("shouldInjectVideoTaskContext(");
     expect(sessionRouteSource).toContain("videoTaskSystemContext(");
     expect(sessionRouteSource).toContain("draft.capability?.instruction");
-    expect(sessionRouteSource).toContain("[projectSystemContext, envSystemContext, ...videoSystemContexts, ...designSystemContexts, ...authoringSystemContexts, capabilitySystemContext]");
+    expect(sessionRouteSource).toContain("[projectSystemContext, envSystemContext, ...videoSystemContexts, ...designSystemContexts, ...authoringSystemContexts, capabilitySystemContext, languageSystemContext]");
   });
 
   test("gives the agent the same session-scoped project as the Studio", () => {

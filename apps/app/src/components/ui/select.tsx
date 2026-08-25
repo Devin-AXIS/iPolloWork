@@ -3,6 +3,11 @@ import { Select as SelectPrimitive } from "@base-ui/react/select"
 
 import { cn } from "@/lib/utils"
 import { ChevronDownIcon, CheckIcon, ChevronUpIcon } from "lucide-react"
+import {
+  menuDensityClassNames,
+  menuInteractionClassName,
+  menuSurfaceClassName,
+} from "./menu-styles"
 
 const Select = SelectPrimitive.Root
 
@@ -25,7 +30,7 @@ function SelectGroup({ className, ...props }: SelectPrimitive.Group.Props) {
   return (
     <SelectPrimitive.Group
       data-slot="select-group"
-      className={cn(styleScope === "settings" ? "scroll-my-1 p-0" : "scroll-my-1.5 p-1.5", className)}
+      className={cn(styleScope === "settings" ? "scroll-my-1" : "scroll-my-1.5", className)}
       {...props}
     />
   )
@@ -57,7 +62,7 @@ function SelectTrigger({
       className={cn(
         styleScope === "settings"
           ? "group/select flex h-[34px] w-fit items-center justify-between gap-1.5 rounded-[8px] border border-transparent bg-[#f5f6f9] px-3 text-[13px] whitespace-nowrap text-dls-text shadow-none outline-none transition-colors hover:bg-[#f6f7fb] focus-visible:border-[#1FBAC0] focus-visible:ring-2 focus-visible:ring-[#1FBAC0]/20 disabled:cursor-not-allowed disabled:opacity-50 aria-expanded:bg-[#eceef2] data-placeholder:text-dls-secondary dark:bg-white/[0.06] dark:hover:bg-white/[0.09] dark:aria-expanded:bg-white/[0.12] *:data-[slot=select-value]:line-clamp-1 *:data-[slot=select-value]:flex *:data-[slot=select-value]:items-center *:data-[slot=select-value]:gap-1.5 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4"
-          : "group/select flex w-fit items-center justify-between gap-1.5 rounded-3xl border border-border bg-input/50 px-3 py-2 text-ui-control whitespace-nowrap transition-[color,box-shadow,background-color] outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/30 disabled:cursor-not-allowed disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20 data-placeholder:text-muted-foreground data-[size=default]:h-9 data-[size=sm]:h-8 *:data-[slot=select-value]:line-clamp-1 *:data-[slot=select-value]:flex *:data-[slot=select-value]:items-center *:data-[slot=select-value]:gap-1.5 dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+          : "group/select flex w-fit items-center justify-between gap-1.5 rounded-[8px] border border-border bg-input/50 px-3 py-2 text-ui-control whitespace-nowrap transition-[color,box-shadow,background-color] outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/30 disabled:cursor-not-allowed disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20 data-placeholder:text-muted-foreground data-[size=default]:h-9 data-[size=sm]:h-8 *:data-[slot=select-value]:line-clamp-1 *:data-[slot=select-value]:flex *:data-[slot=select-value]:items-center *:data-[slot=select-value]:gap-1.5 dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
         className
       )}
       {...props}
@@ -101,9 +106,12 @@ function SelectContent({
           data-slot="select-content"
           data-align-trigger={alignItemWithTrigger}
           className={cn(
+            "isolate z-50 max-h-(--available-height) origin-(--transform-origin) overflow-x-hidden overflow-y-auto duration-100 data-[align-trigger=true]:animate-none data-[side=bottom]:slide-in-from-top-2 data-[side=inline-end]:slide-in-from-start-2 data-[side=inline-start]:slide-in-from-end-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95 animate-none!",
+            menuSurfaceClassName,
+            menuInteractionClassName,
             styleScope === "settings"
-              ? "isolate z-50 max-h-(--available-height) w-max min-w-(--anchor-width) max-w-[min(320px,var(--available-width))] origin-(--transform-origin) overflow-x-hidden overflow-y-auto rounded-[8px] border border-dls-border bg-white p-1 text-dls-text shadow-[0_8px_24px_rgba(0,0,0,0.12)] duration-100 data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95 dark:bg-[#202226]"
-              : "dark isolate z-50 max-h-(--available-height) w-(--anchor-width) min-w-36 origin-(--transform-origin) overflow-x-hidden overflow-y-auto rounded-3xl text-popover-foreground shadow-lg ring-1 ring-foreground/5 duration-100 data-[align-trigger=true]:animate-none data-[side=bottom]:slide-in-from-top-2 data-[side=inline-end]:slide-in-from-start-2 data-[side=inline-start]:slide-in-from-end-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 dark:ring-foreground/10 data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95 animate-none! relative bg-popover/70 before:pointer-events-none before:absolute before:inset-0 before:-z-1 before:rounded-[inherit] before:backdrop-blur-2xl before:backdrop-saturate-150 **:data-[slot$=-item]:focus:bg-foreground/10 **:data-[slot$=-item]:data-highlighted:bg-foreground/10 **:data-[slot$=-separator]:bg-foreground/5 **:data-[slot$=-trigger]:focus:bg-foreground/10 **:data-[slot$=-trigger]:aria-expanded:bg-foreground/10! **:data-[variant=destructive]:focus:bg-foreground/10! **:data-[variant=destructive]:text-accent-foreground! **:data-[variant=destructive]:**:text-accent-foreground!",
+              ? cn("w-max min-w-(--anchor-width) max-w-[min(320px,var(--available-width))] text-dls-text", menuDensityClassNames.compact.content)
+              : cn("w-(--anchor-width) min-w-36", menuDensityClassNames.default.content),
             className,
           )}
           {...props}
@@ -145,8 +153,8 @@ function SelectItem({
       data-slot="select-item"
       className={cn(
         styleScope === "settings"
-          ? "relative flex h-8 w-full cursor-default items-center gap-2 rounded-[6px] pe-8 ps-2 text-[12px] font-normal text-dls-secondary outline-hidden select-none data-highlighted:bg-[#f6f7fb] data-highlighted:text-dls-text data-disabled:pointer-events-none data-disabled:opacity-50 dark:data-highlighted:bg-white/[0.08] [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4"
-          : "relative flex w-full cursor-default items-center gap-2.5 rounded-2xl py-2 pe-8 ps-3 text-ui-control font-medium outline-hidden select-none focus:bg-accent focus:text-accent-foreground not-data-[variant=destructive]:focus:**:text-accent-foreground data-disabled:pointer-events-none data-disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 *:[span]:last:flex *:[span]:last:items-center *:[span]:last:gap-2",
+          ? cn(menuDensityClassNames.compact.item, "relative flex w-full cursor-default items-center gap-2 pe-8 text-dls-secondary outline-hidden select-none data-highlighted:text-dls-text data-disabled:pointer-events-none data-disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4")
+          : cn(menuDensityClassNames.default.item, "relative flex w-full cursor-default items-center gap-2.5 pe-8 text-ui-control outline-hidden select-none focus:bg-accent focus:text-accent-foreground not-data-[variant=destructive]:focus:**:text-accent-foreground data-disabled:pointer-events-none data-disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 *:[span]:last:flex *:[span]:last:items-center *:[span]:last:gap-2"),
         className
       )}
       {...props}
@@ -188,14 +196,11 @@ function SelectScrollUpButton({
   className,
   ...props
 }: React.ComponentProps<typeof SelectPrimitive.ScrollUpArrow>) {
-  const styleScope = React.useContext(SelectStyleScopeContext)
   return (
     <SelectPrimitive.ScrollUpArrow
       data-slot="select-scroll-up-button"
       className={cn(
-        styleScope === "settings"
-          ? "top-0 z-10 flex w-full cursor-default items-center justify-center bg-white py-1 dark:bg-[#202226] [&_svg:not([class*='size-'])]:size-4"
-          : "top-0 z-10 flex w-full cursor-default items-center justify-center bg-popover py-1 [&_svg:not([class*='size-'])]:size-4",
+        "top-0 z-10 flex w-full cursor-default items-center justify-center bg-transparent py-1 [&_svg:not([class*='size-'])]:size-4",
         className
       )}
       {...props}
@@ -210,14 +215,11 @@ function SelectScrollDownButton({
   className,
   ...props
 }: React.ComponentProps<typeof SelectPrimitive.ScrollDownArrow>) {
-  const styleScope = React.useContext(SelectStyleScopeContext)
   return (
     <SelectPrimitive.ScrollDownArrow
       data-slot="select-scroll-down-button"
       className={cn(
-        styleScope === "settings"
-          ? "bottom-0 z-10 flex w-full cursor-default items-center justify-center bg-white py-1 dark:bg-[#202226] [&_svg:not([class*='size-'])]:size-4"
-          : "bottom-0 z-10 flex w-full cursor-default items-center justify-center bg-popover py-1 [&_svg:not([class*='size-'])]:size-4",
+        "bottom-0 z-10 flex w-full cursor-default items-center justify-center bg-transparent py-1 [&_svg:not([class*='size-'])]:size-4",
         className
       )}
       {...props}
