@@ -332,6 +332,7 @@ export function ReactSessionComposer(props: ComposerProps) {
   const escapeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [emptySubmitHintOpen, setEmptySubmitHintOpen] = useState(false);
   const emptySubmitHintTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const actionPointerSubmittedRef = useRef(false);
 
   const showEmptySubmitHint = useCallback(() => {
     if (emptySubmitHintTimerRef.current) clearTimeout(emptySubmitHintTimerRef.current);
@@ -393,6 +394,25 @@ export function ReactSessionComposer(props: ComposerProps) {
     }
     void props.onSend();
   }, [canSend, props.busy, props.onSend, props.onQueue, showEmptySubmitHint]);
+
+  const runComposerAction = useCallback(() => {
+    void handleEditorSubmit();
+  }, [handleEditorSubmit]);
+
+  const handleActionPointerDown: React.PointerEventHandler<HTMLButtonElement> = (event) => {
+    if (event.button !== 0 || props.disabled) return;
+    event.preventDefault();
+    actionPointerSubmittedRef.current = true;
+    runComposerAction();
+  };
+
+  const handleActionClick = () => {
+    if (actionPointerSubmittedRef.current) {
+      actionPointerSubmittedRef.current = false;
+      return;
+    }
+    runComposerAction();
+  };
 
   const slashCommandQuery = getSlashCommandQuery(props.draft);
   const slashOpenNext = slashCommandQuery !== null;
@@ -1698,7 +1718,8 @@ export function ReactSessionComposer(props: ComposerProps) {
                     </button>
                     <button
                       type="button"
-                      onClick={canSend ? props.onQueue : undefined}
+                      onPointerDown={canSend ? handleActionPointerDown : undefined}
+                      onClick={canSend ? handleActionClick : undefined}
                       disabled={!canSend}
                       aria-label={t("composer.queue")}
                       className={`relative inline-flex h-8 max-h-8 w-8 shrink-0 items-center justify-center rounded-full transition-colors ${
@@ -1722,7 +1743,8 @@ export function ReactSessionComposer(props: ComposerProps) {
                       render={(
                         <button
                           type="button"
-                          onClick={canSend ? props.onSend : showEmptySubmitHint}
+                          onPointerDown={handleActionPointerDown}
+                          onClick={handleActionClick}
                           disabled={props.disabled}
                           className={`inline-flex h-8 max-h-8 w-8 items-center justify-center rounded-full transition-colors ${
                             props.disabled
