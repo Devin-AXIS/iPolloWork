@@ -1,3 +1,4 @@
+import { openCodeZenPublicModelName } from "@ipollowork/types/opencode-zen-public-models";
 import type { Part, Session } from "@opencode-ai/sdk/v2/client";
 import { t } from "../../i18n";
 import type {
@@ -126,6 +127,8 @@ export const FRIENDLY_MODEL_LABELS: [pattern: string, label: string][] = [
  */
 export function resolveModelDisplayName(modelID: string): string {
   const normalized = modelID.trim().toLowerCase();
+  const openCodeZenName = openCodeZenPublicModelName(normalized);
+  if (openCodeZenName) return openCodeZenName;
   for (const [pattern, label] of FRIENDLY_MODEL_LABELS) {
     if (normalized.includes(pattern)) return label;
   }

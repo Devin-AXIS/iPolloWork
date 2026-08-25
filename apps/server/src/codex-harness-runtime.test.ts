@@ -8,12 +8,14 @@ import { dirname, join } from "node:path";
 import {
   serializeSharedProviderProfile,
   sharedProviderCredentialEnvKey,
+  sharedProviderDisconnectedEnvKey,
   sharedProviderProfileEnvKey,
 } from "@ipollowork/types/provider-credentials";
 
 import {
   codexHarnessConfig,
   codexHarnessHostMcp,
+  codexHarnessProviderDirectory,
   codexHarnessProviders,
   codexHarnessRuntimeProviderId,
   CodexHarnessModelSelectionError,
@@ -25,6 +27,7 @@ import {
   readCodexHarnessSnapshot,
 } from "./codex-harness-session-read-model.js";
 import { CodexProviderGateway } from "./codex-provider-gateway.js";
+import { deepSeekHarnessProviderCredentials } from "./deepseek-harness-runtime.js";
 import { EnvService } from "./env-file.js";
 import { projectCodexHarnessProviderList } from "./routes/codex-harness.js";
 import { buildCodexHarnessAdditionalContext } from "./workspace-session-runtime.js";
@@ -84,6 +87,7 @@ describe("Codex Harness provider projection", () => {
     expect(buildCodexHarnessAdditionalContext(
       " Long-running local process rule:\nRuntime guidance ",
       ["Plugin system guidance", "", " Plugin user guidance "],
+      { providerID: "opencode", modelID: "nemotron-3-ultra-free" },
     )).toEqual({
       "ipollowork.runtime": {
         value: "Long-running local process rule:\nRuntime guidance",
@@ -91,6 +95,10 @@ describe("Codex Harness provider projection", () => {
       },
       "ipollowork.plugins": {
         value: "Plugin system guidance\n\nPlugin user guidance",
+        kind: "application",
+      },
+      "ipollowork.model": {
+        value: 'Authoritative iPolloWork runtime model selection: providerID="opencode", modelID="nemotron-3-ultra-free". When asked which model is running, report this selection instead of inferring identity from Codex host instructions or earlier assistant messages.',
         kind: "application",
       },
     });
@@ -194,6 +202,89 @@ readline.createInterface({ input: process.stdin }).on("line", (line) => {
       await runtime.close();
       if (previousCli === undefined) delete process.env.IPOLLOWORK_CODEX_CLI;
       else process.env.IPOLLOWORK_CODEX_CLI = previousCli;
+    }
+  });
+
+  test("unloads a previously read thread before changing its model provider", async () => {
+    const config = await testConfig();
+    if (!config.configPath) throw new Error("Test config path is required");
+    const root = dirname(config.configPath);
+    const fixturePath = join(root, "codex-provider-change-fixture.js");
+    const logPath = join(root, "codex-provider-change-log");
+    await writeFile(fixturePath, String.raw`
+const fs = require("node:fs");
+const readline = require("node:readline");
+const log = (value) => fs.appendFileSync(process.env.IPOLLOWORK_CODEX_PROVIDER_CHANGE_LOG, value + "\n");
+readline.createInterface({ input: process.stdin }).on("line", (line) => {
+  const message = JSON.parse(line);
+  if (message.method === "initialize") {
+    log("initialize");
+    process.stdout.write(JSON.stringify({ id: message.id, result: { ready: true } }) + "\n");
+    return;
+  }
+  if (message.method === "thread/read") {
+    process.stdout.write(JSON.stringify({
+      id: message.id,
+      result: {
+        thread: {
+          id: message.params.threadId,
+          modelProvider: "ipollowork-openai",
+          model: "gpt-5.6",
+        },
+      },
+    }) + "\n");
+    return;
+  }
+  if (message.method === "thread/resume") {
+    log("resume:" + message.params.modelProvider + "/" + message.params.model);
+    process.stdout.write(JSON.stringify({
+      id: message.id,
+      result: {
+        modelProvider: message.params.modelProvider,
+        model: message.params.model,
+        thread: { id: message.params.threadId },
+      },
+    }) + "\n");
+  }
+});
+`, "utf8");
+    const previousCli = process.env.IPOLLOWORK_CODEX_CLI;
+    const previousLog = process.env.IPOLLOWORK_CODEX_PROVIDER_CHANGE_LOG;
+    process.env.IPOLLOWORK_CODEX_CLI = fixturePath;
+    process.env.IPOLLOWORK_CODEX_PROVIDER_CHANGE_LOG = logPath;
+    const runtime = new CodexHarnessRuntime({
+      config,
+      env: new EnvService({ path: join(root, "env.json") }),
+      workspace: {
+        id: "codex-provider-change",
+        name: "Codex provider change",
+        path: root,
+        preset: "starter",
+        workspaceType: "local",
+        engineId: "codex-harness",
+      },
+    });
+
+    try {
+      await runtime.call("thread/read", { threadId: "thread-1", includeTurns: false });
+      await runtime.resumeThread({
+        threadId: "thread-1",
+        cwd: root,
+        modelProvider: "ipollowork-opencode",
+        model: "nemotron-3-ultra-free",
+      });
+
+      expect((await readFile(logPath, "utf8")).trim().split("\n")).toEqual([
+        "initialize",
+        "initialize",
+        "resume:ipollowork-opencode/nemotron-3-ultra-free",
+      ]);
+    } finally {
+      await runtime.close();
+      if (previousCli === undefined) delete process.env.IPOLLOWORK_CODEX_CLI;
+      else process.env.IPOLLOWORK_CODEX_CLI = previousCli;
+      if (previousLog === undefined) delete process.env.IPOLLOWORK_CODEX_PROVIDER_CHANGE_LOG;
+      else process.env.IPOLLOWORK_CODEX_PROVIDER_CHANGE_LOG = previousLog;
     }
   });
 
@@ -375,7 +466,7 @@ readline.createInterface({ input: process.stdin }).on("line", (line) => {
     }
   });
 
-  test("replaces an unmaterialized empty thread when its provider changes", async () => {
+  test("replaces unmaterialized empty threads reported before or during resume", async () => {
     const config = await testConfig();
     if (!config.configPath) throw new Error("Test config path is required");
     const root = dirname(config.configPath);
@@ -393,6 +484,16 @@ readline.createInterface({ input: process.stdin }).on("line", (line) => {
   }
   log(message.method);
   if (message.method === "thread/resume") {
+    if (message.params.threadId === "missing-rollout") {
+      process.stdout.write(JSON.stringify({
+        id: message.id,
+        error: {
+          code: -32602,
+          message: "no rollout found for thread id missing-rollout",
+        },
+      }) + "\n");
+      return;
+    }
     process.stdout.write(JSON.stringify({
       id: message.id,
       result: {
@@ -416,7 +517,7 @@ readline.createInterface({ input: process.stdin }).on("line", (line) => {
   if (message.method === "thread/read") {
     process.stdout.write(JSON.stringify({
       id: message.id,
-      result: { thread: { id: "empty-old", name: "恒生银行演示" } },
+      result: { thread: { id: message.params.threadId, name: "恒生银行演示" } },
     }) + "\n");
     return;
   }
@@ -466,6 +567,23 @@ readline.createInterface({ input: process.stdin }).on("line", (line) => {
         "initialized",
         "thread/resume",
         "thread/read",
+        "thread/read",
+        "thread/start",
+        "thread/name/set",
+        "thread/delete",
+      ]);
+      await expect(runtime.resumeThread({
+        threadId: "missing-rollout",
+        cwd: root,
+        modelProvider: "ipollowork-opencode",
+        model: "nemotron-3.5-lightning-free",
+      })).resolves.toMatchObject({
+        modelProvider: "ipollowork-opencode",
+        model: "nemotron-3.5-lightning-free",
+        thread: { id: "empty-replacement" },
+      });
+      expect((await readFile(logPath, "utf8")).trim().split("\n").slice(-5)).toEqual([
+        "thread/resume",
         "thread/read",
         "thread/start",
         "thread/name/set",
@@ -629,7 +747,14 @@ readline.createInterface({ input: process.stdin }).on("line", (line) => {
     });
 
     expect(providers.map((provider) => provider.id)).toEqual(["opencode"]);
-    expect(providers[0]?.models.map((model) => model.id)).toEqual(["big-pickle"]);
+    expect(providers[0]?.models.map((model) => model.id)).toEqual([
+      "big-pickle",
+      "hy3-free",
+      "mimo-v2.5-free",
+      "nemotron-3-ultra-free",
+      "nemotron-3.5-lightning-free",
+      "x-preview-f-free",
+    ]);
   });
 
   test("namespaces configured providers instead of overriding Codex built-ins", () => {
@@ -707,6 +832,84 @@ readline.createInterface({ input: process.stdin }).on("line", (line) => {
     expect(result.default).toEqual({ openai: "gpt-configured" });
   });
 
+  test("keeps supported account providers visible when their credentials need reconnecting", () => {
+    const records = [
+      {
+        key: sharedProviderProfileEnvKey("openai"),
+        value: serializeSharedProviderProfile({
+          schemaVersion: 1,
+          providerId: "openai",
+          displayName: "OpenAI",
+          models: [{ id: "gpt-5.6-sol", name: "GPT-5.6 Sol" }],
+        }),
+      },
+      {
+        key: sharedProviderProfileEnvKey("acme-compatible"),
+        value: serializeSharedProviderProfile({
+          schemaVersion: 1,
+          providerId: "acme-compatible",
+          displayName: "Acme Compatible",
+          api: "openai-completions",
+          baseURL: "https://models.acme.test/v1",
+          models: [{ id: "acme-chat", name: "Acme Chat" }],
+        }),
+      },
+    ];
+    const directory = codexHarnessProviderDirectory({
+      records,
+      providers: [{
+        id: "opencode",
+        name: "iPolloWork Built-in Models",
+        api: "openai-responses",
+        baseURL: "https://opencode.ai/zen/v1",
+        apiKey: "public",
+        models: [{ id: "big-pickle", name: "Big Pickle" }],
+      }],
+    });
+    const result = projectCodexHarnessProviderList(
+      directory.all,
+      [],
+      directory.connected,
+    );
+
+    expect(directory.all.map((provider) => provider.id)).toEqual([
+      "opencode",
+      "openai",
+      "acme-compatible",
+    ]);
+    expect(result.connected).toEqual(["opencode"]);
+    expect(Object.keys(result.all.find((provider) => provider.id === "openai")?.models ?? {}))
+      .toEqual(["gpt-5.6-sol"]);
+  });
+
+  test("removes an explicitly disconnected provider from the Codex directory", async () => {
+    const config = await testConfig();
+    const records = [
+      { key: sharedProviderCredentialEnvKey("openai"), value: "sk-openai" },
+      {
+        key: sharedProviderProfileEnvKey("openai"),
+        value: serializeSharedProviderProfile({
+          schemaVersion: 1,
+          providerId: "openai",
+          displayName: "OpenAI",
+          api: "openai-responses",
+          baseURL: "https://api.openai.com/v1",
+          models: [{ id: "gpt-5.6-sol", name: "GPT-5.6 Sol" }],
+        }),
+      },
+      { key: sharedProviderDisconnectedEnvKey("openai"), value: "1" },
+    ];
+    const providers = await codexHarnessProviders({
+      config,
+      records,
+      openAiCodexOAuth: { accessToken: "official-token" },
+    });
+    const directory = codexHarnessProviderDirectory({ records, providers });
+
+    expect(providers.map((provider) => provider.id)).not.toContain("openai");
+    expect(directory.all.map((provider) => provider.id)).not.toContain("openai");
+  });
+
   test("projects every configured provider protocol and public built-in models", async () => {
     const config = await testConfig();
     const records = [
@@ -721,7 +924,10 @@ readline.createInterface({ input: process.stdin }).on("line", (line) => {
           models: [
             { id: "north-mini-code-free", name: "North Mini Code Free" },
             { id: "deepseek-v4-flash-free", name: "DeepSeek V4 Flash Free" },
+            { id: "laguna-s-2.1-free", name: "Laguna S 2.1 Free" },
+            { id: "ling-3.0-flash-free", name: "Ling 3.0 Flash Free" },
             { id: "big-pickle", name: "Big Pickle" },
+            { id: "x-preview-f-free", name: "Ox Alpha Free" },
             { id: "paid-model", name: "Paid model" },
           ],
         }),
@@ -754,8 +960,18 @@ readline.createInterface({ input: process.stdin }).on("line", (line) => {
 
     const providers = await codexHarnessProviders({ config, records });
     expect(providers.map((provider) => provider.id)).toEqual(["opencode", "openai", "chat-only"]);
-    expect(providers[0]?.models.map((model) => model.id)).toEqual(["big-pickle", "deepseek-v4-flash-free"]);
+    expect(providers[0]?.models.map((model) => model.id)).toEqual([
+      "big-pickle",
+      "hy3-free",
+      "mimo-v2.5-free",
+      "nemotron-3-ultra-free",
+      "nemotron-3.5-lightning-free",
+      "x-preview-f-free",
+    ]);
+    expect(providers[0]?.models.find((model) => model.id === "x-preview-f-free"))
+      .toEqual({ id: "x-preview-f-free", name: "Ox Alpha Free" });
     expect(providers[0]?.upstream).toMatchObject({ protocol: "openai-completions" });
+    expect(providers[0]?.upstream?.httpHeaders).toEqual({ "User-Agent": "opencode/ipollowork" });
     expect(providers[1]).toMatchObject({
       api: "openai-responses",
       apiKey: "sk-openai",
@@ -770,6 +986,67 @@ readline.createInterface({ input: process.stdin }).on("line", (line) => {
         apiKey: "chat-key",
       },
     });
+
+    // The account record is the source of truth. A DSH binary (downloaded or
+    // official) consumes the same provider IDs and secrets without a second
+    // engine-specific connection.
+    const deepSeekCredentials = deepSeekHarnessProviderCredentials(records);
+    expect(deepSeekCredentials.get("openai")?.apiKey).toBe("sk-openai");
+    expect(deepSeekCredentials.get("chat-only")?.apiKey).toBe("chat-key");
+  });
+
+  test("routes native account providers that were saved before portable metadata existed", async () => {
+    const config = await testConfig();
+    const providerCases = [
+      ["deepseek-official", "DeepSeek", "deepseek-v4-flash"],
+      ["anthropic", "Anthropic", "claude-sonnet"],
+      ["google", "Google", "gemini-pro"],
+      ["xai", "xAI", "grok-code"],
+    ] as const;
+    const records = providerCases.flatMap(([providerId, displayName, modelId]) => [
+      { key: sharedProviderCredentialEnvKey(providerId), value: `${providerId}-key` },
+      {
+        key: sharedProviderProfileEnvKey(providerId),
+        value: serializeSharedProviderProfile({
+          schemaVersion: 1,
+          providerId,
+          displayName,
+          models: [{ id: modelId }],
+        }),
+      },
+    ]);
+    records.push(
+      { key: sharedProviderCredentialEnvKey("dynamic-cloud"), value: "dynamic-key" },
+      {
+        key: sharedProviderProfileEnvKey("dynamic-cloud"),
+        value: serializeSharedProviderProfile({
+          schemaVersion: 1,
+          providerId: "dynamic-cloud",
+          displayName: "Dynamic cloud",
+          models: [{ id: "dynamic-model" }],
+        }),
+      },
+    );
+
+    const providers = await codexHarnessProviders({ config, records });
+    expect(providers.map((provider) => provider.id)).toEqual([
+      "opencode",
+      "deepseek-official",
+      "anthropic",
+      "google",
+      "xai",
+    ]);
+    expect(providers.find((provider) => provider.id === "deepseek-official")?.upstream)
+      .toMatchObject({ protocol: "openai-completions", baseURL: "https://api.deepseek.com" });
+    expect(providers.find((provider) => provider.id === "anthropic")?.upstream)
+      .toMatchObject({ protocol: "anthropic-messages", baseURL: "https://api.anthropic.com" });
+    expect(providers.find((provider) => provider.id === "google")?.upstream)
+      .toMatchObject({
+        protocol: "openai-completions",
+        baseURL: "https://generativelanguage.googleapis.com/v1beta/openai",
+      });
+    expect(providers.find((provider) => provider.id === "xai")?.upstream).toBeUndefined();
+    expect(providers.some((provider) => provider.id === "dynamic-cloud")).toBe(false);
   });
 
   test("projects the shared OpenAI OAuth session into Codex Harness", async () => {
@@ -845,6 +1122,11 @@ describe("Codex provider protocol gateway", () => {
   test("translates Responses requests to OpenAI chat completions and back", async () => {
     let receivedPath = "";
     let receivedAuthorization = "";
+    let receivedUserAgent = "";
+    let receivedOpenCodeProject = "";
+    let receivedOpenCodeSession = "";
+    let receivedOpenCodeRequest = "";
+    let receivedOpenCodeClient = "";
     const receivedBodies: Record<string, unknown>[] = [];
     const upstream = createServer((request, response) => {
       const chunks: Buffer[] = [];
@@ -852,6 +1134,11 @@ describe("Codex provider protocol gateway", () => {
       request.on("end", () => {
         receivedPath = request.url ?? "";
         receivedAuthorization = request.headers.authorization ?? "";
+        receivedUserAgent = request.headers["user-agent"] ?? "";
+        receivedOpenCodeProject = String(request.headers["x-opencode-project"] ?? "");
+        receivedOpenCodeSession = String(request.headers["x-opencode-session"] ?? "");
+        receivedOpenCodeRequest = String(request.headers["x-opencode-request"] ?? "");
+        receivedOpenCodeClient = String(request.headers["x-opencode-client"] ?? "");
         const received: unknown = JSON.parse(Buffer.concat(chunks).toString("utf8"));
         if (isRecord(received)) receivedBodies.push(received);
         response.writeHead(200, { "content-type": "application/json" });
@@ -891,12 +1178,16 @@ describe("Codex provider protocol gateway", () => {
     const gateway = new CodexProviderGateway();
     try {
       const routes = await gateway.configure([{
-        providerId: "chat-only",
+        providerId: "opencode",
         protocol: "openai-completions",
         baseURL: `http://127.0.0.1:${address.port}/v1`,
         apiKey: "upstream-key",
+        httpHeaders: {
+          "User-Agent": "opencode/ipollowork",
+          "x-opencode-project": "workspace-test",
+        },
       }]);
-      const route = routes.get("chat-only");
+      const route = routes.get("opencode");
       if (!route) throw new Error("Gateway route was not created");
       const response = await fetch(`${route.baseURL}/responses`, {
         method: "POST",
@@ -922,6 +1213,11 @@ describe("Codex provider protocol gateway", () => {
       expect(response.status).toBe(200);
       expect(receivedPath).toBe("/v1/chat/completions");
       expect(receivedAuthorization).toBe("Bearer upstream-key");
+      expect(receivedUserAgent).toBe("opencode/ipollowork");
+      expect(receivedOpenCodeProject).toBe("workspace-test");
+      expect(receivedOpenCodeSession).toMatch(/^ses_[0-9a-f]{24}$/u);
+      expect(receivedOpenCodeRequest).toMatch(/^msg_[0-9a-f]{24}$/u);
+      expect(receivedOpenCodeClient).toBe("ipollowork");
       expect(receivedBodies[0]).toMatchObject({
         model: "chat-model",
         stream: false,
@@ -1030,6 +1326,142 @@ describe("Codex provider protocol gateway", () => {
           { role: "user" },
         ],
       });
+    } finally {
+      await gateway.close();
+    }
+  });
+
+  test("keeps Ox Alpha on the public Zen route without session affinity", async () => {
+    let receivedSession: string | undefined;
+    let receivedModel = "";
+    let receivedTools = false;
+    const upstream = createServer((request, response) => {
+      const chunks: Buffer[] = [];
+      request.on("data", (chunk) => chunks.push(Buffer.from(chunk)));
+      request.on("end", () => {
+        receivedSession = request.headers["x-opencode-session"] as string | undefined;
+        const body: unknown = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+        if (isRecord(body)) {
+          receivedModel = String(body.model ?? "");
+          receivedTools = Array.isArray(body.tools) && body.tools.length > 0;
+        }
+        response.writeHead(200, { "content-type": "application/json" });
+        response.end(JSON.stringify({
+          choices: [{ message: { role: "assistant", content: "OK" } }],
+          usage: { prompt_tokens: 1, completion_tokens: 1 },
+        }));
+      });
+    });
+    servers.push(upstream);
+    await new Promise<void>((resolve, reject) => {
+      upstream.once("error", reject);
+      upstream.listen(0, "127.0.0.1", () => resolve());
+    });
+    const address = upstream.address();
+    if (!address || typeof address === "string") throw new Error("Mock provider failed to bind");
+
+    const gateway = new CodexProviderGateway();
+    try {
+      const routes = await gateway.configure([{
+        providerId: "opencode",
+        protocol: "openai-completions",
+        baseURL: `http://127.0.0.1:${address.port}/v1`,
+        apiKey: "public",
+      }]);
+      const route = routes.get("opencode");
+      if (!route) throw new Error("Gateway route was not created");
+      const response = await fetch(`${route.baseURL}/responses`, {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${route.apiKey}`,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          model: "x-preview-f-free",
+          input: [{ role: "user", content: [{ type: "input_text", text: "Reply exactly OK" }] }],
+          tools: [{
+            type: "function",
+            name: "noop",
+            parameters: { type: "object", properties: {} },
+          }],
+          stream: true,
+        }),
+      });
+
+      expect(response.status).toBe(200);
+      expect(await response.text()).toContain("OK");
+      expect(receivedModel).toBe("x-preview-f-free");
+      expect(receivedTools).toBe(true);
+      expect(receivedSession).toBeUndefined();
+    } finally {
+      await gateway.close();
+    }
+  });
+
+  test("targets the versioned Anthropic messages endpoint", async () => {
+    const receivedPaths: string[] = [];
+    let receivedApiKey = "";
+    const upstream = createServer((request, response) => {
+      const chunks: Buffer[] = [];
+      request.on("data", (chunk) => chunks.push(Buffer.from(chunk)));
+      request.on("end", () => {
+        receivedPaths.push(request.url ?? "");
+        receivedApiKey = String(request.headers["x-api-key"] ?? "");
+        response.writeHead(200, { "content-type": "application/json" });
+        response.end(JSON.stringify({
+          content: [{ type: "text", text: "Anthropic-compatible response" }],
+          usage: { input_tokens: 3, output_tokens: 4 },
+        }));
+      });
+    });
+    servers.push(upstream);
+    await new Promise<void>((resolve, reject) => {
+      upstream.once("error", reject);
+      upstream.listen(0, "127.0.0.1", () => resolve());
+    });
+    const address = upstream.address();
+    if (!address || typeof address === "string") throw new Error("Mock provider failed to bind");
+
+    const gateway = new CodexProviderGateway();
+    try {
+      const routes = await gateway.configure([
+        {
+          providerId: "anthropic-root",
+          protocol: "anthropic-messages",
+          baseURL: `http://127.0.0.1:${address.port}/anthropic`,
+          apiKey: "anthropic-key",
+        },
+        {
+          providerId: "anthropic-versioned",
+          protocol: "anthropic-messages",
+          baseURL: `http://127.0.0.1:${address.port}/already/v1`,
+          apiKey: "anthropic-key",
+        },
+      ]);
+      const streams: string[] = [];
+      for (const providerId of ["anthropic-root", "anthropic-versioned"]) {
+        const route = routes.get(providerId);
+        if (!route) throw new Error("Gateway route was not created");
+        const response = await fetch(`${route.baseURL}/responses`, {
+          method: "POST",
+          headers: {
+            authorization: `Bearer ${route.apiKey}`,
+            "content-type": "application/json",
+          },
+          body: JSON.stringify({
+            model: "claude-compatible",
+            input: [{ role: "user", content: [{ type: "input_text", text: "Hello" }] }],
+            stream: true,
+          }),
+        });
+        expect(response.status).toBe(200);
+        streams.push(await response.text());
+      }
+
+      expect(receivedPaths).toEqual(["/anthropic/v1/messages", "/already/v1/messages"]);
+      expect(receivedApiKey).toBe("anthropic-key");
+      expect(streams.every((stream) => stream.includes("Anthropic-compatible response"))).toBe(true);
+      expect(streams.every((stream) => stream.includes("response.completed"))).toBe(true);
     } finally {
       await gateway.close();
     }

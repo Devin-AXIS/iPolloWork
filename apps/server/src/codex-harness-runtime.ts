@@ -6,15 +6,18 @@ import { join } from "node:path";
 import { createOpencodeClient } from "@opencode-ai/sdk/v2/client";
 
 import {
+  sharedProviderDisconnectedIdsFromEnvKeys,
   sharedProviderProfiles,
+  sharedProviderRuntimeRoute,
   type SharedProviderModelProfile,
+  type SharedProviderProtocol,
 } from "@ipollowork/types/provider-credentials";
+import { openCodeZenPublicModels } from "@ipollowork/types/opencode-zen-public-models";
 import { CODEX_HARNESS_ENGINE_ID, DEFAULT_ENGINE_ID } from "@ipollowork/types/workspace";
 
 import type { EnvService } from "./env-file.js";
 import {
   CodexProviderGateway,
-  type CodexProviderGatewayProtocol,
   type CodexProviderGatewayUpstream,
 } from "./codex-provider-gateway.js";
 import { resolveWorkspaceOpencodeConnection } from "./opencode-connection.js";
@@ -52,6 +55,16 @@ export type CodexHarnessProvider = {
   upstream?: CodexProviderGatewayUpstream;
 };
 
+export type CodexHarnessProviderCatalogItem = Pick<
+  CodexHarnessProvider,
+  "id" | "name" | "models"
+>;
+
+export type CodexHarnessProviderDirectory = {
+  all: CodexHarnessProviderCatalogItem[];
+  connected: string[];
+};
+
 export type CodexHarnessEvent = StdioJsonRpcEvent;
 
 const OPENCODE_PROVIDER: Omit<CodexHarnessProvider, "models"> = {
@@ -67,17 +80,7 @@ type AccountProviderCatalog = Map<string, {
   models: SharedProviderModelProfile[];
 }>;
 
-type SharedProviderProtocol = ProviderProtocol | CodexProviderGatewayProtocol;
-
-const PROVIDER_DEFAULTS: Record<string, { api: SharedProviderProtocol; baseURL: string }> = {
-  openai: { api: "openai-responses", baseURL: "https://api.openai.com/v1" },
-};
-
 const OPENAI_CODEX_OAUTH_BASE_URL = "https://chatgpt.com/backend-api/codex";
-const UNSUPPORTED_CODEX_HARNESS_OPENCODE_MODELS = new Set([
-  "north-mini-code-free",
-]);
-
 function tomlString(value: string): string {
   return JSON.stringify(value);
 }
@@ -118,21 +121,12 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function publicOpenCodeModel(model: SharedProviderModelProfile): boolean {
-  return (
-    !UNSUPPORTED_CODEX_HARNESS_OPENCODE_MODELS.has(model.id) &&
-    (model.id === "big-pickle" || model.id.endsWith("-free"))
-  );
-}
-
 function codexHarnessOpenCodeModels(models: SharedProviderModelProfile[]): SharedProviderModelProfile[] {
-  return models
-    .filter(publicOpenCodeModel)
-    .sort((left, right) => {
-      if (left.id === "big-pickle") return -1;
-      if (right.id === "big-pickle") return 1;
-      return 0;
-    });
+  const discovered = new Map(models.map((model) => [model.id, model]));
+  return openCodeZenPublicModels().map((profile) => {
+    const model = discovered.get(profile.id);
+    return model ? { ...model, name: profile.name } : profile;
+  });
 }
 
 async function readAccountProviderCatalog(config: ServerConfig): Promise<AccountProviderCatalog> {
@@ -190,13 +184,16 @@ export async function codexHarnessProviders(input: {
       protocol: "openai-completions",
       baseURL: OPENCODE_PROVIDER.baseURL,
       apiKey: OPENCODE_PROVIDER.apiKey,
+      // Preserve the OpenCode client identity while the gateway applies each
+      // model's session-affinity compatibility from the shared Zen roster.
+      httpHeaders: { "User-Agent": "opencode/ipollowork" },
     },
   });
 
   for (const [providerId, apiKey] of credentials) {
     const profile = profiles.get(providerId);
     const runtimeProfile = runtimeProfiles.get(providerId);
-    const defaults = PROVIDER_DEFAULTS[providerId];
+    const defaults = sharedProviderRuntimeRoute(providerId);
     const api = normalizeProviderApi(profile?.api)
       ?? normalizeProviderApi(runtimeProfile?.api)
       ?? defaults?.api;
@@ -253,6 +250,48 @@ export async function codexHarnessProviders(input: {
     });
   }
   return [...providers.values()];
+}
+
+/**
+ * Describe every account provider that Codex Harness knows how to route,
+ * including providers whose credential is currently unavailable. Runtime
+ * configuration still receives only `connected` providers with usable
+ * secrets; this directory exists so clients can keep configured models
+ * visible and offer a reconnect action instead of silently hiding them.
+ */
+export function codexHarnessProviderDirectory(input: {
+  records: ReadonlyArray<{ key: string; value: string }>;
+  providers: readonly CodexHarnessProvider[];
+  catalog?: AccountProviderCatalog;
+}): CodexHarnessProviderDirectory {
+  const profiles = sharedProviderProfiles(input.records);
+  const all = new Map<string, CodexHarnessProviderCatalogItem>(
+    input.providers.map((provider) => [provider.id, {
+      id: provider.id,
+      name: provider.name,
+      models: provider.models,
+    }]),
+  );
+
+  for (const [providerId, profile] of profiles) {
+    if (all.has(providerId)) continue;
+    const defaults = sharedProviderRuntimeRoute(providerId);
+    const api = normalizeProviderApi(profile.api) ?? defaults?.api;
+    const baseURL = profile.baseURL ?? defaults?.baseURL;
+    const catalogProvider = input.catalog?.get(providerId);
+    const models = profile.models.length ? profile.models : catalogProvider?.models ?? [];
+    if (!api || !baseURL || models.length === 0) continue;
+    all.set(providerId, {
+      id: providerId,
+      name: profile.displayName || catalogProvider?.name || providerId,
+      models,
+    });
+  }
+
+  return {
+    all: [...all.values()],
+    connected: input.providers.map((provider) => provider.id),
+  };
 }
 
 function codexMcpConfig(name: string, value: Record<string, unknown>): string[] {
@@ -349,9 +388,13 @@ export class CodexHarnessModelSelectionError extends Error {
 }
 
 export function isCodexUnmaterializedThreadError(error: unknown): boolean {
-  return error instanceof StdioJsonRpcError
-    && error.message.includes("not materialized yet")
-    && error.message.includes("includeTurns is unavailable before first user message");
+  if (!(error instanceof StdioJsonRpcError)) return false;
+  const message = error.message.toLowerCase();
+  return message.includes("no rollout found for thread id")
+    || (
+      message.includes("not materialized yet")
+      && message.includes("includeturns is unavailable before first user message")
+    );
 }
 
 type AttachedThreadSelection = {
@@ -408,6 +451,16 @@ export class CodexHarnessRuntime {
     };
     const attached = this.#attachedThreadSelections.get(input.threadId);
     if (!options.force && attached?.provider === requested.provider && attached.model === requested.model) return null;
+    if (
+      attached?.provider
+      && requested.provider
+      && attached.provider !== requested.provider
+    ) {
+      // Codex cannot reliably switch providers on an already-running thread.
+      // Unload the in-memory thread first so thread/resume applies the explicit
+      // provider/model pair while reconstructing it from persisted history.
+      await this.#stopProcess();
+    }
     try {
       return await this.#callWithVerifiedSelection("thread/resume", { ...input });
     } catch (error) {
@@ -420,6 +473,12 @@ export class CodexHarnessRuntime {
     const { providers } = await this.#readSourceProviders();
     this.#providers = providers;
     return providers;
+  }
+
+  async providerDirectory(): Promise<CodexHarnessProviderDirectory> {
+    const { catalog, providers, records } = await this.#readSourceProviders();
+    this.#providers = providers;
+    return codexHarnessProviderDirectory({ records, providers, catalog });
   }
 
   async respond(id: string | number, result: unknown): Promise<void> {
@@ -481,15 +540,23 @@ export class CodexHarnessRuntime {
     input: Record<string, unknown>,
   ): Promise<T> {
     let process = await this.#ensureStarted();
-    let result = await process.call<T>(method, input);
+    let result: T;
+    try {
+      result = await process.call<T>(method, input);
+    } catch (error) {
+      if (method !== "thread/resume" || !isCodexUnmaterializedThreadError(error)) throw error;
+      const replacement = await this.#replaceUnmaterializedThread<T>(process, input, true);
+      if (replacement) return replacement;
+      throw error;
+    }
     if (!this.#selectionMismatch(input, result)) {
       this.#rememberThreadProvider(method, input, result);
       return result;
     }
 
     if (method === "thread/resume") {
-      const replacement = await this.#replaceUnmaterializedThread(process, input);
-      if (replacement) return replacement as T;
+      const replacement = await this.#replaceUnmaterializedThread<T>(process, input);
+      if (replacement) return replacement;
     }
 
     // Codex rejoins an already-loaded thread without applying a different
@@ -508,17 +575,20 @@ export class CodexHarnessRuntime {
     return result;
   }
 
-  async #replaceUnmaterializedThread(
+  async #replaceUnmaterializedThread<T extends Record<string, unknown>>(
     process: StdioJsonRpcProcess,
     input: Record<string, unknown>,
-  ): Promise<Record<string, unknown> | null> {
+    confirmed = false,
+  ): Promise<T | null> {
     const threadId = typeof input.threadId === "string" ? input.threadId.trim() : "";
     if (!threadId) return null;
-    try {
-      await process.call("thread/read", { threadId, includeTurns: true });
-      return null;
-    } catch (error) {
-      if (!isCodexUnmaterializedThreadError(error)) return null;
+    if (!confirmed) {
+      try {
+        await process.call("thread/read", { threadId, includeTurns: true });
+        return null;
+      } catch (error) {
+        if (!isCodexUnmaterializedThreadError(error)) return null;
+      }
     }
 
     const metadata = await process.call<{ thread?: Record<string, unknown> }>("thread/read", {
@@ -526,7 +596,7 @@ export class CodexHarnessRuntime {
       includeTurns: false,
     }).catch(() => null);
     const previousThread = metadata && isRecord(metadata.thread) ? metadata.thread : null;
-    const replacement = await this.#callWithVerifiedSelection<Record<string, unknown>>("thread/start", {
+    const replacement = await this.#callWithVerifiedSelection<T>("thread/start", {
       ...(typeof input.cwd === "string" ? { cwd: input.cwd } : {}),
       ...(typeof input.modelProvider === "string" ? { modelProvider: input.modelProvider } : {}),
       ...(typeof input.model === "string" ? { model: input.model } : {}),
@@ -573,6 +643,28 @@ export class CodexHarnessRuntime {
     const input = isRecord(params) ? params : null;
     if (method === "thread/delete" || method === "thread/archive") {
       if (typeof input?.threadId === "string") this.#attachedThreadSelections.delete(input.threadId);
+      return;
+    }
+    if (method === "thread/read") {
+      const output = isRecord(result) ? result : null;
+      const thread = output && isRecord(output.thread) ? output.thread : null;
+      const threadId = typeof thread?.id === "string"
+        ? thread.id
+        : typeof input?.threadId === "string"
+          ? input.threadId
+          : null;
+      if (!threadId) return;
+      const provider = typeof output?.modelProvider === "string"
+        ? output.modelProvider
+        : typeof thread?.modelProvider === "string"
+          ? thread.modelProvider
+          : "";
+      const model = typeof output?.model === "string"
+        ? output.model
+        : typeof thread?.model === "string"
+          ? thread.model
+          : "";
+      if (provider || model) this.#attachedThreadSelections.set(threadId, { provider, model });
       return;
     }
     if (method !== "thread/start" && method !== "thread/resume" && method !== "thread/fork") return;
@@ -630,7 +722,17 @@ export class CodexHarnessRuntime {
       readRuntimeMcpConfig(this.#config, this.#workspace.id),
     ]);
     const gatewayRoutes = await this.#providerGateway.configure(
-      sourceProviders.flatMap((provider) => provider.upstream ? [provider.upstream] : []),
+      sourceProviders.flatMap((provider) => {
+        if (!provider.upstream) return [];
+        if (provider.id !== OPENCODE_PROVIDER.id) return [provider.upstream];
+        return [{
+          ...provider.upstream,
+          httpHeaders: {
+            ...provider.upstream.httpHeaders,
+            "x-opencode-project": this.#workspace.id,
+          },
+        }];
+      }),
     );
     const providers = sourceProviders.map((provider) => {
       const route = gatewayRoutes.get(provider.id);
@@ -671,14 +773,21 @@ export class CodexHarnessRuntime {
   async #readSourceProviders(): Promise<{
     records: Awaited<ReturnType<EnvService["list"]>>;
     providers: CodexHarnessProvider[];
+    catalog: AccountProviderCatalog;
   }> {
-    const [records, openAiCodexOAuth, catalog] = await Promise.all([
-      this.#env.list(),
-      resolveOpenAiCodexOAuthSession(this.#config),
+    const records = await this.#env.list();
+    const disconnected = new Set(
+      sharedProviderDisconnectedIdsFromEnvKeys(records.map((record) => record.key)),
+    );
+    const [openAiCodexOAuth, catalog] = await Promise.all([
+      resolveOpenAiCodexOAuthSession(this.#config, {
+        explicitlyDisconnected: disconnected.has("openai"),
+      }),
       readAccountProviderCatalog(this.#config).catch(() => new Map()),
     ]);
     return {
       records,
+      catalog,
       providers: await codexHarnessProviders({
         config: this.#config,
         records,

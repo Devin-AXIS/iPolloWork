@@ -5,6 +5,8 @@ import {
   serializeSharedProviderProfile,
   sharedConfiguredProviderIdsFromEnvKeys,
   sharedProviderCredentialEnvKey,
+  sharedProviderDisconnectedEnvKey,
+  sharedProviderDisconnectedIdsFromEnvKeys,
   sharedProviderIdsFromEnvKeys,
   sharedProviderProfileEnvKey,
   type SharedProviderProfile,
@@ -169,6 +171,7 @@ export type ProviderAuthStoreSnapshot = {
   providerAuthWorkerType: "local" | "remote";
   providerAuthProviders: ProviderAuthProvider[];
   connectedProviderIds: string[];
+  explicitlyDisconnectedProviderIds: string[];
   cloudOrgProviders: DenOrgLlmProvider[];
   importedCloudProviders: Record<string, CloudImportedProvider>;
 };
@@ -558,6 +561,7 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
           && !explicitlyDisconnectedProviderIds.has(providerId.trim().toLowerCase())
         ))),
       ],
+      explicitlyDisconnectedProviderIds: state.explicitlyDisconnectedProviderIds,
       cloudOrgProviders: state.cloudOrgProviders,
       importedCloudProviders: state.importedCloudProviders,
     };
@@ -596,6 +600,26 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
       : state.explicitlyDisconnectedProviderIds.filter(
           (providerId) => !affectedProviderIds.has(providerId),
         );
+    if (
+      nextProviderIds.length === state.explicitlyDisconnectedProviderIds.length
+      && nextProviderIds.every(
+        (providerId, index) => providerId === state.explicitlyDisconnectedProviderIds[index],
+      )
+    ) {
+      return;
+    }
+    setStateField("explicitlyDisconnectedProviderIds", nextProviderIds);
+  };
+
+  const replaceExplicitlyDisconnectedProviders = (providerIds: readonly string[]) => {
+    const nextProviderIds = [
+      ...new Set(
+        providerIds
+          .flatMap(accountProviderCredentialIds)
+          .map((providerId) => providerId.trim().toLowerCase())
+          .filter(Boolean),
+      ),
+    ].sort();
     if (
       nextProviderIds.length === state.explicitlyDisconnectedProviderIds.length
       && nextProviderIds.every(
@@ -1136,10 +1160,41 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
     await refreshProviderListQueries(getReactQueryClient());
   };
 
+  const persistProvidersExplicitlyDisconnected = async (
+    providerIds: readonly string[],
+    disconnected: boolean,
+  ) => {
+    const resolvedProviderIds = [
+      ...new Set(providerIds.flatMap(accountProviderCredentialIds)),
+    ].sort();
+    const ipolloworkClient = getProviderServerSnapshot().ipolloworkServerClient;
+    if (ipolloworkClient) {
+      if (disconnected) {
+        await ipolloworkClient.upsertUserEnv(resolvedProviderIds.map((providerId) => ({
+          key: sharedProviderDisconnectedEnvKey(providerId),
+          value: "1",
+        })));
+      } else {
+        await Promise.all(resolvedProviderIds.map(async (providerId) => {
+          try {
+            await ipolloworkClient.deleteUserEnv(sharedProviderDisconnectedEnvKey(providerId));
+          } catch (error) {
+            if (!isMissingProviderCredentialError(error)) throw error;
+          }
+        }));
+      }
+    }
+    setProvidersExplicitlyDisconnected(resolvedProviderIds, disconnected);
+    await refreshProviderListQueries(getReactQueryClient());
+  };
+
   const refreshAccountConnectedProviderIds = async () => {
     const ipolloworkClient = getProviderServerSnapshot().ipolloworkServerClient;
     if (!ipolloworkClient) return null;
     const { keys, oauthProviderIds } = await ipolloworkClient.listUserEnvKeys();
+    replaceExplicitlyDisconnectedProviders(
+      sharedProviderDisconnectedIdsFromEnvKeys(keys),
+    );
     const providerIds = [
       ...new Set([
         ...sharedConfiguredProviderIdsFromEnvKeys(keys, oauthProviderIds),
@@ -1777,7 +1832,7 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
 
     const finishConnectedOAuth = async () => {
       await mirrorSharedProviderProfile(catalogSharedProviderProfile(options.providers(), resolved));
-      setProvidersExplicitlyDisconnected([resolved], false);
+      await persistProvidersExplicitlyDisconnected([resolved], false);
       return { connected: true, message: `${t("status.connected")} ${resolved}` };
     };
 
@@ -1847,6 +1902,7 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
       // reloads can remount this store, so persisting it last can leave a
       // provider configured in one workspace but unavailable everywhere else.
       await mirrorSharedProviderConnection(trimmed, sharedProfile);
+      await persistProvidersExplicitlyDisconnected([resolvedProviderId], false);
       if (compatibleProfile) {
         await patchRuntimeProviders(
           getProviderEngineAdapter().buildCompatibleProviderPatch(compatibleProfile),
@@ -1856,7 +1912,6 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
         }
       }
       await getProviderEngineConnection().setApiKey(resolvedProviderId, trimmed);
-      setProvidersExplicitlyDisconnected([resolvedProviderId], false);
       setStateField(
         "accountConnectedProviderIds",
         [...new Set([...state.accountConnectedProviderIds, resolvedProviderId])].sort(),
@@ -1912,6 +1967,12 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
       assertProviderAllowedByDesktopPolicy(provider.providerId);
       const existingImported = state.importedCloudProviders[cloudProviderId] ?? null;
       const localProviderId = getCloudManagedProviderId(provider);
+      if (
+        optionsArg?.silent
+        && state.explicitlyDisconnectedProviderIds.includes(localProviderId.trim().toLowerCase())
+      ) {
+        return `${t("providers.disconnected_prefix")} ${provider.name}`;
+      }
       const { envEntries, primaryApiKey } = resolveCloudProviderCredentials(provider);
       const env = getCloudProviderEnv(provider.providerConfig);
       if (!primaryApiKey && env.length > 0) {
@@ -1933,11 +1994,11 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
       }
       if (primaryApiKey) {
         await connection.setApiKey(localProviderId, primaryApiKey);
-        setProvidersExplicitlyDisconnected([localProviderId], false);
         await mirrorSharedProviderConnection(
           primaryApiKey,
           cloudSharedProviderProfile(provider, localProviderId),
         );
+        await persistProvidersExplicitlyDisconnected([localProviderId], false);
         await mirroriPolloWorkModelsVoiceEnv(provider, primaryApiKey);
       }
       if (existingImported?.providerId && existingImported.providerId !== localProviderId) {
@@ -2039,7 +2100,10 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
   }
 
   async function removeCloudProvider(cloudProviderId: string) {
-    return await removeCloudProviderInternal(cloudProviderId);
+    const providerId = state.importedCloudProviders[cloudProviderId]?.providerId;
+    const result = await removeCloudProviderInternal(cloudProviderId);
+    if (providerId) await persistProvidersExplicitlyDisconnected([providerId], true);
+    return result;
   }
 
   const logCloudProviderSyncError = (reason: CloudProviderSyncReason, error: unknown) => {
@@ -2240,10 +2304,10 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
         ));
       }
       await removeProviderAuthCredentials(resolved);
+      await persistProvidersExplicitlyDisconnected(providerIds, true);
       // React option getters can still expose the previous connected-provider
       // list until the next render. Keep this successful disconnect
       // authoritative so a stale runtime catalog cannot immediately re-add it.
-      setProvidersExplicitlyDisconnected(providerIds, true);
       const environmentBackedProviderId = options.providers().find((provider) => (
         providerIds.includes(provider.id.trim().toLowerCase()) && provider.source === "env"
       ))?.id;

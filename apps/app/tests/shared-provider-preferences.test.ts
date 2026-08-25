@@ -4,8 +4,11 @@ import { DEEPSEEK_HARNESS_ENGINE_ID, DEFAULT_ENGINE_ID } from "@ipollowork/types
 import {
   sharedConfiguredProviderIdsFromEnvKeys,
   sharedProviderCredentialEnvKey,
+  sharedProviderDisconnectedEnvKey,
+  sharedProviderDisconnectedIdsFromEnvKeys,
   sharedProviderIdsFromEnvKeys,
   sharedProviderProfileEnvKey,
+  sharedProviderRuntimeRoute,
 } from "@ipollowork/types/provider-credentials";
 
 import {
@@ -98,9 +101,9 @@ describe("shared AI provider preferences", () => {
     expect(sessionRouteSource).toContain("sources: modelCatalogSources");
     expect(sessionRouteSource).toContain("enabled: modelCatalogSources.length > 0");
     expect(sessionRouteSource).toContain("const accountProviderList = filterProviderList(");
-    expect(sessionRouteSource).toContain("? filterProviderList(activeProviderListQuery.data, disabledProviderIds)");
+    expect(sessionRouteSource).toContain("? filterProviderList(activeProviderListQuery.data, hiddenProviderIds)");
     expect(sessionRouteSource).toContain("connectedProviderIds: sessionProviderAuthSnapshot.connectedProviderIds");
-    expect(sessionRouteSource).toContain("disabledProviderIds,");
+    expect(sessionRouteSource).toContain("disabledProviderIds: hiddenProviderIds");
     expect(settingsRouteSource).toContain("catalogSources: modelCatalogSources");
     expect(settingsRouteSource).toContain("runtimeSource: activeModelProviderSource");
     expect(settingsRouteSource).toContain("connectedProviderIds: providerAuthSnapshot.connectedProviderIds");
@@ -130,6 +133,31 @@ describe("shared AI provider preferences", () => {
     expect(sharedProviderConnectionEnvEntries({ apiKey: "secret", profile })).toHaveLength(2);
   });
 
+  test("adds portable runtime routes to native provider profiles", () => {
+    const cases = [
+      ["openai", "openai-responses", "https://api.openai.com/v1"],
+      ["deepseek-official", "openai-completions", "https://api.deepseek.com"],
+      ["alibaba-cn", "openai-completions", "https://dashscope.aliyuncs.com/compatible-mode/v1"],
+      ["anthropic", "anthropic-messages", "https://api.anthropic.com"],
+      ["kimi-for-coding", "anthropic-messages", "https://api.kimi.com/coding"],
+      ["minimax-cn", "anthropic-messages", "https://api.minimaxi.com/anthropic"],
+      ["google", "openai-completions", "https://generativelanguage.googleapis.com/v1beta/openai"],
+      ["mistral", "openai-completions", "https://api.mistral.ai/v1"],
+      ["cohere", "openai-completions", "https://api.cohere.ai/compatibility/v1"],
+    ] as const;
+
+    for (const [providerId, api, baseURL] of cases) {
+      expect(buildSharedProviderProfile({
+        providerId: ` ${providerId.toUpperCase()} `,
+        displayName: providerId,
+        models: { model: { name: "Model" } },
+      })).toMatchObject({ providerId, api, baseURL });
+      expect(sharedProviderRuntimeRoute(providerId)).toEqual({ api, baseURL });
+    }
+
+    expect(sharedProviderRuntimeRoute("dynamic-cloud-provider")).toBeUndefined();
+  });
+
   test("derives account provider connections from user-level credentials", () => {
     expect(sharedProviderIdsFromEnvKeys([
       sharedProviderProfileEnvKey("openai"),
@@ -153,5 +181,18 @@ describe("shared AI provider preferences", () => {
     expect(sharedConfiguredProviderIdsFromEnvKeys([
       sharedProviderProfileEnvKey("openai"),
     ], ["openai"])).toEqual(["openai"]);
+  });
+
+  test("lets an explicit account disconnect override every discovered credential source", () => {
+    const disconnectedKey = sharedProviderDisconnectedEnvKey("openai");
+    const keys = [
+      sharedProviderCredentialEnvKey("openai"),
+      sharedProviderProfileEnvKey("openai"),
+      disconnectedKey,
+    ];
+
+    expect(sharedProviderDisconnectedIdsFromEnvKeys(keys)).toEqual(["openai"]);
+    expect(sharedProviderIdsFromEnvKeys(keys)).toEqual([]);
+    expect(sharedConfiguredProviderIdsFromEnvKeys(keys, ["openai"])).toEqual([]);
   });
 });

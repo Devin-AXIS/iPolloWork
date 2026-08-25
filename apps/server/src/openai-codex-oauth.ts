@@ -1,4 +1,6 @@
 import { readFile } from "node:fs/promises";
+import { homedir } from "node:os";
+import { join } from "node:path";
 import { createOpencodeClient } from "@opencode-ai/sdk/v2/client";
 
 import { DEFAULT_ENGINE_ID } from "@ipollowork/types/workspace";
@@ -18,6 +20,11 @@ export type OpenAiCodexOAuthCredential = {
 export type OpenAiCodexOAuthSession = {
   accessToken: string;
   accountId?: string;
+};
+
+export type OpenAiCodexOAuthCredentialCandidate = {
+  source: "account" | "official-codex";
+  credential: OpenAiCodexOAuthCredential;
 };
 
 const OPENAI_CODEX_AUTH_PROVIDER_ID = "openai";
@@ -51,6 +58,54 @@ function accessTokenLifetime(accessToken: string): { issuedAt: number; expiresAt
   } catch {
     return null;
   }
+}
+
+/** Parse the auth.json format owned by the official Codex desktop/CLI client. */
+export function officialCodexOAuthCredential(value: unknown): OpenAiCodexOAuthCredential | null {
+  if (!isRecord(value)) return null;
+  const authMode = nonEmptyString(value.auth_mode)?.toLowerCase();
+  if (authMode && authMode !== "chatgpt") return null;
+  if (!isRecord(value.tokens)) return null;
+  const access = nonEmptyString(value.tokens.access_token);
+  const refresh = nonEmptyString(value.tokens.refresh_token);
+  if (!access || !refresh) return null;
+  const lifetime = accessTokenLifetime(access);
+  if (!lifetime) return null;
+  const accountId = nonEmptyString(value.tokens.account_id);
+  return {
+    type: "oauth",
+    access,
+    refresh,
+    expires: lifetime.expiresAt,
+    ...(accountId ? { accountId } : {}),
+  };
+}
+
+/** Prefer the freshest account credential, regardless of which supported client obtained it. */
+export function orderOpenAiCodexOAuthCredentials(input: {
+  account?: OpenAiCodexOAuthCredential | null;
+  officialCodex?: OpenAiCodexOAuthCredential | null;
+}): OpenAiCodexOAuthCredentialCandidate[] {
+  const candidates: OpenAiCodexOAuthCredentialCandidate[] = [];
+  if (input.account) candidates.push({ source: "account", credential: input.account });
+  if (input.officialCodex) {
+    candidates.push({ source: "official-codex", credential: input.officialCodex });
+  }
+  return candidates.sort((left, right) => (
+    right.credential.expires - left.credential.expires
+    || Number(left.source !== "account") - Number(right.source !== "account")
+  ));
+}
+
+export function resolveOfficialCodexAuthPath(options: {
+  codexHome?: string;
+  homeDir?: string;
+} = {}): string {
+  const root = options.codexHome?.trim()
+    || (options.homeDir ? join(options.homeDir, ".codex") : "")
+    || process.env.CODEX_HOME?.trim()
+    || join(homedir(), ".codex");
+  return join(root, "auth.json");
 }
 
 export function openAiCodexOAuthCredential(value: unknown): OpenAiCodexOAuthCredential | null {
@@ -124,8 +179,13 @@ async function persistOpenAiCodexOAuthCredential(
   config: ServerConfig,
   credential: OpenAiCodexOAuthCredential,
 ): Promise<void> {
-  const workspace = config.workspaces.find((entry) => entry.engineId === DEFAULT_ENGINE_ID);
-  if (!workspace) throw new Error("OpenCode workspace is unavailable for OAuth refresh persistence");
+  // Every workspace exposes the managed OpenCode control plane, even when its
+  // conversation engine is Codex or DSH. Prefer a native OpenCode workspace,
+  // then fall back to any mounted workspace instead of making account auth
+  // depend on the current project's engine.
+  const workspace = config.workspaces.find((entry) => entry.engineId === DEFAULT_ENGINE_ID)
+    ?? config.workspaces[0];
+  if (!workspace) throw new Error("A workspace is unavailable for OAuth refresh persistence");
   const connection = resolveWorkspaceOpencodeConnection(config, workspace);
   if (!connection.baseUrl) throw new Error("OpenCode provider endpoint is unavailable");
   const client = createOpencodeClient({
@@ -156,34 +216,66 @@ let openAiCodexCredentialRefresh: Promise<OpenAiCodexOAuthSession | null> | null
  */
 export async function resolveOpenAiCodexOAuthSession(
   config: ServerConfig,
+  options: { explicitlyDisconnected?: boolean } = {},
 ): Promise<OpenAiCodexOAuthSession | null> {
+  // The official Codex auth file is a credential source, not permission to
+  // reconnect a provider that the user explicitly disconnected in iPolloWork.
+  if (options.explicitlyDisconnected) return null;
   if (openAiCodexCredentialRefresh) return openAiCodexCredentialRefresh;
   openAiCodexCredentialRefresh = (async () => {
-    const authPath = resolveOpencodeAuthPath();
-    if (!authPath) return null;
-    let authStore: Record<string, unknown>;
-    try {
-      const parsed = JSON.parse(await readFile(authPath, "utf8")) as unknown;
-      if (!isRecord(parsed)) return null;
-      authStore = parsed;
-    } catch {
-      return null;
-    }
-    const credential = openAiCodexOAuthCredential(authStore[OPENAI_CODEX_AUTH_PROVIDER_ID]);
-    if (!credential) return null;
-    let active = credential;
-    if (openAiCodexOAuthCredentialNeedsRefresh(credential)) {
+    const accountAuthPath = resolveOpencodeAuthPath({ managedOnly: true })
+      ?? resolveOpencodeAuthPath();
+    const officialAuthPath = resolveOfficialCodexAuthPath();
+    const readAuthStore = async (path: string | null): Promise<Record<string, unknown> | null> => {
+      if (!path) return null;
       try {
-        active = await refreshOpenAiCodexOAuthCredential(credential);
-        await persistOpenAiCodexOAuthCredential(config, active);
+        const parsed = JSON.parse(await readFile(path, "utf8")) as unknown;
+        return isRecord(parsed) ? parsed : null;
       } catch {
-        if (credential.expires <= Date.now()) return null;
+        return null;
       }
-    }
-    return {
-      accessToken: active.access,
-      ...(active.accountId ? { accountId: active.accountId } : {}),
     };
+    const [accountAuthStore, officialAuthStore] = await Promise.all([
+      readAuthStore(accountAuthPath),
+      accountAuthPath === officialAuthPath ? Promise.resolve(null) : readAuthStore(officialAuthPath),
+    ]);
+    const accountCredential = openAiCodexOAuthCredential(
+      accountAuthStore?.[OPENAI_CODEX_AUTH_PROVIDER_ID],
+    );
+    const officialCredential = officialCodexOAuthCredential(officialAuthStore);
+    const now = Date.now();
+
+    for (const candidate of orderOpenAiCodexOAuthCredentials({
+      account: accountCredential,
+      officialCodex: officialCredential,
+    })) {
+      let active = candidate.credential;
+      if (candidate.source === "official-codex") {
+        // The official client remains the refresh owner of this source. Import
+        // only a still-valid credential into the account control plane so we
+        // never rotate its refresh token behind the client's back.
+        if (active.expires <= now + OPENAI_CODEX_REFRESH_SKEW_MS) continue;
+        if (
+          accountCredential?.access !== active.access
+          || accountCredential.refresh !== active.refresh
+          || accountCredential.expires !== active.expires
+        ) {
+          await persistOpenAiCodexOAuthCredential(config, active).catch(() => undefined);
+        }
+      } else if (openAiCodexOAuthCredentialNeedsRefresh(active, now)) {
+        try {
+          active = await refreshOpenAiCodexOAuthCredential(active, { now });
+          await persistOpenAiCodexOAuthCredential(config, active);
+        } catch {
+          if (active.expires <= now) continue;
+        }
+      }
+      return {
+        accessToken: active.access,
+        ...(active.accountId ? { accountId: active.accountId } : {}),
+      };
+    }
+    return null;
   })().finally(() => {
     openAiCodexCredentialRefresh = null;
   });

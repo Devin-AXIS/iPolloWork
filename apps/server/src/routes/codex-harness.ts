@@ -5,6 +5,7 @@ import {
   CodexHarnessModelSelectionError,
   CodexHarnessRuntimePool,
   CodexHarnessUnavailableError,
+  type CodexHarnessProviderCatalogItem,
   type CodexHarnessProvider,
 } from "../codex-harness-runtime.js";
 import { ApiError } from "../errors.js";
@@ -88,8 +89,9 @@ type CodexNativeModel = {
 };
 
 export function projectCodexHarnessProviderList(
-  providers: readonly CodexHarnessProvider[],
+  providers: readonly (CodexHarnessProviderCatalogItem | CodexHarnessProvider)[],
   nativeModels: readonly CodexNativeModel[],
+  connectedProviderIds: readonly string[] = providers.map((provider) => provider.id),
 ) {
   const nativeModelsById = new Map(nativeModels.flatMap((model) => {
     const modelId = model.model || model.id || "";
@@ -127,7 +129,7 @@ export function projectCodexHarnessProviderList(
   });
   return {
     all,
-    connected: providers.map((provider) => provider.id),
+    connected: [...connectedProviderIds],
     default: Object.fromEntries(all.flatMap((provider) => {
       const firstModelId = Object.keys(provider.models)[0];
       return firstModelId ? [[provider.id, firstModelId]] : [];
@@ -136,11 +138,11 @@ export function projectCodexHarnessProviderList(
 }
 
 async function providerList(runtime: ReturnType<CodexHarnessRuntimePool["forWorkspace"]>) {
-  const providers = await runtime.providers();
+  const directory = await runtime.providerDirectory();
   // Provider browsing is configuration I/O, not an Agent operation. Starting
   // Codex here makes the picker slow and can surface a console window on
   // Windows. Runtime validation happens when the user actually sends a turn.
-  return projectCodexHarnessProviderList(providers, []);
+  return projectCodexHarnessProviderList(directory.all, [], directory.connected);
 }
 
 export function registerCodexHarnessRoutes(options: RegisterCodexHarnessRoutesOptions): void {
@@ -172,13 +174,14 @@ export function registerCodexHarnessRoutes(options: RegisterCodexHarnessRoutesOp
       selection,
     });
     const input = Array.isArray(body.payload.input) ? [...body.payload.input] : [];
-    const additionalContext = buildCodexHarnessAdditionalContext(
-      body.payload.system,
-      [...instructions.systemInstructions, ...instructions.userInstructions],
-    );
     const model = isRecord(body.payload.model) ? body.payload.model : null;
     const providerID = typeof model?.providerID === "string" ? model.providerID.trim() : "";
     const modelID = typeof model?.modelID === "string" ? model.modelID.trim() : "";
+    const additionalContext = buildCodexHarnessAdditionalContext(
+      body.payload.system,
+      [...instructions.systemInstructions, ...instructions.userInstructions],
+      providerID && modelID ? { providerID, modelID } : null,
+    );
     const workspaceRuntime = runtime.forWorkspace(workspace);
     try {
       const resumed = await workspaceRuntime.resumeThread({
@@ -199,7 +202,9 @@ export function registerCodexHarnessRoutes(options: RegisterCodexHarnessRoutesOp
         input,
         ...(additionalContext ? { additionalContext } : {}),
         cwd: workspace.path,
-        ...(modelID ? { model: modelID } : {}),
+        // thread/resume above owns the provider/model pair. turn/start has no
+        // modelProvider field, so repeating only the model can resolve it
+        // against Codex's default provider instead of the selected account.
         ...(typeof body.payload.reasoningEffort === "string"
           ? { effort: body.payload.reasoningEffort }
           : typeof body.payload.variant === "string"

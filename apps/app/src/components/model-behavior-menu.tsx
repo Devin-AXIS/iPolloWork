@@ -122,7 +122,7 @@ export function ModelBehaviorMenu({
         {view === "model" ? (
           <div className="flex h-80 flex-col">
             <MenuBackButton label={t("model_picker.change_model")} onClick={() => setView("root")} />
-            <div className="min-h-0 flex-1 overflow-hidden">
+            <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
               <ModelListContent
                 value={selectedModel}
                 onChange={selectModel}

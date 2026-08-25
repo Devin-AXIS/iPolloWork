@@ -8,6 +8,7 @@ export default defineConfig({
     "den/inference": "src/den/inference.ts",
     hyperframes: "src/hyperframes.ts",
     "hyperframes-project": "src/hyperframes-project.ts",
+    "opencode-zen-public-models": "src/opencode-zen-public-models.ts",
     plugins: "src/plugins.ts",
     "provider-credentials": "src/provider-credentials.ts",
     "project-workspace": "src/project-workspace.ts",

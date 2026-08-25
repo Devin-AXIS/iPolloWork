@@ -729,6 +729,15 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
   const ipolloworkServerSnapshot = useiPolloWorkServerStoreSnapshot(ipolloworkServerStore);
   const connectionsSnapshot = useConnectionsStoreSnapshot(connectionsStore);
   const providerAuthSnapshot = useProviderAuthStoreSnapshot(providerAuthStore);
+  const hiddenProviderIds = useMemo(
+    () => [
+      ...new Set([
+        ...disabledProviders,
+        ...providerAuthSnapshot.explicitlyDisconnectedProviderIds,
+      ]),
+    ].sort(),
+    [disabledProviders, providerAuthSnapshot.explicitlyDisconnectedProviderIds],
+  );
   useExtensionsStoreSnapshot(extensionsStore);
   const orgMcpConnections = useOrgMcpConnections();
 
@@ -1016,7 +1025,7 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
     catalogSources: modelCatalogSources,
     runtimeSource: activeModelProviderSource,
     connectedProviderIds: providerAuthSnapshot.connectedProviderIds,
-    disabledProviderIds: disabledProviders,
+    disabledProviderIds: hiddenProviderIds,
     onLoadError: handleModelPickerLoadError,
   });
   // Settings refreshes provider auth whenever the picker opens (the session

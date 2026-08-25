@@ -9,6 +9,7 @@ import {
 import { attachmentRequiresNativeModelSupport } from "../src/react-app/domains/session/sync/attachment-support";
 import { draftToParts } from "../src/react-app/shell/session-prompt";
 import type { ComposerDraft } from "../src/app/types";
+import { resolveModelDisplayName } from "../src/app/utils";
 
 const modelSelectPath = resolve(import.meta.dir, "../src/components/model-select.tsx");
 const composerPath = resolve(import.meta.dir, "../src/react-app/domains/session/surface/composer/composer.tsx");
@@ -17,6 +18,10 @@ const modelPickerHookPath = resolve(import.meta.dir, "../src/react-app/domains/s
 const sessionRoutePath = resolve(import.meta.dir, "../src/react-app/shell/session-route.tsx");
 
 describe("Composer model and reasoning menu", () => {
+  test("keeps the selected OpenCode model name consistent with the model directory", () => {
+    expect(resolveModelDisplayName("x-preview-f-free")).toBe("Ox Alpha Free");
+  });
+
   test("only enables attachments for models that declare attachment support", () => {
     const catalog = {
       provider: {
@@ -91,14 +96,15 @@ describe("Composer model and reasoning menu", () => {
     expect(source).toContain("ensureMergedProviderListQuery");
     expect(source).toContain("catalogSources.length ? catalogSources : activeSources");
     expect(source).not.toContain("force: true");
-    expect(source).toContain("mergeProviderListResponses([data, runtimeData])");
+    expect(source).not.toContain("mergeProviderListResponses([data, runtimeData])");
+    expect(source).toContain("projectAccountProviderConnections(data, connectedProviderIds)");
     expect(source).toContain("filterProviderList(");
     expect(source).toContain("disabledProviderIds = []");
-    expect(source).toContain("getRunnableChatModelEntries({");
+    expect(source).toContain("getEngineChatModelEntries({");
     expect(source).toContain("runtime: runtimeData");
-    expect(source).toContain("const configuredProviderIds = new Set(accountData.connected)");
-    expect(source).toContain("isConnected: configuredProviderIds.has(provider.id)");
-    expect(source).not.toContain('disabled: runtime.status !== "ready"');
+    expect(source).toContain('const runtimeReady = runtime.status === "ready"');
+    expect(source).toContain("isConnected: runtimeReady");
+    expect(source).toContain("disabled: !runtimeReady");
     expect(source).toContain("setLoadedOptions({ scopeKey: optionScopeKey, options })");
   });
 
@@ -121,12 +127,14 @@ describe("Composer model and reasoning menu", () => {
     expect(model).toContain("useMergedProviderListQuery");
     expect(model).not.toContain("await refetch()");
     expect(model).not.toContain("refreshProviderListQueries");
-    expect(model).toContain("getRunnableChatModelEntries({");
-    expect(model).toContain("mergeProviderListResponses([catalogQuery.data, runtimeQuery.data])");
+    expect(model).toContain("getEngineChatModelEntries({");
+    expect(model).not.toContain("mergeProviderListResponses([catalogQuery.data, runtimeQuery.data])");
+    expect(model).toContain("projectAccountProviderConnections(\n      catalogQuery.data,");
     expect(model).toContain('t("settings.loading_providers")');
     expect(model).toContain('t("model_picker.no_models_available")');
-    expect(model).toContain("const configuredProviderIds = new Set(catalogValue?.connected ?? [])");
-    expect(model).toContain("isConnected: configuredProviderIds.has(provider.id)");
+    expect(model).toContain('const runtimeReady = runtime.status === "ready"');
+    expect(model).toContain("isConnected: runtimeReady");
+    expect(model).toContain("disabled: !runtimeReady");
     expect(model).toContain("disabled={option.disabled && (option.isConnected || !onConfigureModels)}");
     expect(model).toContain("if (option.disabled)");
     expect(model).toContain("onConfigureModels?.(option.providerID)");
@@ -135,6 +143,7 @@ describe("Composer model and reasoning menu", () => {
     expect(model).not.toContain('option.modelID.startsWith("kimi-")');
     expect(model).not.toContain("openCodeZen.items.unshift(tokenStarEntry)");
     expect(menu).toContain("onConfigureTokenStar");
+    expect(menu).toContain('className="flex min-h-0 flex-1 flex-col overflow-hidden"');
   });
 
   test("Composer renders engine-native modes beside the model selector", () => {

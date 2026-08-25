@@ -12,8 +12,7 @@ import { useCheckDesktopRestriction } from "@/react-app/domains/cloud/desktop-co
 import {
   ensureMergedProviderListQuery,
   ensureProviderListQuery,
-  getRunnableChatModelEntries,
-  mergeProviderListResponses,
+  getEngineChatModelEntries,
   projectAccountProviderConnections,
   type ProviderListQueryInput,
 } from "@/react-app/infra/provider-list-query";
@@ -126,9 +125,8 @@ export function useModelPicker(input: UseModelPickerInput) {
             : ensureMergedProviderListQuery(queryClient, activeSources),
         ]);
         if (cancelled || !data.all) return;
-        const mergedCatalog = mergeProviderListResponses([data, runtimeData]);
         const accountData = filterProviderList(
-          projectAccountProviderConnections(mergedCatalog, connectedProviderIds) ?? mergedCatalog,
+          projectAccountProviderConnections(data, connectedProviderIds) ?? data,
           [...disabledProviderIds],
         );
         // Flag models from recently-added providers so they appear in
@@ -142,14 +140,14 @@ export function useModelPicker(input: UseModelPickerInput) {
         } catch {
           seenIds = new Set();
         }
-        const configuredProviderIds = new Set(accountData.connected);
         const options: ModelOption[] = [];
-        for (const { provider, modelId, model, runtime } of getRunnableChatModelEntries({
+        for (const { provider, modelId, model, runtime } of getEngineChatModelEntries({
           catalog: accountData,
           runtime: runtimeData,
           engineId,
         })) {
           const isNew = !seenIds.has(provider.id) || recentProviderIds.has(provider.id);
+          const runtimeReady = runtime.status === "ready";
           options.push({
             providerID: provider.id,
             modelID: modelId,
@@ -160,7 +158,9 @@ export function useModelPicker(input: UseModelPickerInput) {
             behaviorDescription: "",
             behaviorValue: null,
             isFree: provider.id.trim().toLowerCase() === "opencode",
-            isConnected: configuredProviderIds.has(provider.id),
+            isConnected: runtimeReady,
+            disabled: !runtimeReady,
+            footer: runtimeReady ? undefined : t("model_picker.connect_provider_hint"),
             isRecommended: isNew,
             supportsVision: runtime.capabilities?.vision === true,
             source: /^lpr_/i.test(provider.id) ? "cloud" as const : undefined,

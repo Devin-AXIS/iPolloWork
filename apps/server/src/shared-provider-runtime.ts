@@ -1,4 +1,8 @@
-import { sharedProviderIdFromCredentialEnvKey } from "@ipollowork/types/provider-credentials";
+import {
+  sharedProviderDisconnectedIdsFromEnvKeys,
+  sharedProviderIdFromCredentialEnvKey,
+  sharedProviderIdFromDisconnectedEnvKey,
+} from "@ipollowork/types/provider-credentials";
 
 import { isReservedEnvKey } from "./env-file.js";
 
@@ -99,10 +103,15 @@ export function compatibleProviderRuntimeProfiles(
 export function sharedProviderApiCredentials(
   records: ReadonlyArray<{ key: string; value: string }>,
 ): Map<string, string> {
+  const disconnected = new Set(
+    sharedProviderDisconnectedIdsFromEnvKeys(records.map((record) => record.key)),
+  );
   return new Map(records.flatMap((record) => {
     const providerId = sharedProviderIdFromCredentialEnvKey(record.key);
     const apiKey = record.value.trim();
-    return providerId && apiKey ? [[providerId, apiKey] as const] : [];
+    return providerId && apiKey && !disconnected.has(providerId)
+      ? [[providerId, apiKey] as const]
+      : [];
   }));
 }
 
@@ -114,6 +123,7 @@ export function sharedProviderChildEnvironment(
     .filter((entry) => (
       !isReservedEnvKey(entry.key)
       && !sharedProviderIdFromCredentialEnvKey(entry.key)
+      && !sharedProviderIdFromDisconnectedEnvKey(entry.key)
     ))
     .map((entry) => [entry.key, entry.value]));
 }

@@ -9,6 +9,7 @@ type WorkspaceContextValue = {
   selectedWorkspaceRoot: string;
   modelCatalogSources: readonly ProviderListQueryInput[];
   connectedProviderIds: readonly string[];
+  hiddenProviderIds: readonly string[];
 };
 
 const WorkspaceContext = React.createContext<WorkspaceContextValue | null>(null);
@@ -20,6 +21,7 @@ type WorkspaceProviderProps = {
   selectedWorkspaceRoot: string;
   modelCatalogSources?: readonly ProviderListQueryInput[];
   connectedProviderIds?: readonly string[];
+  hiddenProviderIds?: readonly string[];
   children: React.ReactNode;
 };
 
@@ -30,11 +32,20 @@ export function WorkspaceProvider({
   selectedWorkspaceRoot,
   modelCatalogSources = [],
   connectedProviderIds = [],
+  hiddenProviderIds = [],
   children,
 }: WorkspaceProviderProps) {
   const value = React.useMemo(
-    () => ({ client, engineId, opencodeBaseUrl, selectedWorkspaceRoot, modelCatalogSources, connectedProviderIds }),
-    [client, connectedProviderIds, engineId, modelCatalogSources, opencodeBaseUrl, selectedWorkspaceRoot],
+    () => ({
+      client,
+      engineId,
+      opencodeBaseUrl,
+      selectedWorkspaceRoot,
+      modelCatalogSources,
+      connectedProviderIds,
+      hiddenProviderIds,
+    }),
+    [client, connectedProviderIds, engineId, hiddenProviderIds, modelCatalogSources, opencodeBaseUrl, selectedWorkspaceRoot],
   );
 
   return React.createElement(WorkspaceContext.Provider, { value }, children);

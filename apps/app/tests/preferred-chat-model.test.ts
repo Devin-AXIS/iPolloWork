@@ -65,6 +65,7 @@ describe("resolveEngineSelectableChatModel", () => {
   test("falls back to the built-in engine route when it is the only option", () => {
     expect(resolveEngineSelectableChatModel({
       providers: [{ providerID: "opencode", modelIDs: ["big-pickle"] }],
+      defaults: { opencode: "big-pickle" },
       preferred: { providerID: "deepseek-official", modelID: "deepseek-v4-flash" },
     })).toEqual({ providerID: "opencode", modelID: "big-pickle" });
   });

@@ -51,6 +51,11 @@ export type ProviderEngineClientTarget = {
 };
 
 export type ModelRuntimeConnection = {
+  /**
+   * `all` is the engine-supported model directory, including routes that can
+   * be restored by reconnecting an account provider. `connected` contains
+   * only provider IDs that the engine can execute now.
+   */
   listProviders(directory?: string): Promise<ProviderListResponse>;
   listAuthMethods(): Promise<Record<string, ProviderEngineAuthMethod[]>>;
   authorizeOAuth(providerId: string, methodIndex: number): Promise<ProviderEngineAuthAuthorization>;
