@@ -848,7 +848,6 @@ export default {
   "work.time.date_picker": "日期",
   "work.time.time_picker": "时间",
   "work.automation.title": "自动执行",
-  "work.automation.description": "到开始时间后，由项目入口智能体执行标题和说明中的任务。",
   "work.automation.enabled": "已启用自动执行",
   "work.automation.recurrence": "重复方式",
   "work.automation.model": "执行模型",
