@@ -15,6 +15,7 @@ import { startServer } from "./server.js";
 import {
   WorkItemConflictError,
   createWorkItem,
+  createWorkItems,
   deleteWorkItem,
   deleteWorkspaceWorkState,
   disposeWorkItemStore,
@@ -225,6 +226,20 @@ describe("work item store", () => {
       })).rejects.toBeInstanceOf(WorkItemConflictError);
 
       expect(await deleteWorkItem(config, "project_one", created.id, 2)).toBe(true);
+      expect((await listWorkItems(config, { workspaceIds: ["project_one"] })).items).toEqual([]);
+    } finally {
+      await disposeWorkItemStore(config);
+    }
+  });
+
+  test("validates a work item batch before writing any of it", async () => {
+    const { config } = await testContext();
+    try {
+      const startAt = new Date("2026-08-26T09:00:00.000Z").getTime();
+      await expect(createWorkItems(config, "project_one", [
+        { title: "Valid first task", startAt, dueAt: startAt + 60 * 60 * 1_000 },
+        { title: "Invalid second task", startAt, dueAt: startAt - 1 },
+      ])).rejects.toThrow("Due time cannot be earlier than start time");
       expect((await listWorkItems(config, { workspaceIds: ["project_one"] })).items).toEqual([]);
     } finally {
       await disposeWorkItemStore(config);

@@ -21,6 +21,8 @@ describe("session output issue regressions", () => {
     expect(sessionPageSource).toContain("{mainHeaderHidden && !showProjectNoTasksState ? (");
     expect(sessionPageSource).toContain(") : hasSelectedTask ? (");
     expect(sessionPageSource).toContain('{t("workspace.no_tasks")}');
+    expect(sessionPageSource).not.toContain("[border-bottom-width:0.5px] dark:border-white/[0.06] dark:bg-background/72");
+    expect(sessionPageSource).not.toContain("shadow-[inset_0_1px_0_rgba(255,255,255,0.4)]");
     expect(chineseLocaleSource).toContain('"workspace.no_tasks": "没有任务"');
 
     const sessionRouteSource = readFileSync(

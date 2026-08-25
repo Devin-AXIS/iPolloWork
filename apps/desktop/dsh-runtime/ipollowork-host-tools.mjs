@@ -151,7 +151,7 @@ function errorMessage(payload, fallback) {
   return fallback;
 }
 
-export const inject = ["tools", "llm", "credentials"];
+export const inject = ["tools", "llm", "credentials", "systemPrompt"];
 
 export async function apply(ctx) {
   ctx.effect(
@@ -169,6 +169,18 @@ export async function apply(ctx) {
   const catalog = await readJson(response);
   if (!response.ok || !catalog || !Array.isArray(catalog.tools)) {
     throw new Error(errorMessage(catalog, `iPolloWork host tool catalog failed (${response.status})`));
+  }
+
+  const schedulePreview = catalog.tools.find((descriptor) => descriptor?.name === "ipollowork_schedule_preview");
+  if (typeof schedulePreview?.description === "string") {
+    ctx.effect(
+      () => ctx.systemPrompt.section({
+        name: "ipollowork:schedule-import",
+        order: 100,
+        text: schedulePreview.description,
+      }),
+      "ipollowork: schedule import instructions",
+    );
   }
 
   for (const descriptor of catalog.tools) {

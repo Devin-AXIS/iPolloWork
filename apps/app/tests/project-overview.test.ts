@@ -8,7 +8,11 @@ import { loadProjectRuntimeMetrics } from "../src/react-app/domains/work/project
 import { scopeProjectBuilderDraft } from "../src/react-app/domains/work/project-builder-session";
 import { projectExecutionSystemContext } from "../src/react-app/domains/work/project-execution";
 import {
+  formatWorkCalendarTime,
+  formatWorkCalendarRange,
+  searchWorkCalendarItems,
   snapWorkCalendarSlot,
+  type WorkCalendarItem,
   workCalendarScheduleRange,
 } from "../src/react-app/domains/work/work-calendar";
 
@@ -424,6 +428,9 @@ describe("project overview", () => {
     expect(workCenterSource).toContain('"project-task-runtime"');
     expect(workCenterSource).toContain("metrics.executionRecords");
     expect(workCenterSource).toContain('data-testid="global-work-summary"');
+    expect(workCenterSource).toContain("bg-dls-surface");
+    expect(workCenterSource).not.toContain('t("work.global.summary_description")');
+    expect(workCenterSource).not.toContain("<CalendarRange");
     expect(workCenterSource).toContain('"global-project-task-runtime"');
     expect(workCenterSource).toContain("const boardItems = [...items, ...runtimeItems]");
     expect(projectBoardSource).toContain('data-testid={entry.executionRecord ? "project-runtime-task" : undefined}');
@@ -450,6 +457,9 @@ describe("project overview", () => {
     expect(workItemSheetSource).toContain('placeholderClassName = "placeholder:font-normal placeholder:text-dls-secondary/60"');
     expect(workItemSheetSource).toContain("initialSchedule: WorkItemScheduleDraft | null");
     expect(workCalendarSource).toContain('data-testid="work-calendar-slot-preview"');
+    expect(workCalendarSource).toContain("flex flex-col items-start justify-start overflow-hidden rounded-[4px]");
+    expect(workCalendarSource).toContain("style={{ top, height, left: 5, right: 5 }}");
+    expect(workCalendarSource).toContain("duration / 60 * HOUR_HEIGHT - 2");
     expect(workCalendarSource).toContain("<ContextMenu>");
     expect(workCalendarSource).toContain("onCreateSchedule(workCalendarScheduleRange");
     expect(zh["work.calendar.today"]).toBe("今天");
@@ -478,9 +488,88 @@ describe("project overview", () => {
     expect(schedule.dueAt - schedule.startAt).toBe(60 * 60_000);
   });
 
+  test("formats calendar events with a zero-padded 24-hour clock", () => {
+    expect(formatWorkCalendarTime(new Date(2026, 7, 25, 0, 5).getTime())).toBe("00:05");
+    expect(formatWorkCalendarTime(new Date(2026, 7, 25, 9, 0).getTime())).toBe("09:00");
+    expect(formatWorkCalendarTime(new Date(2026, 7, 25, 23, 45).getTime())).toBe("23:45");
+  });
+
+  test("formats Chinese calendar ranges in year-month-day order", () => {
+    expect(formatWorkCalendarRange(new Date(2026, 7, 25), "week", "zh-CN")).toBe("2026年8月24日 - 2026年8月30日");
+    expect(formatWorkCalendarRange(new Date(2026, 7, 25), "month", "zh-CN")).toBe("2026年8月");
+  });
+
+  test("keeps the weekly event title ahead of project and time details", () => {
+    const titleIndex = workCalendarSource.indexOf('data-testid="work-calendar-event-title"');
+    const projectIndex = workCalendarSource.indexOf('data-testid="work-calendar-event-project"');
+    const timeIndex = workCalendarSource.indexOf('data-testid="work-calendar-event-time"');
+
+    expect(titleIndex).toBeGreaterThan(-1);
+    expect(projectIndex).toBeGreaterThan(titleIndex);
+    expect(timeIndex).toBeGreaterThan(projectIndex);
+    expect(workCalendarSource).toContain("duration >= 45");
+    expect(workCalendarSource).toContain("duration >= 60");
+    expect(workCalendarSource).toContain("style={{ top: index === 0 ? 8 : index * HOUR_HEIGHT }}");
+  });
+
+  test("assigns calendar colors consistently by task title", () => {
+    expect(workCalendarSource).toContain("const TASK_TONES = [");
+    expect(workCalendarSource).toContain("const tone = taskTone(entry.item.title)");
+    expect(workCalendarSource).toContain("taskTone(entry.item.title).compact");
+    expect(workCalendarSource).toContain("taskTone(entry.item.title).marker");
+    expect(workCalendarSource).not.toContain("projectTone(entry.projectName)");
+    expect(workCalendarSource).toContain("bg-cyan-4/80 text-cyan-12");
+    expect(workCalendarSource).toContain("bg-sky-4/80 text-sky-12");
+    expect(workCalendarSource).toContain("bg-violet-4/80 text-violet-12");
+    expect(workCalendarSource).toContain("bg-rose-4/80 text-rose-12");
+    expect(workCalendarSource).toContain("bg-amber-4/80 text-amber-12");
+    expect(workCalendarSource).toContain("bg-grass-4/80 text-grass-12");
+    expect(workCalendarSource).not.toMatch(/#[\dA-F]{3,8}/i);
+  });
+
+  test("finds scheduled calendar tasks by title or project", () => {
+    const calendarItem = (key: string, title: string, projectName: string): WorkCalendarItem => ({
+      key,
+      projectName,
+      item: {
+        id: key,
+        workspaceId: "workspace",
+        title,
+        description: null,
+        status: "planned",
+        assignee: null,
+        priority: "normal",
+        startAt: new Date(2026, 7, 25, 9).getTime(),
+        dueAt: new Date(2026, 7, 25, 10).getTime(),
+        automation: null,
+        automationLastRunAt: null,
+        automationLastSessionId: null,
+        automationLastError: null,
+        position: 0,
+        customFields: {},
+        execution: null,
+        lastError: null,
+        runStartedAt: null,
+        runCompletedAt: null,
+        version: 1,
+        createdAt: 1,
+        updatedAt: 1,
+      },
+    });
+    const release = calendarItem("release", "Release review", "Website");
+    const research = calendarItem("research", "整理访谈", "用户研究");
+    const items = [release, research];
+
+    expect(searchWorkCalendarItems(items, "release")).toEqual([release]);
+    expect(searchWorkCalendarItems(items, "用户研究")).toEqual([research]);
+    expect(searchWorkCalendarItems(items, "  ")).toBe(items);
+  });
+
   test("uses the same semantic typography hierarchy across overview and tasks", () => {
     expect(dashboardSource).toContain('text-[24px] font-semibold leading-8 tracking-[-0.45px] text-dls-text');
+    expect(dashboardSource).not.toContain('shadow-[inset_0_1px_0_rgba(255,255,255,0.45)]');
     expect(workCenterSource).toContain('text-[24px] font-semibold leading-8 tracking-[-0.35px] text-dls-text');
+    expect(workCenterSource).not.toContain('<LayoutDashboard className="size-4 text-dls-secondary" />');
     expect(dashboardSource).toContain('props.config.goal || t("project_overview.default_goal")');
     expect(dashboardSource).toContain('[--primary:#1FBAC0]');
     expect(runtimeDataSource).toContain('case 0: return "bg-primary";');
@@ -489,6 +578,7 @@ describe("project overview", () => {
     expect(dashboardSource).toContain('group block w-full bg-white');
     expect(dashboardSource).not.toContain('selected ? "bg-dls-hover/52"');
     expect(appStylesSource).toContain('html:lang(zh) [data-testid="project-overview"] :where(');
+    expect(appStylesSource).toContain('html:lang(zh) [data-testid="work-center"] :where(');
     expect(appStylesSource).toContain('[class~="text-dls-text/45"]');
     expect(dashboardSource).not.toContain('project_overview.title');
     expect(dashboardSource).not.toContain('project_overview.task_activity_description');

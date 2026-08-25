@@ -229,6 +229,8 @@ export type SessionSurfaceProps = {
   onActivateVideoStudio?: (sessionId: string) => void;
   /** Opens the session-owned Video Studio for a generated video artifact. */
   onOpenVideoStudio?: () => void;
+  /** Opens iPolloWork Schedule focused on an imported task. */
+  onOpenSchedule?: (focusAt: number) => void;
   /** Opens the installed plugin's Workspace App when selected from the extension menu. */
   onOpenWorkspaceApp?: (pluginId: string) => void;
   designTemplates?: TemplateCatalogItem[];
@@ -2042,6 +2044,7 @@ export function SessionSurface(props: SessionSurfaceProps) {
                       displaySuggestions={shellConfig.starterCards}
                       providerConnectedCount={props.providerConnectedCount ?? 0}
                       onOpenVideoStudio={props.onOpenVideoStudio}
+                      onOpenSchedule={props.onOpenSchedule}
                       dispatchAction={handleMessageListDispatchAction}
                       setPrompt={handleMessageListSetPrompt}
                       onRevertToUserMessage={handleRevertToUserMessage}

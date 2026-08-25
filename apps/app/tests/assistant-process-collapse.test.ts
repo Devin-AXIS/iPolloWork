@@ -4,12 +4,44 @@ import { readFileSync } from "node:fs";
 import {
   getActiveAssistantMessageId,
   getAssistantRenderGroups,
+  getScheduleApplyResult,
   groupMessages,
   isMessageGroup,
   splitAssistantRenderGroups,
 } from "../src/components/chat/utils";
 
 describe("assistant process collapse sections", () => {
+  test("finds a completed schedule import across OpenCode and MCP tool result envelopes", () => {
+    const messages = [{
+      id: "assistant-schedule",
+      role: "assistant",
+      parts: [{
+        type: "dynamic-tool",
+        toolName: "ipollowork.ipollowork_schedule_apply",
+        toolCallId: "schedule-call",
+        state: "output-available",
+        input: { previewId: "schedule-preview" },
+        output: {
+          content: [{
+            type: "text",
+            text: JSON.stringify({
+              ok: true,
+              items: [
+                { id: "later", startAt: 1787734800000 },
+                { id: "earlier", startAt: 1787648400000 },
+              ],
+            }),
+          }],
+        },
+      }],
+    }] satisfies Parameters<typeof getScheduleApplyResult>[0]
+
+    expect(getScheduleApplyResult(messages)).toEqual({
+      itemCount: 2,
+      focusAt: 1787648400000,
+    })
+  })
+
   test("opens while streaming and defaults completed or historical work to collapsed", () => {
     const source = readFileSync(
       new URL("../src/components/chat/message-list.tsx", import.meta.url),

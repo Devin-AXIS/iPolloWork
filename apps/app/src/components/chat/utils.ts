@@ -9,6 +9,67 @@ interface MessageGroup {
 export type UIMessageWithIndex = { index: number, message: UIMessage }
 type MessageListItem = MessageGroup | UIMessageWithIndex
 
+export type ScheduleApplyResult = {
+  itemCount: number
+  focusAt: number
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+}
+
+function parseJson(value: unknown): unknown {
+  if (typeof value !== "string") return value
+  try {
+    const parsed: unknown = JSON.parse(value)
+    return parsed
+  } catch {
+    return value
+  }
+}
+
+function findScheduleApplyPayload(value: unknown, depth = 0): Record<string, unknown> | null {
+  if (depth > 4) return null
+  const parsed = parseJson(value)
+  if (isRecord(parsed)) {
+    if (parsed.ok === true && Array.isArray(parsed.items)) return parsed
+    for (const key of ["structuredContent", "result", "output", "content", "text"]) {
+      const nested = findScheduleApplyPayload(parsed[key], depth + 1)
+      if (nested) return nested
+    }
+    return null
+  }
+  if (!Array.isArray(parsed)) return null
+  for (const item of parsed.slice(0, 20)) {
+    const nested = findScheduleApplyPayload(item, depth + 1)
+    if (nested) return nested
+  }
+  return null
+}
+
+export function getScheduleApplyResult(messages: readonly UIMessage[]): ScheduleApplyResult | null {
+  for (let messageIndex = messages.length - 1; messageIndex >= 0; messageIndex -= 1) {
+    const message = messages[messageIndex]
+    if (!message) continue
+    for (let partIndex = message.parts.length - 1; partIndex >= 0; partIndex -= 1) {
+      const part = message.parts[partIndex]
+      if (!part || !isToolUIPart(part) || part.state !== "output-available") continue
+      const toolName = part.type === "dynamic-tool" ? part.toolName : part.type
+      if (!toolName.toLowerCase().endsWith("ipollowork_schedule_apply")) continue
+      const payload = findScheduleApplyPayload(part.output)
+      if (!payload || !Array.isArray(payload.items) || payload.items.length === 0) continue
+      const scheduledTimes = payload.items.flatMap((item) => {
+        if (!isRecord(item)) return []
+        const value = typeof item.startAt === "number" ? item.startAt : item.dueAt
+        return typeof value === "number" && Number.isFinite(value) ? [value] : []
+      })
+      if (scheduledTimes.length === 0) continue
+      return { itemCount: payload.items.length, focusAt: Math.min(...scheduledTimes) }
+    }
+  }
+  return null
+}
+
 function getMessageText(message: UIMessage): string {
   return message.parts
     .filter((part) => part.type === "text")
