@@ -64,7 +64,6 @@ import {
 import { publicAssetUrl } from "@/app/lib/public-asset";
 import { t } from "@/i18n";
 import { cn } from "@/lib/utils";
-import { listSavedPromptTemplates, type SavedPromptTemplate } from "@/react-app/domains/session/templates/prompt-template-store";
 
 export type NewConversationMode = "work" | "code" | "design" | "video";
 
@@ -76,14 +75,6 @@ type NewConversationStarterProps = {
   selectedCapabilityId?: string | null;
   onSelectMode: (mode: NewConversationMode) => void;
   onSelectPrompt: (prompt: string, capability?: StarterCapability) => void;
-  promptTemplates?: Array<{
-    id: string;
-    pluginId?: string;
-    label: string;
-    description: string;
-    prompt: string;
-    mode: NewConversationMode;
-  }>;
   templates?: TemplateCatalogItem[];
   templatesLoading?: boolean;
   templateBusyId?: string | null;
@@ -1010,7 +1001,6 @@ export function NewConversationStarter({
   selectedCapabilityId,
   onSelectMode,
   onSelectPrompt,
-  promptTemplates = [],
   templates = [],
   templatesLoading = false,
   templateBusyId,
@@ -1032,22 +1022,9 @@ export function NewConversationStarter({
   const [shortcutEditorOpen, setShortcutEditorOpen] = useState(false);
   const [shortcutEditorPosition, setShortcutEditorPosition] = useState<CSSProperties>({});
   const [shortcutIds, setShortcutIds] = useState<Record<NewConversationMode, string[]>>(DEFAULT_SHORTCUT_IDS);
-  const [savedPromptTemplates, setSavedPromptTemplates] = useState<SavedPromptTemplate[]>([]);
   const shortcutEditorRef = useRef<HTMLDivElement>(null);
   const shortcutEditorPanelRef = useRef<HTMLDivElement>(null);
   const shortcutButtonRef = useRef<HTMLButtonElement>(null);
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    const refreshSavedTemplates = () => setSavedPromptTemplates(listSavedPromptTemplates().slice(0, 4));
-    refreshSavedTemplates();
-    window.addEventListener("ipollowork:saved-prompt-templates-changed", refreshSavedTemplates);
-    window.addEventListener("storage", refreshSavedTemplates);
-    return () => {
-      window.removeEventListener("ipollowork:saved-prompt-templates-changed", refreshSavedTemplates);
-      window.removeEventListener("storage", refreshSavedTemplates);
-    };
-  }, []);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -1133,25 +1110,6 @@ export function NewConversationStarter({
   const actions = shortcutIds[selectedMode]
     .map((id) => modeDefinitions.find((action) => action.id === id))
     .filter((action): action is StarterAction => Boolean(action));
-  const visiblePromptTemplates = useMemo(() => [
-    ...(selectedMode === "work" ? savedPromptTemplates.map((template) => ({
-      id: `saved:${template.id}`,
-      pluginId: undefined,
-      label: template.title,
-      description: template.prompt,
-      prompt: template.prompt,
-    })) : []),
-    ...promptTemplates
-      .filter((template) => template.mode === selectedMode)
-      .map((template) => ({
-        id: `plugin:${template.id}`,
-        pluginId: template.pluginId,
-        label: template.label,
-        description: template.description || template.prompt,
-        prompt: template.prompt,
-      })),
-  ], [promptTemplates, savedPromptTemplates, selectedMode]);
-
   const toggleShortcut = (id: string) => {
     const definition = modeDefinitions.find((action) => action.id === id);
     if (!definition) return;
@@ -1353,34 +1311,6 @@ export function NewConversationStarter({
             onInstallTemplate={onInstallTemplate}
             onRequestTemplates={onRequestTemplates}
           />
-        ) : null}
-        {visiblePromptTemplates.length > 0 ? (
-          <div className="mt-4 rounded-xl border border-border/80 bg-muted/25 p-3">
-            <div className="mb-2 px-0.5">
-              <p className="text-[13px] font-medium text-foreground">{t("new_conversation.saved_templates.title")}</p>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              {visiblePromptTemplates.map((template) => (
-                <button
-                  key={template.id}
-                  type="button"
-                  className="max-w-full rounded-lg border border-border bg-background px-3 py-2 text-left text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-                  onClick={() => onSelectPrompt(
-                    template.pluginId ? "" : template.prompt,
-                    template.pluginId ? {
-                      id: template.id,
-                      label: template.label,
-                      icon: AppWindow,
-                      instruction: template.prompt,
-                    } : undefined,
-                  )}
-                >
-                  <span className="block truncate font-medium text-foreground">{template.label}</span>
-                  <span className="mt-0.5 block max-w-[220px] truncate">{template.description}</span>
-                </button>
-              ))}
-            </div>
-          </div>
         ) : null}
         {selectedMode === "video" && VIDEO_ANIMATION_PICKER_ENABLED ? (
           <AnimationCatalogStrip

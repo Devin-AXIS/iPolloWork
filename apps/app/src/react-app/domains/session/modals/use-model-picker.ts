@@ -10,18 +10,21 @@ import { filterProviderList } from "@/app/utils/providers";
 import type { ModelOption } from "@/app/types";
 import { useCheckDesktopRestriction } from "@/react-app/domains/cloud/desktop-config-provider";
 import {
-  ensureMergedProviderListQuery,
-  ensureProviderListQuery,
+  getChatModelCatalogEntries,
   getEngineChatModelEntries,
   projectAccountProviderConnections,
   type ProviderListQueryInput,
+  useMergedProviderListQuery,
+  useProviderListQuery,
 } from "@/react-app/infra/provider-list-query";
-import { getReactQueryClient } from "@/react-app/infra/query-client";
 import {
   openModelPickerEvent,
   pendingModelPickerProviderIdsKey,
 } from "@/react-app/shell/new-providers-listener";
 import { t } from "@/i18n";
+
+const EMPTY_PROVIDER_SOURCES: readonly ProviderListQueryInput[] = [];
+const EMPTY_PROVIDER_IDS: readonly string[] = [];
 
 export type UseModelPickerInput = {
   client: unknown | null;
@@ -42,10 +45,10 @@ export function useModelPicker(input: UseModelPickerInput) {
     engineId,
     baseUrl,
     workspaceRoot,
-    catalogSources = [],
+    catalogSources = EMPTY_PROVIDER_SOURCES,
     runtimeSource = null,
-    connectedProviderIds = [],
-    disabledProviderIds = [],
+    connectedProviderIds = EMPTY_PROVIDER_IDS,
+    disabledProviderIds = EMPTY_PROVIDER_IDS,
     onLoadError,
   } = input;
   const checkDesktopRestriction = useCheckDesktopRestriction();
@@ -53,17 +56,6 @@ export function useModelPicker(input: UseModelPickerInput) {
   const [open, setOpen] = useState(false);
   const [compactOpen, setCompactOpen] = useState(false);
   const [query, setQuery] = useState("");
-  const optionScopeKey = [
-    engineId?.trim() ?? "",
-    runtimeSource?.baseUrl?.trim() ?? baseUrl.trim(),
-    runtimeSource?.directory?.trim() ?? workspaceRoot.trim(),
-    [...disabledProviderIds].sort().join(","),
-  ].join("\u0000");
-  const [loadedOptions, setLoadedOptions] = useState<{ scopeKey: string; options: ModelOption[] }>({
-    scopeKey: "",
-    options: [],
-  });
-  const modelOptions = loadedOptions.scopeKey === optionScopeKey ? loadedOptions.options : [];
   // Provider IDs that were just added — used to highlight them as
   // "Recently added" in the model picker even after they've been
   // marked as seen in localStorage.
@@ -102,81 +94,87 @@ export function useModelPicker(input: UseModelPickerInput) {
     }
   }, []);
 
-  // Load the picker list lazily when either presentation opens. The composer
-  // uses the compact picker, while settings uses the full modal; both consume
-  // the same model options and must work on their first open.
+  // Load both directories lazily, but subscribe to them independently so a
+  // cached account catalog can render while runtime readiness refreshes.
+  const activeSource = useMemo<ProviderListQueryInput | null>(() => client ? ({
+    client,
+    engineId,
+    baseUrl,
+    directory: workspaceRoot || undefined,
+  }) : null, [baseUrl, client, engineId, workspaceRoot]);
+  const catalogQuerySources = catalogSources.length
+    ? catalogSources
+    : activeSource
+      ? [activeSource]
+      : EMPTY_PROVIDER_SOURCES;
+  const resolvedRuntimeSource = runtimeSource ?? activeSource;
+  const pickerOpen = open || compactOpen;
+  const catalogQuery = useMergedProviderListQuery({
+    sources: catalogQuerySources,
+    enabled: pickerOpen && catalogQuerySources.length > 0,
+  });
+  const runtimeQuery = useProviderListQuery({
+    client: resolvedRuntimeSource?.client ?? null,
+    engineId: resolvedRuntimeSource?.engineId,
+    baseUrl: resolvedRuntimeSource?.baseUrl,
+    directory: resolvedRuntimeSource?.directory,
+    enabled: pickerOpen && Boolean(resolvedRuntimeSource?.client),
+  });
+
   useEffect(() => {
-    if ((!open && !compactOpen) || (!client && catalogSources.length === 0)) return;
-    let cancelled = false;
-    void (async () => {
-      try {
-        const activeSources: ProviderListQueryInput[] = client ? [{
-          client,
-          engineId,
-          baseUrl,
-          directory: workspaceRoot || undefined,
-        }] : [];
-        const queryClient = getReactQueryClient();
-        const catalogQuerySources = catalogSources.length ? catalogSources : activeSources;
-        const [data, runtimeData] = await Promise.all([
-          ensureMergedProviderListQuery(queryClient, catalogQuerySources),
-          runtimeSource
-            ? ensureProviderListQuery(queryClient, runtimeSource)
-            : ensureMergedProviderListQuery(queryClient, activeSources),
-        ]);
-        if (cancelled || !data.all) return;
-        const accountData = filterProviderList(
-          projectAccountProviderConnections(data, connectedProviderIds) ?? data,
-          [...disabledProviderIds],
-        );
-        // Flag models from recently-added providers so they appear in
-        // the "Recently added" section at the top of the picker.
-        // Two sources: (1) providers not yet in the localStorage seen-set,
-        // (2) providers passed via the openModelPickerEvent from the toast.
-        let seenIds: Set<string>;
-        try {
-          const raw = window.localStorage.getItem("ipollowork.seenProviderIds");
-          seenIds = new Set(raw ? JSON.parse(raw) : []);
-        } catch {
-          seenIds = new Set();
-        }
-        const options: ModelOption[] = [];
-        for (const { provider, modelId, model, runtime } of getEngineChatModelEntries({
+    const error = catalogQuery.error ?? runtimeQuery.error;
+    if (error) onLoadError?.(error);
+  }, [catalogQuery.error, onLoadError, runtimeQuery.error]);
+
+  const modelOptions = useMemo(() => {
+    const data = catalogQuery.data;
+    if (!data) return [];
+    const accountData = filterProviderList(
+      projectAccountProviderConnections(data, connectedProviderIds) ?? data,
+      [...disabledProviderIds],
+    );
+    let seenIds: Set<string>;
+    try {
+      const raw = window.localStorage.getItem("ipollowork.seenProviderIds");
+      seenIds = new Set(raw ? JSON.parse(raw) : []);
+    } catch {
+      seenIds = new Set();
+    }
+    const entries = runtimeQuery.data
+      ? getEngineChatModelEntries({
           catalog: accountData,
-          runtime: runtimeData,
+          runtime: runtimeQuery.data,
           engineId,
-        })) {
-          const isNew = !seenIds.has(provider.id) || recentProviderIds.has(provider.id);
-          const runtimeReady = runtime.status === "ready";
-          options.push({
-            providerID: provider.id,
-            modelID: modelId,
-            title: model.name || modelId,
-            description: provider.name,
-            behaviorTitle: t("model_behavior.title_reasoning_effort"),
-            behaviorLabel: t("settings.provider_default_label"),
-            behaviorDescription: "",
-            behaviorValue: null,
-            isFree: provider.id.trim().toLowerCase() === "opencode",
-            isConnected: runtimeReady,
-            disabled: !runtimeReady,
-            footer: runtimeReady ? undefined : t("model_picker.connect_provider_hint"),
-            isRecommended: isNew,
-            supportsVision: runtime.capabilities?.vision === true,
-            source: /^lpr_/i.test(provider.id) ? "cloud" as const : undefined,
-          });
-        }
-        setLoadedOptions({ scopeKey: optionScopeKey, options });
-      } catch (error) {
-        // Default: silent — the picker surfaces an empty list rather than
-        // blocking the UI. Callers can opt into surfacing the failure.
-        onLoadError?.(error);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [open, compactOpen, baseUrl, catalogSources, client, connectedProviderIds, disabledProviderIds, engineId, optionScopeKey, recentProviderIds, runtimeSource, workspaceRoot]);
+        })
+      : getChatModelCatalogEntries(accountData).map((entry) => ({ ...entry, runtime: null }));
+    return entries.map(({ provider, modelId, model, runtime }): ModelOption => {
+      const runtimePending = runtime === null;
+      const runtimeReady = runtime?.status === "ready";
+      return {
+        providerID: provider.id,
+        modelID: modelId,
+        title: model.name || modelId,
+        description: provider.name,
+        behaviorTitle: t("model_behavior.title_reasoning_effort"),
+        behaviorLabel: t("settings.provider_default_label"),
+        behaviorDescription: "",
+        behaviorValue: null,
+        isFree: provider.id.trim().toLowerCase() === "opencode",
+        isConnected: runtimeReady,
+        runtimePending,
+        disabled: runtimePending || !runtimeReady,
+        footer: runtimePending
+          ? t("settings.loading_providers")
+          : runtimeReady
+            ? undefined
+            : t("model_picker.connect_provider_hint"),
+        isRecommended: !seenIds.has(provider.id) || recentProviderIds.has(provider.id),
+        supportsVision: runtime?.capabilities?.vision === true
+          || model.capabilities.input?.image === true,
+        source: /^lpr_/i.test(provider.id) ? "cloud" : undefined,
+      };
+    });
+  }, [catalogQuery.data, connectedProviderIds, disabledProviderIds, engineId, recentProviderIds, runtimeQuery.data]);
 
   // Apply org-level restrictions (dev #1505) on top of the raw model list
   // so the picker never surfaces blocked options:
@@ -196,7 +194,7 @@ export function useModelPicker(input: UseModelPickerInput) {
       ) {
         return false;
       }
-      if (restrictToCloud && !option.isConnected) {
+      if (restrictToCloud && !option.isConnected && !option.runtimePending) {
         return false;
       }
       return true;

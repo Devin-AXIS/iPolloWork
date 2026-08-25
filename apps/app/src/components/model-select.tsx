@@ -19,6 +19,7 @@ import {
 import { useWorkspace } from "@/react-app/shell/workspace-provider";
 import { useCheckDesktopRestriction } from "@/react-app/domains/cloud/desktop-config-provider";
 import {
+  getChatModelCatalogEntries,
   getEngineChatModelEntries,
   projectAccountProviderConnections,
   type ProviderListQueryInput,
@@ -96,12 +97,16 @@ function useModelOptions(open: boolean) {
       catalogQuery.data,
       connectedProviderIds,
     );
-    const options = getEngineChatModelEntries({
-      catalog: catalogValue,
-      runtime: runtimeQuery.data,
-      engineId,
-    }).map(({ provider, modelId, model, runtime }) => {
-      const runtimeReady = runtime.status === "ready";
+    const entries = runtimeQuery.data
+      ? getEngineChatModelEntries({
+          catalog: catalogValue,
+          runtime: runtimeQuery.data,
+          engineId,
+        })
+      : getChatModelCatalogEntries(catalogValue).map((entry) => ({ ...entry, runtime: null }));
+    const options = entries.map(({ provider, modelId, model, runtime }) => {
+      const runtimePending = runtime === null;
+      const runtimeReady = runtime?.status === "ready";
       return {
         providerID: provider.id,
         modelID: modelId,
@@ -113,9 +118,15 @@ function useModelOptions(open: boolean) {
         behaviorValue: null,
         isFree: provider.id.trim().toLowerCase() === "opencode",
         isConnected: runtimeReady,
-        disabled: !runtimeReady,
-        footer: runtimeReady ? undefined : t("model_picker.connect_provider_hint"),
-        supportsVision: runtime.capabilities?.vision === true,
+        runtimePending,
+        disabled: runtimePending || !runtimeReady,
+        footer: runtimePending
+          ? t("settings.loading_providers")
+          : runtimeReady
+            ? undefined
+            : t("model_picker.connect_provider_hint"),
+        supportsVision: runtime?.capabilities?.vision === true
+          || model.capabilities.input?.image === true,
       };
     });
 
@@ -130,7 +141,7 @@ function useModelOptions(open: boolean) {
         return false;
       }
 
-      if (restrictToCloud && !option.isConnected) {
+      if (restrictToCloud && !option.isConnected && !option.runtimePending) {
         return false;
       }
 
@@ -259,8 +270,9 @@ export function ModelListContent({
                     className="gap-2 data-disabled:opacity-50"
                     key={item.id}
                     value={`${option.providerID}:${option.modelID} ${option.title} ${option.description ?? ""}`}
-                    disabled={option.disabled && (option.isConnected || !onConfigureModels)}
+                    disabled={option.disabled && (option.isConnected || option.runtimePending || !onConfigureModels)}
                     onClick={() => {
+                      if (option.runtimePending) return;
                       if (option.disabled && !option.isConnected) {
                         setSearch("");
                         onConfigureModels?.(option.providerID);

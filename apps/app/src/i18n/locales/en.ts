@@ -354,7 +354,6 @@ export default {
   "new_conversation.templates.install": "Install",
   "new_conversation.templates.use": "Use template",
   "new_conversation.templates.local": "Local",
-  "new_conversation.saved_templates.title": "Saved templates",
   "new_conversation.template_category.site": "website",
   "new_conversation.template_category.poster": "poster",
   "new_conversation.template_category.cards": "info card",

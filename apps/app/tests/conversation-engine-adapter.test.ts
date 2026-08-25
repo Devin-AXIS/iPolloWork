@@ -1142,6 +1142,53 @@ describe("conversation engine adapters", () => {
     })]);
   });
 
+  test("preserves DeepSeek Harness image blocks as renderable file parts", () => {
+    const events = mapDeepSeekHarnessEnvelope({
+      type: "server-request",
+      rpcId: "rpc-user-image",
+      payload: {
+        type: "session/event",
+        sessionId: "dsh-session",
+        event: {
+          type: "user/message",
+          seq: 4,
+          time: 40,
+          data: {
+            id: "user-image",
+            role: "user",
+            source: { kind: "user" },
+            content: [
+              { type: "text", text: "What is in this image?" },
+              {
+                type: "image",
+                mediaType: "image/png",
+                data: "aW1hZ2UtYnl0ZXM=",
+                name: "reference.png",
+              },
+            ],
+          },
+        },
+      },
+    }, { parts: new Set(), tools: new Map() });
+
+    expect(events).toEqual([expect.objectContaining({
+      type: "message.upsert",
+      message: expect.objectContaining({
+        id: "user-image",
+        role: "user",
+        parts: [
+          expect.objectContaining({ type: "text", text: "What is in this image?" }),
+          expect.objectContaining({
+            type: "file",
+            mediaType: "image/png",
+            filename: "reference.png",
+            url: "data:image/png;base64,aW1hZ2UtYnl0ZXM=",
+          }),
+        ],
+      }),
+    })]);
+  });
+
   test("honors the declared assistant role on DeepSeek Harness user-message envelopes", () => {
     const events = mapDeepSeekHarnessEnvelope({
       type: "server-request",

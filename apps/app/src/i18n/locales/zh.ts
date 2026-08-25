@@ -356,7 +356,6 @@ export default {
   "new_conversation.templates.install": "安装",
   "new_conversation.templates.use": "使用模板",
   "new_conversation.templates.local": "本地",
-  "new_conversation.saved_templates.title": "已保存模板",
   "new_conversation.template_category.site": "网站",
   "new_conversation.template_category.poster": "海报",
   "new_conversation.template_category.cards": "信息卡片",
