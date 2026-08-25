@@ -6,6 +6,7 @@ import {
   timingSafeEqual,
 } from "node:crypto";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
+import { openCodeZenPublicModelUsesSessionAffinity } from "@ipollowork/types/opencode-zen-public-models";
 
 export type CodexProviderGatewayProtocol = "openai-completions" | "anthropic-messages";
 
@@ -433,6 +434,20 @@ async function upstreamJson(
 ): Promise<Record<string, unknown>> {
   const headers = new Headers(provider.httpHeaders);
   headers.set("content-type", "application/json");
+  if (provider.providerId === "opencode") {
+    const modelId = nonEmptyString(body.model);
+    if (!headers.has("user-agent")) headers.set("user-agent", "opencode/ipollowork");
+    if (
+      !headers.has("x-opencode-session")
+      && (!modelId || openCodeZenPublicModelUsesSessionAffinity(modelId))
+    ) {
+      headers.set("x-opencode-session", `ses_${randomBytes(12).toString("hex")}`);
+    }
+    if (!headers.has("x-opencode-request")) {
+      headers.set("x-opencode-request", `msg_${randomBytes(12).toString("hex")}`);
+    }
+    if (!headers.has("x-opencode-client")) headers.set("x-opencode-client", "ipollowork");
+  }
   if (provider.protocol === "anthropic-messages") {
     headers.set("x-api-key", provider.apiKey);
     if (!headers.has("anthropic-version")) headers.set("anthropic-version", "2023-06-01");
@@ -526,7 +541,8 @@ async function callAnthropic(
   const model = nonEmptyString(body.model);
   if (!model) throw new Error("A model is required");
   const instructions = nonEmptyString(body.instructions);
-  const payload = await upstreamJson(provider, "messages", {
+  const messagesPath = /\/v1\/?$/u.test(provider.baseURL) ? "messages" : "v1/messages";
+  const payload = await upstreamJson(provider, messagesPath, {
     model,
     messages: anthropicMessages(body),
     max_tokens: typeof body.max_output_tokens === "number" ? body.max_output_tokens : 8_192,

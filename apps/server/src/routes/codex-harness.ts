@@ -174,13 +174,14 @@ export function registerCodexHarnessRoutes(options: RegisterCodexHarnessRoutesOp
       selection,
     });
     const input = Array.isArray(body.payload.input) ? [...body.payload.input] : [];
-    const additionalContext = buildCodexHarnessAdditionalContext(
-      body.payload.system,
-      [...instructions.systemInstructions, ...instructions.userInstructions],
-    );
     const model = isRecord(body.payload.model) ? body.payload.model : null;
     const providerID = typeof model?.providerID === "string" ? model.providerID.trim() : "";
     const modelID = typeof model?.modelID === "string" ? model.modelID.trim() : "";
+    const additionalContext = buildCodexHarnessAdditionalContext(
+      body.payload.system,
+      [...instructions.systemInstructions, ...instructions.userInstructions],
+      providerID && modelID ? { providerID, modelID } : null,
+    );
     const workspaceRuntime = runtime.forWorkspace(workspace);
     try {
       const resumed = await workspaceRuntime.resumeThread({
@@ -201,7 +202,9 @@ export function registerCodexHarnessRoutes(options: RegisterCodexHarnessRoutesOp
         input,
         ...(additionalContext ? { additionalContext } : {}),
         cwd: workspace.path,
-        ...(modelID ? { model: modelID } : {}),
+        // thread/resume above owns the provider/model pair. turn/start has no
+        // modelProvider field, so repeating only the model can resolve it
+        // against Codex's default provider instead of the selected account.
         ...(typeof body.payload.reasoningEffort === "string"
           ? { effort: body.payload.reasoningEffort }
           : typeof body.payload.variant === "string"

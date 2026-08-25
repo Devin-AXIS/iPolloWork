@@ -178,6 +178,10 @@ function openCodeConnection(input: { baseUrl: string; token?: string; directory?
           if (agent === "orchestrator") agent = undefined;
         }
       }
+      const runtimeModelContext = input.model
+        ? `Authoritative iPolloWork runtime model selection for this turn: ${JSON.stringify(input.model)}. When asked which model is running, report this selection exactly. Do not infer or claim a different model identity from earlier messages, training data, or generated self-description.`
+        : "";
+      const system = [input.system?.trim(), runtimeModelContext].filter(Boolean).join("\n\n");
       const result = await client.session.promptAsync({
         sessionID: input.sessionId,
         parts: input.parts,
@@ -188,7 +192,7 @@ function openCodeConnection(input: { baseUrl: string; token?: string; directory?
           : input.variant
             ? { variant: input.variant }
             : {}),
-        ...(input.system ? { system: input.system } : {}),
+        ...(system ? { system } : {}),
       });
       if (result.error !== undefined) unwrap(result);
       return { sessionId: input.sessionId };

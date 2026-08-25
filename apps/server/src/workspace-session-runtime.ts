@@ -126,6 +126,7 @@ export function opencodeCompletion(input: {
 export function buildCodexHarnessAdditionalContext(
   system: unknown,
   pluginInstructions: readonly string[],
+  model?: WorkspaceSessionModel | null,
 ): Record<string, { value: string; kind: "application" }> | undefined {
   const context: Record<string, { value: string; kind: "application" }> = {};
   if (typeof system === "string" && system.trim()) {
@@ -134,6 +135,14 @@ export function buildCodexHarnessAdditionalContext(
   const pluginText = pluginInstructions.map((instruction) => instruction.trim()).filter(Boolean).join("\n\n");
   if (pluginText) {
     context["ipollowork.plugins"] = { value: pluginText, kind: "application" };
+  }
+  const providerID = model?.providerID.trim();
+  const modelID = model?.modelID.trim();
+  if (providerID && modelID) {
+    context["ipollowork.model"] = {
+      value: `Authoritative iPolloWork runtime model selection: providerID="${providerID}", modelID="${modelID}". When asked which model is running, report this selection instead of inferring identity from Codex host instructions or earlier assistant messages.`,
+      kind: "application",
+    };
   }
   return Object.keys(context).length > 0 ? context : undefined;
 }
@@ -318,12 +327,14 @@ export class WorkspaceSessionRuntime {
           effectiveSessionId = resumedThread.id.trim();
         }
       }
-      const additionalContext = buildCodexHarnessAdditionalContext(input.system, []);
+      const additionalContext = buildCodexHarnessAdditionalContext(input.system, [], input.model);
       await runtime.call("turn/start", {
         threadId: effectiveSessionId,
         input: [{ type: "text", text: input.text, text_elements: [] }],
         ...(additionalContext ? { additionalContext } : {}),
-        ...(input.model ? { model: input.model.modelID } : {}),
+        // The selected provider/model was applied by thread/start or
+        // thread/resume. Do not send a model-only turn override that can fall
+        // back to Codex's default provider.
         ...(input.reasoningEffort ? { effort: input.reasoningEffort } : {}),
       });
       this.#freshCodexThreads.delete(freshKey);

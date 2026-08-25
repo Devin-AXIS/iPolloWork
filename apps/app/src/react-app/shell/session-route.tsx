@@ -179,8 +179,7 @@ import type { OpenTarget } from "@/react-app/domains/session/artifacts/open-targ
 import { SettingsSurface } from "./settings-route";
 import {
   ensureProviderListQuery,
-  getSelectableChatModelSnapshot,
-  mergeProviderListResponses,
+  getRunnableChatModelSnapshot,
   projectAccountProviderConnections,
   type ProviderListQueryInput,
   useMergedProviderListQuery,
@@ -768,11 +767,12 @@ export function SessionRoute() {
     baseUrl: activeProviderSource?.baseUrl,
     directory: activeProviderSource?.directory,
   });
+  const accountProviderCatalog = providerListQuery.data ?? { all: [], connected: [], default: {} };
   const accountProviderList = filterProviderList(
     projectAccountProviderConnections(
-      mergeProviderListResponses([providerListQuery.data, activeProviderListQuery.data]),
+      accountProviderCatalog,
       sessionProviderAuthSnapshot.connectedProviderIds,
-    ) ?? mergeProviderListResponses([]),
+    ) ?? accountProviderCatalog,
     hiddenProviderIds,
   );
   const activeProviderList = activeProviderListQuery.data
@@ -806,7 +806,11 @@ export function SessionRoute() {
       (selection) => ({ ...selection, modelVariant }),
     ));
   }, [local.setPrefs]);
-  const selectableModels = getSelectableChatModelSnapshot(activeProviderList);
+  const selectableModels = getRunnableChatModelSnapshot({
+    catalog: accountProviderList,
+    runtime: activeProviderList,
+    engineId: activeEngineId,
+  });
   const customProvidersRestricted = checkDesktopRestriction({ restriction: "allowCustomProviders" });
   const permittedSelectableModels = selectableModels.filter((provider) => (
     !isDesktopProviderBlocked({

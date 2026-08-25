@@ -1,4 +1,8 @@
 import { useQueries, useQuery, type QueryClient } from "@tanstack/react-query";
+import {
+  OPENCODE_ZEN_PUBLIC_DEFAULT_MODEL_ID,
+  openCodeZenPublicModels,
+} from "@ipollowork/types/opencode-zen-public-models";
 
 import type {
   ModelRef,
@@ -76,12 +80,50 @@ export async function fetchProviderList(input: {
   baseUrl?: string | null;
   directory?: string | null;
 }): Promise<ProviderListResponse> {
-  const value = await modelRuntimeAdapters
-    .get(input.engineId)
-    .connect(input.client)
-    .listProviders(input.directory?.trim() || undefined);
+  const value = projectOpenCodeZenProviderList(
+    await modelRuntimeAdapters
+      .get(input.engineId)
+      .connect(input.client)
+      .listProviders(input.directory?.trim() || undefined),
+  );
   recordConnectedProviderSnapshot(input, value);
   return value;
+}
+
+export function projectOpenCodeZenProviderList(
+  value: ProviderListResponse,
+): ProviderListResponse {
+  let found = false;
+  const all = value.all.map((provider) => {
+    if (provider.id !== "opencode") return provider;
+    found = true;
+    const models = Object.fromEntries(openCodeZenPublicModels().map((profile) => {
+      const discovered = provider.models[profile.id];
+      return [profile.id, discovered
+        ? { ...discovered, name: profile.name }
+        : {
+            ...profile,
+            capabilities: {
+              attachment: false,
+              reasoning: false,
+              toolcall: true,
+              input: { text: true, image: false },
+              output: { text: true },
+            },
+          }];
+    }));
+    return { ...provider, models };
+  });
+  return found
+    ? {
+        ...value,
+        all,
+        default: {
+          ...value.default,
+          opencode: OPENCODE_ZEN_PUBLIC_DEFAULT_MODEL_ID,
+        },
+      }
+    : value;
 }
 
 /**
@@ -306,6 +348,25 @@ export function getRunnableChatModelEntries(input: {
   engineId?: string | null;
 }): RunnableChatModelEntry[] {
   return getEngineChatModelEntries(input).filter(({ runtime }) => runtime.status === "ready");
+}
+
+/**
+ * Group the account-owned model directory after intersecting it with the
+ * active engine runtime. Runtime-native catalog entries never enter this
+ * snapshot, so saved selection and picker options share the same boundary.
+ */
+export function getRunnableChatModelSnapshot(input: {
+  catalog: ProviderListResponse | null | undefined;
+  runtime: ProviderListResponse | null | undefined;
+  engineId?: string | null;
+}): SelectableChatModelSnapshot {
+  const modelIdsByProvider = new Map<string, string[]>();
+  for (const { provider, modelId } of getRunnableChatModelEntries(input)) {
+    const modelIds = modelIdsByProvider.get(provider.id) ?? [];
+    modelIds.push(modelId);
+    modelIdsByProvider.set(provider.id, modelIds);
+  }
+  return [...modelIdsByProvider].map(([providerID, modelIDs]) => ({ providerID, modelIDs }));
 }
 
 export function getConnectedProviderSnapshot(

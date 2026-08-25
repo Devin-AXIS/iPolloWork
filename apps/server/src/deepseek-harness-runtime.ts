@@ -11,6 +11,7 @@ import {
   sharedProviderProfiles,
   type SharedProviderProfile,
 } from "@ipollowork/types/provider-credentials";
+import { openCodeZenPublicModels } from "@ipollowork/types/opencode-zen-public-models";
 import { DEEPSEEK_HARNESS_ENGINE_ID } from "@ipollowork/types/workspace";
 
 import type { EnvService } from "./env-file.js";
@@ -80,6 +81,7 @@ type DeepSeekHarnessProviderBridge = {
   baseURL?: string;
   discoverModels?: boolean;
   models?: DeepSeekHarnessDiscoveredModels["models"];
+  requiresCredentialBinding?: boolean;
 
 };
 
@@ -101,21 +103,20 @@ const OPENCODE_ZEN_PUBLIC_PROVIDER_BRIDGE: DeepSeekHarnessProviderBridge = {
   displayName: "iPolloWork Built-in Models",
   api: "openai-completions",
   baseURL: "https://opencode.ai/zen/v1",
-  discoverModels: true,
+  models: openCodeZenPublicModels(),
 };
 
 const OPENAI_CODEX_AUTH_PROVIDER_ID = "openai";
 const OPENAI_CODEX_PROVIDER_BRIDGE: DeepSeekHarnessProviderBridge = {
   providerId: "openai-codex",
   displayName: "OpenAI",
+  // pi-ai's Codex provider is OAuth-only by default. DSH can inject the
+  // account access token only when this route explicitly names its credential.
+  requiresCredentialBinding: true,
 };
 const PROVIDER_MODEL_DISCOVERY_TIMEOUT_MS = 10_000;
 
 const OPENCODE_ZEN_PUBLIC_API_KEY = "public";
-
-function isOpenCodeZenPublicModel(modelId: string): boolean {
-  return modelId === "big-pickle" || modelId.endsWith("-free");
-}
 
 function providerBridge(
   providerId: string,
@@ -424,7 +425,12 @@ export class DeepSeekHarnessRuntime {
       const bridge = explicitProfile ?? credential.bridge;
       if (bridge) {
         const ref = providerApiKeyCredentialRef(providerId);
-        if (!explicitProfile && route?.active) {
+        if (
+          !explicitProfile
+          && route?.active
+          && !bridge.requiresCredentialBinding
+          && !bridge.models?.length
+        ) {
           try {
             await this.#callAtBaseUrl(baseUrl, "credentials.set", { ref, value: apiKey });
           } catch {
@@ -449,13 +455,7 @@ export class DeepSeekHarnessRuntime {
             },
             PROVIDER_MODEL_DISCOVERY_TIMEOUT_MS,
           ).catch(() => null);
-          models = discovery?.models
-            .filter((model) => (
-              providerId !== OPENCODE_ZEN_PUBLIC_PROVIDER_BRIDGE.providerId
-              || apiKey !== OPENCODE_ZEN_PUBLIC_API_KEY
-              || isOpenCodeZenPublicModel(model.id)
-            ))
-            .slice(0, 500);
+          models = discovery?.models.slice(0, 500);
         }
         if (bridge.discoverModels && !models?.length) {
           syncSucceeded = false;

@@ -23,6 +23,20 @@ import {
   resolveOpenAiCodexOAuthSession,
   resolveOfficialCodexAuthPath,
 } from "./openai-codex-oauth.js";
+import {
+  isOpenCodeZenPublicModel,
+  openCodeZenPublicModelName,
+  openCodeZenPublicModels,
+} from "@ipollowork/types/opencode-zen-public-models";
+
+const OPENCODE_ZEN_PUBLIC_MODELS = [
+  { id: "big-pickle", name: "Big Pickle" },
+  { id: "hy3-free", name: "Hy3 Free" },
+  { id: "mimo-v2.5-free", name: "MiMo-V2.5 Free" },
+  { id: "nemotron-3-ultra-free", name: "Nemotron 3 Ultra Free" },
+  { id: "nemotron-3.5-lightning-free", name: "Nemotron 3.5 Lightning Free" },
+  { id: "x-preview-f-free", name: "Ox Alpha Free" },
+];
 
 describe("DeepSeek Harness provider credential sync", () => {
   const accessToken = (issuedAt: number, expiresAt: number) => [
@@ -103,7 +117,7 @@ describe("DeepSeek Harness provider credential sync", () => {
           displayName: "iPolloWork Built-in Models",
           api: "openai-completions",
           baseURL: "https://opencode.ai/zen/v1",
-          discoverModels: true,
+          models: OPENCODE_ZEN_PUBLIC_MODELS,
         },
       },
     ]]);
@@ -117,7 +131,7 @@ describe("DeepSeek Harness provider credential sync", () => {
         displayName: "iPolloWork Built-in Models",
         api: "openai-completions",
         baseURL: "https://opencode.ai/zen/v1",
-        discoverModels: true,
+        models: OPENCODE_ZEN_PUBLIC_MODELS,
       },
     });
   });
@@ -130,8 +144,29 @@ describe("DeepSeek Harness provider credential sync", () => {
       bridge: {
         providerId: "openai-codex",
         displayName: "OpenAI",
+        requiresCredentialBinding: true,
       },
     });
+  });
+
+  test("keeps only the current public OpenCode Zen models", () => {
+    expect(openCodeZenPublicModels()).toEqual(OPENCODE_ZEN_PUBLIC_MODELS);
+    expect([
+      "big-pickle",
+      "hy3-free",
+      "mimo-v2.5-free",
+      "nemotron-3-ultra-free",
+      "nemotron-3.5-lightning-free",
+      "x-preview-f-free",
+    ].every(isOpenCodeZenPublicModel)).toBe(true);
+    expect([
+      "deepseek-v4-flash-free",
+      "laguna-s-2.1-free",
+      "ling-3.0-flash-free",
+      "muse-spark-1.2-contributor-free",
+      "north-mini-code-free",
+    ].some(isOpenCodeZenPublicModel)).toBe(false);
+    expect(openCodeZenPublicModelName("x-preview-f-free")).toBe("Ox Alpha Free");
   });
 
   test("parses and refreshes the persisted OpenCode Codex OAuth credential", async () => {
@@ -250,7 +285,7 @@ describe("DeepSeek Harness provider credential sync", () => {
         displayName: "iPolloWork Built-in Models",
         api: "openai-completions",
         baseURL: "https://opencode.ai/zen/v1",
-        discoverModels: true,
+        models: OPENCODE_ZEN_PUBLIC_MODELS,
       },
     });
   });

@@ -47,6 +47,12 @@
       "bun": "./src/hyperframes-project.ts",
       "default": "./dist/hyperframes-project.js"
     },
+    "./opencode-zen-public-models": {
+      "types": "./src/opencode-zen-public-models.ts",
+      "development": "./src/opencode-zen-public-models.ts",
+      "bun": "./src/opencode-zen-public-models.ts",
+      "default": "./dist/opencode-zen-public-models.js"
+    },
     "./plugins": {
       "types": "./src/plugins.ts",
       "development": "./src/plugins.ts",

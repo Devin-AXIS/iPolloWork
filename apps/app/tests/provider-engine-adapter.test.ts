@@ -13,9 +13,11 @@ import { createProviderAuthStore } from "../src/react-app/domains/connections/pr
 import { getReactQueryClient } from "../src/react-app/infra/query-client";
 import {
   ensureMergedProviderListQuery,
+  fetchProviderList,
   getChatProviderCatalogItems,
   getEngineChatModelEntries,
   getRunnableChatModelEntries,
+  getRunnableChatModelSnapshot,
   getSelectableChatProviderItems,
   mergeProviderListResponses,
   projectAccountProviderConnections,
@@ -439,7 +441,11 @@ describe("model runtime adapters", () => {
     const codexRuntime = {
       all: [{
         ...catalog.all[0]!,
-        models: { "gpt-5.6-sol": catalog.all[0]!.models["gpt-5.6-sol"]! },
+        models: {
+          "gpt-5.6-sol": catalog.all[0]!.models["gpt-5.6-sol"]!,
+          "gpt-4-turbo": { id: "gpt-4-turbo", name: "GPT-4 Turbo", capabilities: {} },
+          "gpt-4.1-mini": { id: "gpt-4.1-mini", name: "GPT-4.1 mini", capabilities: {} },
+        },
       }],
       connected: ["openai"],
       default: { openai: "gpt-5.6-sol" },
@@ -451,6 +457,11 @@ describe("model runtime adapters", () => {
     }).map(({ provider, modelId }) => `${provider.id}:${modelId}`)).toEqual([
       "openai:gpt-5.6-sol",
     ]);
+    expect(getRunnableChatModelSnapshot({
+      catalog,
+      runtime: codexRuntime,
+      engineId: CODEX_HARNESS_ENGINE_ID,
+    })).toEqual([{ providerID: "openai", modelIDs: ["gpt-5.6-sol"] }]);
   });
 
   test("persists and idempotently disconnects an OAuth provider without mirroring its secret", async () => {
@@ -830,11 +841,18 @@ describe("model runtime adapters", () => {
     const { calls, client } = createOpenCodeProviderClient();
     const connection = openCodeProviderEngineAdapter.connect(client);
 
-    expect(await connection.listProviders()).toEqual({
-      all: [{ id: "opencode", name: "OpenCode", source: "api", env: [], models: {} }],
-      connected: ["opencode"],
-      default: { opencode: "default-model" },
-    });
+    const providers = await fetchProviderList({ client, engineId: DEFAULT_ENGINE_ID });
+    expect(Object.keys(providers.all[0]?.models ?? {})).toEqual([
+      "big-pickle",
+      "hy3-free",
+      "mimo-v2.5-free",
+      "nemotron-3-ultra-free",
+      "nemotron-3.5-lightning-free",
+      "x-preview-f-free",
+    ]);
+    expect(providers.all[0]?.models["x-preview-f-free"]?.name).toBe("Ox Alpha Free");
+    expect(providers.connected).toEqual(["opencode"]);
+    expect(providers.default).toEqual({ opencode: "big-pickle" });
     expect(await connection.listAuthMethods()).toEqual({
       openai: [{ type: "oauth", label: "OpenAI" }],
     });

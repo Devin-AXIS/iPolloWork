@@ -1722,7 +1722,7 @@ export function ReactSessionComposer(props: ComposerProps) {
                       render={(
                         <button
                           type="button"
-                          onClick={canSend ? props.onSend : showEmptySubmitHint}
+                          onClick={canSend ? () => void props.onSend() : showEmptySubmitHint}
                           disabled={props.disabled}
                           className={`inline-flex h-8 max-h-8 w-8 items-center justify-center rounded-full transition-colors ${
                             props.disabled

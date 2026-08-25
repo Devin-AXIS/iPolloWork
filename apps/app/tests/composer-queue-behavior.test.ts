@@ -50,7 +50,8 @@ describe("composer queue behavior", () => {
       composerSource.indexOf('<Tooltip open={emptySubmitHintOpen}>') + 3000,
     );
 
-    expect(idleAction).toContain("onClick={canSend ? props.onSend : showEmptySubmitHint}");
+    expect(idleAction).toContain("onClick={canSend ? () => void props.onSend() : showEmptySubmitHint}");
+    expect(idleAction).not.toContain("onClick={canSend ? props.onSend : showEmptySubmitHint}");
     expect(idleAction).toContain("disabled={props.disabled}");
     expect(idleAction).not.toContain("disabled={props.disabled || !canSend}");
     expect(idleAction).toContain('"bg-gray-9 text-white hover:bg-gray-10"');

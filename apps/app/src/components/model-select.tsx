@@ -20,7 +20,6 @@ import { useWorkspace } from "@/react-app/shell/workspace-provider";
 import { useCheckDesktopRestriction } from "@/react-app/domains/cloud/desktop-config-provider";
 import {
   getEngineChatModelEntries,
-  mergeProviderListResponses,
   projectAccountProviderConnections,
   type ProviderListQueryInput,
   useMergedProviderListQuery,
@@ -94,7 +93,7 @@ function useModelOptions(open: boolean) {
     );
 
     const catalogValue = projectAccountProviderConnections(
-      mergeProviderListResponses([catalogQuery.data, runtimeQuery.data]),
+      catalogQuery.data,
       connectedProviderIds,
     );
     const options = getEngineChatModelEntries({

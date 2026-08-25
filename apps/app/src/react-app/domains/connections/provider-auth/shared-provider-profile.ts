@@ -2,6 +2,7 @@ import {
   serializeSharedProviderProfile,
   sharedProviderCredentialEnvKey,
   sharedProviderProfileEnvKey,
+  sharedProviderRuntimeRoute,
   type SharedProviderProfile,
 } from "@ipollowork/types/provider-credentials";
 
@@ -33,9 +34,14 @@ export function sharedProviderModels(
 export function buildSharedProviderProfile(
   input: SharedProviderProfileInput,
 ): SharedProviderProfile {
+  const providerId = input.providerId.trim().toLowerCase();
+  const defaultRoute = sharedProviderRuntimeRoute(providerId);
   const configuredApi = input.api?.trim() ?? "";
   const explicitBaseURL = input.baseURL?.trim() ?? "";
-  const baseURL = (/^https?:\/\//i.test(configuredApi) ? configuredApi : "") || explicitBaseURL;
+  const baseURL = (/^https?:\/\//i.test(configuredApi) ? configuredApi : "")
+    || explicitBaseURL
+    || defaultRoute?.baseURL
+    || "";
   const npm = input.npm?.trim().toLowerCase() ?? "";
   const configuredProtocol = configuredApi === "openai-completions"
     || configuredApi === "openai-responses"
@@ -43,12 +49,14 @@ export function buildSharedProviderProfile(
     ? configuredApi
     : null;
   const api = configuredProtocol
-    ?? (npm.includes("anthropic") ? "anthropic-messages" : baseURL ? "openai-completions" : null);
+    ?? (npm.includes("anthropic")
+      ? "anthropic-messages"
+      : defaultRoute?.api ?? (baseURL ? "openai-completions" : null));
 
   return {
     schemaVersion: 1,
-    providerId: input.providerId,
-    displayName: input.displayName.trim() || input.providerId,
+    providerId,
+    displayName: input.displayName.trim() || providerId,
     ...(api ? { api } : {}),
     ...(baseURL ? { baseURL } : {}),
     models: sharedProviderModels(input.models),

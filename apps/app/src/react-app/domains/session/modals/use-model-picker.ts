@@ -13,7 +13,6 @@ import {
   ensureMergedProviderListQuery,
   ensureProviderListQuery,
   getEngineChatModelEntries,
-  mergeProviderListResponses,
   projectAccountProviderConnections,
   type ProviderListQueryInput,
 } from "@/react-app/infra/provider-list-query";
@@ -126,9 +125,8 @@ export function useModelPicker(input: UseModelPickerInput) {
             : ensureMergedProviderListQuery(queryClient, activeSources),
         ]);
         if (cancelled || !data.all) return;
-        const mergedCatalog = mergeProviderListResponses([data, runtimeData]);
         const accountData = filterProviderList(
-          projectAccountProviderConnections(mergedCatalog, connectedProviderIds) ?? mergedCatalog,
+          projectAccountProviderConnections(data, connectedProviderIds) ?? data,
           [...disabledProviderIds],
         );
         // Flag models from recently-added providers so they appear in

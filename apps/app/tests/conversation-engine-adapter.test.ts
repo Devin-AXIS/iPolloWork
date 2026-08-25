@@ -44,6 +44,41 @@ describe("conversation engine adapters", () => {
     );
   });
 
+  test("grounds OpenCode model identity in the selected model for each prompt", async () => {
+    const originalFetch = globalThis.fetch;
+    const requests: Array<{ url: string; body: unknown }> = [];
+    globalThis.fetch = (async (input, init) => {
+      const request = input instanceof Request ? input : new Request(input, init);
+      requests.push({
+        url: request.url,
+        body: await request.clone().json(),
+      });
+      return new Response(null, { status: 204 });
+    }) as typeof fetch;
+
+    try {
+      const connection = openCodeConversationEngineAdapter.connect({
+        baseUrl: "http://opencode.test",
+      });
+      await connection.sendPrompt({
+        sessionId: "session-model-switch",
+        parts: [{ type: "text", text: "Which model is running?" }],
+        model: { providerID: "opencode", modelID: "big-pickle" },
+        system: "Existing application instructions.",
+      });
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+
+    expect(requests).toHaveLength(1);
+    expect(requests[0]?.url).toContain("/session/session-model-switch/prompt_async");
+    expect(requests[0]?.body).toEqual(expect.objectContaining({
+      system: "Existing application instructions.\n\n"
+        + "Authoritative iPolloWork runtime model selection for this turn: {\"providerID\":\"opencode\",\"modelID\":\"big-pickle\"}. "
+        + "When asked which model is running, report this selection exactly. Do not infer or claim a different model identity from earlier messages, training data, or generated self-description.",
+    }));
+  });
+
   test("maps Codex app-server turns, streaming output, and approvals into the shared protocol", () => {
     const state = createCodexLiveState();
     expect(mapCodexHarnessEvent({
