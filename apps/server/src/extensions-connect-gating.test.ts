@@ -301,6 +301,8 @@ describe("extension and engine host tool gating", () => {
     const scheduleDescription = catalog.tools?.find((tool) => tool.name === "ipollowork_schedule_preview")?.description;
     expect(scheduleDescription).toContain("是否需要生成计划并加入 iPolloWork 日程？");
     expect(scheduleDescription).toContain("even when the plan does not yet include concrete dates or times");
+    expect(scheduleDescription).toContain("treat that request as agreement to schedule and do not repeat the offer");
+    expect(scheduleDescription).toContain("If the conversation already contains the required scheduling details, call this tool immediately");
 
     const callResponse = await fetch(`${base}/engine-tools/call`, {
       method: "POST",
