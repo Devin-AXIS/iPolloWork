@@ -192,4 +192,10 @@ describe("new conversation animation catalog", () => {
     expect(sessionPage).toContain('mt-6 w-full shrink-0');
     expect(surface).toContain('mt-6 w-full shrink-0');
   });
+
+  test("keeps saved prompt templates out of the new conversation starter", () => {
+    expect(starter).not.toContain("new_conversation.saved_templates.title");
+    expect(starter).not.toContain("listSavedPromptTemplates");
+    expect(starter).not.toContain("visiblePromptTemplates");
+  });
 });

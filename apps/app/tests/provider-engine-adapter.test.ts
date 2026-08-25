@@ -14,6 +14,7 @@ import { getReactQueryClient } from "../src/react-app/infra/query-client";
 import {
   ensureMergedProviderListQuery,
   fetchProviderList,
+  getChatModelCatalogEntries,
   getChatProviderCatalogItems,
   getEngineChatModelEntries,
   getRunnableChatModelEntries,
@@ -21,6 +22,8 @@ import {
   getSelectableChatProviderItems,
   mergeProviderListResponses,
   projectAccountProviderConnections,
+  PROVIDER_LIST_CACHE_MS,
+  PROVIDER_LIST_STALE_MS,
   providerListQueryKey,
   refreshProviderListQueries,
 } from "../src/react-app/infra/provider-list-query";
@@ -212,6 +215,7 @@ describe("model runtime adapters", () => {
 
     const opening = store.openProviderAuthModal();
     expect(store.getSnapshot().providerAuthBusy).toBe(true);
+    expect(store.getSnapshot().providerAuthModalOpen).toBe(true);
     activeClient = client;
     await opening;
 
@@ -221,6 +225,22 @@ describe("model runtime adapters", () => {
     expect(store.getSnapshot().providerAuthMethods.openai).toEqual([
       { type: "oauth", label: "OpenAI", methodIndex: 0 },
     ]);
+
+    store.closeProviderAuthModal();
+    let releaseAuthRefresh = () => {};
+    const authRefreshGate = new Promise<void>((resolve) => {
+      releaseAuthRefresh = resolve;
+    });
+    client.provider.auth = async () => {
+      await authRefreshGate;
+      return { data: { openai: [{ type: "oauth", label: "OpenAI" }] } };
+    };
+    const reopening = store.openProviderAuthModal();
+    expect(store.getSnapshot().providerAuthModalOpen).toBe(true);
+    expect(store.getSnapshot().providerAuthBusy).toBe(false);
+    releaseAuthRefresh();
+    await reopening;
+
     store.dispose();
     queryClient.clear();
   });
@@ -277,6 +297,10 @@ describe("model runtime adapters", () => {
   test("separates provider caches by engine", () => {
     expect(providerListQueryKey({ engineId: "opencode", baseUrl: "http://runtime" }))
       .not.toEqual(providerListQueryKey({ engineId: "deepseek-harness", baseUrl: "http://runtime" }));
+  });
+
+  test("keeps provider catalogs cached beyond their background refresh window", () => {
+    expect(PROVIDER_LIST_CACHE_MS).toBeGreaterThan(PROVIDER_LIST_STALE_MS);
   });
 
   test("supports an explicit provider catalog refresh when requested", async () => {
@@ -419,6 +443,14 @@ describe("model runtime adapters", () => {
       connected: ["deepseek-official"],
       default: {},
     };
+
+    expect(getChatModelCatalogEntries(catalog).map(({ provider, modelId }) => (
+      `${provider.id}:${modelId}`
+    ))).toEqual([
+      "openai:gpt-5.6-sol",
+      "openai:gpt-5.6-sol-fast",
+      "deepseek-official:deepseek-v4-flash",
+    ]);
 
     expect(getRunnableChatModelEntries({
       catalog,

@@ -139,6 +139,49 @@ function textOutput(content: unknown): unknown {
   return text || content;
 }
 
+const DSH_RASTER_IMAGE_TYPES = new Set([
+  "image/png",
+  "image/jpeg",
+  "image/webp",
+  "image/gif",
+]);
+
+function imageFilePart(
+  block: Record<string, unknown>,
+  id: string,
+): UIMessage["parts"][number] | null {
+  const declaredMediaType = typeof block.mediaType === "string"
+    ? block.mediaType
+    : typeof block.mimeType === "string"
+      ? block.mimeType
+      : null;
+  const rawData = typeof block.data === "string" ? block.data.trim() : "";
+  const rawUrl = typeof block.url === "string" ? block.url.trim() : "";
+  const dataUrl = /^data:(image\/(?:png|jpeg|webp|gif));base64,([\s\S]+)$/u.exec(rawUrl || rawData);
+  const mediaType = dataUrl?.[1] ?? declaredMediaType;
+  if (!mediaType || !DSH_RASTER_IMAGE_TYPES.has(mediaType)) return null;
+
+  const url = dataUrl
+    ? dataUrl[0]
+    : rawData
+      ? `data:${mediaType};base64,${rawData}`
+      : "";
+  if (!url) return null;
+
+  const filename = typeof block.name === "string" && block.name.trim()
+    ? block.name.trim()
+    : typeof block.filename === "string" && block.filename.trim()
+      ? block.filename.trim()
+      : undefined;
+  return {
+    type: "file",
+    mediaType,
+    url,
+    ...(filename ? { filename } : {}),
+    providerMetadata: { ipollowork: { partId: id } },
+  };
+}
+
 function mapBlocks(messageId: string, content: unknown): UIMessage["parts"] {
   if (!Array.isArray(content)) return [];
   return content.flatMap((block, index): UIMessage["parts"] => {
@@ -169,12 +212,8 @@ function mapBlocks(messageId: string, content: unknown): UIMessage["parts"] {
       })];
     }
     if (block.type === "image") {
-      return [{
-        type: "text",
-        text: "[Image attachment]",
-        state: "done",
-        providerMetadata: { ipollowork: { partId: id } },
-      }];
+      const image = imageFilePart(block, id);
+      return image ? [image] : [];
     }
     return [];
   });

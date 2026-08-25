@@ -355,6 +355,46 @@ describe("session transcript sync", () => {
     }
   });
 
+  test("replaces an optimistic prompt when the authoritative message also contains an image", () => {
+    const cleanup = __createWorkspaceSessionSyncForTest(syncInput);
+    const releaseSession = trackWorkspaceSessionSync(syncInput, "session-a");
+    beginOptimisticSessionPrompt("workspace-a", "session-a", "Describe this image", "ipollowork-user-1");
+
+    try {
+      __applySessionSyncEventForTest(syncInput, {
+        type: "message.upsert",
+        sessionId: "session-a",
+        message: {
+          id: "dsh-user-1",
+          role: "user",
+          parts: [
+            { type: "text", text: "Describe this image", state: "done" },
+            {
+              type: "file",
+              mediaType: "image/png",
+              filename: "reference.png",
+              url: "data:image/png;base64,aW1hZ2U=",
+            },
+          ],
+        },
+      });
+
+      expect(getReactQueryClient().getQueryData<UIMessage[]>(transcriptKey("workspace-a", "session-a"))).toEqual([
+        expect.objectContaining({
+          id: "dsh-user-1",
+          role: "user",
+          parts: [
+            expect.objectContaining({ type: "text", text: "Describe this image" }),
+            expect.objectContaining({ type: "file", mediaType: "image/png" }),
+          ],
+        }),
+      ]);
+    } finally {
+      releaseSession();
+      cleanup();
+    }
+  });
+
   test("replaces an optimistic user prompt when a snapshot confirms the same text", () => {
     beginOptimisticSessionPrompt("workspace-a", "session-a", "snapshot prompt", "ipollowork-user-1");
 

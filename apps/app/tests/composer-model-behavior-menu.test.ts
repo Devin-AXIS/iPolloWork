@@ -92,20 +92,23 @@ describe("Composer model and reasoning menu", () => {
   test("loads model options when the compact Composer picker opens", () => {
     const source = readFileSync(modelPickerHookPath, "utf8");
 
-    expect(source).toContain("if ((!open && !compactOpen) || (!client && catalogSources.length === 0)) return;");
-    expect(source).toContain("ensureMergedProviderListQuery");
-    expect(source).toContain("catalogSources.length ? catalogSources : activeSources");
+    expect(source).toContain("const pickerOpen = open || compactOpen;");
+    expect(source).toContain("useMergedProviderListQuery({");
+    expect(source).toContain("useProviderListQuery({");
+    expect(source).toContain("catalogSources.length");
     expect(source).not.toContain("force: true");
+    expect(source).not.toContain("await Promise.all");
     expect(source).not.toContain("mergeProviderListResponses([data, runtimeData])");
     expect(source).toContain("projectAccountProviderConnections(data, connectedProviderIds)");
     expect(source).toContain("filterProviderList(");
-    expect(source).toContain("disabledProviderIds = []");
+    expect(source).toContain("disabledProviderIds = EMPTY_PROVIDER_IDS");
+    expect(source).toContain("getChatModelCatalogEntries(accountData)");
     expect(source).toContain("getEngineChatModelEntries({");
-    expect(source).toContain("runtime: runtimeData");
-    expect(source).toContain('const runtimeReady = runtime.status === "ready"');
+    expect(source).toContain("runtime: runtimeQuery.data");
+    expect(source).toContain("const runtimePending = runtime === null");
+    expect(source).toContain('const runtimeReady = runtime?.status === "ready"');
     expect(source).toContain("isConnected: runtimeReady");
-    expect(source).toContain("disabled: !runtimeReady");
-    expect(source).toContain("setLoadedOptions({ scopeKey: optionScopeKey, options })");
+    expect(source).toContain("disabled: runtimePending || !runtimeReady");
   });
 
   test("Composer uses one combined model and reasoning menu", () => {
@@ -128,14 +131,18 @@ describe("Composer model and reasoning menu", () => {
     expect(model).not.toContain("await refetch()");
     expect(model).not.toContain("refreshProviderListQueries");
     expect(model).toContain("getEngineChatModelEntries({");
+    expect(model).toContain("getChatModelCatalogEntries(catalogValue)");
     expect(model).not.toContain("mergeProviderListResponses([catalogQuery.data, runtimeQuery.data])");
-    expect(model).toContain("projectAccountProviderConnections(\n      catalogQuery.data,");
+    expect(model).toContain("projectAccountProviderConnections(");
+    expect(model).toContain("catalogQuery.data");
     expect(model).toContain('t("settings.loading_providers")');
     expect(model).toContain('t("model_picker.no_models_available")');
-    expect(model).toContain('const runtimeReady = runtime.status === "ready"');
+    expect(model).toContain("const runtimePending = runtime === null");
+    expect(model).toContain('const runtimeReady = runtime?.status === "ready"');
     expect(model).toContain("isConnected: runtimeReady");
-    expect(model).toContain("disabled: !runtimeReady");
-    expect(model).toContain("disabled={option.disabled && (option.isConnected || !onConfigureModels)}");
+    expect(model).toContain("disabled: runtimePending || !runtimeReady");
+    expect(model).toContain("option.isConnected || option.runtimePending || !onConfigureModels");
+    expect(model).toContain("if (option.runtimePending) return;");
     expect(model).toContain("if (option.disabled)");
     expect(model).toContain("onConfigureModels?.(option.providerID)");
     expect(model).not.toContain('option.providerID === "tokenstar") continue');

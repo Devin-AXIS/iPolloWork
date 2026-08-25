@@ -72,7 +72,11 @@ import { DevProfiler } from "@/react-app/shell/dev-profiler";
 import { useShellConfig } from "@/react-app/shell/shell-config";
 import { useReactRenderWatchdog } from "@/react-app/shell/react-render-watchdog";
 import { SessionDebugPanel } from "./debug-panel";
-import { deriveRenderedSessionMessages, resolveRenderedSessionSnapshot } from "./session-render-state";
+import {
+  deriveComposerInputHistory,
+  deriveRenderedSessionMessages,
+  resolveRenderedSessionSnapshot,
+} from "./session-render-state";
 import { useLocal } from "@/react-app/kernel/local-provider";
 import {
   attachmentRequiresNativeModelSupport,
@@ -100,7 +104,6 @@ import {
 import {
   getComposerAttachments,
   getComposerDraft,
-  getComposerHistory,
   getComposerMentions,
   getComposerPasteParts,
   getComposerQueuedDrafts,
@@ -113,7 +116,6 @@ import { MessageListProvider, type DispatchAction } from "@/components/chat/mess
 import { OpenTargetProvider, type OpenTargetOptions } from "@/lib/target-provider";
 import type { ThreadStatus } from "@/lib/messages";
 import { collectToolParts, getActiveToolLabel } from "@/lib/tool-activity";
-import { useInstalledPluginContributions } from "@/react-app/plugin-ui/plugin-ui-contributions";
 
 import {
   EnvironmentVariableProvider,
@@ -606,7 +608,6 @@ export function SessionSurface(props: SessionSurfaceProps) {
   const local = useLocal();
   const { config: shellConfig } = useShellConfig();
   const showThinking = local.prefs.showThinking;
-  const { conversationTemplates } = useInstalledPluginContributions(props.client, props.workspaceId);
   const findOpen = useSessionFindStore((state) => state.open);
   const findSessionId = useSessionFindStore((state) => state.sessionId);
   const findAppliedQuery = useSessionFindStore((state) => state.appliedQuery);
@@ -625,8 +626,7 @@ export function SessionSurface(props: SessionSurfaceProps) {
   const setComposerMentions = useComposerStateStore((state) => state.setMentions);
   const setComposerPasteParts = useComposerStateStore((state) => state.setPasteParts);
   const clearComposerSession = useComposerStateStore((state) => state.clearSession);
-  const inputHistory = useComposerStateStore((state) => getComposerHistory(state, props.sessionId));
-  const appendComposerHistory = useComposerStateStore((state) => state.appendHistory);
+  const restoreComposerSessionIfEmpty = useComposerStateStore((state) => state.restoreSessionIfEmpty);
   // Queued follow-up drafts live in the shared composer store keyed by session
   // id. That keeps a queued message in session A from being drained into
   // session B when the route swaps the same surface component to another
@@ -880,6 +880,10 @@ export function SessionSurface(props: SessionSurfaceProps) {
     () => deriveRenderedSessionMessages({ transcriptState, snapshot }),
     [snapshot, transcriptState],
   );
+  const inputHistory = useMemo(
+    () => deriveComposerInputHistory(renderedMessages),
+    [renderedMessages],
+  );
   const progressFingerprint = useMemo(
     () => sessionProgressFingerprint(renderedMessages),
     [renderedMessages],
@@ -1067,8 +1071,6 @@ export function SessionSurface(props: SessionSurfaceProps) {
   // in the local queue until the current run has completed.
   const sendDraft = useCallback(async (nextDraft: ComposerDraft, draftAttachments: ComposerAttachment[]) => {
     setError(null);
-    // Record the prompt for Up/Down recall in the composer (#2012).
-    appendComposerHistory(props.sessionId, nextDraft.text);
     runActivityObservedRef.current = false;
     setSending(true);
     setAwaitingAssistantBaseline(renderedMessages.length);
@@ -1135,13 +1137,15 @@ export function SessionSurface(props: SessionSurfaceProps) {
       captureAnalyticsEvent("task_send_failed", {});
       setError(parsed);
       useSessionActivityStore.getState().setError(props.workspaceId, props.sessionId, parsed.message);
-      if (!shouldPreserveComposerDraftAfterSendFailure(nextDraft)) setComposerDraft(props.sessionId, "");
+      if (!shouldPreserveComposerDraftAfterSendFailure(nextDraft)) {
+        draftAttachments.forEach(revokeAttachmentPreview);
+      }
       setAwaitingAssistantBaseline(null);
       runActivityObservedRef.current = false;
       setSending(false);
       throw nextError;
     }
-  }, [appendComposerHistory, newConversationMode, props.artifactContext, props.engineId, props.onSendDraft, props.sessionId, props.templateEntryPath, props.workspaceId, renderedMessages.length, selectedAnimations, setComposerDraft]);
+  }, [newConversationMode, props.artifactContext, props.engineId, props.onSendDraft, props.sessionId, props.templateEntryPath, props.workspaceId, renderedMessages.length, selectedAnimations]);
 
   const validatePendingVideoDelivery = useCallback(async () => {
     const pending = pendingVideoDeliveryRef.current;
@@ -1243,11 +1247,16 @@ export function SessionSurface(props: SessionSurfaceProps) {
     }
     const nextDraft = buildDraft(text, attachments);
     const sentAttachments = attachments;
+    const submittedComposerState = { draft, attachments, mentions, pasteParts };
+    clearComposer();
     try {
       await sendDraft(nextDraft, sentAttachments);
-      clearComposer();
-    } catch {}
-  }, [attachments, buildDraft, clearComposer, draft, isEmptyConversation, newConversationMode, props.onActivateVideoStudio, props.sessionId, selectedAnimations.length, selectedVoiceReference, sendDraft, setComposerDraft]);
+    } catch {
+      if (shouldPreserveComposerDraftAfterSendFailure(nextDraft)) {
+        restoreComposerSessionIfEmpty(props.sessionId, submittedComposerState);
+      }
+    }
+  }, [attachments, buildDraft, clearComposer, draft, isEmptyConversation, mentions, newConversationMode, pasteParts, props.onActivateVideoStudio, props.sessionId, restoreComposerSessionIfEmpty, selectedAnimations.length, selectedVoiceReference, sendDraft]);
 
   // Queue: hold the draft locally and clear the composer. The drain effect
   // sends it once the session reports idle.
@@ -1928,7 +1937,6 @@ export function SessionSurface(props: SessionSurfaceProps) {
               <NewConversationStarter
               selectedMode={newConversationMode}
               selectedCapabilityId={starterCapability?.id}
-              promptTemplates={conversationTemplates}
               onSelectMode={(mode) => {
                 setNewConversationMode(mode);
                 setStarterCapability(null);

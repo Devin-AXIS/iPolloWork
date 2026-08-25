@@ -124,7 +124,7 @@ describe("sidebar projects", () => {
     expect(sessionRouteSource).toContain("surfaceProps.onSendDraft(");
     expect(sessionRouteSource).toContain("pending.clientUserMessageId ? { clientUserMessageId: pending.clientUserMessageId }");
     expect(sessionRouteSource).not.toContain("startupConversationPhase");
-    expect(sessionPageSource).toContain("promptTemplates={conversationTemplates}");
+    expect(sessionPageSource).not.toContain("promptTemplates={conversationTemplates}");
     expect(sessionPageSource).toContain("templates={starterTemplateCatalog}");
     expect(sessionPageSource).toContain("getTemplateCover={getStarterTemplateCover}");
     expect(sessionPageSource).toContain("onRequestTemplates={() => void refreshStarterTemplateCatalog()}");

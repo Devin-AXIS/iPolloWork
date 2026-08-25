@@ -423,6 +423,7 @@ export type ModelOption = {
   disabled?: boolean;
   isFree: boolean;
   isConnected: boolean;
+  runtimePending?: boolean;
   isRecommended?: boolean;
   supportsVision?: boolean;
   /** "cloud" for org-managed providers (lpr_*), undefined for local. */

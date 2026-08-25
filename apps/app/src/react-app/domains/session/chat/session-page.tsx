@@ -160,7 +160,7 @@ import { useControlAction, type iPolloWorkControlAction } from "../../../shell/c
 import { getExtensionId, isiPolloWorkExtensionEnabled, IPOLLOWORK_EXTENSION_STATE_CHANGED } from "../../settings/extension-state";
 import { cn } from "@/lib/utils";
 import { useActiveEnterpriseConnection } from "@/react-app/domains/enterprise/use-active-enterprise-connection";
-import { useInstalledPluginContributions, type PluginConversationTemplate } from "@/react-app/plugin-ui/plugin-ui-contributions";
+import { useInstalledPluginContributions } from "@/react-app/plugin-ui/plugin-ui-contributions";
 import type { WorkspaceAppModelContext } from "@/react-app/plugin-ui/workspace-app-frame";
 import type { PluginUiHostContextV1 } from "@ipollowork/types/plugins";
 import { isProjectBuilderSession, ProjectOverview, WorkCenter } from "@/react-app/domains/work";
@@ -770,7 +770,6 @@ function InitialProjectTaskStarter({
   opencodeBaseUrl,
   ipolloworkToken,
   engineId,
-  promptTemplates,
   templates,
   templatesLoading,
   templateBusyId,
@@ -787,7 +786,6 @@ function InitialProjectTaskStarter({
   opencodeBaseUrl?: string | null;
   ipolloworkToken?: string | null;
   engineId?: string | null;
-  promptTemplates?: PluginConversationTemplate[];
   templates?: TemplateCatalogItem[];
   templatesLoading?: boolean;
   templateBusyId?: string | null;
@@ -1036,7 +1034,6 @@ function InitialProjectTaskStarter({
             <NewConversationStarter
               selectedMode={starterMode}
               selectedCapabilityId={starterCapability?.id}
-              promptTemplates={promptTemplates}
               templates={templates}
               templatesLoading={templatesLoading}
               templateBusyId={templateBusyId}
@@ -1457,7 +1454,7 @@ export function SessionPage(props: SessionPageProps) {
   ));
   const sessionPanelState = useSessionPanelState(props.selectedSessionId ?? "");
   const activePanelTab = useActivePanelTab(props.selectedSessionId ?? "");
-  const { conversationTemplates, workspaceApps } = useInstalledPluginContributions(
+  const { workspaceApps } = useInstalledPluginContributions(
     props.ipolloworkServerClient,
     props.runtimeWorkspaceId,
   );
@@ -4154,7 +4151,6 @@ export function SessionPage(props: SessionPageProps) {
                   opencodeBaseUrl={props.opencodeBaseUrl}
                   ipolloworkToken={props.ipolloworkServerToken}
                   engineId={props.selectedWorkspaceDisplay.engineId}
-                  promptTemplates={conversationTemplates}
                   templates={starterTemplateCatalog}
                   templatesLoading={starterTemplateCatalogLoading}
                   templateBusyId={templateBusyId}

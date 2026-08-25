@@ -2267,8 +2267,14 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
 
       <ProviderAuthModal
         open={providerAuthSnapshot.providerAuthModalOpen}
-        loading={false}
-        submitting={providerAuthSnapshot.providerAuthBusy}
+        loading={
+          providerAuthSnapshot.providerAuthBusy
+          && Object.keys(providerAuthSnapshot.providerAuthMethods).length === 0
+        }
+        submitting={
+          providerAuthSnapshot.providerAuthBusy
+          && Object.keys(providerAuthSnapshot.providerAuthMethods).length > 0
+        }
         error={providerAuthSnapshot.providerAuthError}
         preferredProviderId={providerAuthSnapshot.providerAuthPreferredProviderId}
         workerType={providerAuthSnapshot.providerAuthWorkerType}

@@ -38,7 +38,8 @@ describe("composer queue behavior", () => {
       composerSource.indexOf("{props.busy ? (") + 4000,
     );
 
-    expect(busyActions).toContain("onClick={canSend ? props.onQueue : undefined}");
+    expect(busyActions).toContain("onPointerDown={canSend ? handleActionPointerDown : undefined}");
+    expect(busyActions).toContain("onClick={canSend ? handleActionClick : undefined}");
     expect(busyActions).toContain('title={t("composer.queue_hint")}');
     expect(busyActions).not.toContain("onSteer");
     expect(composerSource).not.toContain("onSteer:");
@@ -50,8 +51,10 @@ describe("composer queue behavior", () => {
       composerSource.indexOf('<Tooltip open={emptySubmitHintOpen}>') + 3000,
     );
 
-    expect(idleAction).toContain("onClick={canSend ? () => void props.onSend() : showEmptySubmitHint}");
-    expect(idleAction).not.toContain("onClick={canSend ? props.onSend : showEmptySubmitHint}");
+    expect(idleAction).toContain("onPointerDown={handleActionPointerDown}");
+    expect(idleAction).toContain("onClick={handleActionClick}");
+    expect(composerSource).toContain("if (!canSend) {");
+    expect(composerSource).toContain("showEmptySubmitHint();");
     expect(idleAction).toContain("disabled={props.disabled}");
     expect(idleAction).not.toContain("disabled={props.disabled || !canSend}");
     expect(idleAction).toContain('"bg-gray-9 text-white hover:bg-gray-10"');
@@ -103,6 +106,16 @@ describe("composer queue behavior", () => {
     expect(sessionSurfaceSource).toContain("runActivityObservedRef.current = true");
     expect(sessionSurfaceSource).toContain("if (!runActivityObservedRef.current && !assistantOutputAfterAwaitStart) return;");
     expect(sessionSurfaceSource).not.toContain('if (liveStatus.type === "idle") {\n      setSending(false);');
+  });
+
+  test("clears the submitted composer before waiting for dispatch", () => {
+    const sendHandler = sessionSurfaceSource.slice(
+      sessionSurfaceSource.indexOf("const handleSend = useCallback"),
+      sessionSurfaceSource.indexOf("// Queue: hold the draft locally"),
+    );
+
+    expect(sendHandler.indexOf("clearComposer();")).toBeLessThan(sendHandler.indexOf("await sendDraft("));
+    expect(sendHandler).toContain("restoreComposerSessionIfEmpty(props.sessionId, submittedComposerState)");
   });
 
   test("renders the queued list in a floating panel above the composer", () => {

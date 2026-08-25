@@ -1584,11 +1584,14 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
     // starting. Treat that short window as loading instead of a permanent
     // connection failure, then use the runtime adapter's canonical health
     // check before requesting authentication methods.
+    const cloudProvidersRequest = getProviderEngineAdapter().capabilities.cloudProviderImports
+      ? refreshCloudOrgProviders().catch(() => [] as DenOrgLlmProvider[])
+      : Promise.resolve([] as DenOrgLlmProvider[]);
     const connection = await waitForProviderEngineConnection();
-    const methods = await connection.listAuthMethods();
-    const cloudProviders = getProviderEngineAdapter().capabilities.cloudProviderImports
-      ? await refreshCloudOrgProviders().catch(() => [] as DenOrgLlmProvider[])
-      : [];
+    const [methods, cloudProviders] = await Promise.all([
+      connection.listAuthMethods(),
+      cloudProvidersRequest,
+    ]);
     return buildProviderAuthMethods(
       methods,
       getProviderAuthProviders(),
@@ -2335,11 +2338,13 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
     returnFocusTarget?: ProviderReturnFocusTarget;
     preferredProviderId?: string;
   }) {
+    const hasCachedMethods = Object.keys(state.providerAuthMethods).length > 0;
     mutateState((current) => ({
       ...current,
       providerAuthReturnFocusTarget: optionsArg?.returnFocusTarget ?? "none",
       providerAuthPreferredProviderId: optionsArg?.preferredProviderId?.trim() || null,
-      providerAuthBusy: true,
+      providerAuthModalOpen: true,
+      providerAuthBusy: !hasCachedMethods,
       providerAuthError: null,
     }));
 
@@ -2348,7 +2353,7 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
       mutateState((current) => ({
         ...current,
         providerAuthMethods: methods,
-        providerAuthModalOpen: true,
+        providerAuthBusy: hasCachedMethods ? current.providerAuthBusy : false,
       }));
     } catch (error) {
       const message = describeProviderError(error, t("providers.load_failed"));
@@ -2360,7 +2365,7 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
       }));
       throw error;
     } finally {
-      setStateField("providerAuthBusy", false);
+      if (!hasCachedMethods) setStateField("providerAuthBusy", false);
     }
   }
 

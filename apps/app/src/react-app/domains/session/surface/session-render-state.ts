@@ -4,6 +4,8 @@ import { mergeSnapshotAndLiveMessages } from "../sync/message-merge";
 import { applyRevertCursor } from "../sync/transcript-reconcile";
 import type { ConversationSnapshot } from "../engine/conversation-engine";
 
+const COMPOSER_INPUT_HISTORY_LIMIT = 50;
+
 export function resolveRenderedSessionSnapshot(input: {
   sessionId: string;
   currentSnapshot: ConversationSnapshot | null | undefined;
@@ -40,4 +42,19 @@ export function deriveRenderedSessionMessages(input: {
     : liveMessages;
 
   return applyRevertCursor(messages, revertMessageId);
+}
+
+export function deriveComposerInputHistory(messages: UIMessage[]): string[] {
+  const history: string[] = [];
+  for (const message of messages) {
+    if (message.role !== "user") continue;
+    const text = message.parts
+      .filter((part) => part.type === "text")
+      .map((part) => part.text)
+      .join("")
+      .trim();
+    if (!text || history[history.length - 1] === text) continue;
+    history.push(text);
+  }
+  return history.slice(-COMPOSER_INPUT_HISTORY_LIMIT);
 }

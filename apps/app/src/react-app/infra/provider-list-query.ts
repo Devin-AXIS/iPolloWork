@@ -18,7 +18,8 @@ import {
 } from "../domains/connections/provider-auth/provider-engine-adapter";
 import type { SelectableChatModelSnapshot } from "./preferred-chat-model";
 
-export const PROVIDER_LIST_CACHE_MS = 5 * 60 * 1000;
+export const PROVIDER_LIST_STALE_MS = 5 * 60 * 1000;
+export const PROVIDER_LIST_CACHE_MS = 30 * 60 * 1000;
 const PROVIDER_LIST_QUERY_ROOT = ["provider-list"] as const;
 
 export type ProviderListQueryInput = {
@@ -245,7 +246,7 @@ export function useMergedProviderListQuery(input: {
     queries: input.sources.map((source) => ({
       queryKey: providerListQueryKey(source),
       enabled: Boolean(source.client) && (input.enabled ?? true),
-      staleTime: PROVIDER_LIST_CACHE_MS,
+      staleTime: PROVIDER_LIST_STALE_MS,
       gcTime: PROVIDER_LIST_CACHE_MS,
       queryFn: () => fetchProviderList(source),
     })),
@@ -292,6 +293,25 @@ export function getChatProviderCatalogItems(value: ProviderListResponse | null |
   });
 }
 
+export type ChatModelCatalogEntry = {
+  provider: ProviderListItem;
+  modelId: string;
+  model: ProviderModel;
+};
+
+/**
+ * Flatten the connected account catalog without waiting for an engine runtime
+ * readiness response. Pickers use this cached snapshot as a non-interactive
+ * placeholder while the active runtime refreshes in the background.
+ */
+export function getChatModelCatalogEntries(
+  value: ProviderListResponse | null | undefined,
+): ChatModelCatalogEntry[] {
+  return getSelectableChatProviderItems(value).flatMap((provider) => (
+    Object.entries(provider.models).map(([modelId, model]) => ({ provider, modelId, model }))
+  ));
+}
+
 export function getSelectableChatModelSnapshot(
   value: ProviderListResponse | null | undefined,
 ): SelectableChatModelSnapshot {
@@ -321,18 +341,16 @@ export function getEngineChatModelEntries(input: {
   engineId?: string | null;
 }): RunnableChatModelEntry[] {
   if (!input.runtime) return [];
-  return getSelectableChatProviderItems(input.catalog).flatMap((provider) => (
-    Object.entries(provider.models).flatMap(([modelId, model]) => {
-      const runtime = resolveModelRuntime(
-        input.runtime,
-        { providerID: provider.id, modelID: modelId },
-        input.engineId,
-      );
-      return runtime.status === "ready" || runtime.status === "provider-disconnected"
-        ? [{ provider, modelId, model, runtime }]
-        : [];
-    })
-  ));
+  return getChatModelCatalogEntries(input.catalog).flatMap(({ provider, modelId, model }) => {
+    const runtime = resolveModelRuntime(
+      input.runtime,
+      { providerID: provider.id, modelID: modelId },
+      input.engineId,
+    );
+    return runtime.status === "ready" || runtime.status === "provider-disconnected"
+      ? [{ provider, modelId, model, runtime }]
+      : [];
+  });
 }
 
 /**
@@ -522,7 +540,8 @@ export function ensureProviderListQuery(
   }
   return queryClient.ensureQueryData({
     ...options,
-    staleTime: PROVIDER_LIST_CACHE_MS,
+    staleTime: PROVIDER_LIST_STALE_MS,
+    revalidateIfStale: true,
   });
 }
 
@@ -536,7 +555,7 @@ export function useProviderListQuery(input: {
   return useQuery({
     queryKey: providerListQueryKey(input),
     enabled: Boolean(input.client) && (input.enabled ?? true),
-    staleTime: PROVIDER_LIST_CACHE_MS,
+    staleTime: PROVIDER_LIST_STALE_MS,
     gcTime: PROVIDER_LIST_CACHE_MS,
     queryFn: () => {
       if (!input.client) {
