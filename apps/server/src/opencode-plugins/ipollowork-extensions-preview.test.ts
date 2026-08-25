@@ -248,7 +248,9 @@ describe("iPolloWorkExtensionsPreview UI control tools", () => {
     expect(plugin.tool.ipollowork_session_search.description).toContain("Never use it to recover or infer the current interrupted task");
     expect(plugin.tool.ipollowork_session_read.description).toContain("never use it to recover or infer the current interrupted task");
     expect(plugin.tool.ipollowork_schedule_preview.description).toContain("是否需要生成计划并加入 iPolloWork 日程？");
+    expect(plugin.tool.ipollowork_schedule_preview.description).toContain("treat that request as agreement to schedule");
     expect(system).toContain("是否需要生成计划并加入 iPolloWork 日程？");
+    expect(system).toContain("call this tool immediately");
     expect(system).toContain("even when the plan does not yet include concrete dates or times");
     expect(system).toContain("list_motion_presets");
     expect(system).toContain("mutate_motion");

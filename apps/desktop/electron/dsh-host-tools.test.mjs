@@ -40,6 +40,7 @@ test("registers the engine-neutral catalog and forwards DSH session context", { 
   process.env.IPOLLOWORK_SERVER_TOKEN = "secret-token";
   process.env.IPOLLOWORK_WORKSPACE_ID = "ws_dsh";
   const requests = [];
+  const scheduleDescription = "Prepare a preview, ask exactly: 是否需要生成计划并加入 iPolloWork 日程？ When directly requested, treat that request as agreement to schedule.";
   globalThis.fetch = async (url, init = {}) => {
     requests.push({ url: String(url), init });
     if (String(url).endsWith("/engine-tools")) {
@@ -57,7 +58,7 @@ test("registers the engine-neutral catalog and forwards DSH session context", { 
           },
           {
             name: "ipollowork_schedule_preview",
-            description: "Prepare a preview, then ask exactly: 是否需要生成计划并加入 iPolloWork 日程？",
+            description: scheduleDescription,
             parameters: {
               type: "object",
               properties: { tasks: { type: "array" } },
@@ -134,9 +135,10 @@ test("registers the engine-neutral catalog and forwards DSH session context", { 
   assert.deepEqual(systemSection, {
     name: "ipollowork:schedule-import",
     order: 100,
-    text: "Prepare a preview, then ask exactly: 是否需要生成计划并加入 iPolloWork 日程？",
+    text: scheduleDescription,
   });
   assert.match(registered[2].description, /是否需要生成计划并加入 iPolloWork 日程？/);
+  assert.match(registered[2].description, /treat that request as agreement to schedule/);
   const result = await registered[1].execute({}, {
     signal: new AbortController().signal,
     agent: {
