@@ -219,6 +219,49 @@ describe("conversation engine adapters", () => {
     ]));
   });
 
+  test("maps Codex live user image content into visible file parts", () => {
+    const state = createCodexLiveState();
+    const events = mapCodexHarnessEvent({
+      type: "notification",
+      method: "item/started",
+      params: {
+        threadId: "codex-thread",
+        turnId: "turn-with-image",
+        startedAtMs: 9,
+        item: {
+          type: "userMessage",
+          id: "codex-user-image",
+          clientId: "ipollowork-user-image",
+          content: [
+            { type: "text", text: "看这张图" },
+            {
+              type: "image",
+              url: "data:image/png;base64,abc123",
+              filename: "shot.png",
+            },
+          ],
+        },
+      },
+    }, state);
+
+    expect(events).toEqual([expect.objectContaining({
+      type: "message.upsert",
+      message: expect.objectContaining({
+        id: "ipollowork-user-image",
+        role: "user",
+        parts: [
+          expect.objectContaining({ type: "text", text: "看这张图", state: "done" }),
+          expect.objectContaining({
+            type: "file",
+            url: "data:image/png;base64,abc123",
+            mediaType: "image/png",
+            filename: "shot.png",
+          }),
+        ],
+      }),
+    })]);
+  });
+
   test("keeps Codex completion state isolated to the matching user turn", () => {
     const state = createCodexLiveState();
     mapCodexHarnessEvent({
