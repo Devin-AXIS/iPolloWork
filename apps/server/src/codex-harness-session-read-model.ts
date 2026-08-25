@@ -52,6 +52,14 @@ function timestamp(value: number | null | undefined): number {
   return value < 1_000_000_000_000 ? value * 1_000 : value;
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function nonEmptyString(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim() ? value : undefined;
+}
+
 function threadTitle(thread: CodexThread): string {
   return thread.name?.trim() || thread.preview?.trim().split(/\r?\n/u)[0]?.slice(0, 120) || "New conversation";
 }
@@ -82,10 +90,99 @@ function userContentText(content: CodexThreadItem["content"]): string {
   )).join("\n");
 }
 
+function dataUrlMediaType(url: string): string | undefined {
+  return /^data:([^;,]+)[;,]/u.exec(url)?.[1];
+}
+
+function explicitMediaTypeFromContentEntry(entry: Record<string, unknown>): string | undefined {
+  const source = isRecord(entry.source) ? entry.source : {};
+  return nonEmptyString(entry.mediaType)
+    ?? nonEmptyString(entry.media_type)
+    ?? nonEmptyString(entry.mimeType)
+    ?? nonEmptyString(entry.mime_type)
+    ?? nonEmptyString(source.mediaType)
+    ?? nonEmptyString(source.media_type);
+}
+
+function urlLooksLikeImage(url: string): boolean {
+  const dataMediaType = dataUrlMediaType(url);
+  if (dataMediaType) return dataMediaType.startsWith("image/");
+
+  const path = url.split(/[?#]/u)[0]?.toLowerCase() ?? "";
+  return path.endsWith(".jpg")
+    || path.endsWith(".jpeg")
+    || path.endsWith(".png")
+    || path.endsWith(".gif")
+    || path.endsWith(".webp");
+}
+
+function contentEntryLooksImage(entry: Record<string, unknown>, url: string): boolean {
+  const type = nonEmptyString(entry.type);
+  const mediaType = explicitMediaTypeFromContentEntry(entry);
+  return type === "image"
+    || type === "image_url"
+    || type === "input_image"
+    || mediaType?.startsWith("image/") === true
+    || urlLooksLikeImage(url);
+}
+
+function sourceImageUrl(source: unknown): string | undefined {
+  if (!isRecord(source) || source.type !== "base64") return undefined;
+  const data = nonEmptyString(source.data);
+  const mediaType = nonEmptyString(source.media_type) ?? nonEmptyString(source.mediaType);
+  return data && mediaType?.startsWith("image/") === true ? `data:${mediaType};base64,${data}` : undefined;
+}
+
+function imageUrlFromContentEntry(entry: Record<string, unknown>): string | undefined {
+  const directImageUrl = nonEmptyString(entry.image_url);
+  if (directImageUrl) return directImageUrl;
+
+  if (isRecord(entry.image_url)) {
+    const nestedImageUrl = nonEmptyString(entry.image_url.url);
+    if (nestedImageUrl) return nestedImageUrl;
+  }
+
+  const directUrl = nonEmptyString(entry.url);
+  if (directUrl && contentEntryLooksImage(entry, directUrl)) return directUrl;
+
+  return sourceImageUrl(entry.source);
+}
+
+function mediaTypeFromContentEntry(entry: Record<string, unknown>, url: string): string {
+  const explicit = explicitMediaTypeFromContentEntry(entry);
+  if (explicit) return explicit;
+
+  const dataMediaType = dataUrlMediaType(url);
+  if (dataMediaType) return dataMediaType;
+
+  const path = url.split(/[?#]/u)[0]?.toLowerCase() ?? "";
+  if (path.endsWith(".jpg") || path.endsWith(".jpeg")) return "image/jpeg";
+  if (path.endsWith(".png")) return "image/png";
+  if (path.endsWith(".gif")) return "image/gif";
+  if (path.endsWith(".webp")) return "image/webp";
+  return "image/*";
+}
+
+function imageFileParts(content: CodexThreadItem["content"]) {
+  return (content ?? []).flatMap((entry) => {
+    if (!isRecord(entry)) return [];
+    const url = imageUrlFromContentEntry(entry);
+    if (!url) return [];
+    const filename = nonEmptyString(entry.filename) ?? nonEmptyString(entry.name);
+    return [{
+      type: "file",
+      url,
+      mediaType: mediaTypeFromContentEntry(entry, url),
+      ...(filename ? { filename } : {}),
+    }];
+  });
+}
+
 function messagePart(item: CodexThreadItem) {
   if (item.type === "userMessage" || item.type === "agentMessage") {
     const text = item.text ?? (item.type === "userMessage" ? userContentText(item.content) : contentText(item.content));
-    return text ? [{ type: "text", text }] : [];
+    const textParts = text ? [{ type: "text", text }] : [];
+    return item.type === "userMessage" ? [...textParts, ...imageFileParts(item.content)] : textParts;
   }
   if (item.type === "reasoning") {
     const text = [...(item.summary ?? []), ...(item.content?.flatMap((entry) => (
