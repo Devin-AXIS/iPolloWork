@@ -75,7 +75,7 @@ async function packageEngine(engineId, outputDirectory) {
   for (const entry of entries) {
     if (!existsSync(resolve(runtimeRoot, entry))) throw new Error(`Missing engine runtime entry: ${entry}`);
   }
-  run("tar", ["-czf", archivePath, "-C", runtimeRoot, ...entries]);
+  run("tar", ["-czf", name, "-C", runtimeRoot, ...entries], outputDirectory);
   const checksum = await sha256File(archivePath);
   writeFileSync(`${archivePath}.sha256`, `${checksum}  ${name}\n`);
   process.stdout.write(`[engine-package] ${archivePath}\n`);
