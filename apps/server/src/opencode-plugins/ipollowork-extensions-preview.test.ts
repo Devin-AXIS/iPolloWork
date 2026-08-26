@@ -230,6 +230,8 @@ describe("iPolloWorkExtensionsPreview UI control tools", () => {
     expect(tools).toContain("ipollowork_extension_list_actions");
     expect(tools).toContain("ipollowork_project_read");
     expect(tools).toContain("ipollowork_project_apply");
+    expect(tools).toContain("ipollowork_schedule_preview");
+    expect(tools).toContain("ipollowork_schedule_apply");
     expect(tools).toContain("ipollowork_workspace_app_list_tools");
     expect(tools).toContain("ipollowork_workspace_app_call_tool");
     expect(tools).toContain("ipollowork_browser_open_url");
@@ -245,6 +247,11 @@ describe("iPolloWorkExtensionsPreview UI control tools", () => {
     expect(system).toContain("Never use these cross-session tools to recover the current task");
     expect(plugin.tool.ipollowork_session_search.description).toContain("Never use it to recover or infer the current interrupted task");
     expect(plugin.tool.ipollowork_session_read.description).toContain("never use it to recover or infer the current interrupted task");
+    expect(plugin.tool.ipollowork_schedule_preview.description).toContain("是否需要生成计划并加入 iPolloWork 日程？");
+    expect(plugin.tool.ipollowork_schedule_preview.description).toContain("treat that request as agreement to schedule");
+    expect(system).toContain("是否需要生成计划并加入 iPolloWork 日程？");
+    expect(system).toContain("call this tool immediately");
+    expect(system).toContain("even when the plan does not yet include concrete dates or times");
     expect(system).toContain("list_motion_presets");
     expect(system).toContain("mutate_motion");
     expect(system).toContain("stale refs");

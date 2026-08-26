@@ -177,7 +177,7 @@ export function ProjectDashboard(props: ProjectDashboardProps) {
 
   return (
     <div className="relative flex h-full min-h-0 flex-col overflow-hidden bg-[radial-gradient(circle_at_10%_0%,rgba(74,158,178,0.10),transparent_30%),radial-gradient(circle_at_92%_6%,rgba(108,120,163,0.07),transparent_28%),var(--dls-surface)] text-dls-text [--primary:#1FBAC0]" data-testid="project-overview">
-      <header className="shrink-0 border-b border-white/25 bg-dls-surface/68 px-4 py-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.45)] backdrop-blur-2xl backdrop-saturate-150 dark:border-white/[0.06] sm:px-6">
+      <header className="shrink-0 border-b border-white/25 bg-dls-surface/68 px-4 py-4 backdrop-blur-2xl backdrop-saturate-150 dark:border-white/[0.06] sm:px-6">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="min-w-0">
             <div className="flex items-center gap-2">

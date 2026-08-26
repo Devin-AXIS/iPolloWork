@@ -1,15 +1,16 @@
 /** @jsxImportSource react */
 import * as React from "react";
-import { CalendarDays, ChevronLeft, ChevronRight, Clock3, Plus, Timer } from "lucide-react";
+import { CalendarDays, ChevronLeft, ChevronRight, Clock3, Plus, Search, Timer } from "lucide-react";
 import type { WorkItem } from "@ipollowork/types/work-items";
 
-import { Button } from "@/components/ui/button";
 import {
   ContextMenu,
   ContextMenuContent,
   ContextMenuItem,
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
+import { Input } from "@/components/ui/input";
+import { menuSurfaceClassName } from "@/components/ui/menu-styles";
 import { cn } from "@/lib/utils";
 import { currentLocale, t } from "@/i18n";
 
@@ -40,12 +41,37 @@ const HOUR_HEIGHT = 64;
 const SCHEDULE_SLOT_MINUTES = 30;
 const DEFAULT_SCHEDULE_MINUTES = 60;
 const TOTAL_GRID_MINUTES = (HOUR_END - HOUR_START + 1) * 60;
-const PROJECT_TONES = [
-  "border-sky-8/35 bg-sky-4/80 text-sky-12",
-  "border-emerald-8/35 bg-emerald-4/80 text-emerald-12",
-  "border-amber-8/35 bg-amber-4/80 text-amber-12",
-  "border-violet-8/35 bg-violet-4/80 text-violet-12",
-  "border-rose-8/35 bg-rose-4/80 text-rose-12",
+const TASK_TONES = [
+  {
+    block: "bg-cyan-4/80 text-cyan-12 before:bg-cyan-9 hover:bg-cyan-5/80 focus-visible:ring-cyan-8/50",
+    compact: "border-cyan-8/40 bg-cyan-4/80 text-cyan-12",
+    marker: "border-cyan-8/40 bg-cyan-9",
+  },
+  {
+    block: "bg-sky-4/80 text-sky-12 before:bg-sky-9 hover:bg-sky-5/80 focus-visible:ring-sky-8/50",
+    compact: "border-sky-8/40 bg-sky-4/80 text-sky-12",
+    marker: "border-sky-8/40 bg-sky-9",
+  },
+  {
+    block: "bg-violet-4/80 text-violet-12 before:bg-violet-9 hover:bg-violet-5/80 focus-visible:ring-violet-8/50",
+    compact: "border-violet-8/40 bg-violet-4/80 text-violet-12",
+    marker: "border-violet-8/40 bg-violet-9",
+  },
+  {
+    block: "bg-rose-4/80 text-rose-12 before:bg-rose-9 hover:bg-rose-5/80 focus-visible:ring-rose-8/50",
+    compact: "border-rose-8/40 bg-rose-4/80 text-rose-12",
+    marker: "border-rose-8/40 bg-rose-9",
+  },
+  {
+    block: "bg-amber-4/80 text-amber-12 before:bg-amber-9 hover:bg-amber-5/80 focus-visible:ring-amber-8/50",
+    compact: "border-amber-8/40 bg-amber-4/80 text-amber-12",
+    marker: "border-amber-8/40 bg-amber-9",
+  },
+  {
+    block: "bg-grass-4/80 text-grass-12 before:bg-grass-9 hover:bg-grass-5/80 focus-visible:ring-grass-8/50",
+    compact: "border-grass-8/40 bg-grass-4/80 text-grass-12",
+    marker: "border-grass-8/40 bg-grass-9",
+  },
 ];
 
 function localDateKey(date: Date): string {
@@ -128,13 +154,16 @@ export function workCalendarRange(anchorDate: Date, view: WorkCalendarView): { f
   return { from: gridStart.getTime(), to: endOfDay(addDays(gridStart, 41)).getTime() };
 }
 
-function formatRange(anchorDate: Date, view: WorkCalendarView): string {
-  const locale = currentLocale();
+export function formatWorkCalendarRange(anchorDate: Date, view: WorkCalendarView, locale = currentLocale()): string {
   if (view === "month") {
     return new Intl.DateTimeFormat(locale, { year: "numeric", month: "long" }).format(anchorDate);
   }
   const start = startOfWorkWeek(anchorDate);
   const end = addDays(start, 6);
+  if (locale.toLowerCase().startsWith("zh")) {
+    const formatter = new Intl.DateTimeFormat(locale, { year: "numeric", month: "long", day: "numeric" });
+    return `${formatter.format(start)} - ${formatter.format(end)}`;
+  }
   const sameYear = start.getFullYear() === end.getFullYear();
   const startLabel = new Intl.DateTimeFormat(locale, {
     year: sameYear ? undefined : "numeric",
@@ -145,52 +174,152 @@ function formatRange(anchorDate: Date, view: WorkCalendarView): string {
   return `${startLabel} - ${endLabel}`;
 }
 
-function formatTime(timestamp: number): string {
-  return new Intl.DateTimeFormat(currentLocale(), { hour: "2-digit", minute: "2-digit" }).format(timestamp);
+export function formatWorkCalendarTime(timestamp: number): string {
+  const date = new Date(timestamp);
+  return `${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
 }
 
-function projectTone(projectName: string): string {
+export function searchWorkCalendarItems(items: WorkCalendarItem[], query: string): WorkCalendarItem[] {
+  const normalizedQuery = query.trim().toLocaleLowerCase();
+  if (!normalizedQuery) return items;
+  return items.filter((entry) => `${entry.item.title} ${entry.projectName}`.toLocaleLowerCase().includes(normalizedQuery));
+}
+
+function taskTone(taskTitle: string): (typeof TASK_TONES)[number] {
   let hash = 0;
-  for (const character of projectName) hash = (hash * 31 + character.charCodeAt(0)) >>> 0;
-  return PROJECT_TONES[hash % PROJECT_TONES.length];
+  for (const character of taskTitle) hash = (hash * 31 + character.charCodeAt(0)) >>> 0;
+  return TASK_TONES[hash % TASK_TONES.length];
 }
 
-function CalendarToolbar(props: Pick<WorkCalendarProps, "anchorDate" | "view" | "onAnchorDateChange" | "onViewChange">) {
+function CalendarToolbar(props: Pick<WorkCalendarProps, "items" | "anchorDate" | "view" | "onAnchorDateChange" | "onViewChange"> & {
+  searchQuery: string;
+  onSearchQueryChange: (query: string) => void;
+}) {
+  const [searchOpen, setSearchOpen] = React.useState(false);
   const isToday = localDateKey(props.anchorDate) === localDateKey(new Date());
+  const searchResults = searchWorkCalendarItems(props.items, props.searchQuery)
+    .filter((entry) => scheduledAt(entry.item) !== null)
+    .sort((left, right) => (scheduledAt(left.item) ?? 0) - (scheduledAt(right.item) ?? 0))
+    .slice(0, 8);
   const movePeriod = (direction: -1 | 1) => {
     props.onAnchorDateChange(props.view === "week"
       ? addDays(props.anchorDate, direction * 7)
       : addMonths(props.anchorDate, direction));
   };
+  const locateItem = (entry: WorkCalendarItem) => {
+    const timestamp = scheduledAt(entry.item);
+    if (timestamp === null) return;
+    props.onSearchQueryChange(entry.item.title);
+    props.onAnchorDateChange(new Date(timestamp));
+    setSearchOpen(false);
+  };
   return (
-    <div className="flex flex-wrap items-center justify-between gap-3 border-b border-dls-border px-4 py-3 sm:px-5">
-      <div className="flex min-w-0 items-center gap-2">
-        <Button type="button" variant="ghost" size="icon-sm" aria-label={t("work.calendar.previous")} onClick={() => movePeriod(-1)}>
-          <ChevronLeft className="size-4" />
-        </Button>
-        <Button type="button" variant="ghost" size="icon-sm" aria-label={t("work.calendar.next")} onClick={() => movePeriod(1)}>
-          <ChevronRight className="size-4" />
-        </Button>
-        <Button type="button" variant="outline" size="sm" className="rounded-lg" onClick={() => props.onAnchorDateChange(new Date())}>
-          {t(isToday ? "work.calendar.today" : "work.calendar.back_to_today")}
-        </Button>
-        <h2 className="ml-1 truncate text-[15px] font-medium tracking-[-0.2px] text-dls-text">{formatRange(props.anchorDate, props.view)}</h2>
+    <div className="flex flex-wrap items-center gap-3 border-b border-dls-border px-4 py-3 sm:px-5">
+      <div className="flex min-w-0 items-center gap-3">
+        <div className="flex shrink-0 gap-px">
+          <button
+            type="button"
+            className="flex size-7 items-center justify-center rounded-l-md bg-dls-hover text-dls-text transition-colors hover:bg-dls-active focus-visible:z-[1] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            aria-label={t("work.calendar.previous")}
+            onClick={() => movePeriod(-1)}
+          >
+            <ChevronLeft className="size-5" />
+          </button>
+          <button
+            type="button"
+            className="h-7 shrink-0 bg-dls-hover px-4 text-[12px] font-normal leading-4 text-dls-text transition-colors hover:bg-dls-active focus-visible:z-[1] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            onClick={() => props.onAnchorDateChange(new Date())}
+          >
+            {t(isToday ? "work.calendar.today" : "work.calendar.back_to_today")}
+          </button>
+          <button
+            type="button"
+            className="flex size-7 items-center justify-center rounded-r-md bg-dls-hover text-dls-text transition-colors hover:bg-dls-active focus-visible:z-[1] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            aria-label={t("work.calendar.next")}
+            onClick={() => movePeriod(1)}
+          >
+            <ChevronRight className="size-5" />
+          </button>
+        </div>
+        <h2 className="truncate text-[15px] font-medium tracking-[-0.2px] text-dls-text">{formatWorkCalendarRange(props.anchorDate, props.view)}</h2>
       </div>
-      <div className="inline-flex rounded-lg bg-dls-hover/70 p-1">
-        <button
-          type="button"
-          className={cn("h-7 rounded-md px-3 text-xs transition", props.view === "week" ? "bg-dls-surface text-dls-text shadow-sm" : "text-dls-secondary hover:text-dls-text")}
-          onClick={() => props.onViewChange("week")}
+      <div className="ml-auto flex shrink-0 items-center gap-4">
+        <div className="inline-flex items-center">
+          <button
+            type="button"
+            className={cn(
+              "h-7 rounded-lg px-4 text-[13px] font-medium leading-[18px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+              props.view === "week" ? "bg-dls-active text-dls-text" : "text-dls-secondary hover:bg-dls-hover",
+            )}
+            onClick={() => props.onViewChange("week")}
+          >
+            {t("work.calendar.week")}
+          </button>
+          <button
+            type="button"
+            className={cn(
+              "h-7 rounded-lg px-4 text-[13px] font-medium leading-[18px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+              props.view === "month" ? "bg-dls-active text-dls-text" : "text-dls-secondary hover:bg-dls-hover",
+            )}
+            onClick={() => props.onViewChange("month")}
+          >
+            {t("work.calendar.month")}
+          </button>
+        </div>
+        <div
+          className="relative w-[184px]"
+          onFocusCapture={() => setSearchOpen(true)}
+          onBlurCapture={(event) => {
+            if (!event.currentTarget.contains(event.relatedTarget)) setSearchOpen(false);
+          }}
         >
-          {t("work.calendar.week")}
-        </button>
-        <button
-          type="button"
-          className={cn("h-7 rounded-md px-3 text-xs transition", props.view === "month" ? "bg-dls-surface text-dls-text shadow-sm" : "text-dls-secondary hover:text-dls-text")}
-          onClick={() => props.onViewChange("month")}
-        >
-          {t("work.calendar.month")}
-        </button>
+          <Search className="pointer-events-none absolute left-2 top-1/2 z-[1] size-3.5 -translate-y-1/2 text-dls-secondary" />
+          <Input
+            type="search"
+            value={props.searchQuery}
+            data-testid="work-calendar-search"
+            className="h-7 rounded-lg border-0 bg-dls-hover py-1 pl-[30px] pr-2 text-[12px] font-normal leading-[18px] text-dls-text shadow-none placeholder:text-dls-tertiary focus-visible:ring-2 focus-visible:ring-ring/30"
+            placeholder={t("work.calendar.search_placeholder")}
+            aria-expanded={searchOpen && Boolean(props.searchQuery.trim())}
+            onChange={(event) => {
+              props.onSearchQueryChange(event.currentTarget.value);
+              setSearchOpen(true);
+            }}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" && searchResults[0]) locateItem(searchResults[0]);
+              if (event.key === "Escape") {
+                props.onSearchQueryChange("");
+                setSearchOpen(false);
+              }
+            }}
+          />
+          {searchOpen && props.searchQuery.trim() ? (
+            <div className={cn(menuSurfaceClassName, "absolute right-0 top-9 z-30 w-72 gap-0 overflow-hidden p-1")}>
+              {searchResults.length ? searchResults.map((entry) => {
+                const timestamp = scheduledAt(entry.item);
+                if (timestamp === null) return null;
+                return (
+                  <button
+                    key={entry.key}
+                    type="button"
+                    className="flex h-10 w-full items-center gap-2 rounded-lg px-2 text-left transition-colors hover:bg-foreground/10 focus-visible:bg-foreground/10 focus-visible:outline-none"
+                    onClick={() => locateItem(entry)}
+                  >
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-[12px] font-medium text-dls-text">{entry.item.title}</span>
+                      <span className="block truncate text-[10px] text-dls-tertiary">{entry.projectName}</span>
+                    </span>
+                    <span className="shrink-0 text-[10px] tabular-nums text-dls-secondary">
+                      {new Intl.DateTimeFormat(currentLocale(), { month: "short", day: "numeric" }).format(timestamp)} {formatWorkCalendarTime(timestamp)}
+                    </span>
+                  </button>
+                );
+              }) : (
+                <p className="px-2 py-3 text-center text-[11px] text-dls-tertiary">{t("work.calendar.search_empty")}</p>
+              )}
+            </div>
+          ) : null}
+        </div>
       </div>
     </div>
   );
@@ -223,9 +352,9 @@ function AgendaList({ items, onSelectItem }: Pick<WorkCalendarProps, "items" | "
           >
             <div className="w-16 shrink-0 text-xs font-medium tabular-nums text-dls-secondary">
               {new Intl.DateTimeFormat(currentLocale(), { month: "short", day: "numeric" }).format(time)}
-              <span className="mt-0.5 block text-[10px] font-normal text-dls-tertiary">{formatTime(time)}</span>
+              <span className="mt-0.5 block text-[10px] font-normal text-dls-tertiary">{formatWorkCalendarTime(time)}</span>
             </div>
-            <span className={cn("h-8 w-1 shrink-0 rounded-full border", projectTone(entry.projectName))} aria-hidden="true" />
+            <span className={cn("h-8 w-1 shrink-0 rounded-full border", taskTone(entry.item.title).marker)} aria-hidden="true" />
             <span className="min-w-0 flex-1">
               <span className="flex items-center gap-1.5 text-[13px] font-medium text-dls-text">
                 <span className="truncate">{entry.item.title}</span>
@@ -293,10 +422,10 @@ function WeekDayColumn(props: {
           style={{ top: previewTop, height: DEFAULT_SCHEDULE_MINUTES / 60 * HOUR_HEIGHT }}
         >
           <span className="flex items-center gap-1 text-[10px] font-medium text-dls-text"><Plus className="size-3" />{t("work.new_schedule")}</span>
-          <span className="mt-0.5 block text-[9px] tabular-nums">{formatTime(schedule.startAt)}–{formatTime(schedule.dueAt)}</span>
+          <span className="mt-0.5 block text-[9px] tabular-nums">{formatWorkCalendarTime(schedule.startAt)}–{formatWorkCalendarTime(schedule.dueAt)}</span>
         </div>
       ) : null}
-      {props.items.map((entry, index) => {
+      {props.items.map((entry) => {
         const timestamp = scheduledAt(entry.item);
         if (timestamp === null) return null;
         const start = new Date(timestamp);
@@ -304,16 +433,14 @@ function WeekDayColumn(props: {
         const endTimestamp = entry.item.dueAt ?? timestamp + 45 * 60_000;
         const duration = Math.max(30, Math.min((endTimestamp - timestamp) / 60_000, 180));
         const top = Math.min(minutes / 60 * HOUR_HEIGHT, (HOUR_END - HOUR_START) * HOUR_HEIGHT);
-        const height = Math.max(34, duration / 60 * HOUR_HEIGHT);
+        const height = Math.max(34, duration / 60 * HOUR_HEIGHT - 2);
+        const tone = taskTone(entry.item.title);
         return (
           <button
             key={entry.key}
             type="button"
-            className={cn(
-              "absolute z-[1] overflow-hidden rounded-lg border px-2 py-1.5 text-left shadow-[0_4px_16px_rgba(35,55,82,0.08)] transition hover:z-[2] hover:-translate-y-0.5 hover:shadow-[0_8px_22px_rgba(35,55,82,0.14)] focus-visible:z-[2] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-              projectTone(entry.projectName),
-            )}
-            style={{ top, height, left: 5 + index % 3 * 4, right: 5 }}
+            className={cn("absolute z-[1] flex flex-col items-start justify-start overflow-hidden rounded-[4px] py-1.5 pl-[9px] pr-1.5 text-left transition-colors before:absolute before:inset-y-0 before:left-0 before:w-[3px] hover:z-[2] focus-visible:z-[2] focus-visible:outline-none focus-visible:ring-2", tone.block)}
+            style={{ top, height, left: 5, right: 5 }}
             onPointerEnter={() => setHoverMinutes(null)}
             onPointerMove={(event) => event.stopPropagation()}
             onClick={(event) => {
@@ -325,11 +452,22 @@ function WeekDayColumn(props: {
               event.stopPropagation();
             }}
           >
-            <span className="flex items-center gap-1 text-[11px] font-semibold">
-              <span className="truncate">{entry.item.title}</span>
-              {entry.item.automation?.enabled ? <Timer className="size-3 shrink-0" aria-label={t("work.automation.enabled")} /> : null}
+            <span className="flex h-[18px] w-full shrink-0 items-center gap-1 text-[12px] font-semibold leading-[18px]" data-testid="work-calendar-event-title">
+              <span className="min-w-0 truncate">{entry.item.title}</span>
+              {entry.item.automation?.enabled ? (
+                <span className="flex size-3 shrink-0 items-center justify-center rounded-full bg-dls-text text-dls-surface">
+                  <Timer className="size-2" aria-label={t("work.automation.enabled")} />
+                </span>
+              ) : null}
             </span>
-            <span className="mt-0.5 block truncate text-[9px] opacity-70">{formatTime(timestamp)} {entry.projectName}</span>
+            {duration >= 45 ? (
+              <span className="block h-4 w-full shrink-0 truncate text-[11px] font-medium leading-4" data-testid="work-calendar-event-project">{entry.projectName}</span>
+            ) : null}
+            {duration >= 60 ? (
+              <span className="block h-[15px] w-full shrink-0 truncate text-[10px] font-normal leading-[15px] tabular-nums opacity-75" data-testid="work-calendar-event-time">
+                {formatWorkCalendarTime(timestamp)}–{formatWorkCalendarTime(endTimestamp)}
+              </span>
+            ) : null}
           </button>
         );
       })}
@@ -346,7 +484,7 @@ function WeekDayColumn(props: {
           }}
         >
           <Plus className="size-4" />
-          <span className="min-w-0"><span className="block">{t("work.new_schedule")}</span>{schedule ? <span className="block text-[10px] font-normal text-muted-foreground">{formatTime(schedule.startAt)}–{formatTime(schedule.dueAt)}</span> : null}</span>
+          <span className="min-w-0"><span className="block">{t("work.new_schedule")}</span>{schedule ? <span className="block text-[10px] font-normal text-muted-foreground">{formatWorkCalendarTime(schedule.startAt)}–{formatWorkCalendarTime(schedule.dueAt)}</span> : null}</span>
         </ContextMenuItem>
       </ContextMenuContent>
     </ContextMenu>
@@ -384,7 +522,11 @@ function WeekGrid({ items, anchorDate, canCreateSchedule, onCreateSchedule, onSe
         <div className="grid grid-cols-[64px_repeat(7,minmax(118px,1fr))]" style={{ height: (HOUR_END - HOUR_START + 1) * HOUR_HEIGHT }}>
           <div className="relative border-r border-dls-border">
             {hours.map((hour, index) => (
-              <span key={hour} className="absolute right-3 -translate-y-1/2 text-[10px] tabular-nums text-dls-tertiary" style={{ top: index * HOUR_HEIGHT }}>
+              <span
+                key={hour}
+                className={cn("absolute right-3 text-[10px] tabular-nums text-dls-tertiary", index > 0 && "-translate-y-1/2")}
+                style={{ top: index === 0 ? 8 : index * HOUR_HEIGHT }}
+              >
                 {String(hour).padStart(2, "0")}:00
               </span>
             ))}
@@ -441,7 +583,7 @@ function MonthDayCell(props: {
             <button
               key={entry.key}
               type="button"
-              className={cn("block w-full truncate rounded-md border px-1.5 py-1 text-left text-[10px] font-medium transition hover:-translate-y-px", projectTone(entry.projectName))}
+              className={cn("block w-full truncate rounded-md border px-1.5 py-1 text-left text-[10px] font-medium transition hover:-translate-y-px", taskTone(entry.item.title).compact)}
               onClick={(event) => {
                 event.stopPropagation();
                 props.onSelectItem(entry);
@@ -453,7 +595,7 @@ function MonthDayCell(props: {
             >
               <span className="flex items-center gap-1">
                 {entry.item.automation?.enabled ? <Timer className="size-3 shrink-0" aria-label={t("work.automation.enabled")} /> : null}
-                <span className="truncate">{timestamp === null ? "" : formatTime(timestamp)} {entry.item.title}</span>
+                <span className="truncate">{timestamp === null ? "" : formatWorkCalendarTime(timestamp)} {entry.item.title}</span>
               </span>
             </button>
           );
@@ -520,22 +662,24 @@ function MonthGrid({ items, anchorDate, canCreateSchedule, onCreateSchedule, onS
 }
 
 export function WorkCalendar(props: WorkCalendarProps) {
+  const [searchQuery, setSearchQuery] = React.useState("");
   const range = workCalendarRange(props.anchorDate, props.view);
-  const agendaItems = props.items.filter((entry) => {
+  const visibleItems = searchWorkCalendarItems(props.items, searchQuery);
+  const agendaItems = visibleItems.filter((entry) => {
     const startsAt = entry.item.startAt ?? entry.item.dueAt;
     const endsAt = entry.item.dueAt ?? entry.item.startAt;
     return startsAt !== null && endsAt !== null && endsAt >= range.from && startsAt <= range.to;
   });
   return (
-    <section className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border border-white/20 bg-dls-surface/90 shadow-[0_22px_60px_rgba(30,48,74,0.10),inset_0_1px_0_rgba(255,255,255,0.55)] backdrop-blur-2xl dark:border-white/[0.07] dark:shadow-[0_22px_70px_rgba(0,0,0,0.28),inset_0_1px_0_rgba(255,255,255,0.05)]">
-      <CalendarToolbar {...props} />
+    <section className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border border-dls-border bg-dls-surface/90 shadow-lg backdrop-blur-2xl">
+      <CalendarToolbar {...props} searchQuery={searchQuery} onSearchQueryChange={setSearchQuery} />
       <div className="min-h-0 flex-1 overflow-y-auto lg:hidden">
         <AgendaList items={agendaItems} onSelectItem={props.onSelectItem} />
       </div>
       {props.view === "week" ? (
-        <WeekGrid items={props.items} anchorDate={props.anchorDate} canCreateSchedule={props.canCreateSchedule} onCreateSchedule={props.onCreateSchedule} onSelectItem={props.onSelectItem} />
+        <WeekGrid items={visibleItems} anchorDate={props.anchorDate} canCreateSchedule={props.canCreateSchedule} onCreateSchedule={props.onCreateSchedule} onSelectItem={props.onSelectItem} />
       ) : (
-        <MonthGrid items={props.items} anchorDate={props.anchorDate} canCreateSchedule={props.canCreateSchedule} onCreateSchedule={props.onCreateSchedule} onSelectItem={props.onSelectItem} />
+        <MonthGrid items={visibleItems} anchorDate={props.anchorDate} canCreateSchedule={props.canCreateSchedule} onCreateSchedule={props.onCreateSchedule} onSelectItem={props.onSelectItem} />
       )}
       <div className="hidden items-center gap-2 border-t border-dls-border px-4 py-2 text-[10px] text-dls-tertiary lg:flex">
         <Clock3 className="size-3" />

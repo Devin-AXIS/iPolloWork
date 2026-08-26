@@ -55,6 +55,93 @@ function itemContentText(item: Record<string, unknown>): string {
   }).join("\n");
 }
 
+function dataUrlMediaType(url: string): string | null {
+  return /^data:([^;,]+)[;,]/u.exec(url)?.[1] ?? null;
+}
+
+function explicitMediaType(entry: Record<string, unknown>): string | null {
+  const source = isRecord(entry.source) ? entry.source : {};
+  return stringValue(entry.mediaType)
+    ?? stringValue(entry.media_type)
+    ?? stringValue(entry.mimeType)
+    ?? stringValue(entry.mime_type)
+    ?? stringValue(source.mediaType)
+    ?? stringValue(source.media_type);
+}
+
+function urlLooksLikeImage(url: string): boolean {
+  const dataMedia = dataUrlMediaType(url);
+  if (dataMedia) return dataMedia.startsWith("image/");
+  const path = url.split(/[?#]/u)[0]?.toLowerCase() ?? "";
+  return path.endsWith(".jpg")
+    || path.endsWith(".jpeg")
+    || path.endsWith(".png")
+    || path.endsWith(".gif")
+    || path.endsWith(".webp");
+}
+
+function contentEntryLooksImage(entry: Record<string, unknown>, url: string): boolean {
+  const type = stringValue(entry.type);
+  return type === "image"
+    || type === "image_url"
+    || type === "input_image"
+    || explicitMediaType(entry)?.startsWith("image/") === true
+    || urlLooksLikeImage(url);
+}
+
+function sourceImageUrl(source: unknown): string | null {
+  if (!isRecord(source) || source.type !== "base64") return null;
+  const data = stringValue(source.data);
+  const mediaType = stringValue(source.media_type) ?? stringValue(source.mediaType);
+  return data && mediaType?.startsWith("image/") === true ? `data:${mediaType};base64,${data}` : null;
+}
+
+function imageUrl(entry: Record<string, unknown>): string | null {
+  const directImageUrl = stringValue(entry.image_url);
+  if (directImageUrl) return directImageUrl;
+  if (isRecord(entry.image_url)) {
+    const nested = stringValue(entry.image_url.url);
+    if (nested) return nested;
+  }
+  const directUrl = stringValue(entry.url);
+  if (directUrl && contentEntryLooksImage(entry, directUrl)) return directUrl;
+  return sourceImageUrl(entry.source);
+}
+
+function imageMediaType(entry: Record<string, unknown>, url: string): string {
+  const explicit = explicitMediaType(entry);
+  if (explicit) return explicit;
+  const dataMedia = dataUrlMediaType(url);
+  if (dataMedia) return dataMedia;
+  const path = url.split(/[?#]/u)[0]?.toLowerCase() ?? "";
+  if (path.endsWith(".jpg") || path.endsWith(".jpeg")) return "image/jpeg";
+  if (path.endsWith(".png")) return "image/png";
+  if (path.endsWith(".gif")) return "image/gif";
+  if (path.endsWith(".webp")) return "image/webp";
+  return "image/*";
+}
+
+function userMessageParts(item: Record<string, unknown>): UIMessage["parts"] {
+  const content = Array.isArray(item.content) ? item.content : [];
+  const text = content
+    .flatMap((entry) => isRecord(entry) && entry.type === "text" && typeof entry.text === "string" ? [entry.text] : [])
+    .join("\n");
+  const textParts: UIMessage["parts"] = text ? [{ type: "text", text, state: "done" }] : [];
+  const fileParts = content.flatMap((entry) => {
+    if (!isRecord(entry)) return [];
+    const url = imageUrl(entry);
+    if (!url) return [];
+    const filename = stringValue(entry.filename) ?? stringValue(entry.name);
+    return [{
+      type: "file" as const,
+      url,
+      mediaType: imageMediaType(entry, url),
+      ...(filename ? { filename } : {}),
+    }];
+  });
+  return [...textParts, ...fileParts];
+}
+
 function toolPart(item: Record<string, unknown>, completed: boolean): DynamicToolUIPart | null {
   const id = stringValue(item.id);
   if (!id) return null;
@@ -101,11 +188,7 @@ function messageForItem(
     { codexItemType: type },
   );
   if (type === "userMessage") {
-    const content = Array.isArray(item.content) ? item.content : [];
-    const text = content
-      .flatMap((entry) => isRecord(entry) && entry.type === "text" && typeof entry.text === "string" ? [entry.text] : [])
-      .join("\n");
-    return { id: messageId, role: "user", metadata, parts: text ? [{ type: "text", text, state: "done" }] : [] };
+    return { id: messageId, role: "user", metadata, parts: userMessageParts(item) };
   }
   if (type === "agentMessage" || type === "plan") {
     return {

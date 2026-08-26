@@ -40,6 +40,7 @@ test("registers the engine-neutral catalog and forwards DSH session context", { 
   process.env.IPOLLOWORK_SERVER_TOKEN = "secret-token";
   process.env.IPOLLOWORK_WORKSPACE_ID = "ws_dsh";
   const requests = [];
+  const scheduleDescription = "Prepare a preview, ask exactly: 是否需要生成计划并加入 iPolloWork 日程？ When directly requested, treat that request as agreement to schedule.";
   globalThis.fetch = async (url, init = {}) => {
     requests.push({ url: String(url), init });
     if (String(url).endsWith("/engine-tools")) {
@@ -55,6 +56,26 @@ test("registers the engine-neutral catalog and forwards DSH session context", { 
             description: "Read the current project",
             parameters: { type: "object", properties: {}, additionalProperties: false },
           },
+          {
+            name: "ipollowork_schedule_preview",
+            description: scheduleDescription,
+            parameters: {
+              type: "object",
+              properties: { tasks: { type: "array" } },
+              required: ["tasks"],
+              additionalProperties: false,
+            },
+          },
+          {
+            name: "ipollowork_schedule_apply",
+            description: "Apply a confirmed schedule preview",
+            parameters: {
+              type: "object",
+              properties: { previewId: { type: "string" } },
+              required: ["previewId"],
+              additionalProperties: false,
+            },
+          },
         ],
       });
     }
@@ -65,6 +86,8 @@ test("registers the engine-neutral catalog and forwards DSH session context", { 
   const registered = [];
   /** @type {any} */
   let priorityAdapter;
+  /** @type {any} */
+  let systemSection;
   const ctx = {
     credentials: {
       async resolve() {
@@ -84,6 +107,12 @@ test("registers the engine-neutral catalog and forwards DSH session context", { 
         return () => undefined;
       },
     },
+    systemPrompt: {
+      section(section) {
+        systemSection = section;
+        return () => undefined;
+      },
+    },
     effect(factory) {
       return factory();
     },
@@ -100,7 +129,16 @@ test("registers the engine-neutral catalog and forwards DSH session context", { 
   assert.deepEqual(registered.map((tool) => tool.name), [
     "ipollowork_extension_list_actions",
     "ipollowork_project_read",
+    "ipollowork_schedule_preview",
+    "ipollowork_schedule_apply",
   ]);
+  assert.deepEqual(systemSection, {
+    name: "ipollowork:schedule-import",
+    order: 100,
+    text: scheduleDescription,
+  });
+  assert.match(registered[2].description, /是否需要生成计划并加入 iPolloWork 日程？/);
+  assert.match(registered[2].description, /treat that request as agreement to schedule/);
   const result = await registered[1].execute({}, {
     signal: new AbortController().signal,
     agent: {
@@ -117,6 +155,38 @@ test("registers the engine-neutral catalog and forwards DSH session context", { 
     sessionId: "session_1",
   });
   assert.equal(requests[1].init.headers.Authorization, "Bearer secret-token");
+
+  const tasks = [{
+    title: "Review launch plan",
+    startAt: "2026-08-26T10:15:00+08:00",
+    dueAt: "2026-08-26T11:00:00+08:00",
+  }];
+  await registered[2].execute({ tasks }, {
+    signal: new AbortController().signal,
+    agent: { id: "session_1", session: { meta: { cwd: "/tmp/project" } } },
+  });
+  await registered[3].execute({ previewId: "schedule_preview_1" }, {
+    signal: new AbortController().signal,
+    agent: { id: "session_1", session: { meta: { cwd: "/tmp/project" } } },
+  });
+  assert.deepEqual(JSON.parse(String(requests[2].init.body)), {
+    name: "ipollowork_schedule_preview",
+    args: { tasks },
+    context: {
+      workspaceId: "ws_dsh",
+      directory: "/tmp/project",
+      sessionId: "session_1",
+    },
+  });
+  assert.deepEqual(JSON.parse(String(requests[3].init.body)), {
+    name: "ipollowork_schedule_apply",
+    args: { previewId: "schedule_preview_1" },
+    context: {
+      workspaceId: "ws_dsh",
+      directory: "/tmp/project",
+      sessionId: "session_1",
+    },
+  });
 });
 
 test("maps Fast aliases to the base Codex model with the priority service tier", { skip: !runtimePrepared }, async () => {

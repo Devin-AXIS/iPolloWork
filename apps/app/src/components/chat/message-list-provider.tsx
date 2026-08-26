@@ -13,6 +13,7 @@ interface MessageListContextValue {
   displaySuggestions: boolean
   providerConnectedCount: number
   onOpenVideoStudio?: () => void
+  onOpenSchedule?: (focusAt: number) => void
   dispatchAction: (action: DispatchAction) => void
   setPrompt: (prompt: string) => void
   onRevertToUserMessage: (messageId: string) => void
@@ -36,6 +37,7 @@ interface MessageListProviderProps {
   displaySuggestions: boolean
   providerConnectedCount: number
   onOpenVideoStudio?: () => void
+  onOpenSchedule?: (focusAt: number) => void
   dispatchAction: (action: DispatchAction) => void
   setPrompt: (prompt: string) => void
 }
@@ -57,6 +59,7 @@ export function MessageListProvider({
   displaySuggestions,
   providerConnectedCount,
   onOpenVideoStudio,
+  onOpenSchedule,
   dispatchAction,
   setPrompt,
   onRevertToUserMessage,
@@ -74,6 +77,7 @@ export function MessageListProvider({
       displaySuggestions,
       providerConnectedCount,
       onOpenVideoStudio,
+      onOpenSchedule,
       dispatchAction,
       setPrompt,
       onRevertToUserMessage,
@@ -90,6 +94,7 @@ export function MessageListProvider({
       displaySuggestions,
       providerConnectedCount,
       onOpenVideoStudio,
+      onOpenSchedule,
       dispatchAction,
       setPrompt,
       onRevertToUserMessage,

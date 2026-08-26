@@ -3,6 +3,8 @@ export const ENGINE_HOST_TOOL_NAMES = {
   extensionCall: "ipollowork_extension_call",
   projectRead: "ipollowork_project_read",
   projectApply: "ipollowork_project_apply",
+  schedulePreview: "ipollowork_schedule_preview",
+  scheduleApply: "ipollowork_schedule_apply",
   workspaceAppListTools: "ipollowork_workspace_app_list_tools",
   workspaceAppCallTool: "ipollowork_workspace_app_call_tool",
   browserOpenUrl: "ipollowork_browser_open_url",
@@ -35,6 +37,8 @@ Open a page with ipollowork_browser_open_url, read it with ipollowork_browser_sn
 Never invent or reuse stale refs. Take a new snapshot after navigation, when snapshotRequired is true, or when a target changed.
 Prefer one bounded action batch when steps are independent. Use hover, select, check, scroll, or structured wait actions instead of guessing pointer coordinates or timing.
 Activating publish, send, submit, pay, buy, confirm, delete, or similar consequential controls by click, key, or check requires user approval and must not be retried after denial.`;
+
+export const IPOLLOWORK_SCHEDULE_OFFER_PROMPT = "是否需要生成计划并加入 iPolloWork 日程？";
 
 const CONSEQUENTIAL_BROWSER_CONTROL = /(?:发布|发送|提交|付款|支付|购买|下单|确认|删除|移除|清空数据|授权)|(?:\b(?:publish|send|submit|pay|purchase|buy|checkout|confirm|delete|remove|authorize)\b)|(?:^post(?: now)?$)/i;
 
@@ -183,6 +187,46 @@ export const ENGINE_HOST_TOOLS: readonly EngineHostToolDescriptor[] = [
         description: "Short human-readable summary of the confirmed project change.",
       },
     }, ["config", "summary"]),
+  },
+  {
+    name: ENGINE_HOST_TOOL_NAMES.schedulePreview,
+    description: `Prepare a read-only preview of planned tasks for the current iPolloWork Schedule. Whenever a completed answer presents a plan that could become scheduled tasks, end that answer by proactively asking the user exactly “${IPOLLOWORK_SCHEDULE_OFFER_PROMPT}”, even when the plan does not yet include concrete dates or times. Do not ask for scheduling details before making this offer. When the user directly asks to create, add, import, or arrange a plan or tasks in the iPolloWork Schedule—including requests such as “创建日程”, “加入日程”, or “安排到日程” in the iPolloWork context—treat that request as agreement to schedule and do not repeat the offer. If the conversation already contains the required scheduling details, call this tool immediately; otherwise ask only for the missing start date, time, duration, or recurrence needed to build the preview. Use explicit ISO 8601 time-zone offsets and 15-minute boundaries. Present the returned preview and ask for final confirmation before calling ipollowork_schedule_apply.`,
+    parameters: objectParameters({
+      tasks: {
+        type: "array",
+        minItems: 1,
+        maxItems: 50,
+        items: objectParameters({
+          title: { type: "string", minLength: 1, maxLength: 80 },
+          description: { type: "string", maxLength: 4_000 },
+          startAt: {
+            type: "string",
+            maxLength: 40,
+            pattern: "(?:Z|[+-]\\d{2}:\\d{2})$",
+            description: "ISO 8601 date-time with an explicit Z or ±HH:mm time zone, aligned to 15 minutes.",
+          },
+          dueAt: {
+            type: "string",
+            maxLength: 40,
+            pattern: "(?:Z|[+-]\\d{2}:\\d{2})$",
+            description: "ISO 8601 date-time with an explicit Z or ±HH:mm time zone, aligned to 15 minutes.",
+          },
+          priority: { type: "string", enum: ["low", "normal", "high", "urgent"] },
+        }, ["title", "startAt", "dueAt"]),
+      },
+    }, ["tasks"]),
+  },
+  {
+    name: ENGINE_HOST_TOOL_NAMES.scheduleApply,
+    description: "Add every task from one iPolloWork Schedule preview after the user has reviewed that preview and explicitly confirmed it. Never call this tool with an unconfirmed preview or retry it after denial.",
+    parameters: objectParameters({
+      previewId: {
+        type: "string",
+        minLength: 1,
+        maxLength: 120,
+        description: "One-time preview ID returned by ipollowork_schedule_preview.",
+      },
+    }, ["previewId"]),
   },
   {
     name: ENGINE_HOST_TOOL_NAMES.workspaceAppListTools,

@@ -2184,6 +2184,7 @@ export function SessionPage(props: SessionPageProps) {
   const [deleteProjectId, setDeleteProjectId] = useState<string | null>(null);
   const [deleteProjectBusy, setDeleteProjectBusy] = useState(false);
   const [mainWorkspaceView, setMainWorkspaceView] = useState<"extensions" | "schedule" | "project-overview" | "project-board" | null>(null);
+  const [scheduleAnchorAt, setScheduleAnchorAt] = useState<number | null>(null);
   const observedPluginWorkshopSessionRef = useRef<string | null>(null);
   const autoOpenedPluginWorkshopSessionRef = useRef<string | null>(null);
   const preserveSidePanelOnPanelOpenRef = useRef(false);
@@ -3181,8 +3182,9 @@ export function SessionPage(props: SessionPageProps) {
     setCurrentSidePanel(null);
     setMainWorkspaceView("extensions");
   }, [setCurrentSidePanel]);
-  const openGlobalSchedule = useCallback(() => {
+  const openGlobalSchedule = useCallback((focusAt?: number) => {
     setCurrentSidePanel(null);
+    setScheduleAnchorAt(typeof focusAt === "number" && Number.isFinite(focusAt) ? focusAt : null);
     setMainWorkspaceView("schedule");
   }, [setCurrentSidePanel]);
   const openProjectOverview = useCallback(() => {
@@ -3898,7 +3900,7 @@ export function SessionPage(props: SessionPageProps) {
             >
               <main className="flex h-full min-w-0 flex-col overflow-hidden border-r border-border/40 dark:border-white/[0.055]">
           <header className={cn(
-            "relative z-10 h-10 shrink-0 grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center border-b border-white/30 bg-background/80 px-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.4)] backdrop-blur-2xl backdrop-saturate-150 [border-bottom-width:0.5px] dark:border-white/[0.06] dark:bg-background/72 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] md:px-6 mac:titlebar-drag @container/titlebar",
+            "relative z-10 h-10 shrink-0 grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center bg-background/80 px-4 backdrop-blur-2xl backdrop-saturate-150 dark:bg-background/72 md:px-6 mac:titlebar-drag @container/titlebar",
             mainHeaderHidden ? "hidden!" : "grid",
           )}>
             {shellConfig.sidebar && sidebarVisuallyCollapsed ? (
@@ -4093,6 +4095,7 @@ export function SessionPage(props: SessionPageProps) {
                   workspaces={props.workspaces}
                   providers={props.providers ?? []}
                   connectedProviderIds={props.providerConnectedIds}
+                  initialAnchorAt={scheduleAnchorAt ?? undefined}
                 />
               ) : mainWorkspaceView === "extensions" && props.settingsSlot ? (
                 <div className="flex h-full min-h-0 flex-col overflow-y-auto bg-background">
@@ -4248,6 +4251,7 @@ export function SessionPage(props: SessionPageProps) {
                           : undefined}
                         onArtifactCompletionRequirementConsumed={consumePendingVideoArtifactCompletion}
                         onOpenVideoStudio={openCurrentVideoStudio}
+                        onOpenSchedule={openGlobalSchedule}
                         onOpenWorkspaceApp={openWorkspaceAppForPlugin}
                         onCreateSession={(type, templateId) => props.sidebar.onCreateTaskInWorkspace(
                           props.selectedWorkspaceId,

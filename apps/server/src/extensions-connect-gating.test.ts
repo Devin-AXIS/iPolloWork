@@ -283,12 +283,14 @@ describe("extension and engine host tool gating", () => {
     const { base } = await boot();
     const catalogResponse = await fetch(`${base}/engine-tools`, { headers: clientHeaders() });
     expect(catalogResponse.status).toBe(200);
-    const catalog = await catalogResponse.json() as { tools?: Array<{ name?: string }> };
+    const catalog = await catalogResponse.json() as { tools?: Array<{ name?: string; description?: string }> };
     expect(catalog.tools?.map((tool) => tool.name)).toEqual([
       "ipollowork_extension_list_actions",
       "ipollowork_extension_call",
       "ipollowork_project_read",
       "ipollowork_project_apply",
+      "ipollowork_schedule_preview",
+      "ipollowork_schedule_apply",
       "ipollowork_workspace_app_list_tools",
       "ipollowork_workspace_app_call_tool",
       "ipollowork_browser_open_url",
@@ -296,6 +298,11 @@ describe("extension and engine host tool gating", () => {
       "ipollowork_browser_act",
       "ipollowork_browser_set_proxy",
     ]);
+    const scheduleDescription = catalog.tools?.find((tool) => tool.name === "ipollowork_schedule_preview")?.description;
+    expect(scheduleDescription).toContain("是否需要生成计划并加入 iPolloWork 日程？");
+    expect(scheduleDescription).toContain("even when the plan does not yet include concrete dates or times");
+    expect(scheduleDescription).toContain("treat that request as agreement to schedule and do not repeat the offer");
+    expect(scheduleDescription).toContain("If the conversation already contains the required scheduling details, call this tool immediately");
 
     const callResponse = await fetch(`${base}/engine-tools/call`, {
       method: "POST",
@@ -325,9 +332,11 @@ describe("extension and engine host tool gating", () => {
       expect(tools.tools.map((tool) => tool.name)).toEqual([
         "ipollowork_extension_list_actions",
         "ipollowork_extension_call",
-        "ipollowork_project_read",
-        "ipollowork_project_apply",
-        "ipollowork_workspace_app_list_tools",
+      "ipollowork_project_read",
+      "ipollowork_project_apply",
+      "ipollowork_schedule_preview",
+      "ipollowork_schedule_apply",
+      "ipollowork_workspace_app_list_tools",
         "ipollowork_workspace_app_call_tool",
         "ipollowork_browser_open_url",
         "ipollowork_browser_snapshot",
@@ -392,6 +401,120 @@ describe("extension and engine host tool gating", () => {
       summary: "Break the project",
     });
     expect(invalidResponse.status).toBe(400);
+  });
+
+  test("previews and atomically imports confirmed AI plans into iPolloWork Schedule", async () => {
+    const { base } = await boot();
+    const call = (name: string, args: Record<string, unknown>) => fetch(`${base}/engine-tools/call`, {
+      method: "POST",
+      headers: clientJsonHeaders(),
+      body: JSON.stringify({ name, args, context: { workspaceId: "ws_1", sessionId: "session_planner" } }),
+    });
+
+    const invalidResponse = await call("ipollowork_schedule_preview", {
+      tasks: [{
+        title: "Unaligned task",
+        startAt: "2026-08-26T09:10:00+08:00",
+        dueAt: "2026-08-26T10:00:00+08:00",
+      }],
+    });
+    expect(invalidResponse.status).toBe(400);
+
+    const previewResponse = await call("ipollowork_schedule_preview", {
+      tasks: [
+        {
+          title: "Outline launch plan",
+          description: "Create the first draft",
+          startAt: "2026-08-26T09:00:00+08:00",
+          dueAt: "2026-08-26T10:00:00+08:00",
+          priority: "high",
+        },
+        {
+          title: "Review launch plan",
+          startAt: "2026-08-26T10:15:00+08:00",
+          dueAt: "2026-08-26T11:00:00+08:00",
+        },
+      ],
+    });
+    expect(previewResponse.status).toBe(200);
+    const preview = await previewResponse.json() as {
+      previewId?: string;
+      confirmationRequired?: boolean;
+      tasks?: Array<{ startAt?: string }>;
+    };
+    expect(preview.previewId).toMatch(/^schedule_/);
+    expect(preview).toMatchObject({
+      confirmationRequired: true,
+      tasks: [{ startAt: "2026-08-26T01:00:00.000Z" }, { startAt: "2026-08-26T02:15:00.000Z" }],
+    });
+
+    const beforeApply = await fetch(`${base}/work-items?workspaceId=ws_1`, { headers: clientHeaders() });
+    expect(await beforeApply.json()).toMatchObject({ items: [] });
+
+    const applyResponse = await call("ipollowork_schedule_apply", { previewId: preview.previewId });
+    const applied = await applyResponse.json();
+    expect({ status: applyResponse.status, body: applied }).toMatchObject({
+      status: 200,
+      body: {
+        ok: true,
+        items: [
+          { title: "Outline launch plan", status: "planned", priority: "high" },
+          { title: "Review launch plan", status: "planned", priority: "normal" },
+        ],
+      },
+    });
+
+    const listed = await fetch(`${base}/work-items?workspaceId=ws_1`, { headers: clientHeaders() });
+    const list = await listed.json() as { items?: Array<{ title?: string; startAt?: number }> };
+    expect(list.items).toHaveLength(2);
+    expect(list.items?.map((item) => item.title).sort()).toEqual(["Outline launch plan", "Review launch plan"]);
+
+    const repeatedResponse = await call("ipollowork_schedule_apply", { previewId: preview.previewId });
+    expect(repeatedResponse.status).toBe(404);
+  });
+
+  test("keeps a schedule preview read-only when the user denies import approval", async () => {
+    const { base } = await boot({ approval: { mode: "manual", timeoutMs: 5_000 } });
+    const call = (name: string, args: Record<string, unknown>) => fetch(`${base}/engine-tools/call`, {
+      method: "POST",
+      headers: clientJsonHeaders(),
+      body: JSON.stringify({ name, args, context: { workspaceId: "ws_1", sessionId: "session_planner" } }),
+    });
+    const previewResponse = await call("ipollowork_schedule_preview", {
+      tasks: [{
+        title: "Prepare campaign brief",
+        startAt: "2026-08-26T09:00:00+08:00",
+        dueAt: "2026-08-26T10:00:00+08:00",
+      }],
+    });
+    const preview = await previewResponse.json() as { previewId?: string };
+    if (!preview.previewId) throw new Error("Schedule preview id is required");
+
+    const pendingApply = call("ipollowork_schedule_apply", { previewId: preview.previewId });
+    let approval: { id?: string; action?: string; summary?: string } | undefined;
+    const deadline = Date.now() + 2_000;
+    while (!approval && Date.now() < deadline) {
+      const response = await fetch(`${base}/approvals`, { headers: hostJsonHeaders() });
+      const payload = await response.json() as { items?: Array<{ id?: string; action?: string; summary?: string }> };
+      approval = payload.items?.[0];
+      if (!approval) await Bun.sleep(20);
+    }
+    expect(approval).toMatchObject({
+      action: "schedule.import.apply",
+      summary: "Add 1 planned task to iPolloWork Schedule",
+    });
+    const reply = await fetch(`${base}/approvals/${approval?.id}`, {
+      method: "POST",
+      headers: hostJsonHeaders(),
+      body: JSON.stringify({ reply: "deny" }),
+    });
+    expect(reply.status).toBe(200);
+    const denied = await pendingApply;
+    expect(denied.status).toBe(403);
+    expect(await denied.json()).toMatchObject({ code: "write_denied" });
+
+    const listed = await fetch(`${base}/work-items?workspaceId=ws_1`, { headers: clientHeaders() });
+    expect(await listed.json()).toMatchObject({ items: [] });
   });
 
   test("defaults to unchanged legacy extension behavior when no connect state file exists", async () => {

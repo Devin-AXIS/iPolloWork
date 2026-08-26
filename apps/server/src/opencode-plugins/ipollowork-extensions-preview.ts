@@ -50,6 +50,20 @@ const projectApplyArgsSchema = z.object({
   summary: z.string().trim().min(1).max(240).describe("Short summary of the user-confirmed change."),
 });
 
+const schedulePreviewArgsSchema = z.object({
+  tasks: z.array(z.object({
+    title: z.string().trim().min(1).max(80),
+    description: z.string().trim().max(4_000).optional(),
+    startAt: z.string().trim().max(40),
+    dueAt: z.string().trim().max(40),
+    priority: z.enum(["low", "normal", "high", "urgent"]).optional(),
+  })).min(1).max(50),
+});
+
+const scheduleApplyArgsSchema = z.object({
+  previewId: z.string().trim().min(1).max(120),
+});
+
 const workspaceAppCallArgsSchema = z.object({
   name: z.string().trim().min(1).describe("Workspace App tool name returned by ipollowork_workspace_app_list_tools."),
   arguments: z.record(z.string(), z.unknown()).optional().describe("Arguments for the Workspace App tool."),
@@ -699,6 +713,7 @@ export const iPolloWorkExtensionsPreview = async () => {
     output.system.push(IPOLLOWORK_SESSION_MEMORY_INSTRUCTION);
     output.system.push(ENGINE_BROWSER_INSTRUCTION);
     output.system.push(IPOLLOWORK_MOTION_INSTRUCTION);
+    output.system.push(engineHostToolDescription(ENGINE_HOST_TOOL_NAMES.schedulePreview));
     if (uiControlEnabled) output.system.push(IPOLLOWORK_UI_CONTROL_INSTRUCTION);
   },
   tool: {
@@ -786,6 +801,32 @@ export const iPolloWorkExtensionsPreview = async () => {
         const args = projectApplyArgsSchema.parse(rawArgs);
         const payload = await postJson("/engine-tools/call", {
           name: ENGINE_HOST_TOOL_NAMES.projectApply,
+          args,
+          context: contextPayload(context),
+        });
+        return JSON.stringify(payload, null, 2);
+      },
+    },
+    [ENGINE_HOST_TOOL_NAMES.schedulePreview]: {
+      description: engineHostToolDescription(ENGINE_HOST_TOOL_NAMES.schedulePreview),
+      args: schedulePreviewArgsSchema.shape,
+      async execute(rawArgs: unknown, context: OpenCodeContext) {
+        const args = schedulePreviewArgsSchema.parse(rawArgs);
+        const payload = await postJson("/engine-tools/call", {
+          name: ENGINE_HOST_TOOL_NAMES.schedulePreview,
+          args,
+          context: contextPayload(context),
+        });
+        return JSON.stringify(payload, null, 2);
+      },
+    },
+    [ENGINE_HOST_TOOL_NAMES.scheduleApply]: {
+      description: engineHostToolDescription(ENGINE_HOST_TOOL_NAMES.scheduleApply),
+      args: scheduleApplyArgsSchema.shape,
+      async execute(rawArgs: unknown, context: OpenCodeContext) {
+        const args = scheduleApplyArgsSchema.parse(rawArgs);
+        const payload = await postJson("/engine-tools/call", {
+          name: ENGINE_HOST_TOOL_NAMES.scheduleApply,
           args,
           context: contextPayload(context),
         });

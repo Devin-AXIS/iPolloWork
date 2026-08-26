@@ -3,7 +3,6 @@ import * as React from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   CalendarDays,
-  CalendarRange,
   Hand,
   LayoutDashboard,
   Plus,
@@ -61,6 +60,7 @@ type WorkCenterProps = {
   workspaces: WorkspaceInfo[];
   providers: ProviderListItem[];
   connectedProviderIds: string[];
+  initialAnchorAt?: number;
 };
 
 type ResolvedWorkItem = ProjectBoardItem & {
@@ -176,12 +176,9 @@ function GlobalWorkSummary(props: {
     { label: t("work.global.unscheduled"), value: counts.unscheduled },
   ];
   return (
-    <section className="mb-3 shrink-0 rounded-2xl border border-dls-border/70 bg-white px-4 py-3 dark:bg-dls-surface" data-testid="global-work-summary">
+    <section className="mb-3 shrink-0 rounded-2xl border border-dls-border/70 bg-dls-surface px-4 py-3" data-testid="global-work-summary">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <div>
-          <h2 className="text-[14px] font-semibold leading-5 text-dls-text">{t("work.global.summary")}</h2>
-          <p className="mt-0.5 text-[13px] leading-5 text-dls-secondary">{t("work.global.summary_description")}</p>
-        </div>
+        <h2 className="text-[14px] font-semibold leading-5 text-dls-text">{t("work.global.summary")}</h2>
         {props.loading ? <span className="text-[11px] leading-[15px] text-dls-text/45">{t("work.global.syncing")}</span> : null}
       </div>
       <div className="mt-3 grid grid-cols-2 gap-y-3 sm:grid-cols-6">
@@ -201,7 +198,7 @@ export function WorkCenter(props: WorkCenterProps) {
   const [projectView, setProjectView] = React.useState<ProjectView>("board");
   const [boardPanEnabled, setBoardPanEnabled] = React.useState(false);
   const [calendarView, setCalendarView] = React.useState<WorkCalendarView>("week");
-  const [anchorDate, setAnchorDate] = React.useState(() => new Date());
+  const [anchorDate, setAnchorDate] = React.useState(() => new Date(props.initialAnchorAt ?? Date.now()));
   const [editorOpen, setEditorOpen] = React.useState(false);
   const [editingEntry, setEditingEntry] = React.useState<ResolvedWorkItem | null>(null);
   const [createEndpoint, setCreateEndpoint] = React.useState<WorkEndpoint | null>(null);
@@ -495,18 +492,15 @@ export function WorkCenter(props: WorkCenterProps) {
   const showBoard = props.mode === "project" && projectView === "board";
 
   return (
-    <div className="relative flex h-full min-h-0 flex-col overflow-hidden bg-[radial-gradient(circle_at_18%_0%,rgba(74,158,178,0.11),transparent_34%),radial-gradient(circle_at_86%_8%,rgba(99,116,165,0.08),transparent_30%),var(--dls-surface)] text-dls-text">
+    <div className="relative flex h-full min-h-0 flex-col overflow-hidden bg-dls-canvas text-dls-text" data-testid="work-center">
       <header
         className={cn(
-          "flex min-h-16 shrink-0 flex-wrap items-center gap-3 border-b border-white/20 bg-dls-surface/72 py-3 backdrop-blur-2xl dark:border-white/[0.06]",
+          "flex min-h-16 shrink-0 flex-wrap items-center gap-3 border-b border-dls-border bg-dls-surface/72 py-3 backdrop-blur-2xl",
           props.mode === "global" ? "ps-4 pe-12 sm:ps-6 sm:pe-14" : "px-4 sm:px-6",
         )}
       >
         <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2">
-            {props.mode === "global" ? <CalendarRange className="size-4 text-dls-secondary" /> : <LayoutDashboard className="size-4 text-dls-secondary" />}
-            <h1 className="truncate text-[24px] font-semibold leading-8 tracking-[-0.35px] text-dls-text">{title}</h1>
-          </div>
+          <h1 className="truncate text-[24px] font-semibold leading-8 tracking-[-0.35px] text-dls-text">{title}</h1>
           <p className="mt-0.5 truncate text-[13px] leading-5 text-dls-secondary">{subtitle}</p>
         </div>
 
