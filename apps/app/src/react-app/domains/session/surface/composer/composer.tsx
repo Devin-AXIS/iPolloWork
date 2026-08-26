@@ -1,5 +1,6 @@
 /** @jsxImportSource react */
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { flushSync } from "react-dom";
 import { AppWindowMac, ArrowUp, Bot, Check, ChevronDown, ChevronRight, Code2, FileText, ListTodo, Paperclip, Plus, Plug, Settings, Sparkles, Square, Terminal, Wrench, X, Zap } from "lucide-react";
 import fuzzysort from "fuzzysort";
 import { toast } from "@/components/ui/sonner";
@@ -96,6 +97,7 @@ export type ComposerProps = {
   isRemoteWorkspace: boolean;
   isSandboxWorkspace: boolean;
   onUploadInboxFiles?: ((files: File[]) => void | Promise<unknown>) | null;
+  maxAttachmentBytes?: number;
   draftScopeKey?: string;
   placeholder?: string;
   layout?: "dock" | "inline";
@@ -280,6 +282,7 @@ export function ReactSessionComposer(props: ComposerProps) {
   const engineSelectedAppearance = props.layout === "inline" && props.inlineAppearance === "engine-selected";
   const canSend = props.draft.trim().length > 0 || props.attachments.length > 0 || props.hasPromptContext;
   const editorDisabled = props.inputDisabled ?? props.disabled;
+  const maxAttachmentBytes = props.maxAttachmentBytes ?? MAX_ATTACHMENT_BYTES;
   const [workModes, setWorkModes] = useState<ConversationMode[]>([]);
   const [toolMenuSection, setToolMenuSection] = useState<ToolMenuSection>("commands");
   const [mentionItems, setMentionItems] = useState<MentionItem[]>([]);
@@ -552,6 +555,24 @@ export function ReactSessionComposer(props: ComposerProps) {
     };
     window.addEventListener("mousedown", handlePointerDown);
     return () => window.removeEventListener("mousedown", handlePointerDown);
+  }, [plusMenuOpen]);
+
+  useEffect(() => {
+    if (!plusMenuOpen) return;
+    const handlePointerMove = (event: PointerEvent) => {
+      const target = event.target;
+      if (!(target instanceof Node)) return;
+      if (
+        plusMenuRef.current?.contains(target)
+        || toolMenuRef.current?.contains(target)
+        || delegationMenuRef.current?.contains(target)
+      ) return;
+      setPlusMenuSection(null);
+      setToolMenuOpen(false);
+      setDelegationMenuOpen(false);
+    };
+    window.addEventListener("pointermove", handlePointerMove);
+    return () => window.removeEventListener("pointermove", handlePointerMove);
   }, [plusMenuOpen]);
 
   useEffect(() => {
@@ -1037,7 +1058,7 @@ export function ReactSessionComposer(props: ComposerProps) {
 
     for (const original of inputFiles) {
       const processed = original.type.startsWith("image/") ? await compressImageFile(original) : original;
-      if (processed.size > MAX_ATTACHMENT_BYTES) {
+      if (processed.size > maxAttachmentBytes) {
         oversize.push(processed.name || original.name);
         continue;
       }
@@ -1381,11 +1402,21 @@ export function ReactSessionComposer(props: ComposerProps) {
                       <div className="w-52 shrink-0 rounded-[16px] border border-dls-border bg-dls-surface p-1.5 shadow-[var(--dls-shell-shadow)]">
                       <button
                         type="button"
-                        className="flex w-full items-center gap-2 rounded-[12px] px-3 py-2.5 text-left text-sm text-gray-11 hover:bg-gray-2"
-                        onClick={() => {
-                          setPlusMenuOpen(false);
+                        className="flex w-full items-center gap-2 rounded-[12px] px-3 py-2.5 text-left text-sm text-gray-11 transition-colors hover:bg-gray-3 hover:text-gray-12"
+                        onMouseEnter={() => {
                           setPlusMenuSection(null);
-                          fileInput?.click();
+                          setToolMenuOpen(false);
+                          setDelegationMenuOpen(false);
+                        }}
+                        onClick={() => {
+                          const input = fileInput;
+                          flushSync(() => {
+                            setPlusMenuOpen(false);
+                            setPlusMenuSection(null);
+                            setToolMenuOpen(false);
+                            setDelegationMenuOpen(false);
+                          });
+                          input?.click();
                         }}
                       >
                         <Paperclip className="size-4 shrink-0 text-gray-9" aria-hidden />

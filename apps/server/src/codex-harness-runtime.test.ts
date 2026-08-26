@@ -1331,6 +1331,61 @@ describe("Codex provider protocol gateway", () => {
     }
   });
 
+  test("returns prompt length failures as non-retryable invalid requests", async () => {
+    const upstream = createServer((request, response) => {
+      request.resume();
+      request.on("end", () => {
+        response.writeHead(400, { "content-type": "application/json" });
+        response.end(JSON.stringify({
+          error: { message: "[1261] Prompt exceeds max length" },
+        }));
+      });
+    });
+    servers.push(upstream);
+    await new Promise<void>((resolve, reject) => {
+      upstream.once("error", reject);
+      upstream.listen(0, "127.0.0.1", () => resolve());
+    });
+    const address = upstream.address();
+    if (!address || typeof address === "string") throw new Error("Mock provider failed to bind");
+
+    const gateway = new CodexProviderGateway();
+    try {
+      const routes = await gateway.configure([{
+        providerId: "opencode",
+        protocol: "openai-completions",
+        baseURL: `http://127.0.0.1:${address.port}/v1`,
+        apiKey: "upstream-key",
+      }]);
+      const route = routes.get("opencode");
+      if (!route) throw new Error("Gateway route was not created");
+
+      const response = await fetch(`${route.baseURL}/responses`, {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${route.apiKey}`,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          model: "small-context-model",
+          input: [{ role: "user", content: [{ type: "input_text", text: "oversized" }] }],
+          stream: true,
+        }),
+      });
+      const payload = await response.json();
+
+      expect(response.status).toBe(400);
+      expect(payload).toMatchObject({
+        error: {
+          message: "[1261] Prompt exceeds max length",
+          type: "invalid_request_error",
+        },
+      });
+    } finally {
+      await gateway.close();
+    }
+  });
+
   test("keeps Ox Alpha on the public Zen route without session affinity", async () => {
     let receivedSession: string | undefined;
     let receivedModel = "";

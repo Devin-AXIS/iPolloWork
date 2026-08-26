@@ -6,6 +6,8 @@
     "setup": "node scripts/ipollowork.mjs setup",
     "dev:cloud": "node scripts/ipollowork.mjs dev:cloud",
     "check": "node scripts/ipollowork.mjs check",
+    "document:design": "node scripts/document-to-design-compiler.mjs",
+    "document:video": "node scripts/document-to-design-compiler.mjs --target video",
     "readme:zh-hant": "node scripts/sync-readme-zh-hant.mjs",
     "readme:zh-hant:check": "node scripts/sync-readme-zh-hant.mjs --check",
     "package": "node scripts/ipollowork.mjs package",

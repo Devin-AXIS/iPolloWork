@@ -146,6 +146,24 @@ describe("template brief", () => {
     expect(prompt).toContain("responsive slide reflow");
   });
 
+  test("keeps real template application prompts compact for small provider contexts", () => {
+    const manifest = JSON.parse(readFileSync(
+      new URL("../../server/bundled-templates/ipollowork.pptx-brand-narrative/manifest.json", import.meta.url),
+      "utf8",
+    )) as TemplateManifestV1;
+    const prompt = templateBriefPrompt({
+      template: manifest,
+      entryPath: "design/ses_morrow/entry.html",
+      briefPath: "design/ses_morrow/brief.json",
+    });
+
+    expect(prompt.length).toBeLessThan(2_200);
+    expect(prompt).toContain("Read `design/ses_morrow/brief.json`");
+    expect(prompt).toContain("Apply it now in this turn");
+    expect(prompt).toContain("Do not reply only with confirmation");
+    expect(prompt).toContain("native editable PPTX contract");
+  });
+
   test("recognizes explicit creative deliverables but leaves explanatory questions as normal chat", () => {
     expect(inferConversationTemplateIntent("帮我生成一份融资路演PPT")?.category).toBe("slides");
     expect(inferConversationTemplateIntent("制作一个竖屏产品发布视频")?.category).toBe("video");

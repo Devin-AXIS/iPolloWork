@@ -1,7 +1,7 @@
 import type { ComposerAttachment } from "@/app/types";
 import { canSendOriginalReference, prepareOriginalReferenceAttachment } from "./ingestion";
 import { packReferenceContext } from "./prompt-pack";
-import type { ReferenceIngestionResult, TemplateReferenceItem } from "./types";
+import type { PromptPackOptions, ReferenceIngestionResult, TemplateReferenceItem } from "./types";
 
 export function revokeTemplateReferenceAttachmentPreviews(attachments: ComposerAttachment[]) {
   for (const attachment of attachments) {
@@ -9,11 +9,14 @@ export function revokeTemplateReferenceAttachmentPreviews(attachments: ComposerA
   }
 }
 
-export async function buildTemplateReferenceSubmitPayload(references: TemplateReferenceItem[]) {
+export async function buildTemplateReferenceSubmitPayload(
+  references: TemplateReferenceItem[],
+  options?: PromptPackOptions,
+) {
   const ingestions = references
     .map((reference) => reference.ingestion)
     .filter((item): item is ReferenceIngestionResult => Boolean(item));
-  const contextPack = packReferenceContext(ingestions);
+  const contextPack = packReferenceContext(ingestions, options);
   const attachments: ComposerAttachment[] = [];
   try {
     for (const reference of references) {
