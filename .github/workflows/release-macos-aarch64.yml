@@ -949,7 +949,7 @@ jobs:
 
           (
             cd "$release_dir"
-            find . -type f -printf '%P\n' | sort | while IFS= read -r asset; do
+            find . -type f ! -name 'SHA256SUMS.txt' -printf '%P\n' | sort | while IFS= read -r asset; do
               sha256sum "$asset"
             done > SHA256SUMS.txt
           )
