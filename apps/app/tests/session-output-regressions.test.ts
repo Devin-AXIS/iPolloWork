@@ -96,17 +96,99 @@ describe("session output issue regressions", () => {
     expect(sidebarSource).toContain('t("session_management.archive_session")');
   });
 
-  test("template brief keeps the reference upload entry hidden", () => {
+  test("template brief does not duplicate the composer attachment entry", () => {
     const source = readFileSync(
       new URL("../src/react-app/domains/session/chat/session-page.tsx", import.meta.url),
       "utf8",
     );
 
-    expect(source).toContain("const TEMPLATE_REFERENCE_UPLOAD_VISIBLE = false;");
-    expect(source).toContain("{TEMPLATE_REFERENCE_UPLOAD_VISIBLE ? <div");
+    expect(source).not.toContain("import { ReferenceUploadPanel }");
+    expect(source).not.toContain("<ReferenceUploadPanel");
+    expect(source).not.toContain('t("templates.brief.reference_label")');
     expect(source).toContain('className="flex min-h-0 w-full flex-1 items-center justify-center overflow-auto px-6 py-10"');
     expect(source).toContain('className="mx-auto w-full max-w-xl overflow-hidden');
     expect(source).toContain('className="mt-2 placeholder:text-muted-foreground/70"');
+  });
+
+  test("design and video composers keep the existing attachment entry", () => {
+    const source = readFileSync(
+      new URL("../src/react-app/domains/session/surface/session-surface.tsx", import.meta.url),
+      "utf8",
+    );
+    const initialProjectSource = readFileSync(
+      new URL("../src/react-app/domains/session/chat/session-page.tsx", import.meta.url),
+      "utf8",
+    );
+    const composerSource = readFileSync(
+      new URL("../src/react-app/domains/session/surface/composer/composer.tsx", import.meta.url),
+      "utf8",
+    );
+    const sessionPromptSource = readFileSync(
+      new URL("../src/react-app/shell/session-prompt.ts", import.meta.url),
+      "utf8",
+    );
+    const messageListSource = readFileSync(
+      new URL("../src/components/chat/message-list.tsx", import.meta.url),
+      "utf8",
+    );
+    const sessionSurfaceSource = readFileSync(
+      new URL("../src/react-app/domains/session/surface/session-surface.tsx", import.meta.url),
+      "utf8",
+    );
+
+    expect(source).toContain("onAttachFiles={handleAttachFiles}");
+    expect(source).toContain("onUseTemplate={props.onCreateSession");
+    expect(source).toContain(": props.onMaterializeTemplate");
+    expect(initialProjectSource).toContain("onAttachFiles={attachFiles}");
+    expect(initialProjectSource).toContain("data-testid=\"template-brief-composer-shell\"");
+    expect(initialProjectSource).toContain("onAttachFiles={attachTemplateBriefComposerFiles}");
+    expect(initialProjectSource).not.toContain("function TemplateReferenceAgentPanel");
+    expect(initialProjectSource).not.toContain("<TemplateReferenceAgentPanel");
+    expect(initialProjectSource).toContain("templateAssistantWait");
+    expect(initialProjectSource).toContain("assistantWaitLabel=");
+    expect(initialProjectSource).toContain('t("templates.brief.reference_agent_processing_label"');
+    expect(messageListSource).toContain("assistantWaitLabel?: string");
+    expect(messageListSource).toContain("liveActionLabel ?? assistantWaitLabel");
+    expect(sessionSurfaceSource).toContain("assistantWaitLabel?: string");
+    expect(initialProjectSource).toContain("persistComposerAttachments({");
+    expect(initialProjectSource).toContain("attachmentFiles: persistedAttachments.map");
+    expect(initialProjectSource).toContain("persistedAttachmentInstruction(persistedAttachments)");
+    expect(initialProjectSource).not.toContain("attachmentRequiresNativeModelSupport");
+    expect(initialProjectSource).not.toContain("modelSafeAttachments");
+    expect(initialProjectSource).toContain("attachments: []");
+    expect(initialProjectSource).toContain("ingestReferenceFile(reference.file)");
+    expect(initialProjectSource).toContain('if (attachment.mimeType.startsWith("image/")) return [];');
+    expect(initialProjectSource).toContain('reference.status === "parsing" && !reference.mimeType.startsWith("image/")');
+    expect(initialProjectSource).toContain("inferTemplateBriefFromIngestions(");
+    expect(initialProjectSource).toContain("buildTemplateReferenceSubmitPayload(currentReferences, {");
+    expect(initialProjectSource).toContain("maxTotalChars: 4200");
+    expect(initialProjectSource).toContain("maxChunksPerFile: 4");
+    expect(initialProjectSource).toContain("referencePayload.contextPack.promptText.trim()");
+    expect(sessionPromptSource).toContain("Use these workspace-relative paths");
+    expect(initialProjectSource).toContain("Attached images are visual references for this template task.");
+    expect(initialProjectSource).toContain("referenceFiles: currentReferences.map");
+    expect(initialProjectSource).toContain("maxAttachmentBytes={25 * 1024 * 1024}");
+    expect(composerSource).toContain('import { flushSync } from "react-dom";');
+    expect(composerSource).toContain("maxAttachmentBytes?: number;");
+    expect(composerSource).toContain("const maxAttachmentBytes = props.maxAttachmentBytes ?? MAX_ATTACHMENT_BYTES;");
+    expect(composerSource).toContain('t("composer.plus_attach_files")');
+    expect(composerSource).toContain("props.onAttachFiles(accepted)");
+    expect(composerSource).toContain("flushSync(() => {");
+    expect(composerSource).toContain("setToolMenuOpen(false);\n                            setDelegationMenuOpen(false);");
+    expect(composerSource).toContain("input?.click();");
+    expect(composerSource).toContain('window.addEventListener("pointermove", handlePointerMove);');
+    expect(composerSource).toContain("setPlusMenuSection(null);\n      setToolMenuOpen(false);\n      setDelegationMenuOpen(false);");
+  });
+
+  test("starter template strip is clipped to the workspace column", () => {
+    const source = readFileSync(
+      new URL("../src/components/chat/new-conversation-starter.tsx", import.meta.url),
+      "utf8",
+    );
+
+    expect(source).toContain('data-testid="new-conversation-template-strip"');
+    expect(source).toContain("min-w-0 overflow-hidden rounded-xl");
+    expect(source).toContain("flex min-w-0 snap-x snap-mandatory");
   });
 
   test("output files can seed a follow-up revision prompt", () => {

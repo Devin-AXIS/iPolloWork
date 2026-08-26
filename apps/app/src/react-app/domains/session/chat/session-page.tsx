@@ -110,6 +110,7 @@ import {
 } from "../../../shell/route-workspaces";
 import { useShellConfig } from "../../../shell/shell-config";
 import { type SidePanelItem, useUiStateStore } from "../../../shell/ui-state-store";
+import { persistedAttachmentInstruction, persistComposerAttachments } from "../../../shell/session-prompt";
 import { workspaceSettingsRoute } from "../../../shell/workspace-routes";
 
 import { isElectronRuntime } from "../../../../app/utils";
@@ -129,26 +130,17 @@ import {
 } from "../video/video-project";
 import { isStreamingSessionStatus } from "../sidebar/utils";
 import {
-  TEMPLATE_BRIEF_REFERENCE_ACCEPT,
   templateBriefConfigFor,
   templateBriefPrompt,
   type TemplateBrief,
 } from "../templates/template-brief";
 import {
-  canSendOriginalReference,
   ingestReferenceFile,
   isReferenceFile,
 } from "../references/ingestion";
 import { inferTemplateBriefFromIngestions } from "../references/brief-autofill";
-import {
-  buildTemplateReferenceSubmitPayload,
-  revokeTemplateReferenceAttachmentPreviews,
-} from "../references/template-reference-submit";
+import { buildTemplateReferenceSubmitPayload } from "../references/template-reference-submit";
 import type { TemplateReferenceItem } from "../references/types";
-export {
-  buildTemplateReferenceSubmitPayload,
-  revokeTemplateReferenceAttachmentPreviews,
-} from "../references/template-reference-submit";
 import { TemplateMarketDialog } from "../templates/template-market-dialog";
 import { shouldRefreshTemplateCatalogOnOpen } from "../templates/template-market-refresh";
 import { savePromptTemplate } from "@/react-app/domains/session/templates/prompt-template-store";
@@ -194,7 +186,6 @@ const VIDEO_PANEL_DEFAULT_WIDTH = 1120;
 const SESSION_SHELL_TRANSITION_MS = 220;
 const SESSION_SHELL_TRANSITION_EASING = "cubic-bezier(0.22, 1, 0.36, 1)";
 const ENGINE_STARTUP_TRANSITION_MS = 900;
-const TEMPLATE_REFERENCE_UPLOAD_VISIBLE = false;
 type SessionPanelView = SidePanelItem | "launcher";
 type TemplateSessionData = {
   sessionId: string;
@@ -1323,81 +1314,22 @@ function DesignStarter({ client, workspaceId, templates, loading, busyId, error,
   </>);
 }
 
-function TemplateBriefCard({ template, onSubmit, onClose }: { template: TemplateManifestV1; onSubmit: (brief: TemplateBrief, references: TemplateReferenceItem[]) => void; onClose: () => void | Promise<void> }) {
+function TemplateBriefCard({
+  template,
+  brief,
+  canSubmit,
+  onBriefChange,
+  onSubmit,
+  onClose,
+}: {
+  template: TemplateManifestV1;
+  brief: TemplateBrief;
+  canSubmit: boolean;
+  onBriefChange: (brief: TemplateBrief) => void;
+  onSubmit: (brief: TemplateBrief) => void;
+  onClose: () => void | Promise<void>;
+}) {
   const config = templateBriefConfigFor(template);
-  const [brief, setBrief] = useState<TemplateBrief>({ title: "", audience: "", details: "" });
-  const [references, setReferences] = useState<TemplateReferenceItem[]>([]);
-  const [referenceBusy, setReferenceBusy] = useState(false);
-  const referenceInputRef = useRef<HTMLInputElement>(null);
-  const referencesRef = useRef<TemplateReferenceItem[]>([]);
-
-  const updateReferences = (updater: (current: TemplateReferenceItem[]) => TemplateReferenceItem[]) => {
-    const next = updater(referencesRef.current);
-    referencesRef.current = next;
-    setReferences(next);
-  };
-
-  const applyReferenceBriefAutofill = (inferred: TemplateBrief) => {
-    if (!inferred.title && !inferred.audience && !inferred.details) return;
-    setBrief((current) => ({
-      title: current.title.trim() ? current.title : inferred.title,
-      audience: current.audience.trim() ? current.audience : inferred.audience,
-      details: current.details.trim() ? current.details : inferred.details,
-    }));
-    toast.success(t("templates.brief.reference_autofilled"));
-  };
-
-  const addReferenceFiles = async (files: File[]) => {
-    if (!files.length) return;
-    const unsupported = files.filter((file) => !isReferenceFile(file));
-    const supported = files.filter((file) => isReferenceFile(file));
-    if (unsupported.length) {
-      toast.warning(
-        unsupported.length === 1
-          ? t("templates.brief.reference_unsupported_one", { name: unsupported[0]?.name ?? "" })
-          : t("templates.brief.reference_unsupported_many", { count: unsupported.length }),
-        { description: t("templates.brief.reference_supported_formats") },
-      );
-    }
-    if (!supported.length) return;
-    setReferenceBusy(true);
-    const pending = supported.map((file) => ({
-      id: `${file.name}-${file.lastModified}-${Math.random().toString(36).slice(2)}`,
-      file,
-      fileName: file.name,
-      mimeType: file.type || "application/octet-stream",
-      size: file.size,
-      status: "parsing" as const,
-      sendOriginal: false,
-    }));
-    updateReferences((current) => [...current, ...pending]);
-
-    try {
-      const results = await Promise.all(pending.map(async (item): Promise<TemplateReferenceItem> => {
-        try {
-          const ingestion = await ingestReferenceFile(item.file);
-          const status: TemplateReferenceItem["status"] = ingestion.quality === "high" || ingestion.quality === "medium" ? "ready" : ingestion.quality === "low" ? "weak" : "failed";
-          return { ...item, mimeType: ingestion.mimeType, status, ingestion };
-        } catch (error) {
-          toast.warning(t("templates.brief.reference_status_failed"), {
-            description: error instanceof Error ? error.message : item.fileName,
-          });
-          return { ...item, status: "failed" };
-        }
-      }));
-      const activeResults = results.filter((result) => referencesRef.current.some((reference) => reference.id === result.id));
-      updateReferences((current) => current.map((item) => activeResults.find((result) => result.id === item.id) ?? item));
-      applyReferenceBriefAutofill(inferTemplateBriefFromIngestions(
-        activeResults.flatMap((result) => result.ingestion ? [result.ingestion] : []),
-      ));
-    } finally {
-      setReferenceBusy(false);
-    }
-  };
-
-  const removeReference = (id: string) => {
-    updateReferences((current) => current.filter((item) => item.id !== id));
-  };
 
   return <div className="flex min-h-0 w-full flex-1 items-center justify-center overflow-auto px-6 py-10">
     <div className="mx-auto w-full max-w-xl overflow-hidden rounded-3xl border border-dls-border bg-dls-surface shadow-[var(--dls-card-shadow)]">
@@ -1408,25 +1340,8 @@ function TemplateBriefCard({ template, onSubmit, onClose }: { template: Template
         <p className={cn("mt-1 text-sm", template.surface === "video" ? "text-white/65" : "text-dls-secondary")}>{config.description}</p>
       </div>
       <div className="space-y-4 p-5">
-        {config.fields.map((field) => <label key={field.key} className="block text-sm font-medium">{field.label}{field.optional ? <span className="ml-1 text-xs font-normal text-dls-secondary">{t("common.optional_parens")}</span> : null}<Input value={brief[field.key]} onChange={(event) => { const value = event.currentTarget.value; setBrief((current) => ({ ...current, [field.key]: value })); }} placeholder={field.placeholder} className="mt-2 placeholder:text-muted-foreground/70" /></label>)}
-        {TEMPLATE_REFERENCE_UPLOAD_VISIBLE ? <div className="rounded-xl border border-dls-border bg-dls-canvas/45 p-3">
-          <div className="flex items-start justify-between gap-3">
-            <div><div className="text-sm font-medium">{t("templates.brief.reference_label")}<span className="ml-1 text-xs font-normal text-dls-secondary">{t("common.optional_parens")}</span></div><p className="mt-1 text-xs leading-5 text-dls-secondary">{t("templates.brief.reference_description")}</p></div>
-            <Button type="button" variant="outline" size="sm" className="h-8 shrink-0 rounded-lg px-2.5 text-xs" disabled={referenceBusy} onClick={() => referenceInputRef.current?.click()}>{referenceBusy ? <LoaderCircle className="size-3 animate-spin" /> : <Upload className="size-3" />}{t("templates.brief.reference_upload")}</Button>
-            <input ref={referenceInputRef} type="file" multiple accept={TEMPLATE_BRIEF_REFERENCE_ACCEPT} className="hidden" onChange={(event) => { const files = Array.from(event.currentTarget.files ?? []); event.currentTarget.value = ""; void addReferenceFiles(files); }} />
-          </div>
-          {references.length ? <div className="mt-3 grid gap-2">{references.map((reference) => <div key={reference.id} className="flex min-w-0 items-center gap-2 rounded-lg border border-dls-border bg-dls-surface px-2.5 py-2">
-            <FileText className="size-3.5 shrink-0 text-dls-secondary" />
-            <div className="min-w-0 flex-1">
-              <div className="truncate text-xs font-medium">{reference.fileName}</div>
-              <div className="text-[10px] text-dls-secondary">{reference.status === "parsing" ? t("templates.brief.reference_status_parsing") : reference.status === "ready" ? t("templates.brief.reference_status_ready", { quality: reference.ingestion?.quality ?? "high" }) : reference.status === "weak" ? t("templates.brief.reference_status_weak") : t("templates.brief.reference_status_failed")}</div>
-              {reference.ingestion?.warnings[0] ? <div className="truncate text-[10px] text-dls-secondary" title={reference.ingestion.warnings[0]}>{reference.ingestion?.warnings[0]}</div> : null}
-            </div>
-            <Button type="button" variant={reference.sendOriginal ? "secondary" : "ghost"} size="sm" className="h-7 shrink-0 rounded-lg px-2 text-[10px]" disabled={reference.status === "parsing" || !canSendOriginalReference(reference.file)} onClick={() => updateReferences((current) => current.map((item) => item.id === reference.id ? { ...item, sendOriginal: !item.sendOriginal } : item))}>{reference.sendOriginal ? t("templates.brief.reference_send_original_on") : t("templates.brief.reference_send_original_off")}</Button>
-            <Button type="button" variant="ghost" size="icon-sm" className="size-7 shrink-0 rounded-lg text-dls-secondary hover:text-dls-text" aria-label={t("templates.brief.reference_remove", { name: reference.fileName })} onClick={() => removeReference(reference.id)}><X className="size-3.5" /></Button>
-          </div>)}</div> : null}
-        </div> : null}
-        <Button className="w-full" disabled={!brief.title.trim() || !brief.audience.trim() || referenceBusy} onClick={() => onSubmit({ title: brief.title.trim(), audience: brief.audience.trim(), details: brief.details.trim() }, references)}>{config.submitLabel}</Button>
+        {config.fields.map((field) => <label key={field.key} className="block text-sm font-medium">{field.label}{field.optional ? <span className="ml-1 text-xs font-normal text-dls-secondary">{t("common.optional_parens")}</span> : null}<Input value={brief[field.key]} onChange={(event) => { const value = event.currentTarget.value; onBriefChange({ ...brief, [field.key]: value }); }} placeholder={field.placeholder} className="mt-2 placeholder:text-muted-foreground/70" /></label>)}
+        <Button className="w-full" disabled={!canSubmit} onClick={() => onSubmit({ title: brief.title.trim(), audience: brief.audience.trim(), details: brief.details.trim() })}>{config.submitLabel}</Button>
       </div>
     </div>
   </div>;
@@ -1504,6 +1419,7 @@ export function SessionPage(props: SessionPageProps) {
   const [starterTemplateCatalog, setStarterTemplateCatalog] = useState<TemplateCatalogItem[]>([]);
   const [starterTemplateCatalogLoading, setStarterTemplateCatalogLoading] = useState(false);
   const starterTemplateCatalogRequestIdRef = useRef(0);
+  const templateCoverCacheRef = useRef(new Map<string, Promise<Awaited<ReturnType<TemplateCoverLoader>>>>());
   const templateImportInFlightRef = useRef(false);
   const [templateMarketOpen, setTemplateMarketOpen] = useState(false);
   const previousTemplateMarketOpenRef = useRef(false);
@@ -1552,6 +1468,14 @@ export function SessionPage(props: SessionPageProps) {
   const currentTemplateSessionData = templateSessionData?.sessionId === props.selectedSessionId
     ? templateSessionData
     : null;
+  const [templateBriefForm, setTemplateBriefForm] = useState<TemplateBrief>({ title: "", audience: "", details: "" });
+  const [templateBriefComposerDraft, setTemplateBriefComposerDraft] = useState("");
+  const [templateBriefComposerAttachments, setTemplateBriefComposerAttachments] = useState<ComposerAttachment[]>([]);
+  const [templateBriefReferences, setTemplateBriefReferences] = useState<TemplateReferenceItem[]>([]);
+  const [templateBriefSubmitBusy, setTemplateBriefSubmitBusy] = useState(false);
+  const [templateAssistantWait, setTemplateAssistantWait] = useState<{ sessionId: string; label: string } | null>(null);
+  const templateBriefComposerAttachmentsRef = useRef<ComposerAttachment[]>([]);
+  const templateBriefReferencesRef = useRef<TemplateReferenceItem[]>([]);
   const hasTemplateSession = Boolean(currentTemplateSessionData);
   const hasTemplateBrief = currentTemplateSessionData?.hasBrief === true;
   const selectedTemplate = currentTemplateSessionData?.manifest ?? null;
@@ -1559,6 +1483,41 @@ export function SessionPage(props: SessionPageProps) {
     ? currentTemplateSessionData.state.entry
     : undefined;
   const isPresentationSession = selectedTemplate?.category === "slides";
+  const templateBriefReferenceBusy = templateBriefReferences.some((reference) =>
+    reference.status === "parsing" && !reference.mimeType.startsWith("image/")
+  );
+  const templateBriefCanSubmit = !templateBriefSubmitBusy
+    && !templateBriefReferenceBusy
+    && !props.surface?.modelUnavailable
+    && (
+      Boolean(templateBriefForm.title.trim() && templateBriefForm.audience.trim())
+      || Boolean(templateBriefComposerDraft.trim())
+      || templateBriefComposerAttachments.length > 0
+    );
+  useEffect(() => {
+    templateBriefComposerAttachmentsRef.current = templateBriefComposerAttachments;
+  }, [templateBriefComposerAttachments]);
+  useEffect(() => {
+    templateBriefReferencesRef.current = templateBriefReferences;
+  }, [templateBriefReferences]);
+  useEffect(() => () => {
+    templateBriefComposerAttachmentsRef.current.forEach((attachment) => {
+      if (attachment.previewUrl) URL.revokeObjectURL(attachment.previewUrl);
+    });
+  }, []);
+  useEffect(() => {
+    setTemplateBriefForm({ title: "", audience: "", details: "" });
+    setTemplateBriefComposerDraft("");
+    setTemplateBriefReferences([]);
+    setTemplateBriefSubmitBusy(false);
+    setTemplateAssistantWait(null);
+    setTemplateBriefComposerAttachments((current) => {
+      current.forEach((attachment) => {
+        if (attachment.previewUrl) URL.revokeObjectURL(attachment.previewUrl);
+      });
+      return [];
+    });
+  }, [currentTemplateSessionData?.sessionId, currentTemplateSessionData?.state.briefPath]);
   const artifactContext = useMemo<ArtifactInteractionContext | undefined>(() => {
     if (currentVideoEntryPath) {
       return { kind: "video", entryPath: currentVideoEntryPath };
@@ -1588,6 +1547,11 @@ export function SessionPage(props: SessionPageProps) {
   const [dismissedTemplateBriefSessionIds, setDismissedTemplateBriefSessionIds] = useState<Set<string>>(() => new Set());
   const handleConversationMessagesChange = useCallback((sessionId: string, messages: UIMessage[]) => {
     setConversationMessageState({ sessionId, messages });
+    setTemplateAssistantWait((current) =>
+      current?.sessionId === sessionId && messages.some((message) => message.role === "assistant")
+        ? null
+        : current,
+    );
   }, []);
   const conversationMessages = conversationMessageState.sessionId === props.selectedSessionId
     ? conversationMessageState.messages
@@ -1741,18 +1705,31 @@ export function SessionPage(props: SessionPageProps) {
     }
     void refreshStarterTemplateCatalog();
   }, [props.ipolloworkServerClient, props.runtimeWorkspaceId, refreshStarterTemplateCatalog]);
-  const getTemplateCover = useCallback((templateId: string) => {
+  const getCachedTemplateCover = useCallback((scope: WorkContextId, templateId: string) => {
     if (!props.ipolloworkServerClient || !props.runtimeWorkspaceId) {
       return Promise.reject(new Error("Template cover is unavailable."));
     }
-    return props.ipolloworkServerClient.getTemplateCover(props.runtimeWorkspaceId, templateId, templateResourceScope);
-  }, [props.ipolloworkServerClient, props.runtimeWorkspaceId, templateResourceScope]);
-  const getStarterTemplateCover = useCallback((templateId: string) => {
-    if (!props.ipolloworkServerClient || !props.runtimeWorkspaceId) {
-      return Promise.reject(new Error("Template cover is unavailable."));
-    }
-    return props.ipolloworkServerClient.getTemplateCover(props.runtimeWorkspaceId, templateId, PERSONAL_WORK_CONTEXT_ID);
+    const cacheKey = `${props.runtimeWorkspaceId}:${scope}:${templateId}`;
+    const cached = templateCoverCacheRef.current.get(cacheKey);
+    if (cached) return cached;
+    const request = props.ipolloworkServerClient
+      .getTemplateCover(props.runtimeWorkspaceId, templateId, scope)
+      .catch((error) => {
+        templateCoverCacheRef.current.delete(cacheKey);
+        throw error;
+      });
+    templateCoverCacheRef.current.set(cacheKey, request);
+    return request;
   }, [props.ipolloworkServerClient, props.runtimeWorkspaceId]);
+  useEffect(() => {
+    templateCoverCacheRef.current.clear();
+  }, [props.runtimeWorkspaceId]);
+  const getTemplateCover = useCallback((templateId: string) => {
+    return getCachedTemplateCover(templateResourceScope, templateId);
+  }, [getCachedTemplateCover, templateResourceScope]);
+  const getStarterTemplateCover = useCallback((templateId: string) => {
+    return getCachedTemplateCover(PERSONAL_WORK_CONTEXT_ID, templateId);
+  }, [getCachedTemplateCover]);
   const validateCurrentTemplate = useCallback(async () => {
     if (!props.ipolloworkServerClient || !props.runtimeWorkspaceId || !props.selectedSessionId) return null;
     setTemplateValidationBusy(true);
@@ -2003,35 +1980,185 @@ export function SessionPage(props: SessionPageProps) {
       setTemplateBusyId(null);
     }
   }, [activeEnterprise, importDesignTemplate, templateResourceScope]);
-  const submitTemplateBrief = useCallback(async (brief: TemplateBrief, references: TemplateReferenceItem[]) => {
+  const attachTemplateBriefComposerFiles = useCallback((files: File[]) => {
+    const next = files
+      .filter((file) => file.size <= 25 * 1024 * 1024)
+      .map((file): ComposerAttachment => {
+        const image = file.type.startsWith("image/");
+        const id = `${file.name}-${file.lastModified}-${Math.random().toString(36).slice(2)}`;
+        return {
+          id,
+          name: file.name,
+          mimeType: file.type || "application/octet-stream",
+          size: file.size,
+          kind: image ? "image" : "file",
+          file,
+          previewUrl: image ? URL.createObjectURL(file) : undefined,
+        };
+      });
+    setTemplateBriefComposerAttachments((current) => [...current, ...next]);
+
+    const pendingReferences = next.flatMap((attachment): TemplateReferenceItem[] => {
+      if (attachment.mimeType.startsWith("image/")) return [];
+      if (!isReferenceFile(attachment.file)) return [];
+      return [{
+        id: attachment.id,
+        file: attachment.file,
+        fileName: attachment.name,
+        mimeType: attachment.mimeType,
+        size: attachment.size,
+        status: "parsing",
+        sendOriginal: false,
+      }];
+    });
+    if (!pendingReferences.length) return;
+    setTemplateBriefReferences((current) => [...current, ...pendingReferences]);
+
+    void Promise.all(pendingReferences.map(async (reference): Promise<TemplateReferenceItem> => {
+      try {
+        const ingestion = await ingestReferenceFile(reference.file);
+        const status: TemplateReferenceItem["status"] = ingestion.quality === "high" || ingestion.quality === "medium"
+          ? "ready"
+          : ingestion.quality === "low"
+            ? "weak"
+            : "failed";
+        return { ...reference, mimeType: ingestion.mimeType, status, ingestion };
+      } catch {
+        return { ...reference, status: "failed" };
+      }
+    })).then((results) => {
+      const activeResults = results.filter((result) =>
+        templateBriefReferencesRef.current.some((reference) => reference.id === result.id)
+      );
+      if (!activeResults.length) return;
+      setTemplateBriefReferences((current) =>
+        current.map((reference) => activeResults.find((result) => result.id === reference.id) ?? reference)
+      );
+      const inferred = inferTemplateBriefFromIngestions(
+        activeResults.flatMap((result) => result.ingestion ? [result.ingestion] : []),
+      );
+      setTemplateBriefForm((current) => ({
+        title: current.title.trim() ? current.title : inferred.title,
+        audience: current.audience.trim() ? current.audience : inferred.audience,
+        details: current.details.trim() ? current.details : inferred.details,
+      }));
+    });
+  }, []);
+
+  const removeTemplateBriefComposerAttachment = useCallback((id: string) => {
+    setTemplateBriefComposerAttachments((current) => {
+      const target = current.find((attachment) => attachment.id === id);
+      if (target?.previewUrl) URL.revokeObjectURL(target.previewUrl);
+      return current.filter((attachment) => attachment.id !== id);
+    });
+    setTemplateBriefReferences((current) => current.filter((reference) => reference.id !== id));
+  }, []);
+
+  const clearTemplateBriefComposer = useCallback((attachments: ComposerAttachment[]) => {
+    attachments.forEach((attachment) => {
+      if (attachment.previewUrl) URL.revokeObjectURL(attachment.previewUrl);
+    });
+    setTemplateBriefComposerDraft("");
+    setTemplateBriefComposerAttachments([]);
+    setTemplateBriefReferences([]);
+  }, []);
+
+  const listTemplateBriefComposerSkills = useCallback(async (): Promise<SkillCard[]> => {
+    if (!props.ipolloworkServerClient || !props.runtimeWorkspaceId) return [];
+    const response = await props.ipolloworkServerClient.listSkills(props.runtimeWorkspaceId, { includeGlobal: true });
+    return (response.items ?? []).map((skill) => ({
+      name: skill.name,
+      path: skill.path,
+      description: skill.description,
+      trigger: skill.trigger,
+    } satisfies SkillCard));
+  }, [props.ipolloworkServerClient, props.runtimeWorkspaceId]);
+
+  const listTemplateBriefComposerExtensions = useCallback(async (): Promise<iPolloWorkPluginPackageItem[]> => {
+    if (!props.ipolloworkServerClient || !props.runtimeWorkspaceId) return [];
+    const response = await props.ipolloworkServerClient.listPluginPackages(props.runtimeWorkspaceId);
+    return response.items
+      .filter((item) => item.enabled)
+      .sort((left, right) => left.name.localeCompare(right.name));
+  }, [props.ipolloworkServerClient, props.runtimeWorkspaceId]);
+
+  const listTemplateBriefComposerExternalAgents = useCallback(async (): Promise<iPolloWorkPluginPackageItem[]> => {
+    if (!props.ipolloworkServerClient || !props.runtimeWorkspaceId) return [];
+    const response = await props.ipolloworkServerClient.listPluginPackages(props.runtimeWorkspaceId);
+    return response.items
+      .filter((item) =>
+        item.enabled
+        && Boolean(item.manifest.composer?.prompt.trim())
+        && item.manifest.resources.some((resource) =>
+          resource.provides?.includes("service:external-subagent") === true
+          && !item.disabledResourceIds.includes(resource.id)
+        )
+      )
+      .sort((left, right) => left.name.localeCompare(right.name));
+  }, [props.ipolloworkServerClient, props.runtimeWorkspaceId]);
+
+  const submitTemplateBrief = useCallback(async (
+    brief: TemplateBrief,
+    composerDraft = templateBriefComposerDraft,
+    composerAttachments = templateBriefComposerAttachments,
+  ) => {
+    if (templateBriefSubmitBusy) return;
+    const extraText = composerDraft.trim();
+    const composerAttachmentIds = new Set(composerAttachments.map((attachment) => attachment.id));
+    const currentReferences = templateBriefReferences.filter((reference) => composerAttachmentIds.has(reference.id));
+    if (currentReferences.some((reference) => reference.status === "parsing")) return;
+    const firstReferenceName = currentReferences[0]?.fileName ?? composerAttachments[0]?.name ?? "";
+    const fallbackTitle = firstReferenceName
+      ? firstReferenceName.split(/[/\\]/).pop()?.replace(/\.[^.]+$/, "").replace(/[_-]+/g, " ").trim() ?? firstReferenceName
+      : extraText.slice(0, 90).trim();
+    const normalizedBrief = {
+      title: brief.title.trim() || fallbackTitle,
+      audience: brief.audience.trim() || (currentReferences.length ? t("templates.brief.reference_fallback_audience") : ""),
+      details: brief.details.trim() || (currentReferences.length ? t("templates.brief.reference_fallback_details") : extraText),
+    };
+    if (!normalizedBrief.title || !normalizedBrief.audience) return;
     if (!props.ipolloworkServerClient || !props.runtimeWorkspaceId || !props.selectedSessionId) return;
     const templateSession = currentTemplateSessionData;
     if (!templateSession) return;
     const { manifest: template, state } = templateSession;
-    let referencePayload: Awaited<ReturnType<typeof buildTemplateReferenceSubmitPayload>> | undefined;
+    setTemplateBriefSubmitBusy(true);
     try {
-      referencePayload = await buildTemplateReferenceSubmitPayload(references);
+      const referencePayload = await buildTemplateReferenceSubmitPayload(currentReferences, {
+        maxSummaryChars: 700,
+        maxChunkChars: 650,
+        maxChunksPerFile: 4,
+        maxTotalChars: 4200,
+      });
+      const persistedAttachments = await persistComposerAttachments({
+        attachments: composerAttachments,
+        client: props.ipolloworkServerClient,
+        workspaceId: props.runtimeWorkspaceId,
+        sessionId: props.selectedSessionId,
+      });
       await props.ipolloworkServerClient.writeWorkspaceFile(props.runtimeWorkspaceId, {
-      path: state.briefPath,
-      content: JSON.stringify({
-        templateId: template.id,
-        template: template.title,
-        category: template.category,
-        surface: template.surface,
-        pptxCompatibility: template.pptxCompatibility,
-        sourcePath: state.entry,
-        applyChecklist: template.applyChecklist,
-        referenceFiles: references.map((reference) => ({
-          name: reference.fileName,
-          mimeType: reference.mimeType,
-          size: reference.size,
-          quality: reference.ingestion?.quality ?? "failed",
-          sourceMode: reference.ingestion?.sourceMode ?? "memory",
-          sentOriginal: reference.sendOriginal && canSendOriginalReference(reference.file),
-        })),
-        ...brief,
-      }, null, 2),
-      baseUpdatedAt: null,
+        path: state.briefPath,
+        content: JSON.stringify({
+          templateId: template.id,
+          template: template.title,
+          category: template.category,
+          surface: template.surface,
+          pptxCompatibility: template.pptxCompatibility,
+          sourcePath: state.entry,
+          applyChecklist: template.applyChecklist,
+          referenceFiles: currentReferences.map((reference) => ({
+            name: reference.fileName,
+            mimeType: reference.mimeType,
+            size: reference.size,
+            quality: reference.ingestion?.quality ?? "failed",
+            sourceMode: reference.ingestion?.sourceMode ?? "memory",
+          })),
+          attachmentFiles: persistedAttachments.map((attachment) => ({
+            name: attachment.name,
+            path: attachment.workspacePath,
+          })),
+          ...normalizedBrief,
+        }, null, 2),
+        baseUpdatedAt: null,
       });
       if (template.surface === "video") {
         const source = await props.ipolloworkServerClient.readWorkspaceFile(props.runtimeWorkspaceId, state.entry);
@@ -2045,20 +2172,40 @@ export function SessionPage(props: SessionPageProps) {
         });
       }
       const prompt = templateBriefPrompt({ template, entryPath: state.entry, briefPath: state.briefPath });
+      const visibleTemplateMessage = t("templates.apply_now", { title: template.title });
       const referencePrompt = referencePayload.contextPack.promptText.trim();
-      const visibleTemplateMessage = t("templates.applied", { title: template.title });
+      const attachmentPrompt = persistedAttachmentInstruction(persistedAttachments) ?? "";
+      const imagePrompt = composerAttachments.some((attachment) => attachment.mimeType.startsWith("image/"))
+        ? "Attached images are visual references for this template task. Use the saved workspace paths above to inspect them for product screenshots, montage content, visual style, layout cues, and concrete facts visible in the image, then incorporate those observations into the generated design."
+        : "";
+      const extraPrompt = extraText
+        ? `Additional user context from the template composer:\n${extraText}`
+        : "";
+      const referenceCount = persistedAttachments.length || composerAttachments.length;
+      if (referenceCount > 0) {
+        setTemplateAssistantWait({
+          sessionId: props.selectedSessionId,
+          label: t("templates.brief.reference_agent_processing_label", { count: referenceCount }),
+        });
+      } else {
+        setTemplateAssistantWait(null);
+      }
       const dispatched = await props.surface?.onSendDraft({
         mode: "prompt",
         parts: [
           { type: "text", text: visibleTemplateMessage },
           { type: "text", text: prompt, synthetic: true },
           ...(referencePrompt ? [{ type: "text" as const, text: referencePrompt, synthetic: true }] : []),
+          ...(attachmentPrompt ? [{ type: "text" as const, text: attachmentPrompt, synthetic: true }] : []),
+          ...(imagePrompt ? [{ type: "text" as const, text: imagePrompt, synthetic: true }] : []),
+          ...(extraPrompt ? [{ type: "text" as const, text: extraPrompt, synthetic: true }] : []),
         ],
-        attachments: referencePayload.attachments,
+        attachments: [],
         text: visibleTemplateMessage,
-        resolvedText: visibleTemplateMessage,
+        resolvedText: [visibleTemplateMessage, extraText].filter(Boolean).join("\n\n"),
       }, props.selectedSessionId);
       if (!dispatched) throw new Error("The template task could not be started.");
+      clearTemplateBriefComposer(composerAttachments);
       setTemplateSessionData((current) => current?.sessionId === props.selectedSessionId ? { ...current, hasBrief: true } : current);
       setTemplateSessionRevision((value) => value + 1);
       setDismissedTemplateBriefSessionIds((current) => {
@@ -2068,6 +2215,7 @@ export function SessionPage(props: SessionPageProps) {
         return next;
       });
     } catch (error) {
+      setTemplateAssistantWait((current) => current?.sessionId === props.selectedSessionId ? null : current);
       setPendingVideoArtifactCompletion((current) =>
         current?.sessionId === props.selectedSessionId ? null : current,
       );
@@ -2075,9 +2223,9 @@ export function SessionPage(props: SessionPageProps) {
         description: error instanceof Error ? error.message : undefined,
       });
     } finally {
-      if (referencePayload) revokeTemplateReferenceAttachmentPreviews(referencePayload.attachments);
+      setTemplateBriefSubmitBusy(false);
     }
-  }, [conversationMessages.length, currentTemplateSessionData, props.ipolloworkServerClient, props.runtimeWorkspaceId, props.selectedSessionId, props.surface]);
+  }, [clearTemplateBriefComposer, conversationMessages.length, currentTemplateSessionData, props.ipolloworkServerClient, props.runtimeWorkspaceId, props.selectedSessionId, props.surface, templateBriefComposerAttachments, templateBriefComposerDraft, templateBriefReferences, templateBriefSubmitBusy]);
   const closeTemplateBrief = useCallback(async () => {
     const sessionId = props.selectedSessionId;
     if (!sessionId) return;
@@ -4155,13 +4303,19 @@ export function SessionPage(props: SessionPageProps) {
                   templatesLoading={starterTemplateCatalogLoading}
                   templateBusyId={templateBusyId}
                   getTemplateCover={getStarterTemplateCover}
-                  onUseTemplate={(templateId, surface) => {
-                    void props.sidebar.onCreateTaskInWorkspace(
-                      props.selectedWorkspaceId,
-                      surface === "video" ? "video" : "design",
-                      templateId,
-                      PERSONAL_WORK_CONTEXT_ID,
-                    );
+                  onUseTemplate={async (templateId, surface) => {
+                    if (templateBusyId) return;
+                    setTemplateBusyId(templateId);
+                    try {
+                      await Promise.resolve(props.sidebar.onCreateTaskInWorkspace(
+                        props.selectedWorkspaceId,
+                        surface === "video" ? "video" : "design",
+                        templateId,
+                        PERSONAL_WORK_CONTEXT_ID,
+                      ));
+                    } finally {
+                      setTemplateBusyId((current) => current === templateId ? null : current);
+                    }
                   }}
                   onInstallTemplate={(templateId) => void installStarterTemplate(templateId)}
                   onRequestTemplates={() => void refreshStarterTemplateCatalog()}
@@ -4207,7 +4361,78 @@ export function SessionPage(props: SessionPageProps) {
                           onImport={importDesignTemplate}
                         />
                       ) : currentTemplateSessionData && !hasTemplateBrief && !templateBriefDismissed ? (
-                        <TemplateBriefCard template={currentTemplateSessionData.manifest} onSubmit={(brief, references) => void submitTemplateBrief(brief, references)} onClose={() => void closeTemplateBrief()} />
+                        <div className="flex h-full min-h-0 flex-col">
+                          <TemplateBriefCard
+                            template={currentTemplateSessionData.manifest}
+                            brief={templateBriefForm}
+                            canSubmit={templateBriefCanSubmit}
+                            onBriefChange={setTemplateBriefForm}
+                            onSubmit={(brief) => void submitTemplateBrief(brief)}
+                            onClose={() => void closeTemplateBrief()}
+                          />
+                          <div data-testid="template-brief-composer-shell" className="shrink-0">
+                            <ReactSessionComposer
+                              draft={templateBriefComposerDraft}
+                              mentions={{}}
+                              onDraftChange={setTemplateBriefComposerDraft}
+                              onSend={() => void submitTemplateBrief(templateBriefForm)}
+                              onQueue={() => void submitTemplateBrief(templateBriefForm)}
+                              onStop={() => {}}
+                              busy={templateBriefSubmitBusy}
+                              queuedCount={0}
+                              disabled={!templateBriefCanSubmit}
+                              inputDisabled={false}
+                              modelUnavailable={Boolean(props.surface?.modelUnavailable)}
+                              statusLabel=""
+                              modelPickerOpen={props.surface!.modelPickerOpen}
+                              selectedModel={props.surface!.selectedModel}
+                              onModelPickerOpenChange={props.surface!.onModelPickerOpenChange}
+                              onModelChange={props.surface!.onModelChange}
+                              onConfigureModels={props.surface!.onConfigureModels}
+                              onConfigureTokenStar={props.surface!.onConfigureTokenStar}
+                              attachments={templateBriefComposerAttachments}
+                              hasPromptContext={templateBriefCanSubmit}
+                              onAttachFiles={attachTemplateBriefComposerFiles}
+                              onRemoveAttachment={removeTemplateBriefComposerAttachment}
+                              modelVariantLabel={props.surface!.modelVariantLabel}
+                              modelVariant={props.surface!.modelVariant}
+                              modelBehaviorOptions={props.surface!.modelBehaviorOptions}
+                              onModelVariantChange={props.surface!.onModelVariantChange}
+                              selectedMode={props.surface!.selectedMode}
+                              listModes={props.surface!.listModes}
+                              onSelectMode={props.surface!.onSelectMode}
+                              listAgents={props.surface!.listAgents}
+                              onSelectAgent={props.surface!.onSelectAgent}
+                              listCommands={props.surface!.listCommands}
+                              listSkills={listTemplateBriefComposerSkills}
+                              listInstalledExtensions={listTemplateBriefComposerExtensions}
+                              listExternalAgents={listTemplateBriefComposerExternalAgents}
+                              onOpenWorkspaceApp={openWorkspaceAppForPlugin}
+                              onOpenSettingsSection={props.surface!.onOpenSettingsSection}
+                              recentFiles={props.surface!.recentFiles}
+                              searchFiles={props.surface!.searchFiles}
+                              onInsertMention={(_kind, value) => setTemplateBriefComposerDraft((current) => `${current}@${value} `)}
+                              onPasteText={(text) => setTemplateBriefComposerDraft((current) => `${current}${current ? "\n" : ""}${text}`)}
+                              onUnsupportedFileLinks={(links) => setTemplateBriefComposerDraft((current) => `${current}${current ? "\n" : ""}${links.join("\n")}`)}
+                              pastedText={[]}
+                              onExpandPastedText={() => {}}
+                              onRemovePastedText={() => {}}
+                              isRemoteWorkspace={props.surface!.isRemoteWorkspace}
+                              isSandboxWorkspace={props.surface!.isSandboxWorkspace}
+                              onUploadInboxFiles={props.surface!.onUploadInboxFiles}
+                              maxAttachmentBytes={25 * 1024 * 1024}
+                              draftScopeKey={`template-brief:${props.runtimeWorkspaceId ?? "workspace"}:${props.selectedSessionId ?? "session"}`}
+                              layout="dock"
+                              placeholder={newConversationPlaceholder()}
+                              endAccessory={(
+                                <ProjectEngineBadge
+                                  engineId={props.selectedWorkspaceDisplay.engineId}
+                                  testId="template-brief-engine-badge"
+                                />
+                              )}
+                            />
+                          </div>
+                        </div>
                       ) : <SessionSurface
                         key={`${props.runtimeWorkspaceId}:${props.selectedSessionId}`}
                         // Spread `surface` first so the explicit per-workspace
@@ -4237,6 +4462,7 @@ export function SessionPage(props: SessionPageProps) {
                         onOpenTarget={openTarget}
                         onConversationMessagesChange={handleConversationMessagesChange}
                         onLoadSettled={handleSessionLoadSettled}
+                        assistantWaitLabel={templateAssistantWait?.sessionId === props.selectedSessionId ? templateAssistantWait.label : undefined}
                         templateEntryPath={templateEntryPathForArtifacts}
                         artifactFiles={artifactFiles}
                         artifactContext={artifactContext}
@@ -4253,12 +4479,27 @@ export function SessionPage(props: SessionPageProps) {
                         onOpenVideoStudio={openCurrentVideoStudio}
                         onOpenSchedule={openGlobalSchedule}
                         onOpenWorkspaceApp={openWorkspaceAppForPlugin}
-                        onCreateSession={(type, templateId) => props.sidebar.onCreateTaskInWorkspace(
-                          props.selectedWorkspaceId,
-                          type,
-                          templateId,
-                          PERSONAL_WORK_CONTEXT_ID,
-                        )}
+                        onCreateSession={(type, templateId) => {
+                          if (!templateId) {
+                            return props.sidebar.onCreateTaskInWorkspace(
+                              props.selectedWorkspaceId,
+                              type,
+                              undefined,
+                              PERSONAL_WORK_CONTEXT_ID,
+                            );
+                          }
+                          if (templateBusyId) return null;
+                          setTemplateBusyId(templateId);
+                          void Promise.resolve(props.sidebar.onCreateTaskInWorkspace(
+                            props.selectedWorkspaceId,
+                            type,
+                            templateId,
+                            PERSONAL_WORK_CONTEXT_ID,
+                          )).finally(() => {
+                            setTemplateBusyId((current) => current === templateId ? null : current);
+                          });
+                          return null;
+                        }}
                         onMaterializeTemplate={async (templateId, surface) => {
                           if (!props.ipolloworkServerClient || !props.runtimeWorkspaceId || !props.selectedSessionId) return;
 

@@ -79,7 +79,7 @@ type NewConversationStarterProps = {
   templatesLoading?: boolean;
   templateBusyId?: string | null;
   getTemplateCover?: TemplateCoverLoader;
-  onUseTemplate?: (templateId: string, surface: "design" | "video") => void;
+  onUseTemplate?: (templateId: string, surface: "design" | "video") => void | Promise<unknown>;
   onInstallTemplate?: (templateId: string) => void;
   onRequestTemplates?: () => void;
   animationCatalog?: HyperframesCatalogItem[];
@@ -234,7 +234,7 @@ function TemplateStrip({
   busyId?: string | null;
   category: TemplateCategory;
   getTemplateCover?: TemplateCoverLoader;
-  onUseTemplate?: (templateId: string, surface: "design" | "video") => void;
+  onUseTemplate?: (templateId: string, surface: "design" | "video") => void | Promise<unknown>;
   onInstallTemplate?: (templateId: string) => void;
   onRequestTemplates?: () => void;
 }) {
@@ -277,7 +277,7 @@ function TemplateStrip({
   };
 
   return (
-    <section data-testid="new-conversation-template-strip" data-category={category} className="mt-4 min-h-[185px] rounded-xl border border-border/80 bg-muted/25 p-3" aria-live="polite">
+    <section data-testid="new-conversation-template-strip" data-category={category} className="mt-4 min-h-[185px] min-w-0 overflow-hidden rounded-xl border border-border/80 bg-muted/25 p-3" aria-live="polite">
       <div className="mb-2 flex items-baseline justify-between gap-3 px-0.5">
         <div>
           <p className="text-[13px] font-medium text-foreground">{t("new_conversation.templates.title", { category: categoryLabel })}</p>
@@ -296,16 +296,17 @@ function TemplateStrip({
         </div>
       ) : categoryTemplates.length ? (
         <div>
-          <div ref={scrollerRef} className="-mx-0.5 flex snap-x snap-mandatory gap-2 overflow-x-auto px-0.5 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          <div ref={scrollerRef} className="-mx-0.5 flex min-w-0 snap-x snap-mandatory gap-2 overflow-x-auto px-0.5 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
             {categoryTemplates.map((template) => {
               const busy = busyId === template.manifest.id;
+              const anyBusy = Boolean(busyId);
               const canUse = template.installed && Boolean(onUseTemplate);
               const label = template.installed ? t("new_conversation.templates.use") : t("new_conversation.templates.install");
               return (
                 <button
                   key={template.manifest.id}
                   type="button"
-                  disabled={busy || (!canUse && !onInstallTemplate)}
+                  disabled={anyBusy || (!canUse && !onInstallTemplate)}
                   aria-label={`${label}: ${template.manifest.title}`}
                   data-busy={busy ? "true" : undefined}
                   className="group relative h-[106px] min-w-[172px] snap-start overflow-hidden rounded-lg border border-border/80 bg-background text-left shadow-sm transition-[box-shadow,transform] hover:-translate-y-px hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring active:shadow-md disabled:cursor-not-allowed disabled:opacity-55 data-[busy=true]:shadow-md"
@@ -1139,7 +1140,7 @@ export function NewConversationStarter({
     setActiveTemplateCategory(null);
     setShortcutEditorOpen(false);
     if (mode === "design" || (mode === "video" && VIDEO_TEMPLATE_PICKER_ENABLED)) {
-      onRequestTemplates?.();
+      if (!templates.length && !templatesLoading) onRequestTemplates?.();
     }
     onSelectMode(mode);
   };
@@ -1245,7 +1246,7 @@ export function NewConversationStarter({
               )}
               onClick={() => {
                 if (templateCategory) {
-                  onRequestTemplates?.();
+                  if (!templates.length && !templatesLoading) onRequestTemplates?.();
                   setActiveTemplateCategory((current) => current === templateCategory ? null : templateCategory);
                 } else if (prompt) {
                   onSelectPrompt("", selectedCapabilityAction ? undefined : {
@@ -1287,7 +1288,7 @@ export function NewConversationStarter({
               aria-label={t("new_conversation.shortcuts.add")}
               aria-expanded={shortcutEditorOpen}
               onClick={() => {
-                if (selectedMode === "design") onRequestTemplates?.();
+                if (selectedMode === "design" && !templates.length && !templatesLoading) onRequestTemplates?.();
                 updateShortcutEditorPosition();
                 setShortcutEditorOpen((open) => !open);
               }}

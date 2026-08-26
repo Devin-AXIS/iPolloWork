@@ -2,6 +2,7 @@ import type { ComposerAttachment } from "@/app/types";
 import { buildDeterministicSummary } from "./compression";
 import { extractDocxReference } from "./extractors/docx";
 import { extractPdfReference } from "./extractors/pdf";
+import { extractPptxReference } from "./extractors/pptx";
 import { extractTableReference } from "./extractors/table";
 import { extractTextReference } from "./extractors/text";
 import { assessReferenceQuality } from "./quality";
@@ -11,11 +12,13 @@ export const REFERENCE_MAX_BYTES = 25 * 1024 * 1024;
 
 const DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
 const PDF_MIME = "application/pdf";
+const PPTX_MIME = "application/vnd.openxmlformats-officedocument.presentationml.presentation";
 
-const EXTENSIONS = new Set(["pdf", "docx", "md", "txt", "png", "jpg", "jpeg", "webp", "csv", "json"]);
+const EXTENSIONS = new Set(["pdf", "docx", "pptx", "md", "txt", "png", "jpg", "jpeg", "webp", "csv", "json"]);
 const MIMES = new Set([
   PDF_MIME,
   DOCX_MIME,
+  PPTX_MIME,
   "text/markdown",
   "text/plain",
   "text/csv",
@@ -29,6 +32,7 @@ const MIMES = new Set([
 const MIME_BY_EXTENSION: Record<string, string> = {
   pdf: PDF_MIME,
   docx: DOCX_MIME,
+  pptx: PPTX_MIME,
   md: "text/markdown",
   txt: "text/plain",
   png: "image/png",
@@ -65,6 +69,7 @@ async function extractReference(file: File): Promise<ExtractedReferenceContent> 
   const mime = referenceMime(file);
 
   if (extension === "docx" || mime === DOCX_MIME) return extractDocxReference(file);
+  if (extension === "pptx" || mime === PPTX_MIME) return extractPptxReference(file);
   if (extension === "csv" || extension === "json" || mime === "text/csv" || mime === "application/csv" || mime === "application/json") {
     return extractTableReference(file);
   }

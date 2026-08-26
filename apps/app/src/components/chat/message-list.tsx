@@ -87,7 +87,7 @@ import {
   getActiveToolLabel,
 } from "@/lib/tool-activity"
 import { cn } from "@/lib/utils"
-import { assistantResponseMarkdownFilename, buildAssistantResponseMarkdown, buildQuoteFollowUpPrompt, getActiveAssistantMessageId, getAssistantProcessState, getScheduleApplyResult, groupMessages, isMessageGroup, getLastTextPart, getAssistantRenderGroups, getFileTitle, getMediaBadge, getMessageCompleted, getMessageCreated, formatMessageTimestamp, formatProcessDuration, type ScheduleApplyResult, type UIMessageWithIndex, getMessagesText, splitAssistantRenderGroups, type AssistantProcessRenderGroup } from "./utils"
+import { assistantResponseMarkdownFilename, buildAssistantResponseMarkdown, buildQuoteFollowUpPrompt, getActiveAssistantMessageId, getAssistantProcessState, getScheduleApplyResult, groupMessages, isMessageGroup, getLastTextPart, getAssistantRenderGroups, getFileMediaType, getFileTitle, getFileUrl, getMediaBadge, getMessageCompleted, getMessageCreated, formatMessageTimestamp, formatProcessDuration, type ScheduleApplyResult, type UIMessageWithIndex, getMessagesText, splitAssistantRenderGroups, type AssistantProcessRenderGroup } from "./utils"
 
 const SEARCH_HIGHLIGHT_MARK_CLASS = "rounded px-0.5 bg-amber-4/70 text-current"
 
@@ -301,12 +301,14 @@ interface FileMessageProps {
 function FileMessage({ part }: FileMessageProps) {
   const title = getFileTitle(part)
   const badge = getMediaBadge(part)
-  const isImage = part.mediaType.startsWith("image/") && part.url
+  const mediaType = getFileMediaType(part)
+  const url = getFileUrl(part)
+  const isImage = mediaType.startsWith("image/") && url.length > 0
 
   if (isImage) {
     return (
       <Image
-        src={part.url}
+        src={url}
         alt={title}
         loading="lazy"
         decoding="async"
@@ -1202,9 +1204,10 @@ interface MessageListProps {
   artifactFiles?: readonly string[]
   artifactContext?: ArtifactInteractionContext
   activeMessageBaseline?: number | null
+  assistantWaitLabel?: string
 }
 
-export function MessageList({ messages, status, retryStatus, templateEntryPath, artifactFiles, artifactContext, activeMessageBaseline }: MessageListProps) {
+export function MessageList({ messages, status, retryStatus, templateEntryPath, artifactFiles, artifactContext, activeMessageBaseline, assistantWaitLabel }: MessageListProps) {
   const isStreaming = status === "submitted" || status === "streaming" || status === "retrying"
   const items = React.useMemo(() => groupMessages(messages), [messages])
   const latestAssistantMessageId = React.useMemo(
@@ -1261,7 +1264,7 @@ export function MessageList({ messages, status, retryStatus, templateEntryPath, 
       })}
 
       {(status === "submitted" || status === "streaming") && !activeAssistantMessageId
-        ? <LoadingMessage label={liveActionLabel ?? undefined} />
+        ? <LoadingMessage label={liveActionLabel ?? assistantWaitLabel ?? undefined} />
         : null}
       {retryStatus ? <RetryMessage status={retryStatus} /> : null}
       {error && !hasSessionErrorMessage ? <ErrorMessage error={error} /> : null}
