@@ -869,6 +869,45 @@ describe("model runtime adapters", () => {
     }).status).toBe("ready");
   });
 
+  test("does not treat credentialless built-in DSH OpenAI routes as connected", async () => {
+    const client = {
+      async call<T>(method: string): Promise<T> {
+        if (method === "llm.models") {
+          return { groups: [{
+            id: "openai-codex",
+            name: "OpenAI",
+            models: [{ id: "gpt-5.4", name: "GPT-5.4" }],
+          }] } as T;
+        }
+        if (method === "llm.providers") {
+          return { providers: [{
+            provider: "openai-codex",
+            displayName: "OpenAI",
+            settingsNs: "llm-pi-ai",
+            settingsPath: ["providers", "openai-codex"],
+            active: true,
+          }] } as T;
+        }
+        if (method === "settings.describe") {
+          return { namespaces: [{
+            ns: "llm-pi-ai",
+            value: { providers: { "openai-codex": {} } },
+          }] } as T;
+        }
+        if (method === "credentials.describe") {
+          return { credentials: {
+            OPENAI_CODEX_API_KEY: { configured: false },
+          } } as T;
+        }
+        throw new Error(`Unexpected method: ${method}`);
+      },
+    };
+
+    const providers = await deepSeekHarnessProviderEngineAdapter.connect(client).listProviders();
+    expect(providers.all).toEqual([expect.objectContaining({ id: "openai" })]);
+    expect(providers.connected).toEqual([]);
+  });
+
   test("routes provider list, auth and disabled state through OpenCode", async () => {
     const { calls, client } = createOpenCodeProviderClient();
     const connection = openCodeProviderEngineAdapter.connect(client);

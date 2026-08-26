@@ -318,6 +318,10 @@ export class DeepSeekHarnessRuntime {
     );
     const openAiCodexOAuth = await resolveOpenAiCodexOAuthSession(this.#config, {
       explicitlyDisconnected: disconnected.has(OPENAI_CODEX_AUTH_PROVIDER_ID),
+      // DSH consumes the provider connected through iPolloWork. A separate
+      // ~/.codex login must not silently make GPT appear usable on only the
+      // developer's machine.
+      allowOfficialCodexFallback: false,
     });
     if (
       openAiCodexOAuth
