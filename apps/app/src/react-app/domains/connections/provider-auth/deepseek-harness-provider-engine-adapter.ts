@@ -84,6 +84,11 @@ function connection(client: unknown): ModelRuntimeConnection {
           : [];
       }));
       refsByProvider.set("deepseek-official", providerApiKeyCredentialRef("deepseek-official"));
+      // These routes are built into DSH, but their models are not public.
+      // Require an iPolloWork-synced credential even when an older DSH
+      // settings schema omits apiKeyEnv from settings.describe.
+      refsByProvider.set("openai", providerApiKeyCredentialRef("openai"));
+      refsByProvider.set("openai-codex", providerApiKeyCredentialRef("openai-codex"));
       refsByProvider.set("openai-codex-priority", providerApiKeyCredentialRef("openai-codex"));
       const refs = [...new Set(models.groups.flatMap((group) => refsByProvider.get(group.id) ?? []))];
       const credentialState = await describeCredentials(refs);

@@ -243,6 +243,30 @@ describe("DeepSeek Harness provider credential sync", () => {
       ]);
   });
 
+  test("can restrict OAuth candidates to the iPolloWork account vault", () => {
+    const account = openAiCodexOAuthCredential({
+      type: "oauth",
+      access: "account-access",
+      refresh: "account-refresh",
+      expires: 4_000,
+    });
+    const official = openAiCodexOAuthCredential({
+      type: "oauth",
+      access: "official-access",
+      refresh: "official-refresh",
+      expires: 5_000,
+    });
+    expect(account).not.toBeNull();
+    expect(official).not.toBeNull();
+
+    expect(orderOpenAiCodexOAuthCredentials({
+      account: account!,
+      officialCodex: official!,
+    }, {
+      allowOfficialCodexFallback: false,
+    })).toEqual([{ source: "account", credential: account! }]);
+  });
+
   test("resolves the same official Codex auth store on Windows and macOS homes", () => {
     expect(resolveOfficialCodexAuthPath({ homeDir: "C:/Users/Ada" }))
       .toBe(join("C:/Users/Ada", ".codex", "auth.json"));

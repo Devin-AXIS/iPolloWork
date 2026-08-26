@@ -85,10 +85,10 @@ export function officialCodexOAuthCredential(value: unknown): OpenAiCodexOAuthCr
 export function orderOpenAiCodexOAuthCredentials(input: {
   account?: OpenAiCodexOAuthCredential | null;
   officialCodex?: OpenAiCodexOAuthCredential | null;
-}): OpenAiCodexOAuthCredentialCandidate[] {
+}, options: { allowOfficialCodexFallback?: boolean } = {}): OpenAiCodexOAuthCredentialCandidate[] {
   const candidates: OpenAiCodexOAuthCredentialCandidate[] = [];
   if (input.account) candidates.push({ source: "account", credential: input.account });
-  if (input.officialCodex) {
+  if (options.allowOfficialCodexFallback !== false && input.officialCodex) {
     candidates.push({ source: "official-codex", credential: input.officialCodex });
   }
   return candidates.sort((left, right) => (
@@ -207,7 +207,33 @@ async function persistOpenAiCodexOAuthCredential(
   }
 }
 
-let openAiCodexCredentialRefresh: Promise<OpenAiCodexOAuthSession | null> | null = null;
+let openAiAccountCredentialRefresh: Promise<OpenAiCodexOAuthCredential | null> | null = null;
+
+async function activeOpenAiAccountCredential(
+  config: ServerConfig,
+  credential: OpenAiCodexOAuthCredential,
+  now: number,
+): Promise<OpenAiCodexOAuthCredential | null> {
+  if (!openAiCodexOAuthCredentialNeedsRefresh(credential, now)) return credential;
+  if (openAiAccountCredentialRefresh) return openAiAccountCredentialRefresh;
+  const pending = (async () => {
+    try {
+      const refreshed = await refreshOpenAiCodexOAuthCredential(credential, { now });
+      await persistOpenAiCodexOAuthCredential(config, refreshed);
+      return refreshed;
+    } catch {
+      return credential.expires > now ? credential : null;
+    }
+  })();
+  openAiAccountCredentialRefresh = pending;
+  try {
+    return await pending;
+  } finally {
+    if (openAiAccountCredentialRefresh === pending) openAiAccountCredentialRefresh = null;
+  }
+}
+
+const openAiCodexCredentialRefreshes = new Map<boolean, Promise<OpenAiCodexOAuthSession | null>>();
 
 /**
  * Resolve the account-wide OpenAI OAuth session stored by the managed OpenCode
@@ -216,16 +242,21 @@ let openAiCodexCredentialRefresh: Promise<OpenAiCodexOAuthSession | null> | null
  */
 export async function resolveOpenAiCodexOAuthSession(
   config: ServerConfig,
-  options: { explicitlyDisconnected?: boolean } = {},
+  options: {
+    explicitlyDisconnected?: boolean;
+    allowOfficialCodexFallback?: boolean;
+  } = {},
 ): Promise<OpenAiCodexOAuthSession | null> {
   // The official Codex auth file is a credential source, not permission to
   // reconnect a provider that the user explicitly disconnected in iPolloWork.
   if (options.explicitlyDisconnected) return null;
-  if (openAiCodexCredentialRefresh) return openAiCodexCredentialRefresh;
-  openAiCodexCredentialRefresh = (async () => {
+  const allowOfficialCodexFallback = options.allowOfficialCodexFallback !== false;
+  const activeRefresh = openAiCodexCredentialRefreshes.get(allowOfficialCodexFallback);
+  if (activeRefresh) return activeRefresh;
+  const pending = (async () => {
     const accountAuthPath = resolveOpencodeAuthPath({ managedOnly: true })
       ?? resolveOpencodeAuthPath();
-    const officialAuthPath = resolveOfficialCodexAuthPath();
+    const officialAuthPath = allowOfficialCodexFallback ? resolveOfficialCodexAuthPath() : null;
     const readAuthStore = async (path: string | null): Promise<Record<string, unknown> | null> => {
       if (!path) return null;
       try {
@@ -237,7 +268,9 @@ export async function resolveOpenAiCodexOAuthSession(
     };
     const [accountAuthStore, officialAuthStore] = await Promise.all([
       readAuthStore(accountAuthPath),
-      accountAuthPath === officialAuthPath ? Promise.resolve(null) : readAuthStore(officialAuthPath),
+      !officialAuthPath || accountAuthPath === officialAuthPath
+        ? Promise.resolve(null)
+        : readAuthStore(officialAuthPath),
     ]);
     const accountCredential = openAiCodexOAuthCredential(
       accountAuthStore?.[OPENAI_CODEX_AUTH_PROVIDER_ID],
@@ -248,6 +281,8 @@ export async function resolveOpenAiCodexOAuthSession(
     for (const candidate of orderOpenAiCodexOAuthCredentials({
       account: accountCredential,
       officialCodex: officialCredential,
+    }, {
+      allowOfficialCodexFallback,
     })) {
       let active = candidate.credential;
       if (candidate.source === "official-codex") {
@@ -262,13 +297,10 @@ export async function resolveOpenAiCodexOAuthSession(
         ) {
           await persistOpenAiCodexOAuthCredential(config, active).catch(() => undefined);
         }
-      } else if (openAiCodexOAuthCredentialNeedsRefresh(active, now)) {
-        try {
-          active = await refreshOpenAiCodexOAuthCredential(active, { now });
-          await persistOpenAiCodexOAuthCredential(config, active);
-        } catch {
-          if (active.expires <= now) continue;
-        }
+      } else {
+        const accountCredential = await activeOpenAiAccountCredential(config, active, now);
+        if (!accountCredential) continue;
+        active = accountCredential;
       }
       return {
         accessToken: active.access,
@@ -276,8 +308,12 @@ export async function resolveOpenAiCodexOAuthSession(
       };
     }
     return null;
-  })().finally(() => {
-    openAiCodexCredentialRefresh = null;
+  })();
+  const refresh = pending.finally(() => {
+    if (openAiCodexCredentialRefreshes.get(allowOfficialCodexFallback) === refresh) {
+      openAiCodexCredentialRefreshes.delete(allowOfficialCodexFallback);
+    }
   });
-  return openAiCodexCredentialRefresh;
+  openAiCodexCredentialRefreshes.set(allowOfficialCodexFallback, refresh);
+  return refresh;
 }
