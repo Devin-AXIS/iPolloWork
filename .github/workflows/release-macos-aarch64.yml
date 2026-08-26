@@ -861,6 +861,7 @@ jobs:
     needs: [resolve-release, publish-electron, publish-release]
     if: |
       always() &&
+      vars.AUR_PUBLISH_ENABLED == 'true' &&
       needs.resolve-release.result == 'success' &&
       needs.publish-electron.result == 'success' &&
       (needs.publish-release.result == 'success' || needs.publish-release.result == 'skipped')
