@@ -28,6 +28,11 @@ export type ArtifactInteractionContext =
   | { kind: "video"; entryPath: string }
   | { kind: "presentation"; entryPath: string }
 
+export type ArtifactRequestOwnership = {
+  requestOrdinal: number
+  paths: readonly string[]
+}
+
 export type ArtifactStudioTarget = {
   surface: "design" | "video"
   sessionId: string
@@ -372,6 +377,65 @@ export function artifactPathMatchesTarget(path: string, targetValue: string) {
   const normalized = normalizeArtifactPath(path).toLowerCase();
   const target = normalizeArtifactPath(targetValue).toLowerCase();
   return normalized === target || normalized.endsWith(`/${target}`);
+}
+
+export function artifactRequestOwner(
+  path: string,
+  ownership: readonly ArtifactRequestOwnership[],
+) {
+  return ownership.findLast((entry) =>
+    entry.paths.some((ownedPath) => artifactPathMatchesTarget(path, ownedPath)),
+  )?.requestOrdinal ?? null;
+}
+
+export function assignArtifactRequestOwnership(
+  ownership: readonly ArtifactRequestOwnership[],
+  requestOrdinal: number,
+  paths: readonly string[],
+): ArtifactRequestOwnership[] {
+  const assignedPaths = [...new Set(paths.map(normalizeArtifactPath).filter(Boolean))];
+  if (assignedPaths.length === 0) return [...ownership];
+
+  const retained = ownership.flatMap((entry) => {
+    const remainingPaths = entry.paths.filter((path) =>
+      !assignedPaths.some((assignedPath) => artifactPathMatchesTarget(path, assignedPath)),
+    );
+    return remainingPaths.length > 0 ? [{ ...entry, paths: remainingPaths }] : [];
+  });
+  const existing = retained.find((entry) => entry.requestOrdinal === requestOrdinal);
+  const nextPaths = existing
+    ? [...new Set([...existing.paths, ...assignedPaths])]
+    : assignedPaths;
+
+  return [
+    ...retained.filter((entry) => entry.requestOrdinal !== requestOrdinal),
+    { requestOrdinal, paths: nextPaths },
+  ];
+}
+
+export function selectArtifactsForRequest(
+  artifacts: readonly ArtifactItem[],
+  requestOrdinal: number | null,
+  ownership: readonly ArtifactRequestOwnership[],
+) {
+  if (requestOrdinal === null || ownership.length === 0) return [...artifacts];
+  return artifacts.filter((artifact) => {
+    const owner = artifactRequestOwner(artifact.path, ownership);
+    return owner === null || owner === requestOrdinal;
+  });
+}
+
+export function selectSupplementalArtifactsForRequest(
+  paths: readonly string[],
+  requestOrdinal: number | null,
+  ownership: readonly ArtifactRequestOwnership[],
+  includeUnowned: boolean,
+) {
+  if (requestOrdinal === null) return includeUnowned ? [...paths] : [];
+  return paths.filter((path) => {
+    const owner = artifactRequestOwner(path, ownership);
+    return owner === requestOrdinal || (owner === null && includeUnowned);
+  });
 }
 
 function openTargetFromArtifactPath(

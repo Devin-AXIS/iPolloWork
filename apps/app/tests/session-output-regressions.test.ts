@@ -1,6 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
-import { buildWorkspaceFileTree, filterWorkspaceFileTree } from "../src/components/chat/artifact";
+import {
+  artifactRequestNamingContext,
+  buildWorkspaceFileTree,
+  filterWorkspaceFileTree,
+} from "../src/components/chat/artifact";
 import { formatProcessDuration, getAssistantProcessState } from "../src/components/chat/utils";
 
 describe("session output issue regressions", () => {
@@ -82,6 +86,14 @@ describe("session output issue regressions", () => {
       new URL("../src/components/chat/message-list.tsx", import.meta.url),
       "utf8",
     );
+    const sidePanelSource = readFileSync(
+      new URL("../src/react-app/domains/session/panel/side-panel.tsx", import.meta.url),
+      "utf8",
+    );
+    const designPanelSource = readFileSync(
+      new URL("../src/react-app/domains/session/design/design-panel.tsx", import.meta.url),
+      "utf8",
+    );
     const tree = buildWorkspaceFileTree([
       { path: "design/session-1/entry.html", kind: "file", size: 120, mtimeMs: 1, revision: "a" },
       { path: "design/session-1/export/deck.pptx", kind: "file", size: 220, mtimeMs: 2, revision: "b" },
@@ -98,12 +110,29 @@ describe("session output issue regressions", () => {
     expect(artifactSource).toContain('data-testid="conversation-files-mode-directory"');
     expect(artifactSource).toContain('data-testid="conversation-files-mode-outputs"');
     expect(artifactSource).toContain("client.listWorkspaceFiles(workspaceId)");
-    expect(artifactSource).toContain("htmlArtifactFilenameFromTitle(sessionTitle)");
+    expect(artifactSource).toContain("htmlArtifactDisplayFilename(");
+    expect(artifactSource).toContain("artifactRequestNamingContext(messages, artifact.messageIndex, sessionTitle)");
     expect(artifactSource).toContain("minmax(220px,1fr)");
     expect(artifactSource).toContain("min-h-[76px]");
     expect(sessionPageSource).toContain("workspaceRoot={props.selectedWorkspaceRoot}");
     expect(sessionPageSource).toContain("sessionTitle={selectedSessionTitle}");
     expect(messageListSource).toContain("sessionTitle={sessionTitle}");
+    expect(artifactSource).toContain("onOpenVideoStudio?.(presentedName)");
+    expect(sessionPageSource).toContain("openDesignTab(target.value, target.name)");
+    expect(sidePanelSource).toContain("displayName={activeTab.label}");
+    expect(designPanelSource).toContain("const activePageDisplayName = activePagePath === lockedPath");
+  });
+
+  test("numbers repeated artifact requests by their user turn", () => {
+    const messages = [
+      { id: "u1", role: "user", parts: [{ type: "text", text: "做一个季度复盘网页" }] },
+      { id: "a1", role: "assistant", parts: [{ type: "text", text: "design/one/entry.html" }] },
+      { id: "u2", role: "user", parts: [{ type: "text", text: "做一个季度复盘网页" }] },
+      { id: "a2", role: "assistant", parts: [{ type: "text", text: "design/two/entry.html" }] },
+    ];
+
+    expect(artifactRequestNamingContext(messages, 1)).toEqual({ title: "做一个季度复盘网页", occurrence: 1 });
+    expect(artifactRequestNamingContext(messages, 3)).toEqual({ title: "做一个季度复盘网页", occurrence: 2 });
   });
 
   test("process duration uses a compact clock format", () => {
@@ -176,9 +205,9 @@ describe("session output issue regressions", () => {
     expect(source).toContain('t("templates.brief.reference_supported_formats")');
     expect(source).not.toContain('t("templates.brief.reference_description")');
     expect(source).toContain('mode === "market" && projects && selectedProjectId && onProjectChange');
-    expect(source).toContain('data-testid="template-conflict-dialog"');
-    expect(source).toContain('t("templates.brief.conflict_description_generic")');
-    expect(source).toContain('newTaskRequired={pendingTemplateApplication.origin === "conversation-conflict"}');
+    expect(source).toContain("nextConversationArtifactSessionId(");
+    expect(source).toContain("sessionId: templateSessionId");
+    expect(source).not.toContain('data-testid="template-conflict-dialog"');
     expect(source).not.toContain('t("templates.brief.choose_project_file")');
     expect(source).not.toContain('t("templates.brief.add_link")');
     expect(source).not.toContain('t("templates.brief.use_current_conversation")');
@@ -343,10 +372,10 @@ describe("session output issue regressions", () => {
       "utf8",
     );
 
-    expect(messageListProviderSource).toContain("onOpenVideoStudio?: () => void");
+    expect(messageListProviderSource).toContain("onOpenVideoStudio?: (displayName?: string) => void");
     expect(messageListSource).toContain("onOpenVideoStudio={onOpenVideoStudio}");
     expect(sessionSurfaceSource).toContain("onOpenVideoStudio={props.onOpenVideoStudio}");
-    expect(sessionPageSource).toContain("onOpenVideoStudio={openCurrentVideoStudio}");
+    expect(sessionPageSource).toContain("onOpenVideoStudio={openCurrentVideoArtifactStudio}");
     expect(sessionPageSource).toContain("const prioritizeRightPanel = useCallback(() => {");
     expect(sessionPageSource).toContain("if (!options?.auto) prioritizeRightPanel();");
     expect(sessionPageSource).toContain("openCurrentVideoStudio({ auto: true });");
@@ -376,7 +405,8 @@ describe("session output issue regressions", () => {
 
     expect(source).toContain("showLatestArtifactsTitle={item.message.id === latestAssistantMessageId}");
     expect(source).toContain("const isLatestAssistantGroup = items.some");
-    expect(source).toContain("artifactFiles={isLatestAssistantGroup ? artifactFiles : undefined}");
+    expect(source).toContain("selectSupplementalArtifactsForRequest(");
+    expect(source).toContain("artifactFiles={requestArtifactFiles}");
     expect(source).toContain('title={showLatestArtifactsTitle ? t("session.outputs.latest_turn") : undefined}');
     expect(source).toContain('status === "submitted" || status === "streaming" || status === "retrying"');
     expect(source).toContain("{!isStreaming ? (");
@@ -431,6 +461,25 @@ describe("session output issue regressions", () => {
     expect(sessionPageSource).toContain("artifactPathMatchesTarget(target.value, currentVideoEntryPath)");
     expect(sessionPageSource).toContain('target.preview === "slides"');
     expect(sessionPageSource).toContain("openCurrentVideoStudio();");
+  });
+
+  test("multi-artifact conversations do not let one Studio hide or capture another result", () => {
+    const sessionPageSource = readFileSync(
+      new URL("../src/react-app/domains/session/chat/session-page.tsx", import.meta.url),
+      "utf8",
+    );
+    const routeSource = readFileSync(
+      new URL("../src/react-app/shell/session-route.tsx", import.meta.url),
+      "utf8",
+    );
+
+    expect(sessionPageSource).toContain("const hasRootTemplateFocus = currentTemplateSessionData?.sessionId === props.selectedSessionId");
+    expect(sessionPageSource).toContain("if (!hasRootTemplateFocus) return undefined;");
+    expect(sessionPageSource).toContain("const templateEntryPathForArtifacts = !hasRootTemplateFocus || isPresentationSession");
+    expect(sessionPageSource).toContain("result.sessionId === sessionId && materializedType !== selectedSessionType");
+    expect(routeSource).toContain("occupiedTemplateSessionIds.push(artifactSessionId)");
+    expect(routeSource).toContain("sessionTemplates.length = 0;");
+    expect(routeSource).toContain("!automaticTemplateRoutingAttempted");
   });
 
   test("artifact catalog refresh is scoped to the output directory rather than message streaming", () => {

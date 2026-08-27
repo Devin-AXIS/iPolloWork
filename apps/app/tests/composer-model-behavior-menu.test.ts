@@ -239,7 +239,7 @@ describe("Composer model and reasoning menu", () => {
     expect(model).toContain("useProviderListQuery({");
     expect(model).toContain("projectAccountProviderConnections(");
     expect(model).toContain("catalogQuery.data");
-    expect(model).toContain('t("settings.loading_providers")');
+    expect(model).toContain('t("model_picker.partial_models_loading")');
     expect(model).toContain('t("model_picker.no_models_available")');
     expect(model).toContain("isConnected: true");
     expect(model).toContain("disabled: false");

@@ -323,6 +323,7 @@ export function useMergedProviderListQuery(input: {
   return {
     data: values.length ? mergeProviderListResponses(values) : undefined,
     isLoading: values.length === 0 && results.some((result) => result.isLoading),
+    isFetching: results.some((result) => result.isFetching),
     error: values.length === 0 ? results.find((result) => result.error)?.error ?? null : null,
   };
 }

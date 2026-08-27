@@ -6,7 +6,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { Check, ChevronDown, ChevronRight, Search, Star } from "lucide-react";
+import { Check, ChevronDown, ChevronRight, LoaderCircle, Search, Star } from "lucide-react";
 
 import {
   Dialog,
@@ -27,6 +27,7 @@ import { t } from "../../../../i18n";
 export type ModelPickerModalProps = {
   open: boolean;
   options: ModelOption[];
+  modelsLoading?: boolean;
   disabledProviders?: string[];
   query: string;
   setQuery: (value: string) => void;
@@ -206,19 +207,40 @@ export function ModelPickerModal(props: ModelPickerModalProps) {
 
           {/* Content */}
           <div className="min-h-0 flex-1 space-y-1 overflow-y-auto pr-1 -mr-1">
-            {providerGroups.length === 0 ? (
-              <div className="space-y-3 rounded-2xl border border-dls-border bg-dls-hover/30 px-4 py-6 text-center">
-                <div className="text-sm text-dls-secondary">
-                  {props.query.trim()
-                    ? t("model_picker.no_results")
-                    : t("model_picker.no_models_available")}
-                </div>
-                {!props.query.trim() ? (
-                  <Button variant="outline" onClick={props.onOpenSettings}>
-                    {t("model_picker.connect_provider")}
-                  </Button>
-                ) : null}
+            {props.modelsLoading && providerGroups.length > 0 ? (
+              <div
+                role="status"
+                aria-live="polite"
+                className="flex items-center gap-2 px-3 py-2 text-xs text-dls-secondary"
+              >
+                <LoaderCircle size={14} className="animate-spin" />
+                {t("model_picker.partial_models_loading")}
               </div>
+            ) : null}
+            {providerGroups.length === 0 ? (
+              props.modelsLoading ? (
+                <div
+                  role="status"
+                  aria-live="polite"
+                  className="flex items-center justify-center gap-2 rounded-2xl border border-dls-border bg-dls-hover/30 px-4 py-6 text-sm text-dls-secondary"
+                >
+                  <LoaderCircle size={16} className="animate-spin" />
+                  {t("model_picker.partial_models_loading")}
+                </div>
+              ) : (
+                <div className="space-y-3 rounded-2xl border border-dls-border bg-dls-hover/30 px-4 py-6 text-center">
+                  <div className="text-sm text-dls-secondary">
+                    {props.query.trim()
+                      ? t("model_picker.no_results")
+                      : t("model_picker.no_models_available")}
+                  </div>
+                  {!props.query.trim() ? (
+                    <Button variant="outline" onClick={props.onOpenSettings}>
+                      {t("model_picker.connect_provider")}
+                    </Button>
+                  ) : null}
+                </div>
+              )
             ) : (
               providerGroups.map((group) => (
                 <ProviderAccordion

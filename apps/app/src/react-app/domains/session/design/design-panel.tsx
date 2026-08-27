@@ -128,6 +128,7 @@ type DesignPanelProps = {
   workspaceId: string | null;
   isRemoteWorkspace?: boolean;
   initialPath?: string;
+  displayName?: string;
   expanded?: boolean;
   features?: DesignStudioFeatures;
   branding?: {
@@ -543,6 +544,7 @@ export function DesignPanel({
   workspaceId,
   isRemoteWorkspace = false,
   initialPath,
+  displayName,
   expanded = false,
   features = IPOLLOWORK_DESIGN_STUDIO_FEATURES,
   branding,
@@ -2007,6 +2009,9 @@ export function DesignPanel({
   const viewedVersionLabel = viewedVersionPath === "current"
     ? currentVersionLabel
     : `V${versionTargets.length - versionTargets.findIndex((version) => version.path === viewedVersionPath)}`;
+  const activePageDisplayName = activePagePath === lockedPath
+    ? displayName?.trim() || fileName(activePagePath)
+    : fileName(activePagePath);
   const editControl = (
     <Label className={cn("flex shrink-0 items-center gap-2 text-xs", !branding && "order-1")}>
       <Switch
@@ -2096,7 +2101,7 @@ export function DesignPanel({
             ) : null}
             {hasSiteVersioning ? (
               <div className={cn("order-0 flex min-w-0 flex-1 items-center gap-2", veryCompactToolbar && "hidden")}>
-                <p className="min-w-0 truncate text-sm font-medium">{fileName(activePagePath)}</p>
+                <p className="min-w-0 truncate text-sm font-medium">{activePageDisplayName}</p>
                 {versionTargets.length > 0 ? (
                   <Select value={viewedVersionPath} onValueChange={(value) => { if (value) void viewVersion(value); }}>
                     <SelectTrigger size="sm" className="w-14 shrink-0 rounded-lg border-0 bg-transparent px-2 shadow-none hover:bg-muted focus-visible:ring-0" aria-label="Design version"><SelectValue>{viewedVersionLabel}</SelectValue></SelectTrigger>
@@ -2291,7 +2296,7 @@ export function DesignPanel({
                       ref={iframeRef}
                       key={`${activePagePath}:${previewRevision}`}
                       srcDoc={preview}
-                      title={`Design preview: ${fileName(activePagePath)}`}
+                      title={`Design preview: ${activePageDisplayName}`}
                       className={cn(
                         "border border-border bg-white transition-[width,border-radius,box-shadow,transform] duration-200",
                         isPresentationTemplate
@@ -2524,7 +2529,7 @@ export function DesignPanel({
                 <DesignSystemDrawer
                   embedded
                   open={propertiesTab === "design-system"}
-                  templateName={designTemplate?.title ?? fileName(activePagePath)}
+                  templateName={designTemplate?.title ?? activePageDisplayName}
                   currentThemeId={appliedDesignSystemId}
                   initialValues={designTokenValues}
                   onClose={() => setAdvancedOpen(false)}

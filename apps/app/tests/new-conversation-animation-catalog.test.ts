@@ -122,9 +122,9 @@ describe("new conversation animation catalog", () => {
 
   test("does not carry a previous session's template preview into a new task", () => {
     expect(sessionPage).toContain("sessionId: string;");
-    expect(sessionPage).toContain("const currentTemplateSessionData = templateSessionData?.sessionId === props.selectedSessionId");
+    expect(sessionPage).toContain("isConversationTemplateSessionId(props.selectedSessionId, templateSessionData.sessionId)");
     expect(sessionPage).toContain("setTemplateSessionData({ ...result, hasBrief });");
-    expect(sessionPage).toContain('setTemplateSessionData({ sessionId: props.selectedSessionId, ...result, hasBrief: false, applyMode: "new-conversation" });');
+    expect(sessionPage).toContain("setTemplateSessionData({ sessionId: templateSessionId, ...result, hasBrief: false, applyMode });");
     expect(sessionPage).toContain("const designTemplateEntryPath = currentTemplateSessionData?.manifest.surface === \"design\"");
   });
 

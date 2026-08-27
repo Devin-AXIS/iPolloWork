@@ -822,6 +822,7 @@ export function SidePanel({
               workspaceId={workspaceId}
               isRemoteWorkspace={isRemoteWorkspace}
               initialPath={activeTab.path}
+              displayName={activeTab.label}
               expanded={expanded}
               onAskAi={onAskAi ?? (() => undefined)}
               onSaveAsTemplate={onSaveAsTemplate}
