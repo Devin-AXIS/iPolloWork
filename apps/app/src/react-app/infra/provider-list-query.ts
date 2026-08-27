@@ -3,6 +3,10 @@ import {
   OPENCODE_ZEN_PUBLIC_DEFAULT_MODEL_ID,
   openCodeZenPublicModels,
 } from "@ipollowork/types/opencode-zen-public-models";
+import {
+  DEEPSEEK_OFFICIAL_PROVIDER_ID,
+  deepSeekOfficialModels,
+} from "@ipollowork/types/deepseek-official-models";
 
 import type {
   ModelRef,
@@ -46,6 +50,34 @@ const connectedProviderSnapshots = new Map<string, ConnectedProviderSnapshot>();
 const connectedProviderSnapshotChanges = new Map<string, ConnectedProviderSnapshotChange>();
 const MAX_CONNECTED_PROVIDER_SNAPSHOTS = 100;
 
+function positiveContextWindow(model: ProviderModel | null | undefined): number | null {
+  const value = model?.contextWindow ?? model?.limit?.context;
+  return typeof value === "number" && Number.isFinite(value) && value > 0
+    ? Math.round(value)
+    : null;
+}
+
+/** Keep the first catalog's display metadata while filling missing capacity metadata. */
+function supplementProviderModel(
+  current: ProviderModel,
+  candidate: ProviderModel,
+): ProviderModel {
+  const contextWindow = positiveContextWindow(current) ?? positiveContextWindow(candidate);
+  const currentMaxTokens = current.maxTokens ?? current.limit?.output;
+  const candidateMaxTokens = candidate.maxTokens ?? candidate.limit?.output;
+  const maxTokens = typeof currentMaxTokens === "number" && currentMaxTokens > 0
+    ? currentMaxTokens
+    : typeof candidateMaxTokens === "number" && candidateMaxTokens > 0
+      ? candidateMaxTokens
+      : null;
+  return {
+    ...candidate,
+    ...current,
+    ...(contextWindow ? { contextWindow } : {}),
+    ...(maxTokens ? { maxTokens } : {}),
+  };
+}
+
 function trimConnectedProviderSnapshots(): void {
   while (connectedProviderSnapshots.size > MAX_CONNECTED_PROVIDER_SNAPSHOTS) {
     const oldest = connectedProviderSnapshots.keys().next().value;
@@ -81,7 +113,7 @@ export async function fetchProviderList(input: {
   baseUrl?: string | null;
   directory?: string | null;
 }): Promise<ProviderListResponse> {
-  const value = projectOpenCodeZenProviderList(
+  const value = projectKnownProviderModels(
     await modelRuntimeAdapters
       .get(input.engineId)
       .connect(input.client)
@@ -91,38 +123,62 @@ export async function fetchProviderList(input: {
   return value;
 }
 
-export function projectOpenCodeZenProviderList(
+export function projectKnownProviderModels(
   value: ProviderListResponse,
 ): ProviderListResponse {
-  let found = false;
+  let changed = false;
+  let foundOpenCode = false;
   const all = value.all.map((provider) => {
+    if (provider.id === DEEPSEEK_OFFICIAL_PROVIDER_ID) {
+      changed = true;
+      const models = { ...provider.models };
+      for (const profile of deepSeekOfficialModels()) {
+        const fallback: ProviderModel = {
+          ...profile,
+          capabilities: {
+            attachment: false,
+            reasoning: false,
+            input: { text: true, image: false },
+            output: { text: true },
+          },
+        };
+        models[profile.id] = models[profile.id]
+          ? supplementProviderModel(models[profile.id], fallback)
+          : fallback;
+      }
+      return { ...provider, models };
+    }
     if (provider.id !== "opencode") return provider;
-    found = true;
+    changed = true;
+    foundOpenCode = true;
     const models = Object.fromEntries(openCodeZenPublicModels().map((profile) => {
       const discovered = provider.models[profile.id];
+      const fallback: ProviderModel = {
+        ...profile,
+        capabilities: {
+          attachment: false,
+          reasoning: false,
+          toolcall: true,
+          input: { text: true, image: false },
+          output: { text: true },
+        },
+      };
       return [profile.id, discovered
-        ? { ...discovered, name: profile.name }
-        : {
-            ...profile,
-            capabilities: {
-              attachment: false,
-              reasoning: false,
-              toolcall: true,
-              input: { text: true, image: false },
-              output: { text: true },
-            },
-          }];
+        ? supplementProviderModel({ ...discovered, name: profile.name }, fallback)
+        : fallback];
     }));
     return { ...provider, models };
   });
-  return found
+  return changed
     ? {
         ...value,
         all,
-        default: {
-          ...value.default,
-          opencode: OPENCODE_ZEN_PUBLIC_DEFAULT_MODEL_ID,
-        },
+        default: foundOpenCode
+          ? {
+              ...value.default,
+              opencode: OPENCODE_ZEN_PUBLIC_DEFAULT_MODEL_ID,
+            }
+          : value.default,
       }
     : value;
 }
@@ -165,7 +221,19 @@ export function mergeProviderListResponses(
           ? provider.source
           : current.source,
         env: [...new Set([...current.env, ...provider.env])],
-        models: { ...provider.models, ...current.models },
+        models: Object.fromEntries(
+          [...new Set([...Object.keys(current.models), ...Object.keys(provider.models)])]
+            .map((modelId) => {
+              const currentModel = current.models[modelId];
+              const candidateModel = provider.models[modelId];
+              return [
+                modelId,
+                currentModel && candidateModel
+                  ? supplementProviderModel(currentModel, candidateModel)
+                  : currentModel ?? candidateModel,
+              ];
+            }),
+        ),
       });
     }
   }
@@ -310,6 +378,27 @@ export function getChatModelCatalogEntries(
   return getSelectableChatProviderItems(value).flatMap((provider) => (
     Object.entries(provider.models).map(([modelId, model]) => ({ provider, modelId, model }))
   ));
+}
+
+export function getModelContextWindow(
+  value: ProviderListResponse | null | undefined,
+  model: ModelRef | null | undefined,
+): number | null {
+  if (!model) return null;
+  const provider = value?.all.find((entry) => entry.id === model.providerID);
+  const selected = provider?.models[model.modelID];
+  const exact = positiveContextWindow(selected);
+  if (exact) return exact;
+
+  // Engine adapters can namespace the same upstream provider differently
+  // (for example `deepseek-official` vs `deepseek`). Reuse an exact model-ID
+  // match only when every known catalog entry agrees on its capacity.
+  const candidates = new Set(
+    (value?.all ?? [])
+      .map((entry) => positiveContextWindow(entry.models[model.modelID]))
+      .filter((entry): entry is number => entry !== null),
+  );
+  return candidates.size === 1 ? [...candidates][0] ?? null : null;
 }
 
 export function getSelectableChatModelSnapshot(

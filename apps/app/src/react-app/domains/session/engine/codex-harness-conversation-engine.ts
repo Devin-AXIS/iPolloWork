@@ -2,9 +2,12 @@ import { CODEX_HARNESS_ENGINE_ID } from "@ipollowork/types/workspace";
 
 import { CodexHarnessClient } from "@/app/lib/codex-harness-client";
 import type { WorkspaceEngineEvent } from "@/app/lib/workspace-engine-rpc-client";
+import { t } from "@/i18n";
 import type {
+  ConversationAccessMode,
   ConversationEngineAdapter,
   ConversationEngineConnection,
+  ConversationMode,
   ConversationPermission,
   ConversationPromptPart,
   ConversationQuestion,
@@ -16,8 +19,72 @@ import {
   mapCodexHarnessSnapshot,
 } from "./codex-harness-conversation-mapper";
 
+type CodexAccessModeId = "read-only" | "auto" | "granular" | "full-access";
+type CodexModeId = "default" | "plan";
+
+function codexModes(): ConversationMode[] {
+  return [
+    {
+      id: "default",
+      label: t("composer.work_mode_execute"),
+      icon: "execute",
+      isDefault: true,
+    },
+    {
+      id: "plan",
+      label: t("composer.work_mode_plan"),
+      icon: "plan",
+    },
+  ];
+}
+
+function codexMode(value: string | null | undefined): CodexModeId {
+  return value === "plan" ? "plan" : "default";
+}
+
+function codexAccessModes(): ConversationAccessMode[] {
+  return [
+    {
+      id: "read-only",
+      label: t("composer.access_mode_read_only"),
+      description: t("composer.access_mode_codex_read_only_description"),
+      icon: "read-only",
+    },
+    {
+      id: "auto",
+      label: t("composer.access_mode_auto"),
+      description: t("composer.access_mode_codex_auto_description"),
+      icon: "workspace",
+      isDefault: true,
+    },
+    {
+      id: "granular",
+      label: t("composer.access_mode_granular"),
+      description: t("composer.access_mode_codex_granular_description"),
+      icon: "ask",
+    },
+    {
+      id: "full-access",
+      label: t("composer.access_mode_full_access"),
+      description: t("composer.access_mode_codex_full_access_description"),
+      icon: "full-access",
+      dangerous: true,
+    },
+  ];
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function supportedCodexModes(value: unknown): Set<CodexModeId> | null {
+  if (!isRecord(value) || !Array.isArray(value.data)) return null;
+  const modes = new Set<CodexModeId>();
+  for (const item of value.data) {
+    if (!isRecord(item)) continue;
+    if (item.mode === "default" || item.mode === "plan") modes.add(item.mode);
+  }
+  return modes.size > 0 ? modes : null;
 }
 
 function textDataUrl(url: string): string | null {
@@ -115,6 +182,8 @@ function codexHarnessConnection(input: {
   const questions = new Map<string, ConversationQuestion>();
   const sessionPermissionScopes = new Map<string, Set<string>>();
   const activeTurns = new Map<string, string>();
+  const selectedModes = new Map<string, CodexModeId>();
+  const selectedAccessModes = new Map<string, CodexAccessModeId>();
   const liveState = createCodexLiveState();
   let pluginCapabilitiesCache: { at: number; items: Awaited<ReturnType<typeof client.pluginCapabilities>> } | null = null;
 
@@ -134,9 +203,17 @@ function codexHarnessConnection(input: {
   };
 
   return {
-    mapSnapshot: mapCodexHarnessSnapshot,
-    modeState() {
-      return { id: "standard", mutable: false };
+    mapSnapshot(snapshot) {
+      const mapped = mapCodexHarnessSnapshot(snapshot);
+      if (!selectedModes.has(mapped.session.id)) selectedModes.set(mapped.session.id, "default");
+      if (!selectedAccessModes.has(mapped.session.id)) selectedAccessModes.set(mapped.session.id, "auto");
+      return mapped;
+    },
+    modeState(session) {
+      return { id: selectedModes.get(session.id) ?? "default", mutable: true };
+    },
+    accessModeState(session) {
+      return { id: selectedAccessModes.get(session.id) ?? "auto", mutable: true };
     },
     async subscribe(subscription) {
       for await (const envelope of client.events(subscription.signal)) {
@@ -236,6 +313,8 @@ function codexHarnessConnection(input: {
       });
       const thread = result.thread;
       if (!thread || typeof thread.id !== "string") throw new Error("Codex Harness returned an invalid thread");
+      selectedModes.set(thread.id, "default");
+      selectedAccessModes.set(thread.id, "auto");
       return {
         id: thread.id,
         title: typeof thread.name === "string" ? thread.name : "New conversation",
@@ -267,6 +346,8 @@ function codexHarnessConnection(input: {
       });
       const thread = result.thread;
       if (!thread || typeof thread.id !== "string") throw new Error("Codex Harness returned an invalid fork");
+      selectedModes.set(thread.id, selectedModes.get(request.sessionId) ?? "default");
+      selectedAccessModes.set(thread.id, selectedAccessModes.get(request.sessionId) ?? "auto");
       return {
         id: thread.id,
         title: typeof thread.name === "string" ? thread.name : "New conversation",
@@ -280,25 +361,34 @@ function codexHarnessConnection(input: {
     },
     async setArchived(sessionId, archived) {
       await client.call(archived ? "thread/archive" : "thread/unarchive", { threadId: sessionId });
-      if (archived) sessionPermissionScopes.delete(sessionId);
+      if (archived) {
+        sessionPermissionScopes.delete(sessionId);
+        selectedModes.delete(sessionId);
+        selectedAccessModes.delete(sessionId);
+      }
     },
     async shell(sessionId, command) {
       await client.call("thread/shellCommand", { threadId: sessionId, command });
     },
     async runCommand(request) {
+      const mode = codexMode(request.mode);
       await client.prompt({
         threadId: request.sessionId,
         input: [],
         model: request.model,
+        mode,
         reasoningEffort: request.reasoningEffort,
+        accessMode: selectedAccessModes.get(request.sessionId) ?? "auto",
       }, {
         command: {
           name: request.command,
           ...(request.arguments ? { arguments: request.arguments } : {}),
         },
       });
+      selectedModes.set(request.sessionId, mode);
     },
     async sendPrompt(request) {
+      const mode = codexMode(request.mode);
       const selectedAgents = [...new Set(
         request.parts.flatMap((part) => part.type === "agent" ? [part.name] : []),
       )];
@@ -313,14 +403,18 @@ function codexHarnessConnection(input: {
         input: prepared.input,
         ...(applicationContext ? { system: applicationContext } : {}),
         model: request.model,
+        mode,
         reasoningEffort: request.reasoningEffort,
         variant: request.variant,
+        accessMode: selectedAccessModes.get(request.sessionId) ?? "auto",
       }, selectedAgents.length ? { agents: selectedAgents } : undefined);
-      return {
-        sessionId: typeof result.sessionId === "string" && result.sessionId.trim()
-          ? result.sessionId.trim()
-          : request.sessionId,
-      };
+      selectedModes.set(request.sessionId, mode);
+      const sessionId = typeof result.sessionId === "string" && result.sessionId.trim()
+        ? result.sessionId.trim()
+        : request.sessionId;
+      selectedModes.set(sessionId, mode);
+      selectedAccessModes.set(sessionId, selectedAccessModes.get(request.sessionId) ?? "auto");
+      return { sessionId };
     },
     async listCommands() {
       return (await listPluginCapabilities())
@@ -333,7 +427,21 @@ function codexHarnessConnection(input: {
         }));
     },
     async listModes() {
-      return [{ id: "standard", label: "Standard", icon: "execute", isDefault: true }];
+      const native = await client.call<unknown>("collaborationMode/list", {}).catch(() => null);
+      const supported = supportedCodexModes(native);
+      const modes = codexModes();
+      return supported
+        ? modes.filter((mode) => supported.has(codexMode(mode.id)))
+        : modes;
+    },
+    async listAccessModes() {
+      return codexAccessModes();
+    },
+    async setAccessMode(request) {
+      if (!codexAccessModes().some((mode) => mode.id === request.accessMode)) {
+        throw new Error("Unknown Codex permission mode");
+      }
+      selectedAccessModes.set(request.sessionId, request.accessMode as CodexAccessModeId);
     },
     async listAgents() {
       return (await listPluginCapabilities())

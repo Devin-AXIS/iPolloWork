@@ -18,8 +18,8 @@ const zhSource = readFileSync(resolve(import.meta.dir, "../src/i18n/locales/zh.t
 describe("model picker vision badge", () => {
   test("tracks vision support separately from generic attachment support", () => {
     expect(typesSource).toContain("supportsVision?: boolean");
-    expect(hookSource).toContain("getEngineChatModelEntries({");
-    expect(hookSource).toContain("supportsVision: runtime.capabilities?.vision === true");
+    expect(hookSource).toContain("resolveModelRuntime(");
+    expect(hookSource).toContain("runtime?.capabilities?.vision === true");
   });
 
   test("renders the vision badge beside the model title and keeps the model id on its own line", () => {
@@ -31,9 +31,9 @@ describe("model picker vision badge", () => {
   });
 
   test("renders the vision badge in the compact composer model switcher", () => {
-    expect(compactSelectSource).toContain("getEngineChatModelEntries({");
-    expect(compactSelectSource).toContain("isConnected: runtimeReady");
-    expect(compactSelectSource).toContain("supportsVision: runtime.capabilities?.vision === true");
+    expect(compactSelectSource).toContain("resolveModelRuntime(");
+    expect(compactSelectSource).toContain("isConnected: true");
+    expect(compactSelectSource).toContain("runtime?.capabilities?.vision === true");
     expect(compactSelectSource).toContain("const visionBadgeLabel = option.supportsVision ? t(\"model_picker.badge_vision\") : null");
     expect(compactSelectSource).toContain("{visionBadgeLabel}");
   });
@@ -43,10 +43,14 @@ describe("model picker vision badge", () => {
     expect(zhSource).toContain('"model_picker.badge_vision": "视觉"');
   });
 
-  test("offers reconnect for supported models that the active engine cannot execute yet", () => {
-    expect(compactSelectSource).toContain("runtime: runtimeQuery.data");
-    expect(compactSelectSource).toContain('t("model_picker.connect_provider_hint")');
-    expect(hookSource).toContain("runtime: runtimeData");
-    expect(hookSource).toContain('t("model_picker.connect_provider_hint")');
+  test("keeps cached account models selectable while active-engine availability is discovered", () => {
+    expect(compactSelectSource).toContain("useProviderListQuery({");
+    expect(compactSelectSource).toContain("runtimePending");
+    expect(compactSelectSource).toContain("disabled: false");
+    expect(compactSelectSource).toContain("footer: undefined");
+    expect(hookSource).toContain("useProviderListQuery({");
+    expect(hookSource).toContain("runtimePending");
+    expect(hookSource).toContain("disabled: false");
+    expect(hookSource).toContain("footer: undefined");
   });
 });

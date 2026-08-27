@@ -146,21 +146,31 @@ export function getLastTextPart(message: UIMessage): UIMessage | null {
   return lastTextPart ? { ...message, parts: [lastTextPart] } : null
 }
 
+export function getFileUrl(part: FileUIPart) {
+  return typeof part.url === "string" ? part.url : ""
+}
+
+export function getFileMediaType(part: FileUIPart) {
+  return typeof part.mediaType === "string" ? part.mediaType : ""
+}
+
 export function getFileTitle(part: FileUIPart) {
   if (part.filename) {
     return part.filename
   }
 
-  if (part.url.startsWith("data:")) {
+  const url = getFileUrl(part)
+  if (url.startsWith("data:")) {
     return "Attached file"
   }
 
-  return part.url || "File"
+  return url || "File"
 }
 
 export function getMediaBadge(part: FileUIPart) {
-  if (part.mediaType && part.mediaType !== "application/octet-stream") {
-    return part.mediaType.replace(/^application\//, "").replace(/^text\//, "").toUpperCase()
+  const mediaType = getFileMediaType(part)
+  if (mediaType && mediaType !== "application/octet-stream") {
+    return mediaType.replace(/^application\//, "").replace(/^text\//, "").toUpperCase()
   }
 
   return part.filename?.split(".").pop()?.toUpperCase() ?? null

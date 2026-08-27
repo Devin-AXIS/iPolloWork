@@ -50,6 +50,7 @@ import {
   mergeRouteWorkspaces,
   orderRouteWorkspaces,
   partitionInitialWorkspaceLoads,
+  reconcilePendingCreatedSessions,
   resolveKnownWorkspaceId,
   type RouteSession,
   type RouteWorkspace,
@@ -206,34 +207,13 @@ export function useWorkspaceRouteState(input: UseWorkspaceRouteStateInput) {
   const mergeFetchedSessionsWithPending = useCallback((workspaceId: string, fetched: RouteSession[], current: RouteSession[]) => {
     const pending = pendingCreatedSessionIdsRef.current[workspaceId];
     if (!pending) return fetched;
-
-    const now = Date.now();
-    const fetchedIds = new Set(fetched.flatMap((session) => session?.id ? [String(session.id)] : []));
-    const pendingIds = Object.keys(pending);
-
-    for (const id of pendingIds) {
-      if (fetchedIds.has(id)) {
-        delete pending[id];
-      }
-    }
-
-    const preserved = current.filter((session) => {
-      const id = String(session?.id ?? "");
-      if (!id || fetchedIds.has(id)) return false;
-      const createdAt = pending[id];
-      if (typeof createdAt !== "number") return false;
-      if (now - createdAt > 30_000) {
-        delete pending[id];
-        return false;
-      }
-      return true;
-    });
-
-    if (Object.keys(pending).length === 0) {
+    const reconciled = reconcilePendingCreatedSessions(fetched, current, pending);
+    if (Object.keys(reconciled.pending).length === 0) {
       delete pendingCreatedSessionIdsRef.current[workspaceId];
+    } else {
+      pendingCreatedSessionIdsRef.current[workspaceId] = reconciled.pending;
     }
-
-    return preserved.length > 0 ? [...preserved, ...fetched] : fetched;
+    return reconciled.sessions;
   }, []);
   const loadWorkspaceSessionsInBackground = useCallback(
     async (workspaces: RouteWorkspace[]) => {

@@ -12,6 +12,7 @@ import type {
 } from "./conversation-engine";
 import {
   completeConversationMessage,
+  conversationContextUsageFromTokens,
   conversationMessageMetadata,
 } from "./conversation-engine";
 import { createSessionErrorUIMessage } from "./opencode-message-adapter";
@@ -454,6 +455,12 @@ export function mapDeepSeekHarnessSnapshot(snapshot: unknown): ConversationSnaps
     );
   }
   const session = mapDeepSeekHarnessSession(source.session);
+  const contextUsage = conversationContextUsageFromTokens(session.tokens);
+  const permissionsProjection = source.history.projections?.values.permissions;
+  if (isRecord(permissionsProjection)) {
+    const dsh = isRecord(session.dsh) ? session.dsh : {};
+    session.dsh = { ...dsh, permissions: permissionsProjection };
+  }
   if (INTERNAL_SESSION_TITLE.test(session.title)) {
     const firstUserText = messages
       .find((message) => message.role === "user")
@@ -465,6 +472,7 @@ export function mapDeepSeekHarnessSnapshot(snapshot: unknown): ConversationSnaps
     messages,
     todos,
     status: source.session.dsh?.running ? { type: "busy" } : { type: "idle" },
+    ...(contextUsage ? { contextUsage } : {}),
   };
 }
 
@@ -549,6 +557,17 @@ export function mapDeepSeekHarnessEnvelope(
   }
   if (type === "question/resolved" && sessionId && typeof frame.questionRpcId === "string") {
     return [{ type: "question.replied", sessionId, requestId: frame.questionRpcId }];
+  }
+  if (type === "session/projection" && sessionId && frame.key === "tokenUsage" && isRecord(frame.value)) {
+    const usage = conversationContextUsageFromTokens({
+      input: frame.value.uncachedInputTokens,
+      output: frame.value.outputTokens,
+      cache: {
+        read: frame.value.cacheReadTokens,
+        write: frame.value.cacheWriteTokens,
+      },
+    });
+    return usage ? [{ type: "context.updated", sessionId, usage }] : [];
   }
   if (type === "session/projection" && sessionId && frame.key === "title" && typeof frame.value === "string") {
     return [{ type: "session.updated", sessionId, info: { id: sessionId, title: frame.value } }];

@@ -94,11 +94,21 @@ describe("ipollowork runtime config file", () => {
     const models = openCode?.models as Record<string, {
       name?: string;
       status?: string;
+      contextWindow?: number;
+      maxTokens?: number;
       headers?: Record<string, string>;
     }>;
     expect(models["x-preview-f-free"]).toMatchObject({
       name: "Ox Alpha Free",
       headers: { "x-opencode-session": "" },
+    });
+    expect(models["big-pickle"]).toMatchObject({
+      contextWindow: 200_000,
+      maxTokens: 32_000,
+    });
+    expect(models["x-preview-f-free"]).toMatchObject({
+      contextWindow: 1_000_000,
+      maxTokens: 131_072,
     });
     expect(models["big-pickle"]?.headers).toBeUndefined();
     expect(Object.values(models).every((model) => model.status === "active")).toBe(true);

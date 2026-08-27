@@ -22,6 +22,12 @@ type WorkspaceReloadWatcher = {
   close: () => Promise<void>;
 };
 
+export type ReloadWatcherHandle = {
+  close: () => Promise<void>;
+  reconcileWorkspaces: () => Promise<void>;
+  refreshWorkspace: (workspaceId: string, reasons?: ReloadReason[]) => Promise<void>;
+};
+
 function closeFsWatcher(watcher: FSWatcher | null): Promise<void> {
   if (!watcher) return Promise.resolve();
   return new Promise((resolveClose) => {
@@ -41,17 +47,17 @@ export function startReloadWatchers(input: {
   reloadEvents: ReloadEventStore;
   logger?: Logger | null;
   debounceMs?: number;
-}): { close: () => Promise<void>; refreshWorkspace: (workspaceId: string, reasons?: ReloadReason[]) => Promise<void> } {
+}): ReloadWatcherHandle {
   const { config, reloadEvents } = input;
   const logger = input.logger ?? null;
   const debounceMs = typeof input.debounceMs === "number" ? input.debounceMs : 750;
 
-  const workspaceWatchers = new Map<string, WorkspaceReloadWatcher>();
+  const workspaceWatchers = new Map<string, { path: string; watcher: WorkspaceReloadWatcher }>();
 
-  for (const workspace of config.workspaces) {
+  const startWorkspaceWatcher = (workspace: WorkspaceInfo) => {
     try {
       const watcher = startWorkspaceReloadWatcher({ workspace, reloadEvents, logger, debounceMs });
-      workspaceWatchers.set(workspace.id, watcher);
+      workspaceWatchers.set(workspace.id, { path: resolve(workspace.path), watcher });
     } catch (error) {
       logger?.log("warn", "Reload watcher failed to start", {
         workspaceId: workspace.id,
@@ -59,6 +65,10 @@ export function startReloadWatchers(input: {
         error: error instanceof Error ? error.message : String(error),
       });
     }
+  };
+
+  for (const workspace of config.workspaces) {
+    startWorkspaceWatcher(workspace);
   }
 
   if (config.workspaces.length) {
@@ -69,12 +79,27 @@ export function startReloadWatchers(input: {
 
   return {
     close: async () => {
-      const closing = Array.from(workspaceWatchers.values(), (watcher) => watcher.close());
+      const closing = Array.from(workspaceWatchers.values(), ({ watcher }) => watcher.close());
       workspaceWatchers.clear();
       await Promise.all(closing);
     },
+    reconcileWorkspaces: async () => {
+      const nextPaths = new Map(config.workspaces.map((workspace) => [workspace.id, resolve(workspace.path)]));
+      const closing: Promise<void>[] = [];
+
+      for (const [workspaceId, current] of workspaceWatchers) {
+        if (nextPaths.get(workspaceId) === current.path) continue;
+        workspaceWatchers.delete(workspaceId);
+        closing.push(current.watcher.close());
+      }
+      await Promise.all(closing);
+
+      for (const workspace of config.workspaces) {
+        if (!workspaceWatchers.has(workspace.id)) startWorkspaceWatcher(workspace);
+      }
+    },
     refreshWorkspace: async (workspaceId: string, reasons?: ReloadReason[]) => {
-      await workspaceWatchers.get(workspaceId)?.refreshBaseline(reasons);
+      await workspaceWatchers.get(workspaceId)?.watcher.refreshBaseline(reasons);
     },
   };
 }

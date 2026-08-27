@@ -44,6 +44,56 @@ describe("conversation engine adapters", () => {
     );
   });
 
+  test("keeps plugin agents and the iPolloWork runtime agent out of OpenCode work modes", async () => {
+    const originalFetch = globalThis.fetch;
+    const promptBodies: unknown[] = [];
+    globalThis.fetch = (async (input, init) => {
+      const request = input instanceof Request ? input : new Request(input, init);
+      if (request.url.includes("/agent")) {
+        return Response.json([
+          { name: "ipollowork", description: "iPolloWork default agent", mode: "primary" },
+          { name: "build", description: "Execute", mode: "primary" },
+          { name: "design-parity-review-agent", description: "Plugin review agent", mode: "all" },
+          { name: "figma-implementation-agent", description: "Plugin implementation agent" },
+          { name: "plan", description: "Plan mode", mode: "primary" },
+        ]);
+      }
+      if (request.url.includes("/prompt_async")) {
+        promptBodies.push(await request.clone().json());
+        return new Response(null, { status: 204 });
+      }
+      if (request.url.includes("/command")) {
+        promptBodies.push(await request.clone().json());
+        return Response.json({ info: {}, parts: [] });
+      }
+      return new Response(null, { status: 404 });
+    }) as typeof fetch;
+
+    try {
+      const connection = openCodeConversationEngineAdapter.connect({
+        baseUrl: "http://opencode.test",
+      });
+      expect((await connection.listModes()).map((mode) => mode.id)).toEqual(["build", "plan"]);
+      await connection.sendPrompt({
+        sessionId: "session-stale-plugin-mode",
+        parts: [{ type: "text", text: "Continue" }],
+        mode: "design-parity-review-agent",
+      });
+      await connection.runCommand({
+        sessionId: "session-stale-plugin-mode",
+        command: "review",
+        arguments: "",
+        mode: "plan",
+      });
+      expect(promptBodies).toEqual([
+        expect.objectContaining({ agent: "build" }),
+        expect.objectContaining({ agent: "plan", command: "review" }),
+      ]);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
   test("grounds OpenCode model identity in the selected model for each prompt", async () => {
     const originalFetch = globalThis.fetch;
     const requests: Array<{ url: string; body: unknown }> = [];
@@ -79,8 +129,161 @@ describe("conversation engine adapters", () => {
     }));
   });
 
+  test("updates OpenCode permission rules on the active session", async () => {
+    const originalFetch = globalThis.fetch;
+    const requests: Array<{ url: string; method: string; body: Record<string, unknown> }> = [];
+    globalThis.fetch = (async (input, init) => {
+      const request = input instanceof Request ? input : new Request(input, init);
+      requests.push({
+        url: request.url,
+        method: request.method,
+        body: await request.clone().json() as Record<string, unknown>,
+      });
+      return Response.json({ id: "session-access", title: "Access", permission: [] });
+    }) as typeof fetch;
+
+    try {
+      const connection = openCodeConversationEngineAdapter.connect({ baseUrl: "http://opencode.test" });
+      expect((await connection.listAccessModes?.({ sessionId: "session-access" }))?.map((mode) => mode.id)).toEqual([
+        "default",
+        "read-only",
+        "ask",
+        "full-access",
+      ]);
+      await connection.setAccessMode?.({ sessionId: "session-access", accessMode: "ask" });
+      expect(connection.accessModeState?.({ id: "session-access", title: "Access" })).toEqual({
+        id: "ask",
+        mutable: true,
+      });
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+
+    expect(requests).toHaveLength(1);
+    expect(requests[0]?.url).toContain("/session/session-access");
+    expect(requests[0]?.method).toBe("PATCH");
+    expect(requests[0]?.body.permission).toEqual(expect.arrayContaining([
+      { permission: "edit", pattern: "*", action: "ask" },
+      { permission: "bash", pattern: "*", action: "ask" },
+    ]));
+  });
+
+  test("passes the selected Codex access mode into the next turn", async () => {
+    const originalFetch = globalThis.fetch;
+    const requests: Record<string, unknown>[] = [];
+    globalThis.fetch = (async (_input, init) => {
+      requests.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
+      return Response.json({ ok: true, sessionId: "codex-access" });
+    }) as typeof fetch;
+
+    try {
+      const connection = conversationEngineAdapters.get(CODEX_HARNESS_ENGINE_ID).connect({
+        baseUrl: "http://unused.test",
+        serverBaseUrl: "http://ipollowork.test",
+        workspaceId: "ws_codex",
+        token: "token",
+      });
+      await connection.setAccessMode?.({ sessionId: "codex-access", accessMode: "full-access" });
+      await connection.sendPrompt({
+        sessionId: "codex-access",
+        parts: [{ type: "text", text: "Run it" }],
+      });
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+
+    expect(requests).toEqual([
+      expect.objectContaining({
+        payload: expect.objectContaining({ accessMode: "full-access" }),
+      }),
+    ]);
+  });
+
+  test("lists and sends native Codex collaboration modes for prompts and commands", async () => {
+    const originalFetch = globalThis.fetch;
+    const requests: Record<string, unknown>[] = [];
+    globalThis.fetch = (async (_input, init) => {
+      const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
+      requests.push(body);
+      if (body.method === "collaborationMode/list") {
+        return Response.json({ value: { data: [
+          { name: "Plan", mode: "plan", model: null, reasoning_effort: "medium" },
+          { name: "Default", mode: "default", model: null, reasoning_effort: null },
+        ] } });
+      }
+      return Response.json({ ok: true, sessionId: "codex-mode" });
+    }) as typeof fetch;
+
+    try {
+      const connection = conversationEngineAdapters.get(CODEX_HARNESS_ENGINE_ID).connect({
+        baseUrl: "http://unused.test",
+        serverBaseUrl: "http://ipollowork.test",
+        workspaceId: "ws_codex",
+        token: "token",
+      });
+      expect((await connection.listModes()).map((mode) => mode.id)).toEqual(["default", "plan"]);
+      expect(connection.modeState?.({ id: "codex-mode", title: "Mode" })).toEqual({
+        id: "default",
+        mutable: true,
+      });
+      await connection.sendPrompt({
+        sessionId: "codex-mode",
+        parts: [{ type: "text", text: "Plan this" }],
+        model: { providerID: "openai", modelID: "gpt-5.6" },
+        mode: "plan",
+      });
+      await connection.runCommand({
+        sessionId: "codex-mode",
+        command: "review",
+        arguments: "",
+        model: { providerID: "openai", modelID: "gpt-5.6" },
+        mode: "plan",
+      });
+      expect(connection.modeState?.({ id: "codex-mode", title: "Mode" })).toEqual({
+        id: "plan",
+        mutable: true,
+      });
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+
+    expect(requests[0]).toEqual({ method: "collaborationMode/list", payload: {} });
+    expect(requests[1]).toEqual(expect.objectContaining({
+      payload: expect.objectContaining({ mode: "plan" }),
+    }));
+    expect(requests[2]).toEqual(expect.objectContaining({
+      payload: expect.objectContaining({ mode: "plan" }),
+      plugins: { command: { name: "review" } },
+    }));
+  });
+
   test("maps Codex app-server turns, streaming output, and approvals into the shared protocol", () => {
     const state = createCodexLiveState();
+    expect(mapCodexHarnessEvent({
+      type: "notification",
+      method: "thread/tokenUsage/updated",
+      params: {
+        threadId: "codex-thread",
+        tokenUsage: {
+          last: {
+            inputTokens: 81_000,
+            cachedInputTokens: 72_000,
+            outputTokens: 1_200,
+          },
+          modelContextWindow: 100_000,
+        },
+      },
+    }, state)).toEqual([{
+      type: "context.updated",
+      sessionId: "codex-thread",
+      usage: {
+        usedTokens: 81_000,
+        inputTokens: 81_000,
+        outputTokens: 1_200,
+        cacheReadTokens: 72_000,
+        contextWindow: 100_000,
+      },
+    }]);
     expect(mapCodexHarnessEvent({
       type: "notification",
       method: "turn/started",
@@ -475,6 +678,8 @@ describe("conversation engine adapters", () => {
         input: [{ type: "text", text: "当前是什么模型和 agent", text_elements: [] }],
         system: "Long-running local process rule:\nInternal application context\n\nInternal template instructions",
         model: { providerID: "deepseek-official", modelID: "deepseek-v4-flash" },
+        mode: "default",
+        accessMode: "auto",
       },
     }]);
     expect(promptResult).toEqual({ sessionId: "codex-thread-rebound" });
@@ -597,7 +802,13 @@ describe("conversation engine adapters", () => {
     const snapshot = mapOpenCodeConversationSnapshot({
       session: { id: "ses", title: "Title", time: { created: 1, updated: 2 } },
       messages: [{
-        info: { id: "msg", role: "assistant", sessionID: "ses", time: { created: 1 } },
+        info: {
+          id: "msg",
+          role: "assistant",
+          sessionID: "ses",
+          time: { created: 1 },
+          tokens: { input: 5_000, output: 400, reasoning: 0, cache: { read: 1_000, write: 0 } },
+        },
         parts: [{ id: "part", type: "text", text: "Hello", sessionID: "ses", messageID: "msg" }],
       }],
       todos: [{ content: "Ship", status: "pending", priority: "high" }],
@@ -610,12 +821,23 @@ describe("conversation engine adapters", () => {
       parts: [expect.objectContaining({ type: "text", text: "Hello" })],
     })]);
     expect(snapshot.todos).toEqual([expect.objectContaining({ content: "Ship" })]);
+    expect(snapshot.contextUsage).toEqual({
+      usedTokens: 6_000,
+      inputTokens: 5_000,
+      outputTokens: 400,
+      cacheReadTokens: 1_000,
+    });
   });
 
   test("maps DeepSeek Harness history into the same conversation protocol", () => {
     const snapshot = mapDeepSeekHarnessSnapshot({
       engineId: DEEPSEEK_HARNESS_ENGINE_ID,
-      session: { id: "dsh-session", title: "<system> Long-running local process rule", dsh: { running: false } },
+      session: {
+        id: "dsh-session",
+        title: "<system> Long-running local process rule",
+        tokens: { input: 7_000, output: 120, reasoning: 0, cache: { read: 2_000, write: 0 } },
+        dsh: { running: false },
+      },
       history: {
         hasMore: false,
         events: [
@@ -699,6 +921,12 @@ describe("conversation engine adapters", () => {
       }),
     ]);
     expect(snapshot.todos).toEqual([expect.objectContaining({ content: "Verify", status: "in_progress" })]);
+    expect(snapshot.contextUsage).toEqual({
+      usedTokens: 9_000,
+      inputTokens: 7_000,
+      outputTokens: 120,
+      cacheReadTokens: 2_000,
+    });
   });
 
   test("surfaces a DeepSeek Harness snapshot failure as an assistant reply", () => {
@@ -752,6 +980,30 @@ describe("conversation engine adapters", () => {
   });
 
   test("maps DeepSeek Harness approvals without offering unsupported persistent grants", () => {
+    expect(mapDeepSeekHarnessEnvelope({
+      type: "server-notification",
+      rpcId: "rpc-usage",
+      payload: {
+        type: "session/projection",
+        sessionId: "dsh-session",
+        key: "tokenUsage",
+        value: {
+          uncachedInputTokens: 10_000,
+          cacheReadTokens: 70_000,
+          outputTokens: 900,
+        },
+      },
+    }, { parts: new Set(), tools: new Map() })).toEqual([{
+      type: "context.updated",
+      sessionId: "dsh-session",
+      usage: {
+        usedTokens: 80_000,
+        inputTokens: 10_000,
+        outputTokens: 900,
+        cacheReadTokens: 70_000,
+      },
+    }]);
+
     const events = mapDeepSeekHarnessEnvelope({
       type: "server-request",
       rpcId: "rpc-approval",
@@ -1014,6 +1266,101 @@ describe("conversation engine adapters", () => {
       {
         type: "text",
         text: `${DEEPSEEK_HARNESS_INTERNAL_SYSTEM_PREFIX}Internal runtime instructions\n</system>`,
+      },
+    ]);
+  });
+
+  test("reads and switches the native DeepSeek Harness permission preset", async () => {
+    const originalFetch = globalThis.fetch;
+    const requests: Array<{ method?: string; payload?: Record<string, unknown> }> = [];
+    globalThis.fetch = (async (input, init) => {
+      const body = JSON.parse(String(init?.body)) as { method?: string; payload?: Record<string, unknown> };
+      requests.push(body);
+      if (body.method === "agentPreset.list") {
+        return Response.json({ value: {
+          presets: [
+            { id: "standard", isDefault: true, name: "标准模式" },
+            { id: "code", isDefault: false, name: "PTC 模式" },
+          ],
+        } });
+      }
+      return Response.json(String(input).endsWith("/prompt") ? { ok: true } : { value: {} });
+    }) as typeof fetch;
+
+    try {
+      const connection = conversationEngineAdapters.get(DEEPSEEK_HARNESS_ENGINE_ID).connect({
+        baseUrl: "http://unused.test",
+        serverBaseUrl: "http://ipollowork.test",
+        workspaceId: "ws_dsh",
+        token: "token",
+      });
+      expect(connection.accessModeState?.({ id: "dsh-new", title: "New conversation" })).toEqual({
+        id: "workspace-write",
+        mutable: true,
+      });
+      expect((await connection.listAccessModes?.({ sessionId: "" }))?.map((mode) => mode.id)).toEqual([
+        "read-only",
+        "workspace-write",
+        "danger-full-access",
+      ]);
+      const snapshot = connection.mapSnapshot({
+        engineId: "deepseek-harness",
+        session: { id: "dsh-access", title: "Access", dsh: { running: false, blank: true, agentPreset: "standard" } },
+        history: {
+          events: [],
+          hasMore: false,
+          projections: {
+            asOfSeq: 1,
+            values: {
+              permissions: {
+                currentValue: "workspace-write",
+                options: [
+                  { value: "read-only", name: "read-only" },
+                  { value: "workspace-write", name: "workspace-write" },
+                  { value: "danger-full-access", name: "danger-full-access" },
+                ],
+              },
+            },
+          },
+        },
+      });
+      expect(connection.accessModeState?.(snapshot.session)).toEqual({ id: "workspace-write", mutable: true });
+      expect((await connection.listAccessModes?.({ sessionId: "dsh-access" }))?.map((mode) => mode.id)).toEqual([
+        "read-only",
+        "workspace-write",
+        "danger-full-access",
+      ]);
+      await connection.setAccessMode?.({ sessionId: "dsh-access", accessMode: "read-only" });
+      expect(connection.accessModeState?.(snapshot.session)).toEqual({ id: "read-only", mutable: true });
+      expect(requests).toEqual([]);
+      await connection.sendPrompt({
+        sessionId: "dsh-access",
+        parts: [{ type: "text", text: "Start the task" }],
+        mode: "code",
+      });
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+
+    expect(requests).toEqual([
+      { method: "agentPreset.list", payload: {} },
+      { method: "agentPreset.select", payload: { sessionId: "dsh-access", agentPreset: "code" } },
+      {
+        method: "commands/execute",
+        payload: {
+          args: {
+            agentId: "dsh-access",
+            line: "/permission read-only",
+          },
+        },
+      },
+      {
+        payload: {
+          sessionId: "dsh-access",
+          mode: "queue",
+          content: [{ type: "text", text: "Start the task" }],
+          clientTimeZone: expect.any(String),
+        },
       },
     ]);
   });

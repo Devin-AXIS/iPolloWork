@@ -7,28 +7,6 @@ export type TemplateBrief = {
   details: string;
 };
 
-export const TEMPLATE_BRIEF_REFERENCE_ACCEPT = [
-  ".pdf",
-  ".docx",
-  ".md",
-  ".txt",
-  ".png",
-  ".jpg",
-  ".jpeg",
-  ".webp",
-  ".csv",
-  ".json",
-  "application/pdf",
-  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-  "text/markdown",
-  "text/plain",
-  "text/csv",
-  "application/json",
-  "image/png",
-  "image/jpeg",
-  "image/webp",
-].join(",");
-
 export type TemplateBriefFields = TemplateBrief;
 
 type TemplateBriefField = {
@@ -365,35 +343,36 @@ export function templateBriefPrompt(input: {
   entryPath: string;
   briefPath: string;
 }): string {
-  const base = `Read \`${input.briefPath}\` and apply it to the selected \`${input.template.title}\` template at \`${input.entryPath}\`. First derive the artifact's content structure from the brief, then use the template as a reusable visual and technical system rather than a finished artifact to copy. Keep its distinctive visual language, replace inherited sample content, and update every applicable item in this checklist: ${input.template.applyChecklist.join("; ")}. Treat checklist items as quality and export guidance; unless this prompt names a fixed branded region, they do not require retaining sample page or scene counts, order, subject matter, copy, or assets.`;
+  const checklist = input.template.applyChecklist.join("; ");
+  const base = `Read \`${input.briefPath}\` and apply it to \`${input.entryPath}\` using the selected \`${input.template.title}\` template. Apply it now in this turn: edit/save target file(s), then report generated files. Do not reply only with confirmation, options, or next-step questions. Derive structure from the brief, replace sample content, keep the template's visual language, and satisfy: ${checklist}. Checklist items guide quality/export, not sample count, order, subject, copy, or assets.`;
   if (input.template.id === "ipollowork.wechat-article") {
-    return `${base} This template is an explicit fixed-brand exception. It has locked brand colors and fixed brand images. Update only the article copy and non-fixed middle article images. Preserve every data-ipw-fixed="true" node exactly, keep fixed-hero.jpg and fixed-footer-cta.jpg unchanged, and only edit the href on a.fixed-footer-cta when a CTA link is provided. Do not write instruction conflicts or process notes into the HTML.`;
+    return `${base} Fixed-brand exception: preserve every data-ipw-fixed="true" node, fixed-hero.jpg, fixed-footer-cta.jpg, locked brand colors, and fixed brand images. Update only article copy, non-fixed middle images, and the CTA href when provided.`;
   }
-  const visualSystemInstruction = "Keep the template's final design-tokens.css link and preserve its current theme as the visual source of truth. During this initial brief application, do not change the managed theme block, existing --ipw-* token values, palette, fonts, radii, shadows, or background treatment. Do not introduce higher-priority inline styles or hardcoded colors that override the template theme. Theme changes belong to the Design System panel after initialization. Reuse the template's typography hierarchy, component patterns, artwork language, and motion vocabulary. Preserve editor, export, and runtime hooks required by the surface; those technical contracts do not require keeping the sample content structure.";
+  const visualSystemInstruction = "Keep design-tokens.css and preserve its current theme as the visual source of truth; do not change the managed theme block, --ipw-* tokens, palette, fonts, radii, shadows, or background treatment. Reuse typography hierarchy, component patterns, artwork language, and motion vocabulary. Preserve editor/export/runtime hooks.";
   switch (input.template.category) {
     case "video":
-      return `${base} ${visualSystemInstruction} Use the copied HyperFrames project as the editable seed, not as a finished video. Build a content-led storyboard from the brief, then add, remove, reorder, or retime scenes as needed while visibly inheriting the template's composition, motion, typography, and transition language. Preserve the root composition contract, editable variables, stable editor hooks, and deterministic timeline. Decide whether narration materially helps the stated goal; do not ask a separate narration question.`;
+      return `${base} ${visualSystemInstruction} Use the copied HyperFrames project as an editable seed. Build a content-led storyboard from the brief, then add, remove, reorder, or retime scenes as needed while inheriting composition, motion, typography, and transitions. Preserve the root composition contract, editable variables, editor hooks, and deterministic timeline. Decide whether narration materially helps; do not ask a separate narration question.`;
     case "slides":
-      const compositionInstruction = "Use the existing HTML, CSS, slide patterns, artwork, and components as a reusable layout system rather than a finished deck. First plan a coherent narrative and page count from the brief, then select, repeat, recombine, adapt, remove, or reorder those slide patterns to serve the content. Do not inherit the sample slide count, section order, copy, or assets unless they fit the new narrative. Keep the template visually recognizable through its distinctive typography hierarchy, colored blocks, artwork, decorative language, component geometry, and visual rhythm; do not replace it with a generic deck, generic white background, generic cards, or an unrelated slide system.";
+      const compositionInstruction = "Use existing HTML/CSS, slide patterns, artwork, and components as a reusable layout system rather than a finished deck. First plan a coherent narrative and page count from the brief, then select, repeat, recombine, adapt, remove, or reorder patterns. Do not inherit the sample slide count, section order, copy, or assets unless they fit. Keep it recognizable through distinctive typography hierarchy, colored blocks, artwork, component geometry, and rhythm; avoid a generic deck.";
       if (input.template.pptxCompatibility === "native-editable") {
-        return `${base} ${visualSystemInstruction} ${compositionInstruction} Rewrite the complete deck's content, not one slide. Preserve the fixed 16:9 stage and the native editable PPTX contract: every retained or newly composed visible object must use the supported data-pptx-text, data-pptx-shape, or data-pptx-image markers. The Design panel owns slide navigation: do not add <script> tags, custom keyboard handlers, slide counters, navigation buttons, or speaker notes. Do not add responsive slide reflow or breakpoint-specific slide layouts; narrow previews scale the same 16:9 stage. Never invent metrics; clearly mark missing evidence for the user to replace.`;
+        return `${base} ${visualSystemInstruction} ${compositionInstruction} Rewrite the complete deck's content, not one slide. Preserve the fixed 16:9 stage and native editable PPTX contract: every visible object must use supported data-pptx-text, data-pptx-shape, or data-pptx-image markers. The Design panel owns slide navigation: do not add <script> tags, custom keyboard handlers, slide counters, navigation buttons, or speaker notes. Do not add responsive slide reflow or breakpoint-specific slide layouts. Never invent metrics; mark missing evidence.`;
       }
-      return `${base} ${visualSystemInstruction} ${compositionInstruction} Rewrite the complete deck's content, not one slide. Keep the existing 16:9 slide runtime, keyboard navigation, controls, theme tokens, and separate speaker-note mechanism while allowing the content-led slide structure to change. Never invent metrics; clearly mark missing evidence for the user to replace, and keep every slide editable in the Design panel.`;
+      return `${base} ${visualSystemInstruction} ${compositionInstruction} Rewrite the complete deck's content. Keep 16:9 runtime, keyboard navigation, controls, theme tokens, and speaker notes. Never invent metrics; mark missing evidence and keep slides editable.`;
     case "site":
-      return `${base} ${visualSystemInstruction} Plan the information architecture and section order from the brief, then reuse, add, remove, or reorder the template's header, navigation, containers, artwork, and component patterns to support it. Do not retain inherited sections merely because they exist, and do not rebuild the result as a generic split hero, statistics strip, feature-card grid, project grid, or unrelated landing-page scaffold. Replace inherited names, navigation labels, links, headings, calls to action, cards, metadata, and footer content with information consistent with the brief. Keep the complete website responsive on desktop and mobile and editable in the Design panel.`;
+      return `${base} ${visualSystemInstruction} Plan the information architecture and section order from the brief, then reuse, add, remove, or reorder the template's header, navigation, containers, artwork, and component patterns. Do not retain inherited sections merely because they exist, and do not rebuild the result as a generic split hero, statistics strip, feature-card grid, or unrelated scaffold. Replace inherited labels, links, headings, CTAs, cards, metadata, and footer content. Keep it responsive and editable.`;
     case "app":
-      return `${base} ${visualSystemInstruction} Derive the App's screen list and flows from the brief, then reuse and recombine the template's interface patterns to build the complete prototype. Keep the interface coherent, realistic, and editable in the Design panel; do not retain irrelevant sample screens or turn it into a marketing website.`;
+      return `${base} ${visualSystemInstruction} Derive screens and flows from the brief, reuse interface patterns to build the complete prototype, keep it realistic/editable, and do not retain irrelevant sample screens or turn it into a marketing website.`;
     case "report":
-      return `${base} ${visualSystemInstruction} Build a new report structure from the brief with decision-ready sections and visual hierarchy. Do not inherit irrelevant sample sections or invent data; mark unknown values for the user to replace.`;
+      return `${base} ${visualSystemInstruction} Build a new report structure from the brief with decision-ready sections and hierarchy. Do not inherit irrelevant sample sections or invent data; mark unknown values.`;
     case "article":
-      return `${base} ${visualSystemInstruction} Write the complete article from the brief in the template's editorial style, with a content-led hierarchy and readable body copy; do not retain inherited sample sections or placeholder content.`;
+      return `${base} ${visualSystemInstruction} Write the complete article from the brief in the editorial style, with content-led hierarchy and readable body copy; remove sample sections/placeholders.`;
     case "poster":
     case "cards":
-      return `${base} ${visualSystemInstruction} Recompose the template's visual primitives around the new message when needed, update all visible copy and art direction, and keep every text element editable.`;
+      return `${base} ${visualSystemInstruction} Recompose visual primitives around the new message, update visible copy and art direction, and keep text editable.`;
     default:
       if (isResumeTemplate(input.template)) {
-        return `${base} ${visualSystemInstruction} Build a complete professional resume from the brief. Structure experience, skills, and outcomes clearly, and remove inherited placeholder identity and employment details.`;
+        return `${base} ${visualSystemInstruction} Build a complete professional resume from the brief. Structure experience, skills, and outcomes clearly; remove inherited placeholder identity and employment details.`;
       }
-      return `${base} ${visualSystemInstruction} Rebuild the complete artifact's content structure from the brief rather than editing only one inherited section, and do not leave sample or placeholder content.`;
+      return `${base} ${visualSystemInstruction} Rebuild the complete artifact from the brief and remove sample or placeholder content.`;
   }
 }

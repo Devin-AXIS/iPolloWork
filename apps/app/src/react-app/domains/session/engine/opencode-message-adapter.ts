@@ -10,6 +10,10 @@ import { parseHyperframesAnimationDisplayMetadata } from "@/app/lib/hyperframes-
 import { t } from "@/i18n";
 import { parseVideoVoiceDisplayMetadata } from "../video/video-voice";
 import {
+  conversationContextUsageFromTokens,
+  conversationMessageMetadata,
+} from "./conversation-engine";
+import {
   parseDynamicToolUIPart,
   parseStructuredOutputUIPart,
   STRUCTURED_OUTPUT_TOOL,
@@ -267,15 +271,17 @@ export function snapshotToUIMessages(snapshot: iPolloWorkSessionSnapshot): UIMes
     const completed = message.info.time && "completed" in message.info.time
       ? message.info.time.completed
       : undefined;
+    const contextUsage = message.info.role === "assistant" && "tokens" in message.info
+      ? conversationContextUsageFromTokens(message.info.tokens)
+      : undefined;
+    const metadata = conversationMessageMetadata(
+      { created, completed },
+      contextUsage ? { contextUsage } : {},
+    );
     const uiMessage = {
       id: message.info.id,
       role: message.info.role,
-      ...(typeof created === "number" || typeof completed === "number"
-        ? { metadata: { ipollowork: {
-            ...(typeof created === "number" ? { created } : {}),
-            ...(typeof completed === "number" ? { completed } : {}),
-          } } }
-        : {}),
+      ...(metadata ? { metadata } : {}),
       parts: message.parts.flatMap(mapOpencodePartToUIParts),
     };
 

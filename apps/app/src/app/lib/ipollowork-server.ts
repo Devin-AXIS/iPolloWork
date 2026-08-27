@@ -1194,7 +1194,7 @@ export function createiPolloWorkServerClient(options: { baseUrl: string; token?:
     health: 3_000,
     capabilities: 6_000,
     listWorkspaces: 8_000,
-    activateWorkspace: 10_000,
+    workspaceMutation: 30_000,
     deleteWorkspace: 10_000,
     deleteSession: 12_000,
     sessionRead: 12_000,
@@ -1259,7 +1259,7 @@ export function createiPolloWorkServerClient(options: { baseUrl: string; token?:
         hostToken,
         method: "POST",
         body: payload,
-        timeoutMs: timeouts.activateWorkspace,
+        timeoutMs: timeouts.workspaceMutation,
       }),
     createRemoteWorkspace: (payload: {
       baseUrl: string;
@@ -1280,7 +1280,7 @@ export function createiPolloWorkServerClient(options: { baseUrl: string; token?:
         hostToken,
         method: "POST",
         body: payload,
-        timeoutMs: timeouts.activateWorkspace,
+        timeoutMs: timeouts.workspaceMutation,
       }),
     updateWorkspaceDisplayName: (workspaceId: string, displayName: string | null) =>
       requestJson<WorkspaceList>(baseUrl, `/workspaces/${encodeURIComponent(workspaceId)}/display-name`, {
@@ -1288,14 +1288,14 @@ export function createiPolloWorkServerClient(options: { baseUrl: string; token?:
         hostToken,
         method: "PATCH",
         body: { displayName },
-        timeoutMs: timeouts.activateWorkspace,
+        timeoutMs: timeouts.workspaceMutation,
       }),
     activateWorkspace: (workspaceId: string, options?: { persist?: boolean }) => {
       const query = options?.persist ? "?persist=true" : "";
       return requestJson<{ activeId: string; workspace: iPolloWorkWorkspaceInfo; persisted: boolean }>(
         baseUrl,
         `/workspaces/${encodeURIComponent(workspaceId)}/activate${query}`,
-        { token, hostToken, method: "POST", timeoutMs: timeouts.activateWorkspace },
+        { token, hostToken, method: "POST", timeoutMs: timeouts.workspaceMutation },
       );
     },
     deleteWorkspace: (workspaceId: string) =>

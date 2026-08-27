@@ -124,7 +124,14 @@ test("registers the engine-neutral catalog and forwards DSH session context", { 
   if (!priorityAdapter) throw new Error("DSH priority model adapter was not registered");
   assert.deepEqual(
     (await priorityAdapter.listModels(OPENAI_CODEX_PRIORITY_PROVIDER_ID)).map((model) => model.id),
-    ["gpt-5.4-fast", "gpt-5.4-mini-fast", "gpt-5.5-fast"],
+    [
+      "gpt-5.4-fast",
+      "gpt-5.4-mini-fast",
+      "gpt-5.5-fast",
+      "gpt-5.6-luna-fast",
+      "gpt-5.6-sol-fast",
+      "gpt-5.6-terra-fast",
+    ],
   );
   assert.deepEqual(registered.map((tool) => tool.name), [
     "ipollowork_extension_list_actions",

@@ -24,6 +24,7 @@ export type CodexProviderGatewayRoute = {
 };
 
 type GatewayProvider = CodexProviderGatewayUpstream & { routeToken: string };
+type ProviderGatewayErrorType = "provider_gateway_error" | "invalid_request_error";
 
 type ResponseTool = {
   type: "function" | "custom";
@@ -42,6 +43,25 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function nonEmptyString(value: unknown): string | undefined {
   return typeof value === "string" && value.trim() ? value.trim() : undefined;
+}
+
+function providerGatewayError(
+  message: string,
+  status: number,
+  type: ProviderGatewayErrorType = "provider_gateway_error",
+): Error {
+  const error = new Error(message);
+  Object.defineProperty(error, "status", { value: status, enumerable: false });
+  Object.defineProperty(error, "providerGatewayType", { value: type, enumerable: false });
+  return error;
+}
+
+function upstreamErrorType(status: number, message: string): ProviderGatewayErrorType {
+  if (status === 400 || status === 413) return "invalid_request_error";
+  if (/prompt|context|input|request/i.test(message) && /exceeds|too large|too long|maximum|max length/i.test(message)) {
+    return "invalid_request_error";
+  }
+  return "provider_gateway_error";
 }
 
 function safeToolName(value: string): string {
@@ -471,9 +491,8 @@ async function upstreamJson(
     const detail = isRecord(payload) && isRecord(payload.error)
       ? nonEmptyString(payload.error.message)
       : undefined;
-    const error = new Error(detail ?? `Provider request failed (${response.status})`);
-    Object.defineProperty(error, "status", { value: response.status, enumerable: false });
-    throw error;
+    const message = detail ?? `Provider request failed (${response.status})`;
+    throw providerGatewayError(message, response.status, upstreamErrorType(response.status, message));
   }
   if (!isRecord(payload)) throw new Error("Provider returned an invalid JSON response");
   return payload;
@@ -760,11 +779,20 @@ async function readJsonBody(request: IncomingMessage): Promise<Record<string, un
   for await (const chunk of request) {
     const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
     size += buffer.byteLength;
-    if (size > MAX_REQUEST_BYTES) throw new Error("Provider request body is too large");
+    if (size > MAX_REQUEST_BYTES) {
+      throw providerGatewayError("Provider request body is too large", 413, "invalid_request_error");
+    }
     chunks.push(buffer);
   }
-  const parsed: unknown = JSON.parse(Buffer.concat(chunks).toString("utf8"));
-  if (!isRecord(parsed)) throw new Error("Provider request body must be a JSON object");
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+  } catch {
+    throw providerGatewayError("Provider request body must be valid JSON", 400, "invalid_request_error");
+  }
+  if (!isRecord(parsed)) {
+    throw providerGatewayError("Provider request body must be a JSON object", 400, "invalid_request_error");
+  }
   return parsed;
 }
 
@@ -863,10 +891,13 @@ export class CodexProviderGateway {
       response.end(eventStream(provider, body, result));
     } catch (error) {
       const status = isRecord(error) && typeof error.status === "number" ? error.status : 502;
+      const type = isRecord(error) && error.providerGatewayType === "invalid_request_error"
+        ? "invalid_request_error"
+        : "provider_gateway_error";
       sendJson(response, status, {
         error: {
           message: error instanceof Error ? error.message : "Provider gateway request failed",
-          type: "provider_gateway_error",
+          type,
         },
       });
     }

@@ -151,6 +151,15 @@ describe("DeepSeek Harness plugin prompt routes", () => {
         }),
       });
       expect(prompt.status).toBe(200);
+      const permission = await fetch(`${base}/rpc`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          method: "commands/execute",
+          payload: { args: { agentId: "session-1", line: "/permission read-only" } },
+        }),
+      });
+      expect(permission.status).toBe(200);
       expect(calls).toEqual([{
         method: "session.prompt",
         payload: {
@@ -169,6 +178,9 @@ describe("DeepSeek Harness plugin prompt routes", () => {
             { type: "text", text: "Run /review-labels with these arguments: project 12" },
           ],
         },
+      }, {
+        method: "commands/execute",
+        payload: { args: { agentId: "session-1", line: "/permission read-only" } },
       }]);
     } finally {
       await server.stop();

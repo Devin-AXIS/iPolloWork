@@ -20,7 +20,7 @@ describe("new conversation animation catalog", () => {
     expect(surface).toContain("if (!VIDEO_ANIMATION_PICKER_ENABLED");
     expect(starter).toContain("function TemplateStrip");
     expect(starter).toContain('data-testid="new-conversation-template-strip"');
-    expect(starter).toContain('mt-4 min-h-[185px] rounded-xl');
+    expect(starter).toContain('mt-4 min-h-[185px] min-w-0 overflow-hidden rounded-xl');
   });
 
   test("separates the GSAP catalog into animation and effect libraries", () => {
@@ -67,7 +67,8 @@ describe("new conversation animation catalog", () => {
 
   test("routes template launches through the current session materializer first", () => {
     expect(surface).toContain("onMaterializeTemplate?: (templateId: string, surface: \"design\" | \"video\") => void | Promise<void>");
-    expect(surface).toContain("onUseTemplate={props.onMaterializeTemplate ? (templateId, surface) => void props.onMaterializeTemplate?.(templateId, surface) : props.onCreateSession ?");
+    expect(surface).toContain("onUseTemplate={props.onMaterializeTemplate");
+    expect(surface).toMatch(/onUseTemplate=\{props\.onMaterializeTemplate[\s\S]{0,250}: props\.onCreateSession/);
     expect(surface).toContain("props.onCreateSession?.(surface === \"video\" ? \"video\" : \"design\", templateId)");
   });
 

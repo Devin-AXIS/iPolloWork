@@ -32,7 +32,7 @@ describe("session output issue regressions", () => {
     expect(sessionRouteSource).toContain("selectedSessionKnown={selectedSessionKnown}");
   });
 
-  test("moves the active workspace engine from the composer to the project actions menu", () => {
+  test("moves engine metadata to project actions and shows context health in the composer", () => {
     const sessionPageSource = readFileSync(
       new URL("../src/react-app/domains/session/chat/session-page.tsx", import.meta.url),
       "utf8",
@@ -45,6 +45,14 @@ describe("session output issue regressions", () => {
       new URL("../src/react-app/shell/session-route.tsx", import.meta.url),
       "utf8",
     );
+    const composerSource = readFileSync(
+      new URL("../src/react-app/domains/session/surface/composer/composer.tsx", import.meta.url),
+      "utf8",
+    );
+    const conversationEngineSource = readFileSync(
+      new URL("../src/react-app/domains/session/engine/conversation-engine.ts", import.meta.url),
+      "utf8",
+    );
 
     expect(sessionPageSource).not.toContain("function ProjectEngineBadge");
     expect(sessionPageSource).not.toContain("composerEndAccessory={(");
@@ -53,8 +61,11 @@ describe("session output issue regressions", () => {
     expect(sidebarSource).toContain('data-testid="project-engine-menu-info"');
     expect(sidebarSource).toContain('<span className="truncate">{workspaceEngineLabel(workspace.engineId)}</span>');
     expect(sessionPageSource).not.toContain("SessionEngineBadge");
+    expect(composerSource).toContain('data-testid="composer-context-health"');
+    expect(conversationEngineSource).toContain("CONTEXT_COMPRESSION_WARNING_PERCENT = 80");
+    expect(composerSource).toContain('t("composer.context_compression_warning")');
     expect(sessionPageSource).not.toContain('className="pointer-events-none hidden md:flex md:justify-self-center"');
-    expect(sessionRouteSource).toContain("engineId: activeEngineId");
+    expect(sessionRouteSource).toContain("modelContextWindow: selectedModelContextWindow");
   });
 
   test("process duration uses a compact clock format", () => {
@@ -122,7 +133,7 @@ describe("session output issue regressions", () => {
     expect(source).toContain('<SelectContent positionerClassName="z-[90]">');
     expect(source).toContain('mode === "current-conversation" ? t("templates.brief.apply_current") : config.submitLabel');
     expect(source).toContain('t("templates.brief.supplemental_information")');
-    expect(source).toContain("TEMPLATE_BRIEF_REFERENCE_ACCEPT");
+    expect(source).toContain("REFERENCE_FILE_ACCEPT");
     expect(source).toContain('t("templates.brief.upload_file")');
     expect(source).toContain('t("templates.brief.reference_supported_formats")');
     expect(source).not.toContain('t("templates.brief.reference_description")');
@@ -133,6 +144,78 @@ describe("session output issue regressions", () => {
     expect(source).not.toContain('t("templates.brief.use_current_conversation")');
     expect(source).not.toContain("TEMPLATE_REFERENCE_UPLOAD_VISIBLE");
     expect(source).not.toContain("function TemplateBriefDialog(");
+    expect(source).not.toContain("import { ReferenceUploadPanel }");
+    expect(source).not.toContain("<ReferenceUploadPanel");
+    expect(source).not.toContain('t("templates.brief.reference_label")');
+  });
+
+  test("design and video composers keep the existing attachment entry", () => {
+    const source = readFileSync(
+      new URL("../src/react-app/domains/session/surface/session-surface.tsx", import.meta.url),
+      "utf8",
+    );
+    const initialProjectSource = readFileSync(
+      new URL("../src/react-app/domains/session/chat/session-page.tsx", import.meta.url),
+      "utf8",
+    );
+    const composerSource = readFileSync(
+      new URL("../src/react-app/domains/session/surface/composer/composer.tsx", import.meta.url),
+      "utf8",
+    );
+    const sessionPromptSource = readFileSync(
+      new URL("../src/react-app/shell/session-prompt.ts", import.meta.url),
+      "utf8",
+    );
+    const messageListSource = readFileSync(
+      new URL("../src/components/chat/message-list.tsx", import.meta.url),
+      "utf8",
+    );
+    const sessionSurfaceSource = readFileSync(
+      new URL("../src/react-app/domains/session/surface/session-surface.tsx", import.meta.url),
+      "utf8",
+    );
+
+    expect(source).toContain("onAttachFiles={handleAttachFiles}");
+    expect(source).toContain("onUseTemplate={props.onMaterializeTemplate");
+    expect(source).toContain(": props.onCreateSession");
+    expect(initialProjectSource).toContain("onAttachFiles={attachFiles}");
+    expect(initialProjectSource).not.toContain("function TemplateReferenceAgentPanel");
+    expect(initialProjectSource).not.toContain("<TemplateReferenceAgentPanel");
+    expect(initialProjectSource).toContain("templateAssistantWait");
+    expect(initialProjectSource).toContain("assistantWaitLabel=");
+    expect(initialProjectSource).toContain('t("templates.brief.reference_agent_processing_label"');
+    expect(messageListSource).toContain("assistantWaitLabel?: string");
+    expect(messageListSource).toContain("liveActionLabel ?? assistantWaitLabel");
+    expect(sessionSurfaceSource).toContain("assistantWaitLabel?: string");
+    expect(initialProjectSource).not.toContain("attachmentRequiresNativeModelSupport");
+    expect(initialProjectSource).not.toContain("modelSafeAttachments");
+    expect(initialProjectSource).toContain("ingestReferenceFile(item.file)");
+    expect(initialProjectSource).toContain("inferTemplateBriefFromIngestions(");
+    expect(initialProjectSource).toContain("buildTemplateReferenceSubmitPayload(references)");
+    expect(initialProjectSource).toContain("referencePayload.contextPack.promptText.trim()");
+    expect(sessionPromptSource).toContain("Use these workspace-relative paths");
+    expect(initialProjectSource).toContain("referenceFiles: references.map");
+    expect(composerSource).toContain('import { flushSync } from "react-dom";');
+    expect(composerSource).toContain("maxAttachmentBytes?: number;");
+    expect(composerSource).toContain("const maxAttachmentBytes = props.maxAttachmentBytes ?? MAX_ATTACHMENT_BYTES;");
+    expect(composerSource).toContain('t("composer.plus_attach_files")');
+    expect(composerSource).toContain("props.onAttachFiles(accepted)");
+    expect(composerSource).toContain("flushSync(() => {");
+    expect(composerSource).toMatch(/setToolMenuOpen\(false\);\r?\n\s+setDelegationMenuOpen\(false\);/);
+    expect(composerSource).toContain("input?.click();");
+    expect(composerSource).toContain('window.addEventListener("pointermove", handlePointerMove);');
+    expect(composerSource).toMatch(/setPlusMenuSection\(null\);\r?\n\s+setToolMenuOpen\(false\);\r?\n\s+setDelegationMenuOpen\(false\);/);
+  });
+
+  test("starter template strip is clipped to the workspace column", () => {
+    const source = readFileSync(
+      new URL("../src/components/chat/new-conversation-starter.tsx", import.meta.url),
+      "utf8",
+    );
+
+    expect(source).toContain('data-testid="new-conversation-template-strip"');
+    expect(source).toContain("min-w-0 overflow-hidden rounded-xl");
+    expect(source).toContain("flex min-w-0 snap-x snap-mandatory");
   });
 
   test("output files can seed a follow-up revision prompt", () => {

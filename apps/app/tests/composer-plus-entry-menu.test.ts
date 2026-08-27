@@ -45,7 +45,7 @@ describe("composer plus entry menu", () => {
     expect(composerSource).toContain('t("composer.plus_use_template")');
     expect(composerSource).toContain('t("composer.plus_tools")');
     expect(composerSource).toContain('t("composer.delegate_external_agents")');
-    expect(composerSource).toContain("fileInput?.click()");
+    expect(composerSource).toContain("input?.click()");
     expect(composerSource).toContain("props.onOpenTemplateMarket?.()");
     expect(composerSource).toContain('onMouseEnter={() => setPlusMenuSection("tools")}');
     expect(composerSource).toContain('onMouseEnter={() => setPlusMenuSection("delegation")}');

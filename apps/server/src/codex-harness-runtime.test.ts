@@ -29,7 +29,11 @@ import {
 import { CodexProviderGateway } from "./codex-provider-gateway.js";
 import { deepSeekHarnessProviderCredentials } from "./deepseek-harness-runtime.js";
 import { EnvService } from "./env-file.js";
-import { projectCodexHarnessProviderList } from "./routes/codex-harness.js";
+import {
+  codexHarnessTurnAccessPolicy,
+  codexHarnessTurnCollaborationMode,
+  projectCodexHarnessProviderList,
+} from "./routes/codex-harness.js";
 import { buildCodexHarnessAdditionalContext } from "./workspace-session-runtime.js";
 import { disposeRuntimeOpencodeConfigStore } from "./runtime-opencode-config-store.js";
 import type { ServerConfig, WorkspaceInfo } from "./types.js";
@@ -83,6 +87,61 @@ afterEach(async () => {
 });
 
 describe("Codex Harness provider projection", () => {
+  test("maps access modes to trusted Codex turn policies", () => {
+    expect(codexHarnessTurnAccessPolicy("read-only", "C:\\workspace")).toEqual({
+      approvalPolicy: "on-request",
+      approvalsReviewer: "user",
+      sandboxPolicy: { type: "readOnly", networkAccess: false },
+    });
+    expect(codexHarnessTurnAccessPolicy("full-access", "C:\\workspace")).toEqual({
+      approvalPolicy: "never",
+      approvalsReviewer: "user",
+      sandboxPolicy: { type: "dangerFullAccess" },
+    });
+    expect(codexHarnessTurnAccessPolicy("untrusted-client-value", "C:\\workspace")).toMatchObject({
+      approvalPolicy: "on-request",
+      sandboxPolicy: {
+        type: "workspaceWrite",
+        writableRoots: ["C:\\workspace"],
+        networkAccess: false,
+      },
+    });
+    expect(codexHarnessTurnAccessPolicy("granular", "C:\\workspace")).toMatchObject({
+      approvalPolicy: {
+        granular: {
+          request_permissions: true,
+          mcp_elicitations: true,
+        },
+      },
+      sandboxPolicy: { type: "workspaceWrite" },
+    });
+  });
+
+  test("maps work modes to complete Codex collaboration settings", () => {
+    expect(codexHarnessTurnCollaborationMode("plan", "gpt-5.6", null)).toEqual({
+      collaborationMode: {
+        mode: "plan",
+        settings: {
+          model: "gpt-5.6",
+          reasoning_effort: "medium",
+          developer_instructions: null,
+        },
+      },
+    });
+    expect(codexHarnessTurnCollaborationMode("default", "gpt-5.6", "high")).toEqual({
+      collaborationMode: {
+        mode: "default",
+        settings: {
+          model: "gpt-5.6",
+          reasoning_effort: "high",
+          developer_instructions: null,
+        },
+      },
+    });
+    expect(codexHarnessTurnCollaborationMode("unknown", "gpt-5.6", null)).toEqual({});
+    expect(codexHarnessTurnCollaborationMode("plan", "", null)).toEqual({});
+  });
+
   test("sends runtime and plugin guidance as hidden application context", () => {
     expect(buildCodexHarnessAdditionalContext(
       " Long-running local process rule:\nRuntime guidance ",
@@ -795,8 +854,27 @@ readline.createInterface({ input: process.stdin }).on("line", (line) => {
     });
 
     expect(generated).toContain('[mcp_servers."ipollowork"]');
+    expect(generated).toContain('required = true');
     expect(generated).toContain('url = "http://127.0.0.1:43127/engine-tools/mcp?workspaceId=codex%20plugins%2Fone"');
     expect(generated).toContain('http_headers = { "Authorization" = "Bearer test" }');
+  });
+
+  test("keeps an unavailable plugin MCP from becoming a Codex startup dependency", () => {
+    const generated = codexHarnessConfig({
+      providers: [],
+      mcp: {
+        figma: {
+          type: "remote",
+          url: "http://127.0.0.1:3845/mcp",
+          enabled: true,
+          oauth: false,
+        },
+      },
+    });
+
+    expect(generated).toContain('[mcp_servers."figma"]');
+    expect(generated).toContain('required = false');
+    expect(generated).toContain('url = "http://127.0.0.1:3845/mcp"');
   });
 
   test("keeps configured models authoritative over Codex's native directory", () => {
@@ -807,7 +885,7 @@ readline.createInterface({ input: process.stdin }).on("line", (line) => {
       baseURL: "https://api.openai.com/v1",
       apiKey: "sk-openai",
       models: [
-        { id: "gpt-configured", name: "Configured GPT" },
+        { id: "gpt-configured", name: "Configured GPT", contextWindow: 262_144, maxTokens: 32_768 },
         { id: "gpt-not-supported", name: "Unsupported GPT" },
       ],
     }], [
@@ -826,6 +904,8 @@ readline.createInterface({ input: process.stdin }).on("line", (line) => {
     ]);
     expect(result.all[0]?.models["gpt-configured"]).toMatchObject({
       name: "Configured GPT",
+      contextWindow: 262_144,
+      maxTokens: 32_768,
       capabilities: { attachment: true, reasoning: true },
       variants: { high: { name: "high" } },
     });
@@ -1325,6 +1405,61 @@ describe("Codex provider protocol gateway", () => {
           { role: "tool", tool_call_id: "call_1" },
           { role: "user" },
         ],
+      });
+    } finally {
+      await gateway.close();
+    }
+  });
+
+  test("returns prompt length failures as non-retryable invalid requests", async () => {
+    const upstream = createServer((request, response) => {
+      request.resume();
+      request.on("end", () => {
+        response.writeHead(400, { "content-type": "application/json" });
+        response.end(JSON.stringify({
+          error: { message: "[1261] Prompt exceeds max length" },
+        }));
+      });
+    });
+    servers.push(upstream);
+    await new Promise<void>((resolve, reject) => {
+      upstream.once("error", reject);
+      upstream.listen(0, "127.0.0.1", () => resolve());
+    });
+    const address = upstream.address();
+    if (!address || typeof address === "string") throw new Error("Mock provider failed to bind");
+
+    const gateway = new CodexProviderGateway();
+    try {
+      const routes = await gateway.configure([{
+        providerId: "opencode",
+        protocol: "openai-completions",
+        baseURL: `http://127.0.0.1:${address.port}/v1`,
+        apiKey: "upstream-key",
+      }]);
+      const route = routes.get("opencode");
+      if (!route) throw new Error("Gateway route was not created");
+
+      const response = await fetch(`${route.baseURL}/responses`, {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${route.apiKey}`,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          model: "small-context-model",
+          input: [{ role: "user", content: [{ type: "input_text", text: "oversized" }] }],
+          stream: true,
+        }),
+      });
+      const payload = await response.json();
+
+      expect(response.status).toBe(400);
+      expect(payload).toMatchObject({
+        error: {
+          message: "[1261] Prompt exceeds max length",
+          type: "invalid_request_error",
+        },
       });
     } finally {
       await gateway.close();

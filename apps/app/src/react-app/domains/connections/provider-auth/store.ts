@@ -1,5 +1,9 @@
 import { useSyncExternalStore } from "react";
 import {
+  DEEPSEEK_OFFICIAL_PROVIDER_ID,
+  deepSeekOfficialModels,
+} from "@ipollowork/types/deepseek-official-models";
+import {
   parseSharedProviderProfile,
   providerApiKeyCredentialRef,
   serializeSharedProviderProfile,
@@ -242,13 +246,10 @@ const QWEN3_CODER_PROVIDER = {
 };
 
 const DEEPSEEK_OFFICIAL_PROVIDER = {
-  providerId: "deepseek-official",
+  providerId: DEEPSEEK_OFFICIAL_PROVIDER_ID,
   name: "DeepSeek",
   baseURL: "https://api.deepseek.com",
-  models: {
-    "deepseek-v4-flash": { name: "DeepSeek-V4-Flash" },
-    "deepseek-v4-pro": { name: "DeepSeek-V4-Pro" },
-  },
+  models: Object.fromEntries(deepSeekOfficialModels().map(({ id, ...profile }) => [id, profile])),
 } as const;
 
 function catalogSharedProviderProfile(
@@ -280,7 +281,24 @@ function cloudSharedProviderProfile(
     api: configuredApi,
     baseURL: optionsBaseURL,
     npm: typeof provider.providerConfig.npm === "string" ? provider.providerConfig.npm : undefined,
-    models: Object.fromEntries(provider.models.map((model) => [model.id, { name: model.name }])),
+    models: Object.fromEntries(provider.models.map((model) => {
+      const limit = isRecord(model.config.limit) ? model.config.limit : {};
+      const contextWindow = typeof model.config.contextWindow === "number"
+        ? model.config.contextWindow
+        : typeof limit.context === "number"
+          ? limit.context
+          : undefined;
+      const maxTokens = typeof model.config.maxTokens === "number"
+        ? model.config.maxTokens
+        : typeof limit.output === "number"
+          ? limit.output
+          : undefined;
+      return [model.id, {
+        name: model.name,
+        ...(contextWindow && contextWindow > 0 ? { contextWindow } : {}),
+        ...(maxTokens && maxTokens > 0 ? { maxTokens } : {}),
+      }];
+    })),
   });
 }
 
@@ -345,6 +363,51 @@ function compatibleProviderProfile(
     : null;
 }
 
+function supplementSharedProviderProfile(
+  primary: SharedProviderProfile,
+  metadata: SharedProviderProfile,
+): SharedProviderProfile {
+  const metadataModels = new Map(metadata.models.map((model) => [model.id, model]));
+  const models = primary.models.length ? primary.models : metadata.models;
+  return {
+    ...metadata,
+    ...primary,
+    models: models.map((model) => {
+      const fallback = metadataModels.get(model.id);
+      return {
+        ...fallback,
+        ...model,
+        ...(model.contextWindow ?? fallback?.contextWindow
+          ? { contextWindow: model.contextWindow ?? fallback?.contextWindow }
+          : {}),
+        ...(model.maxTokens ?? fallback?.maxTokens
+          ? { maxTokens: model.maxTokens ?? fallback?.maxTokens }
+          : {}),
+      };
+    }),
+  };
+}
+
+function providerSharedProfile(
+  providers: readonly ProviderListItem[],
+  providerId: string,
+  persisted?: SharedProviderProfile | null,
+): SharedProviderProfile {
+  const catalog = catalogSharedProviderProfile(providers, providerId);
+  const preset = compatibleProviderProfile(providerId);
+  const discovered = preset
+    ? supplementSharedProviderProfile(catalog, buildSharedProviderProfile({
+        providerId: preset.id,
+        displayName: preset.name,
+        api: preset.api,
+        baseURL: preset.baseURL,
+        npm: preset.npm,
+        models: preset.models,
+      }))
+    : catalog;
+  return persisted ? supplementSharedProviderProfile(persisted, discovered) : discovered;
+}
+
 export type ProviderAuthStore = ReturnType<typeof createProviderAuthStore>;
 
 export function createProviderAuthStore(options: CreateProviderAuthStoreOptions) {
@@ -385,6 +448,11 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
   let providerRefreshInFlight: Promise<ProviderListResponse | null> | null = null;
   let queuedProviderRefresh: Promise<ProviderListResponse | null> | null = null;
   let queuedProviderRefreshOptions: ProviderRefreshOptions | null = null;
+  let providerAuthMethodsLoadKey = "";
+  let providerAuthMethodsInFlight: {
+    key: "local" | "remote";
+    promise: Promise<Record<string, ProviderAuthMethod[]>>;
+  } | null = null;
 
   const emitChange = () => {
     for (const listener of listeners) listener();
@@ -404,14 +472,12 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
     return getProviderEngineAdapter().connect(client);
   };
 
-  const waitForProviderEngineConnection = async () => {
+  const waitForProviderEngineClient = async () => {
     const deadline = Date.now() + PROVIDER_ENGINE_CLIENT_WAIT_TIMEOUT_MS;
     while (!disposed) {
       const client = options.client();
       if (client) {
-        const connection = getProviderEngineAdapter().connect(client);
-        await connection.waitUntilHealthy();
-        return connection;
+        return getProviderEngineAdapter().connect(client);
       }
 
       const remainingMs = deadline - Date.now();
@@ -1301,10 +1367,14 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
           ipolloworkClient.getUserEnv(credentialKey),
           keySet.has(profileKey) ? ipolloworkClient.getUserEnv(profileKey) : null,
         ]);
+        const persistedProfile = profile ? parseSharedProviderProfile(profile.item.value) : null;
+        const resolvedProfile = providerSharedProfile(options.providers(), providerId, persistedProfile);
         return {
           providerId,
           apiKey: credential.item.value.trim(),
-          profile: profile ? parseSharedProviderProfile(profile.item.value) : null,
+          profile: resolvedProfile,
+          profileMetadataChanged: serializeSharedProviderProfile(resolvedProfile)
+            !== (persistedProfile ? serializeSharedProviderProfile(persistedProfile) : ""),
         };
       }));
       const fingerprint = JSON.stringify({ workspace: currentWorkspaceKey(), connections });
@@ -1318,19 +1388,39 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
       for (const entry of connections) {
         if (!entry.apiKey) continue;
         const profile = entry.profile;
-        if (profile?.baseURL && !runtimeProviderIds.has(entry.providerId)) {
+        if (
+          profile?.baseURL
+          && (!runtimeProviderIds.has(entry.providerId) || entry.profileMetadataChanged)
+        ) {
           await patchRuntimeProviders(
             adapter.buildCompatibleProviderPatch({
               id: entry.providerId,
               name: profile.displayName,
               baseURL: profile.baseURL,
               models: Object.fromEntries(
-                profile.models.map((model) => [model.id, { name: model.name ?? model.id }]),
+                profile.models.map((model) => [model.id, {
+                  name: model.name ?? model.id,
+                  ...(model.contextWindow ? { contextWindow: model.contextWindow } : {}),
+                  ...(model.maxTokens ? { maxTokens: model.maxTokens } : {}),
+                }]),
               ),
             }),
           );
           runtimeProviderIds.add(entry.providerId);
           runtimeConfigChanged = true;
+        }
+      }
+
+      const enrichedProfiles = connections.filter((entry) => entry.profileMetadataChanged);
+      if (enrichedProfiles.length > 0 && typeof ipolloworkClient.upsertUserEnv === "function") {
+        try {
+          await ipolloworkClient.upsertUserEnv(enrichedProfiles.map((entry) => ({
+            key: sharedProviderProfileEnvKey(entry.providerId),
+            value: serializeSharedProviderProfile(entry.profile),
+          })));
+        } catch {
+          // Runtime projection already carries the enriched metadata. Persisting
+          // it is an optimization and must not make provider import retry.
         }
       }
 
@@ -1580,14 +1670,12 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
   };
 
   const loadProviderAuthMethods = async (workerType: "local" | "remote") => {
-    // Settings can render before the managed provider sidecar has finished
-    // starting. Treat that short window as loading instead of a permanent
-    // connection failure, then use the runtime adapter's canonical health
-    // check before requesting authentication methods.
+    // Settings can render before the provider client is mounted. Wait only
+    // for that client; listing providers must not run a separate health probe.
     const cloudProvidersRequest = getProviderEngineAdapter().capabilities.cloudProviderImports
       ? refreshCloudOrgProviders().catch(() => [] as DenOrgLlmProvider[])
       : Promise.resolve([] as DenOrgLlmProvider[]);
-    const connection = await waitForProviderEngineConnection();
+    const connection = await waitForProviderEngineClient();
     const [methods, cloudProviders] = await Promise.all([
       connection.listAuthMethods(),
       cloudProvidersRequest,
@@ -1600,6 +1688,29 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
     );
   };
 
+  const ensureProviderAuthMethods = async (workerType: "local" | "remote") => {
+    if (providerAuthMethodsLoadKey === workerType && Object.keys(state.providerAuthMethods).length > 0) {
+      return state.providerAuthMethods;
+    }
+    const request = providerAuthMethodsInFlight?.key === workerType
+      ? providerAuthMethodsInFlight
+      : {
+          key: workerType,
+          promise: loadProviderAuthMethods(workerType),
+        };
+    providerAuthMethodsInFlight = request;
+    try {
+      const methods = await request.promise;
+      if (getProviderAuthWorkerType() === workerType) {
+        providerAuthMethodsLoadKey = workerType;
+        setStateField("providerAuthMethods", methods);
+      }
+      return methods;
+    } finally {
+      if (providerAuthMethodsInFlight === request) providerAuthMethodsInFlight = null;
+    }
+  };
+
   async function startProviderAuth(
     providerId?: string,
     methodIndex?: number,
@@ -1607,10 +1718,7 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
     setStateField("providerAuthError", null);
     const connection = getProviderEngineConnection();
     try {
-      const cachedMethods = state.providerAuthMethods;
-      const authMethods = Object.keys(cachedMethods).length
-        ? cachedMethods
-        : await loadProviderAuthMethods(getProviderAuthWorkerType());
+      const authMethods = await ensureProviderAuthMethods(getProviderAuthWorkerType());
       const providerIds = Object.keys(authMethods).sort();
       if (!providerIds.length) {
         throw new Error(t("providers.no_providers_available"));
@@ -1898,7 +2006,7 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
           npm: portableProfile.npm,
           models: portableProfile.models,
         })
-      : catalogSharedProviderProfile(options.providers(), resolvedProviderId);
+      : providerSharedProfile(options.providers(), resolvedProviderId);
 
     try {
       // Save the account-level credential and model profile first. Engine
@@ -2338,34 +2446,32 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
     returnFocusTarget?: ProviderReturnFocusTarget;
     preferredProviderId?: string;
   }) {
-    const hasCachedMethods = Object.keys(state.providerAuthMethods).length > 0;
+    const workerType = getProviderAuthWorkerType();
+    const hasCachedMethods = providerAuthMethodsLoadKey === workerType
+      && Object.keys(state.providerAuthMethods).length > 0;
+    const visibleMethods = hasCachedMethods
+      ? state.providerAuthMethods
+      : buildProviderAuthMethods(
+          {},
+          getProviderAuthProviders(),
+          workerType,
+          state.cloudOrgProviders,
+        );
     mutateState((current) => ({
       ...current,
       providerAuthReturnFocusTarget: optionsArg?.returnFocusTarget ?? "none",
       providerAuthPreferredProviderId: optionsArg?.preferredProviderId?.trim() || null,
       providerAuthModalOpen: true,
-      providerAuthBusy: !hasCachedMethods,
+      providerAuthBusy: false,
       providerAuthError: null,
+      providerAuthMethods: visibleMethods,
     }));
 
     try {
-      const methods = await loadProviderAuthMethods(getProviderAuthWorkerType());
-      mutateState((current) => ({
-        ...current,
-        providerAuthMethods: methods,
-        providerAuthBusy: hasCachedMethods ? current.providerAuthBusy : false,
-      }));
-    } catch (error) {
-      const message = describeProviderError(error, t("providers.load_failed"));
-      mutateState((current) => ({
-        ...current,
-        providerAuthPreferredProviderId: null,
-        providerAuthReturnFocusTarget: "none",
-        providerAuthError: message,
-      }));
-      throw error;
-    } finally {
-      if (!hasCachedMethods) setStateField("providerAuthBusy", false);
+      await ensureProviderAuthMethods(workerType);
+    } catch {
+      // The locally known provider directory remains usable. Surface an error
+      // only if the user chooses an action that needs engine auth metadata.
     }
   }
 

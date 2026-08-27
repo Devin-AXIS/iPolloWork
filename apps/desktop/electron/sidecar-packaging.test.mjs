@@ -34,6 +34,7 @@ it("ships Harness CLIs as verified optional engine packages instead of app resou
   assert.doesNotMatch(builderConfig, /from: codex-runtime\s+to: codex-runtime/);
   assert.match(mainSource, /createEnginePackageManager/);
   assert.match(managerSource, /IPOLLOWORK_DSH_CLI/);
+  assert.match(managerSource, /IPOLLOWORK_DSH_NODE_BIN/);
   assert.match(managerSource, /IPOLLOWORK_DSH_HOST_PLUGIN/);
   assert.match(managerSource, /IPOLLOWORK_CODEX_CLI/);
   assert.match(managerSource, /engine-packs/);
@@ -43,6 +44,7 @@ it("ships Harness CLIs as verified optional engine packages instead of app resou
   assert.doesNotMatch(buildSource, /prepare-codex-runtime\.mjs/);
   assert.doesNotMatch(devSource, /prepare-codex-runtime\.mjs/);
   assert.match(packageSource, /prepare-dsh-runtime\.mjs/);
+  assert.match(packageSource, /node-runtime/);
   assert.match(packageSource, /prepare-codex-runtime\.mjs/);
   assert.match(releaseWorkflow, /package-engine-runtime\.mjs --all/);
   assert.match(stdioRuntimeSource, /windowsHide: true/);
@@ -89,6 +91,7 @@ it("hides consoles opened by packaged DSH tool subprocesses on Windows", async (
   assert.match(runtimeManifest, /"packageManager": "pnpm@11\.4\.0"/);
   assert.match(prepareSource, /workspacePath, subprocessPatchPath, windowsSandboxPatchPath/);
   assert.match(prepareSource, /CI: process\.env\.CI \|\| "1"/);
+  assert.match(prepareSource, /stageNodeRuntime/);
   assert.doesNotMatch(prepareSource, /--ignore-workspace/);
 });
 

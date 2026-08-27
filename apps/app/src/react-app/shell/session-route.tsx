@@ -66,6 +66,7 @@ import {
 import { currentLocale, t } from "@/i18n";
 import {
   buildTaskPaletteSessionOptions,
+  describeSidecarLaunchBlockedError,
   describeWorkspaceUnavailableTitle,
   describeRouteError,
   getSessionStatus,
@@ -179,6 +180,7 @@ import type { OpenTarget } from "@/react-app/domains/session/artifacts/open-targ
 import { SettingsSurface } from "./settings-route";
 import {
   ensureProviderListQuery,
+  getModelContextWindow,
   getRunnableChatModelSnapshot,
   projectAccountProviderConnections,
   type ProviderListQueryInput,
@@ -196,11 +198,11 @@ import {
   serializeSDKError,
 } from "./session-prompt";
 
-function describeTaskCreateError(error: unknown) {
+function describeTaskCreateError(error: unknown, engineId: string | null | undefined) {
   const message = describeRouteError(error);
   const lower = message.toLowerCase();
   if (isSidecarLaunchBlockedError(message)) {
-    return "Windows denied starting the OpenCode sidecar (spawn EPERM). Check whether antivirus, Controlled Folder Access, app permissions, or a quarantined opencode.exe is blocking iPolloWork, then retry or restart the app.";
+    return describeSidecarLaunchBlockedError(engineId);
   }
   if (
     lower.includes("failed to fetch") ||
@@ -211,7 +213,7 @@ function describeTaskCreateError(error: unknown) {
     lower.includes("internal_error") ||
     lower.includes("unexpected server error")
   ) {
-    return "OpenCode is unavailable for this workspace. Retry once it restarts, or restart iPolloWork if the problem continues.";
+    return `${describeWorkspaceUnavailableTitle({ message: null, engineId })} for this workspace. Retry once it restarts, or restart iPolloWork if the problem continues.`;
   }
   return message;
 }
@@ -620,10 +622,14 @@ export function SessionRoute() {
     if (!project) throw new Error(t("projects.create_failed"));
 
     if (isDesktopRuntime()) {
-      await workspaceSetSelected(project.id);
-      await workspaceSetRuntimeActive(project.id);
+      await Promise.all([
+        workspaceSetSelected(project.id),
+        workspaceSetRuntimeActive(project.id),
+      ]);
     }
-    await client.activateWorkspace(project.id, { persist: true });
+    if (result.activeId !== project.id) {
+      await client.activateWorkspace(project.id, { persist: true });
+    }
     setLegacySelectedWorkspaceId(project.id);
     writeActiveWorkspaceId(project.id);
     rememberProjectForWorkContext(activeWorkContextId, project.id);
@@ -761,6 +767,9 @@ export function SessionRoute() {
         }
       : null
   ), [activeEngineId, engineProviderClient, selectedWorkspaceEndpoint?.opencodeBaseUrl, selectedWorkspaceRoot]);
+  // Prewarm the engine directory as soon as the workspace becomes active.
+  // Besides keeping the picker instant, a DSH read is the synchronization
+  // boundary that projects account-owned credentials into its local vault.
   const activeProviderListQuery = useProviderListQuery({
     client: activeProviderSource?.client ?? null,
     engineId: activeProviderSource?.engineId,
@@ -846,6 +855,8 @@ export function SessionRoute() {
       modelVariant: activeModelVariant,
     });
   const selectedModelSupportsAttachments = modelSupportsAttachments(providerCatalog, activeSelectedModel);
+  const selectedModelContextWindow = getModelContextWindow(activeProviderList, activeSelectedModel)
+    ?? getModelContextWindow(accountProviderList, activeSelectedModel);
   const selectedModelUnavailable = Boolean(!activeSelectedModel);
   const hasUsableModel = Boolean(activeSelectedModel && !selectedModelUnavailable);
   // Creating and opening a conversation does not require a usable model.
@@ -1102,6 +1113,7 @@ export function SessionRoute() {
       modelPickerOpen: modelPicker.compactOpen,
       modelUnavailable: selectedModelUnavailable,
       selectedModel: activeSelectedModel ?? { providerID: "", modelID: "" },
+      modelContextWindow: selectedModelContextWindow,
       onModelPickerOpenChange: (open: boolean) => {
         if (open && !hasUsableModel) {
           void sessionProviderAuthStore.openProviderAuthModal({ returnFocusTarget: "composer" });
@@ -1240,12 +1252,27 @@ export function SessionRoute() {
           const initialTitle = sessionTitleFromFirstPrompt(text);
           if (initialTitle) {
             pendingTitlePersist = initialTitle;
-            setSessionsByWorkspaceId((current) => ({
-              ...current,
-              [selectedWorkspaceId]: (current[selectedWorkspaceId] ?? []).map((session) => (
-                session.id === targetSessionId ? { ...session, title: initialTitle } : session
-              )),
-            }));
+            setSessionsByWorkspaceId((current) => {
+              const now = Date.now();
+              const next = {
+                ...current,
+                [selectedWorkspaceId]: (current[selectedWorkspaceId] ?? []).map((session) => {
+                  if (session.id !== targetSessionId) return session;
+                  const created = session.time?.created ?? now;
+                  return {
+                    ...session,
+                    title: initialTitle,
+                    time: {
+                      ...session.time,
+                      created,
+                      updated: Math.max(now, created + 1),
+                    },
+                  };
+                }),
+              };
+              sessionsByWorkspaceIdRef.current = next;
+              return next;
+            });
           }
         }
 
@@ -1290,6 +1317,7 @@ export function SessionRoute() {
               command: draft.command.name,
               arguments: draft.command.arguments,
               model: effectiveModel ?? undefined,
+              mode: effectiveMode ?? undefined,
               reasoningEffort: effectiveModelVariant ?? undefined,
             });
             return true;
@@ -1703,6 +1731,7 @@ export function SessionRoute() {
     activeSelectedModel,
     selectedSessionId,
     selectedModelSupportsAttachments,
+    selectedModelContextWindow,
     selectedModelUnavailable,
     selectedWorkspace,
     selectedWorkspaceEndpoint,
@@ -1861,7 +1890,7 @@ export function SessionRoute() {
       }
       return session.id;
     } catch (error) {
-      const message = describeTaskCreateError(error);
+      const message = describeTaskCreateError(error, workspace.engineId);
       if ((templateId || authoring) && projectInitializationFailed) {
         if (createdSessionId) {
           await endpoint.client.deleteSession(endpoint.workspaceId, createdSessionId).catch(() => undefined);
@@ -1884,6 +1913,7 @@ export function SessionRoute() {
       toast.error(describeWorkspaceUnavailableTitle({
         message,
         workspaceType: workspace.workspaceType,
+        engineId: workspace.engineId,
       }), {
         id: taskCreateUnavailableToastId(workspaceId),
         description: message,
@@ -2018,7 +2048,7 @@ export function SessionRoute() {
     return true;
   }, [pendingInitialProjectTask, workspaces]);
 
-  const cleanupFailedInitialProjectTask = useCallback(async (pending: PendingInitialProjectTask) => {
+  const rollbackFailedInitialProjectPrompt = useCallback((pending: PendingInitialProjectTask) => {
     const sessionId = pending.sessionId;
     if (!sessionId) return;
     if (pending.runtimeWorkspaceId) {
@@ -2028,44 +2058,10 @@ export function SessionRoute() {
         pending.clientUserMessageId,
       );
     }
-
-    const workspace = workspaces.find((item) => item.id === pending.workspaceId);
-    const endpoint = workspace ? resolveWorkspaceEndpoint(workspace, {
-      baseUrl,
-      token,
-      hostToken: ipolloworkServerHostInfoState?.hostToken,
-    }) : null;
-    if (endpoint) {
-      await endpoint.client.deleteSession(endpoint.workspaceId, sessionId)
-        .catch((error) => console.warn("[session-create] Could not delete failed initial task", error));
-    }
-    forgetProjectBuilderSession(pending.workspaceId, sessionId);
-    useDesignAiSelectionStore.getState().resetSession(sessionId);
-    setSessionsByWorkspaceId((current) => {
-      const next = {
-        ...current,
-        [pending.workspaceId]: (current[pending.workspaceId] ?? []).filter((session) => session.id !== sessionId),
-      };
-      sessionsByWorkspaceIdRef.current = next;
-      return next;
-    });
-    writeLastSessionFor(pending.workspaceId, null);
-    if (selectedWorkspaceId === pending.workspaceId && selectedSessionId === sessionId) {
-      navigateToWorkspaceSession(pending.workspaceId, null, { replace: true });
-    }
-    await refreshRouteState();
-  }, [
-    baseUrl,
-    ipolloworkServerHostInfoState?.hostToken,
-    navigateToWorkspaceSession,
-    refreshRouteState,
-    selectedSessionId,
-    selectedWorkspaceId,
-    sessionsByWorkspaceIdRef,
-    setSessionsByWorkspaceId,
-    token,
-    workspaces,
-  ]);
+    // Session creation already succeeded and the draft is persisted locally.
+    // Keep both so a transient first-send failure remains visible in the
+    // sidebar and the user can retry instead of losing their task.
+  }, []);
 
   useEffect(() => {
     const pending = pendingInitialProjectTask;
@@ -2119,26 +2115,36 @@ export function SessionRoute() {
       || !surfaceProps
       || initialProjectDraftSendingRef.current
     ) return;
+    const sessionId = pending.sessionId;
     initialProjectDraftSendingRef.current = true;
-    void Promise.resolve(surfaceProps.onSendDraft(
-      pending.draft,
-      pending.sessionId,
-      pending.clientUserMessageId ? { clientUserMessageId: pending.clientUserMessageId } : undefined,
-    ))
-      .then(async (dispatched) => {
+    void (async () => {
+      if (pending.draft.accessMode && surfaceProps.conversation.setAccessMode) {
+        await surfaceProps.conversation.setAccessMode({
+          sessionId,
+          accessMode: pending.draft.accessMode,
+          directory: surfaceProps.workspaceRoot.trim() || undefined,
+        });
+      }
+      return surfaceProps.onSendDraft(
+        pending.draft,
+        sessionId,
+        pending.clientUserMessageId ? { clientUserMessageId: pending.clientUserMessageId } : undefined,
+      );
+    })()
+      .then((dispatched) => {
         if (!dispatched) {
-          await cleanupFailedInitialProjectTask(pending);
+          rollbackFailedInitialProjectPrompt(pending);
         }
       })
-      .catch(async (error) => {
-        await cleanupFailedInitialProjectTask(pending);
+      .catch((error) => {
+        rollbackFailedInitialProjectPrompt(pending);
         toast.error(error instanceof Error ? error.message : t("app.unknown_error"));
       })
       .finally(() => {
         initialProjectDraftSendingRef.current = false;
         setPendingInitialProjectTask(null);
       });
-  }, [cleanupFailedInitialProjectTask, pendingInitialProjectTask, selectedSessionId, selectedWorkspaceId, surfaceProps]);
+  }, [pendingInitialProjectTask, rollbackFailedInitialProjectPrompt, selectedSessionId, selectedWorkspaceId, surfaceProps]);
 
   // Full-screen first-run loader. Armed once per app launch from the very
   // first render of a brand-new profile (no active-workspace memory yet) and

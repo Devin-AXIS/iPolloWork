@@ -35,7 +35,7 @@ function run(command, args, cwd = desktopRoot) {
     cwd,
     env: process.env,
     stdio: "inherit",
-    shell: process.platform === "win32",
+    shell: false,
   });
   if (result.status !== 0) process.exit(result.status ?? 1);
 }
@@ -71,11 +71,11 @@ async function packageEngine(engineId, outputDirectory) {
   const name = `ipollowork-engine-${engineId}-${targetPlatform()}-${targetArch()}-${version}.tar.gz`;
   const archivePath = resolve(outputDirectory, name);
   const entries = ["package.json", "node_modules"];
-  if (isDsh) entries.push("ipollowork-host-tools.mjs");
+  if (isDsh) entries.push("ipollowork-host-tools.mjs", "node-runtime");
   for (const entry of entries) {
     if (!existsSync(resolve(runtimeRoot, entry))) throw new Error(`Missing engine runtime entry: ${entry}`);
   }
-  run("tar", ["-czf", archivePath, "-C", runtimeRoot, ...entries]);
+  run("tar", ["-czf", name, "-C", runtimeRoot, ...entries], outputDirectory);
   const checksum = await sha256File(archivePath);
   writeFileSync(`${archivePath}.sha256`, `${checksum}  ${name}\n`);
   process.stdout.write(`[engine-package] ${archivePath}\n`);

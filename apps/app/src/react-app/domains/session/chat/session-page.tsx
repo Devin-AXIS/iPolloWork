@@ -132,12 +132,12 @@ import {
 } from "../video/video-project";
 import { isStreamingSessionStatus } from "../sidebar/utils";
 import {
-  TEMPLATE_BRIEF_REFERENCE_ACCEPT,
   templateBriefConfigFor,
   templateBriefPrompt,
   type TemplateBrief,
 } from "../templates/template-brief";
 import {
+  REFERENCE_FILE_ACCEPT,
   canSendOriginalReference,
   ingestReferenceFile,
   isReferenceFile,
@@ -148,10 +148,6 @@ import {
   revokeTemplateReferenceAttachmentPreviews,
 } from "../references/template-reference-submit";
 import type { TemplateReferenceItem } from "../references/types";
-export {
-  buildTemplateReferenceSubmitPayload,
-  revokeTemplateReferenceAttachmentPreviews,
-} from "../references/template-reference-submit";
 import { TemplateMarketDialog } from "../templates/template-market-dialog";
 import { shouldRefreshTemplateCatalogOnOpen } from "../templates/template-market-refresh";
 import { savePromptTemplate } from "@/react-app/domains/session/templates/prompt-template-store";
@@ -634,6 +630,7 @@ type InitialProjectComposerTooling = Pick<
 >;
 
 function buildWorkspaceRepairScript(input: {
+  engineId: string | null | undefined;
   message: string;
   workspaceRoot: string;
 }) {
@@ -641,27 +638,30 @@ function buildWorkspaceRepairScript(input: {
     "$ErrorActionPreference = 'Stop'",
     "Write-Host 'iPolloWork repair started'",
   ];
-  if (isSidecarLaunchBlockedError(input.message)) {
+  if (
+    isSidecarLaunchBlockedError(input.message)
+    && input.engineId?.trim() === CODEX_HARNESS_ENGINE_ID
+  ) {
     lines.push(
-      "$codexNative = Join-Path $env:APPDATA 'npm\\node_modules\\@openai\\codex\\node_modules\\@openai\\codex-win32-x64\\vendor\\x86_64-pc-windows-msvc\\bin\\codex.exe'",
-      "if (!(Test-Path -LiteralPath $codexNative)) {",
-      "  Write-Host 'Installing Codex CLI package...'",
-      "  npm install -g @openai/codex",
-      "}",
-      "if (Test-Path -LiteralPath $codexNative) {",
-      "  Unblock-File -LiteralPath $codexNative -ErrorAction SilentlyContinue",
-      "  [Environment]::SetEnvironmentVariable('IPOLLOWORK_CODEX_CLI', $codexNative, 'User')",
-      "  Write-Host \"Set IPOLLOWORK_CODEX_CLI=$codexNative\"",
-      "} else {",
-      "  throw 'Codex native executable was not found after install.'",
-      "}",
-      "Get-Process codex,opencode -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue",
+      "[Environment]::SetEnvironmentVariable('IPOLLOWORK_CODEX_CLI', $null, 'User')",
+      "Write-Host 'Cleared the stale Codex runtime override.'",
+      "Write-Host 'iPolloWork will select a verified local or managed Codex runtime on restart.'",
+    );
+  }
+  if (
+    isSidecarLaunchBlockedError(input.message)
+    && input.engineId?.trim() === DEEPSEEK_HARNESS_ENGINE_ID
+  ) {
+    lines.push(
+      "[Environment]::SetEnvironmentVariable('IPOLLOWORK_DSH_CLI', $null, 'User')",
+      "[Environment]::SetEnvironmentVariable('IPOLLOWORK_DSH_NODE_BIN', $null, 'User')",
+      "Write-Host 'Cleared stale DeepSeek Harness runtime overrides.'",
     );
   }
   if (isModelUnavailableError(input.message)) {
     lines.push(
       "Write-Host 'Model selection needs to be changed inside iPolloWork.'",
-      "Write-Host 'Use a supported Codex Harness model such as big-pickle or mimo-v2.5-free, then reload the engine.'",
+      "Write-Host 'Choose a connected model supported by the selected engine, then reload the engine.'",
     );
   }
   if (input.workspaceRoot.trim()) {
@@ -783,6 +783,7 @@ function InitialProjectTaskStarter({
   const [draft, setDraft] = useState("");
   const [attachments, setAttachments] = useState<ComposerAttachment[]>([]);
   const attachmentsRef = useRef<ComposerAttachment[]>([]);
+  const [starterAccessMode, setStarterAccessMode] = useState<string | null>(null);
   const [starterMode, setStarterMode] = useState<NewConversationMode>("work");
   const [starterCapability, setStarterCapability] = useState<StarterCapability | null>(null);
   const [sending, setSending] = useState(false);
@@ -860,6 +861,19 @@ function InitialProjectTaskStarter({
       )
       .sort((left, right) => left.name.localeCompare(right.name));
   }, [workspaceClient, workspaceId]);
+
+  const listStarterAccessModes = useCallback(async () => {
+    const modes = await surface.conversation.listAccessModes?.({
+      sessionId: "",
+      directory: surface.workspaceRoot.trim() || undefined,
+    }) ?? [];
+    setStarterAccessMode((current) => (
+      current && modes.some((mode) => mode.id === current)
+        ? current
+        : modes.find((mode) => mode.isDefault)?.id ?? modes[0]?.id ?? null
+    ));
+    return modes;
+  }, [surface.conversation, surface.workspaceRoot]);
 
   const uploadInboxFiles = useCallback(async (files: File[]) => {
     if (surface.onUploadInboxFiles) return surface.onUploadInboxFiles(files);
@@ -961,6 +975,7 @@ function InitialProjectTaskStarter({
       mode: "prompt",
       parts,
       attachments,
+      ...(starterAccessMode ? { accessMode: starterAccessMode } : {}),
       text,
       resolvedText,
       capability: starterCapability
@@ -1078,6 +1093,13 @@ function InitialProjectTaskStarter({
             selectedMode={surface.selectedMode}
             listModes={surface.listModes}
             onSelectMode={surface.onSelectMode}
+            selectedAccessMode={starterAccessMode}
+            listAccessModes={surface.conversation.listAccessModes && surface.conversation.setAccessMode
+              ? listStarterAccessModes
+              : undefined}
+            onSelectAccessMode={surface.conversation.setAccessMode
+              ? async (accessMode) => setStarterAccessMode(accessMode)
+              : undefined}
             listAgents={surface.listAgents}
             onSelectAgent={surface.onSelectAgent}
             listCommands={surface.listCommands}
@@ -1110,6 +1132,8 @@ function InitialProjectTaskStarter({
                 <StarterCapabilityChip capability={starterCapability} onClear={() => setStarterCapability(null)} />
               </div>
             ) : null}
+            contextUsage={null}
+            modelContextWindow={surface.modelContextWindow}
           />
         </div>
       </div>
@@ -1482,7 +1506,7 @@ function TemplateApplyDialog({ open, mode, template, destinationName, conflictTe
             <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
               <Button type="button" variant="outline" className="h-9 rounded-lg px-3 text-ui-control" disabled={referenceBusy || submitting} onClick={() => referenceInputRef.current?.click()}>{referenceBusy ? <LoaderCircle className="size-3.5 animate-spin" /> : <Download className="size-3.5" />}{t("templates.brief.upload_file")}</Button>
               <p className="text-ui-control leading-5 text-muted-foreground">{t("templates.brief.reference_supported_formats")}</p>
-              <input ref={referenceInputRef} type="file" multiple accept={TEMPLATE_BRIEF_REFERENCE_ACCEPT} className="hidden" onChange={(event) => { const files = Array.from(event.currentTarget.files ?? []); event.currentTarget.value = ""; void addReferenceFiles(files); }} />
+              <input ref={referenceInputRef} type="file" multiple accept={REFERENCE_FILE_ACCEPT} className="hidden" onChange={(event) => { const files = Array.from(event.currentTarget.files ?? []); event.currentTarget.value = ""; void addReferenceFiles(files); }} />
             </div>
 
             {references.length ? <div className="grid gap-2">
@@ -1618,6 +1642,7 @@ export function SessionPage(props: SessionPageProps) {
   const [starterTemplateCatalog, setStarterTemplateCatalog] = useState<TemplateCatalogItem[]>([]);
   const [starterTemplateCatalogLoading, setStarterTemplateCatalogLoading] = useState(false);
   const starterTemplateCatalogRequestIdRef = useRef(0);
+  const templateCoverCacheRef = useRef(new Map<string, Promise<Awaited<ReturnType<TemplateCoverLoader>>>>());
   const templateImportInFlightRef = useRef(false);
   const [templateMarketOpen, setTemplateMarketOpen] = useState(false);
   const [templateMarketTarget, setTemplateMarketTarget] = useState<"new-session" | "current-session">("new-session");
@@ -1674,6 +1699,7 @@ export function SessionPage(props: SessionPageProps) {
   const currentTemplateSessionData = templateSessionData?.sessionId === props.selectedSessionId
     ? templateSessionData
     : null;
+  const [templateAssistantWait, setTemplateAssistantWait] = useState<{ sessionId: string; label: string } | null>(null);
   const hasTemplateSession = Boolean(currentTemplateSessionData);
   const hasTemplateBrief = currentTemplateSessionData?.hasBrief === true;
   const selectedTemplate = currentTemplateSessionData?.manifest ?? null;
@@ -1710,6 +1736,11 @@ export function SessionPage(props: SessionPageProps) {
   const [dismissedTemplateBriefSessionIds, setDismissedTemplateBriefSessionIds] = useState<Set<string>>(() => new Set());
   const handleConversationMessagesChange = useCallback((sessionId: string, messages: UIMessage[]) => {
     setConversationMessageState({ sessionId, messages });
+    setTemplateAssistantWait((current) =>
+      current?.sessionId === sessionId && messages.some((message) => message.role === "assistant")
+        ? null
+        : current,
+    );
   }, []);
   const conversationMessages = conversationMessageState.sessionId === props.selectedSessionId
     ? conversationMessageState.messages
@@ -1909,18 +1940,31 @@ export function SessionPage(props: SessionPageProps) {
     }
     void refreshStarterTemplateCatalog();
   }, [props.ipolloworkServerClient, props.runtimeWorkspaceId, refreshStarterTemplateCatalog]);
-  const getTemplateCover = useCallback((templateId: string) => {
+  const getCachedTemplateCover = useCallback((scope: WorkContextId, templateId: string) => {
     if (!props.ipolloworkServerClient || !props.runtimeWorkspaceId) {
       return Promise.reject(new Error("Template cover is unavailable."));
     }
-    return props.ipolloworkServerClient.getTemplateCover(props.runtimeWorkspaceId, templateId, templateResourceScope);
-  }, [props.ipolloworkServerClient, props.runtimeWorkspaceId, templateResourceScope]);
-  const getStarterTemplateCover = useCallback((templateId: string) => {
-    if (!props.ipolloworkServerClient || !props.runtimeWorkspaceId) {
-      return Promise.reject(new Error("Template cover is unavailable."));
-    }
-    return props.ipolloworkServerClient.getTemplateCover(props.runtimeWorkspaceId, templateId, PERSONAL_WORK_CONTEXT_ID);
+    const cacheKey = `${props.runtimeWorkspaceId}:${scope}:${templateId}`;
+    const cached = templateCoverCacheRef.current.get(cacheKey);
+    if (cached) return cached;
+    const request = props.ipolloworkServerClient
+      .getTemplateCover(props.runtimeWorkspaceId, templateId, scope)
+      .catch((error) => {
+        templateCoverCacheRef.current.delete(cacheKey);
+        throw error;
+      });
+    templateCoverCacheRef.current.set(cacheKey, request);
+    return request;
   }, [props.ipolloworkServerClient, props.runtimeWorkspaceId]);
+  useEffect(() => {
+    templateCoverCacheRef.current.clear();
+  }, [props.runtimeWorkspaceId]);
+  const getTemplateCover = useCallback((templateId: string) => {
+    return getCachedTemplateCover(templateResourceScope, templateId);
+  }, [getCachedTemplateCover, templateResourceScope]);
+  const getStarterTemplateCover = useCallback((templateId: string) => {
+    return getCachedTemplateCover(PERSONAL_WORK_CONTEXT_ID, templateId);
+  }, [getCachedTemplateCover]);
   const validateCurrentTemplate = useCallback(async () => {
     if (!props.ipolloworkServerClient || !props.runtimeWorkspaceId || !props.selectedSessionId) return null;
     setTemplateValidationBusy(true);
@@ -2183,26 +2227,26 @@ export function SessionPage(props: SessionPageProps) {
     try {
       referencePayload = await buildTemplateReferenceSubmitPayload(references);
       await props.ipolloworkServerClient.writeWorkspaceFile(props.runtimeWorkspaceId, {
-      path: state.briefPath,
-      content: JSON.stringify({
-        templateId: template.id,
-        template: template.title,
-        category: template.category,
-        surface: template.surface,
-        pptxCompatibility: template.pptxCompatibility,
-        sourcePath: state.entry,
-        applyChecklist: template.applyChecklist,
-        referenceFiles: references.map((reference) => ({
-          name: reference.fileName,
-          mimeType: reference.mimeType,
-          size: reference.size,
-          quality: reference.ingestion?.quality ?? "failed",
-          sourceMode: reference.ingestion?.sourceMode ?? "memory",
-          sentOriginal: reference.sendOriginal && canSendOriginalReference(reference.file),
-        })),
-        ...brief,
-      }, null, 2),
-      baseUpdatedAt: null,
+        path: state.briefPath,
+        content: JSON.stringify({
+          templateId: template.id,
+          template: template.title,
+          category: template.category,
+          surface: template.surface,
+          pptxCompatibility: template.pptxCompatibility,
+          sourcePath: state.entry,
+          applyChecklist: template.applyChecklist,
+          referenceFiles: references.map((reference) => ({
+            name: reference.fileName,
+            mimeType: reference.mimeType,
+            size: reference.size,
+            quality: reference.ingestion?.quality ?? "failed",
+            sourceMode: reference.ingestion?.sourceMode ?? "memory",
+            sentOriginal: reference.sendOriginal && canSendOriginalReference(reference.file),
+          })),
+          ...brief,
+        }, null, 2),
+        baseUpdatedAt: null,
       });
       if (template.surface === "video") {
         const source = await props.ipolloworkServerClient.readWorkspaceFile(props.runtimeWorkspaceId, state.entry);
@@ -2218,6 +2262,10 @@ export function SessionPage(props: SessionPageProps) {
       const prompt = templateBriefPrompt({ template, entryPath: state.entry, briefPath: state.briefPath });
       const referencePrompt = referencePayload.contextPack.promptText.trim();
       const visibleTemplateMessage = t("templates.applied", { title: template.title });
+      setTemplateAssistantWait(references.length > 0 ? {
+        sessionId: props.selectedSessionId,
+        label: t("templates.brief.reference_agent_processing_label", { count: references.length }),
+      } : null);
       const dispatched = await props.surface?.onSendDraft({
         mode: "prompt",
         parts: [
@@ -2239,6 +2287,7 @@ export function SessionPage(props: SessionPageProps) {
         return next;
       });
     } catch (error) {
+      setTemplateAssistantWait((current) => current?.sessionId === props.selectedSessionId ? null : current);
       setPendingVideoArtifactCompletion((current) =>
         current?.sessionId === props.selectedSessionId ? null : current,
       );
@@ -2267,6 +2316,10 @@ export function SessionPage(props: SessionPageProps) {
     templateDispatchInFlightRef.current = dispatch.sessionId;
     void (async () => {
       try {
+        setTemplateAssistantWait(dispatch.attachments.length > 0 ? {
+          sessionId: dispatch.sessionId,
+          label: t("templates.brief.reference_agent_processing_label", { count: dispatch.attachments.length }),
+        } : null);
         if (templateSession.manifest.surface === "video") {
           const source = await client.readWorkspaceFile(
             workspaceId,
@@ -2303,6 +2356,7 @@ export function SessionPage(props: SessionPageProps) {
         }, dispatch.sessionId);
         if (!sent) throw new Error(t("templates.error_apply"));
       } catch (error) {
+        setTemplateAssistantWait((current) => current?.sessionId === dispatch.sessionId ? null : current);
         setPendingVideoArtifactCompletion((current) => current?.sessionId === dispatch.sessionId ? null : current);
         toast.error(t("templates.error_apply"), {
           description: error instanceof Error ? error.message : undefined,
@@ -2424,7 +2478,6 @@ export function SessionPage(props: SessionPageProps) {
   const observedPluginWorkshopSessionRef = useRef<string | null>(null);
   const autoOpenedPluginWorkshopSessionRef = useRef<string | null>(null);
   const preserveSidePanelOnPanelOpenRef = useRef(false);
-  const autoEngineInstallAttemptRef = useRef<string | null>(null);
   const [engineLaunchTransitionKey, setEngineLaunchTransitionKey] = useState<string | null>(null);
   const enginePackages = useEnginePackages();
 
@@ -3804,6 +3857,11 @@ export function SessionPage(props: SessionPageProps) {
     !engineInstallGateActive
       && !enginePackages.loading
       && selectedEnginePackage?.installed
+      // Runtime discovery continues in the background. Once the route has a
+      // usable conversation surface, do not hide the composer or model picker
+      // behind engine validation; sending can still report a real runtime
+      // failure when the user actually submits a prompt.
+      && !props.surface
       && (
         selectedProject?.status === "loading"
         || engineLaunchTransitionKey === selectedEngineLaunchKey
@@ -3817,21 +3875,6 @@ export function SessionPage(props: SessionPageProps) {
         toast.error(error instanceof Error ? error.message : t("settings.engine_manager.install_failed"));
       });
   }, [enginePackages.install, props.selectedWorkspaceId, props.sidebar.onSelectProject, selectedEnginePackage]);
-  useEffect(() => {
-    if (!engineInstallGateActive || !selectedEnginePackage) {
-      autoEngineInstallAttemptRef.current = null;
-      return;
-    }
-    if (
-      selectedEnginePackage.status !== "not-installed"
-      || !selectedEnginePackage.canInstall
-      || engineInstallBusy
-    ) return;
-    const attemptKey = `${props.selectedWorkspaceId}:${selectedEnginePackage.id}`;
-    if (autoEngineInstallAttemptRef.current === attemptKey) return;
-    autoEngineInstallAttemptRef.current = attemptKey;
-    installSelectedEngine();
-  }, [engineInstallBusy, engineInstallGateActive, installSelectedEngine, props.selectedWorkspaceId, selectedEnginePackage]);
   const showWorkspaceSetupEmptyState = props.workspaces.length === 0 && !hasSelectedTask;
   const showNewTaskStarter = !props.selectedSessionId && Boolean(props.surface) && !showWorkspaceSetupEmptyState;
   const showNewConversationChrome = !hasSelectedTask && !showWorkspaceSetupEmptyState;
@@ -3869,12 +3912,14 @@ export function SessionPage(props: SessionPageProps) {
   const selectedWorkspaceErrorTitle = describeWorkspaceUnavailableTitle({
     message: selectedWorkspaceErrorMessage,
     workspaceType: props.selectedWorkspaceDisplay.workspaceType,
+    engineId: props.selectedWorkspaceDisplay.engineId,
   });
   const [workspaceRepairBusy, setWorkspaceRepairBusy] = useState(false);
   const workspaceRepairScript = useMemo(() => buildWorkspaceRepairScript({
+    engineId: props.selectedWorkspaceDisplay.engineId,
     message: selectedWorkspaceErrorMessage,
     workspaceRoot: props.selectedWorkspaceRoot,
-  }), [props.selectedWorkspaceRoot, selectedWorkspaceErrorMessage]);
+  }), [props.selectedWorkspaceDisplay.engineId, props.selectedWorkspaceRoot, selectedWorkspaceErrorMessage]);
   const copyWorkspaceRepairScript = useCallback(async () => {
     try {
       await navigator.clipboard.writeText(workspaceRepairScript);
@@ -4451,13 +4496,19 @@ export function SessionPage(props: SessionPageProps) {
                   templatesLoading={starterTemplateCatalogLoading}
                   templateBusyId={templateBusyId}
                   getTemplateCover={getStarterTemplateCover}
-                  onUseTemplate={(templateId, surface) => {
-                    void props.sidebar.onCreateTaskInWorkspace(
-                      props.selectedWorkspaceId,
-                      surface === "video" ? "video" : "design",
-                      templateId,
-                      PERSONAL_WORK_CONTEXT_ID,
-                    );
+                  onUseTemplate={async (templateId, surface) => {
+                    if (templateBusyId) return;
+                    setTemplateBusyId(templateId);
+                    try {
+                      await Promise.resolve(props.sidebar.onCreateTaskInWorkspace(
+                        props.selectedWorkspaceId,
+                        surface === "video" ? "video" : "design",
+                        templateId,
+                        PERSONAL_WORK_CONTEXT_ID,
+                      ));
+                    } finally {
+                      setTemplateBusyId((current) => current === templateId ? null : current);
+                    }
                   }}
                   onInstallTemplate={(templateId) => void installStarterTemplate(templateId)}
                   onRequestTemplates={() => void refreshStarterTemplateCatalog()}
@@ -4531,6 +4582,7 @@ export function SessionPage(props: SessionPageProps) {
                         onOpenTarget={openTarget}
                         onConversationMessagesChange={handleConversationMessagesChange}
                         onLoadSettled={handleSessionLoadSettled}
+                        assistantWaitLabel={templateAssistantWait?.sessionId === props.selectedSessionId ? templateAssistantWait.label : undefined}
                         templateEntryPath={templateEntryPathForArtifacts}
                         artifactFiles={artifactFiles}
                         artifactContext={artifactContext}
@@ -4545,12 +4597,27 @@ export function SessionPage(props: SessionPageProps) {
                           setTemplateMarketTarget("current-session");
                           setTemplateMarketOpen(true);
                         }}
-                        onCreateSession={(type, templateId) => props.sidebar.onCreateTaskInWorkspace(
-                          props.selectedWorkspaceId,
-                          type,
-                          templateId,
-                          PERSONAL_WORK_CONTEXT_ID,
-                        )}
+                        onCreateSession={(type, templateId) => {
+                          if (!templateId) {
+                            return props.sidebar.onCreateTaskInWorkspace(
+                              props.selectedWorkspaceId,
+                              type,
+                              undefined,
+                              PERSONAL_WORK_CONTEXT_ID,
+                            );
+                          }
+                          if (templateBusyId) return null;
+                          setTemplateBusyId(templateId);
+                          void Promise.resolve(props.sidebar.onCreateTaskInWorkspace(
+                            props.selectedWorkspaceId,
+                            type,
+                            templateId,
+                            PERSONAL_WORK_CONTEXT_ID,
+                          )).finally(() => {
+                            setTemplateBusyId((current) => current === templateId ? null : current);
+                          });
+                          return null;
+                        }}
                         onMaterializeTemplate={(templateId) => { void applyTemplateToCurrentSession(templateId, PERSONAL_WORK_CONTEXT_ID, "new-conversation"); }}
                         onActivateVideoStudio={activateVideoStudio}
                         designTemplates={starterTemplateCatalog}

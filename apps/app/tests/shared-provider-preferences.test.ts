@@ -31,6 +31,10 @@ const settingsRouteSource = readFileSync(
   new URL("../src/react-app/shell/settings-route.tsx", import.meta.url),
   "utf8",
 );
+const providerAuthStoreSource = readFileSync(
+  new URL("../src/react-app/domains/connections/provider-auth/store.ts", import.meta.url),
+  "utf8",
+);
 
 function preferences(): LocalPreferences {
   return {
@@ -96,21 +100,31 @@ describe("shared AI provider preferences", () => {
     expect(settingsRouteSource).not.toContain("sources.push(...runtimeModelCatalogSources)");
   });
 
-  test("uses the merged account catalog but the active engine runtime for prompt delivery", () => {
+  test("uses the account catalog for labels and the active engine for executable routes", () => {
     expect(sessionRouteSource).toContain("const providerListQuery = useMergedProviderListQuery({");
     expect(sessionRouteSource).toContain("sources: modelCatalogSources");
     expect(sessionRouteSource).toContain("enabled: modelCatalogSources.length > 0");
     expect(sessionRouteSource).toContain("const accountProviderList = filterProviderList(");
-    expect(sessionRouteSource).toContain("? filterProviderList(activeProviderListQuery.data, hiddenProviderIds)");
+    expect(sessionRouteSource).toContain("activeProviderListQuery");
+    expect(sessionRouteSource).toContain("activeProviderSource");
     expect(sessionRouteSource).toContain("connectedProviderIds: sessionProviderAuthSnapshot.connectedProviderIds");
     expect(sessionRouteSource).toContain("disabledProviderIds: hiddenProviderIds");
     expect(settingsRouteSource).toContain("catalogSources: modelCatalogSources");
     expect(settingsRouteSource).toContain("runtimeSource: activeModelProviderSource");
     expect(settingsRouteSource).toContain("connectedProviderIds: providerAuthSnapshot.connectedProviderIds");
-    expect(sessionRouteSource).toContain("getSelectableChatModelSnapshot(activeProviderList)");
+    expect(sessionRouteSource).toContain("getRunnableChatModelSnapshot({");
+    expect(sessionRouteSource).toContain("runtime: activeProviderList");
     expect(sessionRouteSource).toContain("runtimeSource: activeProviderSource");
     expect(sessionRouteSource).toContain("model: activeSelectedModel");
     expect(sessionRouteSource).toContain("providerId: activeSelectedModel.providerID");
+  });
+
+  test("renders provider choices before loading engine auth metadata", () => {
+    expect(providerAuthStoreSource).toContain("const waitForProviderEngineClient = async () =>");
+    expect(providerAuthStoreSource).not.toContain("const waitForProviderEngineConnection = async () =>");
+    expect(providerAuthStoreSource).toContain("providerAuthBusy: false");
+    expect(providerAuthStoreSource).toContain("const visibleMethods = hasCachedMethods");
+    expect(providerAuthStoreSource).toContain("await ensureProviderAuthMethods(workerType)");
   });
 
   test("describes compatible providers once for every engine adapter", () => {

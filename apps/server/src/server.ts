@@ -747,18 +747,15 @@ export async function startServer(config: ServerConfig): Promise<ServeResult> {
     codexHarness,
   });
   const logger = createServerLogger(config);
-  let watcherHandle = startReloadWatchers({ config, reloadEvents, logger });
+  const watcherHandle = startReloadWatchers({ config, reloadEvents, logger });
   const refreshWorkspaceReloadBaseline = (workspaceId: string, reasons?: ReloadReason[]) =>
     watcherHandle.refreshWorkspace(workspaceId, reasons);
   reloadBaselineRefreshers.set(config, refreshWorkspaceReloadBaseline);
-  let reloadWatcherRestart = Promise.resolve();
-  const restartReloadWatchers = (): Promise<void> => {
-    const restart = async () => {
-      await watcherHandle.close();
-      watcherHandle = startReloadWatchers({ config, reloadEvents, logger });
-    };
-    reloadWatcherRestart = reloadWatcherRestart.then(restart, restart);
-    return reloadWatcherRestart;
+  let reloadWatcherReconcile = Promise.resolve();
+  const reconcileReloadWatchers = (): Promise<void> => {
+    const reconcile = () => watcherHandle.reconcileWorkspaces();
+    reloadWatcherReconcile = reloadWatcherReconcile.then(reconcile, reconcile);
+    return reloadWatcherReconcile;
   };
   const routes = createRoutes(
     config,
@@ -768,7 +765,7 @@ export async function startServer(config: ServerConfig): Promise<ServeResult> {
     deepseekHarness,
     codexHarness,
     sessionRuntime,
-    restartReloadWatchers,
+    reconcileReloadWatchers,
   );
 
   const serverOptions: {
@@ -1001,7 +998,7 @@ export async function startServer(config: ServerConfig): Promise<ServeResult> {
       await workItemAutomationScheduler.close();
       automationMonitorAbort.abort(new Error("Server stopped"));
       await Promise.allSettled(automationMonitors.values());
-      await reloadWatcherRestart;
+      await reloadWatcherReconcile;
       await watcherHandle.close();
       reloadBaselineRefreshers.delete(config);
       try {

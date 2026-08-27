@@ -403,6 +403,12 @@ jobs:
           echo "macOS Electron release assets must be notarized. Re-run with notarize=true or set MACOS_NOTARIZE=true." >&2
           exit 1
 
+      - name: Build Agent engine packages
+        shell: bash
+        env:
+          TARGET: ${{ matrix.target_triple }}
+        run: node apps/desktop/scripts/package-engine-runtime.mjs --all --outdir "$RUNNER_TEMP/engine-packs"
+
       - name: Build Electron app
         shell: bash
         env:
@@ -533,12 +539,6 @@ jobs:
           set -euo pipefail
           echo "::warning::Publishing unsigned Windows installer because SIGN_WINDOWS is not enabled."
 
-      - name: Build optional Agent engine packages
-        shell: bash
-        env:
-          TARGET: ${{ matrix.target_triple }}
-        run: node apps/desktop/scripts/package-engine-runtime.mjs --all --outdir apps/desktop/dist-electron
-
       - name: Upload Electron release assets
         env:
           GH_TOKEN: ${{ github.token }}
@@ -546,7 +546,10 @@ jobs:
         run: |
           set -euo pipefail
           shopt -s nullglob
-          assets=(apps/desktop/dist-electron/ipollowork-*)
+          assets=(
+            apps/desktop/dist-electron/ipollowork-*
+            "$RUNNER_TEMP"/engine-packs/ipollowork-*
+          )
           if [ ${#assets[@]} -eq 0 ]; then
             echo "No Electron release assets found in apps/desktop/dist-electron" >&2
             exit 1
@@ -858,6 +861,7 @@ jobs:
     needs: [resolve-release, publish-electron, publish-release]
     if: |
       always() &&
+      vars.AUR_PUBLISH_ENABLED == 'true' &&
       needs.resolve-release.result == 'success' &&
       needs.publish-electron.result == 'success' &&
       (needs.publish-release.result == 'success' || needs.publish-release.result == 'skipped')
@@ -913,18 +917,12 @@ jobs:
       - verify-release
       - publish-electron
       - publish-electron-assets
-      - release-orchestrator-sidecars
-      - publish-npm
-      - publish-daytona-snapshot
     if: |
       always() &&
       needs.resolve-release.result == 'success' &&
       needs.verify-release.result == 'success' &&
       (needs.publish-electron.result == 'success' || needs.publish-electron.result == 'skipped') &&
-      (needs.publish-electron-assets.result == 'success' || needs.publish-electron-assets.result == 'skipped') &&
-      (needs.release-orchestrator-sidecars.result == 'success' || needs.release-orchestrator-sidecars.result == 'skipped') &&
-      (needs.publish-npm.result == 'success' || needs.publish-npm.result == 'skipped') &&
-      (needs.publish-daytona-snapshot.result == 'success' || needs.publish-daytona-snapshot.result == 'skipped')
+      (needs.publish-electron-assets.result == 'success' || needs.publish-electron-assets.result == 'skipped')
     runs-on: ubuntu-latest
     env:
       RELEASE_TAG: ${{ needs.resolve-release.outputs.release_tag }}
@@ -951,7 +949,7 @@ jobs:
 
           (
             cd "$release_dir"
-            find . -type f -printf '%P\n' | sort | while IFS= read -r asset; do
+            find . -type f ! -name 'SHA256SUMS.txt' -printf '%P\n' | sort | while IFS= read -r asset; do
               sha256sum "$asset"
             done > SHA256SUMS.txt
           )

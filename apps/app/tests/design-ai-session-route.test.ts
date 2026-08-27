@@ -56,33 +56,32 @@ describe("Design AI session lifecycle", () => {
     expect(routeSource).toContain("patched before SessionPrompt creates the initial user message");
   });
 
-  test("removes the newly created task when the initial draft fails to dispatch", async () => {
+  test("keeps the newly created task when the initial draft fails to dispatch", async () => {
     const routeSource = await Bun.file(routeUrl).text();
-    const cleanupIndex = routeSource.indexOf("const cleanupFailedInitialProjectTask = useCallback");
-    const deleteIndex = routeSource.indexOf("endpoint.client.deleteSession(endpoint.workspaceId, sessionId)");
-    const localRemoveIndex = routeSource.indexOf("(current[pending.workspaceId] ?? []).filter((session) => session.id !== sessionId)");
+    const rollbackIndex = routeSource.indexOf("const rollbackFailedInitialProjectPrompt = useCallback");
+    const rollbackEnd = routeSource.indexOf("useEffect(() => {", rollbackIndex);
+    const rollbackSource = routeSource.slice(rollbackIndex, rollbackEnd);
     const undispatchedIndex = routeSource.indexOf("if (!dispatched) {");
-    const catchIndex = routeSource.indexOf(".catch(async (error) => {");
+    const catchIndex = routeSource.indexOf(".catch((error) => {");
 
-    expect(cleanupIndex).toBeGreaterThan(-1);
-    expect(deleteIndex).toBeGreaterThan(cleanupIndex);
-    expect(localRemoveIndex).toBeGreaterThan(cleanupIndex);
-    expect(routeSource.indexOf("writeLastSessionFor(pending.workspaceId, null);")).toBeGreaterThan(cleanupIndex);
-    expect(routeSource.indexOf("navigateToWorkspaceSession(pending.workspaceId, null, { replace: true });")).toBeGreaterThan(cleanupIndex);
-    expect(routeSource.indexOf("await cleanupFailedInitialProjectTask(pending);", undispatchedIndex)).toBeGreaterThan(undispatchedIndex);
-    expect(routeSource.indexOf("await cleanupFailedInitialProjectTask(pending);", catchIndex)).toBeGreaterThan(catchIndex);
+    expect(rollbackIndex).toBeGreaterThan(-1);
+    expect(rollbackSource).toContain("rollbackOptimisticSessionPrompt(");
+    expect(rollbackSource).not.toContain("deleteSession(");
+    expect(rollbackSource).not.toContain("setSessionsByWorkspaceId(");
+    expect(rollbackSource).not.toContain("writeLastSessionFor(");
+    expect(routeSource.indexOf("rollbackFailedInitialProjectPrompt(pending);", undispatchedIndex)).toBeGreaterThan(undispatchedIndex);
+    expect(routeSource.indexOf("rollbackFailedInitialProjectPrompt(pending);", catchIndex)).toBeGreaterThan(catchIndex);
   });
 
-  test("drops stale hidden OpenCode agents before sending a prompt", async () => {
+  test("drops stale non-work-mode OpenCode agents before sending a prompt", async () => {
     const engineSource = await Bun.file(engineUrl).text();
-    const resolveIndex = engineSource.indexOf("function resolveVisibleSessionAgentName");
+    const resolveIndex = engineSource.indexOf("function resolveOpenCodeWorkModeName");
     const promptIndex = engineSource.indexOf("client.session.promptAsync");
 
     expect(resolveIndex).toBeGreaterThan(-1);
-    expect(engineSource).toContain('agent.mode !== "subagent"');
+    expect(engineSource).toContain('agent.name === "plan"');
     expect(engineSource).toContain('agent.name === "build"');
-    expect(engineSource).toContain("agent = resolveVisibleSessionAgentName(unwrap(await client.app.agents()), agent);");
-    expect(engineSource).toContain('if (agent === "orchestrator") agent = undefined;');
+    expect(engineSource).toContain("const agent = resolveOpenCodeWorkModeName(input.mode);");
     expect(engineSource.indexOf("agent,", promptIndex)).toBeGreaterThan(promptIndex);
   });
 

@@ -40,6 +40,7 @@ import type {
   ConversationSnapshot,
   ConversationStatus,
 } from "../engine/conversation-engine";
+import { conversationMessageContextUsage } from "../engine/conversation-engine";
 import {
   publishInspectorSlice,
   recordInspectorEvent,
@@ -188,6 +189,7 @@ export type SessionSurfaceProps = {
   modelPickerOpen: boolean;
   modelUnavailable?: boolean;
   selectedModel: ModelRef;
+  modelContextWindow?: number | null;
   onModelPickerOpenChange: (open: boolean) => void;
   onModelChange: (model: ModelRef) => void;
   onSendDraft: (
@@ -221,6 +223,7 @@ export type SessionSurfaceProps = {
   questionReplyBusy?: boolean;
   respondQuestion?: (requestID: string, answers: string[][]) => void;
   safeStringify?: (value: unknown) => string;
+  assistantWaitLabel?: string;
   onChangeModel?: (model: { providerID: string; modelID: string }) => void;
   onConfigureModels?: (providerId?: string) => void;
   onUploadInboxFiles?: ((files: File[], options?: { notify?: boolean }) => void | Promise<unknown>) | null;
@@ -852,6 +855,28 @@ export function SessionSurface(props: SessionSurfaceProps) {
   const modeState = snapshot ? props.conversation.modeState?.(snapshot.session) : undefined;
   const modeSelectionLocked = modeState?.mutable === false;
   const selectedMode = modeSelectionLocked ? modeState.id ?? props.selectedMode : props.selectedMode;
+  const [optimisticAccessMode, setOptimisticAccessMode] = useState<string | null>(null);
+  useEffect(() => {
+    setOptimisticAccessMode(null);
+  }, [props.conversation, props.sessionId]);
+  const accessModeState = snapshot ? props.conversation.accessModeState?.(snapshot.session) : undefined;
+  const selectedAccessMode = optimisticAccessMode ?? accessModeState?.id ?? null;
+  const listAccessModes = useCallback(
+    () => props.conversation.listAccessModes?.({
+      sessionId: props.sessionId,
+      directory: props.workspaceRoot || undefined,
+    }) ?? Promise.resolve([]),
+    [props.conversation, props.sessionId, props.workspaceRoot],
+  );
+  const selectAccessMode = useCallback(async (accessMode: string) => {
+    if (!props.conversation.setAccessMode) return;
+    await props.conversation.setAccessMode({
+      sessionId: props.sessionId,
+      accessMode,
+      directory: props.workspaceRoot || undefined,
+    });
+    setOptimisticAccessMode(accessMode);
+  }, [props.conversation, props.sessionId, props.workspaceRoot]);
   useEffect(() => {
     props.onModeSelectionLockedChange?.(modeSelectionLocked);
   }, [modeSelectionLocked, props.onModeSelectionLockedChange]);
@@ -880,6 +905,15 @@ export function SessionSurface(props: SessionSurfaceProps) {
     () => deriveRenderedSessionMessages({ transcriptState, snapshot }),
     [snapshot, transcriptState],
   );
+  const contextUsage = useMemo(() => (
+    [...renderedMessages]
+      .reverse()
+      .flatMap((message) => message.role === "assistant"
+        ? conversationMessageContextUsage(message) ?? []
+        : [])[0]
+    ?? snapshot?.contextUsage
+    ?? null
+  ), [renderedMessages, snapshot?.contextUsage]);
   const inputHistory = useMemo(
     () => deriveComposerInputHistory(renderedMessages),
     [renderedMessages],
@@ -1289,6 +1323,18 @@ export function SessionSurface(props: SessionSurfaceProps) {
         return t("composer.queued_attachments_only", { count: draftItem.attachments.length });
       }),
     [queuedDrafts],
+  );
+  const hasOpenTodos = (props.todos ?? []).some((todo) => todo.content.trim());
+  const composerHasPromptContext = selectedAnimations.length > 0
+    || Boolean(selectedVoiceReference);
+  const composerTopAccessoryVisible = Boolean(
+    starterCapability
+      || selectedAnimations.length
+      || selectedVoiceReference
+      || props.activeQuestion
+      || hasOpenTodos
+      || props.activePermission
+      || queuedMessages.length > 0,
   );
 
   const handleAbort = useCallback(async () => {
@@ -1833,7 +1879,7 @@ export function SessionSurface(props: SessionSurfaceProps) {
           onModelChange={props.onModelChange}
           onConfigureModels={props.onConfigureModels}
           attachments={attachments}
-          hasPromptContext={selectedAnimations.length > 0 || Boolean(selectedVoiceReference)}
+          hasPromptContext={composerHasPromptContext}
           onAttachFiles={handleAttachFiles}
           onRemoveAttachment={handleRemoveAttachment}
           modelVariantLabel={props.modelVariantLabel}
@@ -1845,6 +1891,10 @@ export function SessionSurface(props: SessionSurfaceProps) {
           modeSelectionDisabled={modeSelectionLocked}
           listModes={props.listModes}
           onSelectMode={props.onSelectMode}
+          selectedAccessMode={selectedAccessMode}
+          accessModeSelectionDisabled={accessModeState?.mutable === false}
+          listAccessModes={props.conversation.listAccessModes ? listAccessModes : undefined}
+          onSelectAccessMode={props.conversation.setAccessMode ? selectAccessMode : undefined}
           listAgents={props.listAgents}
           onSelectAgent={props.onSelectAgent}
           listCommands={props.listCommands}
@@ -1872,10 +1922,12 @@ export function SessionSurface(props: SessionSurfaceProps) {
           isSandboxWorkspace={props.isSandboxWorkspace}
           onUploadInboxFiles={props.onUploadInboxFiles ?? handleUploadInboxFiles}
           layout={layout}
+          contextUsage={contextUsage}
+          modelContextWindow={props.modelContextWindow}
           placeholder={isEmptyConversation ? newConversationPlaceholder() : undefined}
-          compactTopSpacing={Boolean(starterCapability || selectedAnimations.length || selectedVoiceReference || props.activeQuestion || (props.todos ?? []).some((todo) => todo.content.trim()) || props.activePermission || queuedMessages.length > 0)}
+          compactTopSpacing={composerTopAccessoryVisible}
           topAccessory={
-            starterCapability || selectedAnimations.length || selectedVoiceReference || props.activeQuestion || (props.todos ?? []).some((todo) => todo.content.trim()) || props.activePermission || queuedMessages.length > 0 ? (
+            composerTopAccessoryVisible ? (
               <div>
                 {starterCapability || selectedAnimations.length || selectedVoiceReference ? (
                   <div className="mx-4 mt-2 flex flex-wrap gap-1.5">
@@ -1895,7 +1947,7 @@ export function SessionSurface(props: SessionSurfaceProps) {
                       if (props.activeQuestion) props.respondQuestion?.(props.activeQuestion.id, answers);
                     }}
                   />
-                ) : (props.todos ?? []).some((todo) => todo.content.trim()) ? (
+                ) : hasOpenTodos ? (
                   <TodoPanel todos={props.todos ?? []} />
                 ) : null}
                 {props.activePermission ? (
@@ -1963,7 +2015,11 @@ export function SessionSurface(props: SessionSurfaceProps) {
                 { item: animation, values },
               ])}
               onRetryAnimationCatalog={() => setAnimationCatalogRevision((current) => current + 1)}
-              onUseTemplate={props.onMaterializeTemplate ? (templateId, surface) => void props.onMaterializeTemplate?.(templateId, surface) : props.onCreateSession ? (templateId, surface) => props.onCreateSession?.(surface === "video" ? "video" : "design", templateId) : undefined}
+              onUseTemplate={props.onMaterializeTemplate
+                ? (templateId, surface) => void props.onMaterializeTemplate?.(templateId, surface)
+                : props.onCreateSession
+                  ? (templateId, surface) => props.onCreateSession?.(surface === "video" ? "video" : "design", templateId)
+                  : undefined}
               />
             </div>
             <div ref={composerShellRef} data-testid="new-conversation-starter-composer-shell" className="mt-6 w-full shrink-0">
@@ -2022,7 +2078,7 @@ export function SessionSurface(props: SessionSurfaceProps) {
               </div>
             ) : renderedMessages.length === 0 && effectiveActivityStatus !== "idle" ? (
               <div className="px-6 py-12">
-                <AssistantWaitingCard label={getSessionActivityStatusLabel(effectiveActivityStatus)} />
+                <AssistantWaitingCard label={props.assistantWaitLabel ?? getSessionActivityStatusLabel(effectiveActivityStatus)} />
               </div>
             ) : renderedMessages.length === 0 && snapshot && snapshot.messages.length === 0 && error ? (
               <SessionErrorCard
@@ -2067,6 +2123,7 @@ export function SessionSurface(props: SessionSurfaceProps) {
                         artifactFiles={props.artifactFiles}
                         artifactContext={props.artifactContext}
                         activeMessageBaseline={awaitingAssistantBaseline}
+                        assistantWaitLabel={props.assistantWaitLabel}
                       />
                     </MessageListProvider>
                   </EnvironmentVariableProvider>

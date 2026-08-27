@@ -297,10 +297,11 @@ export function codexHarnessProviderDirectory(input: {
 function codexMcpConfig(name: string, value: Record<string, unknown>): string[] {
   if (value.enabled === false) return [];
   const table = `[mcp_servers.${tomlString(name)}]`;
+  const required = `required = ${value.required === true}`;
   if (value.type === "local" && Array.isArray(value.command)) {
     const [command, ...args] = value.command.filter((entry): entry is string => typeof entry === "string");
     if (!command) return [];
-    const lines = [table, `command = ${tomlString(command)}`];
+    const lines = [table, required, `command = ${tomlString(command)}`];
     if (args.length) lines.push(`args = [${args.map(tomlString).join(", ")}]`);
     const environment = value.environment;
     if (environment && typeof environment === "object" && !Array.isArray(environment)) {
@@ -310,7 +311,7 @@ function codexMcpConfig(name: string, value: Record<string, unknown>): string[] 
     return lines;
   }
   if (value.type === "remote" && typeof value.url === "string" && value.url.trim()) {
-    const lines = [table, `url = ${tomlString(value.url.trim())}`];
+    const lines = [table, required, `url = ${tomlString(value.url.trim())}`];
     const headers = value.headers;
     if (headers && typeof headers === "object" && !Array.isArray(headers)) {
       const httpHeaders = tomlStringMap(headers as Record<string, unknown>);
@@ -329,6 +330,7 @@ export function codexHarnessHostMcp(
     type: "remote",
     url: `http://127.0.0.1:${config.port}/engine-tools/mcp?workspaceId=${encodeURIComponent(workspace.id)}`,
     headers: { Authorization: `Bearer ${config.token}` },
+    required: true,
   };
 }
 

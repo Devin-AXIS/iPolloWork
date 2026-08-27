@@ -20,8 +20,8 @@ import { useWorkspace } from "@/react-app/shell/workspace-provider";
 import { useCheckDesktopRestriction } from "@/react-app/domains/cloud/desktop-config-provider";
 import {
   getChatModelCatalogEntries,
-  getEngineChatModelEntries,
   projectAccountProviderConnections,
+  resolveModelRuntime,
   type ProviderListQueryInput,
   useMergedProviderListQuery,
   useProviderListQuery,
@@ -72,6 +72,9 @@ function useModelOptions(open: boolean) {
     enabled: open && catalogSources.length > 0,
   });
 
+  // This query is prewarmed by SessionRoute and shares the same cache key.
+  // It refines known runtime failures in the background; the cached account
+  // catalog stays selectable while a cold engine is still starting.
   const runtimeQuery = useProviderListQuery({
     client,
     engineId,
@@ -97,16 +100,18 @@ function useModelOptions(open: boolean) {
       catalogQuery.data,
       connectedProviderIds,
     );
-    const entries = runtimeQuery.data
-      ? getEngineChatModelEntries({
-          catalog: catalogValue,
-          runtime: runtimeQuery.data,
-          engineId,
-        })
-      : getChatModelCatalogEntries(catalogValue).map((entry) => ({ ...entry, runtime: null }));
+    const entries = getChatModelCatalogEntries(catalogValue).map((entry) => ({
+      ...entry,
+      runtime: runtimeQuery.data
+        ? resolveModelRuntime(
+            runtimeQuery.data,
+            { providerID: entry.provider.id, modelID: entry.modelId },
+            engineId,
+          )
+        : null,
+    }));
     const options = entries.map(({ provider, modelId, model, runtime }) => {
       const runtimePending = runtime === null;
-      const runtimeReady = runtime?.status === "ready";
       return {
         providerID: provider.id,
         modelID: modelId,
@@ -117,14 +122,10 @@ function useModelOptions(open: boolean) {
         behaviorDescription: "",
         behaviorValue: null,
         isFree: provider.id.trim().toLowerCase() === "opencode",
-        isConnected: runtimeReady,
+        isConnected: true,
         runtimePending,
-        disabled: runtimePending || !runtimeReady,
-        footer: runtimePending
-          ? t("settings.loading_providers")
-          : runtimeReady
-            ? undefined
-            : t("model_picker.connect_provider_hint"),
+        disabled: false,
+        footer: undefined,
         supportsVision: runtime?.capabilities?.vision === true
           || model.capabilities.input?.image === true,
       };
@@ -270,9 +271,8 @@ export function ModelListContent({
                     className="gap-2 data-disabled:opacity-50"
                     key={item.id}
                     value={`${option.providerID}:${option.modelID} ${option.title} ${option.description ?? ""}`}
-                    disabled={option.disabled && (option.isConnected || option.runtimePending || !onConfigureModels)}
+                    disabled={option.disabled && (option.isConnected || !onConfigureModels)}
                     onClick={() => {
-                      if (option.runtimePending) return;
                       if (option.disabled && !option.isConnected) {
                         setSearch("");
                         onConfigureModels?.(option.providerID);
