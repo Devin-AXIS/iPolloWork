@@ -14,6 +14,7 @@ const EXACT_BOTTOM_GAP_PX = 1;
 // Widened from 250ms so a single wheel or trackpad flick isn't missed between
 // two rapid programmatic scroll-to-bottom frames during streaming.
 const SCROLL_GESTURE_WINDOW_MS = 600;
+const SMOOTH_SCROLL_RESET_MS = 700;
 // Threshold (px) that counts as a meaningful "scroll upward" gesture. Anything
 // smaller is treated as anchoring jitter and ignored so we don't trip out of
 // sticky bottom mode for pixel-level content growth.
@@ -168,13 +169,14 @@ export function useSessionScrollController(
       if (!container) return;
 
       setStickyBottom(selectedSessionId, null);
+      lastGestureAtRef.current = 0;
       programmaticScrollRef.current = true;
 
       // Keep Electron compatibility but simplify state management
       lastKnownScrollTopRef.current = syncProgrammaticScrollTop(container, container.scrollHeight, behavior);
 
       // Simplified: use single timeout instead of double RAF
-      const resetDelay = behavior === "smooth" ? 300 : 50;
+      const resetDelay = behavior === "smooth" ? SMOOTH_SCROLL_RESET_MS : 50;
       setTimeout(() => {
         programmaticScrollRef.current = false;
         refreshTopClippedMessage();
@@ -205,12 +207,11 @@ export function useSessionScrollController(
       const scrolledUp = delta <= -MANUAL_BROWSE_UPWARD_THRESHOLD_PX;
       const userGestured = hasScrollGesture();
 
-      // If the user scrolls up meaningfully while a programmatic scroll is
-      // in flight, abandon the programmatic state and switch to manual browse
-      // immediately. Without this the ResizeObserver's auto-scroll during
-      // streaming keeps re-anchoring us to the bottom and the user can never
-      // actually get away from the tail of the transcript.
-      if (programmaticScrollRef.current && (userGestured || scrolledUp)) {
+      // A programmatic jump to an earlier message also produces upward scroll
+      // events. Only a real wheel, touch, or scrollbar gesture should cancel
+      // that jump; treating its own negative delta as manual input freezes a
+      // smooth scroll after the first few pixels.
+      if (programmaticScrollRef.current && userGestured) {
         programmaticScrollRef.current = false;
         clearProgrammaticScrollReset();
         saveScrollPosition(container);
@@ -269,17 +270,19 @@ export function useSessionScrollController(
       if (!target) return;
 
       // Set programmatic scroll state first
+      lastGestureAtRef.current = 0;
       programmaticScrollRef.current = true;
       setManualScroll(selectedSessionId, container.scrollTop, messageId);
       target.scrollIntoView({ behavior, block: "start" });
 
       // Reset programmatic state after animation
-      const resetDelay = behavior === "smooth" ? 300 : 50;
+      const resetDelay = behavior === "smooth" ? SMOOTH_SCROLL_RESET_MS : 50;
       setTimeout(() => {
         programmaticScrollRef.current = false;
+        refreshTopClippedMessage();
       }, resetDelay);
     },
-    [options.containerRef, selectedSessionId, setManualScroll],
+    [options.containerRef, refreshTopClippedMessage, selectedSessionId, setManualScroll],
   );
 
   useEffect(() => {

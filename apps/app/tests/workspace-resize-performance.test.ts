@@ -79,15 +79,21 @@ describe("workspace resize performance", () => {
     );
   });
 
-  test("turns the floating right-panel toggle into a close action for full workspace views", () => {
-    expect(sessionPageSource).toContain(
-      "const floatingHeaderActionClosesWorkspaceView = mainHeaderHidden;",
-    );
-    expect(sessionPageSource).toContain(
-      "onClick={floatingHeaderActionClosesWorkspaceView ? closeMainWorkspaceView : toggleRightPanel}",
-    );
-    expect(sessionPageSource).toContain(
-      '<X className="size-4" />',
+  test("uses sidebar navigation instead of a floating close action for full workspace views", () => {
+    expect(sessionPageSource).not.toContain("floatingHeaderActionClosesWorkspaceView");
+    expect(sessionPageSource).not.toContain("floatingHeaderActionLabel");
+    expect(sessionPageSource).not.toContain("floatingRightPanelToggleOffset");
+  });
+
+  test("returns extensions and schedule views to conversation when a session is opened", () => {
+    const start = sessionPageSource.indexOf("const handleSidebarOpenSession = useCallback");
+    const end = sessionPageSource.indexOf("const handleSidebarOpenSessionSearch", start);
+    expect(start).toBeGreaterThan(-1);
+    expect(end).toBeGreaterThan(start);
+    const handler = sessionPageSource.slice(start, end);
+    expect(handler).toContain("setMainWorkspaceView(null);");
+    expect(handler.indexOf("setMainWorkspaceView(null);")).toBeLessThan(
+      handler.indexOf("props.sidebar.onOpenSession(workspaceId, sessionId);"),
     );
   });
 

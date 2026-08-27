@@ -65,9 +65,11 @@ describe("Design Studio host bridge", () => {
     expect(studioHost).toContain("listDesignStudioTemplates?");
     expect(studioHost).toContain("applyDesignStudioTemplate?");
     expect(designPanel).toContain('data-testid="design-template-market-button"');
+    expect(designPanel).toContain('<TemplateIcon className="size-4" />');
     expect(designPanel).toContain("features.templates");
     expect(templateDialog).toContain("TemplateCatalogDialog");
     expect(templateCatalogDialog).toContain("ConfirmModal");
+    expect(templateCatalogDialog).toContain("TemplateIcon");
     expect(templateDialog).toContain("applyDesignStudioTemplate");
   });
 

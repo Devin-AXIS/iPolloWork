@@ -238,6 +238,7 @@ export type SessionSurfaceProps = {
   onOpenSchedule?: (focusAt: number) => void;
   /** Opens the installed plugin's Workspace App when selected from the extension menu. */
   onOpenWorkspaceApp?: (pluginId: string) => void;
+  onOpenTemplateMarket?: () => void;
   designTemplates?: TemplateCatalogItem[];
   designTemplatesLoading?: boolean;
   designTemplateBusyId?: string | null;
@@ -1905,6 +1906,7 @@ export function SessionSurface(props: SessionSurfaceProps) {
           mcpStatuses={toolMcpStatuses}
           listInstalledExtensions={listInstalledExtensions}
           onOpenWorkspaceApp={props.onOpenWorkspaceApp}
+          onOpenTemplateMarket={props.onOpenTemplateMarket}
           listExternalAgents={listExternalAgents}
           onOpenSettingsSection={props.onOpenSettingsSection}
           recentFiles={props.recentFiles}
@@ -2013,10 +2015,10 @@ export function SessionSurface(props: SessionSurfaceProps) {
                 { item: animation, values },
               ])}
               onRetryAnimationCatalog={() => setAnimationCatalogRevision((current) => current + 1)}
-              onUseTemplate={props.onCreateSession
-                ? (templateId, surface) => props.onCreateSession?.(surface === "video" ? "video" : "design", templateId)
-                : props.onMaterializeTemplate
-                  ? (templateId, surface) => void props.onMaterializeTemplate?.(templateId, surface)
+              onUseTemplate={props.onMaterializeTemplate
+                ? (templateId, surface) => void props.onMaterializeTemplate?.(templateId, surface)
+                : props.onCreateSession
+                  ? (templateId, surface) => props.onCreateSession?.(surface === "video" ? "video" : "design", templateId)
                   : undefined}
               />
             </div>

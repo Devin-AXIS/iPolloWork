@@ -6,6 +6,7 @@ import {
   ArchiveRestore,
   CalendarDays,
   ChevronRight,
+  Cpu,
   FolderOpen,
   Loader2,
   Languages,
@@ -21,6 +22,11 @@ import {
   UserRound,
 } from "lucide-react";
 import { LazyMotion, domMax, m } from "motion/react";
+import {
+  CODEX_HARNESS_ENGINE_ID,
+  DEEPSEEK_HARNESS_ENGINE_ID,
+  DEFAULT_ENGINE_ID,
+} from "@ipollowork/types/workspace";
 
 import { getDisplaySessionTitle } from "../../../../app/lib/session-title";
 import { publicAssetUrl } from "../../../../app/lib/public-asset";
@@ -69,7 +75,9 @@ import {
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuGroup,
   DropdownMenuItem,
+  DropdownMenuLabel,
   DropdownMenuRadioGroup,
   DropdownMenuRadioItem,
   DropdownMenuSeparator,
@@ -79,6 +87,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
+import { TemplateIcon } from "@/components/template-icon";
 
 import { SidebarContext, useSidebarContext } from "./app-sidebar-provider";
 import type { SidebarContextValue, iPolloWorkSessionType, iPolloWorkTemplateId } from "./app-sidebar-provider";
@@ -109,6 +118,14 @@ interface SessionStatusIndicatorProps {
   status?: string;
   isStreaming: boolean;
   isActive: boolean;
+}
+
+function workspaceEngineLabel(engineId?: string | null) {
+  const resolvedEngineId = engineId?.trim() || DEFAULT_ENGINE_ID;
+  if (resolvedEngineId === CODEX_HARNESS_ENGINE_ID) return t("projects.engine_codex");
+  if (resolvedEngineId === DEEPSEEK_HARNESS_ENGINE_ID) return t("projects.engine_dsh");
+  if (resolvedEngineId === DEFAULT_ENGINE_ID) return t("projects.engine_opencode");
+  return resolvedEngineId;
 }
 
 function SessionStatusIndicator({ className, status, isStreaming, isActive }: SessionStatusIndicatorProps) {
@@ -689,7 +706,7 @@ export function AppSidebar(props: AppSidebarProps) {
                 className={primarySidebarActionClass}
               >
                 <span className="flex size-4 shrink-0 items-center justify-center" aria-hidden="true">
-                  <img src={publicAssetUrl("sidebar-icon/figma-layout-panel-top.svg")} alt="" className="size-3.5 dark:invert" />
+                  <TemplateIcon className="size-3.5" />
                 </span>
                 <span className="flex-1 truncate">{t("template_market.title")}</span>
               </SidebarMenuButton>
@@ -755,7 +772,6 @@ export function AppSidebar(props: AppSidebarProps) {
                     key={project.workspace.id}
                     project={project}
                     className="py-0"
-                    onSelectProject={props.onSelectProject}
                     onCreateProjectBuilder={props.onCreateProjectBuilder}
                     onOpenRenameProject={props.onOpenRenameProject}
                     onRevealProject={props.onRevealProject}
@@ -858,7 +874,6 @@ type ProjectSidebarContentProps = {
   className: string;
   project: ProjectSessionList;
   showProjectRow?: boolean;
-  onSelectProject: (workspaceId: string) => Promise<boolean> | boolean | void;
   onCreateProjectBuilder?: (workspaceId: string) => void | Promise<void>;
   onOpenRenameProject: (workspaceId: string) => void;
   onRevealProject: (workspaceId: string) => void;
@@ -869,7 +884,6 @@ function ProjectSidebarContent({
   className,
   project,
   showProjectRow = true,
-  onSelectProject,
   onCreateProjectBuilder,
   onOpenRenameProject,
   onRevealProject,
@@ -956,19 +970,11 @@ function ProjectSidebarContent({
             <SidebarMenuItem className="group/project-row relative h-8">
               <button
                 type="button"
-                onClick={() => {
-                  if (isSelectedProject) {
-                    setProjectExpanded((expanded) => !expanded);
-                    return;
-                  }
-                  setProjectExpanded(true);
-                  void Promise.resolve(onSelectProject(workspace.id));
-                }}
+                onClick={() => setProjectExpanded((expanded) => !expanded)}
                 className={cn(
                   "flex h-8 w-full min-w-0 items-center gap-2 rounded-lg px-2 pe-16 text-left text-sm text-sidebar-foreground transition-colors hover:bg-sidebar-accent focus-visible:ring-1 focus-visible:ring-sidebar-ring focus-visible:outline-hidden mac:hover:bg-black/5 dark:mac:hover:bg-white/10",
                   isSelectedProject && "bg-sidebar-accent font-medium text-sidebar-accent-foreground mac:bg-black/5 dark:mac:bg-white/10",
                 )}
-                title={workspaceLabel(workspace)}
                 data-testid="project-row"
                 data-project-id={workspace.id}
                 data-selected={isSelectedProject ? "true" : "false"}
@@ -1033,6 +1039,16 @@ function ProjectSidebarContent({
                     }
                   />
                   <DropdownMenuContent align="end" side="bottom" sideOffset={4} className="w-52">
+                    <DropdownMenuGroup>
+                      <DropdownMenuLabel
+                        data-testid="project-engine-menu-info"
+                        className="flex items-center gap-2.5 font-normal"
+                      >
+                        <Cpu className="size-4" aria-hidden="true" />
+                        <span className="truncate">{workspaceEngineLabel(workspace.engineId)}</span>
+                      </DropdownMenuLabel>
+                    </DropdownMenuGroup>
+                    <DropdownMenuSeparator />
                     <DropdownMenuItem onClick={() => onOpenRenameProject(workspace.id)}>
                       <Pencil className="size-4" />
                       {t("projects.rename")}

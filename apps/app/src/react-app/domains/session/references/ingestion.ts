@@ -14,7 +14,9 @@ const DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingm
 const PDF_MIME = "application/pdf";
 const PPTX_MIME = "application/vnd.openxmlformats-officedocument.presentationml.presentation";
 
-const EXTENSIONS = new Set(["pdf", "docx", "pptx", "md", "txt", "png", "jpg", "jpeg", "webp", "csv", "json"]);
+const REFERENCE_FILE_EXTENSIONS = ["pdf", "docx", "pptx", "md", "txt", "png", "jpg", "jpeg", "webp", "csv", "json"];
+const EXTENSIONS = new Set(REFERENCE_FILE_EXTENSIONS);
+export const REFERENCE_FILE_ACCEPT = REFERENCE_FILE_EXTENSIONS.map((extension) => `.${extension}`).join(",");
 const MIMES = new Set([
   PDF_MIME,
   DOCX_MIME,

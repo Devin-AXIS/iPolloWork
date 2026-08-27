@@ -222,7 +222,11 @@ describe("Composer model and reasoning menu", () => {
     expect(menu).toContain('type MenuView = "root" | "model" | "behavior"');
     expect(menu).toContain("modelVariantLabel");
     expect(menu).toContain("onModelVariantChange");
+    expect(menu).toContain("min-w-0 max-w-72 flex-[0_1_auto]");
     expect(menu).toContain("rounded-full bg-transparent px-2 text-[12px]");
+    expect(menu).toContain('className="truncate @max-[560px]/composer:hidden">{summary}</span>');
+    expect(menu).toContain('className="hidden truncate @max-[560px]/composer:inline">{modelLabel}</span>');
+    expect(menu).toContain('<ChevronDown className="size-4 shrink-0" />');
     expect(menu).toContain("hover:bg-gray-3");
     expect(model).not.toContain("Connect TokenStar");
     expect(model).not.toContain("tokenstar-connect");
@@ -261,6 +265,9 @@ describe("Composer model and reasoning menu", () => {
     expect(modeIndex).toBeGreaterThan(modelIndex);
     expect(composer).toContain("<PopoverTrigger");
     expect(composer).toContain("rounded-full bg-transparent px-2 text-[12px]");
+    expect(composer).toContain("max-w-32 shrink-0");
+    expect(composer).toContain('<span className="truncate @max-[560px]/composer:hidden">{activeWorkMode.label}</span>');
+    expect(composer).toContain('@max-[560px]/composer:w-10');
     expect(composer).toContain("hover:bg-gray-3");
     expect(composer).toContain("props.listModes()")
     expect(composer).toContain("workModes.map((mode)");
@@ -289,6 +296,9 @@ describe("Composer model and reasoning menu", () => {
     expect(composer).toContain("data-access-mode-option={mode.id}");
     expect(composer).toContain("pendingDangerousAccessMode");
     expect(composer).toContain("access_mode_full_access_confirm_title");
+    expect(composer).toContain('<span className="@max-[560px]/composer:hidden">{activeAccessMode.label}</span>');
+    expect(composer).toContain("@container/composer");
+    expect(composer).toContain('className="whitespace-nowrap tabular-nums @max-[560px]/composer:hidden"');
   });
 
   test("new-task composer carries its engine permission preset into the created session", () => {

@@ -19,7 +19,7 @@ describe("session output issue regressions", () => {
     expect(sessionPageSource).toContain("&& !props.selectedSessionId");
     expect(sessionPageSource).toContain('selectedWorkspaceProject?.status === "ready"');
     expect(sessionPageSource).toContain("selectedWorkspaceProject.sessions.length === 0");
-    expect(sessionPageSource).toContain("{mainHeaderHidden && !showProjectNoTasksState ? (");
+    expect(sessionPageSource).not.toContain("{mainHeaderHidden && !showProjectNoTasksState ? (");
     expect(sessionPageSource).toContain(") : hasSelectedTask ? (");
     expect(sessionPageSource).toContain('{t("workspace.no_tasks")}');
     expect(sessionPageSource).not.toContain("[border-bottom-width:0.5px] dark:border-white/[0.06] dark:bg-background/72");
@@ -33,9 +33,13 @@ describe("session output issue regressions", () => {
     expect(sessionRouteSource).toContain("selectedSessionKnown={selectedSessionKnown}");
   });
 
-  test("replaces the workspace engine badge with context health", () => {
+  test("moves engine metadata to project actions and shows context health in the composer", () => {
     const sessionPageSource = readFileSync(
       new URL("../src/react-app/domains/session/chat/session-page.tsx", import.meta.url),
+      "utf8",
+    );
+    const sidebarSource = readFileSync(
+      new URL("../src/react-app/domains/session/sidebar/app-sidebar.tsx", import.meta.url),
       "utf8",
     );
     const sessionRouteSource = readFileSync(
@@ -51,8 +55,13 @@ describe("session output issue regressions", () => {
       "utf8",
     );
 
-    expect(sessionPageSource).not.toContain("ProjectEngineBadge");
-    expect(sessionPageSource).not.toContain("session-composer-engine-badge");
+    expect(sessionPageSource).not.toContain("function ProjectEngineBadge");
+    expect(sessionPageSource).not.toContain("composerEndAccessory={(");
+    expect(sessionPageSource).not.toContain('testId="session-composer-engine-badge"');
+    expect(sidebarSource).toContain("function workspaceEngineLabel");
+    expect(sidebarSource).toContain('data-testid="project-engine-menu-info"');
+    expect(sidebarSource).toContain('<span className="truncate">{workspaceEngineLabel(workspace.engineId)}</span>');
+    expect(sessionPageSource).not.toContain("SessionEngineBadge");
     expect(composerSource).toContain('data-testid="composer-context-health"');
     expect(conversationEngineSource).toContain("CONTEXT_COMPRESSION_WARNING_PERCENT = 80");
     expect(composerSource).toContain('t("composer.context_compression_warning")');
@@ -141,18 +150,43 @@ describe("session output issue regressions", () => {
     expect(sidebarSource).toContain('t("session_management.archive_session")');
   });
 
-  test("template brief does not duplicate the composer attachment entry", () => {
+  test("template application uses one shared dialog with supplemental references", () => {
     const source = readFileSync(
       new URL("../src/react-app/domains/session/chat/session-page.tsx", import.meta.url),
       "utf8",
     );
 
+    expect(source).toContain("function TemplateApplyDialog(");
+    expect(source).toContain('data-testid="template-apply-dialog"');
+    expect(source).not.toContain('t("templates.brief.required_information")');
+    expect(source).not.toContain('t("templates.brief.required_progress")');
+    expect(source).not.toContain(">{config.label}</p>");
+    expect(source).not.toContain('t("common.optional_parens")');
+    expect(source).toContain('!field.optional ? <span className="text-destructive" aria-hidden="true"> *</span> : null');
+    expect(source).toContain("required={!field.optional}");
+    expect(source).toContain("showCloseButton={false}");
+    expect(source).toContain("max-w-[800px]");
+    expect(source).toContain('className="flex flex-col gap-1.5 text-ui-body font-semibold leading-5 text-foreground"');
+    expect(source).toContain('t("templates.brief.destination_description")');
+    expect(source).toContain('<SelectContent positionerClassName="z-[90]">');
+    expect(source).toContain('mode === "current-conversation" ? t("templates.brief.apply_current") : config.submitLabel');
+    expect(source).toContain('t("templates.brief.supplemental_information")');
+    expect(source).toContain("REFERENCE_FILE_ACCEPT");
+    expect(source).toContain('t("templates.brief.upload_file")');
+    expect(source).toContain('t("templates.brief.reference_supported_formats")');
+    expect(source).not.toContain('t("templates.brief.reference_description")');
+    expect(source).toContain('mode === "market" && projects && selectedProjectId && onProjectChange');
+    expect(source).toContain('data-testid="template-conflict-dialog"');
+    expect(source).toContain('t("templates.brief.conflict_description_generic")');
+    expect(source).toContain('newTaskRequired={pendingTemplateApplication.origin === "conversation-conflict"}');
+    expect(source).not.toContain('t("templates.brief.choose_project_file")');
+    expect(source).not.toContain('t("templates.brief.add_link")');
+    expect(source).not.toContain('t("templates.brief.use_current_conversation")');
+    expect(source).not.toContain("TEMPLATE_REFERENCE_UPLOAD_VISIBLE");
+    expect(source).not.toContain("function TemplateBriefDialog(");
     expect(source).not.toContain("import { ReferenceUploadPanel }");
     expect(source).not.toContain("<ReferenceUploadPanel");
     expect(source).not.toContain('t("templates.brief.reference_label")');
-    expect(source).toContain('className="flex min-h-0 w-full flex-1 items-center justify-center overflow-auto px-6 py-10"');
-    expect(source).toContain('className="mx-auto w-full max-w-xl overflow-hidden');
-    expect(source).toContain('className="mt-2 placeholder:text-muted-foreground/70"');
   });
 
   test("design and video composers keep the existing attachment entry", () => {
@@ -182,11 +216,9 @@ describe("session output issue regressions", () => {
     );
 
     expect(source).toContain("onAttachFiles={handleAttachFiles}");
-    expect(source).toContain("onUseTemplate={props.onCreateSession");
-    expect(source).toContain(": props.onMaterializeTemplate");
+    expect(source).toContain("onUseTemplate={props.onMaterializeTemplate");
+    expect(source).toContain(": props.onCreateSession");
     expect(initialProjectSource).toContain("onAttachFiles={attachFiles}");
-    expect(initialProjectSource).toContain("data-testid=\"template-brief-composer-shell\"");
-    expect(initialProjectSource).toContain("onAttachFiles={attachTemplateBriefComposerFiles}");
     expect(initialProjectSource).not.toContain("function TemplateReferenceAgentPanel");
     expect(initialProjectSource).not.toContain("<TemplateReferenceAgentPanel");
     expect(initialProjectSource).toContain("templateAssistantWait");
@@ -195,24 +227,14 @@ describe("session output issue regressions", () => {
     expect(messageListSource).toContain("assistantWaitLabel?: string");
     expect(messageListSource).toContain("liveActionLabel ?? assistantWaitLabel");
     expect(sessionSurfaceSource).toContain("assistantWaitLabel?: string");
-    expect(initialProjectSource).toContain("persistComposerAttachments({");
-    expect(initialProjectSource).toContain("attachmentFiles: persistedAttachments.map");
-    expect(initialProjectSource).toContain("persistedAttachmentInstruction(persistedAttachments)");
     expect(initialProjectSource).not.toContain("attachmentRequiresNativeModelSupport");
     expect(initialProjectSource).not.toContain("modelSafeAttachments");
-    expect(initialProjectSource).toContain("attachments: []");
-    expect(initialProjectSource).toContain("ingestReferenceFile(reference.file)");
-    expect(initialProjectSource).toContain('if (attachment.mimeType.startsWith("image/")) return [];');
-    expect(initialProjectSource).toContain('reference.status === "parsing" && !reference.mimeType.startsWith("image/")');
+    expect(initialProjectSource).toContain("ingestReferenceFile(item.file)");
     expect(initialProjectSource).toContain("inferTemplateBriefFromIngestions(");
-    expect(initialProjectSource).toContain("buildTemplateReferenceSubmitPayload(currentReferences, {");
-    expect(initialProjectSource).toContain("maxTotalChars: 4200");
-    expect(initialProjectSource).toContain("maxChunksPerFile: 4");
+    expect(initialProjectSource).toContain("buildTemplateReferenceSubmitPayload(references)");
     expect(initialProjectSource).toContain("referencePayload.contextPack.promptText.trim()");
     expect(sessionPromptSource).toContain("Use these workspace-relative paths");
-    expect(initialProjectSource).toContain("Attached images are visual references for this template task.");
-    expect(initialProjectSource).toContain("referenceFiles: currentReferences.map");
-    expect(initialProjectSource).toContain("maxAttachmentBytes={25 * 1024 * 1024}");
+    expect(initialProjectSource).toContain("referenceFiles: references.map");
     expect(composerSource).toContain('import { flushSync } from "react-dom";');
     expect(composerSource).toContain("maxAttachmentBytes?: number;");
     expect(composerSource).toContain("const maxAttachmentBytes = props.maxAttachmentBytes ?? MAX_ATTACHMENT_BYTES;");

@@ -1,11 +1,12 @@
 /** @jsxImportSource react */
 import * as React from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { LayoutTemplate, Loader2, Search } from "lucide-react";
+import { Loader2, Search } from "lucide-react";
 import type { TemplateCatalogItem, TemplateCategory } from "@ipollowork/types/templates";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { TemplateIcon } from "@/components/template-icon";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { toast } from "@/components/ui/sonner";
@@ -82,7 +83,7 @@ function TemplateCover(props: {
           className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.02]"
         />
       ) : (
-        <div className="grid h-full place-items-center text-muted-foreground"><LayoutTemplate className="size-6" /></div>
+        <div className="grid h-full place-items-center text-muted-foreground"><TemplateIcon className="size-6 opacity-60" /></div>
       )}
     </div>
   );
@@ -166,7 +167,7 @@ export function TemplateCatalogDialog<Applied>(props: TemplateCatalogDialogProps
               </div>
             ) : visible.length === 0 ? (
               <div className="grid h-full place-items-center text-center text-muted-foreground">
-                <div><LayoutTemplate className="mx-auto mb-3 size-7" /><p className="text-sm font-medium text-foreground">{t("template_market.no_match_title")}</p><p className="mt-1 text-xs">{t("template_market.no_match_desc")}</p></div>
+                <div><TemplateIcon className="mx-auto mb-3 size-7 opacity-60" /><p className="text-sm font-medium text-foreground">{t("template_market.no_match_title")}</p><p className="mt-1 text-xs">{t("template_market.no_match_desc")}</p></div>
               </div>
             ) : (
               <div className="grid grid-cols-1 gap-3 pb-1 sm:grid-cols-2 lg:grid-cols-3">

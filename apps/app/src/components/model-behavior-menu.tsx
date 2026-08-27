@@ -82,11 +82,12 @@ export function ModelBehaviorMenu({
         className={cn(
           "inline-flex items-center gap-1.5 transition-colors disabled:pointer-events-none disabled:opacity-60",
           appearance === "composer"
-            ? "me-1.5 h-8 max-w-72 rounded-full bg-transparent px-2 text-[12px] leading-[18px] text-gray-10 hover:bg-gray-3 hover:text-gray-12 data-[state=open]:bg-gray-3 data-[state=open]:text-gray-12"
+            ? "me-1.5 h-8 min-w-0 max-w-72 flex-[0_1_auto] rounded-full bg-transparent px-2 text-[12px] leading-[18px] text-gray-10 hover:bg-gray-3 hover:text-gray-12 data-[state=open]:bg-gray-3 data-[state=open]:text-gray-12"
             : "h-9 w-full justify-between rounded-lg border border-border bg-background px-3 text-[13px] text-foreground shadow-xs hover:bg-gray-2 data-[state=open]:border-ring data-[state=open]:ring-3 data-[state=open]:ring-ring/30",
         )}
       >
-        <span className="truncate">{summary}</span>
+        <span className="truncate @max-[560px]/composer:hidden">{summary}</span>
+        <span className="hidden truncate @max-[560px]/composer:inline">{modelLabel}</span>
         <ChevronDown className="size-4 shrink-0" />
       </PopoverTrigger>
       <PopoverContent

@@ -80,6 +80,7 @@ function SelectTrigger({
 function SelectContent({
   className,
   children,
+  positionerClassName,
   side = "bottom",
   sideOffset = 4,
   align = "center",
@@ -91,7 +92,7 @@ function SelectContent({
   Pick<
     SelectPrimitive.Positioner.Props,
     "align" | "alignOffset" | "side" | "sideOffset" | "alignItemWithTrigger" | "collisionAvoidance"
-  >) {
+  > & { positionerClassName?: string }) {
   const styleScope = React.useContext(SelectStyleScopeContext)
   return (
     <SelectPrimitive.Portal>
@@ -102,7 +103,7 @@ function SelectContent({
         alignOffset={alignOffset}
         alignItemWithTrigger={alignItemWithTrigger}
         collisionAvoidance={collisionAvoidance}
-        className="isolate z-[70]"
+        className={cn("isolate z-[70]", positionerClassName)}
       >
         <SelectPrimitive.Popup
           data-slot="select-content"

@@ -76,12 +76,15 @@ describe("personal and Enterprise chat entry wiring", () => {
   });
 
   test("keeps market launches scoped while the starter catalog stays personal", () => {
-    expect(sessionPage).toMatch(/template\.manifest\.id,\s+templateResourceScope,/);
-    expect(sessionPage).toMatch(/props\.selectedSessionId,\s+undefined,\s+PERSONAL_WORK_CONTEXT_ID,/);
+    expect(sessionPage).toContain('setPendingTemplateApplication({ item: template, origin: "market", resourceScope: templateResourceScope })');
+    expect(sessionPage).toContain("resourceScope: application.resourceScope");
+    expect(sessionPage).toContain('applyTemplateToCurrentSession(template, PERSONAL_WORK_CONTEXT_ID, "new-conversation")');
     expect(sessionPage).toContain("designTemplates={starterTemplateCatalog}");
     expect(sessionRoute).toContain("templateScope ?? readActiveWorkContextId()");
     expect(sessionRoute).toContain("Template unavailable");
     expect(sessionRoute).toContain("deleteSession(endpoint.workspaceId, createdSessionId)");
+    expect(sessionRoute).toContain("templateApplication?.brief");
+    expect(sessionRoute).toContain("application.resourceScope");
   });
 
   test("restores lightweight project management without the legacy workspace UI", () => {
