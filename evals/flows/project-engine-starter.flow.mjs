@@ -322,12 +322,12 @@ export default {
               const tabs = [...starter.querySelectorAll('button')]
                 .map((button) => button.textContent?.trim())
                 .filter((label) => ['Work', 'Code', 'Create', 'Video', '工作', '代码', '创作', '视频'].includes(label));
-              const badge = document.querySelector('[data-testid=initial-project-engine-badge]');
+              const contextHealth = document.querySelector('[data-testid=composer-context-health]');
               return {
                 theme: document.documentElement.dataset.theme,
                 projects: document.querySelectorAll('[data-testid=project-row]').length,
-                badge: Boolean(badge),
-                badgeEngine: badge?.getAttribute('data-engine-id') || '',
+                contextHealth: Boolean(contextHealth),
+                contextHealthLabel: contextHealth?.getAttribute('aria-label') || '',
                 engineDialog: Boolean(document.querySelector('[data-testid=initial-project-engine-dialog]')),
                 subtitle: /Start with an idea|从一个想法开始/.test(starter.innerText || ''),
                 tabs,
@@ -354,8 +354,8 @@ export default {
             })()`);
             ctx.assert(state.theme === "light", "Starter should render in light mode.");
             ctx.assert(state.projects === 0, "Opening the starter must not create a project.");
-            ctx.assert(state.badge, "The zero-project starter should show its default engine.");
-            ctx.assert(state.badgeEngine === "opencode", `The zero-project starter should default to OpenCode, found ${state.badgeEngine}.`);
+            ctx.assert(state.contextHealth, "The zero-project starter should show context health.");
+            ctx.assert(/Context health|上下文体检/.test(state.contextHealthLabel), "The starter should expose context usage instead of an engine badge.");
             ctx.assert(!state.engineDialog, "The zero-project starter should not contain a first-use engine dialog.");
             ctx.assert(!state.subtitle, "The old explanatory copy should be removed.");
             ctx.assert(state.addEntryIconClass.includes("lucide-plus"), "The composer should keep the plus entry icon.");
@@ -411,25 +411,15 @@ export default {
                 && /session\\/ses_/.test(location.hash)
                 && project?.getAttribute('data-selected') === 'false'
                 && Boolean(document.querySelector('[data-sidebar=menu-sub-button][data-active]'))
-                && Boolean(document.querySelector('[data-testid=session-composer-engine-badge]'));
+                && Boolean(document.querySelector('[data-testid=composer-context-health]'));
             })()`, {
               timeoutMs: 120_000,
               label: "first project task with preserved draft",
             });
-            const badgeCenter = await ctx.eval(`(() => {
-              const rect = document.querySelector('[data-testid=session-composer-engine-badge]').getBoundingClientRect();
-              return { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 };
-            })()`);
-            await ctx.client.send("Input.dispatchMouseEvent", {
-              type: "mouseMoved",
-              x: badgeCenter.x,
-              y: badgeCenter.y,
-            });
-            await ctx.waitFor(`/Engine running|引擎运行中/.test(
-              document.querySelector('[data-testid=session-composer-engine-badge]')?.getAttribute('aria-label') || ''
-            )`, {
+            await ctx.eval(`document.querySelector('[data-testid=composer-context-health]')?.click()`);
+            await ctx.waitFor(`document.body.innerText.includes('Context health') || document.body.innerText.includes('上下文体检')`, {
               timeoutMs: 10_000,
-              label: "engine running status",
+              label: "context health details",
             });
             await ctx.eval(`document.querySelector('[data-testid=session-header-project]')?.click()`);
             await ctx.waitFor(`(() => {
@@ -470,11 +460,11 @@ export default {
                 defaultWorkspaceId: window.__projectEngineStarterDefaultWorkspaceId,
                 route: location.hash,
                 taskCount: sessions.items?.length || 0,
-                composerBadgeHeight: document.querySelector('[data-testid=session-composer-engine-badge]')?.getBoundingClientRect().height || 0,
-                badgeInsideHeader: Boolean(document.querySelector('[data-testid=session-composer-engine-badge]')?.closest('header')),
-                badgeInsideComposer: Boolean(document.querySelector('[data-testid=session-composer-engine-badge]')?.closest('[data-session-surface-id]')),
-                engineBadgeLabel: document.querySelector('[data-testid=session-composer-engine-badge]')?.getAttribute('aria-label') || '',
-                engineBadgeId: document.querySelector('[data-testid=session-composer-engine-badge]')?.getAttribute('data-engine-id') || '',
+                contextHealthHeight: document.querySelector('[data-testid=composer-context-health]')?.getBoundingClientRect().height || 0,
+                contextInsideHeader: Boolean(document.querySelector('[data-testid=composer-context-health]')?.closest('header')),
+                contextInsideComposer: Boolean(document.querySelector('[data-testid=composer-context-health]')?.closest('[data-session-surface-id]')),
+                contextHealthLabel: document.querySelector('[data-testid=composer-context-health]')?.getAttribute('aria-label') || '',
+                contextEngineId: document.querySelector('[data-testid=composer-context-health]')?.getAttribute('data-engine-id') || '',
                 projectName: project?.innerText.trim() || '',
                 headerProjectName: headerProject?.getAttribute('aria-label') || '',
                 headerProjectIcon: headerProjectIcon?.getAttribute('src') || '',
@@ -492,11 +482,11 @@ export default {
             ctx.assert(state.selectedProjectId !== state.defaultWorkspaceId, "The new named project should replace the default workspace as current.");
             ctx.assert(state.route.includes(state.selectedProjectId), "The route should point to the selected project.");
             ctx.assert(state.taskCount === 1, `Expected one first task, found ${state.taskCount}.`);
-            ctx.assert(state.composerBadgeHeight === 32, `Expected a 32px composer engine badge, found ${state.composerBadgeHeight}px.`);
-            ctx.assert(!state.badgeInsideHeader, "The engine badge should not render in the navigation header.");
-            ctx.assert(state.badgeInsideComposer, "The engine badge should render inside the session composer.");
-            ctx.assert(state.engineBadgeId === "opencode", `The first project should use OpenCode, found ${state.engineBadgeId}.`);
-            ctx.assert(/Engine running|引擎运行中/.test(state.engineBadgeLabel), "The engine badge should expose its running status.");
+            ctx.assert(state.contextHealthHeight === 32, `Expected a 32px context-health control, found ${state.contextHealthHeight}px.`);
+            ctx.assert(!state.contextInsideHeader, "Context health should not render in the navigation header.");
+            ctx.assert(state.contextInsideComposer, "Context health should render inside the session composer.");
+            ctx.assert(state.contextEngineId === "", "Context health should not expose the former engine identity attribute.");
+            ctx.assert(/Context health|上下文体检/.test(state.contextHealthLabel), "The composer should expose context usage and model capacity.");
             ctx.assert(state.headerProjectName === state.projectName, "The header project button should expose the selected project name.");
             ctx.assert(state.headerProjectIcon === state.sidebarProjectIcon, "The header and sidebar should use the same project folder icon.");
             ctx.assert(state.projectSelected === "false", "The project should not remain selected while one of its conversations is selected.");

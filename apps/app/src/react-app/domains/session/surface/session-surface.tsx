@@ -1,5 +1,5 @@
 /** @jsxImportSource react */
-import { useCallback, useEffect, useEffectEvent, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
 import type { UIMessage } from "ai";
 import { useQuery } from "@tanstack/react-query";
 import type { TemplateCatalogItem } from "@ipollowork/types/templates";
@@ -40,6 +40,7 @@ import type {
   ConversationSnapshot,
   ConversationStatus,
 } from "../engine/conversation-engine";
+import { conversationMessageContextUsage } from "../engine/conversation-engine";
 import {
   publishInspectorSlice,
   recordInspectorEvent,
@@ -188,6 +189,7 @@ export type SessionSurfaceProps = {
   modelPickerOpen: boolean;
   modelUnavailable?: boolean;
   selectedModel: ModelRef;
+  modelContextWindow?: number | null;
   onModelPickerOpenChange: (open: boolean) => void;
   onModelChange: (model: ModelRef) => void;
   onSendDraft: (
@@ -254,7 +256,6 @@ export type SessionSurfaceProps = {
   onArtifactCompletionRequirementConsumed?: () => void;
   environmentRuntimeKey?: string | null;
   onApplyEnvironmentChanges?: () => Promise<ApplyEnvironmentChangesResult>;
-  composerEndAccessory?: ReactNode;
 };
 
 function messageToReadableText(message: UIMessage) {
@@ -853,6 +854,28 @@ export function SessionSurface(props: SessionSurfaceProps) {
   const modeState = snapshot ? props.conversation.modeState?.(snapshot.session) : undefined;
   const modeSelectionLocked = modeState?.mutable === false;
   const selectedMode = modeSelectionLocked ? modeState.id ?? props.selectedMode : props.selectedMode;
+  const [optimisticAccessMode, setOptimisticAccessMode] = useState<string | null>(null);
+  useEffect(() => {
+    setOptimisticAccessMode(null);
+  }, [props.conversation, props.sessionId]);
+  const accessModeState = snapshot ? props.conversation.accessModeState?.(snapshot.session) : undefined;
+  const selectedAccessMode = optimisticAccessMode ?? accessModeState?.id ?? null;
+  const listAccessModes = useCallback(
+    () => props.conversation.listAccessModes?.({
+      sessionId: props.sessionId,
+      directory: props.workspaceRoot || undefined,
+    }) ?? Promise.resolve([]),
+    [props.conversation, props.sessionId, props.workspaceRoot],
+  );
+  const selectAccessMode = useCallback(async (accessMode: string) => {
+    if (!props.conversation.setAccessMode) return;
+    await props.conversation.setAccessMode({
+      sessionId: props.sessionId,
+      accessMode,
+      directory: props.workspaceRoot || undefined,
+    });
+    setOptimisticAccessMode(accessMode);
+  }, [props.conversation, props.sessionId, props.workspaceRoot]);
   useEffect(() => {
     props.onModeSelectionLockedChange?.(modeSelectionLocked);
   }, [modeSelectionLocked, props.onModeSelectionLockedChange]);
@@ -881,6 +904,15 @@ export function SessionSurface(props: SessionSurfaceProps) {
     () => deriveRenderedSessionMessages({ transcriptState, snapshot }),
     [snapshot, transcriptState],
   );
+  const contextUsage = useMemo(() => (
+    [...renderedMessages]
+      .reverse()
+      .flatMap((message) => message.role === "assistant"
+        ? conversationMessageContextUsage(message) ?? []
+        : [])[0]
+    ?? snapshot?.contextUsage
+    ?? null
+  ), [renderedMessages, snapshot?.contextUsage]);
   const inputHistory = useMemo(
     () => deriveComposerInputHistory(renderedMessages),
     [renderedMessages],
@@ -1858,6 +1890,10 @@ export function SessionSurface(props: SessionSurfaceProps) {
           modeSelectionDisabled={modeSelectionLocked}
           listModes={props.listModes}
           onSelectMode={props.onSelectMode}
+          selectedAccessMode={selectedAccessMode}
+          accessModeSelectionDisabled={accessModeState?.mutable === false}
+          listAccessModes={props.conversation.listAccessModes ? listAccessModes : undefined}
+          onSelectAccessMode={props.conversation.setAccessMode ? selectAccessMode : undefined}
           listAgents={props.listAgents}
           onSelectAgent={props.onSelectAgent}
           listCommands={props.listCommands}
@@ -1884,7 +1920,8 @@ export function SessionSurface(props: SessionSurfaceProps) {
           isSandboxWorkspace={props.isSandboxWorkspace}
           onUploadInboxFiles={props.onUploadInboxFiles ?? handleUploadInboxFiles}
           layout={layout}
-          endAccessory={props.composerEndAccessory}
+          contextUsage={contextUsage}
+          modelContextWindow={props.modelContextWindow}
           placeholder={isEmptyConversation ? newConversationPlaceholder() : undefined}
           compactTopSpacing={composerTopAccessoryVisible}
           topAccessory={

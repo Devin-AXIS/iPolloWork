@@ -1,6 +1,14 @@
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import {
+  chmodSync,
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  realpathSync,
+  writeFileSync,
+} from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -20,7 +28,29 @@ const windowsSandboxPatchPath = resolve(
 const stampPath = resolve(runtimeRoot, ".install-stamp.json");
 const cliPath = resolve(runtimeRoot, "node_modules", "@deepseek-ai", "dsh", "lib", "bin.js");
 const dshManifestPath = resolve(runtimeRoot, "node_modules", "@deepseek-ai", "dsh", "package.json");
+const nodeRuntimePath = resolve(runtimeRoot, "node-runtime", process.platform === "win32" ? "node.exe" : "node");
 const pnpmCommand = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
+
+function nodeRuntimeSource() {
+  const candidates = [
+    process.env.IPOLLOWORK_NODE_BIN?.trim(),
+    process.env.npm_node_execpath?.trim(),
+    process.versions.electron ? null : process.execPath,
+  ].filter(Boolean);
+  for (const candidate of candidates) {
+    if (!existsSync(candidate)) continue;
+    const resolved = realpathSync(candidate);
+    if (!/electron(?:\.exe)?$/i.test(resolved)) return resolved;
+  }
+  throw new Error("A standard Node.js executable is required to package DeepSeek Harness.");
+}
+
+function stageNodeRuntime() {
+  const source = nodeRuntimeSource();
+  mkdirSync(dirname(nodeRuntimePath), { recursive: true });
+  copyFileSync(source, nodeRuntimePath);
+  if (process.platform !== "win32") chmodSync(nodeRuntimePath, 0o755);
+}
 
 function supportedArchitectures() {
   const target = process.env.TARGET?.trim() || "";
@@ -57,7 +87,7 @@ function readJson(path) {
 }
 
 const key = installKey();
-if (existsSync(cliPath) && readJson(stampPath)?.key === key) {
+if (existsSync(cliPath) && existsSync(nodeRuntimePath) && readJson(stampPath)?.key === key) {
   process.stdout.write("[dsh-runtime] Dependencies are up to date.\n");
   process.exit(0);
 }
@@ -84,5 +114,6 @@ const installedVersion = readJson(dshManifestPath)?.version;
 if (installedVersion !== expectedVersion) {
   throw new Error(`Expected DSH ${expectedVersion}, installed ${installedVersion ?? "unknown"}`);
 }
+stageNodeRuntime();
 writeFileSync(stampPath, `${JSON.stringify({ key, version: installedVersion }, null, 2)}\n`);
 process.stdout.write(`[dsh-runtime] Prepared DeepSeek Harness ${installedVersion}.\n`);

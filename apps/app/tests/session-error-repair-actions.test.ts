@@ -27,12 +27,13 @@ describe("session error repair actions", () => {
     expect(sessionPageSource).not.toContain("exec(");
   });
 
-  test("generates a targeted Codex Harness repair script for launch-blocked errors", () => {
+  test("generates engine-aware launch recovery without installing a second Codex CLI", () => {
     expect(routeWorkspacesSource).toContain("export function isSidecarLaunchBlockedError");
+    expect(routeWorkspacesSource).toContain("export function describeSidecarLaunchBlockedError");
     expect(sessionPageSource).toContain("isSidecarLaunchBlockedError(input.message)");
-    expect(sessionPageSource).toContain("@openai\\\\codex\\\\node_modules\\\\@openai\\\\codex-win32-x64");
-    expect(sessionPageSource).toContain("[Environment]::SetEnvironmentVariable('IPOLLOWORK_CODEX_CLI'");
-    expect(sessionPageSource).toContain("Unblock-File -LiteralPath $codexNative");
-    expect(sessionPageSource).toContain("Stop-Process -Force");
+    expect(sessionPageSource).toContain("input.engineId?.trim() === CODEX_HARNESS_ENGINE_ID");
+    expect(sessionPageSource).toContain("[Environment]::SetEnvironmentVariable('IPOLLOWORK_CODEX_CLI', $null, 'User')");
+    expect(sessionPageSource).toContain("select a verified local or managed Codex runtime on restart");
+    expect(sessionPageSource).not.toContain("npm install -g @openai/codex");
   });
 });

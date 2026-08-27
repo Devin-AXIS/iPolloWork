@@ -153,7 +153,6 @@ export function ModelPickerModal(props: ModelPickerModalProps) {
 
   const handleSelect = useCallback(
     (opt: ModelOption) => {
-      if (opt.runtimePending) return;
       if (opt.disabled && !opt.isConnected) {
         props.onConnectProvider?.(opt.providerID);
         return;
@@ -373,11 +372,11 @@ function DefaultModelRow({
   return (
     <button
       type="button"
-      disabled={opt.disabled && (opt.isConnected || opt.runtimePending || !canConnectProvider)}
+      disabled={opt.disabled && (opt.isConnected || !canConnectProvider)}
       title={opt.disabled ? opt.footer : undefined}
       className={[
         "flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left transition-colors",
-        opt.disabled && (opt.isConnected || opt.runtimePending)
+        opt.disabled && opt.isConnected
           ? "cursor-not-allowed opacity-50"
           : opt.disabled
             ? "hover:bg-dls-hover"

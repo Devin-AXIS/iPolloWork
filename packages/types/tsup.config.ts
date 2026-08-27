@@ -6,6 +6,7 @@ export default defineConfig({
     "den/desktop-app-restrictions": "src/den/desktop-app-restrictions.ts",
     "den/desktop-policies": "src/den/desktop-policies.ts",
     "den/inference": "src/den/inference.ts",
+    "deepseek-official-models": "src/deepseek-official-models.ts",
     hyperframes: "src/hyperframes.ts",
     "hyperframes-project": "src/hyperframes-project.ts",
     "opencode-zen-public-models": "src/opencode-zen-public-models.ts",

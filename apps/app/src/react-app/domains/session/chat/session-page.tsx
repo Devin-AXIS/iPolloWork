@@ -199,41 +199,6 @@ function workspaceAppCapabilityInstruction(label: string) {
   return `The user explicitly activated the ${label} plugin workbench for this request. Use ${WORKSPACE_APP_LIST_TOOLS_NAME} and ${WORKSPACE_APP_CALL_TOOL_NAME} only when this workbench exposes a relevant tool. If the plugin capability instruction names another declared action path, follow that instruction instead. Do not inspect or operate unrelated Design, Video, Files, or other side-panel surfaces. If the workbench cannot complete the request, explain the concrete tool error.`;
 }
 
-function ProjectEngineBadge({
-  engineId,
-  testId,
-}: {
-  engineId?: string | null;
-  testId?: string;
-}) {
-  const candidateEngineId = engineId?.trim();
-  const resolvedEngineId = isBuiltInWorkspaceEngineId(candidateEngineId) ? candidateEngineId : DEFAULT_ENGINE_ID;
-  const label = t(resolvedEngineId === CODEX_HARNESS_ENGINE_ID
-    ? "projects.engine_codex"
-    : resolvedEngineId === DEEPSEEK_HARNESS_ENGINE_ID
-      ? "projects.engine_dsh"
-      : "projects.engine_opencode");
-  return (
-    <Tooltip>
-      <TooltipTrigger
-        render={(
-          <div
-            data-testid={testId}
-            data-engine-id={resolvedEngineId}
-            aria-label={`${label} · ${t("projects.engine_running")}`}
-            tabIndex={0}
-            className="inline-flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-full bg-dls-canvas px-4 py-2 text-[13px] font-medium leading-[18px] text-dls-text transition-colors hover:bg-dls-surface-muted focus-visible:bg-dls-surface-muted focus-visible:outline-none"
-          >
-            <span className="size-1.5 rounded-full bg-green-9" aria-hidden="true" />
-            <span className="whitespace-nowrap">{label}</span>
-          </div>
-        )}
-      />
-      <TooltipContent>{t("projects.engine_running")}</TooltipContent>
-    </Tooltip>
-  );
-}
-
 function ProjectHeaderButton({ projectName, onClick }: { projectName: string; onClick: () => void }) {
   return (
     <Tooltip>
@@ -645,6 +610,7 @@ type InitialProjectComposerTooling = Pick<
 >;
 
 function buildWorkspaceRepairScript(input: {
+  engineId: string | null | undefined;
   message: string;
   workspaceRoot: string;
 }) {
@@ -652,27 +618,30 @@ function buildWorkspaceRepairScript(input: {
     "$ErrorActionPreference = 'Stop'",
     "Write-Host 'iPolloWork repair started'",
   ];
-  if (isSidecarLaunchBlockedError(input.message)) {
+  if (
+    isSidecarLaunchBlockedError(input.message)
+    && input.engineId?.trim() === CODEX_HARNESS_ENGINE_ID
+  ) {
     lines.push(
-      "$codexNative = Join-Path $env:APPDATA 'npm\\node_modules\\@openai\\codex\\node_modules\\@openai\\codex-win32-x64\\vendor\\x86_64-pc-windows-msvc\\bin\\codex.exe'",
-      "if (!(Test-Path -LiteralPath $codexNative)) {",
-      "  Write-Host 'Installing Codex CLI package...'",
-      "  npm install -g @openai/codex",
-      "}",
-      "if (Test-Path -LiteralPath $codexNative) {",
-      "  Unblock-File -LiteralPath $codexNative -ErrorAction SilentlyContinue",
-      "  [Environment]::SetEnvironmentVariable('IPOLLOWORK_CODEX_CLI', $codexNative, 'User')",
-      "  Write-Host \"Set IPOLLOWORK_CODEX_CLI=$codexNative\"",
-      "} else {",
-      "  throw 'Codex native executable was not found after install.'",
-      "}",
-      "Get-Process codex,opencode -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue",
+      "[Environment]::SetEnvironmentVariable('IPOLLOWORK_CODEX_CLI', $null, 'User')",
+      "Write-Host 'Cleared the stale Codex runtime override.'",
+      "Write-Host 'iPolloWork will select a verified local or managed Codex runtime on restart.'",
+    );
+  }
+  if (
+    isSidecarLaunchBlockedError(input.message)
+    && input.engineId?.trim() === DEEPSEEK_HARNESS_ENGINE_ID
+  ) {
+    lines.push(
+      "[Environment]::SetEnvironmentVariable('IPOLLOWORK_DSH_CLI', $null, 'User')",
+      "[Environment]::SetEnvironmentVariable('IPOLLOWORK_DSH_NODE_BIN', $null, 'User')",
+      "Write-Host 'Cleared stale DeepSeek Harness runtime overrides.'",
     );
   }
   if (isModelUnavailableError(input.message)) {
     lines.push(
       "Write-Host 'Model selection needs to be changed inside iPolloWork.'",
-      "Write-Host 'Use a supported Codex Harness model such as big-pickle or mimo-v2.5-free, then reload the engine.'",
+      "Write-Host 'Choose a connected model supported by the selected engine, then reload the engine.'",
     );
   }
   if (input.workspaceRoot.trim()) {
@@ -790,6 +759,7 @@ function InitialProjectTaskStarter({
   const [draft, setDraft] = useState("");
   const [attachments, setAttachments] = useState<ComposerAttachment[]>([]);
   const attachmentsRef = useRef<ComposerAttachment[]>([]);
+  const [starterAccessMode, setStarterAccessMode] = useState<string | null>(null);
   const [starterMode, setStarterMode] = useState<NewConversationMode>("work");
   const [starterCapability, setStarterCapability] = useState<StarterCapability | null>(null);
   const [sending, setSending] = useState(false);
@@ -867,6 +837,19 @@ function InitialProjectTaskStarter({
       )
       .sort((left, right) => left.name.localeCompare(right.name));
   }, [workspaceClient, workspaceId]);
+
+  const listStarterAccessModes = useCallback(async () => {
+    const modes = await surface.conversation.listAccessModes?.({
+      sessionId: "",
+      directory: surface.workspaceRoot.trim() || undefined,
+    }) ?? [];
+    setStarterAccessMode((current) => (
+      current && modes.some((mode) => mode.id === current)
+        ? current
+        : modes.find((mode) => mode.isDefault)?.id ?? modes[0]?.id ?? null
+    ));
+    return modes;
+  }, [surface.conversation, surface.workspaceRoot]);
 
   const uploadInboxFiles = useCallback(async (files: File[]) => {
     if (surface.onUploadInboxFiles) return surface.onUploadInboxFiles(files);
@@ -968,6 +951,7 @@ function InitialProjectTaskStarter({
       mode: "prompt",
       parts,
       attachments,
+      ...(starterAccessMode ? { accessMode: starterAccessMode } : {}),
       text,
       resolvedText,
       capability: starterCapability
@@ -1085,6 +1069,13 @@ function InitialProjectTaskStarter({
             selectedMode={surface.selectedMode}
             listModes={surface.listModes}
             onSelectMode={surface.onSelectMode}
+            selectedAccessMode={starterAccessMode}
+            listAccessModes={surface.conversation.listAccessModes && surface.conversation.setAccessMode
+              ? listStarterAccessModes
+              : undefined}
+            onSelectAccessMode={surface.conversation.setAccessMode
+              ? async (accessMode) => setStarterAccessMode(accessMode)
+              : undefined}
             listAgents={surface.listAgents}
             onSelectAgent={surface.onSelectAgent}
             listCommands={surface.listCommands}
@@ -1117,12 +1108,8 @@ function InitialProjectTaskStarter({
                 <StarterCapabilityChip capability={starterCapability} onClear={() => setStarterCapability(null)} />
               </div>
             ) : null}
-            endAccessory={(
-              <ProjectEngineBadge
-                engineId={engineId ?? DEFAULT_ENGINE_ID}
-                testId="initial-project-engine-badge"
-              />
-            )}
+            contextUsage={null}
+            modelContextWindow={surface.modelContextWindow}
           />
         </div>
       </div>
@@ -2336,7 +2323,6 @@ export function SessionPage(props: SessionPageProps) {
   const observedPluginWorkshopSessionRef = useRef<string | null>(null);
   const autoOpenedPluginWorkshopSessionRef = useRef<string | null>(null);
   const preserveSidePanelOnPanelOpenRef = useRef(false);
-  const autoEngineInstallAttemptRef = useRef<string | null>(null);
   const [engineLaunchTransitionKey, setEngineLaunchTransitionKey] = useState<string | null>(null);
   const enginePackages = useEnginePackages();
 
@@ -3662,6 +3648,11 @@ export function SessionPage(props: SessionPageProps) {
     !engineInstallGateActive
       && !enginePackages.loading
       && selectedEnginePackage?.installed
+      // Runtime discovery continues in the background. Once the route has a
+      // usable conversation surface, do not hide the composer or model picker
+      // behind engine validation; sending can still report a real runtime
+      // failure when the user actually submits a prompt.
+      && !props.surface
       && (
         selectedProject?.status === "loading"
         || engineLaunchTransitionKey === selectedEngineLaunchKey
@@ -3675,21 +3666,6 @@ export function SessionPage(props: SessionPageProps) {
         toast.error(error instanceof Error ? error.message : t("settings.engine_manager.install_failed"));
       });
   }, [enginePackages.install, props.selectedWorkspaceId, props.sidebar.onSelectProject, selectedEnginePackage]);
-  useEffect(() => {
-    if (!engineInstallGateActive || !selectedEnginePackage) {
-      autoEngineInstallAttemptRef.current = null;
-      return;
-    }
-    if (
-      selectedEnginePackage.status !== "not-installed"
-      || !selectedEnginePackage.canInstall
-      || engineInstallBusy
-    ) return;
-    const attemptKey = `${props.selectedWorkspaceId}:${selectedEnginePackage.id}`;
-    if (autoEngineInstallAttemptRef.current === attemptKey) return;
-    autoEngineInstallAttemptRef.current = attemptKey;
-    installSelectedEngine();
-  }, [engineInstallBusy, engineInstallGateActive, installSelectedEngine, props.selectedWorkspaceId, selectedEnginePackage]);
   const showWorkspaceSetupEmptyState = props.workspaces.length === 0 && !hasSelectedTask;
   const showNewTaskStarter = !props.selectedSessionId && Boolean(props.surface) && !showWorkspaceSetupEmptyState;
   const showNewConversationChrome = !hasSelectedTask && !showWorkspaceSetupEmptyState;
@@ -3727,12 +3703,14 @@ export function SessionPage(props: SessionPageProps) {
   const selectedWorkspaceErrorTitle = describeWorkspaceUnavailableTitle({
     message: selectedWorkspaceErrorMessage,
     workspaceType: props.selectedWorkspaceDisplay.workspaceType,
+    engineId: props.selectedWorkspaceDisplay.engineId,
   });
   const [workspaceRepairBusy, setWorkspaceRepairBusy] = useState(false);
   const workspaceRepairScript = useMemo(() => buildWorkspaceRepairScript({
+    engineId: props.selectedWorkspaceDisplay.engineId,
     message: selectedWorkspaceErrorMessage,
     workspaceRoot: props.selectedWorkspaceRoot,
-  }), [props.selectedWorkspaceRoot, selectedWorkspaceErrorMessage]);
+  }), [props.selectedWorkspaceDisplay.engineId, props.selectedWorkspaceRoot, selectedWorkspaceErrorMessage]);
   const copyWorkspaceRepairScript = useCallback(async () => {
     try {
       await navigator.clipboard.writeText(workspaceRepairScript);
@@ -4424,12 +4402,6 @@ export function SessionPage(props: SessionPageProps) {
                               draftScopeKey={`template-brief:${props.runtimeWorkspaceId ?? "workspace"}:${props.selectedSessionId ?? "session"}`}
                               layout="dock"
                               placeholder={newConversationPlaceholder()}
-                              endAccessory={(
-                                <ProjectEngineBadge
-                                  engineId={props.selectedWorkspaceDisplay.engineId}
-                                  testId="template-brief-engine-badge"
-                                />
-                              )}
                             />
                           </div>
                         </div>
@@ -4466,12 +4438,6 @@ export function SessionPage(props: SessionPageProps) {
                         templateEntryPath={templateEntryPathForArtifacts}
                         artifactFiles={artifactFiles}
                         artifactContext={artifactContext}
-                        composerEndAccessory={(
-                          <ProjectEngineBadge
-                            engineId={props.selectedWorkspaceDisplay.engineId}
-                            testId="session-composer-engine-badge"
-                          />
-                        )}
                         artifactCompletionRequirement={pendingVideoArtifactCompletion?.sessionId === props.selectedSessionId
                           ? pendingVideoArtifactCompletion.requirement
                           : undefined}

@@ -12,7 +12,10 @@ import {
   type SharedProviderProfile,
 } from "@ipollowork/types/provider-credentials";
 import { openCodeZenPublicModels } from "@ipollowork/types/opencode-zen-public-models";
-import { DEEPSEEK_HARNESS_ENGINE_ID } from "@ipollowork/types/workspace";
+import {
+  DEEPSEEK_HARNESS_ENGINE_ID,
+  deepSeekHarnessRuntimeProviderRouteId,
+} from "@ipollowork/types/workspace";
 
 import type { EnvService } from "./env-file.js";
 import { writeDeepSeekHarnessPatchFile } from "./deepseek-harness-patch.js";
@@ -66,12 +69,41 @@ type DeepSeekHarnessDiscoveredModels = {
   }>;
 };
 
+type DeepSeekHarnessCredentialDescription = {
+  credentials: Record<string, { configured?: boolean }>;
+};
+
+type DeepSeekHarnessSettingsDescription = {
+  namespaces: Array<{ ns: string; value?: unknown }>;
+};
+
+export type DeepSeekHarnessRouteProjection = {
+  providerId: string;
+  ref: string;
+  expected: Record<string, unknown>;
+};
+
+type DeepSeekHarnessSettingsMutation = {
+  op: "set" | "unset";
+  path: string[];
+  value?: unknown;
+};
+
 export function deepSeekHarnessWebArgs(
   configuredCli: string,
   patchPath: string,
 ): string[] {
   const webArgs = ["--profile", "web", "--patch", patchPath, "--port", "0"];
   return configuredCli ? [configuredCli, ...webArgs] : webArgs;
+}
+
+export function deepSeekHarnessNodeExecutable(
+  environment: NodeJS.ProcessEnv = process.env,
+  platform: NodeJS.Platform = process.platform,
+): string {
+  return environment.IPOLLOWORK_DSH_NODE_BIN?.trim()
+    || environment.IPOLLOWORK_NODE_BIN?.trim()
+    || (platform === "win32" ? "node.exe" : "node");
 }
 
 type DeepSeekHarnessProviderBridge = {
@@ -81,7 +113,6 @@ type DeepSeekHarnessProviderBridge = {
   baseURL?: string;
   discoverModels?: boolean;
   models?: DeepSeekHarnessDiscoveredModels["models"];
-  requiresCredentialBinding?: boolean;
 
 };
 
@@ -112,7 +143,6 @@ const OPENAI_CODEX_PROVIDER_BRIDGE: DeepSeekHarnessProviderBridge = {
   displayName: "OpenAI",
   // pi-ai's Codex provider is OAuth-only by default. DSH can inject the
   // account access token only when this route explicitly names its credential.
-  requiresCredentialBinding: true,
 };
 const PROVIDER_MODEL_DISCOVERY_TIMEOUT_MS = 10_000;
 
@@ -139,7 +169,7 @@ function providerBridge(
   }
   if (!profile?.baseURL || !profile.api || profile.models.length === 0) return undefined;
   return {
-    providerId: profile.providerId,
+    providerId: deepSeekHarnessRuntimeProviderRouteId(profile.providerId),
     displayName: profile.displayName,
     api: profile.api,
     baseURL: profile.baseURL,
@@ -151,10 +181,6 @@ function providerBridge(
 // public API channel. Keep those names at this adapter boundary so the app's
 // shared credential remains engine-neutral and neither engine core needs a
 // fork. Do not add aliases between products that merely share a vendor.
-const DEEPSEEK_HARNESS_PROVIDER_ID_ALIASES = new Map<string, string>([
-  ["kimi-for-coding", "kimi-coding"],
-]);
-
 /**
  * Translate the app-wide OpenCode-compatible provider profiles into the
  * provider-neutral shape consumed by the DSH pi-ai adapter. Credentials are
@@ -188,8 +214,7 @@ export function deepSeekHarnessProviderCredentials(
   for (const [providerId, apiKey] of sharedProviderApiCredentials(records)) {
     const bridge = providerBridge(providerId, profiles.get(providerId));
     const targetProviderId = bridge?.providerId
-      ?? DEEPSEEK_HARNESS_PROVIDER_ID_ALIASES.get(providerId)
-      ?? providerId;
+      ?? deepSeekHarnessRuntimeProviderRouteId(providerId);
     credentials.set(targetProviderId, {
       apiKey,
       bridge,
@@ -204,6 +229,87 @@ export function deepSeekHarnessProviderCredentials(
     });
   }
   return credentials;
+}
+
+export function deepSeekHarnessCredentialRefsConfigured(
+  description: DeepSeekHarnessCredentialDescription,
+  refs: ReadonlySet<string>,
+): boolean {
+  return [...refs].every((ref) => description.credentials[ref]?.configured === true);
+}
+
+function valueAtPath(value: unknown, path: readonly string[]): unknown {
+  let current = value;
+  for (const segment of path) {
+    if (!current || typeof current !== "object" || Array.isArray(current)) return undefined;
+    current = (current as Record<string, unknown>)[segment];
+  }
+  return current;
+}
+
+export function deepSeekHarnessRouteCredentialRef(
+  settings: DeepSeekHarnessSettingsDescription,
+  route: DeepSeekHarnessProviderDirectory["providers"][number],
+): string | null {
+  const namespace = settings.namespaces.find((entry) => entry.ns === route.settingsNs);
+  const profile = valueAtPath(namespace?.value, route.settingsPath);
+  if (!profile || typeof profile !== "object" || Array.isArray(profile)) return null;
+  const ref = (profile as Record<string, unknown>).apiKeyEnv;
+  return typeof ref === "string" && ref.trim() ? ref.trim() : null;
+}
+
+function projectedValueMatches(current: unknown, expected: unknown): boolean {
+  if (Array.isArray(expected)) {
+    return Array.isArray(current)
+      && current.length === expected.length
+      && expected.every((entry, index) => projectedValueMatches(current[index], entry));
+  }
+  if (expected && typeof expected === "object") {
+    if (!current || typeof current !== "object" || Array.isArray(current)) return false;
+    return Object.entries(expected).every(([key, value]) => (
+      projectedValueMatches((current as Record<string, unknown>)[key], value)
+    ));
+  }
+  return Object.is(current, expected);
+}
+
+export function deepSeekHarnessRouteProjectionConfigured(
+  directory: DeepSeekHarnessProviderDirectory,
+  settings: DeepSeekHarnessSettingsDescription,
+  projection: DeepSeekHarnessRouteProjection,
+): boolean {
+  const route = directory.providers.find((entry) => entry.provider === projection.providerId);
+  if (!route?.active) return false;
+  const namespace = settings.namespaces.find((entry) => entry.ns === route.settingsNs);
+  const profile = valueAtPath(namespace?.value, route.settingsPath);
+  if (!profile || typeof profile !== "object" || Array.isArray(profile)) return false;
+  return Object.entries(projection.expected).every(([key, value]) => (
+    projectedValueMatches((profile as Record<string, unknown>)[key], value)
+  ));
+}
+
+export function deepSeekHarnessSettingsPatchOps(
+  settings: DeepSeekHarnessSettingsDescription,
+  route: DeepSeekHarnessProviderDirectory["providers"][number],
+  expected: Record<string, unknown>,
+  managedKeys: readonly string[] = Object.keys(expected),
+): DeepSeekHarnessSettingsMutation[] {
+  const namespace = settings.namespaces.find((entry) => entry.ns === route.settingsNs);
+  const current = valueAtPath(namespace?.value, route.settingsPath);
+  if (!current || typeof current !== "object" || Array.isArray(current)) {
+    return [{ op: "set", path: [...route.settingsPath], value: expected }];
+  }
+  const profile = current as Record<string, unknown>;
+  return managedKeys.flatMap((key): DeepSeekHarnessSettingsMutation[] => {
+    if (Object.hasOwn(expected, key)) {
+      return projectedValueMatches(profile[key], expected[key])
+        ? []
+        : [{ op: "set", path: [...route.settingsPath, key], value: expected[key] }];
+    }
+    return Object.hasOwn(profile, key)
+      ? [{ op: "unset", path: [...route.settingsPath, key] }]
+      : [];
+  });
 }
 
 export function deepSeekHarnessChildEnvironment(
@@ -233,6 +339,70 @@ export class DeepSeekHarnessRpcError extends Error {
   }
 }
 
+const DEEPSEEK_HARNESS_API_READY_RETRY_DELAYS_MS = [50, 100, 200, 400, 800, 1_600] as const;
+
+/**
+ * DSH prints its Web URL after the plugin loader settles, but the Web gateway
+ * can briefly answer 404 while its apiProxy service is still being mounted.
+ * Probe a cheap read method before publishing the runtime to callers so that
+ * this internal startup phase never escapes as a user-visible model error.
+ */
+export async function waitForDeepSeekHarnessApi(
+  baseUrl: string,
+  options: {
+    fetcher?: typeof fetch;
+    wait?: (delayMs: number) => Promise<void>;
+    retryDelaysMs?: readonly number[];
+  } = {},
+): Promise<void> {
+  const fetcher = options.fetcher ?? fetch;
+  const wait = options.wait ?? ((delayMs: number) => (
+    new Promise<void>((resolve) => setTimeout(resolve, delayMs))
+  ));
+  const retryDelaysMs = options.retryDelaysMs ?? DEEPSEEK_HARNESS_API_READY_RETRY_DELAYS_MS;
+  let lastStatus: number | null = null;
+  let lastError: unknown;
+
+  for (let attempt = 0; attempt <= retryDelaysMs.length; attempt += 1) {
+    try {
+      const rpcId = randomUUID();
+      const response = await fetcher(`${baseUrl.replace(/\/+$/, "")}/api/workspace.list`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          type: "client-request",
+          rpcId,
+          method: "workspace.list",
+          payload: {},
+        }),
+        signal: AbortSignal.timeout(5_000),
+      });
+      lastStatus = response.status;
+      await response.body?.cancel().catch(() => undefined);
+      if (response.ok) return;
+      if (response.status !== 404) {
+        throw new DeepSeekHarnessUnavailableError(
+          `DeepSeek Harness API readiness check returned HTTP ${response.status}`,
+        );
+      }
+    } catch (error) {
+      if (error instanceof DeepSeekHarnessUnavailableError) throw error;
+      lastError = error;
+    }
+
+    const retryDelayMs = retryDelaysMs[attempt];
+    if (retryDelayMs === undefined) break;
+    await wait(retryDelayMs);
+  }
+
+  throw new DeepSeekHarnessUnavailableError(
+    lastStatus === 404
+      ? "DeepSeek Harness API did not become ready"
+      : "DeepSeek Harness API could not be reached after startup",
+    lastError === undefined ? undefined : { cause: lastError },
+  );
+}
+
 export class DeepSeekHarnessRuntime {
   readonly #config: ServerConfig;
   readonly #env: EnvService;
@@ -245,6 +415,8 @@ export class DeepSeekHarnessRuntime {
   #syncedCredentialFingerprint = "";
   #syncedProviderIds = new Set<string>();
   #syncedCompatibleProviderIds = new Set<string>();
+  #syncedCredentialRefs = new Set<string>();
+  #syncedRouteProjections: DeepSeekHarnessRouteProjection[] = [];
 
   constructor(input: { config: ServerConfig; env: EnvService; workspace?: WorkspaceInfo }) {
     this.#config = input.config;
@@ -276,7 +448,8 @@ export class DeepSeekHarnessRuntime {
     const rpcId = randomUUID();
     let response: Response;
     try {
-      response = await fetch(`${baseUrl}/api/${encodeURIComponent(method)}`, {
+      const methodPath = method.split("/").map(encodeURIComponent).join("/");
+      response = await fetch(`${baseUrl}/api/${methodPath}`, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ type: "client-request", rpcId, method, payload }),
@@ -350,7 +523,23 @@ export class DeepSeekHarnessRuntime {
         profiles: [...compatibleProfiles.entries()].sort(([a], [b]) => a.localeCompare(b)),
       }))
       .digest("hex");
-    if (fingerprint === this.#syncedCredentialFingerprint) return;
+    if (fingerprint === this.#syncedCredentialFingerprint) {
+      const stillConfigured = await Promise.all([
+        this.#callAtBaseUrl<DeepSeekHarnessCredentialDescription>(
+          baseUrl,
+          "credentials.describe",
+          { refs: [...this.#syncedCredentialRefs] },
+        ),
+        this.#callAtBaseUrl<DeepSeekHarnessProviderDirectory>(baseUrl, "llm.providers", {}),
+        this.#callAtBaseUrl<DeepSeekHarnessSettingsDescription>(baseUrl, "settings.describe", {}),
+      ]).then(([description, directory, settings]) => (
+        deepSeekHarnessCredentialRefsConfigured(description, this.#syncedCredentialRefs)
+        && this.#syncedRouteProjections.every((projection) => (
+          deepSeekHarnessRouteProjectionConfigured(directory, settings, projection)
+        ))
+      )).catch(() => false);
+      if (stillConfigured) return;
+    }
     let syncSucceeded = true;
     const removedProviderIds = new Set(
       [...this.#syncedProviderIds].filter((providerId) => !credentials.has(providerId)),
@@ -363,6 +552,11 @@ export class DeepSeekHarnessRuntime {
         )
       : { providers: [] };
     const routes = new Map(directory.providers.map((route) => [route.provider, route]));
+    const settings = await this.#callAtBaseUrl<DeepSeekHarnessSettingsDescription>(
+      baseUrl,
+      "settings.describe",
+      {},
+    ).catch(() => ({ namespaces: [] }));
     for (const providerId of removedProviderIds) {
       const route = routes.get(providerId);
       if (route) {
@@ -400,6 +594,48 @@ export class DeepSeekHarnessRuntime {
     const orderedCredentials = [...credentials.entries()].sort(([, left], [, right]) => (
       Number(Boolean(left.bridge?.discoverModels)) - Number(Boolean(right.bridge?.discoverModels))
     ));
+    const desiredCredentialRefs = new Set<string>();
+    const desiredRouteProjections: DeepSeekHarnessRouteProjection[] = [];
+    const syncCredentialRoute = async (input: {
+      providerId: string;
+      route: DeepSeekHarnessProviderDirectory["providers"][number];
+      ref: string;
+      apiKey: string;
+      expected: Record<string, unknown>;
+      managedKeys?: readonly string[];
+    }): Promise<void> => {
+      desiredCredentialRefs.add(input.ref);
+      desiredRouteProjections.push({
+        providerId: input.providerId,
+        ref: input.ref,
+        expected: input.expected,
+      });
+      try {
+        // Store the secret first. A second DSH process may temporarily own the
+        // settings writer lock, but that must not prevent an already-correct
+        // route from receiving the account credential.
+        await this.#callAtBaseUrl(baseUrl, "credentials.set", {
+          ref: input.ref,
+          value: input.apiKey,
+        });
+        const ops = deepSeekHarnessSettingsPatchOps(
+          settings,
+          input.route,
+          input.expected,
+          input.managedKeys,
+        );
+        if (ops.length > 0) {
+          await this.#callAtBaseUrl(baseUrl, "settings.mutate", {
+            ns: input.route.settingsNs,
+            ops,
+          });
+        }
+      } catch {
+        // Keep syncing remaining providers and retry this projection on the
+        // next model-directory or prompt request.
+        syncSucceeded = false;
+      }
+    };
     for (const [providerId, credential] of orderedCredentials) {
       const explicitProfile = compatibleProfiles.get(providerId);
       const { apiKey } = credential;
@@ -409,41 +645,18 @@ export class DeepSeekHarnessRuntime {
       );
       if (useNativeRoute && route) {
         const ref = providerApiKeyCredentialRef(providerId);
-
-        try {
-          await this.#callAtBaseUrl(baseUrl, "settings.mutate", {
-            ns: route.settingsNs,
-            ops: [{
-              op: "set",
-              path: [...route.settingsPath, "apiKeyEnv"],
-              value: ref,
-            }],
-          });
-          await this.#callAtBaseUrl(baseUrl, "credentials.set", { ref, value: apiKey });
-        } catch {
-          // Keep syncing the remaining providers when a native route refuses its credential.
-          syncSucceeded = false;
-        }
+        await syncCredentialRoute({
+          providerId,
+          route,
+          ref,
+          apiKey,
+          expected: { apiKeyEnv: ref },
+        });
         continue;
       }
       const bridge = explicitProfile ?? credential.bridge;
       if (bridge) {
         const ref = providerApiKeyCredentialRef(providerId);
-        if (
-          !explicitProfile
-          && route?.active
-          && !bridge.requiresCredentialBinding
-          && !bridge.models?.length
-        ) {
-          try {
-            await this.#callAtBaseUrl(baseUrl, "credentials.set", { ref, value: apiKey });
-          } catch {
-            // A single provider credential must not block the remaining shared
-            // channels from reaching DeepSeek Harness.
-            syncSucceeded = false;
-          }
-          continue;
-        }
         let models = bridge.models;
 
         if (bridge.discoverModels) {
@@ -465,52 +678,54 @@ export class DeepSeekHarnessRuntime {
           syncSucceeded = false;
           continue;
         }
-        try {
-          await this.#callAtBaseUrl(baseUrl, "settings.mutate", {
-            ns: route?.settingsNs ?? "llm-pi-ai",
-            ops: [{
-              op: "set",
-              path: route?.settingsPath ?? ["providers", providerId],
-              value: {
-                displayName: bridge.displayName,
-                apiKeyEnv: ref,
-                ...(bridge.api ? { api: bridge.api } : {}),
-                ...(bridge.baseURL ? { baseURL: bridge.baseURL } : {}),
-                ...(models ? { models } : {}),
-              },
-            }],
-          });
-          await this.#callAtBaseUrl(baseUrl, "credentials.set", { ref, value: apiKey });
-        } catch {
-          // Keep syncing the remaining providers when one compatible endpoint
-          // rejects discovery or its profile.
-          syncSucceeded = false;
-        }
+        const targetRoute = route ?? {
+          provider: providerId,
+          settingsNs: "llm-pi-ai",
+          settingsPath: ["providers", providerId],
+          active: false,
+        };
+        await syncCredentialRoute({
+          providerId,
+          route: targetRoute,
+          ref,
+          apiKey,
+          expected: {
+            displayName: bridge.displayName,
+            apiKeyEnv: ref,
+            ...(bridge.api ? { api: bridge.api } : {}),
+            ...(bridge.baseURL ? { baseURL: bridge.baseURL } : {}),
+            ...(models ? { models } : {}),
+          },
+          managedKeys: ["displayName", "apiKeyEnv", "api", "baseURL", "models"],
+        });
         continue;
       }
       if (!route) continue;
       const ref = providerApiKeyCredentialRef(providerId);
-      try {
-        await this.#callAtBaseUrl(baseUrl, "settings.mutate", {
-          ns: route.settingsNs,
-          ops: [{
-            op: "set",
-            path: [...route.settingsPath, "apiKeyEnv"],
-            value: ref,
-          }],
-        });
-        await this.#callAtBaseUrl(baseUrl, "credentials.set", { ref, value: apiKey });
-      } catch {
-        // A provider can be OpenCode-only (for example OAuth/custom protocol).
-        // Leave that route untouched without blocking every other DSH model.
-        syncSucceeded = false;
-      }
+      await syncCredentialRoute({
+        providerId,
+        route,
+        ref,
+        apiKey,
+        expected: { apiKeyEnv: ref },
+      });
 
+    }
+    if (syncSucceeded) {
+      syncSucceeded = await this.#callAtBaseUrl<DeepSeekHarnessCredentialDescription>(
+        baseUrl,
+        "credentials.describe",
+        { refs: [...desiredCredentialRefs] },
+      ).then((description) => (
+        deepSeekHarnessCredentialRefsConfigured(description, desiredCredentialRefs)
+      )).catch(() => false);
     }
     if (syncSucceeded) {
       this.#syncedCredentialFingerprint = fingerprint;
       this.#syncedProviderIds = new Set(credentials.keys());
       this.#syncedCompatibleProviderIds = desiredCompatibleProviderIds;
+      this.#syncedCredentialRefs = desiredCredentialRefs;
+      this.#syncedRouteProjections = desiredRouteProjections;
     }
   }
 
@@ -574,6 +789,8 @@ export class DeepSeekHarnessRuntime {
     this.#syncedCredentialFingerprint = "";
     this.#syncedProviderIds.clear();
     this.#syncedCompatibleProviderIds.clear();
+    this.#syncedCredentialRefs.clear();
+    this.#syncedRouteProjections = [];
     if (!child || child.exitCode !== null) return;
     child.kill("SIGTERM");
     await Promise.race([
@@ -627,9 +844,11 @@ export class DeepSeekHarnessRuntime {
     childEnv.IPOLLOWORK_SERVER_URL = `http://127.0.0.1:${this.#config.port}`;
     childEnv.IPOLLOWORK_SERVER_TOKEN = this.#config.token;
     childEnv.IPOLLOWORK_WORKSPACE_ID = this.#workspace.id;
-    const nodeExecutable = process.versions.electron
-      ? process.execPath
-      : process.env.IPOLLOWORK_NODE_BIN?.trim() || (process.platform === "win32" ? "node.exe" : "node");
+    // DSH's web profile does not stay alive when its JavaScript entrypoint is
+    // booted through Electron's run-as-Node compatibility mode. Downloaded
+    // engine packs therefore carry a matching Node runtime; official local
+    // installs fall back to the user's Node executable.
+    const nodeExecutable = deepSeekHarnessNodeExecutable();
     const executable = configuredCli ? nodeExecutable : process.platform === "win32" ? "dsh.cmd" : "dsh";
     const args = deepSeekHarnessWebArgs(configuredCli, patchPath);
 
@@ -650,7 +869,9 @@ export class DeepSeekHarnessRuntime {
       const baseUrl = await waitForReadyUrl(child);
       child.stdout?.resume();
       child.stderr?.resume();
-      this.#baseUrl = baseUrl.replace(/\/+$/, "");
+      const normalizedBaseUrl = baseUrl.replace(/\/+$/, "");
+      await waitForDeepSeekHarnessApi(normalizedBaseUrl);
+      this.#baseUrl = normalizedBaseUrl;
       await this.#syncSharedProviderApiCredentials(this.#baseUrl).catch(() => undefined);
       child.once("exit", () => {
         if (this.#child !== child) return;
@@ -659,6 +880,8 @@ export class DeepSeekHarnessRuntime {
         this.#syncedCredentialFingerprint = "";
         this.#syncedProviderIds.clear();
         this.#syncedCompatibleProviderIds.clear();
+        this.#syncedCredentialRefs.clear();
+        this.#syncedRouteProjections = [];
       });
       return this.#baseUrl;
     } catch (error) {

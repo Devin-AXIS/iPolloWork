@@ -590,6 +590,15 @@ function applyEvent(entry: SyncEntry, workspaceId: string, event: ConversationEv
     return;
   }
 
+  if (event.type === "context.updated") {
+    if (!isTrackedSession(entry, event.sessionId)) return;
+    queryClient.setQueryData<ConversationSnapshot>(
+      snapshotKey(workspaceId, event.sessionId),
+      (current) => current ? { ...current, contextUsage: event.usage } : current,
+    );
+    return;
+  }
+
   if (event.type === "session.deleted") {
     useSessionActivityStore.getState().removeSession(workspaceId, event.sessionId);
     return;

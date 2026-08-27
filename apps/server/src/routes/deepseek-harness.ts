@@ -40,6 +40,7 @@ const ALLOWED_METHODS = new Set([
   "workspace.archiveSession",
   "agentPreset.list",
   "agentPreset.select",
+  "commands/execute",
 ]);
 
 const READ_METHODS = new Set([
@@ -197,6 +198,7 @@ export function registerDeepSeekHarnessRoutes(options: RegisterDeepSeekHarnessRo
         },
       });
     } catch (error) {
+      if (ctx.request.signal.aborted) return new Response(null, { status: 204 });
       remapDeepSeekHarnessError(error);
     }
   });

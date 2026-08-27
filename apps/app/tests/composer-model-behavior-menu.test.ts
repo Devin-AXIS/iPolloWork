@@ -10,14 +10,111 @@ import { attachmentRequiresNativeModelSupport } from "../src/react-app/domains/s
 import { draftToParts } from "../src/react-app/shell/session-prompt";
 import type { ComposerDraft } from "../src/app/types";
 import { resolveModelDisplayName } from "../src/app/utils";
+import {
+  formatContextTokenCount,
+  resolveConversationContextHealth,
+} from "../src/react-app/domains/session/engine/conversation-engine";
+import { getModelContextWindow } from "../src/react-app/infra/provider-list-query";
 
 const modelSelectPath = resolve(import.meta.dir, "../src/components/model-select.tsx");
 const composerPath = resolve(import.meta.dir, "../src/react-app/domains/session/surface/composer/composer.tsx");
+const sessionPagePath = resolve(import.meta.dir, "../src/react-app/domains/session/chat/session-page.tsx");
 const menuPath = resolve(import.meta.dir, "../src/components/model-behavior-menu.tsx");
 const modelPickerHookPath = resolve(import.meta.dir, "../src/react-app/domains/session/modals/use-model-picker.ts");
+const modelPickerModalPath = resolve(import.meta.dir, "../src/react-app/domains/session/modals/model-picker-modal.tsx");
 const sessionRoutePath = resolve(import.meta.dir, "../src/react-app/shell/session-route.tsx");
 
 describe("Composer model and reasoning menu", () => {
+  test("shows current context against the selected model window and warns before compaction", () => {
+    expect(getModelContextWindow({
+      all: [{
+        id: "provider",
+        name: "Provider",
+        source: "config",
+        env: [],
+        models: {
+          model: { id: "model", name: "Model", contextWindow: 100_000, capabilities: {} },
+        },
+      }],
+      connected: ["provider"],
+      default: { provider: "model" },
+    }, { providerID: "provider", modelID: "model" })).toBe(100_000);
+    expect(getModelContextWindow({
+      all: [
+        {
+          id: "deepseek-official",
+          name: "DeepSeek",
+          source: "config",
+          env: [],
+          models: {
+            "deepseek-v4-flash": {
+              id: "deepseek-v4-flash",
+              name: "DeepSeek V4 Flash",
+              capabilities: {},
+            },
+          },
+        },
+        {
+          id: "deepseek",
+          name: "DeepSeek catalog",
+          source: "api",
+          env: [],
+          models: {
+            "deepseek-v4-flash": {
+              id: "deepseek-v4-flash",
+              name: "DeepSeek V4 Flash",
+              contextWindow: 1_000_000,
+              capabilities: {},
+            },
+          },
+        },
+      ],
+      connected: ["deepseek-official"],
+      default: {},
+    }, { providerID: "deepseek-official", modelID: "deepseek-v4-flash" })).toBe(1_000_000);
+    expect(getModelContextWindow({
+      all: [
+        {
+          id: "selected",
+          name: "Selected",
+          source: "config",
+          env: [],
+          models: { shared: { id: "shared", name: "Shared", capabilities: {} } },
+        },
+        {
+          id: "catalog-a",
+          name: "Catalog A",
+          source: "api",
+          env: [],
+          models: { shared: { id: "shared", name: "Shared", contextWindow: 128_000, capabilities: {} } },
+        },
+        {
+          id: "catalog-b",
+          name: "Catalog B",
+          source: "api",
+          env: [],
+          models: { shared: { id: "shared", name: "Shared", contextWindow: 256_000, capabilities: {} } },
+        },
+      ],
+      connected: ["selected"],
+      default: {},
+    }, { providerID: "selected", modelID: "shared" })).toBeNull();
+    expect(resolveConversationContextHealth({ usedTokens: 79_499 }, 100_000)).toEqual({
+      usedTokens: 79_499,
+      contextWindow: 100_000,
+      percentage: 79,
+      compressionWarning: false,
+    });
+    expect(resolveConversationContextHealth({ usedTokens: 80_000 }, 100_000)).toEqual({
+      usedTokens: 80_000,
+      contextWindow: 100_000,
+      percentage: 80,
+      compressionWarning: true,
+    });
+    expect(formatContextTokenCount(9_100)).toBe("9.1K");
+    expect(formatContextTokenCount(1_000_000)).toBe("1M");
+  });
+
   test("keeps the selected OpenCode model name consistent with the model directory", () => {
     expect(resolveModelDisplayName("x-preview-f-free")).toBe("Ox Alpha Free");
   });
@@ -91,6 +188,7 @@ describe("Composer model and reasoning menu", () => {
 
   test("loads model options when the compact Composer picker opens", () => {
     const source = readFileSync(modelPickerHookPath, "utf8");
+    const modal = readFileSync(modelPickerModalPath, "utf8");
 
     expect(source).toContain("const pickerOpen = open || compactOpen;");
     expect(source).toContain("useMergedProviderListQuery({");
@@ -103,12 +201,14 @@ describe("Composer model and reasoning menu", () => {
     expect(source).toContain("filterProviderList(");
     expect(source).toContain("disabledProviderIds = EMPTY_PROVIDER_IDS");
     expect(source).toContain("getChatModelCatalogEntries(accountData)");
-    expect(source).toContain("getEngineChatModelEntries({");
-    expect(source).toContain("runtime: runtimeQuery.data");
+    expect(source).not.toContain("getEngineChatModelEntries({");
     expect(source).toContain("const runtimePending = runtime === null");
-    expect(source).toContain('const runtimeReady = runtime?.status === "ready"');
-    expect(source).toContain("isConnected: runtimeReady");
-    expect(source).toContain("disabled: runtimePending || !runtimeReady");
+    expect(source).not.toContain('const runtimeReady = runtime?.status === "ready"');
+    expect(source).toContain("isConnected: true");
+    expect(source).toContain("disabled: false");
+    expect(source).toContain("resolveModelRuntime(");
+    expect(source).not.toContain("if (opt.runtimePending) return;");
+    expect(modal).not.toContain("if (opt.runtimePending) return;");
   });
 
   test("Composer uses one combined model and reasoning menu", () => {
@@ -130,19 +230,18 @@ describe("Composer model and reasoning menu", () => {
     expect(model).toContain("useMergedProviderListQuery");
     expect(model).not.toContain("await refetch()");
     expect(model).not.toContain("refreshProviderListQueries");
-    expect(model).toContain("getEngineChatModelEntries({");
+    expect(model).not.toContain("getEngineChatModelEntries({");
     expect(model).toContain("getChatModelCatalogEntries(catalogValue)");
-    expect(model).not.toContain("mergeProviderListResponses([catalogQuery.data, runtimeQuery.data])");
+    expect(model).toContain("useProviderListQuery({");
     expect(model).toContain("projectAccountProviderConnections(");
     expect(model).toContain("catalogQuery.data");
     expect(model).toContain('t("settings.loading_providers")');
     expect(model).toContain('t("model_picker.no_models_available")');
-    expect(model).toContain("const runtimePending = runtime === null");
-    expect(model).toContain('const runtimeReady = runtime?.status === "ready"');
-    expect(model).toContain("isConnected: runtimeReady");
-    expect(model).toContain("disabled: runtimePending || !runtimeReady");
-    expect(model).toContain("option.isConnected || option.runtimePending || !onConfigureModels");
-    expect(model).toContain("if (option.runtimePending) return;");
+    expect(model).toContain("isConnected: true");
+    expect(model).toContain("disabled: false");
+    expect(model).toContain("resolveModelRuntime(");
+    expect(model).toContain("runtimePending");
+    expect(model).not.toContain("if (option.runtimePending) return;");
     expect(model).toContain("if (option.disabled)");
     expect(model).toContain("onConfigureModels?.(option.providerID)");
     expect(model).not.toContain('option.providerID === "tokenstar") continue');
@@ -175,6 +274,34 @@ describe("Composer model and reasoning menu", () => {
     expect(composer).toContain("<ChevronDown");
     expect(composer).toContain("<WorkModeIcon");
     expect(composer).toContain("mode.description");
+  });
+
+  test("Composer renders the engine access selector immediately after the model selector", () => {
+    const composer = readFileSync(composerPath, "utf8");
+    const modelIndex = composer.indexOf("<ModelBehaviorMenu");
+    const accessIndex = composer.indexOf("open={accessModeOpen}");
+    const modeIndex = composer.indexOf("open={workModeOpen}");
+
+    expect(modelIndex).toBeGreaterThan(-1);
+    expect(accessIndex).toBeGreaterThan(modelIndex);
+    expect(modeIndex).toBeGreaterThan(accessIndex);
+    expect(composer).toContain("props.listAccessModes()");
+    expect(composer).toContain("data-access-mode-option={mode.id}");
+    expect(composer).toContain("pendingDangerousAccessMode");
+    expect(composer).toContain("access_mode_full_access_confirm_title");
+  });
+
+  test("new-task composer carries its engine permission preset into the created session", () => {
+    const sessionPage = readFileSync(sessionPagePath, "utf8");
+    const sessionRoute = readFileSync(sessionRoutePath, "utf8");
+
+    expect(sessionPage).toContain("listStarterAccessModes");
+    expect(sessionPage).toContain("selectedAccessMode={starterAccessMode}");
+    expect(sessionPage).toContain("...(starterAccessMode ? { accessMode: starterAccessMode } : {})");
+    expect(sessionRoute).toContain("pending.draft.accessMode && surfaceProps.conversation.setAccessMode");
+    expect(sessionRoute.indexOf("await surfaceProps.conversation.setAccessMode")).toBeLessThan(
+      sessionRoute.indexOf("return surfaceProps.onSendDraft", sessionRoute.indexOf("await surfaceProps.conversation.setAccessMode")),
+    );
   });
 
   test("derives model behavior catalog without an effect-driven render loop", () => {

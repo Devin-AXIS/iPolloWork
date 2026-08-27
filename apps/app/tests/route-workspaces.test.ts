@@ -7,10 +7,13 @@ import {
 } from "../src/app/lib/session-title";
 import {
   buildTaskPaletteSessionOptions,
+  describeSidecarLaunchBlockedError,
+  describeWorkspaceUnavailableTitle,
   mapDesktopWorkspace,
   mergeRouteWorkspaces,
   orderRouteWorkspaces,
   partitionInitialWorkspaceLoads,
+  reconcilePendingCreatedSessions,
   toProjectSessionLists,
   resolveKnownWorkspaceId,
   userVisibleSessionsByWorkspaceId,
@@ -44,6 +47,23 @@ function remoteWorkspace(id: string): WorkspaceInfo {
 }
 
 describe("route workspaces", () => {
+  test("attributes launch failures to the selected workspace engine", () => {
+    expect(describeWorkspaceUnavailableTitle({
+      message: "spawn EPERM",
+      engineId: "codex-harness",
+    })).toBe("Codex Harness launch blocked");
+    expect(describeWorkspaceUnavailableTitle({
+      message: "spawn EPERM",
+      engineId: "deepseek-harness",
+    })).toBe("DeepSeek Harness launch blocked");
+    expect(describeWorkspaceUnavailableTitle({
+      message: "spawn EPERM",
+      engineId: "opencode",
+    })).toBe("OpenCode launch blocked");
+    expect(describeSidecarLaunchBlockedError("codex-harness")).toContain("Codex Harness runtime");
+    expect(describeSidecarLaunchBlockedError("codex-harness")).not.toContain("opencode.exe");
+  });
+
   test("derives a stable sidebar title from the first user request", () => {
     expect(sessionTitleFromFirstPrompt("  给我做一个阿里巴巴相关的 PPT\n和 10 秒视频  ")).toBe(
       "给我做一个阿里巴巴相关的 PPT 和 10 秒视频",
@@ -176,6 +196,38 @@ describe("route workspaces", () => {
       "active-default",
       "named-active",
     ]);
+  });
+
+  test("keeps a locally started new session visible until the runtime index catches up", () => {
+    const fetched = [routeSession("started-locally", {
+      title: "New session - 2026-08-26T00:00:00.000Z",
+      time: { created: 1000, updated: 1000 },
+    })];
+    const optimistic = [routeSession("started-locally", {
+      title: "DSH 首条消息会话保留验证",
+      time: { created: 1000, updated: 1001 },
+    })];
+
+    const waiting = reconcilePendingCreatedSessions(
+      fetched,
+      optimistic,
+      { "started-locally": 2000 },
+      3000,
+    );
+    expect(waiting.sessions).toEqual(optimistic);
+    expect(waiting.pending).toEqual({ "started-locally": 2000 });
+    expect(userVisibleSessionsByWorkspaceId({ ws: waiting.sessions }).ws).toEqual(optimistic);
+
+    const indexed = reconcilePendingCreatedSessions(
+      [routeSession("started-locally", {
+        title: "DSH 首条消息会话保留验证",
+        time: { created: 1000, updated: 1100 },
+      })],
+      optimistic,
+      waiting.pending,
+      4000,
+    );
+    expect(indexed.pending).toEqual({});
   });
 
   test("requires an exact orchestrator agent to retain delegated children", () => {

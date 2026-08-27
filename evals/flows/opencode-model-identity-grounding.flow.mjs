@@ -68,14 +68,24 @@ async function openOpenCodeWorkspaceSession(ctx) {
   ctx.assert(Array.isArray(sessions) && sessions.length > 0, "No sessions are available for engine discovery.");
   for (const session of sessions.slice(0, 12)) {
     await ctx.control("session.open", { sessionId: session.sessionId });
-    const engineId = await ctx.waitFor(`(() => {
-      if (!window.__ipolloworkControl.snapshot().route.includes(${JSON.stringify(session.sessionId)})) return null;
-      return document.querySelector('[data-testid="session-composer-engine-badge"]')
-        ?.getAttribute("data-engine-id") || null;
-    })()`, {
+    await ctx.waitFor(`window.__ipolloworkControl.snapshot().route.includes(${JSON.stringify(session.sessionId)})`, {
       timeoutMs: 15_000,
-      label: `session ${session.sessionId} engine badge`,
+      label: `session ${session.sessionId} route`,
     });
+    const engineId = await ctx.eval(`(async () => {
+      const info = await window.__IPOLLOWORK_ELECTRON__?.invokeDesktop('ipolloworkServerInfo', {});
+      if (!info?.baseUrl) return null;
+      const token = info.ownerToken || info.clientToken;
+      const response = await fetch(info.baseUrl + '/workspaces', {
+        headers: token ? { authorization: 'Bearer ' + token } : {},
+      });
+      if (!response.ok) return null;
+      const payload = await response.json();
+      const workspace = (payload.workspaces || []).find((candidate) =>
+        [candidate.displayName, candidate.name, candidate.path].some((label) => label === ${JSON.stringify(session.workspace)})
+      );
+      return workspace?.engineId || null;
+    })()`, { awaitPromise: true });
     if (engineId === "opencode") return;
   }
   throw new Error("No OpenCode workspace session was found in the recent session list.");

@@ -22,12 +22,113 @@ export type ConversationSession = {
   revertMessageId?: string | null;
 };
 
+export type ConversationContextUsage = {
+  usedTokens: number;
+  inputTokens?: number;
+  outputTokens?: number;
+  cacheReadTokens?: number;
+  contextWindow?: number;
+};
+
+export const CONTEXT_COMPRESSION_WARNING_PERCENT = 80;
+
+export function formatContextTokenCount(value: number): string {
+  if (value >= 1_000_000) {
+    const scaled = value / 1_000_000;
+    return `${scaled >= 100 || Number.isInteger(scaled) ? scaled.toFixed(0) : scaled.toFixed(1)}M`;
+  }
+  if (value >= 1_000) {
+    const scaled = value / 1_000;
+    return `${scaled >= 100 || Number.isInteger(scaled) ? scaled.toFixed(0) : scaled.toFixed(1)}K`;
+  }
+  return String(Math.max(0, Math.round(value)));
+}
+
+export function resolveConversationContextHealth(
+  usage: ConversationContextUsage | null | undefined,
+  modelContextWindow: number | null | undefined,
+) {
+  const usedTokens = Math.max(0, Math.round(usage?.usedTokens ?? 0));
+  const contextWindowCandidate = usage?.contextWindow ?? modelContextWindow;
+  const contextWindow = typeof contextWindowCandidate === "number"
+    && Number.isFinite(contextWindowCandidate)
+    && contextWindowCandidate > 0
+    ? Math.round(contextWindowCandidate)
+    : null;
+  const percentage = contextWindow
+    ? Math.max(0, Math.round((usedTokens / contextWindow) * 100))
+    : null;
+  return {
+    usedTokens,
+    contextWindow,
+    percentage,
+    compressionWarning: percentage !== null && percentage >= CONTEXT_COMPRESSION_WARNING_PERCENT,
+  };
+}
+
 export type ConversationSnapshot = {
   session: ConversationSession;
   messages: UIMessage[];
   todos: TodoItem[];
   status: ConversationStatus;
+  contextUsage?: ConversationContextUsage;
 };
+
+function finiteTokenCount(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value)
+    ? Math.max(0, Math.round(value))
+    : undefined;
+}
+
+function recordValue(value: unknown): Record<string, unknown> | null {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : null;
+}
+
+export function conversationContextUsageFromTokens(
+  value: unknown,
+  options: { contextWindow?: unknown; cachedInputIncluded?: boolean } = {},
+): ConversationContextUsage | undefined {
+  const tokens = recordValue(value);
+  if (!tokens) return undefined;
+  const cache = recordValue(tokens.cache);
+  const inputTokens = finiteTokenCount(tokens.input) ?? finiteTokenCount(tokens.inputTokens);
+  const outputTokens = finiteTokenCount(tokens.output) ?? finiteTokenCount(tokens.outputTokens);
+  const cacheReadTokens = finiteTokenCount(cache?.read) ?? finiteTokenCount(tokens.cachedInputTokens);
+  const contextWindow = finiteTokenCount(options.contextWindow)
+    ?? finiteTokenCount(tokens.contextWindow)
+    ?? finiteTokenCount(tokens.modelContextWindow);
+  const usedTokens = (inputTokens ?? 0)
+    + (options.cachedInputIncluded ? 0 : cacheReadTokens ?? 0);
+  if (usedTokens <= 0 && !contextWindow) return undefined;
+  return {
+    usedTokens,
+    ...(inputTokens !== undefined ? { inputTokens } : {}),
+    ...(outputTokens !== undefined ? { outputTokens } : {}),
+    ...(cacheReadTokens !== undefined ? { cacheReadTokens } : {}),
+    ...(contextWindow ? { contextWindow } : {}),
+  };
+}
+
+export function conversationMessageContextUsage(message: UIMessage): ConversationContextUsage | undefined {
+  const metadata = recordValue(message.metadata);
+  const ipollowork = recordValue(metadata?.ipollowork);
+  const usage = recordValue(ipollowork?.contextUsage);
+  const usedTokens = finiteTokenCount(usage?.usedTokens);
+  if (usedTokens === undefined) return undefined;
+  const inputTokens = finiteTokenCount(usage?.inputTokens);
+  const outputTokens = finiteTokenCount(usage?.outputTokens);
+  const cacheReadTokens = finiteTokenCount(usage?.cacheReadTokens);
+  const contextWindow = finiteTokenCount(usage?.contextWindow);
+  return {
+    usedTokens,
+    ...(inputTokens !== undefined ? { inputTokens } : {}),
+    ...(outputTokens !== undefined ? { outputTokens } : {}),
+    ...(cacheReadTokens !== undefined ? { cacheReadTokens } : {}),
+    ...(contextWindow ? { contextWindow } : {}),
+  };
+}
 
 export type ConversationPermission = {
   id: string;
@@ -83,6 +184,23 @@ export type ConversationModeState = {
   mutable: boolean;
 };
 
+export type ConversationAccessModeIcon = "read-only" | "workspace" | "ask" | "full-access";
+
+export type ConversationAccessMode = {
+  id: string;
+  label: string;
+  description?: string;
+  icon: ConversationAccessModeIcon;
+  isDefault?: boolean;
+  dangerous?: boolean;
+  selectable?: boolean;
+};
+
+export type ConversationAccessModeState = {
+  id: string | null;
+  mutable: boolean;
+};
+
 export type ConversationPromptPart =
   | { type: "text"; text: string; synthetic?: boolean }
   | { type: "file"; mime: string; url: string; filename?: string }
@@ -128,6 +246,7 @@ export function completeConversationMessage(message: UIMessage, completedAt: num
 
 export type ConversationEvent =
   | { type: "session.updated"; sessionId: string; info: ConversationSession }
+  | { type: "context.updated"; sessionId: string; usage: ConversationContextUsage }
   | { type: "session.deleted"; sessionId: string }
   | { type: "session.error"; sessionId: string; errorText: string }
   | { type: "session.compaction"; sessionId: string; running: boolean }
@@ -180,6 +299,7 @@ export type ConversationPromptResult = {
 export interface ConversationEngineConnection {
   mapSnapshot(snapshot: unknown): ConversationSnapshot;
   modeState?(session: ConversationSession): ConversationModeState;
+  accessModeState?(session: ConversationSession): ConversationAccessModeState;
   subscribe(input: ConversationSubscribeInput): Promise<void>;
   listPermissions(input: { sessionId: string; directory?: string }): Promise<ConversationPermission[]>;
   replyPermission(input: {
@@ -209,12 +329,15 @@ export interface ConversationEngineConnection {
     command: string;
     arguments: string;
     model?: ModelRef;
+    mode?: string;
     directory?: string;
     reasoningEffort?: string;
   }): Promise<void>;
   sendPrompt(input: ConversationPromptInput): Promise<ConversationPromptResult>;
   listCommands(directory?: string): Promise<SlashCommandOption[]>;
   listModes(): Promise<ConversationMode[]>;
+  listAccessModes?(input: { sessionId: string; directory?: string }): Promise<ConversationAccessMode[]>;
+  setAccessMode?(input: { sessionId: string; accessMode: string; directory?: string }): Promise<void>;
   listAgents(): Promise<ConversationAgent[]>;
   searchFiles(query: string, directory?: string): Promise<string[]>;
 }

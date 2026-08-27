@@ -7,7 +7,10 @@ import type {
   ConversationQuestion,
   ConversationSnapshot,
 } from "./conversation-engine";
-import { conversationMessageMetadata } from "./conversation-engine";
+import {
+  conversationContextUsageFromTokens,
+  conversationMessageMetadata,
+} from "./conversation-engine";
 import { mapOpenCodeConversationSnapshot } from "./opencode-conversation-mapper";
 
 type CodexLiveState = {
@@ -292,6 +295,22 @@ export function mapCodexHarnessEvent(
   const params = isRecord(event.params) ? event.params : null;
   if (!method || !params) return [];
   const threadId = stringValue(params.threadId);
+  if (method === "thread/tokenUsage/updated" && threadId && isRecord(params.tokenUsage)) {
+    const tokenUsage = params.tokenUsage;
+    const last = isRecord(tokenUsage.last)
+      ? tokenUsage.last
+      : isRecord(tokenUsage.lastTokenUsage)
+        ? tokenUsage.lastTokenUsage
+        : null;
+    const usage = last
+      ? conversationContextUsageFromTokens(last, {
+          contextWindow: tokenUsage.modelContextWindow,
+          // Codex inputTokens already contains its cached-input subset.
+          cachedInputIncluded: true,
+        })
+      : undefined;
+    return usage ? [{ type: "context.updated", sessionId: threadId, usage }] : [];
+  }
   if (method === "thread/started" && isRecord(params.thread) && typeof params.thread.id === "string") {
     const thread = params.thread;
     const startedThreadId = thread.id as string;

@@ -22,6 +22,7 @@ import {
   getSelectableChatProviderItems,
   mergeProviderListResponses,
   projectAccountProviderConnections,
+  projectKnownProviderModels,
   PROVIDER_LIST_CACHE_MS,
   PROVIDER_LIST_STALE_MS,
   providerListQueryKey,
@@ -47,7 +48,14 @@ function createOpenCodeProviderClient() {
         name: "OpenCode",
         source: "api" as const,
         env: [],
-        models: {},
+        models: {
+          "x-preview-f-free": {
+            id: "x-preview-f-free",
+            name: "Stale Ox label",
+            limit: { context: 0, output: 0 },
+            capabilities: {},
+          },
+        },
       },
     ],
     connected: ["opencode"],
@@ -214,8 +222,9 @@ describe("model runtime adapters", () => {
     });
 
     const opening = store.openProviderAuthModal();
-    expect(store.getSnapshot().providerAuthBusy).toBe(true);
+    expect(store.getSnapshot().providerAuthBusy).toBe(false);
     expect(store.getSnapshot().providerAuthModalOpen).toBe(true);
+    expect(Object.keys(store.getSnapshot().providerAuthMethods).length).toBeGreaterThan(0);
     activeClient = client;
     await opening;
 
@@ -922,6 +931,10 @@ describe("model runtime adapters", () => {
       "x-preview-f-free",
     ]);
     expect(providers.all[0]?.models["x-preview-f-free"]?.name).toBe("Ox Alpha Free");
+    expect(providers.all[0]?.models["x-preview-f-free"]).toMatchObject({
+      contextWindow: 1_000_000,
+      maxTokens: 131_072,
+    });
     expect(providers.connected).toEqual(["opencode"]);
     expect(providers.default).toEqual({ opencode: "big-pickle" });
     expect(await connection.listAuthMethods()).toEqual({
@@ -951,6 +964,8 @@ describe("model runtime adapters", () => {
               models: [{
                 id: "deepseek-v4-flash",
                 name: "DeepSeek-V4-Flash",
+                contextWindow: 1_000_000,
+                maxTokens: 32_000,
                 reasoning: {
                   efforts: [{ id: "off", name: "Off" }, { id: "high", name: "High" }],
                   defaultEffort: "high",
@@ -1005,6 +1020,8 @@ describe("model runtime adapters", () => {
         env: ["DEEPSEEK_API_KEY"],
         models: {
           "deepseek-v4-flash": {
+            contextWindow: 1_000_000,
+            maxTokens: 32_000,
             capabilities: { attachment: false, reasoning: true },
             variants: { off: { name: "Off" }, high: { name: "High" } },
           },
@@ -1103,6 +1120,79 @@ describe("model runtime adapters", () => {
       },
     });
     expect(merged.all[1]?.id).toBe("engine-only");
+  });
+
+  test("fills trusted DeepSeek capacities when an engine omits or zeros them", () => {
+    const providers = projectKnownProviderModels({
+      all: [{
+        id: "deepseek-official",
+        name: "DeepSeek",
+        source: "config",
+        env: ["DEEPSEEK_API_KEY"],
+        models: {
+          "deepseek-v4-flash": {
+            id: "deepseek-v4-flash",
+            name: "DeepSeek-V4-Flash",
+            limit: { context: 0, output: 0 },
+            capabilities: {},
+          },
+        },
+      }],
+      connected: ["deepseek-official"],
+      default: { "deepseek-official": "deepseek-v4-flash" },
+    });
+
+    expect(providers.all[0]?.models["deepseek-v4-flash"]).toMatchObject({
+      contextWindow: 1_000_000,
+      maxTokens: 384_000,
+    });
+    expect(providers.all[0]?.models["deepseek-v4-pro"]).toMatchObject({
+      contextWindow: 1_000_000,
+      maxTokens: 384_000,
+    });
+  });
+
+  test("supplements missing context metadata without replacing the shared model label", () => {
+    const merged = mergeProviderListResponses([
+      {
+        all: [{
+          id: "shared",
+          name: "Shared provider",
+          source: "config",
+          env: [],
+          models: {
+            common: { id: "common", name: "Account label", capabilities: {} },
+          },
+        }],
+        connected: ["shared"],
+        default: {},
+      },
+      {
+        all: [{
+          id: "shared",
+          name: "Engine provider",
+          source: "config",
+          env: [],
+          models: {
+            common: {
+              id: "common",
+              name: "Engine label",
+              contextWindow: 262_144,
+              maxTokens: 32_768,
+              capabilities: {},
+            },
+          },
+        }],
+        connected: ["shared"],
+        default: {},
+      },
+    ]);
+
+    expect(merged.all[0]?.models.common).toMatchObject({
+      name: "Account label",
+      contextWindow: 262_144,
+      maxTokens: 32_768,
+    });
   });
 
   test("promotes an explicitly configured provider over an ambient duplicate", () => {
@@ -1400,6 +1490,12 @@ describe("model runtime adapters", () => {
             }],
           } as T;
         }
+        if (method === "settings.describe") {
+          return { namespaces: [{
+            ns: "llm-pi-ai",
+            value: { providers: { openai: {} } },
+          }] } as T;
+        }
         if (method === "settings.mutate" || method === "credentials.set") {
           return undefined as T;
         }
@@ -1424,6 +1520,72 @@ describe("model runtime adapters", () => {
       method: "credentials.set",
       payload: { ref: "OPENAI_API_KEY", value: "secret" },
     });
+    expect(calls.findIndex((entry) => entry.method === "credentials.set"))
+      .toBeLessThan(calls.findIndex((entry) => entry.method === "settings.mutate"));
+  });
+
+  test("does not rewrite correct DSH settings and maps Kimi to its runtime route", async () => {
+    const calls: Array<{ method: string; payload: unknown }> = [];
+    let configured = false;
+    const client = {
+      async call<T>(method: string, payload: unknown): Promise<T> {
+        calls.push({ method, payload });
+        if (method === "llm.models") {
+          return { groups: [{
+            id: "kimi-coding",
+            name: "Kimi",
+            models: [{ id: "kimi-for-coding", name: "Kimi For Coding" }],
+          }] } as T;
+        }
+        if (method === "llm.providers") {
+          return { providers: [{
+            provider: "kimi-coding",
+            displayName: "Kimi",
+            settingsNs: "llm-pi-ai",
+            settingsPath: ["providers", "kimi-coding"],
+            active: true,
+          }] } as T;
+        }
+        if (method === "settings.describe") {
+          return { namespaces: [{
+            ns: "llm-pi-ai",
+            value: { providers: { "kimi-coding": { apiKeyEnv: "KIMI_CODING_API_KEY" } } },
+          }] } as T;
+        }
+        if (method === "credentials.describe") {
+          return { credentials: {
+            KIMI_CODING_API_KEY: { configured, writable: true },
+          } } as T;
+        }
+        if (method === "credentials.set") {
+          configured = true;
+          return undefined as T;
+        }
+        if (method === "credentials.unset") {
+          configured = false;
+          return undefined as T;
+        }
+        throw new Error(`Unexpected method: ${method}`);
+      },
+    };
+    const connection = deepSeekHarnessProviderEngineAdapter.connect(client);
+
+    expect(await connection.listProviders()).toMatchObject({
+      all: [{ id: "kimi-for-coding" }],
+      connected: [],
+    });
+    await connection.setApiKey("kimi-for-coding", "secret");
+    await connection.removeCredentials("kimi-for-coding");
+
+    expect(calls).toContainEqual({
+      method: "credentials.set",
+      payload: { ref: "KIMI_CODING_API_KEY", value: "secret" },
+    });
+    expect(calls).toContainEqual({
+      method: "credentials.unset",
+      payload: { ref: "KIMI_CODING_API_KEY" },
+    });
+    expect(calls.some((entry) => entry.method === "settings.mutate")).toBe(false);
   });
 
   test("materializes compatible providers only inside the OpenCode adapter", () => {
@@ -1526,8 +1688,16 @@ describe("model runtime adapters", () => {
             name: "DeepSeek",
             options: { baseURL: "https://api.deepseek.com" },
             models: {
-              "deepseek-v4-flash": { name: "DeepSeek-V4-Flash" },
-              "deepseek-v4-pro": { name: "DeepSeek-V4-Pro" },
+              "deepseek-v4-flash": {
+                name: "DeepSeek-V4-Flash",
+                contextWindow: 1_000_000,
+                maxTokens: 384_000,
+              },
+              "deepseek-v4-pro": {
+                name: "DeepSeek-V4-Pro",
+                contextWindow: 1_000_000,
+                maxTokens: 384_000,
+              },
             },
           },
         },
@@ -1769,7 +1939,13 @@ describe("model runtime adapters", () => {
             npm: "@ai-sdk/openai-compatible",
             name: "DeepSeek",
             options: { baseURL: "https://api.deepseek.com" },
-            models: { "deepseek-v4-pro": { name: "DeepSeek-V4-Pro" } },
+            models: {
+              "deepseek-v4-pro": {
+                name: "DeepSeek-V4-Pro",
+                contextWindow: 1_000_000,
+                maxTokens: 384_000,
+              },
+            },
           },
         },
       },

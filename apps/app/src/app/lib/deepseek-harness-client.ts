@@ -4,6 +4,8 @@ import type {
 } from "@ipollowork/types/plugins";
 import { WorkspaceEngineRpcClient } from "./workspace-engine-rpc-client";
 
+export { deepSeekHarnessAccountProviderId } from "@ipollowork/types/workspace";
+
 export type DeepSeekHarnessServerRequest = {
   type: "server-request";
   rpcId: string;
@@ -14,14 +16,6 @@ export type DeepSeekHarnessServerRequest = {
 export type DeepSeekHarnessRpcClient = {
   call<T>(method: string, payload?: unknown): Promise<T>;
 };
-
-/** Keep the account catalog engine-neutral while DSH uses pi-ai's route ID. */
-export function deepSeekHarnessAccountProviderId(providerId: string): string {
-  const normalized = providerId.trim().toLowerCase();
-  return normalized === "openai-codex" || normalized === "openai-codex-priority"
-    ? "openai"
-    : providerId;
-}
 
 export class DeepSeekHarnessClient implements DeepSeekHarnessRpcClient {
   readonly #client: WorkspaceEngineRpcClient;

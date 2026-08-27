@@ -1,4 +1,7 @@
-import { DEEPSEEK_HARNESS_ENGINE_ID } from "@ipollowork/types/workspace";
+import {
+  DEEPSEEK_HARNESS_ENGINE_ID,
+  deepSeekHarnessRuntimeProviderRouteId,
+} from "@ipollowork/types/workspace";
 import { providerApiKeyCredentialRef } from "@ipollowork/types/provider-credentials";
 
 import {
@@ -19,6 +22,8 @@ type DeepSeekHarnessModelList = {
     models: Array<{
       id: string;
       name: string;
+      contextWindow?: number;
+      maxTokens?: number;
       reasoning?: {
         efforts?: Array<{ id: string; name?: string }>;
         defaultEffort?: string;
@@ -103,6 +108,12 @@ function connection(client: unknown): ModelRuntimeConnection {
           return [model.id, {
             id: model.id,
             name: model.name,
+            ...(typeof model.contextWindow === "number" && model.contextWindow > 0
+              ? { contextWindow: model.contextWindow }
+              : {}),
+            ...(typeof model.maxTokens === "number" && model.maxTokens > 0
+              ? { maxTokens: model.maxTokens }
+              : {}),
             capabilities: {
               attachment: false,
               reasoning: efforts.length > 0,
@@ -145,25 +156,39 @@ function connection(client: unknown): ModelRuntimeConnection {
     },
     async setApiKey(providerId, apiKey) {
       const resolvedProviderId = providerId.trim().toLowerCase();
-      const directory = await listProviderDirectory();
-      const route = directory.providers.find((entry) => entry.provider === resolvedProviderId);
+      const runtimeProviderId = deepSeekHarnessRuntimeProviderRouteId(resolvedProviderId);
+      const [directory, settings] = await Promise.all([
+        listProviderDirectory(),
+        describeSettings(),
+      ]);
+      const route = directory.providers.find((entry) => entry.provider === runtimeProviderId);
       if (!route) {
         throw new Error(`DeepSeek Harness does not support provider: ${providerId}`);
       }
-      const ref = providerApiKeyCredentialRef(resolvedProviderId);
-      await client.call("settings.mutate", {
-        ns: route.settingsNs,
-        ops: [{
-          op: "set",
-          path: [...route.settingsPath, "apiKeyEnv"],
-          value: ref,
-        }],
-      });
+      const ref = providerApiKeyCredentialRef(runtimeProviderId);
+      // Persist the secret before touching settings. If another DSH process
+      // owns the writer lock, an already-correct route still becomes usable.
       await client.call("credentials.set", { ref, value: apiKey });
+      const namespace = settings.namespaces.find((entry) => entry.ns === route.settingsNs);
+      const profile = readPath(namespace?.value, route.settingsPath);
+      const currentRef = profile && typeof profile === "object" && !Array.isArray(profile)
+        ? (profile as Record<string, unknown>).apiKeyEnv
+        : undefined;
+      if (currentRef !== ref) {
+        await client.call("settings.mutate", {
+          ns: route.settingsNs,
+          ops: [{
+            op: "set",
+            path: [...route.settingsPath, "apiKeyEnv"],
+            value: ref,
+          }],
+        });
+      }
     },
     async removeCredentials(providerId) {
       const resolvedProviderId = providerId.trim().toLowerCase();
-      const refs = new Set([providerApiKeyCredentialRef(resolvedProviderId)]);
+      const runtimeProviderId = deepSeekHarnessRuntimeProviderRouteId(resolvedProviderId);
+      const refs = new Set([providerApiKeyCredentialRef(runtimeProviderId)]);
       if (resolvedProviderId === "openai") {
         // DSH can expose the same account provider through both the API-key
         // route and its Codex OAuth bridge. Both are engine-local caches of the

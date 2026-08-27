@@ -35,6 +35,12 @@
       "development": "./src/desktop-ipc.ts",
       "default": "./src/desktop-ipc.ts"
     },
+    "./deepseek-official-models": {
+      "types": "./src/deepseek-official-models.ts",
+      "development": "./src/deepseek-official-models.ts",
+      "bun": "./src/deepseek-official-models.ts",
+      "default": "./dist/deepseek-official-models.js"
+    },
     "./hyperframes": {
       "types": "./src/hyperframes.ts",
       "development": "./src/hyperframes.ts",

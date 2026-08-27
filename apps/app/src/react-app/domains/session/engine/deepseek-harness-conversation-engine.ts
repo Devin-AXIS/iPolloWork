@@ -9,6 +9,7 @@ import { DeepSeekHarnessClient } from "@/app/lib/deepseek-harness-client";
 import { t } from "@/i18n";
 import {
   type ConversationEngineAdapter,
+  type ConversationAccessMode,
   type ConversationEngineConnection,
   type ConversationMode,
   type ConversationPermission,
@@ -34,6 +35,71 @@ type AgentPresetList = {
     broken?: string;
   }>;
 };
+
+type PermissionSelect = {
+  currentValue: string;
+  options: Array<{ value: string; name: string; description?: string }>;
+};
+
+function defaultPermissionSelect(): PermissionSelect {
+  return {
+    currentValue: "workspace-write",
+    options: [
+      { value: "read-only", name: "read-only" },
+      { value: "workspace-write", name: "workspace-write" },
+      { value: "danger-full-access", name: "danger-full-access" },
+    ],
+  };
+}
+
+function permissionSelect(value: unknown): PermissionSelect | null {
+  if (!isRecord(value) || typeof value.currentValue !== "string" || !Array.isArray(value.options)) return null;
+  const options = value.options.flatMap((option) => (
+    isRecord(option) && typeof option.value === "string" && typeof option.name === "string"
+      ? [{
+          value: option.value,
+          name: option.name,
+          ...(typeof option.description === "string" ? { description: option.description } : {}),
+        }]
+      : []
+  ));
+  return { currentValue: value.currentValue, options };
+}
+
+function permissionLabel(id: string, name: string): string {
+  if (id === "read-only") return t("composer.access_mode_read_only");
+  if (id === "workspace-write") return t("composer.access_mode_workspace_write");
+  if (id === "danger-full-access") return t("composer.access_mode_full_access");
+  if (id === "custom") return t("composer.access_mode_custom");
+  if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/u.test(name)) return name;
+  return name.split("-").map((part) => `${part.charAt(0).toUpperCase()}${part.slice(1)}`).join(" ");
+}
+
+function permissionMode(
+  option: PermissionSelect["options"][number],
+  currentValue: string,
+): ConversationAccessMode {
+  const description = option.value === "read-only"
+    ? t("composer.access_mode_dsh_read_only_description")
+    : option.value === "workspace-write"
+      ? t("composer.access_mode_dsh_workspace_write_description")
+      : option.value === "danger-full-access"
+        ? t("composer.access_mode_dsh_full_access_description")
+        : option.description;
+  return {
+    id: option.value,
+    label: permissionLabel(option.value, option.name),
+    description,
+    icon: option.value === "read-only"
+      ? "read-only"
+      : option.value === "danger-full-access"
+        ? "full-access"
+        : "workspace",
+    isDefault: option.value === currentValue,
+    dangerous: option.value === "danger-full-access",
+    selectable: option.value !== "custom",
+  };
+}
 
 function modePresentation(id: string): Pick<ConversationMode, "label" | "description" | "icon"> | null {
   const modes: Record<string, Pick<ConversationMode, "label" | "description" | "icon">> = {
@@ -157,6 +223,9 @@ function deepSeekHarnessConnection(input: {
   const selectedModels = new Map<string, string>();
   const selectedModes = new Map<string, string>();
   const mutableModes = new Map<string, boolean>();
+  const permissionSelects = new Map<string, PermissionSelect>();
+  const selectedAccessModes = new Map<string, string>();
+  const pendingAccessModes = new Map<string, string>();
 
   const listAgentPresets = async () => {
     agentPresets ??= await client.call<AgentPresetList>("agentPreset.list", {});
@@ -220,6 +289,32 @@ function deepSeekHarnessConnection(input: {
     selectedModes.set(sessionId, mode);
   };
 
+  const applySelectedAccessMode = async (sessionId: string) => {
+    const available = permissionSelects.get(sessionId) ?? defaultPermissionSelect();
+    const requested = pendingAccessModes.get(sessionId)
+      ?? selectedAccessModes.get(sessionId)
+      ?? available.currentValue;
+    if (requested === available.currentValue) {
+      pendingAccessModes.delete(sessionId);
+      selectedAccessModes.set(sessionId, available.currentValue);
+      return;
+    }
+    const option = available.options.find((item) => item.value === requested);
+    if (!option || option.value === "custom") {
+      throw new Error("This DeepSeek Harness permission preset is unavailable");
+    }
+    await client.call("commands/execute", {
+      args: {
+        agentId: sessionId,
+        line: `/permission ${option.value}`,
+      },
+    });
+    pendingAccessModes.delete(sessionId);
+    selectedAccessModes.set(sessionId, option.value);
+    permissionSelects.set(sessionId, { ...available, currentValue: option.value });
+    mutableModes.set(sessionId, false);
+  };
+
   return {
     mapSnapshot(snapshot) {
       const mapped = mapDeepSeekHarnessSnapshot(snapshot);
@@ -228,6 +323,13 @@ function deepSeekHarnessConnection(input: {
         selectedModes.set(mapped.session.id, dsh.agentPreset);
       }
       if (dsh && typeof dsh.blank === "boolean") mutableModes.set(mapped.session.id, dsh.blank);
+      const permissions = permissionSelect(dsh?.permissions);
+      if (permissions) {
+        permissionSelects.set(mapped.session.id, permissions);
+        if (!pendingAccessModes.has(mapped.session.id)) {
+          selectedAccessModes.set(mapped.session.id, permissions.currentValue);
+        }
+      }
       return mapped;
     },
     modeState(session) {
@@ -237,6 +339,16 @@ function deepSeekHarnessConnection(input: {
           ? dsh.agentPreset
           : selectedModes.get(session.id) ?? null,
         mutable: mutableModes.get(session.id) ?? (!dsh || dsh.blank !== false),
+      };
+    },
+    accessModeState(session) {
+      const dsh = isRecord(session.dsh) ? session.dsh : null;
+      const permissions = permissionSelect(dsh?.permissions)
+        ?? permissionSelects.get(session.id)
+        ?? defaultPermissionSelect();
+      return {
+        id: selectedAccessModes.get(session.id) ?? permissions.currentValue,
+        mutable: true,
       };
     },
     async subscribe(subscription) {
@@ -306,6 +418,9 @@ function deepSeekHarnessConnection(input: {
       });
       if (result.agentPreset) selectedModes.set(result.sessionId, result.agentPreset);
       mutableModes.set(result.sessionId, true);
+      const accessModes = defaultPermissionSelect();
+      permissionSelects.set(result.sessionId, accessModes);
+      selectedAccessModes.set(result.sessionId, accessModes.currentValue);
       return {
         id: result.sessionId,
         title: "New conversation",
@@ -354,7 +469,9 @@ function deepSeekHarnessConnection(input: {
     },
     async runCommand(request) {
       try {
+        await selectMode(request.sessionId, request.mode);
         await selectModel(request);
+        await applySelectedAccessMode(request.sessionId);
         await client.prompt({
           sessionId: request.sessionId,
           mode: "queue",
@@ -375,6 +492,7 @@ function deepSeekHarnessConnection(input: {
       try {
         await selectMode(request.sessionId, request.mode);
         await selectModel(request);
+        await applySelectedAccessMode(request.sessionId);
         const selectedAgents = [...new Set(
           request.parts.flatMap((part) => part.type === "agent" ? [part.name] : []),
         )];
@@ -412,6 +530,25 @@ function deepSeekHarnessConnection(input: {
           }),
           isDefault: preset.isDefault,
         }));
+    },
+    async listAccessModes(request) {
+      const available = permissionSelects.get(request.sessionId) ?? defaultPermissionSelect();
+      return available.options.map((option) => permissionMode(option, available.currentValue));
+    },
+    async setAccessMode(request) {
+      const available = permissionSelects.get(request.sessionId) ?? defaultPermissionSelect();
+      const option = available.options.find((item) => item.value === request.accessMode);
+      if (!option || option.value === "custom") {
+        throw new Error("This DeepSeek Harness permission preset is unavailable");
+      }
+      pendingAccessModes.set(request.sessionId, option.value);
+      selectedAccessModes.set(request.sessionId, option.value);
+      // A DSH slash command starts the session and permanently fixes its agent
+      // preset. Keep permission changes staged while the session is blank so
+      // sendPrompt can select the agent and model first. Running sessions can
+      // apply the permission immediately.
+      if (mutableModes.get(request.sessionId) !== false) return;
+      await applySelectedAccessMode(request.sessionId);
     },
     async listAgents() {
       return (await listPluginCapabilities())

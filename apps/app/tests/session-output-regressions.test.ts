@@ -32,7 +32,7 @@ describe("session output issue regressions", () => {
     expect(sessionRouteSource).toContain("selectedSessionKnown={selectedSessionKnown}");
   });
 
-  test("shows the active workspace engine beside the session composer", () => {
+  test("replaces the workspace engine badge with context health", () => {
     const sessionPageSource = readFileSync(
       new URL("../src/react-app/domains/session/chat/session-page.tsx", import.meta.url),
       "utf8",
@@ -41,15 +41,22 @@ describe("session output issue regressions", () => {
       new URL("../src/react-app/shell/session-route.tsx", import.meta.url),
       "utf8",
     );
+    const composerSource = readFileSync(
+      new URL("../src/react-app/domains/session/surface/composer/composer.tsx", import.meta.url),
+      "utf8",
+    );
+    const conversationEngineSource = readFileSync(
+      new URL("../src/react-app/domains/session/engine/conversation-engine.ts", import.meta.url),
+      "utf8",
+    );
 
-    expect(sessionPageSource).toContain("function ProjectEngineBadge");
-    expect(sessionPageSource).toContain("data-engine-id={resolvedEngineId}");
-    expect(sessionPageSource).toContain('resolvedEngineId === CODEX_HARNESS_ENGINE_ID');
-    expect(sessionPageSource).toContain("composerEndAccessory={(");
-    expect(sessionPageSource).toContain('testId="session-composer-engine-badge"');
-    expect(sessionPageSource).not.toContain("SessionEngineBadge");
+    expect(sessionPageSource).not.toContain("ProjectEngineBadge");
+    expect(sessionPageSource).not.toContain("session-composer-engine-badge");
+    expect(composerSource).toContain('data-testid="composer-context-health"');
+    expect(conversationEngineSource).toContain("CONTEXT_COMPRESSION_WARNING_PERCENT = 80");
+    expect(composerSource).toContain('t("composer.context_compression_warning")');
     expect(sessionPageSource).not.toContain('className="pointer-events-none hidden md:flex md:justify-self-center"');
-    expect(sessionRouteSource).toContain("engineId: activeEngineId");
+    expect(sessionRouteSource).toContain("modelContextWindow: selectedModelContextWindow");
   });
 
   test("process duration uses a compact clock format", () => {
@@ -174,10 +181,10 @@ describe("session output issue regressions", () => {
     expect(composerSource).toContain('t("composer.plus_attach_files")');
     expect(composerSource).toContain("props.onAttachFiles(accepted)");
     expect(composerSource).toContain("flushSync(() => {");
-    expect(composerSource).toContain("setToolMenuOpen(false);\n                            setDelegationMenuOpen(false);");
+    expect(composerSource).toMatch(/setToolMenuOpen\(false\);\r?\n\s+setDelegationMenuOpen\(false\);/);
     expect(composerSource).toContain("input?.click();");
     expect(composerSource).toContain('window.addEventListener("pointermove", handlePointerMove);');
-    expect(composerSource).toContain("setPlusMenuSection(null);\n      setToolMenuOpen(false);\n      setDelegationMenuOpen(false);");
+    expect(composerSource).toMatch(/setPlusMenuSection\(null\);\r?\n\s+setToolMenuOpen\(false\);\r?\n\s+setDelegationMenuOpen\(false\);/);
   });
 
   test("starter template strip is clipped to the workspace column", () => {

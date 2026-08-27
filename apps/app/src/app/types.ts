@@ -11,6 +11,12 @@ export type Client = ReturnType<typeof createClient>;
 export type ProviderModel = {
   id: string;
   name: string;
+  contextWindow?: number;
+  maxTokens?: number;
+  limit?: {
+    context?: number;
+    output?: number;
+  };
   capabilities: {
     attachment?: boolean;
     reasoning?: boolean;
@@ -151,6 +157,8 @@ export type ComposerDraft = {
   mode: PromptMode;
   parts: ComposerPart[];
   attachments: ComposerAttachment[];
+  /** Permission preset selected before a new conversation has a session id. */
+  accessMode?: string;
   /** Editor-visible text (may include collapsed paste placeholders). */
   text: string;
   /**
