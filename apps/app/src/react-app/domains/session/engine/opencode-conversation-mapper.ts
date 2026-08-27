@@ -151,6 +151,7 @@ function messageFromInfo(info: {
   role: UIMessage["role"];
   time?: { created?: number; completed?: number };
   tokens?: unknown;
+  parentUserMessageId?: string;
 }): UIMessage {
   const created = info.time?.created;
   const completed = info.time?.completed;
@@ -159,7 +160,10 @@ function messageFromInfo(info: {
     : undefined;
   const metadata = conversationMessageMetadata(
     { created, completed },
-    contextUsage ? { contextUsage } : {},
+    {
+      ...(contextUsage ? { contextUsage } : {}),
+      ...(info.parentUserMessageId ? { parentUserMessageId: info.parentUserMessageId } : {}),
+    },
   );
   return {
     id: info.id,
@@ -169,12 +173,24 @@ function messageFromInfo(info: {
   };
 }
 
+export type OpenCodeConversationLiveState = {
+  parentUserMessageIds: Map<string, string>;
+  messageRoles: Map<string, UIMessage["role"]>;
+};
+
+export function createOpenCodeConversationLiveState(): OpenCodeConversationLiveState {
+  return { parentUserMessageIds: new Map(), messageRoles: new Map() };
+}
+
 function sessionIdFromProperties(properties: unknown) {
   if (!isRecord(properties)) return "";
   return typeof properties.sessionID === "string" ? properties.sessionID : "";
 }
 
-export function mapOpenCodeConversationEvent(raw: unknown): ConversationEvent | null {
+export function mapOpenCodeConversationEvent(
+  raw: unknown,
+  state?: OpenCodeConversationLiveState,
+): ConversationEvent | null {
   const event = normalizeEvent(raw);
   if (!event) return null;
   const properties = event.properties;
@@ -276,6 +292,11 @@ export function mapOpenCodeConversationEvent(raw: unknown): ConversationEvent | 
       typeof info.sessionID !== "string" ||
       (info.role !== "user" && info.role !== "assistant" && info.role !== "system")
     ) return null;
+    const parentUserMessageId = info.role === "assistant" && typeof info.parentID === "string"
+      ? info.parentID.trim()
+      : "";
+    state?.messageRoles.set(info.id, info.role);
+    if (parentUserMessageId) state?.parentUserMessageIds.set(info.id, parentUserMessageId);
     return {
       type: "message.upsert",
       sessionId: info.sessionID,
@@ -289,12 +310,15 @@ export function mapOpenCodeConversationEvent(raw: unknown): ConversationEvent | 
             }
           : undefined,
         tokens: info.tokens,
+        ...(parentUserMessageId ? { parentUserMessageId } : {}),
       }),
     };
   }
 
   if (event.type === "message.removed") {
     if (!isRecord(properties) || typeof properties.sessionID !== "string" || typeof properties.messageID !== "string") return null;
+    state?.parentUserMessageIds.delete(properties.messageID);
+    state?.messageRoles.delete(properties.messageID);
     return { type: "message.removed", sessionId: properties.sessionID, messageId: properties.messageID };
   }
 
@@ -308,6 +332,10 @@ export function mapOpenCodeConversationEvent(raw: unknown): ConversationEvent | 
       messageId: part.messageID,
       partId: part.id,
       parts: mapOpencodePartToUIParts(part),
+      ...(state?.messageRoles.get(part.messageID) ? { messageRole: state.messageRoles.get(part.messageID) } : {}),
+      ...(state?.parentUserMessageIds.get(part.messageID)
+        ? { parentUserMessageId: state.parentUserMessageIds.get(part.messageID) }
+        : {}),
       visibleAssistantOutput: opencodePartHasVisibleAssistantOutput(part),
     };
   }
@@ -325,6 +353,9 @@ export function mapOpenCodeConversationEvent(raw: unknown): ConversationEvent | 
       type: "message.chunk",
       sessionId: properties.sessionID,
       messageId: properties.messageID,
+      ...(state?.parentUserMessageIds.get(properties.messageID)
+        ? { parentUserMessageId: state.parentUserMessageIds.get(properties.messageID) }
+        : {}),
       chunk: { type: "text-delta", id: properties.partID, delta: properties.delta },
     };
   }

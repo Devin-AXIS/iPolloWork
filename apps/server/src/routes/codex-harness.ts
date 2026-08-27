@@ -279,7 +279,7 @@ export function registerCodexHarnessRoutes(options: RegisterCodexHarnessRoutesOp
       const effectiveThreadId = typeof resumedThread?.id === "string" && resumedThread.id.trim()
         ? resumedThread.id.trim()
         : body.payload.threadId;
-      await workspaceRuntime.call("turn/start", {
+      const started = await workspaceRuntime.call<{ turn?: Record<string, unknown> }>("turn/start", {
         threadId: effectiveThreadId,
         ...codexHarnessTurnAccessPolicy(body.payload.accessMode, workspace.path),
         ...codexHarnessTurnCollaborationMode(body.payload.mode, modelID, reasoningEffort),
@@ -294,7 +294,10 @@ export function registerCodexHarnessRoutes(options: RegisterCodexHarnessRoutesOp
         // current model while Codex retains the thread's selected provider.
         ...(reasoningEffort ? { effort: reasoningEffort } : {}),
       });
-      return Response.json({ ok: true, sessionId: effectiveThreadId });
+      const turnId = typeof started.turn?.id === "string" && started.turn.id.trim()
+        ? started.turn.id.trim()
+        : undefined;
+      return Response.json({ ok: true, sessionId: effectiveThreadId, ...(turnId ? { turnId } : {}) });
     } catch (error) {
       remapCodexError(error);
     }

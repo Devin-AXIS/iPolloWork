@@ -130,6 +130,24 @@ export function conversationMessageContextUsage(message: UIMessage): Conversatio
   };
 }
 
+export function conversationMessageParentUserMessageId(message: UIMessage): string | null {
+  const metadata = recordValue(message.metadata);
+  const ipollowork = recordValue(metadata?.ipollowork);
+  const parentUserMessageId = ipollowork?.parentUserMessageId;
+  return typeof parentUserMessageId === "string" && parentUserMessageId.trim()
+    ? parentUserMessageId.trim()
+    : null;
+}
+
+export function conversationMessageCreatedAt(
+  message: Pick<UIMessage, "metadata">,
+): number | null {
+  const metadata = recordValue(message.metadata);
+  const ipollowork = recordValue(metadata?.ipollowork);
+  const created = ipollowork?.created;
+  return typeof created === "number" && Number.isFinite(created) ? created : null;
+}
+
 export type ConversationPermission = {
   id: string;
   sessionId: string;
@@ -248,7 +266,7 @@ export type ConversationEvent =
   | { type: "session.updated"; sessionId: string; info: ConversationSession }
   | { type: "context.updated"; sessionId: string; usage: ConversationContextUsage }
   | { type: "session.deleted"; sessionId: string }
-  | { type: "session.error"; sessionId: string; errorText: string }
+  | { type: "session.error"; sessionId: string; errorText: string; parentUserMessageId?: string }
   | { type: "session.compaction"; sessionId: string; running: boolean }
   | { type: "session.status"; sessionId: string; status: ConversationStatus }
   | { type: "session.idle"; sessionId: string }
@@ -258,7 +276,13 @@ export type ConversationEvent =
   | { type: "question.asked"; question: ConversationQuestion }
   | { type: "question.replied"; sessionId: string; requestId: string }
   | { type: "message.upsert"; sessionId: string; message: UIMessage }
-  | { type: "message.completed"; sessionId: string; messageId: string; completedAt: number }
+  | {
+      type: "message.completed";
+      sessionId: string;
+      messageId: string;
+      completedAt: number;
+      parentUserMessageId?: string;
+    }
   | { type: "message.removed"; sessionId: string; messageId: string }
   | {
       type: "message.parts";
@@ -267,12 +291,14 @@ export type ConversationEvent =
       partId: string;
       parts: UIMessage["parts"];
       messageRole?: UIMessage["role"];
+      parentUserMessageId?: string;
       visibleAssistantOutput: boolean;
     }
   | {
       type: "message.chunk";
       sessionId: string;
       messageId: string;
+      parentUserMessageId?: string;
       chunk: ConversationMessageChunk;
     };
 
@@ -284,6 +310,7 @@ export type ConversationSubscribeInput = {
 export type ConversationPromptInput = {
   sessionId: string;
   clientUserMessageId?: string;
+  signal?: AbortSignal;
   parts: ConversationPromptPart[];
   model?: ModelRef;
   mode?: string;
@@ -295,6 +322,21 @@ export type ConversationPromptInput = {
 export type ConversationPromptResult = {
   sessionId: string;
 };
+
+export async function waitForConversationIdle(
+  readIdle: () => Promise<boolean>,
+  timeoutMs = 12_000,
+): Promise<boolean> {
+  const deadline = Date.now() + timeoutMs;
+  let delayMs = 100;
+  while (true) {
+    if (await readIdle()) return true;
+    const remainingMs = deadline - Date.now();
+    if (remainingMs <= 0) return false;
+    await new Promise<void>((resolve) => setTimeout(resolve, Math.min(delayMs, remainingMs)));
+    delayMs = Math.min(delayMs * 2, 1_000);
+  }
+}
 
 export interface ConversationEngineConnection {
   mapSnapshot(snapshot: unknown): ConversationSnapshot;

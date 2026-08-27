@@ -179,6 +179,7 @@ export type ComposerDraft = {
 /** Transient dispatch metadata shared by the session surface and engine adapter. */
 export type PromptDispatchOptions = {
   clientUserMessageId?: string;
+  signal?: AbortSignal;
 };
 
 /** A workspace artifact that must be changed and reported before a run is complete. */

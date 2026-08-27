@@ -724,7 +724,6 @@ function SubmitPlugin(props: { onSubmit: () => void | Promise<void>; disabled: b
     return editor.registerCommand(
       KEY_ENTER_COMMAND,
       (event: KeyboardEvent | null) => {
-        if (props.disabled) return false;
         // IME composition guard: three signals keep this reliable across
         // Chrome, Safari, and WebKit. While IME is mid-character, Enter
         // must always fall through to the editor so the composition can
@@ -732,6 +731,13 @@ function SubmitPlugin(props: { onSubmit: () => void | Promise<void>; disabled: b
         if (event?.isComposing === true || event?.keyCode === 229) return false;
         // Shift+Enter inserts a newline — let the editor handle it.
         if (event?.shiftKey) return false;
+        // Keep a temporarily unavailable submit action from turning Enter
+        // into an accidental newline. The editor remains available for
+        // drafting; only Shift+Enter intentionally creates a new line.
+        if (props.disabled) {
+          event?.preventDefault();
+          return true;
+        }
         const selection = $getSelection();
         if (!$isRangeSelection(selection)) return false;
         // Every submit uses the same safe path. The composer decides whether

@@ -93,6 +93,70 @@ afterEach(async () => {
 });
 
 describe("DeepSeek Harness plugin prompt routes", () => {
+  test("cancels a running DSH prompt without waiting for the prompt response", async () => {
+    const workspaceRoot = await temporaryRoot("ipollowork-dsh-cancel-workspace-");
+    process.env.IPOLLOWORK_RUNTIME_DB = join(workspaceRoot, "runtime.sqlite");
+    const config = serverConfig(workspaceRoot);
+    let releasePrompt = () => {};
+    let markPromptStarted = () => {};
+    const promptBlocked = new Promise<void>((resolve) => {
+      releasePrompt = resolve;
+    });
+    const promptStarted = new Promise<void>((resolve) => {
+      markPromptStarted = resolve;
+    });
+    const calls: string[] = [];
+    const call = spyOn(DeepSeekHarnessRuntime.prototype, "call").mockImplementation(
+      async <T>(method: string): Promise<T> => {
+        calls.push(method);
+        if (method === "session.prompt") {
+          markPromptStarted();
+          await promptBlocked;
+        }
+        return {} as T;
+      },
+    );
+    const server = await startServer(config);
+    const base = `http://127.0.0.1:${server.port}/workspace/ws_dsh/engine/deepseek-harness`;
+    const headers = {
+      authorization: `Bearer ${config.token}`,
+      "content-type": "application/json",
+    };
+
+    try {
+      const promptResponse = fetch(`${base}/prompt`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          payload: {
+            sessionId: "session-running",
+            mode: "queue",
+            content: [{ type: "text", text: "Keep working" }],
+          },
+        }),
+      });
+      await promptStarted;
+
+      const cancelResponse = await fetch(`${base}/rpc`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          method: "session.cancel",
+          payload: { sessionId: "session-running" },
+        }),
+      });
+
+      expect(cancelResponse.status).toBe(200);
+      expect(calls).toEqual(["session.prompt", "session.cancel"]);
+      releasePrompt();
+      expect((await promptResponse).status).toBe(200);
+    } finally {
+      releasePrompt();
+      await server.stop();
+      call.mockRestore();
+    }
+  });
+
   test("keeps plugin instructions on the server and blocks raw prompt RPC bypass", async () => {
     const workspaceRoot = await temporaryRoot("ipollowork-dsh-prompt-workspace-");
     const packageRoot = await temporaryRoot("ipollowork-dsh-prompt-package-");

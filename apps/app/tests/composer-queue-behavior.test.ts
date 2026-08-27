@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { deriveSessionRenderModel } from "../src/react-app/domains/session/sync/transition-controller";
 
 const editorSource = readFileSync(
   resolve(import.meta.dir, "../src/react-app/domains/session/surface/composer/editor.tsx"),
@@ -12,6 +13,10 @@ const composerSource = readFileSync(
 );
 const sessionSurfaceSource = readFileSync(
   resolve(import.meta.dir, "../src/react-app/domains/session/surface/session-surface.tsx"),
+  "utf8",
+);
+const sessionRouteSource = readFileSync(
+  resolve(import.meta.dir, "../src/react-app/shell/session-route.tsx"),
   "utf8",
 );
 const queuedMessagesPanelSource = readFileSync(
@@ -43,6 +48,29 @@ describe("composer queue behavior", () => {
     expect(busyActions).toContain('title={t("composer.queue_hint")}');
     expect(busyActions).not.toContain("onSteer");
     expect(composerSource).not.toContain("onSteer:");
+  });
+
+  test("keeps Enter as submit while the visible session refreshes in the background", () => {
+    expect(deriveSessionRenderModel({
+      intendedSessionId: "session-current",
+      renderedSessionId: "session-current",
+      hasSnapshot: true,
+      isFetching: true,
+      isError: false,
+    })).toEqual({
+      intendedSessionId: "session-current",
+      renderedSessionId: "session-current",
+      transitionState: "idle",
+      renderSource: "live",
+    });
+
+    const submitPlugin = editorSource.slice(
+      editorSource.indexOf("function SubmitPlugin"),
+      editorSource.indexOf("const PASTE_CHIP_LINE_THRESHOLD"),
+    );
+    expect(submitPlugin).toContain("if (props.disabled) {");
+    expect(submitPlugin).toContain("event?.preventDefault();");
+    expect(submitPlugin.indexOf("event?.shiftKey")).toBeLessThan(submitPlugin.indexOf("if (props.disabled)"));
   });
 
   test("keeps the empty idle submit actionable and explains why it cannot send", () => {
@@ -108,8 +136,37 @@ describe("composer queue behavior", () => {
     );
 
     expect(abortHandler).not.toContain("clearQueuedDrafts");
+    expect(abortHandler).not.toContain("promptDispatchInFlightRef");
+    expect(abortHandler).toContain("promptDispatchAbortRef.current?.abort()");
     expect(abortHandler).toContain("await props.conversation.abort(");
+    expect(abortHandler).toContain("pendingVideoDeliveryRef.current = null");
+    expect(abortHandler).toContain("pendingArtifactCompletionRef.current = null");
+    expect(abortHandler).toContain("settleInterruptedSessionRun(");
+    expect(abortHandler).toContain("activeClientUserMessageIdRef.current");
+    expect(abortHandler.indexOf("settleInterruptedSessionRun(")).toBeLessThan(
+      abortHandler.indexOf("promptDispatchAbortRef.current?.abort()"),
+    );
+    expect(abortHandler).toContain("setStopAcknowledged(true)");
     expect(sessionSurfaceSource).toContain('if (chatStreaming || liveStatus.type !== "idle") return;');
+  });
+
+  test("cancels prompt preflight so an immediate stop cannot dispatch a later artifact run", () => {
+    const sender = sessionSurfaceSource.slice(
+      sessionSurfaceSource.indexOf("const sendDraft = useCallback"),
+      sessionSurfaceSource.indexOf("const clearComposer = useCallback"),
+    );
+    const routeSender = sessionRouteSource.slice(
+      sessionRouteSource.indexOf("onSendDraft: async"),
+      sessionRouteSource.indexOf("onDraftChange:", sessionRouteSource.indexOf("onSendDraft: async")),
+    );
+
+    expect(sender).toContain("const dispatchAbort = new AbortController()");
+    expect(sender).toContain("signal: dispatchAbort.signal");
+    expect(routeSender).toContain("if (await stopDispatchIfRequested()) return false;");
+    expect(routeSender).toContain("signal: dispatchSignal");
+    expect(routeSender.indexOf("if (await stopDispatchIfRequested()) return false;")).toBeLessThan(
+      routeSender.indexOf("prompt: () => conversation.sendPrompt"),
+    );
   });
 
   test("keeps the composer busy until the active run reports idle", () => {
@@ -122,7 +179,7 @@ describe("composer queue behavior", () => {
       sender.indexOf("} catch (nextError)"),
     );
 
-    expect(successfulSend).toContain("if (!dispatched) {");
+    expect(successfulSend).toContain("if (!dispatched && !dispatchAbort.signal.aborted) {");
     expect(successfulSend.replaceAll("\r\n", "\n")).not.toContain("\n      setSending(false);\n");
     expect(sender.slice(sender.indexOf("} catch (nextError)"))).toContain("setSending(false)");
     expect(sessionSurfaceSource).toContain("runActivityObservedRef.current = true");

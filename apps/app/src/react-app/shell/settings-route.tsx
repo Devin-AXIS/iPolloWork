@@ -2332,6 +2332,7 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
         open={modelPicker.open}
         options={modelPicker.options}
         modelsLoading={modelPicker.modelsLoading}
+        engineId={activeEngineId}
         query={modelPicker.query}
         setQuery={modelPicker.setQuery}
         target="default"

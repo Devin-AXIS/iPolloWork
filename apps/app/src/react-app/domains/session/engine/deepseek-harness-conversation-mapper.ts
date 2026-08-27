@@ -41,6 +41,7 @@ type ToolState = {
   messageId: string;
   toolName: string;
   input: unknown;
+  parentUserMessageId?: string;
 };
 
 const INTERNAL_SESSION_TITLE = /^<system(?:>|\s)/iu;
@@ -49,6 +50,8 @@ export type DeepSeekHarnessLiveState = {
   parts: Set<string>;
   tools: Map<string, ToolState>;
   assistantMessageIdsByTurn?: Map<string, Set<string>>;
+  activeTurnBySession?: Map<string, number>;
+  parentUserMessageIdByTurn?: Map<string, string>;
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -259,7 +262,12 @@ function toolPart(input: {
   return { ...shared, state: input.state };
 }
 
-function mapMessageEvent(sessionId: string, event: DshEvent): UIMessage | null {
+function mapMessageEvent(
+  sessionId: string,
+  event: DshEvent,
+  fallbackTurn?: number,
+  parentUserMessageId?: string,
+): UIMessage | null {
   const data = isRecord(event.data) ? event.data : null;
   const message = data && isRecord(data.message)
     ? data.message
@@ -274,7 +282,7 @@ function mapMessageEvent(sessionId: string, event: DshEvent): UIMessage | null {
       ? "system"
       : "user";
   if (event.type === "assistant/message" || declaredRole === "assistant") {
-    const turn = typeof data?.turn === "number" ? data.turn : 0;
+    const turn = typeof data?.turn === "number" ? data.turn : fallbackTurn ?? 0;
     const step = typeof data?.step === "number" ? data.step : 0;
     const id = event.type === "assistant/message"
       ? assistantMessageId(sessionId, turn, step)
@@ -282,14 +290,21 @@ function mapMessageEvent(sessionId: string, event: DshEvent): UIMessage | null {
     return {
       id,
       role: "assistant",
-      metadata: metadata(event, { dshMessageId: message.id, dshTurn: turn, dshStep: step }),
+      metadata: metadata(event, {
+        dshMessageId: message.id,
+        dshTurn: turn,
+        dshStep: step,
+        ...(parentUserMessageId ? { parentUserMessageId } : {}),
+      }),
       parts: mapBlocks(id, event.type === "user/message" ? visibleUserContent(message) : message.content),
     };
   }
   return {
     id: message.id,
     role: declaredRole,
-    metadata: metadata(event),
+    metadata: metadata(event, {
+      ...(fallbackTurn !== undefined ? { dshTurn: fallbackTurn } : {}),
+    }),
     parts: mapBlocks(message.id, visibleUserContent(message)),
   };
 }
@@ -306,13 +321,28 @@ function upsertToolPart(message: UIMessage, part: DynamicToolUIPart): void {
   else message.parts[index] = part;
 }
 
-function messageForStep(messages: UIMessage[], sessionId: string, event: DshEvent, data: Record<string, unknown>) {
+function messageForStep(
+  messages: UIMessage[],
+  sessionId: string,
+  event: DshEvent,
+  data: Record<string, unknown>,
+  parentUserMessageId?: string,
+) {
   const turn = typeof data.turn === "number" ? data.turn : 0;
   const step = typeof data.step === "number" ? data.step : 0;
   const id = assistantMessageId(sessionId, turn, step);
   let message = messages.find((item) => item.id === id);
   if (!message) {
-    message = { id, role: "assistant", metadata: metadata(event, { dshTurn: turn, dshStep: step }), parts: [] };
+    message = {
+      id,
+      role: "assistant",
+      metadata: metadata(event, {
+        dshTurn: turn,
+        dshStep: step,
+        ...(parentUserMessageId ? { parentUserMessageId } : {}),
+      }),
+      parts: [],
+    };
     messages.push(message);
   }
   return message;
@@ -383,22 +413,54 @@ export function mapDeepSeekHarnessSnapshot(snapshot: unknown): ConversationSnaps
   const tools = new Map<string, ToolState>();
   const completedTurns = new Map<number, number>();
   const turnErrors: Array<{ turn: number; text: string; time: number }> = [];
+  const parentUserMessageIdByTurn = new Map<number, string>();
+  let activeTurn: number | undefined;
   let todos: TodoItem[] = [];
   for (const { event } of source.history.events) {
+    const data = isRecord(event.data) ? event.data : null;
+    if (data && typeof data.turn === "number") activeTurn = data.turn;
     if (event.type === "user/message" || event.type === "assistant/message") {
-      const message = mapMessageEvent(source.session.id, event);
+      const turn = data && typeof data.turn === "number" ? data.turn : activeTurn;
+      const message = mapMessageEvent(
+        source.session.id,
+        event,
+        turn,
+        turn === undefined ? undefined : parentUserMessageIdByTurn.get(turn),
+      );
+      if (message?.role === "user" && turn !== undefined) {
+        parentUserMessageIdByTurn.set(turn, message.id);
+      }
       if (message) upsertMessage(messages, message);
       continue;
     }
-    const data = isRecord(event.data) ? event.data : null;
     if (!data) continue;
     if (event.type === "assistant/chunk" && isRecord(data.chunk)) {
-      applyChunk(messageForStep(messages, source.session.id, event, data), data.chunk);
+      const turn = typeof data.turn === "number" ? data.turn : activeTurn;
+      applyChunk(messageForStep(
+        messages,
+        source.session.id,
+        event,
+        data,
+        turn === undefined ? undefined : parentUserMessageIdByTurn.get(turn),
+      ), data.chunk);
       continue;
     }
     if (event.type === "tool/call" && typeof data.callId === "string" && typeof data.name === "string") {
-      const message = messageForStep(messages, source.session.id, event, data);
-      const state = { messageId: message.id, toolName: data.name, input: normalizeToolInput(data.name, data.arguments) };
+      const turn = typeof data.turn === "number" ? data.turn : activeTurn;
+      const message = messageForStep(
+        messages,
+        source.session.id,
+        event,
+        data,
+        turn === undefined ? undefined : parentUserMessageIdByTurn.get(turn),
+      );
+      const parentUserMessageId = turn === undefined ? undefined : parentUserMessageIdByTurn.get(turn);
+      const state = {
+        messageId: message.id,
+        toolName: data.name,
+        input: normalizeToolInput(data.name, data.arguments),
+        ...(parentUserMessageId ? { parentUserMessageId } : {}),
+      };
       tools.set(data.callId, state);
       upsertToolPart(message, toolPart({ callId: data.callId, toolName: state.toolName, input: state.input, state: "input-streaming" }));
       continue;
@@ -450,7 +512,12 @@ export function mapDeepSeekHarnessSnapshot(snapshot: unknown): ConversationSnaps
       createSessionErrorUIMessage(
         assistant?.id ?? `${source.session.id}:turn:${error.turn}`,
         error.text,
-        { created: error.time },
+        {
+          created: error.time,
+          ...(parentUserMessageIdByTurn.get(error.turn)
+            ? { parentUserMessageId: parentUserMessageIdByTurn.get(error.turn) }
+            : {}),
+        },
       ),
     );
   }
@@ -574,24 +641,42 @@ export function mapDeepSeekHarnessEnvelope(
   }
   if (type !== "session/event" || !sessionId || !isRecord(frame.event)) return [];
   const event = frame.event as DshEvent;
+  const data = isRecord(event.data) ? event.data : null;
+  const eventTurn = data && typeof data.turn === "number" ? data.turn : null;
+  state.activeTurnBySession ??= new Map();
+  state.parentUserMessageIdByTurn ??= new Map();
+  if (event.type === "turn/start" && eventTurn !== null) {
+    state.activeTurnBySession.set(sessionId, eventTurn);
+  } else {
+    const activeTurn = state.activeTurnBySession.get(sessionId);
+    if (eventTurn !== null && activeTurn !== undefined && eventTurn !== activeTurn) {
+      if (event.type === "turn/end") takeAssistantMessagesForTurn(state, sessionId, eventTurn);
+      return [];
+    }
+  }
   if (event.type === "user/message" || event.type === "assistant/message") {
-    const message = mapMessageEvent(sessionId, event);
+    const turn = eventTurn ?? state.activeTurnBySession.get(sessionId);
+    const parentUserMessageId = turn === undefined
+      ? undefined
+      : state.parentUserMessageIdByTurn.get(turnKey(sessionId, turn));
+    const message = mapMessageEvent(sessionId, event, turn, parentUserMessageId);
+    if (message?.role === "user" && turn !== undefined) {
+      state.parentUserMessageIdByTurn.set(turnKey(sessionId, turn), message.id);
+    }
     if (message?.role === "assistant") {
-      const data = isRecord(event.data) ? event.data : null;
-      const turn = data && typeof data.turn === "number" ? data.turn : 0;
-      rememberAssistantMessage(state, sessionId, turn, message.id);
+      rememberAssistantMessage(state, sessionId, turn ?? 0, message.id);
     }
     return message ? [{ type: "message.upsert", sessionId, message }] : [];
   }
-  const data = isRecord(event.data) ? event.data : null;
   if (!data) return [];
   if (event.type === "assistant/chunk" && isRecord(data.chunk)) {
-    const turn = typeof data.turn === "number" ? data.turn : 0;
+    const turn = typeof data.turn === "number" ? data.turn : state.activeTurnBySession.get(sessionId) ?? 0;
     const step = typeof data.step === "number" ? data.step : 0;
     const chunk = data.chunk;
     const index = typeof chunk.index === "number" ? chunk.index : 0;
     if ((chunk.type === "text-delta" || chunk.type === "reasoning-delta") && typeof chunk.text === "string") {
       const messageId = assistantMessageId(sessionId, turn, step);
+      const parentUserMessageId = state.parentUserMessageIdByTurn.get(turnKey(sessionId, turn));
       rememberAssistantMessage(state, sessionId, turn, messageId);
       const id = partId(messageId, index);
       const events: ConversationEvent[] = [];
@@ -604,6 +689,7 @@ export function mapDeepSeekHarnessEnvelope(
           partId: id,
           parts: [streamingPart(id, chunk.type === "reasoning-delta")],
           messageRole: "assistant",
+          ...(parentUserMessageId ? { parentUserMessageId } : {}),
           visibleAssistantOutput: true,
         });
       }
@@ -612,6 +698,7 @@ export function mapDeepSeekHarnessEnvelope(
         type: "message.chunk",
         sessionId,
         messageId,
+        ...(parentUserMessageId ? { parentUserMessageId } : {}),
         chunk: {
           type: chunk.type,
           id,
@@ -626,8 +713,14 @@ export function mapDeepSeekHarnessEnvelope(
     const turn = typeof data.turn === "number" ? data.turn : 0;
     const step = typeof data.step === "number" ? data.step : 0;
     const messageId = assistantMessageId(sessionId, turn, step);
+    const parentUserMessageId = state.parentUserMessageIdByTurn.get(turnKey(sessionId, turn));
     rememberAssistantMessage(state, sessionId, turn, messageId);
-    const tool = { messageId, toolName: data.name, input: normalizeToolInput(data.name, data.arguments) };
+    const tool = {
+      messageId,
+      toolName: data.name,
+      input: normalizeToolInput(data.name, data.arguments),
+      ...(parentUserMessageId ? { parentUserMessageId } : {}),
+    };
     state.tools.set(data.callId, tool);
     return [
       // A tool call is itself an ordered proof that the turn is still active.
@@ -641,6 +734,7 @@ export function mapDeepSeekHarnessEnvelope(
         partId: data.callId,
         parts: [toolPart({ callId: data.callId, toolName: tool.toolName, input: tool.input, state: "input-streaming" })],
         messageRole: "assistant",
+        ...(parentUserMessageId ? { parentUserMessageId } : {}),
         visibleAssistantOutput: true,
       },
     ];
@@ -649,6 +743,7 @@ export function mapDeepSeekHarnessEnvelope(
     const result = toolResultData(data);
     const tool = result ? state.tools.get(result.callId) : null;
     if (!result || !tool) return [];
+    const parentUserMessageId = tool.parentUserMessageId;
     return [
       { type: "session.status", sessionId, status: { type: "busy" } },
       {
@@ -665,6 +760,7 @@ export function mapDeepSeekHarnessEnvelope(
           errorText: result.errorText,
         })],
         messageRole: "assistant",
+        ...(parentUserMessageId ? { parentUserMessageId } : {}),
         visibleAssistantOutput: true,
       },
     ];
@@ -676,16 +772,24 @@ export function mapDeepSeekHarnessEnvelope(
   if (event.type === "turn/start") return [{ type: "session.status", sessionId, status: { type: "busy" } }];
   if (event.type === "turn/end") {
     const errorText = turnErrorText(data);
-    const turn = typeof data.turn === "number" ? data.turn : 0;
+    const turn = typeof data.turn === "number" ? data.turn : state.activeTurnBySession.get(sessionId) ?? 0;
+    const parentUserMessageId = state.parentUserMessageIdByTurn.get(turnKey(sessionId, turn));
     const completedMessages = takeAssistantMessagesForTurn(state, sessionId, turn).map((messageId) => ({
       type: "message.completed" as const,
       sessionId,
       messageId,
       completedAt: event.time,
+      ...(parentUserMessageId ? { parentUserMessageId } : {}),
     }));
+    if (state.activeTurnBySession.get(sessionId) === turn) state.activeTurnBySession.delete(sessionId);
     return [
       ...completedMessages,
-      ...(errorText ? [{ type: "session.error" as const, sessionId, errorText }] : []),
+      ...(errorText ? [{
+        type: "session.error" as const,
+        sessionId,
+        errorText,
+        ...(parentUserMessageId ? { parentUserMessageId } : {}),
+      }] : []),
       { type: "session.status", sessionId, status: { type: "idle" } },
       { type: "session.idle", sessionId },
     ];
