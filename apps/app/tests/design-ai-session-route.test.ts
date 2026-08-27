@@ -123,6 +123,20 @@ describe("Design AI session lifecycle", () => {
     expect(routeSource.indexOf("languageSystemContext]", systemContextIndex)).toBeGreaterThan(systemContextIndex);
   });
 
+  test("asks every conversation engine to use a task-specific HTML filename", async () => {
+    const routeSource = await Bun.file(routeUrl).text();
+    const namingPromptIndex = routeSource.indexOf("const artifactNamingPromptPart");
+    const sendIndex = routeSource.indexOf("conversation.sendPrompt({");
+
+    expect(routeSource).toContain("htmlArtifactFilenameFromTitle(text)");
+    expect(routeSource).toContain("instead of entry.html or index.html");
+    expect(routeSource).toContain("Keep an exact iPolloWork template entry path unchanged");
+    expect(namingPromptIndex).toBeGreaterThan(-1);
+    expect(routeSource.indexOf("...artifactNamingPromptPart", namingPromptIndex)).toBeGreaterThan(namingPromptIndex);
+    expect(sendIndex).toBeGreaterThan(namingPromptIndex);
+    expect(routeSource.indexOf("parts: promptParts", sendIndex)).toBeGreaterThan(sendIndex);
+  });
+
   test("expands the selected Design chip to a synthetic scoped agent instruction", async () => {
     expect(sessionPrompt.draftToParts).toBeFunction();
     if (typeof sessionPrompt.draftToParts !== "function") return;

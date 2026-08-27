@@ -60,6 +60,9 @@ contextBridge.exposeInMainWorld("__IPOLLOWORK_ELECTRON__", {
     openAuth(url) {
       return ipcRenderer.invoke("ipollowork:shell:openAuth", url);
     },
+    clearAuthSession() {
+      return ipcRenderer.invoke("ipollowork:shell:clearAuthSession");
+    },
     relaunch() {
       return ipcRenderer.invoke("ipollowork:shell:relaunch");
     },

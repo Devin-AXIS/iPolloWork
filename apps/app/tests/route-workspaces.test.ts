@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 
 import type { WorkspaceInfo } from "../src/app/lib/desktop-types";
 import {
+  htmlArtifactFilenameFromTitle,
   isDefaultSessionTitle,
   sessionTitleFromFirstPrompt,
 } from "../src/app/lib/session-title";
@@ -72,6 +73,13 @@ describe("route workspaces", () => {
     expect(isDefaultSessionTitle("New conversation")).toBe(true);
     expect(isDefaultSessionTitle("新建会话")).toBe(true);
     expect(isDefaultSessionTitle("阿里巴巴 PPT 和视频")).toBe(false);
+  });
+
+  test("derives a portable HTML filename from the current request title", () => {
+    expect(htmlArtifactFilenameFromTitle("给我做一个今日 AI 热点分析的 PPT")).toBe("今日-AI-热点分析.html");
+    expect(htmlArtifactFilenameFromTitle("Please create a Q3 market report HTML")).toBe("Q3-market-report.html");
+    expect(htmlArtifactFilenameFromTitle("New conversation")).toBeNull();
+    expect(htmlArtifactFilenameFromTitle("设计：增长/转化*看板")).toBe("增长-转化-看板.html");
   });
 
   test("uses the running server registry instead of stale local desktop records", () => {
@@ -195,6 +203,38 @@ describe("route workspaces", () => {
     expect(userVisibleSessionsByWorkspaceId(sessions).ws.map((session) => session.id)).toEqual([
       "active-default",
       "named-active",
+    ]);
+  });
+
+  test("uses native harness state instead of OpenCode summary fields for sidebar visibility", () => {
+    const sessions = {
+      ws: [
+        routeSession("dsh-started", {
+          title: "New conversation",
+          time: { created: 1000, updated: 1000 },
+          dsh: { running: false, blank: false },
+        }),
+        routeSession("dsh-blank", {
+          title: "DSH draft",
+          time: { created: 2000, updated: 2001 },
+          dsh: { running: false, blank: true },
+        }),
+        routeSession("codex-started-same-tick", {
+          title: "Codex first request",
+          time: { created: 3000, updated: 3000 },
+          codex: { status: "idle" },
+        }),
+        routeSession("codex-blank", {
+          title: "New conversation",
+          time: { created: 4000, updated: 4000 },
+          codex: { status: "notLoaded" },
+        }),
+      ],
+    };
+
+    expect(userVisibleSessionsByWorkspaceId(sessions).ws.map((session) => session.id)).toEqual([
+      "dsh-started",
+      "codex-started-same-tick",
     ]);
   });
 

@@ -100,6 +100,26 @@ function classifyOpenTarget(value: string, kind: OpenTargetKind): OpenTargetPrev
   return "external";
 }
 
+export function createWorkspaceFileOpenTarget(file: {
+  path: string;
+  size?: number;
+  mtimeMs?: number;
+}): OpenTarget {
+  const normalized = normalizePath(file.path);
+  return {
+    id: `file:${normalized.toLowerCase()}`,
+    kind: "file",
+    value: normalized,
+    name: basename(normalized),
+    preview: classifyOpenTarget(normalized, "file"),
+    confidence: 100,
+    reason: "workspace catalog",
+    exists: true,
+    size: file.size,
+    updatedAt: file.mtimeMs,
+  };
+}
+
 function shouldScanAssistantFileMentions(text: string) {
   return ASSISTANT_ARTIFACT_MENTION_PATTERN.test(text);
 }

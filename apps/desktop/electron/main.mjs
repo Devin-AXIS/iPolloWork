@@ -36,7 +36,7 @@ import { openExternalUrl } from "./open-external.mjs";
 import { protectOutputStreamFromBrokenPipe } from "./stdio-safety.mjs";
 import { relaunchActionForMode } from "./relaunch-policy.mjs";
 import { listSystemFontFamilies } from "./system-font-catalog.mjs";
-import { createDesktopAuthWindow } from "./desktop-auth-window.mjs";
+import { clearDesktopAuthSession, createDesktopAuthWindow } from "./desktop-auth-window.mjs";
 import {
   registerDesktopProtocolClient,
   resolveDesktopProtocolRegistration,
@@ -3113,6 +3113,18 @@ ipcMain.handle("ipollowork:shell:openAuth", async (_event, url) => {
     return { ok: false, error: "empty authentication URL" };
   }
   return openDesktopAuthWindow(url.trim());
+});
+ipcMain.handle("ipollowork:shell:clearAuthSession", async () => {
+  closeDesktopAuthWindow();
+  try {
+    await clearDesktopAuthSession(session);
+    return { ok: true };
+  } catch (error) {
+    return {
+      ok: false,
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
 });
 ipcMain.handle("ipollowork:shell:relaunch", async () => {
   if (relaunchActionForMode(isDevMode) === "reload-window") {

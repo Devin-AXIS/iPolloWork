@@ -546,7 +546,7 @@ function AssistantProcessSection(props: {
 
 const AssistantMessage = React.memo(
   ({ message, artifactMessages, isStreaming, hideProcess = false, showLatestArtifactsTitle = false, templateEntryPath, artifactFiles, artifactContext }: AssistantMessageProps) => {
-    const { showThinking, highlightQuery, sessionId, onOpenVideoStudio } = useMessageList()
+    const { showThinking, highlightQuery, sessionId, sessionTitle, onOpenVideoStudio } = useMessageList()
     const assistantRenderGroups = React.useMemo(
       () => getAssistantRenderGroups(message.parts, showThinking),
       [message.parts, showThinking]
@@ -582,6 +582,7 @@ const AssistantMessage = React.memo(
             <ArtifactList
               messages={artifactMessages ?? [message]}
               sessionId={sessionId}
+              sessionTitle={sessionTitle}
               title={showLatestArtifactsTitle ? t("session.outputs.latest_turn") : undefined}
               entryPath={templateEntryPath}
               supplementalFiles={artifactFiles ?? (templateEntryPath ? [templateEntryPath] : undefined)}

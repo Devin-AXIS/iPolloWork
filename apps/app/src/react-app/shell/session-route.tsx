@@ -29,6 +29,7 @@ import { trackSessionActive, trackTaskStarted } from "@/app/lib/den-telemetry";
 import { buildDiagnosticsBundleJson } from "@/app/lib/diagnostics-bundle";
 import { downloadTextAsFile } from "@/app/lib/download";
 import {
+  htmlArtifactFilenameFromTitle,
   isDefaultSessionTitle,
   sessionTitleFromFirstPrompt,
 } from "@/app/lib/session-title";
@@ -1562,9 +1563,16 @@ export function SessionRoute() {
               synthetic: true,
             }]
           : [];
+        const suggestedHtmlFilename = htmlArtifactFilenameFromTitle(text) ?? "output.html";
+        const artifactNamingPromptPart = [{
+          type: "text" as const,
+          text: `When creating a new user-facing HTML deliverable without an exact target path, use a short task-specific filename instead of entry.html or index.html. The suggested primary filename for this request is \`${suggestedHtmlFilename}\`. Keep an exact iPolloWork template entry path unchanged when one is supplied.`,
+          synthetic: true,
+        }];
         const promptParts = [
           ...capabilityPromptPart,
           ...automaticTemplatePromptPart,
+          ...artifactNamingPromptPart,
           ...parts,
         ];
         if (designSelectionContexts.length > 0 && !selectedWorkspaceEndpoint) {
