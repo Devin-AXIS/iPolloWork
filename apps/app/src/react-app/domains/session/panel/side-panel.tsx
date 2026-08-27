@@ -461,7 +461,11 @@ function BrowserPanelContent({
               />
               <TooltipContent>{t("side_panel.reload")}</TooltipContent>
             </Tooltip>
-            {addressExpanded ? (
+            {tab.presentation === "app" ? (
+              <div className="mx-1 flex min-w-0 flex-1 items-center gap-1.5 px-2 text-xs font-medium text-foreground">
+                <span className="truncate">{tab.label}</span>
+              </div>
+            ) : addressExpanded ? (
               <InputGroup className="mx-1 h-7 flex-1 rounded-md">
                 <InputGroupInput
                   ref={urlInputRef}

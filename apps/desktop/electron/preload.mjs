@@ -133,7 +133,7 @@ contextBridge.exposeInMainWorld("__IPOLLOWORK_ELECTRON__", {
     reload() { return ipcRenderer.invoke("ipollowork:browser:reload"); },
     setBounds(bounds) { return ipcRenderer.invoke("ipollowork:browser:bounds", bounds); },
     getState() { return ipcRenderer.invoke("ipollowork:browser:state"); },
-    createTab(url) { return ipcRenderer.invoke("ipollowork:browser:createTab", url); },
+    createTab(input) { return ipcRenderer.invoke("ipollowork:browser:createTab", input); },
     closeTab(tabId) { return ipcRenderer.invoke("ipollowork:browser:closeTab", tabId); },
     closeAllTabs() { return ipcRenderer.invoke("ipollowork:browser:closeAllTabs"); },
     selectTab(tabId) { return ipcRenderer.invoke("ipollowork:browser:selectTab", tabId); },

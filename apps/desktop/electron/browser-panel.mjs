@@ -190,7 +190,8 @@ export function createBrowserPanel({ getWindow, onDeepLink, listLocalWorkspaces 
     return {
       id: tabId,
       type: "browser",
-      label: getBrowserTabLabel(title, url),
+      presentation: tab.presentation,
+      label: tab.appLabel || getBrowserTabLabel(title, url),
       url,
       favicon: tab.favicon ?? null,
       status: isLoading ? "loading" : "ready",
@@ -461,7 +462,7 @@ export function createBrowserPanel({ getWindow, onDeepLink, listLocalWorkspaces 
     callback(browserProxy.username, browserProxy.password);
   });
 
-  function createBrowserTab(url = "about:blank", { select = true } = {}) {
+  function createBrowserTab(url = "about:blank", { select = true, presentation = "browser", appLabel = null } = {}) {
     const tabId = createBrowserTabId();
     const view = new WebContentsView({
       webPreferences: {
@@ -473,7 +474,13 @@ export function createBrowserPanel({ getWindow, onDeepLink, listLocalWorkspaces 
         partition: BROWSER_SESSION_PARTITION,
       },
     });
-    const tab = { tabId, view, favicon: null };
+    const tab = {
+      tabId,
+      view,
+      favicon: null,
+      presentation: presentation === "app" ? "app" : "browser",
+      appLabel: typeof appLabel === "string" && appLabel.trim() ? appLabel.trim() : null,
+    };
     browserTabs.set(tabId, tab);
     browserTabOrder.push(tabId);
     // Load about:blank immediately to preempt persistent-session restore.
@@ -771,9 +778,14 @@ export function createBrowserPanel({ getWindow, onDeepLink, listLocalWorkspaces 
       }
     });
     ipcMain.handle("ipollowork:browser:state", () => browserStatePayload());
-    ipcMain.handle("ipollowork:browser:createTab", (_event, url) => {
-      const target = typeof url === "string" && url.trim() ? url : BROWSER_NEW_TAB_URL;
-      const tab = createBrowserTab(target, { select: true });
+    ipcMain.handle("ipollowork:browser:createTab", (_event, input) => {
+      const options = input && typeof input === "object" ? input : { url: input };
+      const target = typeof options.url === "string" && options.url.trim() ? options.url : BROWSER_NEW_TAB_URL;
+      const tab = createBrowserTab(target, {
+        select: true,
+        presentation: options.presentation === "app" ? "app" : "browser",
+        appLabel: options.label,
+      });
       return { tabId: tab.tabId };
     });
     ipcMain.handle("ipollowork:browser:closeTab", (_event, tabId) => closeBrowserTab(tabId == null ? undefined : String(tabId)));

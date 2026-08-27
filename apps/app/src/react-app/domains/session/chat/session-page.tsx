@@ -85,6 +85,7 @@ import { AppSidebar } from "../sidebar/app-sidebar";
 import type { iPolloWorkSessionType, iPolloWorkTemplateId } from "../sidebar/app-sidebar-provider";
 import { readSessionType, sessionTypeForTemplate, setSessionType, subscribeToSessionType } from "../sidebar/session-type";
 import { SessionSurface, StarterCapabilityChip, type SessionSurfaceProps } from "../surface/session-surface";
+import { TrainingProjects, type TrainingProjectId } from "./training-projects";
 import { ReactSessionComposer, type ComposerProps } from "../surface/composer/composer";
 import {
   NewConversationStarter,
@@ -191,6 +192,7 @@ const STARTUP_SKELETON_ROWS = [
   { id: "final", titleWidth: "36%", bodyWidth: "74%" },
 ];
 const GLOBAL_VOICE_SIDE_PANEL_KEY = "__ipollowork_voice__";
+const GLOBAL_BROWSER_SIDE_PANEL_KEY = "__ipollowork_browser__";
 const EMPTY_TRANSCRIPT_TARGETS: OpenTarget[] = [];
 const MAIN_WORKSPACE_MIN_WIDTH = 480;
 const AUTO_COLLAPSE_WORKSPACE_WIDTH = 480;
@@ -1635,8 +1637,9 @@ export function SessionPage(props: SessionPageProps) {
   const activeEnterprise = useActiveEnterpriseConnection();
   const sidebarOpen = useUiStateStore((state) => state.sidebarOpen);
   const setSidebarOpen = useUiStateStore((state) => state.setSidebarOpen);
+  const panelSessionId = props.selectedSessionId ?? GLOBAL_BROWSER_SIDE_PANEL_KEY;
   const sessionSidePanel = useUiStateStore((state) => (
-    props.selectedSessionId ? state.sidePanelState[props.selectedSessionId] ?? null : null
+    state.sidePanelState[panelSessionId] ?? null
   ));
   const voiceSidePanelOpen = useUiStateStore((state) => state.sidePanelState[GLOBAL_VOICE_SIDE_PANEL_KEY] === "voice");
   const setSidePanelState = useUiStateStore((state) => state.setSidePanelState);
@@ -1647,8 +1650,8 @@ export function SessionPage(props: SessionPageProps) {
   const transcriptTargets = usePanelTabStore((state) => (
     props.selectedSessionId ? state.transcriptArtifactTargets[props.selectedSessionId] ?? EMPTY_TRANSCRIPT_TARGETS : EMPTY_TRANSCRIPT_TARGETS
   ));
-  const sessionPanelState = useSessionPanelState(props.selectedSessionId ?? "");
-  const activePanelTab = useActivePanelTab(props.selectedSessionId ?? "");
+  const sessionPanelState = useSessionPanelState(panelSessionId);
+  const activePanelTab = useActivePanelTab(panelSessionId);
   const { workspaceApps } = useInstalledPluginContributions(
     props.ipolloworkServerClient,
     props.runtimeWorkspaceId,
@@ -2591,7 +2594,8 @@ export function SessionPage(props: SessionPageProps) {
   const [renameProjectBusy, setRenameProjectBusy] = useState(false);
   const [deleteProjectId, setDeleteProjectId] = useState<string | null>(null);
   const [deleteProjectBusy, setDeleteProjectBusy] = useState(false);
-  const [mainWorkspaceView, setMainWorkspaceView] = useState<"extensions" | "schedule" | "project-overview" | "project-board" | null>(null);
+  const [mainWorkspaceView, setMainWorkspaceView] = useState<"extensions" | "training-projects" | "schedule" | "project-overview" | "project-board" | null>(null);
+  const [trainingProjectBusyId, setTrainingProjectBusyId] = useState<TrainingProjectId | null>(null);
   const [scheduleAnchorAt, setScheduleAnchorAt] = useState<number | null>(null);
   const observedPluginWorkshopSessionRef = useRef<string | null>(null);
   const autoOpenedPluginWorkshopSessionRef = useRef<string | null>(null);
@@ -2848,8 +2852,8 @@ export function SessionPage(props: SessionPageProps) {
     setSessionPanelView(null);
     setSidePanelState(GLOBAL_VOICE_SIDE_PANEL_KEY, panel === "voice" ? "voice" : null);
     if (panel === "voice") return;
-    setSidePanelState(props.selectedSessionId, panel);
-  }, [designTemplateEntryPath, openTab, props.selectedSessionId, selectTab, sessionPanelState.tabs, setSidePanelState]);
+    setSidePanelState(panelSessionId, panel);
+  }, [designTemplateEntryPath, openTab, panelSessionId, props.selectedSessionId, selectTab, sessionPanelState.tabs, setSidePanelState]);
 
   const openDesignTab = useCallback((path?: string, displayName?: string) => {
     if (!props.selectedSessionId) return;
@@ -2901,8 +2905,8 @@ export function SessionPage(props: SessionPageProps) {
     userOpenedSidePanelWhileNarrowRef.current = true;
     autoCollapsedSidePanelRef.current = null;
     setSidePanelState(GLOBAL_VOICE_SIDE_PANEL_KEY, null);
-    toggleSidePanelState(props.selectedSessionId, panel);
-  }, [props.selectedSessionId, setSidePanelState, toggleSidePanelState]);
+    toggleSidePanelState(panelSessionId, panel);
+  }, [panelSessionId, setSidePanelState, toggleSidePanelState]);
 
   // When the agent calls a built-in browser tool, the main process opens
   // the WebContentsView and sends panel-opened; when hide_browser is called
@@ -2920,9 +2924,7 @@ export function SessionPage(props: SessionPageProps) {
       setCurrentSidePanel("panel");
     });
     const unsubClose = browser.onPanelClosed?.(() => {
-      const remainingTabs = props.selectedSessionId
-        ? usePanelTabStore.getState().sessions[props.selectedSessionId]?.tabs ?? []
-        : [];
+      const remainingTabs = usePanelTabStore.getState().sessions[panelSessionId]?.tabs ?? [];
       if (remainingTabs.some((tab) => tab.type !== "browser")) {
         return;
       }
@@ -2932,7 +2934,7 @@ export function SessionPage(props: SessionPageProps) {
       setCurrentSidePanel(null);
     });
     return () => { unsubOpen?.(); unsubClose?.(); };
-  }, [props.selectedSessionId, setCurrentSidePanel]);
+  }, [panelSessionId, setCurrentSidePanel]);
   const {
     leftSidebarResizing,
     leftSidebarWidth,
@@ -3758,6 +3760,66 @@ export function SessionPage(props: SessionPageProps) {
     setCurrentSidePanel(null);
     setMainWorkspaceView("extensions");
   }, [setCurrentSidePanel]);
+  const openTrainingProjects = useCallback(() => {
+    setCurrentSidePanel(null);
+    setMainWorkspaceView("training-projects");
+  }, [setCurrentSidePanel]);
+  const openTrainingBrowserApp = useCallback(async (url: string, label: string) => {
+    const browser = window.__IPOLLOWORK_ELECTRON__?.browser;
+    if (!browser?.createTab) {
+      throw new Error("当前环境不支持右侧实训工作台");
+    }
+    preserveSidePanelOnPanelOpenRef.current = true;
+    await browser.createTab({ url, presentation: "app", label });
+    setCurrentSidePanel("panel");
+  }, [setCurrentSidePanel]);
+  const launchTrainingProject = useCallback(async (projectId: TrainingProjectId) => {
+    if (projectId === "tutorial" || trainingProjectBusyId) return;
+    setTrainingProjectBusyId(projectId);
+    try {
+      if (projectId === "short-film") {
+        await openTrainingBrowserApp("https://www.liblib.tv/", "短片实训");
+        return;
+      }
+      if (projectId === "ai-image") {
+        await openTrainingBrowserApp("https://jimeng.jianying.com/ai-tool/asset", "AI 图片生成");
+        return;
+      }
+      if (!props.ipolloworkServerClient) {
+        throw new Error("插件服务尚未就绪，请稍后再试");
+      }
+      const response = await props.ipolloworkServerClient.callExtensionAction({
+        extensionId: "labelu-data-annotation",
+        action: "open-workbench",
+        args: {},
+        context: {
+          directory: props.selectedWorkspaceRoot || undefined,
+          workspaceId: props.runtimeWorkspaceId || undefined,
+          sessionId: props.selectedSessionId || undefined,
+        },
+      });
+      if (!response.ok) {
+        throw new Error(response.message || "请先安装数据标注实训插件");
+      }
+      const result = response.result;
+      const url = result && typeof result === "object" && "url" in result && typeof result.url === "string"
+        ? result.url
+        : null;
+      if (!url) throw new Error("数据标注插件没有返回可打开的工作台");
+      await openTrainingBrowserApp(url, "数据标注实训");
+    } catch (error) {
+      const projectName = projectId === "data-annotation"
+        ? "数据标注实训"
+        : projectId === "ai-image"
+          ? "AI 图片生成"
+          : "短片实训";
+      toast.error(`无法打开${projectName}`, {
+        description: error instanceof Error ? error.message : "请稍后再试",
+      });
+    } finally {
+      setTrainingProjectBusyId(null);
+    }
+  }, [openTrainingBrowserApp, props.ipolloworkServerClient, props.runtimeWorkspaceId, props.selectedSessionId, props.selectedWorkspaceRoot, trainingProjectBusyId]);
   const openGlobalSchedule = useCallback((focusAt?: number) => {
     setCurrentSidePanel(null);
     setScheduleAnchorAt(typeof focusAt === "number" && Number.isFinite(focusAt) ? focusAt : null);
@@ -4226,7 +4288,7 @@ export function SessionPage(props: SessionPageProps) {
     : mainWorkspaceView === "project-board"
       ? "tasks"
       : "conversation";
-  const mainHeaderHidden = mainWorkspaceView === "extensions" || mainWorkspaceView === "schedule";
+  const mainHeaderHidden = mainWorkspaceView === "extensions" || mainWorkspaceView === "training-projects" || mainWorkspaceView === "schedule";
 
   useEffect(() => {
     if (!showSessionLoadingState) {
@@ -4398,6 +4460,8 @@ export function SessionPage(props: SessionPageProps) {
           }}
           activePrimaryItem={templateMarketOpen
             ? "template-market"
+            : mainWorkspaceView === "training-projects"
+              ? "training-projects"
             : mainWorkspaceView === "schedule"
               ? "schedule"
             : mainWorkspaceView === "extensions"
@@ -4412,6 +4476,7 @@ export function SessionPage(props: SessionPageProps) {
             setTemplateMarketTarget("new-session");
             setTemplateMarketOpen(true);
           }}
+          onOpenTrainingProjects={openTrainingProjects}
           onOpenSchedule={openGlobalSchedule}
           onOpenExtensions={openExtensionsRailPane}
           onOpenPluginWorkshop={openPluginWorkshop}
@@ -4607,7 +4672,13 @@ export function SessionPage(props: SessionPageProps) {
                 </div>
               ) : null}
 
-              {mainWorkspaceView === "project-overview" ? (
+              {mainWorkspaceView === "training-projects" ? (
+                <TrainingProjects
+                  busyProjectId={trainingProjectBusyId}
+                  onClose={closeMainWorkspaceView}
+                  onLaunch={(projectId) => void launchTrainingProject(projectId)}
+                />
+              ) : mainWorkspaceView === "project-overview" ? (
                 <ProjectOverview
                   projectName={selectedProjectName}
                   workspaceId={props.runtimeWorkspaceId}
@@ -5019,7 +5090,7 @@ export function SessionPage(props: SessionPageProps) {
                       onOpenTarget={openTarget}
                       onOpenVideoStudio={openCurrentVideoArtifactStudio}
                     />
-                  ) : sidePanelOpen && activeSidePanel === "panel" && props.selectedSessionId ? (
+                  ) : sidePanelOpen && activeSidePanel === "panel" ? (
                     <div
                       className={cn(
                         "h-full min-h-0",
@@ -5030,13 +5101,13 @@ export function SessionPage(props: SessionPageProps) {
                       } : undefined}
                     >
                       <SidePanel
-                        sessionId={props.selectedSessionId}
+                        sessionId={panelSessionId}
                         client={props.ipolloworkServerClient}
                         workspaceId={props.runtimeWorkspaceId}
                         workspaceRoot={props.selectedWorkspaceRoot}
                         isRemoteWorkspace={props.surface?.isRemoteWorkspace ?? false}
                         launcherItems={sidePanelLauncherItems}
-                        aiEditing={isStreamingSessionStatus(props.sidebar.sessionStatusById[props.selectedSessionId])}
+                        aiEditing={props.selectedSessionId ? isStreamingSessionStatus(props.sidebar.sessionStatusById[props.selectedSessionId]) : false}
                         onAskAi={handleDesignAskAi}
                         onSendWorkspaceAppMessage={sendWorkspaceAppMessage}
                         onEditImage={openImageStudio}

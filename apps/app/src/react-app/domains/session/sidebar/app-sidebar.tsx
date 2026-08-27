@@ -9,6 +9,7 @@ import {
   Cpu,
   Ellipsis,
   FolderOpen,
+  GraduationCap,
   Loader2,
   Languages,
   Pencil,
@@ -441,11 +442,12 @@ export type AppSidebarProps = {
     name: string | null;
     email: string | null;
   };
-  activePrimaryItem?: "template-market" | "schedule" | "extensions" | "plugin-workshop" | null;
+  activePrimaryItem?: "template-market" | "training-projects" | "schedule" | "extensions" | "plugin-workshop" | null;
   onOpenAccount: () => void;
   onOpenSettings: (route?: string) => void;
   onOpenHelp: () => void;
   onOpenTemplateMarket: () => void;
+  onOpenTrainingProjects: () => void;
   onOpenSchedule: () => void;
   onOpenExtensions: () => void;
   onOpenPluginWorkshop: () => void;
@@ -710,6 +712,19 @@ export function AppSidebar(props: AppSidebarProps) {
                   <TemplateIcon className="size-3.5" />
                 </span>
                 <span className="flex-1 truncate">{t("template_market.title")}</span>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+            <SidebarMenuItem>
+              <SidebarMenuButton
+                onClick={props.onOpenTrainingProjects}
+                isActive={props.activePrimaryItem === "training-projects"}
+                className={primarySidebarActionClass}
+                data-testid="training-projects-button"
+              >
+                <span className="flex size-4 shrink-0 items-center justify-center" aria-hidden="true">
+                  <GraduationCap className="size-3.5" />
+                </span>
+                <span className="flex-1 truncate">实训项目</span>
               </SidebarMenuButton>
             </SidebarMenuItem>
             <SidebarMenuItem>

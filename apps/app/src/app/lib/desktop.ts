@@ -42,7 +42,7 @@ import type {
   EvalRelaunchResult,
   WorkspaceList,
 } from "./desktop-types";
-import type { BrowserPanelTab } from "./desktop-types";
+import type { BrowserPanelTab, BrowserTabCreateInput } from "./desktop-types";
 
 export const LOCAL_IMAGE_FILE_EXTENSIONS = ["avif", "bmp", "gif", "ico", "jpeg", "jpg", "png", "svg", "webp"];
 export const LOCAL_IMAGE_FILE_FILTERS = [{ name: "图片文件", extensions: LOCAL_IMAGE_FILE_EXTENSIONS }];
@@ -165,7 +165,7 @@ declare global {
         reload?: () => Promise<void>;
         setBounds?: (bounds: { x: number; y: number; width: number; height: number }) => Promise<void>;
         getState?: () => Promise<BrowserStatePayload | null>;
-        createTab?: (url?: string) => Promise<{ tabId: string }>;
+        createTab?: (input?: string | BrowserTabCreateInput) => Promise<{ tabId: string }>;
         closeTab?: (tabId: string) => Promise<string | null>;
         closeAllTabs?: () => Promise<string[]>;
         selectTab?: (tabId: string) => Promise<string>;

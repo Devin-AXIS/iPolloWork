@@ -7,6 +7,7 @@ import { useNotificationStore } from "../../kernel/notification-store";
 import { useOrgRestrictions } from "./desktop-config-provider";
 
 export const DEFAULT_BRAND_LOGO_URL = publicAssetUrl("default-brand-avatar.jpg");
+export const DEFAULT_BRAND_APP_NAME = "智慧未来实训平台";
 
 // ---------------------------------------------------------------------------
 // Radix accent-color mapping
@@ -89,7 +90,7 @@ export function useBrandLogoUrl(): string | undefined {
 
 /** Organization-managed display name. It does not change the signed app identity. */
 export function useBrandAppName(): string {
-  return useOrgRestrictions().brandAppName ?? "iPolloWork";
+  return useOrgRestrictions().brandAppName ?? DEFAULT_BRAND_APP_NAME;
 }
 
 const POLICY_NOTIFICATION_DEDUPE = "desktop-policy-active";

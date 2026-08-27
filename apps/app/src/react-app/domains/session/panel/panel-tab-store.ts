@@ -257,6 +257,7 @@ function mergePersistedSessions(
           return [{
             id,
             type: "browser",
+            presentation: "browser",
             label: "New tab",
             url: "",
             favicon: null,

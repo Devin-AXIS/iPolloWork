@@ -54,10 +54,17 @@ export type WorkspaceInfo = WorkspaceWire;
 export type BrowserPanelTab = {
   id: string;
   type: "browser";
+  presentation: "browser" | "app";
   label: string;
   url: string;
   favicon: string | null;
   status: "loading" | "ready";
   canGoBack: boolean;
   canGoForward: boolean;
+};
+
+export type BrowserTabCreateInput = {
+  url?: string;
+  presentation?: BrowserPanelTab["presentation"];
+  label?: string;
 };
