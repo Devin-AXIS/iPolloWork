@@ -28,6 +28,28 @@ export type DeepSeekHarnessModelDirectory = {
   }>;
 };
 
+const DEEPSEEK_HARNESS_ACCOUNT_PROVIDER_IDS: Readonly<Record<string, string>> = {
+  "kimi-coding": "kimi-for-coding",
+  "openai-codex": "openai",
+  "openai-codex-priority": "openai",
+};
+
+const DEEPSEEK_HARNESS_RUNTIME_PROVIDER_IDS: Readonly<Record<string, string>> = {
+  "kimi-for-coding": "kimi-coding",
+};
+
+/** Resolve a DSH-specific route name back to the account provider identity. */
+export function deepSeekHarnessAccountProviderId(providerId: string): string {
+  const resolved = providerId.trim().toLowerCase();
+  return DEEPSEEK_HARNESS_ACCOUNT_PROVIDER_IDS[resolved] ?? resolved;
+}
+
+/** Resolve an account provider identity to the equivalent DSH route name. */
+export function deepSeekHarnessRuntimeProviderRouteId(providerId: string): string {
+  const resolved = providerId.trim().toLowerCase();
+  return DEEPSEEK_HARNESS_RUNTIME_PROVIDER_IDS[resolved] ?? resolved;
+}
+
 /** Resolve the account-level OpenAI provider to the concrete DSH runtime route. */
 export function deepSeekHarnessRuntimeProviderId(
   providerId: string,

@@ -11,8 +11,8 @@ import type { ModelOption } from "@/app/types";
 import { useCheckDesktopRestriction } from "@/react-app/domains/cloud/desktop-config-provider";
 import {
   getChatModelCatalogEntries,
-  getEngineChatModelEntries,
   projectAccountProviderConnections,
+  resolveModelRuntime,
   type ProviderListQueryInput,
   useMergedProviderListQuery,
   useProviderListQuery,
@@ -94,8 +94,9 @@ export function useModelPicker(input: UseModelPickerInput) {
     }
   }, []);
 
-  // Load both directories lazily, but subscribe to them independently so a
-  // cached account catalog can render while runtime readiness refreshes.
+  // The account catalog is the immediate selection source. Runtime discovery
+  // refines known failures in the background, but it must never make an
+  // already configured account model wait behind an engine cold start.
   const activeSource = useMemo<ProviderListQueryInput | null>(() => client ? ({
     client,
     engineId,
@@ -120,11 +121,13 @@ export function useModelPicker(input: UseModelPickerInput) {
     directory: resolvedRuntimeSource?.directory,
     enabled: pickerOpen && Boolean(resolvedRuntimeSource?.client),
   });
-
   useEffect(() => {
-    const error = catalogQuery.error ?? runtimeQuery.error;
+    // Runtime discovery is advisory while the account catalog is available.
+    // Prompt delivery still reports a real runtime failure at the send
+    // boundary; opening the picker should not emit a cold-start error toast.
+    const error = catalogQuery.error ?? (catalogQuery.data ? null : runtimeQuery.error);
     if (error) onLoadError?.(error);
-  }, [catalogQuery.error, onLoadError, runtimeQuery.error]);
+  }, [catalogQuery.data, catalogQuery.error, onLoadError, runtimeQuery.error]);
 
   const modelOptions = useMemo(() => {
     const data = catalogQuery.data;
@@ -140,16 +143,21 @@ export function useModelPicker(input: UseModelPickerInput) {
     } catch {
       seenIds = new Set();
     }
-    const entries = runtimeQuery.data
-      ? getEngineChatModelEntries({
-          catalog: accountData,
-          runtime: runtimeQuery.data,
-          engineId,
-        })
-      : getChatModelCatalogEntries(accountData).map((entry) => ({ ...entry, runtime: null }));
+    // The account catalog owns selection. Runtime discovery only enriches
+    // capability metadata; it must never hide or lock an account model while
+    // a sidecar is cold-starting or has not projected credentials yet.
+    const entries = getChatModelCatalogEntries(accountData).map((entry) => ({
+      ...entry,
+      runtime: runtimeQuery.data
+        ? resolveModelRuntime(
+            runtimeQuery.data,
+            { providerID: entry.provider.id, modelID: entry.modelId },
+            engineId,
+          )
+        : null,
+    }));
     return entries.map(({ provider, modelId, model, runtime }): ModelOption => {
       const runtimePending = runtime === null;
-      const runtimeReady = runtime?.status === "ready";
       return {
         providerID: provider.id,
         modelID: modelId,
@@ -160,14 +168,10 @@ export function useModelPicker(input: UseModelPickerInput) {
         behaviorDescription: "",
         behaviorValue: null,
         isFree: provider.id.trim().toLowerCase() === "opencode",
-        isConnected: runtimeReady,
+        isConnected: true,
         runtimePending,
-        disabled: runtimePending || !runtimeReady,
-        footer: runtimePending
-          ? t("settings.loading_providers")
-          : runtimeReady
-            ? undefined
-            : t("model_picker.connect_provider_hint"),
+        disabled: false,
+        footer: undefined,
         isRecommended: !seenIds.has(provider.id) || recentProviderIds.has(provider.id),
         supportsVision: runtime?.capabilities?.vision === true
           || model.capabilities.input?.image === true,

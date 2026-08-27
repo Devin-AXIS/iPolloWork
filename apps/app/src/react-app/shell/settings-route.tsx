@@ -1028,13 +1028,12 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
     disabledProviderIds: hiddenProviderIds,
     onLoadError: handleModelPickerLoadError,
   });
-  // Settings refreshes provider auth whenever the picker opens (the session
-  // route does not need this; its provider state is kept fresh elsewhere).
+  // Settings owns provider mutations, so refresh account connections before
+  // resolving the active engine intersection when the picker is opened.
   useEffect(() => {
     if (!modelPicker.open) return;
     void providerAuthStore.refreshProviders();
   }, [modelPicker.open, providerAuthStore]);
-
   useEffect(() => {
     const refresh = () => setExtensionStateVersion((value) => value + 1);
     window.addEventListener(IPOLLOWORK_EXTENSION_STATE_CHANGED, refresh);

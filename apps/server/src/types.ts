@@ -97,6 +97,8 @@ export interface ServerConfig {
   opencodeDirectory?: string;
   opencodeUsername?: string;
   opencodePassword?: string;
+  /** Runtime-only credential path owned by the managed OpenCode child. */
+  opencodeAuthPath?: string;
   approval: ApprovalConfig;
   corsOrigins: string[];
   workspaces: WorkspaceInfo[];

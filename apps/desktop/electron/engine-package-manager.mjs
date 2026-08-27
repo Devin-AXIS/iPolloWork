@@ -217,24 +217,54 @@ async function codexClientCandidates(platform, env, homeDir) {
   return candidates;
 }
 
-async function resolveOfficialRuntime(descriptor, { platform, env, homeDir }) {
+function probeRuntimeExecutable(executablePath, env) {
+  return new Promise((resolve) => {
+    let settled = false;
+    const child = spawn(executablePath, ["--version"], {
+      env,
+      windowsHide: true,
+      stdio: "ignore",
+    });
+    const finish = (result) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
+      resolve(result);
+    };
+    const timeout = setTimeout(() => {
+      child.kill();
+      finish(false);
+    }, 5_000);
+    child.once("error", () => finish(false));
+    child.once("exit", (code) => finish(code === 0));
+  });
+}
+
+async function resolveOfficialRuntime(descriptor, { platform, env, homeDir, canLaunch }) {
+  const resolveCandidate = async (candidate) => {
+    const normalized = await normalizeOfficialRuntimePath(descriptor, candidate, platform);
+    if (!normalized || !looksLikeOfficialRuntime(descriptor, normalized)) return null;
+    return await canLaunch(normalized) ? normalized : null;
+  };
   const commandPath = commandOnPath(descriptor.command, {
     env,
     platform,
     additionalDirectories: officialCommandDirectories(platform, env, homeDir),
   });
   if (commandPath) {
-    const normalized = await normalizeOfficialRuntimePath(descriptor, commandPath, platform);
-    if (normalized && looksLikeOfficialRuntime(descriptor, normalized)) return normalized;
+    const resolved = await resolveCandidate(commandPath);
+    if (resolved) return resolved;
   }
   for (const candidate of await officialGlobalPackageEntrypoints(descriptor, platform, env, homeDir)) {
-    if (await pathExists(candidate)) return realpath(candidate).catch(() => candidate);
+    if (!await pathExists(candidate)) continue;
+    const resolved = await resolveCandidate(candidate);
+    if (resolved) return resolved;
   }
   if (descriptor.id !== CODEX_ENGINE_ID) return null;
   for (const candidate of await codexClientCandidates(platform, env, homeDir)) {
     if (!await pathExists(candidate)) continue;
-    const normalized = await normalizeOfficialRuntimePath(descriptor, candidate, platform);
-    if (normalized && looksLikeOfficialRuntime(descriptor, normalized)) return normalized;
+    const resolved = await resolveCandidate(candidate);
+    if (resolved) return resolved;
   }
   return null;
 }
@@ -342,6 +372,8 @@ function engineDescriptor(id, versions, platform, architecture) {
       cliRelativePath: path.join("node_modules", "@deepseek-ai", "dsh", "lib", "bin.js"),
       environmentKey: "IPOLLOWORK_DSH_CLI",
       versionEnvironmentKey: "IPOLLOWORK_DSH_CLI_VERSION",
+      nodeRelativePath: path.join("node-runtime", platform === "win32" ? "node.exe" : "node"),
+      nodeEnvironmentKey: "IPOLLOWORK_DSH_NODE_BIN",
       hostPluginRelativePath: "ipollowork-host-tools.mjs",
       prepareScript: "prepare-dsh-runtime.mjs",
       developmentDirectory: "dsh-runtime",
@@ -366,6 +398,8 @@ function engineDescriptor(id, versions, platform, architecture) {
         : path.join("node_modules", "@openai", "codex", "bin", "codex.js"),
       environmentKey: "IPOLLOWORK_CODEX_CLI",
       versionEnvironmentKey: "IPOLLOWORK_CODEX_CLI_VERSION",
+      nodeRelativePath: null,
+      nodeEnvironmentKey: null,
       hostPluginRelativePath: null,
       prepareScript: "prepare-codex-runtime.mjs",
       developmentDirectory: "codex-runtime",
@@ -392,6 +426,7 @@ export function createEnginePackageManager(options) {
   const root = path.join(options.app.getPath("userData"), "engine-packs");
   const operations = new Map();
   const inFlight = new Map();
+  const runtimeProbeCache = new Map();
   const externalOverrides = new Map();
   const externalDshHostPlugin = environment.IPOLLOWORK_DSH_HOST_PLUGIN?.trim() || null;
   for (const id of OPTIONAL_ENGINE_IDS) {
@@ -410,12 +445,73 @@ export function createEnginePackageManager(options) {
     return path.join(root, descriptor.id, descriptor.version, `${platform}-${architecture}`);
   }
 
+  function managedPackageRoot(descriptor) {
+    return path.join(root, descriptor.id);
+  }
+
   function metadataPath(descriptor) {
     return path.join(installedRoot(descriptor), ".installed.json");
   }
 
   function cliPath(descriptor) {
     return path.join(installedRoot(descriptor), descriptor.cliRelativePath);
+  }
+
+  function managedNodePath(descriptor) {
+    return descriptor.nodeRelativePath
+      ? path.join(installedRoot(descriptor), descriptor.nodeRelativePath)
+      : null;
+  }
+
+  function externalNodePath(descriptor) {
+    if (!descriptor.nodeEnvironmentKey) return null;
+    const candidates = [
+      environment[descriptor.nodeEnvironmentKey]?.trim(),
+      environment.IPOLLOWORK_NODE_BIN?.trim(),
+      environment.npm_node_execpath?.trim(),
+      commandOnPath("node", {
+        env: environment,
+        platform,
+        additionalDirectories: officialCommandDirectories(platform, environment, homeDir),
+      }),
+    ].filter(Boolean);
+    return candidates.find((candidate) => (
+      existsSync(candidate)
+      && !/electron(?:\.exe)?$/i.test(candidate)
+      && !isWithinManagedPackage(descriptor, candidate)
+    )) ?? null;
+  }
+
+  function isWithinManagedPackage(descriptor, targetPath) {
+    const relative = path.relative(managedPackageRoot(descriptor), targetPath);
+    return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
+  }
+
+  async function canLaunchRuntime(descriptor, executablePath) {
+    if (descriptor.id !== CODEX_ENGINE_ID) return true;
+    const key = platform === "win32" ? executablePath.toLowerCase() : executablePath;
+    let pending = runtimeProbeCache.get(key);
+    if (!pending) {
+      pending = Promise.resolve(options.probeRuntime
+        ? options.probeRuntime({ engineId: descriptor.id, executablePath })
+        : probeRuntimeExecutable(executablePath, environment))
+        .then(Boolean)
+        .catch(() => false);
+      runtimeProbeCache.set(key, pending);
+    }
+    return pending;
+  }
+
+  async function removeManagedPackage(descriptor) {
+    const target = managedPackageRoot(descriptor);
+    const relative = path.relative(root, target);
+    if (!relative || relative.startsWith("..") || path.isAbsolute(relative)) {
+      throw new Error("Refusing to remove an unsafe engine package path.");
+    }
+    await rm(target, { recursive: true, force: true });
+    if (await pathExists(target)) {
+      throw new Error(`${descriptor.name} files are still present after uninstall.`);
+    }
   }
 
   function assetName(descriptor) {
@@ -437,30 +533,52 @@ export function createEnginePackageManager(options) {
     operations.delete(id);
   }
 
+  /** @returns {Promise<{ path: string; source: import("@ipollowork/types/desktop-ipc").EnginePackageSource; nodePath: string | null } | null>} */
+  async function resolveRuntimeSource(descriptor) {
+    const override = externalOverrides.get(descriptor.id);
+    if (override && existsSync(override) && await canLaunchRuntime(descriptor, override)) {
+      return {
+        path: override,
+        source: await externalEngineSource(descriptor, override, "custom"),
+        nodePath: externalNodePath(descriptor),
+      };
+    }
+
+    // Official desktop/CLI Harnesses own their own lifecycle. Prefer them over
+    // iPolloWork's optional package so an existing local engine is never
+    // shadowed by, or offered, a duplicate download.
+    const officialRuntime = await resolveOfficialRuntime(descriptor, {
+      platform,
+      env: environment,
+      homeDir,
+      canLaunch: (candidate) => canLaunchRuntime(descriptor, candidate),
+    });
+    if (officialRuntime && !isWithinManagedPackage(descriptor, officialRuntime)) {
+      return { path: officialRuntime, source: "official", nodePath: externalNodePath(descriptor) };
+    }
+
+    const managedCli = cliPath(descriptor);
+    if (await pathExists(managedCli)) {
+      const nodePath = managedNodePath(descriptor);
+      return {
+        path: managedCli,
+        source: "downloaded",
+        nodePath: nodePath && await pathExists(nodePath) ? nodePath : externalNodePath(descriptor),
+      };
+    }
+
+    return null;
+  }
+
   /** @returns {Promise<{ installed: boolean; source: import("@ipollowork/types/desktop-ipc").EnginePackageSource; installedBytes: number | null }>} */
   async function resolveInstalledState(descriptor) {
-    const override = externalOverrides.get(descriptor.id);
-    if (override && existsSync(override)) {
+    const runtime = await resolveRuntimeSource(descriptor);
+    if (runtime) {
+      const metadata = runtime.source === "downloaded" ? await readJson(metadataPath(descriptor)) : null;
       return {
         installed: true,
-        source: await externalEngineSource(descriptor, override, "custom"),
-        installedBytes: null,
-      };
-    }
-    const metadata = await readJson(metadataPath(descriptor));
-    if (metadata && await pathExists(cliPath(descriptor))) {
-      return {
-        installed: true,
-        source: "downloaded",
-        installedBytes: Number.isFinite(metadata.installedBytes) ? metadata.installedBytes : null,
-      };
-    }
-    const officialRuntime = await resolveOfficialRuntime(descriptor, { platform, env: environment, homeDir });
-    if (officialRuntime) {
-      return {
-        installed: true,
-        source: "official",
-        installedBytes: null,
+        source: runtime.source,
+        installedBytes: Number.isFinite(metadata?.installedBytes) ? metadata.installedBytes : null,
       };
     }
     return {
@@ -518,15 +636,18 @@ export function createEnginePackageManager(options) {
   async function applyEnvironment(skipEngineId = null) {
     for (const id of OPTIONAL_ENGINE_IDS) {
       const descriptor = descriptorFor(id);
-      const override = externalOverrides.get(id);
-      const installedCli = cliPath(descriptor);
-      let resolved = null;
-      if (id !== skipEngineId) {
-        resolved = override && existsSync(override)
-          ? override
-          : existsSync(installedCli)
-            ? installedCli
-            : await resolveOfficialRuntime(descriptor, { platform, env: environment, homeDir });
+      const runtime = id === skipEngineId ? null : await resolveRuntimeSource(descriptor);
+      const resolved = runtime?.path ?? null;
+      if (
+        runtime?.source === "official"
+        && !externalOverrides.has(id)
+        && await pathExists(managedPackageRoot(descriptor))
+      ) {
+        try {
+          await removeManagedPackage(descriptor);
+        } catch (error) {
+          console.warn(`[engine-package] Could not remove redundant ${descriptor.name} package: ${safeErrorMessage(error)}`);
+        }
       }
       if (resolved) {
         environment[descriptor.environmentKey] = resolved;
@@ -534,6 +655,10 @@ export function createEnginePackageManager(options) {
       } else {
         delete environment[descriptor.environmentKey];
         delete environment[descriptor.versionEnvironmentKey];
+      }
+      if (descriptor.nodeEnvironmentKey) {
+        if (runtime?.nodePath) environment[descriptor.nodeEnvironmentKey] = runtime.nodePath;
+        else delete environment[descriptor.nodeEnvironmentKey];
       }
       if (descriptor.hostPluginRelativePath) {
         const hostPlugin = path.join(installedRoot(descriptor), descriptor.hostPluginRelativePath);
@@ -676,12 +801,7 @@ export function createEnginePackageManager(options) {
     try {
       await applyEnvironment(descriptor.id);
       resumeRuntime = await options.beforeUninstall?.(descriptor.id) ?? null;
-      const target = path.join(root, descriptor.id);
-      const relative = path.relative(root, target);
-      if (!relative || relative.startsWith("..") || path.isAbsolute(relative)) {
-        throw new Error("Refusing to remove an unsafe engine package path.");
-      }
-      await rm(target, { recursive: true, force: true });
+      await removeManagedPackage(descriptor);
       clearOperation(descriptor.id);
       await applyEnvironment();
       await options.afterChange?.(descriptor.id, "uninstall");

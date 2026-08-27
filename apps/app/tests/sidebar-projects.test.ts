@@ -101,22 +101,21 @@ describe("sidebar projects", () => {
     expect(sessionPageSource).toContain("showNewTaskStarter");
     expect(sessionPageSource).toContain("props.sidebar.onCreateTaskFromDraft(props.selectedWorkspaceId, draft)");
     expect(sessionPageSource).toContain("props.sidebar.onCreateInitialProjectTask");
-    expect(sessionPageSource).toContain('testId="initial-project-engine-badge"');
+    expect(sessionPageSource).toContain("modelContextWindow={surface.modelContextWindow}");
     expect(sessionPageSource).toContain("engineId={props.selectedWorkspaceDisplay.engineId}");
     expect(sessionPageSource).toContain('key={`${props.selectedWorkspaceId}:${props.selectedWorkspaceDisplay.engineId ?? DEFAULT_ENGINE_ID}`}');
     expect(sessionPageSource).toContain('draftScopeKey={`new-task:${workspaceId ?? "new-project"}:${engineId?.trim() || DEFAULT_ENGINE_ID}`}');
     expect(sessionPageSource).not.toContain('data-testid="initial-project-engine-dialog"');
     expect(sessionPageSource).toContain("await onSubmit(composerDraft)");
-    expect(sessionPageSource).toContain('engineId={engineId ?? DEFAULT_ENGINE_ID}');
+    expect(sessionPageSource).not.toContain('engineId={engineId ?? DEFAULT_ENGINE_ID}');
     expect(sessionPageSource).toContain("<ProjectEngineOptions");
-    expect(composerSource).toContain("endAccessory?: ReactNode");
+    expect(composerSource).toContain("contextUsage?: ConversationContextUsage | null");
     expect(composerSource).toContain('inlineAppearance?: "default" | "engine-selected"');
     expect(sessionPageSource).not.toContain('inlineAppearance="engine-selected"');
-    expect(sessionPageSource).toContain('testId="session-composer-engine-badge"');
-    expect(sessionPageSource).not.toContain('testId="session-engine-badge"');
-    expect(sessionSurfaceSource).toContain("composerEndAccessory?: ReactNode");
-    expect(sessionSurfaceSource).toContain("endAccessory={props.composerEndAccessory}");
-    expect(composerSource).toContain("{props.endAccessory}");
+    expect(sessionPageSource).not.toContain("ProjectEngineBadge");
+    expect(sessionSurfaceSource).toContain("contextUsage={contextUsage}");
+    expect(sessionSurfaceSource).toContain("modelContextWindow={props.modelContextWindow}");
+    expect(composerSource).toContain('data-testid="composer-context-health"');
     expect(sessionRouteSource).toContain("const handleCreateInitialProjectTask = useCallback(");
     expect(sessionRouteSource).toContain("engineId: DEFAULT_ENGINE_ID");
     expect(sessionRouteSource).not.toMatch(/handleCreateInitialProjectTask[\s\S]{0,500}selectedWorkspace\?\.engineId/);
@@ -232,15 +231,26 @@ describe("sidebar projects", () => {
     expect(sessionRouteSource).not.toContain('if (!name || !requestedFolderPath)');
   });
 
-  test("creates optional-engine projects first and installs their runtime on entry", () => {
+  test("does not reactivate a project that the create response already made active", () => {
+    expect(sessionRouteSource).toContain("if (result.activeId !== project.id)");
+    expect(sessionRouteSource).toMatch(
+      /await Promise\.all\(\[\s*workspaceSetSelected\(project\.id\),\s*workspaceSetRuntimeActive\(project\.id\),\s*\]\);/,
+    );
+  });
+
+  test("creates optional-engine projects first and requires an explicit runtime install on entry", () => {
     expect(sessionPageSource).toContain("const enginePackages = useEnginePackages();");
     expect(sessionPageSource).toContain('data-testid={launching ? "engine-startup-gate" : "engine-install-gate"}');
     expect(sessionPageSource).toContain('t("projects.engine_install_required")');
     expect(sessionPageSource).toContain("enginePackages.install(selectedEnginePackage.id)");
-    expect(sessionPageSource).toContain("autoEngineInstallAttemptRef");
+    expect(sessionPageSource).toContain("onInstall={installSelectedEngine}");
+    expect(sessionPageSource).not.toContain("autoEngineInstallAttemptRef");
     expect(sessionPageSource).toContain("props.sidebar.onSelectProject(props.selectedWorkspaceId)");
     expect(sessionPageSource).toContain("ENGINE_STARTUP_TRANSITION_MS = 900");
     expect(sessionPageSource).toContain("engineLaunchTransitionKey === selectedEngineLaunchKey");
+    expect(sessionPageSource).toMatch(
+      /selectedEnginePackage\?\.installed[\s\S]*?&& !props\.surface[\s\S]*?selectedProject\?\.status === "loading"/,
+    );
     expect(sessionPageSource).toContain('phase="launch"');
     expect(sessionPageSource).toContain("!engineInstallGateActive && !engineStartupGateActive && showNewTaskStarter");
   });
@@ -278,7 +288,7 @@ describe("sidebar projects", () => {
     expect(sessionPageSource).toContain('iconClassName: "h-6 w-[33px]"');
     expect(sessionPageSource).toContain("hover:bg-dls-canvas");
     expect(sessionPageSource).toContain("hover:bg-dls-surface-muted focus-visible:bg-dls-surface-muted");
-    expect(sessionPageSource).toContain('t("projects.engine_running")');
+    expect(sessionPageSource).not.toContain('t("projects.engine_running")');
     expect(sessionPageSource).toContain("has-focus-visible:ring-3 has-focus-visible:ring-ring/30");
     expect(sessionPageSource).not.toContain("focus-within:ring-3");
     expect(sessionPageSource).toContain('<DialogDescription className="text-[13px] leading-5">');

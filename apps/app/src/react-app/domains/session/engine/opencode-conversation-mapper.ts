@@ -20,7 +20,11 @@ import type {
   ConversationSnapshot,
   ConversationStatus,
 } from "./conversation-engine";
-import { conversationMessageMetadata } from "./conversation-engine";
+import {
+  conversationContextUsageFromTokens,
+  conversationMessageContextUsage,
+  conversationMessageMetadata,
+} from "./conversation-engine";
 import {
   describeOpencodeSessionError,
   mapOpencodePartToUIParts,
@@ -146,10 +150,17 @@ function messageFromInfo(info: {
   id: string;
   role: UIMessage["role"];
   time?: { created?: number; completed?: number };
+  tokens?: unknown;
 }): UIMessage {
   const created = info.time?.created;
   const completed = info.time?.completed;
-  const metadata = conversationMessageMetadata({ created, completed });
+  const contextUsage = info.role === "assistant"
+    ? conversationContextUsageFromTokens(info.tokens)
+    : undefined;
+  const metadata = conversationMessageMetadata(
+    { created, completed },
+    contextUsage ? { contextUsage } : {},
+  );
   return {
     id: info.id,
     role: info.role,
@@ -277,6 +288,7 @@ export function mapOpenCodeConversationEvent(raw: unknown): ConversationEvent | 
               completed: typeof info.time.completed === "number" ? info.time.completed : undefined,
             }
           : undefined,
+        tokens: info.tokens,
       }),
     };
   }
@@ -325,11 +337,16 @@ export function mapOpenCodeConversationSnapshot(snapshot: unknown): Conversation
   if (!source?.session?.id || !Array.isArray(source.messages) || !Array.isArray(source.todos)) {
     throw new Error("OpenCode returned an invalid session snapshot");
   }
+  const messages = snapshotToUIMessages(source);
+  const contextUsage = [...messages].reverse().flatMap((message) => (
+    message.role === "assistant" ? conversationMessageContextUsage(message) ?? [] : []
+  ))[0];
   return {
     session: mapOpenCodeSession(source.session),
-    messages: snapshotToUIMessages(source),
+    messages,
     todos: mapTodos(source.session.id, source.todos),
     status: mapStatus(source.status),
+    ...(contextUsage ? { contextUsage } : {}),
   };
 }
 

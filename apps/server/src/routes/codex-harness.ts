@@ -21,11 +21,86 @@ import { addRoute, type RequestContext, type Route } from "./registry.js";
 
 type ReadJsonBody = (request: Request) => Promise<Record<string, unknown>>;
 
+export type CodexHarnessAccessMode = "read-only" | "auto" | "granular" | "full-access";
+export type CodexHarnessMode = "default" | "plan";
+
+export function codexHarnessTurnCollaborationMode(
+  value: unknown,
+  model: string,
+  reasoningEffort: unknown,
+): Record<string, unknown> {
+  const mode: CodexHarnessMode | null = value === "plan"
+    ? "plan"
+    : value === "default" || value === "standard"
+      ? "default"
+      : null;
+  const selectedModel = model.trim();
+  if (!mode || !selectedModel) return {};
+  return {
+    collaborationMode: {
+      mode,
+      settings: {
+        model: selectedModel,
+        reasoning_effort: typeof reasoningEffort === "string" && reasoningEffort.trim()
+          ? reasoningEffort.trim()
+          : mode === "plan"
+            ? "medium"
+            : null,
+        developer_instructions: null,
+      },
+    },
+  };
+}
+
+export function codexHarnessTurnAccessPolicy(value: unknown, workspacePath: string): Record<string, unknown> {
+  const accessMode: CodexHarnessAccessMode = value === "read-only"
+    || value === "granular"
+    || value === "full-access"
+    ? value
+    : "auto";
+  if (accessMode === "read-only") {
+    return {
+      approvalPolicy: "on-request",
+      approvalsReviewer: "user",
+      sandboxPolicy: { type: "readOnly", networkAccess: false },
+    };
+  }
+  if (accessMode === "full-access") {
+    return {
+      approvalPolicy: "never",
+      approvalsReviewer: "user",
+      sandboxPolicy: { type: "dangerFullAccess" },
+    };
+  }
+  return {
+    approvalPolicy: accessMode === "granular"
+      ? {
+          granular: {
+            sandbox_approval: false,
+            rules: false,
+            skill_approval: false,
+            request_permissions: true,
+            mcp_elicitations: true,
+          },
+        }
+      : "on-request",
+    approvalsReviewer: "user",
+    sandboxPolicy: {
+      type: "workspaceWrite",
+      writableRoots: [workspacePath],
+      networkAccess: false,
+      excludeTmpdirEnvVar: false,
+      excludeSlashTmp: false,
+    },
+  };
+}
+
 const READ_METHODS = new Set([
   "thread/list",
   "thread/read",
   "thread/loaded/list",
   "model/list",
+  "collaborationMode/list",
   "skills/list",
   "mcpServerStatus/list",
 ]);
@@ -84,6 +159,7 @@ type CodexNativeModel = {
   id?: string;
   model?: string;
   displayName?: string;
+  contextWindow?: number;
   inputModalities?: string[];
   supportedReasoningEfforts?: Array<{ reasoningEffort?: string }>;
 };
@@ -115,6 +191,10 @@ export function projectCodexHarnessProviderList(
         return [model.id, {
           id: model.id,
           name: model.name || native?.displayName || model.id,
+          ...((model.contextWindow ?? native?.contextWindow)
+            ? { contextWindow: model.contextWindow ?? native?.contextWindow }
+            : {}),
+          ...(model.maxTokens ? { maxTokens: model.maxTokens } : {}),
           capabilities: {
             attachment: native?.inputModalities?.includes("image") === true,
             reasoning: efforts.length > 0,
@@ -177,6 +257,11 @@ export function registerCodexHarnessRoutes(options: RegisterCodexHarnessRoutesOp
     const model = isRecord(body.payload.model) ? body.payload.model : null;
     const providerID = typeof model?.providerID === "string" ? model.providerID.trim() : "";
     const modelID = typeof model?.modelID === "string" ? model.modelID.trim() : "";
+    const reasoningEffort = typeof body.payload.reasoningEffort === "string"
+      ? body.payload.reasoningEffort
+      : typeof body.payload.variant === "string"
+        ? body.payload.variant
+        : null;
     const additionalContext = buildCodexHarnessAdditionalContext(
       body.payload.system,
       [...instructions.systemInstructions, ...instructions.userInstructions],
@@ -196,20 +281,18 @@ export function registerCodexHarnessRoutes(options: RegisterCodexHarnessRoutesOp
         : body.payload.threadId;
       await workspaceRuntime.call("turn/start", {
         threadId: effectiveThreadId,
+        ...codexHarnessTurnAccessPolicy(body.payload.accessMode, workspace.path),
+        ...codexHarnessTurnCollaborationMode(body.payload.mode, modelID, reasoningEffort),
         ...(typeof body.payload.clientUserMessageId === "string" && body.payload.clientUserMessageId.trim()
           ? { clientUserMessageId: body.payload.clientUserMessageId.trim() }
           : {}),
         input,
         ...(additionalContext ? { additionalContext } : {}),
         cwd: workspace.path,
-        // thread/resume above owns the provider/model pair. turn/start has no
-        // modelProvider field, so repeating only the model can resolve it
-        // against Codex's default provider instead of the selected account.
-        ...(typeof body.payload.reasoningEffort === "string"
-          ? { effort: body.payload.reasoningEffort }
-          : typeof body.payload.variant === "string"
-            ? { effort: body.payload.variant }
-            : {}),
+        // thread/resume above owns the provider/model pair. The standalone
+        // turn model remains omitted; collaborationMode carries the required
+        // current model while Codex retains the thread's selected provider.
+        ...(reasoningEffort ? { effort: reasoningEffort } : {}),
       });
       return Response.json({ ok: true, sessionId: effectiveThreadId });
     } catch (error) {

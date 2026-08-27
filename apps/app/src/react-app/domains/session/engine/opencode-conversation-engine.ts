@@ -4,6 +4,7 @@ import { createClient, unwrap } from "@/app/lib/opencode";
 import type { Client } from "@/app/types";
 import { t } from "@/i18n";
 import {
+  type ConversationAccessMode,
   type ConversationEngineAdapter,
   type ConversationEngineConnection,
   type ConversationPermission,
@@ -18,6 +19,66 @@ import {
   mapOpenCodeV2Permission as mapV2Permission,
   resolveOpenCodeForkBoundaryId,
 } from "./opencode-conversation-mapper";
+
+type OpenCodeAccessModeId = "default" | "read-only" | "ask" | "full-access";
+type OpenCodePermissionRule = { permission: string; pattern: string; action: "allow" | "ask" | "deny" };
+
+const OPEN_CODE_ACCESS_RULES: Record<OpenCodeAccessModeId, OpenCodePermissionRule[]> = {
+  default: [],
+  "read-only": [
+    { permission: "*", pattern: "*", action: "allow" },
+    { permission: "edit", pattern: "*", action: "deny" },
+    { permission: "bash", pattern: "*", action: "deny" },
+    { permission: "task", pattern: "*", action: "deny" },
+    { permission: "external_directory", pattern: "*", action: "deny" },
+  ],
+  ask: [
+    { permission: "*", pattern: "*", action: "allow" },
+    { permission: "edit", pattern: "*", action: "ask" },
+    { permission: "bash", pattern: "*", action: "ask" },
+    { permission: "task", pattern: "*", action: "ask" },
+    { permission: "external_directory", pattern: "*", action: "ask" },
+  ],
+  "full-access": [{ permission: "*", pattern: "*", action: "allow" }],
+};
+
+function openCodeAccessModes(): ConversationAccessMode[] {
+  return [
+    {
+      id: "default",
+      label: t("composer.access_mode_engine_default"),
+      description: t("composer.access_mode_opencode_default_description"),
+      icon: "workspace",
+      isDefault: true,
+    },
+    {
+      id: "read-only",
+      label: t("composer.access_mode_read_only"),
+      description: t("composer.access_mode_opencode_read_only_description"),
+      icon: "read-only",
+    },
+    {
+      id: "ask",
+      label: t("composer.access_mode_ask"),
+      description: t("composer.access_mode_opencode_ask_description"),
+      icon: "ask",
+    },
+    {
+      id: "full-access",
+      label: t("composer.access_mode_full_access"),
+      description: t("composer.access_mode_opencode_full_access_description"),
+      icon: "full-access",
+      dangerous: true,
+    },
+  ];
+}
+
+function openCodeAccessModeFromRules(value: unknown): OpenCodeAccessModeId {
+  if (!Array.isArray(value) || value.length === 0) return "default";
+  const serialized = JSON.stringify(value);
+  return (Object.entries(OPEN_CODE_ACCESS_RULES) as Array<[OpenCodeAccessModeId, OpenCodePermissionRule[]]>)
+    .find(([, rules]) => JSON.stringify(rules) === serialized)?.[0] ?? "default";
+}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -34,19 +95,14 @@ type OpenCodeAgentInfo = {
   mode?: string | null;
 };
 
-function isVisibleSessionAgent(agent: OpenCodeAgentInfo): boolean {
-  return !agent.hidden && agent.mode !== "subagent";
+function isOpenCodeWorkMode(agent: OpenCodeAgentInfo): boolean {
+  return !agent.hidden && (agent.name === "build" || agent.name === "plan");
 }
 
-function resolveVisibleSessionAgentName(
-  agents: OpenCodeAgentInfo[],
-  requested: string | null | undefined,
-): string | undefined {
+function resolveOpenCodeWorkModeName(requested: string | null | undefined): "build" | "plan" | undefined {
   const requestedMode = requested?.trim();
   if (!requestedMode) return undefined;
-  const visibleAgents = agents.filter(isVisibleSessionAgent);
-  if (visibleAgents.some((agent) => agent.name === requestedMode)) return requestedMode;
-  return visibleAgents.find((agent) => agent.name === "build")?.name ?? visibleAgents[0]?.name;
+  return requestedMode === "plan" ? "plan" : "build";
 }
 
 function isOpenCodeClient(value: unknown): value is Client {
@@ -66,9 +122,22 @@ function openCodeConnection(input: { baseUrl: string; token?: string; directory?
     mode: "ipollowork",
   });
   if (!isOpenCodeClient(client)) throw new Error("OpenCode conversation client is unavailable");
+  const selectedAccessModes = new Map<string, OpenCodeAccessModeId>();
 
   return {
-    mapSnapshot,
+    mapSnapshot(snapshot) {
+      const mapped = mapSnapshot(snapshot);
+      if (!selectedAccessModes.has(mapped.session.id)) {
+        selectedAccessModes.set(mapped.session.id, openCodeAccessModeFromRules(mapped.session.permission));
+      }
+      return mapped;
+    },
+    accessModeState(session) {
+      return {
+        id: selectedAccessModes.get(session.id) ?? openCodeAccessModeFromRules(session.permission),
+        mutable: true,
+      };
+    },
     async subscribe(input) {
       const subscription = await client.event.subscribe(undefined, { signal: input.signal });
       for await (const raw of subscription.stream) {
@@ -151,33 +220,27 @@ function openCodeConnection(input: { baseUrl: string; token?: string; directory?
         directory,
         time: { archived: archived ? Date.now() : 0 },
       }));
+      if (archived) selectedAccessModes.delete(sessionId);
     },
     async shell(sessionId, command) {
       const result = await client.session.shell({ sessionID: sessionId, command });
       if (result.error !== undefined) unwrap(result);
     },
     async runCommand(input) {
+      const agent = resolveOpenCodeWorkModeName(input.mode);
       const result = await client.session.command({
         sessionID: input.sessionId,
         command: input.command,
         arguments: input.arguments,
         model: input.model ? `${input.model.providerID}/${input.model.modelID}` : undefined,
+        agent,
         directory: input.directory,
         ...(input.reasoningEffort ? { reasoning_effort: input.reasoningEffort } : {}),
       });
       if (result.error !== undefined) unwrap(result);
     },
     async sendPrompt(input) {
-      let agent = input.mode?.trim() || undefined;
-      if (agent) {
-        try {
-          agent = resolveVisibleSessionAgentName(unwrap(await client.app.agents()), agent);
-        } catch {
-          // Older persisted preferences can point at hidden orchestration-only
-          // agents. Dropping that stale value lets OpenCode use its default.
-          if (agent === "orchestrator") agent = undefined;
-        }
-      }
+      const agent = resolveOpenCodeWorkModeName(input.mode);
       const runtimeModelContext = input.model
         ? `Authoritative iPolloWork runtime model selection for this turn: ${JSON.stringify(input.model)}. When asked which model is running, report this selection exactly. Do not infer or claim a different model identity from earlier messages, training data, or generated self-description.`
         : "";
@@ -214,7 +277,7 @@ function openCodeConnection(input: { baseUrl: string; token?: string; directory?
     async listModes() {
       const agents = unwrap(await client.app.agents());
       return agents
-        .filter(isVisibleSessionAgent)
+        .filter(isOpenCodeWorkMode)
         .map((agent) => ({
           id: agent.name,
           label: agent.name === "build"
@@ -226,6 +289,19 @@ function openCodeConnection(input: { baseUrl: string; token?: string; directory?
           icon: agent.name === "plan" ? "plan" as const : "execute" as const,
           isDefault: agent.name === "build",
         }));
+    },
+    async listAccessModes() {
+      return openCodeAccessModes();
+    },
+    async setAccessMode(request) {
+      if (!(request.accessMode in OPEN_CODE_ACCESS_RULES)) throw new Error("Unknown OpenCode permission mode");
+      const accessMode = request.accessMode as OpenCodeAccessModeId;
+      unwrap(await client.session.update({
+        sessionID: request.sessionId,
+        directory: request.directory ?? input.directory,
+        permission: OPEN_CODE_ACCESS_RULES[accessMode],
+      }));
+      selectedAccessModes.set(request.sessionId, accessMode);
     },
     async listAgents() {
       return unwrap(await client.app.agents()).map((agent) => ({

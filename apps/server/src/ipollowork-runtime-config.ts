@@ -59,6 +59,8 @@ function runtimeProviderMap(
           model.id,
           {
             name: model.name,
+            contextWindow: model.contextWindow,
+            maxTokens: model.maxTokens,
             // OpenCode filters catalog entries marked deprecated before it
             // applies a provider whitelist. The Zen free roster is checked by
             // iPolloWork, so make that current status explicit for every

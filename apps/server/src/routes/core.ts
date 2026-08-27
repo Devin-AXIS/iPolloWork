@@ -956,7 +956,10 @@ export function registerCoreRoutes(options: RegisterCoreRoutesOptions): void {
     const items = await env.list().catch(rethrowEnvStoreReadError);
     return jsonResponse({
       keys: items.map((item) => item.key),
-      oauthProviderIds: listOpencodeOAuthProviderIds({ managedOnly: true }),
+      oauthProviderIds: listOpencodeOAuthProviderIds({
+        managedOnly: true,
+        ...(config.opencodeAuthPath ? { authPath: config.opencodeAuthPath } : {}),
+      }),
     });
   });
 

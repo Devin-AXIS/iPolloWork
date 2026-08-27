@@ -71,7 +71,7 @@ async function packageEngine(engineId, outputDirectory) {
   const name = `ipollowork-engine-${engineId}-${targetPlatform()}-${targetArch()}-${version}.tar.gz`;
   const archivePath = resolve(outputDirectory, name);
   const entries = ["package.json", "node_modules"];
-  if (isDsh) entries.push("ipollowork-host-tools.mjs");
+  if (isDsh) entries.push("ipollowork-host-tools.mjs", "node-runtime");
   for (const entry of entries) {
     if (!existsSync(resolve(runtimeRoot, entry))) throw new Error(`Missing engine runtime entry: ${entry}`);
   }

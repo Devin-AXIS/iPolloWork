@@ -1,4 +1,6 @@
 import { describe, expect, test } from "bun:test";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   serializeSharedProviderProfile,
@@ -10,12 +12,18 @@ import {
 import {
   deepSeekHarnessChildEnvironment,
   deepSeekHarnessCompatibleProviderProfiles,
+  deepSeekHarnessCredentialRefsConfigured,
+  deepSeekHarnessNodeExecutable,
   deepSeekHarnessProviderCredentials,
+  deepSeekHarnessRouteCredentialRef,
+  deepSeekHarnessRouteProjectionConfigured,
+  deepSeekHarnessSettingsPatchOps,
   deepSeekHarnessWebArgs,
   openAiCodexOAuthCredential,
   openAiCodexOAuthCredentialNeedsRefresh,
   refreshOpenAiCodexOAuthCredential,
   sharedProviderApiCredentials,
+  waitForDeepSeekHarnessApi,
 } from "./deepseek-harness-runtime.js";
 import {
   officialCodexOAuthCredential,
@@ -30,12 +38,12 @@ import {
 } from "@ipollowork/types/opencode-zen-public-models";
 
 const OPENCODE_ZEN_PUBLIC_MODELS = [
-  { id: "big-pickle", name: "Big Pickle" },
-  { id: "hy3-free", name: "Hy3 Free" },
-  { id: "mimo-v2.5-free", name: "MiMo-V2.5 Free" },
-  { id: "nemotron-3-ultra-free", name: "Nemotron 3 Ultra Free" },
-  { id: "nemotron-3.5-lightning-free", name: "Nemotron 3.5 Lightning Free" },
-  { id: "x-preview-f-free", name: "Ox Alpha Free" },
+  { id: "big-pickle", name: "Big Pickle", contextWindow: 200_000, maxTokens: 32_000 },
+  { id: "hy3-free", name: "Hy3 Free", contextWindow: 190_000, maxTokens: 64_000 },
+  { id: "mimo-v2.5-free", name: "MiMo-V2.5 Free", contextWindow: 200_000, maxTokens: 32_000 },
+  { id: "nemotron-3-ultra-free", name: "Nemotron 3 Ultra Free", contextWindow: 1_000_000, maxTokens: 128_000 },
+  { id: "nemotron-3.5-lightning-free", name: "Nemotron 3.5 Lightning Free", contextWindow: 262_144, maxTokens: 262_144 },
+  { id: "x-preview-f-free", name: "Ox Alpha Free", contextWindow: 1_000_000, maxTokens: 131_072 },
 ];
 
 describe("DeepSeek Harness provider credential sync", () => {
@@ -63,6 +71,44 @@ describe("DeepSeek Harness provider credential sync", () => {
       "--port",
       "0",
     ]);
+  });
+
+  test("uses a standard Node runtime for the DSH JavaScript entrypoint", () => {
+    expect(deepSeekHarnessNodeExecutable({
+      IPOLLOWORK_DSH_NODE_BIN: "/engine/node",
+      IPOLLOWORK_NODE_BIN: "/development/node",
+    }, "darwin")).toBe("/engine/node");
+    expect(deepSeekHarnessNodeExecutable({
+      IPOLLOWORK_NODE_BIN: "/development/node",
+    }, "linux")).toBe("/development/node");
+    expect(deepSeekHarnessNodeExecutable({}, "win32")).toBe("node.exe");
+  });
+
+  test("waits through the DSH Web gateway's transient startup 404", async () => {
+    const delays: number[] = [];
+    let attempts = 0;
+
+    await waitForDeepSeekHarnessApi("http://127.0.0.1:43123/", {
+      retryDelaysMs: [10, 20],
+      wait: async (delayMs) => {
+        delays.push(delayMs);
+      },
+      fetcher: (async (input, init) => {
+        attempts += 1;
+        expect(String(input)).toBe("http://127.0.0.1:43123/api/workspace.list");
+        expect(JSON.parse(String(init?.body))).toEqual(expect.objectContaining({
+          type: "client-request",
+          method: "workspace.list",
+          payload: {},
+        }));
+        return attempts < 3
+          ? new Response("not found", { status: 404 })
+          : Response.json({ ok: true });
+      }) as typeof fetch,
+    });
+
+    expect(attempts).toBe(3);
+    expect(delays).toEqual([10, 20]);
   });
 
   test("keeps shared provider credentials out of the child process environment", () => {
@@ -105,6 +151,153 @@ describe("DeepSeek Harness provider credential sync", () => {
     })).resolves.toBeNull();
   });
 
+  test("invalidates a cached provider sync when DSH loses a projected credential", () => {
+    const refs = new Set(["OPENAI_CODEX_API_KEY", "OPENCODE_API_KEY"]);
+    expect(deepSeekHarnessCredentialRefsConfigured({
+      credentials: {
+        OPENAI_CODEX_API_KEY: { configured: true },
+        OPENCODE_API_KEY: { configured: true },
+      },
+    }, refs)).toBe(true);
+    expect(deepSeekHarnessCredentialRefsConfigured({
+      credentials: {
+        OPENAI_CODEX_API_KEY: { configured: false },
+        OPENCODE_API_KEY: { configured: true },
+      },
+    }, refs)).toBe(false);
+  });
+
+  test("reuses an existing DSH credential binding without rewriting locked settings", () => {
+    const route = {
+      provider: "openai-codex",
+      settingsNs: "llm-pi-ai",
+      settingsPath: ["providers", "openai-codex"],
+      active: true,
+    };
+    expect(deepSeekHarnessRouteCredentialRef({
+      namespaces: [{
+        ns: "llm-pi-ai",
+        value: {
+          providers: {
+            "openai-codex": { apiKeyEnv: "OPENAI_CODEX_API_KEY" },
+          },
+        },
+      }],
+    }, route)).toBe("OPENAI_CODEX_API_KEY");
+    expect(deepSeekHarnessRouteCredentialRef({ namespaces: [] }, route)).toBeNull();
+  });
+
+  test("reuses correct credential bindings for every API-key provider", () => {
+    const route = {
+      provider: "anthropic",
+      settingsNs: "llm-pi-ai",
+      settingsPath: ["providers", "anthropic"],
+      active: true,
+    };
+    const settings = {
+      namespaces: [{
+        ns: "llm-pi-ai",
+        value: {
+          providers: {
+            anthropic: {
+              apiKeyEnv: "ANTHROPIC_API_KEY",
+              retryPolicy: { maxRetries: 4 },
+            },
+          },
+        },
+      }],
+    };
+
+    expect(deepSeekHarnessSettingsPatchOps(
+      settings,
+      route,
+      { apiKeyEnv: "ANTHROPIC_API_KEY" },
+    )).toEqual([]);
+    expect(deepSeekHarnessRouteProjectionConfigured(
+      { providers: [route] },
+      settings,
+      {
+        providerId: "anthropic",
+        ref: "ANTHROPIC_API_KEY",
+        expected: { apiKeyEnv: "ANTHROPIC_API_KEY" },
+      },
+    )).toBe(true);
+    expect(deepSeekHarnessRouteProjectionConfigured(
+      { providers: [{ ...route, active: false }] },
+      settings,
+      {
+        providerId: "anthropic",
+        ref: "ANTHROPIC_API_KEY",
+        expected: { apiKeyEnv: "ANTHROPIC_API_KEY" },
+      },
+    )).toBe(false);
+  });
+
+  test("patches only managed provider fields and preserves DSH-owned settings", () => {
+    const route = {
+      provider: "minimax",
+      settingsNs: "llm-pi-ai",
+      settingsPath: ["providers", "minimax"],
+      active: true,
+    };
+    const settings = {
+      namespaces: [{
+        ns: "llm-pi-ai",
+        value: {
+          providers: {
+            minimax: {
+              displayName: "MiniMax",
+              apiKeyEnv: "MINIMAX_API_KEY",
+              api: "anthropic-messages",
+              baseURL: "https://old.example/anthropic",
+              models: [{ id: "MiniMax-M3", contextWindow: 204_800 }],
+              retryPolicy: { maxRetries: 5 },
+            },
+          },
+        },
+      }],
+    };
+
+    expect(deepSeekHarnessSettingsPatchOps(
+      settings,
+      route,
+      {
+        displayName: "MiniMax",
+        apiKeyEnv: "MINIMAX_API_KEY",
+        api: "anthropic-messages",
+        baseURL: "https://api.minimax.io/anthropic",
+        models: [{ id: "MiniMax-M3" }],
+      },
+      ["displayName", "apiKeyEnv", "api", "baseURL", "models"],
+    )).toEqual([{
+      op: "set",
+      path: ["providers", "minimax", "baseURL"],
+      value: "https://api.minimax.io/anthropic",
+    }]);
+  });
+
+  test("reads OpenAI OAuth from the exact managed OpenCode auth vault", async () => {
+    const root = await mkdtemp(join(tmpdir(), "ipollowork-dsh-account-auth-"));
+    const authPath = join(root, "opencode", "auth.json");
+    try {
+      await mkdir(join(root, "opencode"), { recursive: true });
+      await writeFile(authPath, JSON.stringify({
+        openai: {
+          type: "oauth",
+          access: "account-access-token",
+          refresh: "account-refresh-token",
+          expires: Date.now() + 60 * 60 * 1000,
+        },
+      }), "utf8");
+
+      await expect(resolveOpenAiCodexOAuthSession({ opencodeAuthPath: authPath } as never, {
+        allowOfficialCodexFallback: false,
+      })).resolves.toEqual({ accessToken: "account-access-token" });
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
   test("does not turn the media-center DashScope credential into a chat provider", () => {
     expect([...deepSeekHarnessProviderCredentials([
       { key: "DASHSCOPE_API_KEY", value: " dashscope-key " },
@@ -144,7 +337,6 @@ describe("DeepSeek Harness provider credential sync", () => {
       bridge: {
         providerId: "openai-codex",
         displayName: "OpenAI",
-        requiresCredentialBinding: true,
       },
     });
   });
@@ -392,9 +584,29 @@ describe("DeepSeek Harness provider credential sync", () => {
   test("maps the shared Kimi API channel to DSH's equivalent provider id", () => {
     expect([...deepSeekHarnessProviderCredentials([
       { key: sharedProviderCredentialEnvKey("kimi-for-coding"), value: " kimi-api-key " },
+      {
+        key: sharedProviderProfileEnvKey("kimi-for-coding"),
+        value: serializeSharedProviderProfile({
+          schemaVersion: 1,
+          providerId: "kimi-for-coding",
+          displayName: "Kimi / Moonshot AI",
+          api: "anthropic-messages",
+          baseURL: "https://api.kimi.com/coding",
+          models: [{ id: "kimi-k2.5" }],
+        }),
+      },
     ])].find(([providerId]) => providerId === "kimi-coding")).toEqual([
       "kimi-coding",
-      { apiKey: "kimi-api-key", bridge: undefined },
+      {
+        apiKey: "kimi-api-key",
+        bridge: {
+          providerId: "kimi-coding",
+          displayName: "Kimi / Moonshot AI",
+          api: "anthropic-messages",
+          baseURL: "https://api.kimi.com/coding",
+          models: [{ id: "kimi-k2.5" }],
+        },
+      },
     ]);
   });
 

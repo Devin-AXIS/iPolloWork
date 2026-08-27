@@ -1,7 +1,7 @@
 /** @jsxImportSource react */
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { flushSync } from "react-dom";
-import { AppWindowMac, ArrowUp, Bot, Check, ChevronDown, ChevronRight, Code2, FileText, ListTodo, Paperclip, Plus, Plug, Settings, Sparkles, Square, Terminal, Wrench, X, Zap } from "lucide-react";
+import { AppWindowMac, ArrowUp, Bot, Check, ChevronDown, ChevronRight, CircleGauge, Code2, FileText, ListTodo, Paperclip, Plus, Plug, Settings, Shield, ShieldAlert, ShieldCheck, ShieldQuestion, Sparkles, Square, Terminal, Wrench, X, Zap } from "lucide-react";
 import fuzzysort from "fuzzysort";
 import { toast } from "@/components/ui/sonner";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -9,12 +9,22 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import type { iPolloWorkPluginPackageItem } from "@/app/lib/ipollowork-server";
 import { activePluginEngineCompatibility } from "@/app/lib/plugin-package-readiness";
 import type { ComposerAttachment, McpServerEntry, McpStatusMap, ModelRef, SkillCard, SlashCommandOption } from "@/app/types";
-import type { ConversationAgent, ConversationMode, ConversationModeIcon } from "../../engine/conversation-engine";
+import {
+  formatContextTokenCount,
+  resolveConversationContextHealth,
+  type ConversationAccessMode,
+  type ConversationAccessModeIcon,
+  type ConversationAgent,
+  type ConversationContextUsage,
+  type ConversationMode,
+  type ConversationModeIcon,
+} from "../../engine/conversation-engine";
 import { formatBytes } from "@/app/utils";
 import { t } from "@/i18n";
 import { resolveExtensionIconUrl } from "@/react-app/design-system/extension-icon-src";
 import { LexicalPromptEditor, type LexicalPromptEditorHandle } from "./editor";
 import { ModelBehaviorMenu } from "@/components/model-behavior-menu";
+import { ConfirmModal } from "@/react-app/design-system/modals/confirm-modal";
 import { listRunningAppsForMention } from "./app-mentions";
 import type { ComposerMentionKind } from "./mention-encoding";
 import { getSlashCommandQuery } from "./slash-command";
@@ -68,6 +78,10 @@ export type ComposerProps = {
   modeSelectionDisabled?: boolean;
   listModes: () => Promise<ConversationMode[]>;
   onSelectMode: (mode: string | null) => void;
+  selectedAccessMode?: string | null;
+  accessModeSelectionDisabled?: boolean;
+  listAccessModes?: () => Promise<ConversationAccessMode[]>;
+  onSelectAccessMode?: (mode: string) => void | Promise<void>;
   listAgents: () => Promise<ConversationAgent[]>;
   onSelectAgent: (agent: string | null) => void;
   listCommands: () => Promise<SlashCommandOption[]>;
@@ -104,7 +118,8 @@ export type ComposerProps = {
   inlineAppearance?: "default" | "engine-selected";
   compactTopSpacing?: boolean;
   topAccessory?: ReactNode;
-  endAccessory?: ReactNode;
+  contextUsage?: ConversationContextUsage | null;
+  modelContextWindow?: number | null;
 };
 
 const FLUSH_PROMPT_EVENT = "ipollowork:flushPromptDraft";
@@ -115,6 +130,62 @@ const IMAGE_COMPRESS_QUALITY = 0.82;
 const IMAGE_COMPRESS_TARGET_BYTES = 1_500_000;
 const FILE_URL_RE = /^file:\/\//i;
 const HTTP_URL_RE = /^https?:\/\//i;
+function ContextHealth({
+  usage,
+  modelContextWindow,
+}: {
+  usage?: ConversationContextUsage | null;
+  modelContextWindow?: number | null;
+}) {
+  const health = resolveConversationContextHealth(usage, modelContextWindow);
+  const usedLabel = formatContextTokenCount(health.usedTokens);
+  const limitLabel = health.contextWindow ? formatContextTokenCount(health.contextWindow) : t("composer.context_limit_unknown");
+  const percentageLabel = health.percentage === null ? "—" : `${health.percentage}%`;
+  const summary = `${usedLabel} / ${limitLabel}${health.percentage === null ? "" : ` · ${percentageLabel}`}`;
+
+  return (
+    <Popover>
+      <PopoverTrigger
+        type="button"
+        data-testid="composer-context-health"
+        aria-label={`${t("composer.context_health")}: ${summary}`}
+        className={`inline-flex h-8 shrink-0 items-center gap-1.5 rounded-full px-2.5 text-[12px] font-medium leading-[18px] transition-colors hover:bg-gray-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gray-7 ${health.compressionWarning ? "text-amber-11" : "text-gray-10"}`}
+      >
+        <CircleGauge className="size-3.5 shrink-0" aria-hidden="true" />
+        <span className="whitespace-nowrap tabular-nums">{summary}</span>
+      </PopoverTrigger>
+      <PopoverContent side="top" align="end" sideOffset={8} className="w-72 gap-0 rounded-2xl p-4">
+        <div className="flex items-center justify-between gap-4">
+          <span className="text-sm font-medium text-gray-11">{t("composer.context_health")}</span>
+          <span className={`text-sm font-semibold tabular-nums ${health.compressionWarning ? "text-amber-11" : "text-gray-12"}`}>
+            {percentageLabel}
+          </span>
+        </div>
+        <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-gray-3" aria-hidden="true">
+          <div
+            className={`h-full rounded-full transition-[width] ${health.compressionWarning ? "bg-amber-9" : "bg-blue-9"}`}
+            style={{ width: `${Math.min(100, health.percentage ?? 0)}%` }}
+          />
+        </div>
+        <dl className="mt-4 space-y-2 text-sm">
+          <div className="flex items-center justify-between gap-4">
+            <dt className="text-gray-10">{t("composer.context_usage_label")}</dt>
+            <dd className="font-medium tabular-nums text-gray-12">{usedLabel}</dd>
+          </div>
+          <div className="flex items-center justify-between gap-4">
+            <dt className="text-gray-10">{t("composer.context_model_limit")}</dt>
+            <dd className="font-medium tabular-nums text-gray-12">{limitLabel}</dd>
+          </div>
+        </dl>
+        {health.compressionWarning ? (
+          <div className="mt-4 rounded-xl bg-amber-3 px-3 py-2 text-xs leading-5 text-amber-11">
+            {t("composer.context_compression_warning")}
+          </div>
+        ) : null}
+      </PopoverContent>
+    </Popover>
+  );
+}
 
 function WorkModeIcon({ icon, className }: { icon: ConversationModeIcon; className?: string }) {
   if (icon === "plan") return <ListTodo className={className} />;
@@ -122,6 +193,13 @@ function WorkModeIcon({ icon, className }: { icon: ConversationModeIcon; classNa
   if (icon === "minimal") return <Terminal className={className} />;
   if (icon === "create") return <Sparkles className={className} />;
   return <Zap className={className} />;
+}
+
+function AccessModeIcon({ icon, className }: { icon: ConversationAccessModeIcon; className?: string }) {
+  if (icon === "read-only") return <Shield className={className} />;
+  if (icon === "full-access") return <ShieldAlert className={className} />;
+  if (icon === "ask") return <ShieldQuestion className={className} />;
+  return <ShieldCheck className={className} />;
 }
 
 /**
@@ -279,11 +357,15 @@ export function ReactSessionComposer(props: ComposerProps) {
   const [plusMenuSection, setPlusMenuSection] = useState<PlusMenuSection | null>(null);
   const [toolMenuOpen, setToolMenuOpen] = useState(false);
   const [workModeOpen, setWorkModeOpen] = useState(false);
+  const [accessModeOpen, setAccessModeOpen] = useState(false);
+  const [accessModeBusy, setAccessModeBusy] = useState(false);
+  const [pendingDangerousAccessMode, setPendingDangerousAccessMode] = useState<ConversationAccessMode | null>(null);
   const engineSelectedAppearance = props.layout === "inline" && props.inlineAppearance === "engine-selected";
   const canSend = props.draft.trim().length > 0 || props.attachments.length > 0 || props.hasPromptContext;
   const editorDisabled = props.inputDisabled ?? props.disabled;
   const maxAttachmentBytes = props.maxAttachmentBytes ?? MAX_ATTACHMENT_BYTES;
   const [workModes, setWorkModes] = useState<ConversationMode[]>([]);
+  const [accessModes, setAccessModes] = useState<ConversationAccessMode[]>([]);
   const [toolMenuSection, setToolMenuSection] = useState<ToolMenuSection>("commands");
   const [mentionItems, setMentionItems] = useState<MentionItem[]>([]);
   const [mentionOpen, setMentionOpen] = useState(false);
@@ -471,8 +553,32 @@ export function ReactSessionComposer(props: ComposerProps) {
   }, [props.listModes]);
 
   useEffect(() => {
+    let cancelled = false;
+    if (!props.listAccessModes) {
+      setAccessModes([]);
+      return () => {
+        cancelled = true;
+      };
+    }
+    void props.listAccessModes()
+      .then((modes) => {
+        if (!cancelled) setAccessModes(modes);
+      })
+      .catch(() => {
+        if (!cancelled) setAccessModes([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [props.listAccessModes]);
+
+  useEffect(() => {
     if (props.busy || props.modeSelectionDisabled) setWorkModeOpen(false);
   }, [props.busy, props.modeSelectionDisabled]);
+
+  useEffect(() => {
+    if (props.busy || props.accessModeSelectionDisabled) setAccessModeOpen(false);
+  }, [props.accessModeSelectionDisabled, props.busy]);
 
   useEffect(() => {
     listInstalledExtensionsRef.current = props.listInstalledExtensions ?? props.listImportedPlugins;
@@ -859,6 +965,40 @@ export function ReactSessionComposer(props: ComposerProps) {
       label: props.selectedMode || t("composer.work_mode_execute"),
       icon: "execute" as const,
     };
+
+  const activeAccessMode = accessModes.find((mode) => mode.id === props.selectedAccessMode)
+    ?? accessModes.find((mode) => mode.isDefault)
+    ?? accessModes[0]
+    ?? null;
+
+  const applyAccessMode = async (mode: ConversationAccessMode) => {
+    if (props.busy || props.accessModeSelectionDisabled || accessModeBusy || mode.selectable === false) return;
+    setAccessModeOpen(false);
+    setAccessModeBusy(true);
+    try {
+      await props.onSelectAccessMode?.(mode.id);
+    } catch (error) {
+      toast.error(t("composer.access_mode_switch_failed"), {
+        description: error instanceof Error ? error.message : String(error),
+      });
+    } finally {
+      setAccessModeBusy(false);
+      setPendingDangerousAccessMode(null);
+    }
+  };
+
+  const selectAccessMode = (mode: ConversationAccessMode) => {
+    if (mode.id === props.selectedAccessMode || mode.selectable === false) {
+      setAccessModeOpen(false);
+      return;
+    }
+    if (mode.dangerous) {
+      setAccessModeOpen(false);
+      setPendingDangerousAccessMode(mode);
+      return;
+    }
+    void applyAccessMode(mode);
+  };
 
   const applyExtensionSelection = (entry: iPolloWorkPluginPackageItem) => {
     props.onOpenWorkspaceApp?.(entry.pluginId);
@@ -1665,6 +1805,54 @@ export function ReactSessionComposer(props: ComposerProps) {
                   onConfigureTokenStar={props.onConfigureTokenStar}
                   disabled={props.busy}
                 />
+                {activeAccessMode && props.onSelectAccessMode ? (
+                  <Popover
+                    open={accessModeOpen}
+                    onOpenChange={(open) => {
+                      setAccessModeOpen(open);
+                      if (!open) return;
+                      setWorkModeOpen(false);
+                      setPlusMenuOpen(false);
+                      setPlusMenuSection(null);
+                      setToolMenuOpen(false);
+                      setDelegationMenuOpen(false);
+                    }}
+                  >
+                    <PopoverTrigger
+                      type="button"
+                      disabled={props.busy || props.accessModeSelectionDisabled || accessModeBusy}
+                      aria-label={`${t("composer.access_mode_label")}: ${activeAccessMode.label}`}
+                      className="inline-flex h-8 items-center gap-1.5 rounded-full bg-transparent px-2 text-[12px] leading-[18px] text-gray-10 transition-colors hover:bg-gray-3 hover:text-gray-12 data-[state=open]:bg-gray-3 data-[state=open]:text-gray-12 disabled:pointer-events-none disabled:opacity-60"
+                    >
+                      <AccessModeIcon icon={activeAccessMode.icon} className="size-3.5 shrink-0" />
+                      <span>{activeAccessMode.label}</span>
+                      <ChevronDown className="size-4 shrink-0" />
+                    </PopoverTrigger>
+                    <PopoverContent side="top" align="start" sideOffset={8} className="w-72 gap-0 p-1.5">
+                      {accessModes.map((mode) => {
+                        const active = mode.id === activeAccessMode.id;
+                        return (
+                          <button
+                            key={mode.id}
+                            type="button"
+                            disabled={props.busy || props.accessModeSelectionDisabled || accessModeBusy || mode.selectable === false}
+                            data-access-mode-option={mode.id}
+                            aria-pressed={active}
+                            className="flex w-full items-start gap-2.5 rounded-xl px-3 py-2 text-left text-sm hover:bg-gray-2 disabled:cursor-not-allowed disabled:opacity-55"
+                            onClick={() => selectAccessMode(mode)}
+                          >
+                            <AccessModeIcon icon={mode.icon} className={`mt-0.5 size-4 shrink-0 ${mode.dangerous ? "text-red-10" : "text-gray-10"}`} />
+                            <span className="min-w-0 flex-1">
+                              <span className="block font-medium">{mode.label}</span>
+                              {mode.description ? <span className="mt-0.5 block text-xs leading-4 text-gray-9">{mode.description}</span> : null}
+                            </span>
+                            {active ? <Check className="mt-0.5 size-4 shrink-0 text-gray-11" /> : null}
+                          </button>
+                        );
+                      })}
+                    </PopoverContent>
+                  </Popover>
+                ) : null}
                 <Popover
                   open={workModeOpen}
                   onOpenChange={(open) => {
@@ -1730,7 +1918,10 @@ export function ReactSessionComposer(props: ComposerProps) {
                   Escape arms a "Hit Escape again to stop the agent" prompt.
               */}
               <div className="ml-auto flex min-w-0 shrink-0 items-end gap-1.5">
-                {props.endAccessory}
+                <ContextHealth
+                  usage={props.contextUsage}
+                  modelContextWindow={props.modelContextWindow}
+                />
                 {props.busy ? (
                   <>
                     {escapeArmed ? (
@@ -1807,6 +1998,18 @@ export function ReactSessionComposer(props: ComposerProps) {
           </div>
         </div>
 
+        <ConfirmModal
+          open={pendingDangerousAccessMode !== null}
+          title={t("composer.access_mode_full_access_confirm_title")}
+          message={t("composer.access_mode_full_access_confirm_message")}
+          confirmLabel={t("composer.access_mode_full_access_confirm_action")}
+          cancelLabel={t("common.cancel")}
+          variant="danger"
+          onConfirm={() => {
+            if (pendingDangerousAccessMode) void applyAccessMode(pendingDangerousAccessMode);
+          }}
+          onCancel={() => setPendingDangerousAccessMode(null)}
+        />
       </div>
     </div>
   );

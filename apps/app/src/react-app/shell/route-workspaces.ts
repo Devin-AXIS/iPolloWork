@@ -7,6 +7,11 @@ import type { iPolloWorkWorkspaceInfo } from "@/app/lib/ipollowork-server";
 import type { WorkspaceInfo } from "@/app/lib/desktop-types";
 import type { ProjectSessionList } from "@/app/types";
 import {
+  CODEX_HARNESS_ENGINE_ID,
+  DEEPSEEK_HARNESS_ENGINE_ID,
+  DEFAULT_ENGINE_ID,
+} from "@ipollowork/types/workspace";
+import {
   normalizeDirectoryPath,
   normalizeSessionStatus,
   safeStringify,
@@ -114,14 +119,33 @@ export function isSidecarLaunchBlockedError(message: string | null | undefined) 
   return value.includes("spawn eperm") || (value.includes("spawn") && value.includes("eperm"));
 }
 
+function workspaceEngineName(engineId: string | null | undefined) {
+  const resolved = engineId?.trim() || DEFAULT_ENGINE_ID;
+  if (resolved === CODEX_HARNESS_ENGINE_ID) return "Codex Harness";
+  if (resolved === DEEPSEEK_HARNESS_ENGINE_ID) return "DeepSeek Harness";
+  return "OpenCode";
+}
+
+export function describeSidecarLaunchBlockedError(engineId: string | null | undefined) {
+  const engineName = workspaceEngineName(engineId);
+  if (engineId?.trim() === CODEX_HARNESS_ENGINE_ID) {
+    return "Windows denied starting the Codex Harness runtime (spawn EPERM). iPolloWork will ignore that unusable executable and select a launchable local or managed Codex runtime after restart. Restart iPolloWork; if the problem continues, repair Codex Harness in Engine Management.";
+  }
+  if (engineId?.trim() === DEEPSEEK_HARNESS_ENGINE_ID) {
+    return "Windows denied starting the DeepSeek Harness runtime (spawn EPERM). Check antivirus, Controlled Folder Access, and app permissions, then repair DeepSeek Harness in Engine Management or restart iPolloWork.";
+  }
+  return `Windows denied starting the ${engineName} sidecar (spawn EPERM). Check whether antivirus, Controlled Folder Access, app permissions, or a quarantined opencode.exe is blocking iPolloWork, then retry or restart the app.`;
+}
+
 export function describeWorkspaceUnavailableTitle(input: {
   message: string | null | undefined;
   workspaceType?: string | null;
+  engineId?: string | null;
 }) {
   if (isModelUnavailableError(input.message)) return "Model unavailable";
-  if (isSidecarLaunchBlockedError(input.message)) return "OpenCode launch blocked";
+  if (isSidecarLaunchBlockedError(input.message)) return `${workspaceEngineName(input.engineId)} launch blocked`;
   if (input.workspaceType === "remote") return "Remote workspace unavailable";
-  return "OpenCode unavailable";
+  return `${workspaceEngineName(input.engineId)} unavailable`;
 }
 
 export function describeWorkspaceCreateError(error: unknown) {
@@ -275,6 +299,43 @@ export function userVisibleSessionsByWorkspaceId(
       )),
     ]),
   );
+}
+
+export function reconcilePendingCreatedSessions(
+  fetched: RouteSession[],
+  current: RouteSession[],
+  pending: Record<string, number>,
+  now = Date.now(),
+): { sessions: RouteSession[]; pending: Record<string, number> } {
+  const remaining = Object.fromEntries(
+    Object.entries(pending).filter(([, createdAt]) => now - createdAt <= 30_000),
+  );
+  const currentById = new Map(current.flatMap((session) => (
+    session.id ? [[session.id, session] as const] : []
+  )));
+  const fetchedIds = new Set(fetched.flatMap((session) => session.id ? [session.id] : []));
+  const mergedFetched = fetched.map((session) => {
+    const id = session.id;
+    const optimistic = id ? currentById.get(id) : undefined;
+    if (
+      id
+      && remaining[id] !== undefined
+      && optimistic
+      && isUnstartedSession(session)
+      && !isUnstartedSession(optimistic)
+    ) {
+      return optimistic;
+    }
+    if (id) delete remaining[id];
+    return session;
+  });
+  const preserved = current.filter((session) => (
+    Boolean(session.id && !fetchedIds.has(session.id) && remaining[session.id] !== undefined)
+  ));
+  return {
+    sessions: preserved.length > 0 ? [...preserved, ...mergedFetched] : mergedFetched,
+    pending: remaining,
+  };
 }
 
 export type TaskPaletteSessionOption = {

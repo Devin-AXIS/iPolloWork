@@ -6,7 +6,12 @@ import {
   type SharedProviderProfile,
 } from "@ipollowork/types/provider-credentials";
 
-type SharedProviderModel = { name?: string };
+type SharedProviderModel = {
+  name?: string;
+  contextWindow?: number;
+  maxTokens?: number;
+  limit?: { context?: number; output?: number };
+};
 
 export type SharedProviderProfileInput = {
   providerId: string;
@@ -20,10 +25,16 @@ export type SharedProviderProfileInput = {
 export function sharedProviderModels(
   models: Readonly<Record<string, SharedProviderModel>>,
 ): SharedProviderProfile["models"] {
-  return Object.entries(models).map(([id, model]) => ({
-    id,
-    ...(model.name?.trim() ? { name: model.name.trim() } : {}),
-  }));
+  return Object.entries(models).map(([id, model]) => {
+    const contextWindow = model.contextWindow ?? model.limit?.context;
+    const maxTokens = model.maxTokens ?? model.limit?.output;
+    return {
+      id,
+      ...(model.name?.trim() ? { name: model.name.trim() } : {}),
+      ...(typeof contextWindow === "number" && contextWindow > 0 ? { contextWindow } : {}),
+      ...(typeof maxTokens === "number" && maxTokens > 0 ? { maxTokens } : {}),
+    };
+  });
 }
 
 /**

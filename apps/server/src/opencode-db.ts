@@ -58,8 +58,23 @@ function opencodeDataDirs(): string[] {
   return Array.from(new Set(dirs));
 }
 
+/** Resolve the credential file used by a managed OpenCode child environment. */
+export function opencodeAuthPathFromEnvironment(
+  env: Readonly<Record<string, string | undefined>>,
+): string | null {
+  const xdgDataHome = env.XDG_DATA_HOME?.trim();
+  if (xdgDataHome) return join(xdgDataHome, "opencode", "auth.json");
+  const home = env.HOME?.trim() || env.USERPROFILE?.trim();
+  return home ? join(home, ".local", "share", "opencode", "auth.json") : null;
+}
+
 /** The account auth vault used by the managed OpenCode control plane. */
-export function resolveOpencodeAuthPath(options: { managedOnly?: boolean } = {}): string | null {
+export function resolveOpencodeAuthPath(options: {
+  managedOnly?: boolean;
+  authPath?: string;
+} = {}): string | null {
+  const authPath = options.authPath?.trim();
+  if (authPath) return existsSync(authPath) ? authPath : null;
   const directories = options.managedOnly ? opencodeOrchestratorDataDirs() : opencodeDataDirs();
   return directories
     .map((dir) => join(dir, "auth.json"))
@@ -68,7 +83,7 @@ export function resolveOpencodeAuthPath(options: { managedOnly?: boolean } = {})
 
 /** Secret-free OAuth connection metadata for account provider recovery. */
 export function listOpencodeOAuthProviderIds(
-  options: { managedOnly?: boolean } = {},
+  options: { managedOnly?: boolean; authPath?: string } = {},
 ): string[] {
   const path = resolveOpencodeAuthPath(options);
   if (!path) return [];
