@@ -488,6 +488,16 @@ describe("template installations", () => {
     expect(entry).toContain('window.__timelines["vertical-social-story"]');
   });
 
+  test("keeps custom creation out of the market catalog", async () => {
+    const root = await mkdtemp(join(tmpdir(), "ipw-custom-entry-"));
+    process.env.IPOLLOWORK_RUNTIME_DB = join(root, "runtime.sqlite");
+    const serverConfig = config(root);
+    const ws = workspace(root, "alpha");
+    const catalog = await listTemplates(serverConfig, ws.id);
+
+    expect(catalog.some((item) => item.manifest.id === "ipollowork.pptx-custom")).toBe(false);
+  });
+
   test("materializes every flagship video template as an independent session project", async () => {
     const root = await mkdtemp(join(tmpdir(), "ipw-flagship-video-"));
     process.env.IPOLLOWORK_RUNTIME_DB = join(root, "runtime.sqlite");
@@ -1009,6 +1019,7 @@ describe("template installations", () => {
       sessionId: "delivery_slides",
       category: "slides",
       purpose: "artifact-delivery",
+      brief: { title: "Quarterly review", audience: "Leadership" },
     });
     const video = await createTemplateAuthoringSession(serverConfig, ws, {
       sessionId: "delivery_video",
@@ -1018,7 +1029,7 @@ describe("template installations", () => {
 
     expect(slides).toMatchObject({ authoring: false, surface: "design" });
     expect(slides.state.entry).toBe("design/delivery_slides/entry.html");
-    expect(JSON.parse(await readFile(join(ws.path, "design", "delivery_slides", "brief.json"), "utf8"))).toMatchObject({ mode: "artifact-delivery" });
+    expect(JSON.parse(await readFile(join(ws.path, "design", "delivery_slides", "brief.json"), "utf8"))).toEqual({ title: "Quarterly review", audience: "Leadership" });
     expect(await readFile(join(ws.path, slides.state.entry), "utf8")).not.toContain("template draft");
     expect(video).toMatchObject({ authoring: false, surface: "video" });
     expect(video.state.entry).toBe("video/delivery_video/index.html");

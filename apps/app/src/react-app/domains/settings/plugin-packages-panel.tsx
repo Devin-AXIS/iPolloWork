@@ -809,7 +809,7 @@ export const PluginPackagesPanel = forwardRef<PluginPackagesPanelHandle, PluginP
   }
 
   return (
-    <section className="w-full">
+    <section className={settingsStandardContentClass}>
       <div className="space-y-4">
         <div className="max-w-lg">
           <h1 data-testid="plugin-library-heading" className={settingsPageTitleClass}>{t("plugin_library.title")}</h1>

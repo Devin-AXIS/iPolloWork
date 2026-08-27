@@ -282,7 +282,7 @@ export default {
   "den.cloud_providers_title": "Proveïdors del núvol",
   "den.cloud_section_desc": "Inicia la sessió, tria una organització i obre workers del núvol o plantilles d'equip.",
   "den.cloud_section_title": "iPolloWork Cloud",
-  "den.cloud_sleep_hint": "Inicia la sessió a iPolloWork Cloud per mantenir les tasques actives encara que l'ordinador entri en repòs.",
+  "den.cloud_sleep_hint": "Mantén les tasques actives encara que l'ordinador entri en repòs.",
   "den.create_account": "Crea un compte",
   "den.credentials_ready_badge": "Credencial a punt",
   "den.error_base_url": "Introdueix un URL del pla de control http:// o https:// Cloud vàlid.",

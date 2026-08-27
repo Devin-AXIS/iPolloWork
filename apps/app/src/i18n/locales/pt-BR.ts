@@ -275,7 +275,7 @@ export default {
   "den.cloud_providers_title": "Provedores cloud",
   "den.cloud_section_desc": "Entre, escolha uma organização e abra workers Cloud ou templates de equipe.",
   "den.cloud_section_title": "iPolloWork Cloud",
-  "den.cloud_sleep_hint": "Entre no iPolloWork Cloud para manter suas tarefas ativas mesmo quando seu computador entrar em suspensão.",
+  "den.cloud_sleep_hint": "Mantenha suas tarefas ativas mesmo quando seu computador entrar em suspensão.",
   "den.create_account": "Criar conta",
   "den.credentials_ready_badge": "Credencial pronta",
   "den.error_base_url": "Digite uma URL de plano de controle Cloud válida com http:// ou https://.",

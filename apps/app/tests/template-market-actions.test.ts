@@ -112,6 +112,15 @@ describe("template market actions", () => {
     expect(marketDialog).not.toContain('t("template_market.preview")');
   });
 
+  test("puts My templates first and guides a genuinely empty collection to Explore", () => {
+    expect(marketDialog).toContain('const TEMPLATE_MARKET_VIEWS: TemplateMarketView[] = ["my", "explore"]');
+    expect(marketDialog).toContain('template.sourceType === "local" || favoriteIds.has(template.manifest.id)');
+    expect(marketDialog).toContain('view === "my" && myCollection === "all" && myTemplatesEmpty');
+    expect(marketDialog).toContain('onClick={exploreTemplates}');
+    expect(marketDialog).toContain('t("template_market.explore_templates")');
+    expect(marketDialog).toContain('bg-[var(--project-dialog-accent)] text-white hover:brightness-95 active:brightness-90');
+  });
+
   test("keeps the template dialog stationary, resizable, and above its popup controls", () => {
     expect(marketDialog).not.toContain("template-market-drag-region");
     expect(marketDialog).not.toContain("setPointerCapture");
@@ -219,16 +228,17 @@ describe("template market actions", () => {
     expect(sessionPage).toContain("materializeTemplate(");
     expect(sessionPage).toContain("templateSessionId,");
     expect(sessionPage).toContain("sessionId: templateSessionId");
-    expect(sessionPage).not.toContain('origin: "conversation-conflict"');
-    expect(sessionPage).not.toContain('data-testid="template-conflict-dialog"');
+    expect(sessionPage).toContain("isTemplateSessionConflict(error)");
+    expect(sessionPage).toContain('origin: "conversation-conflict"');
+    expect(sessionPage).toContain('data-testid="template-conflict-dialog"');
   });
 
   test("configures a market template before creating a task in the selected project", () => {
     expect(sessionPage).toContain('data-testid="template-apply-dialog"');
-    expect(sessionPage).toContain('mode="market"');
-    expect(sessionPage).toContain('projects={templateDestinationProjects}');
-    expect(sessionPage).toContain('onProjectChange={setPendingTemplateProjectId}');
-    expect(sessionPage).toContain('onRequestNewProject={openCreateProjectDialog}');
+    expect(sessionPage).toContain('mode={pendingTemplateApplication.origin === "market" ? "market" : "new-conversation"}');
+    expect(sessionPage).toContain('projects={pendingTemplateApplication.origin === "market" ? templateDestinationProjects : undefined}');
+    expect(sessionPage).toContain('onProjectChange={pendingTemplateApplication.origin === "market" ? setPendingTemplateProjectId : undefined}');
+    expect(sessionPage).toContain('onRequestNewProject={pendingTemplateApplication.origin === "market" ? openCreateProjectDialog : undefined}');
     expect(sessionPage).toContain("props.onCreateTaskFromTemplate(pendingTemplateProjectId");
     expect(sessionPage).toContain("setPendingTemplateDispatch({");
     expect(sessionPage).not.toContain("projectFiles: supplemental.projectFiles");

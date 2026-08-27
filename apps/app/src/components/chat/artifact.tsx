@@ -305,16 +305,16 @@ function ArtifactButton({ artifact, displayName, sessionId, artifactContext, onO
 
   if (!canActivate) {
     return (
-      <div className={cn("flex h-auto max-w-full items-center justify-start gap-1.5 rounded-xl border text-left whitespace-nowrap", tile ? "min-h-[76px] w-full gap-3 border-border/70 bg-card p-3" : compact ? "w-full flex-none shrink-0 border-transparent px-2 py-1.5" : "min-h-[72px] w-full min-w-0 gap-4 border-border px-5 py-4")}>
+      <div className={cn("flex h-auto max-w-full items-center justify-start gap-1.5 rounded-xl border text-left whitespace-nowrap", tile ? "min-h-[76px] w-full gap-3 border-border/70 bg-card p-3" : compact ? "w-full flex-none shrink-0 border-transparent px-2 py-1.5" : "h-20 w-full min-w-0 gap-4 border-border px-5 py-4")}>
         {content}
       </div>
     );
   }
 
   return (
-    <div className={cn("group/output relative max-w-full", tile ? "w-full" : compact ? "w-full" : "w-[17rem] flex-none snap-start")}>
+    <div className={cn("group/output relative max-w-full", tile ? "w-full" : compact ? "w-full" : "h-20 w-full min-w-0")}>
       <DescriptiveButton
-        className={cn("max-w-full items-center whitespace-nowrap", tile ? "min-h-[76px] w-full justify-start gap-3 rounded-2xl border border-border/70 bg-card p-3 text-left shadow-[0_1px_2px_rgb(0_0_0/0.03)] hover:-translate-y-px hover:border-border hover:bg-muted/30 hover:shadow-sm" : compact ? "w-full flex-none justify-start gap-1.5 rounded-xl px-2 py-1.5 hover:bg-muted/70" : "min-h-[72px] w-full min-w-0 gap-4 rounded-2xl px-5 py-4")}
+        className={cn("max-w-full items-center whitespace-nowrap", tile ? "min-h-[76px] w-full justify-start gap-3 rounded-2xl border border-border/70 bg-card p-3 text-left shadow-[0_1px_2px_rgb(0_0_0/0.03)] hover:-translate-y-px hover:border-border hover:bg-muted/30 hover:shadow-sm" : compact ? "w-full flex-none justify-start gap-1.5 rounded-xl px-2 py-1.5 hover:bg-muted/70" : "h-full w-full min-w-0 gap-4 rounded-2xl px-5 py-4")}
         onClick={() => {
           if (opensCurrentVideoStudio) {
             onOpenVideoStudio?.(presentedName);
@@ -475,7 +475,7 @@ export function ArtifactList({ messages, sessionId, sessionTitle, requestNaming,
     <div className="w-full">
       {title ? <div className="mb-1.5 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{title}</div> : null}
       <div
-        className="flex min-w-0 snap-x snap-proximity flex-nowrap gap-2 overflow-x-auto overscroll-x-contain pb-2 [scrollbar-gutter:stable]"
+        className="grid min-w-0 grid-cols-[repeat(auto-fill,minmax(min(100%,17rem),1fr))] gap-2 pb-2"
         aria-label={t("session.outputs.title")}
       >
         {displayedArtifacts.map((artifact) => (

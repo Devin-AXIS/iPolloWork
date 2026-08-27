@@ -2,6 +2,7 @@ import { z } from "zod";
 
 export const MAX_TEMPLATE_PACKAGE_BYTES = 50 * 1024 * 1024;
 export const TEMPLATE_AUTHORING_ID_PREFIX = "ipollowork.authoring.";
+export const ARTIFACT_DELIVERY_ID_PREFIX = "ipollowork.delivery.";
 
 export const IPOLLOWORK_PACKAGE_EXTENSION = ".ipwp";
 export const LEGACY_TEMPLATE_PACKAGE_EXTENSION = ".ipwt";
@@ -172,6 +173,7 @@ export type TemplateAuthoringInput = {
   category: TemplateCategory;
   pptxCompatibility?: PptxCompatibility;
   purpose?: "template-authoring" | "artifact-delivery";
+  brief?: unknown;
 };
 
 export type TemplateValidationIssue = {
@@ -241,4 +243,8 @@ export type TemplateSessionSnapshot = {
 
 export function isTemplateAuthoringManifest(manifest: Pick<TemplateManifestV1, "id">): boolean {
   return manifest.id.startsWith(TEMPLATE_AUTHORING_ID_PREFIX);
+}
+
+export function isArtifactDeliveryManifest(manifest: Pick<TemplateManifestV1, "id">): boolean {
+  return manifest.id.startsWith(ARTIFACT_DELIVERY_ID_PREFIX);
 }

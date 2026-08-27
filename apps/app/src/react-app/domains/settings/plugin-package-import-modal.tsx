@@ -1,6 +1,6 @@
 /** @jsxImportSource react */
 import { useMemo, useRef, useState } from "react";
-import { Archive, Bot, FileText, Github, Loader2, Package, Search, ShieldCheck, Upload } from "lucide-react";
+import { Archive, Bot, FileText, Github, Loader2, Package, Search, ShieldCheck, Upload, X } from "lucide-react";
 import { PLUGIN_INSTALL_PACKAGE_EXTENSION } from "@ipollowork/types/plugins";
 
 import { Button } from "@/components/ui/button";
@@ -160,8 +160,23 @@ export function PluginPackageImportModal(props: PluginPackageImportModalProps) {
   return (
     <>
       <Dialog open={props.open} onOpenChange={(open) => { if (!open) close(); }}>
-        <DialogContent className="flex max-h-[min(650px,calc(100dvh-160px))] min-h-0 w-full max-w-lg flex-col overflow-hidden sm:max-w-lg">
-        <DialogHeader>
+        <DialogContent
+          data-testid="plugin-package-import-dialog"
+          showCloseButton={false}
+          className="flex max-h-[calc(100dvh-32px)] min-h-0 w-[calc(100%-32px)] max-w-[640px] flex-col gap-0 overflow-hidden rounded-[16px] p-6 ring-0 dark:ring-1 dark:ring-border sm:max-w-[640px]"
+        >
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon-sm"
+          className="absolute end-6 top-6 size-6 rounded-[2px] bg-transparent p-0"
+          aria-label={t("common.close")}
+          onClick={close}
+        >
+          <X className="size-4" />
+        </Button>
+
+        <DialogHeader className="shrink-0 gap-1.5 pb-6 pe-8 text-left">
           <DialogTitle>{t("plugin_platform.import_title")}</DialogTitle>
           <DialogDescription>{t("plugin_platform.import_description")}</DialogDescription>
         </DialogHeader>
@@ -270,7 +285,7 @@ export function PluginPackageImportModal(props: PluginPackageImportModalProps) {
           ) : null}
         </div>
 
-        <DialogFooter className="shrink-0">
+        <DialogFooter className="mx-0 mb-0 shrink-0 flex-row gap-4 rounded-none border-0 bg-transparent p-0 pt-6 sm:justify-end">
           <DialogClose render={<Button variant="outline" />}>
             {t("common.cancel")}
           </DialogClose>

@@ -1,5 +1,5 @@
-import { openDesktopAuthUrl } from "../../../app/lib/desktop";
-import { isDesktopRuntime } from "../../../app/utils";
+import { openDesktopAuthUrl } from "./desktop";
+import { isDesktopRuntime } from "../utils";
 
 export async function tryOpenBrowserAuthUrl(url: string): Promise<boolean> {
   if (isDesktopRuntime()) {

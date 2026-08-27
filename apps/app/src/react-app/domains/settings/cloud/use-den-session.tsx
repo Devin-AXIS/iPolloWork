@@ -25,7 +25,7 @@ import {
 } from "@/app/lib/den-session-events";
 import { t } from "@/i18n";
 import { useDenAuth } from "../../cloud/den-auth-provider";
-import { tryOpenBrowserAuthUrl } from "../../cloud/open-browser-auth";
+import { tryOpenBrowserAuthUrl } from "@/app/lib/open-browser-auth";
 import { useCloudSession } from "./cloud-session-provider";
 import { defaultControlPlaneUrl, saveControlPlaneUrl } from "./control-plane-url";
 

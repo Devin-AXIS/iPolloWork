@@ -275,7 +275,7 @@ export default {
   "den.cloud_providers_title": "Provider บน Cloud",
   "den.cloud_section_desc": "เข้าสู่ระบบ เลือกองค์กร และเปิด Cloud workers หรือเทมเพลตทีม",
   "den.cloud_section_title": "iPolloWork Cloud",
-  "den.cloud_sleep_hint": "เข้าสู่ระบบ iPolloWork Cloud เพื่อให้งานยังทำงานแม้คอมพิวเตอร์เข้าสู่โหมดสลีป",
+  "den.cloud_sleep_hint": "ให้งานยังทำงานต่อได้แม้คอมพิวเตอร์เข้าสู่โหมดสลีป",
   "den.create_account": "สร้างบัญชี",
   "den.credentials_ready_badge": "ข้อมูลรับรองพร้อม",
   "den.error_base_url": "ใส่ URL ของ Cloud control plane ที่ถูกต้อง (http:// หรือ https://)",
