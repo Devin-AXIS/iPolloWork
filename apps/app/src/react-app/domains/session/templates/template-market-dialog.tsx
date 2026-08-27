@@ -14,6 +14,7 @@ import {
   IdCard,
   Loader2,
   PictureInPicture2,
+  Plus,
   Presentation,
   Search,
   Star,
@@ -74,7 +75,7 @@ const FAVORITE_TEMPLATE_IDS_STORAGE_KEY = "ipollowork.template-favorites.v1";
 type TemplateMarketView = "explore" | "my";
 type MyTemplateCollection = "all" | "favorites" | "mine";
 
-const TEMPLATE_MARKET_VIEWS: TemplateMarketView[] = ["explore", "my"];
+const TEMPLATE_MARKET_VIEWS: TemplateMarketView[] = ["my", "explore"];
 const MY_TEMPLATE_COLLECTIONS: MyTemplateCollection[] = ["all", "favorites", "mine"];
 
 function readFavoriteTemplateIds(): Set<string> {
@@ -192,6 +193,7 @@ export type TemplateMarketDialogProps = {
   onInstallEnterprise: (resource: EnterpriseResource) => void;
   onRefresh: () => void;
   onUse: (template: TemplateCatalogItem) => void;
+  onCustom: (category: TemplateCategory) => void;
   onInstall: (templateId: string) => void;
   onImport: (file: File) => Promise<boolean>;
 };
@@ -228,6 +230,9 @@ export function TemplateMarketDialog(props: TemplateMarketDialogProps) {
       return template.sourceType === "local" || favoriteIds.has(template.manifest.id);
     });
   }, [category, favoriteIds, myCollection, props.templates, query, style, view]);
+  const myTemplatesEmpty = !props.templates.some(
+    (template) => template.sourceType === "local" || favoriteIds.has(template.manifest.id),
+  );
   const visibleEnterpriseResources = React.useMemo(() => {
     const normalized = query.trim().toLowerCase();
     return props.enterpriseResources.filter((resource) => enterpriseResourceMatches({ resource, category, query: normalized }));
@@ -286,6 +291,12 @@ export function TemplateMarketDialog(props: TemplateMarketDialogProps) {
       if (enterpriseMode) props.onResourceScopeChange("personal");
     }
   };
+  const exploreTemplates = () => {
+    setView("explore");
+    setCategory("all");
+    setStyle("all");
+    setQuery("");
+  };
   const moreCategoryActive = MORE_CATEGORIES.some((item) => item.id === category);
 
   return (
@@ -316,6 +327,15 @@ export function TemplateMarketDialog(props: TemplateMarketDialogProps) {
               ))}
             </div>
             <input ref={importRef} type="file" accept={TEMPLATE_PACKAGE_FILE_ACCEPT} className="hidden" onChange={(event) => { const file = event.currentTarget.files?.[0]; if (file) setPendingImport(file); event.currentTarget.value = ""; }} />
+            <Button
+              variant="outline"
+              size="sm"
+              className="mr-2 h-9 shrink-0 rounded-lg px-3.5 font-['PingFang_SC',sans-serif] text-[13px] font-medium shadow-none"
+              disabled={props.busyId !== null || enterpriseMode}
+              onClick={() => props.onCustom(category === "all" ? "slides" : category)}
+            >
+              <Plus className="size-3.5" />{t("template_market.custom_title")}
+            </Button>
             <Tooltip>
               <TooltipTrigger render={<Button variant="outline" size="sm" className="h-9 w-[90px] shrink-0 rounded-lg px-3.5 font-['PingFang_SC',sans-serif] text-[13px] font-medium shadow-none" disabled={props.busyId !== null || enterpriseMode} onClick={() => importRef.current?.click()} />}>
                 <Download className="size-3.5" />{t("template_market.import")}
@@ -377,7 +397,7 @@ export function TemplateMarketDialog(props: TemplateMarketDialogProps) {
           {props.loading ? <div data-testid="template-catalog-loading" className="grid grid-cols-3 gap-4 max-[800px]:grid-cols-2 max-[540px]:grid-cols-1">{Array.from({ length: 6 }, (_, index) => <div key={index} className="h-[227px] animate-pulse rounded-lg bg-muted" />)}</div> : props.error ? <div className="rounded-lg border border-destructive/20 bg-destructive/5 p-6 text-center"><p className="text-sm">{props.error}</p><Button variant="outline" size="sm" className="mt-3 rounded-lg" onClick={props.onRefresh}>{t("template_market.retry")}</Button></div> : enterpriseMode && view === "explore" ? (visibleEnterpriseResources.length ? <div className="grid grid-cols-3 gap-4 max-[800px]:grid-cols-2 max-[540px]:grid-cols-1">{visibleEnterpriseResources.map((resource) => {
             const installedTemplate = enterpriseTemplateInstallations.get(resource.id);
             return <EnterpriseTemplateCard key={resource.id} resource={resource} installedTemplate={installedTemplate} getCover={props.getCover} sourceLabel={props.enterprise?.shortName ?? resource.enterpriseCategory} busy={props.busyId === resource.id || props.busyId === "import"} disabled={props.busyId !== null} favorite={installedTemplate ? favoriteIds.has(installedTemplate.manifest.id) : false} onToggleFavorite={() => { if (installedTemplate) toggleFavorite(installedTemplate.manifest.id); }} onPreview={(template) => setPreviewSelection({ template, enterpriseResourceId: resource.id })} onInstall={() => props.onInstallEnterprise(resource)} onUse={() => { if (installedTemplate) props.onUse(installedTemplate); }} />;
-          })}</div> : <div className="rounded-lg border border-dashed border-border p-10 text-center"><Building2 className="mx-auto size-5 text-muted-foreground" /><p className="mt-3 text-sm font-medium">{t("enterprise_connection.enterprise_templates_empty")}</p></div>) : visible.length ? <div className="grid grid-cols-3 gap-4 max-[800px]:grid-cols-2 max-[540px]:grid-cols-1">{visible.map((template) => <TemplateCard key={template.manifest.id} template={template} getCover={props.getCover} busy={props.busyId !== null} favorite={favoriteIds.has(template.manifest.id)} onToggleFavorite={() => toggleFavorite(template.manifest.id)} onPreview={() => setPreviewSelection({ template })} onUse={() => props.onUse(template)} onInstall={() => props.onInstall(template.manifest.id)} />)}</div> : <div className="rounded-lg border border-dashed border-border p-10 text-center"><TemplateIcon className="mx-auto size-5 opacity-60" /><p className="mt-3 text-sm font-medium">{t("template_market.no_match_title")}</p><p className="mt-1 text-xs text-muted-foreground">{t("template_market.no_match_desc")}</p></div>}
+          })}</div> : <div className="rounded-lg border border-dashed border-border p-10 text-center"><Building2 className="mx-auto size-5 text-muted-foreground" /><p className="mt-3 text-sm font-medium">{t("enterprise_connection.enterprise_templates_empty")}</p></div>) : visible.length ? <div className="grid grid-cols-3 gap-4 max-[800px]:grid-cols-2 max-[540px]:grid-cols-1">{visible.map((template) => <TemplateCard key={template.manifest.id} template={template} getCover={props.getCover} busy={props.busyId !== null} favorite={favoriteIds.has(template.manifest.id)} onToggleFavorite={() => toggleFavorite(template.manifest.id)} onPreview={() => setPreviewSelection({ template })} onUse={() => props.onUse(template)} onInstall={() => props.onInstall(template.manifest.id)} />)}</div> : view === "my" && myCollection === "all" && myTemplatesEmpty ? <div className="rounded-lg border border-dashed border-border p-10 text-center"><TemplateIcon className="mx-auto size-5 opacity-60" /><p className="mt-3 text-sm font-medium">{t("template_market.my_empty_title")}</p><Button type="button" size="sm" className="mt-4 rounded-lg bg-[var(--project-dialog-accent)] text-white hover:brightness-95 active:brightness-90" onClick={exploreTemplates}>{t("template_market.explore_templates")}</Button></div> : <div className="rounded-lg border border-dashed border-border p-10 text-center"><TemplateIcon className="mx-auto size-5 opacity-60" /><p className="mt-3 text-sm font-medium">{t("template_market.no_match_title")}</p><p className="mt-1 text-xs text-muted-foreground">{t("template_market.no_match_desc")}</p></div>}
         </section>
       </DialogContent>
     </Dialog>

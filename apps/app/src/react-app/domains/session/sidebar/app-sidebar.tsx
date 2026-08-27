@@ -7,6 +7,7 @@ import {
   CalendarDays,
   ChevronRight,
   Cpu,
+  Ellipsis,
   FolderOpen,
   Loader2,
   Languages,
@@ -822,7 +823,7 @@ export function AppSidebar(props: AppSidebarProps) {
                   aria-label={t("status.settings")}
                   title={t("status.settings")}
                 >
-                  <Settings className="size-4" />
+                  <Ellipsis className="size-4" strokeWidth={1.75} />
                 </DropdownMenuTrigger>
                 <DropdownMenuContent side="top" align="end" className="w-44 min-w-44">
                   <DropdownMenuItem onClick={() => props.onOpenSettings("/settings/general")}>
@@ -981,12 +982,16 @@ function ProjectSidebarContent({
                 aria-pressed={isSelectedProject}
                 aria-expanded={projectExpanded}
               >
-                <span className="flex size-4 shrink-0 items-center justify-center" aria-hidden="true">
-                  <img
-                    src={publicAssetUrl("sidebar-icon/figma-folder-closed.svg")}
-                    alt=""
-                    className="h-auto w-3.5 dark:invert"
-                  />
+                <span className="relative size-4 shrink-0" aria-hidden="true">
+                  {projectExpanded ? (
+                    <FolderOpen className="absolute -bottom-0.5 left-[-0.7px] size-[15.5px]" strokeWidth={1.75} />
+                  ) : (
+                    <img
+                      src={publicAssetUrl("sidebar-icon/figma-folder-closed.svg")}
+                      alt=""
+                      className="absolute bottom-0 left-0 h-auto w-3.5 dark:invert"
+                    />
+                  )}
                 </span>
                 <span className="min-w-0 flex-1 truncate">{workspaceLabel(workspace)}</span>
               </button>

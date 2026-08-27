@@ -75,6 +75,11 @@ describe("sidebar projects", () => {
     expect(sidebarSource).not.toContain("onSelectProject(workspace.id)");
     expect(sidebarSource).toContain("<ConversationList");
     expect(sidebarSource).not.toContain("group-data-open/project:rotate-90");
+    expect(sidebarSource).toContain('className="relative size-4 shrink-0"');
+    expect(sidebarSource).toContain('<FolderOpen className="absolute -bottom-0.5 left-[-0.7px] size-[15.5px]" strokeWidth={1.75} />');
+    expect(sidebarSource).toContain('src={publicAssetUrl("sidebar-icon/figma-folder-closed.svg")}');
+    expect(sidebarSource).toContain('className="absolute bottom-0 left-0 h-auto w-3.5 dark:invert"');
+    expect(sidebarSource).toContain('<Ellipsis className="size-4" strokeWidth={1.75} />');
   });
 
   test("keeps new conversation primary and moves project creation to the projects header", () => {
@@ -82,7 +87,7 @@ describe("sidebar projects", () => {
     expect(sidebarSource).toContain('addTestId="new-project-button"');
     expect(sidebarSource).toContain('t("session.new_task")');
     expect(sidebarSource).toContain('t("projects.create")');
-    expect(sidebarSource.match(/className="flex size-4 shrink-0 items-center justify-center"/g)).toHaveLength(5);
+    expect(sidebarSource.match(/className="flex size-4 shrink-0 items-center justify-center"/g)).toHaveLength(4);
     expect(sidebarSource).toContain('primarySidebarActionClassName = "h-8 gap-2 rounded-[8px] px-2');
     expect(sidebarSource).toContain('<SidebarMenu className="gap-1">');
   });
@@ -98,6 +103,8 @@ describe("sidebar projects", () => {
 
   test("creates the first project and task with OpenCode only after the starter is submitted", () => {
     expect(sessionPageSource).toContain('data-testid="initial-project-task-starter"');
+    expect(sessionPageSource).toContain('<MessageContent className="max-w-[85%] rounded-3xl bg-muted px-5 py-2.5 text-foreground whitespace-pre-wrap sm:max-w-[75%]">');
+    expect(sessionPageSource).not.toContain('rounded-2xl bg-dls-text px-4 py-3 text-sm leading-6 text-dls-surface');
     expect(sessionPageSource).toContain("showNewTaskStarter");
     expect(sessionPageSource).toContain("props.sidebar.onCreateTaskFromDraft(props.selectedWorkspaceId, draft)");
     expect(sessionPageSource).toContain("props.sidebar.onCreateInitialProjectTask");
@@ -157,8 +164,8 @@ describe("sidebar projects", () => {
   });
 
   test("matches the project-first starter design in both themes", () => {
-    expect(starterSource).toContain('className="mt-8 flex h-[42px] w-fit max-w-full items-center gap-2 rounded-[40px] bg-[var(--new-conversation-tab-surface)] p-1"');
-    expect(starterSource).toContain('"relative isolate inline-flex w-[92px]');
+    expect(starterSource).toContain('className="relative isolate mt-8 flex h-[42px] w-fit max-w-full items-center gap-2 rounded-[40px] bg-[var(--new-conversation-tab-surface)] p-1"');
+    expect(starterSource).toContain('"relative z-10 inline-flex w-[92px]');
     expect(starterSource).toContain('? "h-9 rounded-[40px]');
     expect(starterSource).toContain('text-[var(--new-conversation-tab-text)]');
     expect(starterSource).toContain('data-testid="new-conversation-mode-indicator"');

@@ -274,7 +274,7 @@ export default {
   "den.cloud_providers_title": "クラウドプロバイダー",
   "den.cloud_section_desc": "サインインして組織を選択し、Cloudワーカーやチームテンプレートを開きます。",
   "den.cloud_section_title": "iPolloWork Cloud",
-  "den.cloud_sleep_hint": "コンピュータがスリープしてもタスクを維持するには、iPolloWork Cloudにサインインしてください。",
+  "den.cloud_sleep_hint": "コンピュータがスリープしてもタスクの実行を維持できます。",
   "den.create_account": "アカウントを作成",
   "den.credentials_ready_badge": "認証情報準備完了",
   "den.error_base_url": "有効なhttp://またはhttps://のCloudコントロールプレーンURLを入力してください。",

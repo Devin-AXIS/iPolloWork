@@ -80,7 +80,7 @@ describe("new conversation animation catalog", () => {
     expect(sessionPage).toContain("designTemplates={starterTemplateCatalog}");
     expect(sessionPage).toContain("onRequestDesignTemplates={() => void refreshStarterTemplateCatalog()}");
     expect(sessionPage).toContain('id: "design"');
-    expect(sessionPage).toContain("onOpenVideoStudio={openCurrentVideoStudio}");
+    expect(sessionPage).toContain("onOpenVideoStudio={openCurrentVideoArtifactStudio}");
     expect(sessionPage).not.toContain("designWorkspaceEnabled");
     expect(sessionPage).not.toContain("videoWorkspaceEnabled");
   });
@@ -134,13 +134,15 @@ describe("new conversation animation catalog", () => {
     expect(starter).toContain('max-w-none dark:opacity-20');
     expect(starter).toContain('rounded-[40px] bg-[var(--new-conversation-tab-surface)] p-1');
     expect(starter).toContain('data-testid="new-conversation-mode-indicator"');
-    expect(starter).toContain('layoutId={`new-conversation-mode-indicator-${modeTabIndicatorId}`}');
+    expect(starter).toContain('const modeTabIndicatorX = MODES.findIndex(({ id }) => id === selectedMode) * 100');
+    expect(starter).toContain('animate={{ x: modeTabIndicatorX }}');
+    expect(starter).not.toContain('layoutId={`new-conversation-mode-indicator-${modeTabIndicatorId}`}');
     expect(starter).toContain('type: "spring"');
     expect(starter).toContain("mass: 1");
     expect(starter).toContain("stiffness: 300");
-    expect(starter).toContain("damping: 20");
+    expect(starter).toContain("damping: 28");
     expect(starter).toContain("transition={reduceMotion ? { duration: 0 } : MODE_TAB_SPRING}");
-    expect(starter).toContain('className="pointer-events-none absolute inset-0 -z-10 rounded-[40px] bg-[var(--new-conversation-tab-selected)]"');
+    expect(starter).toContain('className="pointer-events-none absolute left-1 top-[3px] z-0 h-9 w-[92px] rounded-[40px] bg-[var(--new-conversation-tab-selected)]"');
     expect(starter).toContain('text-[var(--new-conversation-tab-muted)] hover:rounded-[40px] hover:bg-[var(--new-conversation-tab-selected)]/70 hover:text-[var(--new-conversation-tab-text)]');
     expect(starter).toContain('WebkitMaskImage: `url(${iconSrc})`');
     expect(starter).toContain('dark:text-[#f5f5f5]');

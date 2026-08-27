@@ -86,7 +86,7 @@ import {
   updateEnginePreferences,
   useLocal,
 } from "@/react-app/kernel/local-provider";
-import { SessionPage, type SessionTemplateTaskApplication } from "@/react-app/domains/session/chat/session-page";
+import { SessionPage, type SessionCustomTaskApplication, type SessionTemplateTaskApplication } from "@/react-app/domains/session/chat/session-page";
 import { isDesktopProviderBlocked, DESKTOP_RESTRICTION_OPENCODE_PROVIDER_ID } from "@/app/cloud/desktop-app-restrictions";
 import { useCheckDesktopRestriction } from "@/react-app/domains/cloud/desktop-config-provider";
 import { ReactSessionRuntime } from "@/react-app/domains/session/sync/runtime-sync";
@@ -1887,7 +1887,7 @@ export function SessionRoute() {
     type: iPolloWorkSessionType = "work",
     templateId?: iPolloWorkTemplateId,
     templateScope?: WorkContextId,
-    authoring?: { category: TemplateCategory; pptxCompatibility?: PptxCompatibility },
+    authoring?: { category: TemplateCategory; pptxCompatibility?: PptxCompatibility; purpose?: "template-authoring" | "artifact-delivery"; brief?: unknown },
     templateApplication?: SessionTemplateTaskApplication,
   ): Promise<string | null> => {
     const workspace = workspaces.find((item) => item.id === workspaceId);
@@ -1940,6 +1940,8 @@ export function SessionRoute() {
             sessionId: session.id,
             category: authoring.category,
             pptxCompatibility: authoring.pptxCompatibility,
+            purpose: authoring.purpose,
+            brief: authoring.brief,
           });
           sessionType = sessionTypeForTemplate(created.manifest);
         } catch (error) {
@@ -1969,7 +1971,7 @@ export function SessionRoute() {
       navigateToWorkspaceSession(workspaceId, session.id);
       focusPromptSoon();
       void refreshRouteState();
-      if (authoring) {
+      if (authoring && authoring.purpose !== "artifact-delivery") {
         const kickoff = templateAuthoringKickoff(authoring.category, authoring.pptxCompatibility);
         const send = surfacePropsRef.current?.onSendDraft;
         if (send) {
@@ -2682,6 +2684,18 @@ export function SessionRoute() {
         application.resourceScope,
         undefined,
         application,
+      )}
+      onCreateTaskFromCustom={(workspaceId, application: SessionCustomTaskApplication) => handleCreateTaskInWorkspace(
+        workspaceId,
+        "work",
+        undefined,
+        undefined,
+        {
+          category: application.category,
+          pptxCompatibility: application.pptxCompatibility,
+          purpose: "artifact-delivery",
+          brief: application.brief,
+        },
       )}
       sidebar={{
         projectSessionLists,
