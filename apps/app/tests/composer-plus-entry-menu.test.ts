@@ -37,14 +37,16 @@ function plusMenuOutsideClickHandlerSource() {
 }
 
 describe("composer plus entry menu", () => {
-  test("routes files, tools, and external delegation from one plus menu", () => {
+  test("routes files, templates, tools, and external delegation from one plus menu", () => {
     expect(composerSource).toContain("plusMenuOpen");
     expect(composerSource).toContain("plusMenuSection");
     expect(composerSource).toContain('title={t("composer.plus_menu_label")}');
     expect(composerSource).toContain('t("composer.plus_attach_files")');
+    expect(composerSource).toContain('t("composer.plus_use_template")');
     expect(composerSource).toContain('t("composer.plus_tools")');
     expect(composerSource).toContain('t("composer.delegate_external_agents")');
     expect(composerSource).toContain("fileInput?.click()");
+    expect(composerSource).toContain("props.onOpenTemplateMarket?.()");
     expect(composerSource).toContain('onMouseEnter={() => setPlusMenuSection("tools")}');
     expect(composerSource).toContain('onMouseEnter={() => setPlusMenuSection("delegation")}');
     expect(composerSource).toContain('plusMenuSection === "tools"');
@@ -58,22 +60,25 @@ describe("composer plus entry menu", () => {
     expect(actionRow).toContain('<Plus size={18} />');
     expect(actionRow.match(/<Plus size=\{18\} \/>/g)).toHaveLength(1);
     expect(actionRow).toContain('<Paperclip className="size-4 shrink-0 text-gray-9"');
-    expect(actionRow).toContain('className="flex min-w-0 flex-1 flex-wrap items-center gap-0 overflow-visible"');
-    expect(actionRow).toContain('className="relative me-1.5"');
+    expect(actionRow).toContain('className="flex min-w-0 flex-1 flex-nowrap items-center gap-0 overflow-visible"');
+    expect(actionRow).not.toContain("flex-wrap");
+    expect(actionRow).toContain('className="relative me-1.5 shrink-0"');
     expect(actionRow).toContain('props.layout === "inline" ? "h-8 px-2"');
     expect(actionRow).not.toContain('title={t("composer.tools_label")}');
     expect(actionRow).not.toContain('title={t("composer.agent_label")}');
     expect(composerSource).not.toContain('["agents", t("composer.agents_label")]');
   });
 
-  test("orders plus menu entries as files, tools, then delegation", () => {
+  test("orders plus menu entries as files, templates, tools, then delegation", () => {
     const actionRow = actionRowSource();
     const filesIndex = actionRow.indexOf('t("composer.plus_attach_files")');
+    const templatesIndex = actionRow.indexOf('t("composer.plus_use_template")');
     const toolsIndex = actionRow.indexOf('t("composer.plus_tools")');
     const delegationIndex = actionRow.indexOf('t("composer.delegate_external_agents")');
 
     expect(filesIndex).toBeGreaterThan(-1);
-    expect(toolsIndex).toBeGreaterThan(filesIndex);
+    expect(templatesIndex).toBeGreaterThan(filesIndex);
+    expect(toolsIndex).toBeGreaterThan(templatesIndex);
     expect(delegationIndex).toBeGreaterThan(toolsIndex);
   });
 

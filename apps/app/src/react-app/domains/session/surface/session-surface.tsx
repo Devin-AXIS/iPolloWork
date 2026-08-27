@@ -1,5 +1,5 @@
 /** @jsxImportSource react */
-import { useCallback, useEffect, useEffectEvent, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
 import type { UIMessage } from "ai";
 import { useQuery } from "@tanstack/react-query";
 import type { TemplateCatalogItem } from "@ipollowork/types/templates";
@@ -235,6 +235,7 @@ export type SessionSurfaceProps = {
   onOpenSchedule?: (focusAt: number) => void;
   /** Opens the installed plugin's Workspace App when selected from the extension menu. */
   onOpenWorkspaceApp?: (pluginId: string) => void;
+  onOpenTemplateMarket?: () => void;
   designTemplates?: TemplateCatalogItem[];
   designTemplatesLoading?: boolean;
   designTemplateBusyId?: string | null;
@@ -253,7 +254,6 @@ export type SessionSurfaceProps = {
   onArtifactCompletionRequirementConsumed?: () => void;
   environmentRuntimeKey?: string | null;
   onApplyEnvironmentChanges?: () => Promise<ApplyEnvironmentChangesResult>;
-  composerEndAccessory?: ReactNode;
 };
 
 function messageToReadableText(message: UIMessage) {
@@ -1856,6 +1856,7 @@ export function SessionSurface(props: SessionSurfaceProps) {
           mcpStatuses={toolMcpStatuses}
           listInstalledExtensions={listInstalledExtensions}
           onOpenWorkspaceApp={props.onOpenWorkspaceApp}
+          onOpenTemplateMarket={props.onOpenTemplateMarket}
           listExternalAgents={listExternalAgents}
           onOpenSettingsSection={props.onOpenSettingsSection}
           recentFiles={props.recentFiles}
@@ -1871,7 +1872,6 @@ export function SessionSurface(props: SessionSurfaceProps) {
           isSandboxWorkspace={props.isSandboxWorkspace}
           onUploadInboxFiles={props.onUploadInboxFiles ?? handleUploadInboxFiles}
           layout={layout}
-          endAccessory={props.composerEndAccessory}
           placeholder={isEmptyConversation ? newConversationPlaceholder() : undefined}
           compactTopSpacing={Boolean(starterCapability || selectedAnimations.length || selectedVoiceReference || props.activeQuestion || (props.todos ?? []).some((todo) => todo.content.trim()) || props.activePermission || queuedMessages.length > 0)}
           topAccessory={

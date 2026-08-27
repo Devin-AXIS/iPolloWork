@@ -122,6 +122,7 @@ describe("Composer model and reasoning menu", () => {
     expect(menu).toContain('type MenuView = "root" | "model" | "behavior"');
     expect(menu).toContain("modelVariantLabel");
     expect(menu).toContain("onModelVariantChange");
+    expect(menu).toContain("min-w-0 max-w-72 flex-[0_1_auto]");
     expect(menu).toContain("rounded-full bg-transparent px-2 text-[12px]");
     expect(menu).toContain("hover:bg-gray-3");
     expect(model).not.toContain("Connect TokenStar");
@@ -162,6 +163,8 @@ describe("Composer model and reasoning menu", () => {
     expect(modeIndex).toBeGreaterThan(modelIndex);
     expect(composer).toContain("<PopoverTrigger");
     expect(composer).toContain("rounded-full bg-transparent px-2 text-[12px]");
+    expect(composer).toContain("max-w-32 shrink-0");
+    expect(composer).toContain('<span className="truncate">{activeWorkMode.label}</span>');
     expect(composer).toContain("hover:bg-gray-3");
     expect(composer).toContain("props.listModes()")
     expect(composer).toContain("workModes.map((mode)");

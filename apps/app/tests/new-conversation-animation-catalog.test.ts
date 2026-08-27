@@ -123,7 +123,7 @@ describe("new conversation animation catalog", () => {
     expect(sessionPage).toContain("sessionId: string;");
     expect(sessionPage).toContain("const currentTemplateSessionData = templateSessionData?.sessionId === props.selectedSessionId");
     expect(sessionPage).toContain("setTemplateSessionData({ ...result, hasBrief });");
-    expect(sessionPage).toContain("setTemplateSessionData({ sessionId: props.selectedSessionId, ...result, hasBrief: false });");
+    expect(sessionPage).toContain('setTemplateSessionData({ sessionId: props.selectedSessionId, ...result, hasBrief: false, applyMode: "new-conversation" });');
     expect(sessionPage).toContain("const designTemplateEntryPath = currentTemplateSessionData?.manifest.surface === \"design\"");
   });
 

@@ -1,6 +1,6 @@
 /** @jsxImportSource react */
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { AppWindowMac, ArrowUp, Bot, Check, ChevronDown, ChevronRight, Code2, FileText, ListTodo, Paperclip, Plus, Plug, Settings, Sparkles, Square, Terminal, Wrench, X, Zap } from "lucide-react";
+import { AppWindowMac, ArrowUp, Bot, Check, ChevronDown, ChevronRight, Code2, FileText, LayoutTemplate, ListTodo, Paperclip, Plus, Plug, Settings, Sparkles, Square, Terminal, Wrench, X, Zap } from "lucide-react";
 import fuzzysort from "fuzzysort";
 import { toast } from "@/components/ui/sonner";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -96,13 +96,13 @@ export type ComposerProps = {
   isRemoteWorkspace: boolean;
   isSandboxWorkspace: boolean;
   onUploadInboxFiles?: ((files: File[]) => void | Promise<unknown>) | null;
+  onOpenTemplateMarket?: () => void;
   draftScopeKey?: string;
   placeholder?: string;
   layout?: "dock" | "inline";
   inlineAppearance?: "default" | "engine-selected";
   compactTopSpacing?: boolean;
   topAccessory?: ReactNode;
-  endAccessory?: ReactNode;
 };
 
 const FLUSH_PROMPT_EVENT = "ipollowork:flushPromptDraft";
@@ -1343,7 +1343,7 @@ export function ReactSessionComposer(props: ComposerProps) {
 
             {/* Action row — attachments, quick actions, model controls, and send */}
             <div className="mt-2 flex min-w-0 items-end justify-between gap-2">
-              <div className="flex min-w-0 flex-1 flex-wrap items-center gap-0 overflow-visible">
+              <div className="flex min-w-0 flex-1 flex-nowrap items-center gap-0 overflow-visible">
                 <input
                   ref={(element) => {
                     fileInput = element ?? undefined;
@@ -1357,7 +1357,7 @@ export function ReactSessionComposer(props: ComposerProps) {
                     event.currentTarget.value = "";
                   }}
                 />
-                <div ref={plusMenuRef} className="relative me-1.5">
+                <div ref={plusMenuRef} className="relative me-1.5 shrink-0">
                   <button
                     type="button"
                     className={`inline-flex items-center justify-center rounded-md transition-colors ${props.layout === "inline" ? "h-8 px-2" : "h-9 max-h-9 w-9"} ${plusMenuOpen ? "bg-gray-3 text-gray-12" : "bg-transparent text-gray-10 hover:bg-gray-3"}`}
@@ -1391,6 +1391,20 @@ export function ReactSessionComposer(props: ComposerProps) {
                         <Paperclip className="size-4 shrink-0 text-gray-9" aria-hidden />
                         <span>{t("composer.plus_attach_files")}</span>
                       </button>
+                      {props.onOpenTemplateMarket ? (
+                        <button
+                          type="button"
+                          className="flex w-full items-center gap-2 rounded-[12px] px-3 py-2.5 text-left text-sm text-gray-11 hover:bg-gray-2"
+                          onClick={() => {
+                            setPlusMenuOpen(false);
+                            setPlusMenuSection(null);
+                            props.onOpenTemplateMarket?.();
+                          }}
+                        >
+                          <LayoutTemplate className="size-4 shrink-0 text-gray-9" aria-hidden />
+                          <span>{t("composer.plus_use_template")}</span>
+                        </button>
+                      ) : null}
                       <button
                         type="button"
                         className={`flex w-full items-center justify-between gap-2 rounded-[12px] px-3 py-2.5 text-left text-sm ${plusMenuSection === "tools" ? "bg-gray-3 text-gray-12" : "text-gray-11 hover:bg-gray-2"}`}
@@ -1649,10 +1663,10 @@ export function ReactSessionComposer(props: ComposerProps) {
                     type="button"
                     disabled={props.busy || props.modeSelectionDisabled}
                     aria-label={`${t("composer.work_mode_label")}: ${activeWorkMode.label}`}
-                    className="inline-flex h-8 items-center gap-1.5 rounded-full bg-transparent px-2 text-[12px] leading-[18px] text-gray-10 transition-colors hover:bg-gray-3 hover:text-gray-12 data-[state=open]:bg-gray-3 data-[state=open]:text-gray-12 disabled:pointer-events-none disabled:opacity-60"
+                    className="inline-flex h-8 max-w-32 shrink-0 items-center gap-1.5 rounded-full bg-transparent px-2 text-[12px] leading-[18px] text-gray-10 transition-colors hover:bg-gray-3 hover:text-gray-12 data-[state=open]:bg-gray-3 data-[state=open]:text-gray-12 disabled:pointer-events-none disabled:opacity-60"
                   >
                     {props.layout === "inline" ? null : <WorkModeIcon icon={activeWorkMode.icon} className="size-3.5 shrink-0" />}
-                    <span>{activeWorkMode.label}</span>
+                    <span className="truncate">{activeWorkMode.label}</span>
                     <ChevronDown className="size-4 shrink-0" />
                   </PopoverTrigger>
                   <PopoverContent side="top" align="start" sideOffset={8} className="w-64 gap-0 p-1.5">
@@ -1699,7 +1713,6 @@ export function ReactSessionComposer(props: ComposerProps) {
                   Escape arms a "Hit Escape again to stop the agent" prompt.
               */}
               <div className="ml-auto flex min-w-0 shrink-0 items-end gap-1.5">
-                {props.endAccessory}
                 {props.busy ? (
                   <>
                     {escapeArmed ? (

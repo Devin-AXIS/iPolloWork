@@ -72,7 +72,7 @@ describe("sidebar projects", () => {
     expect(sessionRouteSource).toContain("knownSessions.find((session) => session.id === rememberedSessionId)?.id");
     expect(sessionRouteSource).not.toContain("?? rememberedSessionId");
     expect(sessionRouteSource).toContain("navigateToWorkspaceSession(workspaceId, targetSessionId);");
-    expect(sidebarSource).toContain("onSelectProject(workspace.id)");
+    expect(sidebarSource).not.toContain("onSelectProject(workspace.id)");
     expect(sidebarSource).toContain("<ConversationList");
     expect(sidebarSource).not.toContain("group-data-open/project:rotate-90");
   });
@@ -101,22 +101,21 @@ describe("sidebar projects", () => {
     expect(sessionPageSource).toContain("showNewTaskStarter");
     expect(sessionPageSource).toContain("props.sidebar.onCreateTaskFromDraft(props.selectedWorkspaceId, draft)");
     expect(sessionPageSource).toContain("props.sidebar.onCreateInitialProjectTask");
-    expect(sessionPageSource).toContain('testId="initial-project-engine-badge"');
     expect(sessionPageSource).toContain("engineId={props.selectedWorkspaceDisplay.engineId}");
     expect(sessionPageSource).toContain('key={`${props.selectedWorkspaceId}:${props.selectedWorkspaceDisplay.engineId ?? DEFAULT_ENGINE_ID}`}');
     expect(sessionPageSource).toContain('draftScopeKey={`new-task:${workspaceId ?? "new-project"}:${engineId?.trim() || DEFAULT_ENGINE_ID}`}');
     expect(sessionPageSource).not.toContain('data-testid="initial-project-engine-dialog"');
     expect(sessionPageSource).toContain("await onSubmit(composerDraft)");
-    expect(sessionPageSource).toContain('engineId={engineId ?? DEFAULT_ENGINE_ID}');
     expect(sessionPageSource).toContain("<ProjectEngineOptions");
-    expect(composerSource).toContain("endAccessory?: ReactNode");
+    expect(composerSource).not.toContain("endAccessory?: ReactNode");
     expect(composerSource).toContain('inlineAppearance?: "default" | "engine-selected"');
     expect(sessionPageSource).not.toContain('inlineAppearance="engine-selected"');
-    expect(sessionPageSource).toContain('testId="session-composer-engine-badge"');
+    expect(sessionPageSource).not.toContain('testId="session-composer-engine-badge"');
+    expect(sessionPageSource).not.toContain('testId="initial-project-engine-badge"');
     expect(sessionPageSource).not.toContain('testId="session-engine-badge"');
-    expect(sessionSurfaceSource).toContain("composerEndAccessory?: ReactNode");
-    expect(sessionSurfaceSource).toContain("endAccessory={props.composerEndAccessory}");
-    expect(composerSource).toContain("{props.endAccessory}");
+    expect(sessionSurfaceSource).not.toContain("composerEndAccessory?: ReactNode");
+    expect(sessionSurfaceSource).not.toContain("endAccessory={props.composerEndAccessory}");
+    expect(composerSource).not.toContain("{props.endAccessory}");
     expect(sessionRouteSource).toContain("const handleCreateInitialProjectTask = useCallback(");
     expect(sessionRouteSource).toContain("engineId: DEFAULT_ENGINE_ID");
     expect(sessionRouteSource).not.toMatch(/handleCreateInitialProjectTask[\s\S]{0,500}selectedWorkspace\?\.engineId/);
@@ -165,8 +164,8 @@ describe("sidebar projects", () => {
     expect(chineseLocaleSource).toContain('"new_conversation.placeholder": "选择一个方向，或直接描述你要推进的工作。"');
     expect(chineseLocaleSource).toContain('"projects.choose_engine": "选择项目引擎"');
     expect(chineseLocaleSource).toContain('"projects.default_engine": "项目引擎"');
-    expect(chineseLocaleSource).toContain('"projects.engine_running": "引擎运行中"');
-    expect(englishLocaleSource).toContain('"projects.engine_running": "Engine running"');
+    expect(chineseLocaleSource).not.toContain("projects.engine_running_tooltip");
+    expect(englishLocaleSource).not.toContain("projects.engine_running_tooltip");
     expect(englishLocaleSource).toContain('"session.new_task": "New task"');
     expect(chineseLocaleSource).toContain('"session.new_task": "新建任务"');
     expect(englishLocaleSource).toContain('"session.default_title": "New task"');
@@ -183,7 +182,14 @@ describe("sidebar projects", () => {
   });
 
   test("manages project folders without restoring the legacy workspace UI", () => {
-    expect(sidebarSource).toMatch(/if \(isSelectedProject\)[\s\S]*setProjectExpanded\(\(expanded\) => !expanded\);/);
+    expect(sidebarSource).toContain("onClick={() => setProjectExpanded((expanded) => !expanded)}");
+    expect(sidebarSource).not.toContain("TooltipContent");
+    expect(sidebarSource).toContain("<DropdownMenuGroup>");
+    expect(sidebarSource).toContain('data-testid="project-engine-menu-info"');
+    expect(sidebarSource).toContain('<Cpu className="size-4" aria-hidden="true" />');
+    expect(sidebarSource).toContain('<span className="truncate">{workspaceEngineLabel(workspace.engineId)}</span>');
+    expect(sidebarSource).not.toContain("title={workspaceLabel(workspace)}");
+    expect(sidebarSource).not.toContain("Promise.resolve(onSelectProject(workspace.id))");
     expect(sidebarSource).not.toContain("onDoubleClick={() => setProjectExpanded");
     expect(sidebarSource).toContain('data-testid="project-new-conversation-button"');
     expect(sidebarSource).toContain("const createConversationInProject = async () =>");
@@ -258,8 +264,12 @@ describe("sidebar projects", () => {
   });
 
   test("matches the project creation design with localized, theme-aware controls", () => {
+    const createProjectDialogSource = sessionPageSource.slice(
+      sessionPageSource.indexOf('<Dialog open={createProjectOpen}'),
+      sessionPageSource.indexOf('<Dialog open={renameProjectId'),
+    );
     expect(sessionPageSource).toContain('data-testid="create-project-dialog"');
-    expect(sessionPageSource).not.toContain('showCloseButton={false}');
+    expect(createProjectDialogSource).not.toContain('showCloseButton={false}');
     expect(sessionPageSource).toContain('data-testid="project-folder-picker"');
     expect(sessionPageSource).toContain('data-testid="project-engine-option"');
     expect(sessionPageSource).not.toContain("onConfigureDeepSeek");
@@ -278,7 +288,6 @@ describe("sidebar projects", () => {
     expect(sessionPageSource).toContain('iconClassName: "h-6 w-[33px]"');
     expect(sessionPageSource).toContain("hover:bg-dls-canvas");
     expect(sessionPageSource).toContain("hover:bg-dls-surface-muted focus-visible:bg-dls-surface-muted");
-    expect(sessionPageSource).toContain('t("projects.engine_running")');
     expect(sessionPageSource).toContain("has-focus-visible:ring-3 has-focus-visible:ring-ring/30");
     expect(sessionPageSource).not.toContain("focus-within:ring-3");
     expect(sessionPageSource).toContain('<DialogDescription className="text-[13px] leading-5">');

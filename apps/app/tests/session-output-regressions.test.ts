@@ -32,9 +32,13 @@ describe("session output issue regressions", () => {
     expect(sessionRouteSource).toContain("selectedSessionKnown={selectedSessionKnown}");
   });
 
-  test("shows the active workspace engine beside the session composer", () => {
+  test("moves the active workspace engine from the composer to the project actions menu", () => {
     const sessionPageSource = readFileSync(
       new URL("../src/react-app/domains/session/chat/session-page.tsx", import.meta.url),
+      "utf8",
+    );
+    const sidebarSource = readFileSync(
+      new URL("../src/react-app/domains/session/sidebar/app-sidebar.tsx", import.meta.url),
       "utf8",
     );
     const sessionRouteSource = readFileSync(
@@ -42,11 +46,12 @@ describe("session output issue regressions", () => {
       "utf8",
     );
 
-    expect(sessionPageSource).toContain("function ProjectEngineBadge");
-    expect(sessionPageSource).toContain("data-engine-id={resolvedEngineId}");
-    expect(sessionPageSource).toContain('resolvedEngineId === CODEX_HARNESS_ENGINE_ID');
-    expect(sessionPageSource).toContain("composerEndAccessory={(");
-    expect(sessionPageSource).toContain('testId="session-composer-engine-badge"');
+    expect(sessionPageSource).not.toContain("function ProjectEngineBadge");
+    expect(sessionPageSource).not.toContain("composerEndAccessory={(");
+    expect(sessionPageSource).not.toContain('testId="session-composer-engine-badge"');
+    expect(sidebarSource).toContain("function workspaceEngineLabel");
+    expect(sidebarSource).toContain('data-testid="project-engine-menu-info"');
+    expect(sidebarSource).toContain('<span className="truncate">{workspaceEngineLabel(workspace.engineId)}</span>');
     expect(sessionPageSource).not.toContain("SessionEngineBadge");
     expect(sessionPageSource).not.toContain('className="pointer-events-none hidden md:flex md:justify-self-center"');
     expect(sessionRouteSource).toContain("engineId: activeEngineId");
@@ -96,17 +101,38 @@ describe("session output issue regressions", () => {
     expect(sidebarSource).toContain('t("session_management.archive_session")');
   });
 
-  test("template brief keeps the reference upload entry hidden", () => {
+  test("template application uses one shared dialog with supplemental references", () => {
     const source = readFileSync(
       new URL("../src/react-app/domains/session/chat/session-page.tsx", import.meta.url),
       "utf8",
     );
 
-    expect(source).toContain("const TEMPLATE_REFERENCE_UPLOAD_VISIBLE = false;");
-    expect(source).toContain("{TEMPLATE_REFERENCE_UPLOAD_VISIBLE ? <div");
-    expect(source).toContain('className="flex min-h-0 w-full flex-1 items-center justify-center overflow-auto px-6 py-10"');
-    expect(source).toContain('className="mx-auto w-full max-w-xl overflow-hidden');
-    expect(source).toContain('className="mt-2 placeholder:text-muted-foreground/70"');
+    expect(source).toContain("function TemplateApplyDialog(");
+    expect(source).toContain('data-testid="template-apply-dialog"');
+    expect(source).not.toContain('t("templates.brief.required_information")');
+    expect(source).not.toContain('t("templates.brief.required_progress")');
+    expect(source).not.toContain(">{config.label}</p>");
+    expect(source).not.toContain('t("common.optional_parens")');
+    expect(source).toContain('!field.optional ? <span className="text-destructive" aria-hidden="true"> *</span> : null');
+    expect(source).toContain("required={!field.optional}");
+    expect(source).toContain("showCloseButton={false}");
+    expect(source).toContain("max-w-[800px]");
+    expect(source).toContain('className="flex flex-col gap-1.5 text-ui-body font-semibold leading-5 text-foreground"');
+    expect(source).toContain('t("templates.brief.destination_description")');
+    expect(source).toContain('<SelectContent positionerClassName="z-[90]">');
+    expect(source).toContain('mode === "current-conversation" ? t("templates.brief.apply_current") : config.submitLabel');
+    expect(source).toContain('t("templates.brief.supplemental_information")');
+    expect(source).toContain("TEMPLATE_BRIEF_REFERENCE_ACCEPT");
+    expect(source).toContain('t("templates.brief.upload_file")');
+    expect(source).toContain('t("templates.brief.reference_supported_formats")');
+    expect(source).not.toContain('t("templates.brief.reference_description")');
+    expect(source).toContain('mode === "market" && projects && selectedProjectId && onProjectChange');
+    expect(source).toContain('data-testid="template-conflict-dialog"');
+    expect(source).not.toContain('t("templates.brief.choose_project_file")');
+    expect(source).not.toContain('t("templates.brief.add_link")');
+    expect(source).not.toContain('t("templates.brief.use_current_conversation")');
+    expect(source).not.toContain("TEMPLATE_REFERENCE_UPLOAD_VISIBLE");
+    expect(source).not.toContain("function TemplateBriefDialog(");
   });
 
   test("output files can seed a follow-up revision prompt", () => {

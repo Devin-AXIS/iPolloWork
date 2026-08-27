@@ -203,4 +203,35 @@ describe("template market actions", () => {
     expect(sessionPage).toContain('t("templates.brief.submit_failed")');
     expect(sessionPage).toContain("sentOriginal: reference.sendOriginal && canSendOriginalReference(reference.file)");
   });
+
+  test("applies a template to the current conversation when opened from the composer", () => {
+    expect(sessionPage).toContain('useState<"new-session" | "current-session">("new-session")');
+    expect(sessionPage).toContain('setTemplateMarketTarget("current-session")');
+    expect(sessionPage).toContain('templateMarketTarget === "current-session"');
+    expect(sessionPage).toContain("applyTemplateToCurrentSession(template.manifest.id)");
+    expect(sessionPage).toContain('setTemplateMarketTarget("new-session")');
+    expect(sessionPage).toContain('t("templates.brief.apply_current")');
+  });
+
+  test("moves a second presentation template into a confirmed new task", () => {
+    expect(sessionPage).toContain('currentTemplateSessionData?.manifest.category === "slides"');
+    expect(sessionPage).toContain('template.manifest.category === "slides"');
+    expect(sessionPage).toContain('origin: "conversation-conflict"');
+    expect(sessionPage).toContain('data-testid="template-conflict-dialog"');
+    expect(sessionPage).toContain('t("templates.brief.conflict_description"');
+    expect(sessionPage).toContain('t("templates.brief.continue")');
+    expect(sessionPage).toContain('conflictTemplateTitle ? t("common.back") : t("common.cancel")');
+  });
+
+  test("configures a market template before creating a task in the selected project", () => {
+    expect(sessionPage).toContain('data-testid="template-apply-dialog"');
+    expect(sessionPage).toContain('pendingTemplateApplication.origin === "market" ? "market" : "new-conversation"');
+    expect(sessionPage).toContain('pendingTemplateApplication.origin === "market" ? templateDestinationProjects : undefined');
+    expect(sessionPage).toContain('pendingTemplateApplication.origin === "market" ? setPendingTemplateProjectId : undefined');
+    expect(sessionPage).toContain('pendingTemplateApplication.origin === "market" ? openCreateProjectDialog : undefined');
+    expect(sessionPage).toContain("props.onCreateTaskFromTemplate(pendingTemplateProjectId");
+    expect(sessionPage).toContain("setPendingTemplateDispatch({");
+    expect(sessionPage).not.toContain("projectFiles: supplemental.projectFiles");
+    expect(sessionPage).not.toContain("links: supplemental.links");
+  });
 });

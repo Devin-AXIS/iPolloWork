@@ -81,7 +81,7 @@ import {
   updateEnginePreferences,
   useLocal,
 } from "@/react-app/kernel/local-provider";
-import { SessionPage } from "@/react-app/domains/session/chat/session-page";
+import { SessionPage, type SessionTemplateTaskApplication } from "@/react-app/domains/session/chat/session-page";
 import { isDesktopProviderBlocked, DESKTOP_RESTRICTION_OPENCODE_PROVIDER_ID } from "@/app/cloud/desktop-app-restrictions";
 import { useCheckDesktopRestriction } from "@/react-app/domains/cloud/desktop-config-provider";
 import { ReactSessionRuntime } from "@/react-app/domains/session/sync/runtime-sync";
@@ -1762,6 +1762,7 @@ export function SessionRoute() {
     templateId?: iPolloWorkTemplateId,
     templateScope?: WorkContextId,
     authoring?: { category: TemplateCategory; pptxCompatibility?: PptxCompatibility },
+    templateApplication?: SessionTemplateTaskApplication,
   ): Promise<string | null> => {
     const workspace = workspaces.find((item) => item.id === workspaceId);
     if (
@@ -1794,14 +1795,14 @@ export function SessionRoute() {
       let sessionType = type;
       if (templateId) {
         try {
-          const materialized = await endpoint.client.materializeTemplate(
+          const materializedTemplate = await endpoint.client.materializeTemplate(
             endpoint.workspaceId,
             templateId,
             session.id,
-            undefined,
+            templateApplication?.brief,
             templateScope ?? readActiveWorkContextId(),
           );
-          sessionType = sessionTypeForTemplate(materialized.manifest);
+          sessionType = sessionTypeForTemplate(materializedTemplate.manifest);
         } catch (error) {
           projectInitializationFailed = true;
           throw error;
@@ -1872,7 +1873,7 @@ export function SessionRoute() {
           description: message,
           action: {
             label: "Retry",
-            onClick: () => void handleCreateTaskInWorkspace(workspaceId, type, templateId, templateScope, authoring),
+            onClick: () => void handleCreateTaskInWorkspace(workspaceId, type, templateId, templateScope, authoring, templateApplication),
           },
           duration: Infinity,
         });
@@ -1888,7 +1889,7 @@ export function SessionRoute() {
         description: message,
         action: {
           label: "Retry",
-          onClick: () => void handleCreateTaskInWorkspace(workspaceId, type, templateId, templateScope),
+          onClick: () => void handleCreateTaskInWorkspace(workspaceId, type, templateId, templateScope, undefined, templateApplication),
         },
         duration: Infinity,
       });
@@ -2571,6 +2572,14 @@ export function SessionRoute() {
       }
       terminalOpen={terminalOpen}
       onTerminalOpenChange={setTerminalOpen}
+      onCreateTaskFromTemplate={(workspaceId, application) => handleCreateTaskInWorkspace(
+        workspaceId,
+        "work",
+        application.templateId,
+        application.resourceScope,
+        undefined,
+        application,
+      )}
       sidebar={{
         projectSessionLists,
         selectedWorkspaceId,
