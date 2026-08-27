@@ -12,6 +12,7 @@ import type {
   ConversationPromptPart,
   ConversationQuestion,
 } from "./conversation-engine";
+import { waitForConversationIdle } from "./conversation-engine";
 import {
   codexNativeRequest,
   createCodexLiveState,
@@ -75,6 +76,32 @@ function codexAccessModes(): ConversationAccessMode[] {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+const TERMINAL_CODEX_TURN_STATUSES = new Set([
+  "completed",
+  "failed",
+  "interrupted",
+  "cancelled",
+  "canceled",
+]);
+
+function activeCodexTurnId(value: unknown): string | null {
+  if (!isRecord(value) || !Array.isArray(value.turns)) return null;
+  for (let index = value.turns.length - 1; index >= 0; index -= 1) {
+    const turn = value.turns[index];
+    if (!isRecord(turn) || typeof turn.id !== "string" || !turn.id.trim()) continue;
+    const status = typeof turn.status === "string" ? turn.status : "";
+    if (!TERMINAL_CODEX_TURN_STATUSES.has(status)) return turn.id.trim();
+  }
+  return null;
+}
+
+function codexTurnIsTerminal(value: unknown, turnId: string): boolean {
+  if (!isRecord(value) || !Array.isArray(value.turns)) return false;
+  const turn = value.turns.find((candidate) => isRecord(candidate) && candidate.id === turnId);
+  if (!isRecord(turn) || typeof turn.status !== "string") return false;
+  return TERMINAL_CODEX_TURN_STATUSES.has(turn.status);
 }
 
 function supportedCodexModes(value: unknown): Set<CodexModeId> | null {
@@ -202,6 +229,28 @@ function codexHarnessConnection(input: {
     await client.respond(native.rpcId, permissionResponse(native, reply));
   };
 
+  const interruptSession = async (sessionId: string, knownTurnId?: string) => {
+    let turnId = knownTurnId ?? activeTurns.get(sessionId);
+    if (!turnId) {
+      const result = await client.call<{ thread?: unknown }>("thread/read", {
+        threadId: sessionId,
+        includeTurns: true,
+      });
+      turnId = activeCodexTurnId(result.thread) ?? undefined;
+    }
+    if (!turnId) return false;
+    await client.call("turn/interrupt", { threadId: sessionId, turnId });
+    const stopped = await waitForConversationIdle(async () => {
+      const result = await client.call<{ thread?: unknown }>("thread/read", {
+        threadId: sessionId,
+        includeTurns: true,
+      });
+      return codexTurnIsTerminal(result.thread, turnId);
+    });
+    if (stopped && activeTurns.get(sessionId) === turnId) activeTurns.delete(sessionId);
+    return stopped;
+  };
+
   return {
     mapSnapshot(snapshot) {
       const mapped = mapCodexHarnessSnapshot(snapshot);
@@ -224,7 +273,10 @@ function codexHarnessConnection(input: {
           if (threadId && typeof turn?.id === "string") activeTurns.set(threadId, turn.id);
         }
         if (envelope.type === "notification" && envelope.method === "turn/completed" && params) {
-          if (typeof params.threadId === "string") activeTurns.delete(params.threadId);
+          const threadId = typeof params.threadId === "string" ? params.threadId : null;
+          const turn = isRecord(params.turn) ? params.turn : null;
+          const turnId = typeof turn?.id === "string" ? turn.id : null;
+          if (threadId && (!turnId || activeTurns.get(threadId) === turnId)) activeTurns.delete(threadId);
         }
         if (envelope.type === "notification" && envelope.method === "serverRequest/resolved" && params) {
           const requestId = typeof params.requestId === "string" || typeof params.requestId === "number"
@@ -324,10 +376,7 @@ function codexHarnessConnection(input: {
       };
     },
     async abort(sessionId) {
-      const turnId = activeTurns.get(sessionId);
-      if (!turnId) return false;
-      await client.call("turn/interrupt", { threadId: sessionId, turnId });
-      return true;
+      return interruptSession(sessionId);
     },
     async revert(sessionId) {
       const result = await client.call<{ thread?: Record<string, unknown> }>("thread/rollback", {
@@ -372,7 +421,7 @@ function codexHarnessConnection(input: {
     },
     async runCommand(request) {
       const mode = codexMode(request.mode);
-      await client.prompt({
+      const result = await client.prompt({
         threadId: request.sessionId,
         input: [],
         model: request.model,
@@ -385,9 +434,11 @@ function codexHarnessConnection(input: {
           ...(request.arguments ? { arguments: request.arguments } : {}),
         },
       });
+      if (result.turnId) activeTurns.set(request.sessionId, result.turnId);
       selectedModes.set(request.sessionId, mode);
     },
     async sendPrompt(request) {
+      if (request.signal?.aborted) return { sessionId: request.sessionId };
       const mode = codexMode(request.mode);
       const selectedAgents = [...new Set(
         request.parts.flatMap((part) => part.type === "agent" ? [part.name] : []),
@@ -397,21 +448,35 @@ function codexHarnessConnection(input: {
         request.system?.trim(),
         ...prepared.applicationInstructions,
       ].filter((value): value is string => Boolean(value)).join("\n\n");
-      const result = await client.prompt({
-        threadId: request.sessionId,
-        ...(request.clientUserMessageId ? { clientUserMessageId: request.clientUserMessageId } : {}),
-        input: prepared.input,
-        ...(applicationContext ? { system: applicationContext } : {}),
-        model: request.model,
-        mode,
-        reasoningEffort: request.reasoningEffort,
-        variant: request.variant,
-        accessMode: selectedAccessModes.get(request.sessionId) ?? "auto",
-      }, selectedAgents.length ? { agents: selectedAgents } : undefined);
+      const requestInterrupt = () => {
+        void interruptSession(request.sessionId).catch(() => false);
+      };
+      request.signal?.addEventListener("abort", requestInterrupt);
+      let result: Awaited<ReturnType<typeof client.prompt>>;
+      try {
+        if (request.signal?.aborted) return { sessionId: request.sessionId };
+        result = await client.prompt({
+          threadId: request.sessionId,
+          ...(request.clientUserMessageId ? { clientUserMessageId: request.clientUserMessageId } : {}),
+          input: prepared.input,
+          ...(applicationContext ? { system: applicationContext } : {}),
+          model: request.model,
+          mode,
+          reasoningEffort: request.reasoningEffort,
+          variant: request.variant,
+          accessMode: selectedAccessModes.get(request.sessionId) ?? "auto",
+        }, selectedAgents.length ? { agents: selectedAgents } : undefined);
+      } finally {
+        request.signal?.removeEventListener("abort", requestInterrupt);
+      }
       selectedModes.set(request.sessionId, mode);
       const sessionId = typeof result.sessionId === "string" && result.sessionId.trim()
         ? result.sessionId.trim()
         : request.sessionId;
+      if (result.turnId) activeTurns.set(sessionId, result.turnId);
+      if (request.signal?.aborted && result.turnId) {
+        await interruptSession(sessionId, result.turnId);
+      }
       selectedModes.set(sessionId, mode);
       selectedAccessModes.set(sessionId, selectedAccessModes.get(request.sessionId) ?? "auto");
       return { sessionId };

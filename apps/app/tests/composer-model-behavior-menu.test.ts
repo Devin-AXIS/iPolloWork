@@ -15,6 +15,7 @@ import {
   resolveConversationContextHealth,
 } from "../src/react-app/domains/session/engine/conversation-engine";
 import { getModelContextWindow } from "../src/react-app/infra/provider-list-query";
+import { resolveModelDirectoryLoadingStage } from "../src/components/model-directory-loading-status";
 
 const modelSelectPath = resolve(import.meta.dir, "../src/components/model-select.tsx");
 const composerPath = resolve(import.meta.dir, "../src/react-app/domains/session/surface/composer/composer.tsx");
@@ -211,6 +212,34 @@ describe("Composer model and reasoning menu", () => {
     expect(modal).not.toContain("if (opt.runtimePending) return;");
   });
 
+  test("advances model-directory feedback through cold-start and compatibility stages", () => {
+    expect(resolveModelDirectoryLoadingStage({
+      elapsedMs: 0,
+      engineId: "deepseek-harness",
+      hasModels: false,
+    })).toBe("connecting");
+    expect(resolveModelDirectoryLoadingStage({
+      elapsedMs: 2_000,
+      engineId: "deepseek-harness",
+      hasModels: false,
+    })).toBe("cold-starting");
+    expect(resolveModelDirectoryLoadingStage({
+      elapsedMs: 7_000,
+      engineId: "deepseek-harness",
+      hasModels: false,
+    })).toBe("syncing-configuration");
+    expect(resolveModelDirectoryLoadingStage({
+      elapsedMs: 11_000,
+      engineId: "deepseek-harness",
+      hasModels: false,
+    })).toBe("checking-compatibility");
+    expect(resolveModelDirectoryLoadingStage({
+      elapsedMs: 1_000,
+      engineId: "codex-harness",
+      hasModels: true,
+    })).toBe("refreshing");
+  });
+
   test("Composer uses one combined model and reasoning menu", () => {
     const composer = readFileSync(composerPath, "utf8");
     const menu = readFileSync(menuPath, "utf8");
@@ -241,7 +270,7 @@ describe("Composer model and reasoning menu", () => {
     expect(model).toContain("useProviderListQuery({");
     expect(model).toContain("projectAccountProviderConnections(");
     expect(model).toContain("catalogQuery.data");
-    expect(model).toContain('t("model_picker.partial_models_loading")');
+    expect(model).toContain("<ModelDirectoryLoadingStatus");
     expect(model).toContain('t("model_picker.no_models_available")');
     expect(model).toContain("isConnected: true");
     expect(model).toContain("disabled: false");

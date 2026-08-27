@@ -102,6 +102,71 @@ export default {
         const canStopAfter = await ctx.eval(`window.__ipolloworkControl.listActions()
           .some((action) => action.id === "composer.stop" && !action.disabled)`);
         if (canStopAfter) await ctx.control("composer.stop");
+
+        const interruptedPrompt = `STOP-RACE-${Date.now()} 请先检查当前项目再回答。`;
+        const enterPrompt = interruptedPrompt;
+        await ctx.prove("Stopping an accepted run lets the same request be submitted again with plain Enter", {
+          voiceover: "运行可以被立即停止，随后即使输入相同内容，按回车也会显示并发送一条新的需求。",
+          action: async () => {
+            await ctx.control("composer.set_text", { text: interruptedPrompt });
+            await ctx.control("composer.send");
+            await ctx.waitFor(`window.__ipolloworkControl.listActions()
+              .some((action) => action.id === "composer.stop" && !action.disabled)`, {
+              timeoutMs: 15_000,
+              label: "stop enabled for the accepted run",
+            });
+            await ctx.control("composer.stop");
+            await ctx.waitFor(`window.__ipolloworkControl.listActions()
+              .some((action) => action.id === "composer.stop" && action.disabled)`, {
+              timeoutMs: 30_000,
+              label: "run stopped and Composer released",
+            });
+            await ctx.control("composer.set_text", { text: enterPrompt });
+            await ctx.eval(`document.querySelector('[contenteditable="true"][data-lexical-editor="true"]')?.focus()`);
+            await ctx.client.send("Input.dispatchKeyEvent", {
+              type: "rawKeyDown",
+              key: "Enter",
+              code: "Enter",
+              windowsVirtualKeyCode: 13,
+              nativeVirtualKeyCode: 13,
+            });
+            await ctx.client.send("Input.dispatchKeyEvent", {
+              type: "keyUp",
+              key: "Enter",
+              code: "Enter",
+              windowsVirtualKeyCode: 13,
+              nativeVirtualKeyCode: 13,
+            });
+            await ctx.waitFor(`(() => {
+              const editor = document.querySelector('[contenteditable="true"][data-lexical-editor="true"]');
+              return (editor?.textContent ?? "").trim() === ""
+                && Array.from(document.querySelectorAll('[data-message-role="user"]'))
+                  .some((message) => message.textContent?.includes(${JSON.stringify(enterPrompt)}));
+            })()`, {
+              timeoutMs: 30_000,
+              label: "plain Enter sent the next request",
+            });
+          },
+          assert: async () => {
+            const state = await ctx.eval(`(() => {
+              const editor = document.querySelector('[contenteditable="true"][data-lexical-editor="true"]');
+              const matching = Array.from(document.querySelectorAll('[data-message-role="user"]'))
+                .filter((message) => message.textContent?.includes(${JSON.stringify(enterPrompt)}));
+              return { composer: (editor?.textContent ?? "").trim(), matching: matching.length };
+            })()`);
+            ctx.assert(state.composer === "", "Plain Enter left text in the Composer instead of submitting it.");
+            ctx.assert(state.matching === 2, `Expected the repeated request to appear twice, found ${state.matching}.`);
+          },
+          screenshot: {
+            name: "composer-stop-restores-enter-submit",
+            fromSurface: true,
+            requireText: [enterPrompt],
+          },
+        });
+
+        const canStopEnterRun = await ctx.eval(`window.__ipolloworkControl.listActions()
+          .some((action) => action.id === "composer.stop" && !action.disabled)`);
+        if (canStopEnterRun) await ctx.control("composer.stop");
         ctx.assert(sessionId.length > 0, "The proof did not run in a session.");
       },
     },

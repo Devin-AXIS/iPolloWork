@@ -13,6 +13,7 @@ export type WorkspaceEngineEvent = {
 export type WorkspaceEnginePromptResult = {
   ok: boolean;
   sessionId?: string;
+  turnId?: string;
 };
 
 export class WorkspaceEngineRpcClient {

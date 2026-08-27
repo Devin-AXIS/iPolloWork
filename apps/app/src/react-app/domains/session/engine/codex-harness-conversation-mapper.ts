@@ -18,6 +18,8 @@ type CodexLiveState = {
   itemKinds: Map<string, string>;
   itemTurnKeys: Map<string, string>;
   visibleResultTurns: Set<string>;
+  activeTurnByThread: Map<string, string>;
+  parentUserMessageIdByTurn: Map<string, string>;
 };
 
 export function createCodexLiveState(): CodexLiveState {
@@ -26,6 +28,8 @@ export function createCodexLiveState(): CodexLiveState {
     itemKinds: new Map(),
     itemTurnKeys: new Map(),
     visibleResultTurns: new Set(),
+    activeTurnByThread: new Map(),
+    parentUserMessageIdByTurn: new Map(),
   };
 }
 
@@ -181,6 +185,7 @@ function messageForItem(
   item: Record<string, unknown>,
   completed: boolean,
   at: number,
+  parentUserMessageId?: string,
 ): UIMessage | null {
   const id = stringValue(item.id);
   const type = stringValue(item.type);
@@ -188,7 +193,10 @@ function messageForItem(
   const messageId = type === "userMessage" ? stringValue(item.clientId) ?? id : id;
   const metadata = conversationMessageMetadata(
     completed ? { created: at, completed: at } : { created: at },
-    { codexItemType: type },
+    {
+      codexItemType: type,
+      ...(parentUserMessageId ? { parentUserMessageId } : {}),
+    },
   );
   if (type === "userMessage") {
     return { id: messageId, role: "user", metadata, parts: userMessageParts(item) };
@@ -340,6 +348,7 @@ export function mapCodexHarnessEvent(
       const turnKey = `${threadId}:${turnId}`;
       state.itemsByTurn.set(turnKey, new Set());
       state.visibleResultTurns.delete(turnKey);
+      state.activeTurnByThread.set(threadId, turnId);
     }
     return [{ type: "session.status", sessionId: threadId, status: { type: "busy" } }];
   }
@@ -349,12 +358,14 @@ export function mapCodexHarnessEvent(
     const turnKey = turnId ? `${threadId}:${turnId}` : null;
     const hasVisibleResult = turnKey ? state.visibleResultTurns.has(turnKey) : false;
     const completedAt = typeof turn.completedAt === "number" ? turn.completedAt * 1_000 : Date.now();
+    const parentUserMessageId = turnKey ? state.parentUserMessageIdByTurn.get(turnKey) : undefined;
     const completed = turnId
       ? [...(state.itemsByTurn.get(`${threadId}:${turnId}`) ?? [])].map((messageId): ConversationEvent => ({
           type: "message.completed",
           sessionId: threadId,
           messageId,
           completedAt,
+          ...(parentUserMessageId ? { parentUserMessageId } : {}),
         }))
       : [];
     if (turnKey) {
@@ -362,14 +373,24 @@ export function mapCodexHarnessEvent(
       state.itemsByTurn.delete(turnKey);
       state.visibleResultTurns.delete(turnKey);
     }
+    const activeTurnId = state.activeTurnByThread.get(threadId);
+    const supersededByNewTurn = Boolean(turnId && activeTurnId && activeTurnId !== turnId);
+    if (supersededByNewTurn) return completed;
+    if (!turnId || activeTurnId === turnId) state.activeTurnByThread.delete(threadId);
     if (turn.status === "failed") {
       const error = isRecord(turn.error) ? stringValue(turn.error.message) : null;
-      completed.push({ type: "session.error", sessionId: threadId, errorText: error ?? "Codex turn failed" });
+      completed.push({
+        type: "session.error",
+        sessionId: threadId,
+        errorText: error ?? "Codex turn failed",
+        ...(parentUserMessageId ? { parentUserMessageId } : {}),
+      });
     } else if (turn.status === "completed" && !hasVisibleResult) {
       completed.push({
         type: "session.error",
         sessionId: threadId,
         errorText: "Codex 已结束处理，但没有返回最终结果。请重试这条需求。",
+        ...(parentUserMessageId ? { parentUserMessageId } : {}),
       });
     }
     completed.push({ type: "session.idle", sessionId: threadId });
@@ -379,10 +400,16 @@ export function mapCodexHarnessEvent(
     const item = params.item;
     const id = stringValue(item.id);
     const turnId = stringValue(params.turnId);
+    const activeTurnId = state.activeTurnByThread.get(threadId);
+    if (turnId && activeTurnId && turnId !== activeTurnId) return [];
     const turnKey = turnId ? `${threadId}:${turnId}` : null;
     const at = timestamp(method === "item/completed" ? params.completedAtMs : params.startedAtMs);
-    const message = messageForItem(threadId, item, method === "item/completed", at);
+    const parentUserMessageId = turnKey ? state.parentUserMessageIdByTurn.get(turnKey) : undefined;
+    const message = messageForItem(threadId, item, method === "item/completed", at, parentUserMessageId);
     if (!id) return [];
+    if (turnKey && item.type === "userMessage" && message) {
+      state.parentUserMessageIdByTurn.set(turnKey, message.id);
+    }
     state.itemKinds.set(id, stringValue(item.type) ?? "");
     if (turnKey) state.itemTurnKeys.set(id, turnKey);
     if (turnKey && (item.type === "agentMessage" || item.type === "plan") && itemContentText(item).trim()) {
@@ -404,6 +431,9 @@ export function mapCodexHarnessEvent(
     return [{ type: "message.upsert", sessionId: threadId, message }];
   }
   if (threadId && typeof params.itemId === "string" && typeof params.delta === "string") {
+    const turnId = stringValue(params.turnId);
+    const activeTurnId = state.activeTurnByThread.get(threadId);
+    if (turnId && activeTurnId && turnId !== activeTurnId) return [];
     const reasoning = method.includes("reasoning");
     if (method === "item/agentMessage/delta" || reasoning) {
       if (method === "item/agentMessage/delta" && params.delta.trim()) {
@@ -416,6 +446,9 @@ export function mapCodexHarnessEvent(
         type: "message.chunk",
         sessionId: threadId,
         messageId: params.itemId,
+        ...(turnId && state.parentUserMessageIdByTurn.get(`${threadId}:${turnId}`)
+          ? { parentUserMessageId: state.parentUserMessageIdByTurn.get(`${threadId}:${turnId}`) }
+          : {}),
         chunk: {
           type: reasoning ? "reasoning-delta" : "text-delta",
           id: `${params.itemId}:${reasoning ? "reasoning" : "text"}`,

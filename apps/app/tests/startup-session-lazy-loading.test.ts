@@ -89,8 +89,9 @@ describe("startup session loading", () => {
 
   test("destroys the old view and reuses the startup loading artwork while switching", () => {
     expect(sessionRouteSource).toContain(
-      "destroyWorkspaceSessionResources(previous, previous.sessionId);",
+      "destroyWorkspaceSessionResources(previous, previous.sessionId, {",
     );
+    expect(sessionRouteSource).toContain("preserveInterruptedRun: true,");
     expect(sessionPageSource).toContain(
       'key={`${props.runtimeWorkspaceId}:${props.selectedSessionId}`}',
     );

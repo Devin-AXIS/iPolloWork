@@ -115,13 +115,22 @@ function sessionErrorMessageId(turnKey: string) {
  * message instead of duplicating — while a brand new error on a later turn
  * still produces its own message instead of overwriting the previous one.
  */
-export function createSessionErrorUIMessage(turnKey: string, text: string, options?: { created?: number }): UIMessage {
+export function createSessionErrorUIMessage(
+  turnKey: string,
+  text: string,
+  options?: { created?: number; parentUserMessageId?: string },
+): UIMessage {
   const id = sessionErrorMessageId(turnKey);
   const created = options?.created;
+  const parentUserMessageId = options?.parentUserMessageId?.trim();
+  const metadata = conversationMessageMetadata(
+    { created },
+    parentUserMessageId ? { parentUserMessageId } : {},
+  );
   return {
     id,
     role: "assistant",
-    ...(typeof created === "number" ? { metadata: { ipollowork: { created } } } : {}),
+    ...(metadata ? { metadata } : {}),
     parts: [{
       type: "text",
       text,
@@ -274,9 +283,16 @@ export function snapshotToUIMessages(snapshot: iPolloWorkSessionSnapshot): UIMes
     const contextUsage = message.info.role === "assistant" && "tokens" in message.info
       ? conversationContextUsageFromTokens(message.info.tokens)
       : undefined;
+    const parentUserMessageId = message.info.role === "assistant" && "parentID" in message.info
+      && typeof message.info.parentID === "string"
+      ? message.info.parentID.trim()
+      : "";
     const metadata = conversationMessageMetadata(
       { created, completed },
-      contextUsage ? { contextUsage } : {},
+      {
+        ...(contextUsage ? { contextUsage } : {}),
+        ...(parentUserMessageId ? { parentUserMessageId } : {}),
+      },
     );
     const uiMessage = {
       id: message.info.id,
@@ -294,7 +310,10 @@ export function snapshotToUIMessages(snapshot: iPolloWorkSessionSnapshot): UIMes
     const error = message.info.role === "assistant" && "error" in message.info ? message.info.error : undefined;
     if (!error) return [uiMessage];
 
-    const errorMessage = createSessionErrorUIMessage(message.info.id, describeOpencodeSessionError(error), { created });
+    const errorMessage = createSessionErrorUIMessage(message.info.id, describeOpencodeSessionError(error), {
+      created,
+      ...(parentUserMessageId ? { parentUserMessageId } : {}),
+    });
     return uiMessage.parts.length > 0 ? [uiMessage, errorMessage] : [errorMessage];
   });
 }

@@ -18,7 +18,12 @@ import type {
   ConversationSnapshot,
   ConversationStatus,
 } from "../engine/conversation-engine";
-import { completeConversationMessage, conversationMessageMetadata } from "../engine/conversation-engine";
+import {
+  completeConversationMessage,
+  conversationMessageCreatedAt,
+  conversationMessageMetadata,
+  conversationMessageParentUserMessageId,
+} from "../engine/conversation-engine";
 import { describeConversationSessionError } from "../engine/opencode-message-adapter";
 
 type SyncScope = {
@@ -39,6 +44,7 @@ type PendingDelta = {
   partId: string;
   reasoning: boolean;
   delta: string;
+  parentUserMessageId?: string;
 };
 
 type SyncEntry = {
@@ -61,8 +67,25 @@ type SyncEntry = {
   deltaFlushScheduled: boolean;
 };
 
+type InterruptedRun = {
+  interrupted: boolean;
+  blockedAssistantMessageIds: Set<string>;
+  blockedUserMessageIds: Set<string>;
+  hiddenAssistantMessageIds: Set<string>;
+  observedAssistantMessageIds: Set<string>;
+  preservedAssistantMessageIds: Set<string>;
+  observedUserMessageIds: Set<string>;
+  pendingBlockedUserTextCounts: Map<string, number>;
+  interruptedAt: number;
+  protectedOptimisticUserMessageIds: Set<string>;
+  resumeUserMessageId: string | null;
+  resumeUserText: string;
+  resumeStartedAt: number | null;
+};
+
 const idleStatus: ConversationStatus = { type: "idle" };
 const syncs = new Map<string, SyncEntry>();
+const interruptedRuns = new Map<string, InterruptedRun>();
 const retainedSessionTtlMs = 10 * 60_000;
 const idleRetainedSessionTtlMs = 10_000;
 
@@ -81,6 +104,122 @@ export const questionKey = (workspaceId: string, sessionId: string) =>
 
 function syncKey(input: SyncScope) {
   return `${input.workspaceId}:${input.connectionKey}`;
+}
+
+function interruptedRunKey(workspaceId: string, sessionId: string) {
+  return `${workspaceId}\u0000${sessionId}`;
+}
+
+function interruptedRun(workspaceId: string, sessionId: string) {
+  return interruptedRuns.get(interruptedRunKey(workspaceId, sessionId));
+}
+
+function blockInterruptedAssistantMessage(
+  run: InterruptedRun,
+  messageId: string,
+  options: { hide?: boolean } = {},
+) {
+  const id = messageId.trim();
+  if (!id) return;
+  run.blockedAssistantMessageIds.add(id);
+  if (options.hide && !run.preservedAssistantMessageIds.has(id)) {
+    run.hiddenAssistantMessageIds.add(id);
+  }
+}
+
+function consumePendingBlockedUserText(run: InterruptedRun, text: string) {
+  const pending = run.pendingBlockedUserTextCounts.get(text) ?? 0;
+  if (pending <= 1) run.pendingBlockedUserTextCounts.delete(text);
+  else run.pendingBlockedUserTextCounts.set(text, pending - 1);
+}
+
+type InterruptedUserMessageDisposition = "normal" | "stopped" | "resumed" | "ignore";
+
+function observeInterruptedUserMessage(
+  run: InterruptedRun,
+  message: Pick<UIMessage, "id" | "role" | "parts" | "metadata">,
+): InterruptedUserMessageDisposition {
+  if (message.role !== "user") return "normal";
+  const text = messageVisibleText(message);
+  if (run.blockedUserMessageIds.has(message.id)) {
+    if (text) consumePendingBlockedUserText(run, text);
+    run.observedUserMessageIds.add(message.id);
+    return "stopped";
+  }
+  if (run.interrupted && run.resumeUserMessageId === message.id) {
+    run.observedUserMessageIds.add(message.id);
+    run.interrupted = false;
+    run.resumeUserMessageId = null;
+    run.resumeUserText = "";
+    run.resumeStartedAt = null;
+    return "resumed";
+  }
+  if (run.observedUserMessageIds.has(message.id)) return "normal";
+  if (text && (run.pendingBlockedUserTextCounts.get(text) ?? 0) > 0) {
+    const createdAt = conversationMessageCreatedAt(message);
+    if (run.interrupted && run.resumeUserMessageId && run.resumeStartedAt && createdAt !== null && createdAt >= run.resumeStartedAt) {
+      run.observedUserMessageIds.add(message.id);
+      run.interrupted = false;
+      run.resumeUserMessageId = null;
+      run.resumeUserText = "";
+      run.resumeStartedAt = null;
+      return "resumed";
+    }
+    if (run.interrupted || (createdAt !== null && createdAt <= run.interruptedAt)) {
+      run.blockedUserMessageIds.add(message.id);
+      run.observedUserMessageIds.add(message.id);
+      consumePendingBlockedUserText(run, text);
+      return "stopped";
+    }
+  }
+  if (run.interrupted && run.resumeUserMessageId && run.resumeUserText === text) {
+    run.observedUserMessageIds.add(message.id);
+    run.interrupted = false;
+    run.resumeUserMessageId = null;
+    run.resumeUserText = "";
+    run.resumeStartedAt = null;
+    return "resumed";
+  }
+  run.observedUserMessageIds.add(message.id);
+  return run.interrupted ? "ignore" : "normal";
+}
+
+function assistantMessageBelongsToStoppedRun(
+  run: InterruptedRun | undefined,
+  messageId: string,
+  parentUserMessageId?: string | null,
+) {
+  if (!run) return false;
+  return run.blockedAssistantMessageIds.has(messageId)
+    || run.hiddenAssistantMessageIds.has(messageId)
+    || Boolean(parentUserMessageId && run.blockedUserMessageIds.has(parentUserMessageId));
+}
+
+function shouldSuppressAssistantMessage(
+  run: InterruptedRun | undefined,
+  messageId: string,
+  parentUserMessageId?: string | null,
+) {
+  if (!run) return false;
+  if (parentUserMessageId && run.blockedUserMessageIds.has(parentUserMessageId)) {
+    blockInterruptedAssistantMessage(run, messageId, { hide: true });
+    return true;
+  }
+  if (assistantMessageBelongsToStoppedRun(run, messageId, parentUserMessageId)) return true;
+  if (run.interrupted && !run.observedAssistantMessageIds.has(messageId)) {
+    blockInterruptedAssistantMessage(run, messageId, { hide: true });
+    return true;
+  }
+  return false;
+}
+
+function removeHiddenAssistantMessage(workspaceId: string, sessionId: string, messageId: string) {
+  const run = interruptedRun(workspaceId, sessionId);
+  if (!run?.hiddenAssistantMessageIds.has(messageId)) return;
+  getReactQueryClient().setQueryData<UIMessage[]>(
+    transcriptKey(workspaceId, sessionId),
+    (current = []) => current.filter((message) => message.id !== messageId),
+  );
 }
 
 function getErrorStatus(error: unknown) {
@@ -178,12 +317,19 @@ function clearTrackedSession(input: SyncScope, entry: SyncEntry, sessionId: stri
   }
 }
 
-export function destroyWorkspaceSessionResources(input: SyncScope, sessionId: string) {
+export function destroyWorkspaceSessionResources(
+  input: SyncScope,
+  sessionId: string,
+  options: { preserveInterruptedRun?: boolean } = {},
+) {
   const normalizedSessionId = sessionId.trim();
   if (!normalizedSessionId) return;
 
   const entry = syncs.get(syncKey(input));
   if (entry) clearTrackedSession(input, entry, normalizedSessionId);
+  if (!options.preserveInterruptedRun) {
+    interruptedRuns.delete(interruptedRunKey(input.workspaceId, normalizedSessionId));
+  }
 
   const queryClient = getReactQueryClient();
   for (const queryKey of [
@@ -349,7 +495,7 @@ function isOptimisticUserMessage(message: UIMessage | undefined) {
   return Boolean(metadata && typeof metadata === "object" && "optimistic" in metadata && metadata.optimistic === true);
 }
 
-function messageVisibleText(message: UIMessage) {
+function messageVisibleText(message: Pick<UIMessage, "parts">) {
   return message.parts
     .map((part) => {
       if (part.type === "text" || part.type === "reasoning") return part.text;
@@ -361,27 +507,91 @@ function messageVisibleText(message: UIMessage) {
 }
 
 function findMatchingOptimisticUserMessageIndex(messages: UIMessage[], next: UIMessage) {
-  if (next.role !== "user") return -1;
+  // A second immediately submitted prompt can legitimately have the same
+  // visible text while the first prompt is still optimistic (for example,
+  // send "123", stop during engine startup, then send "123" again). Only an
+  // authoritative engine message may acknowledge/replace an optimistic row;
+  // a new optimistic row always represents a distinct user action.
+  if (next.role !== "user" || isOptimisticUserMessage(next)) return -1;
   const nextText = messageVisibleText(next);
   if (!nextText) return -1;
-  return messages.findIndex((message) =>
+  return messages.findLastIndex((message) =>
     message.id !== next.id &&
     isOptimisticUserMessage(message) &&
     messageVisibleText(message) === nextText
   );
 }
 
-function removeAcknowledgedOptimisticUserMessages(messages: UIMessage[]) {
-  const acknowledgedUserTexts = new Set(
-    messages
+function removeAcknowledgedOptimisticUserMessages(
+  messages: UIMessage[],
+  protectedMessageIds?: ReadonlySet<string>,
+) {
+  return messages.filter((message, index) => {
+    if (!isOptimisticUserMessage(message)) return true;
+    if (protectedMessageIds?.has(message.id)) return true;
+    const visibleText = messageVisibleText(message);
+    if (!visibleText) return true;
+    return !messages.slice(index + 1).some((candidate) =>
+      candidate.role === "user" &&
+      !isOptimisticUserMessage(candidate) &&
+      messageVisibleText(candidate) === visibleText
+    );
+  });
+}
+
+function removeSnapshotAcknowledgedOptimisticUserMessages(
+  current: UIMessage[],
+  incoming: UIMessage[],
+  protectedMessageIds?: ReadonlySet<string>,
+) {
+  const optimisticIds = new Set(current.filter(isOptimisticUserMessage).map((message) => message.id));
+  const authoritativeCurrentIds = new Set(
+    current
       .filter((message) => message.role === "user" && !isOptimisticUserMessage(message))
-      .map(messageVisibleText)
-      .filter(Boolean),
+      .map((message) => message.id),
   );
-  if (acknowledgedUserTexts.size === 0) return messages;
-  return messages.filter((message) =>
-    !isOptimisticUserMessage(message) || !acknowledgedUserTexts.has(messageVisibleText(message))
-  );
+  const currentCounts = new Map<string, number>();
+  const incomingCounts = new Map<string, number>();
+  const incomingCandidates = new Map<string, UIMessage[]>();
+  for (const message of current) {
+    if (message.role !== "user" || isOptimisticUserMessage(message)) continue;
+    const text = messageVisibleText(message);
+    if (text) currentCounts.set(text, (currentCounts.get(text) ?? 0) + 1);
+  }
+  for (const message of incoming) {
+    if (message.role !== "user" || isOptimisticUserMessage(message)) continue;
+    if (optimisticIds.has(message.id)) {
+      // Keep the exact-id optimistic row in the merge input. The normal
+      // message-id merge replaces it in place and preserves its chronology.
+      continue;
+    }
+    const text = messageVisibleText(message);
+    if (!text) continue;
+    incomingCounts.set(text, (incomingCounts.get(text) ?? 0) + 1);
+    if (!authoritativeCurrentIds.has(message.id)) {
+      const candidates = incomingCandidates.get(text);
+      if (candidates) candidates.push(message);
+      else incomingCandidates.set(text, [message]);
+    }
+  }
+  const remainingTextAcks = new Map<string, number>();
+  for (const [text, count] of incomingCounts) {
+    remainingTextAcks.set(text, Math.max(0, count - (currentCounts.get(text) ?? 0)));
+  }
+
+  const replacements = new Map<string, UIMessage>();
+  for (let index = current.length - 1; index >= 0; index -= 1) {
+    const message = current[index];
+    if (!isOptimisticUserMessage(message) || protectedMessageIds?.has(message.id)) continue;
+    const text = messageVisibleText(message);
+    const remaining = remainingTextAcks.get(text) ?? 0;
+    if (!text || remaining <= 0) continue;
+    const replacement = incomingCandidates.get(text)?.pop();
+    if (!replacement) continue;
+    remainingTextAcks.set(text, remaining - 1);
+    replacements.set(message.id, replacement);
+  }
+  return current.map((message) => replacements.get(message.id) ?? message);
 }
 
 function createClientUserMessageId() {
@@ -406,6 +616,12 @@ export function beginOptimisticSessionPrompt(
 
   const queryClient = getReactQueryClient();
   const text = visibleText.trim();
+  const interrupted = interruptedRun(workspace, session);
+  if (interrupted?.interrupted) {
+    interrupted.resumeUserMessageId = clientUserMessageId;
+    interrupted.resumeUserText = text.replace(/\s+/g, " ").trim();
+    interrupted.resumeStartedAt = Date.now();
+  }
   queryClient.setQueryData<UIMessage[]>(transcriptKey(workspace, session), (current = []) => upsertMessage(current, {
     id: clientUserMessageId,
     role: "user",
@@ -439,10 +655,96 @@ export function rollbackOptimisticSessionPrompt(
     return current.filter((item) => item.id !== messageId);
   });
   if (!removed) return false;
+  const interrupted = interruptedRun(workspace, session);
+  if (interrupted?.resumeUserMessageId === messageId) {
+    interrupted.resumeUserMessageId = null;
+    interrupted.resumeUserText = "";
+    interrupted.resumeStartedAt = null;
+  }
   const idle = { type: "idle" } satisfies ConversationStatus;
   queryClient.setQueryData(statusKey(workspace, session), idle);
   useSessionActivityStore.getState().setRunStatus(workspace, session, idle);
   return true;
+}
+
+/** Release the shared run latches after an engine accepts an interrupt. */
+export function settleInterruptedSessionRun(
+  workspaceId: string,
+  sessionId: string,
+  stoppedUserMessageId?: string | null,
+) {
+  const workspace = workspaceId.trim();
+  const session = sessionId.trim();
+  if (!workspace || !session) return;
+  const queryClient = getReactQueryClient();
+  const key = interruptedRunKey(workspace, session);
+  const existing = interruptedRuns.get(key);
+  const run: InterruptedRun = existing ?? {
+    interrupted: true,
+    blockedAssistantMessageIds: new Set<string>(),
+    blockedUserMessageIds: new Set<string>(),
+    hiddenAssistantMessageIds: new Set<string>(),
+    observedAssistantMessageIds: new Set<string>(),
+    preservedAssistantMessageIds: new Set<string>(),
+    observedUserMessageIds: new Set<string>(),
+    pendingBlockedUserTextCounts: new Map<string, number>(),
+    interruptedAt: Date.now(),
+    protectedOptimisticUserMessageIds: new Set<string>(),
+    resumeUserMessageId: null,
+    resumeUserText: "",
+    resumeStartedAt: null,
+  };
+  run.interrupted = true;
+  run.interruptedAt = Date.now();
+  run.resumeUserMessageId = null;
+  run.resumeUserText = "";
+  run.resumeStartedAt = null;
+  const messages = queryClient.getQueryData<UIMessage[]>(transcriptKey(workspace, session)) ?? [];
+  const requestedStoppedUserMessageId = stoppedUserMessageId?.trim() ?? "";
+  const requestedStoppedUserIndex = requestedStoppedUserMessageId
+    ? messages.findIndex((message) => message.role === "user" && message.id === requestedStoppedUserMessageId)
+    : -1;
+  const stoppedUserIndex = requestedStoppedUserIndex >= 0
+    ? requestedStoppedUserIndex
+    : messages.findLastIndex((message) => message.role === "user");
+  const stoppedUserMessage = stoppedUserIndex >= 0 ? messages[stoppedUserIndex] : undefined;
+  if (stoppedUserMessage?.role === "user") {
+    run.blockedUserMessageIds.add(stoppedUserMessage.id);
+    run.observedUserMessageIds.add(stoppedUserMessage.id);
+    if (isOptimisticUserMessage(stoppedUserMessage)) {
+      run.protectedOptimisticUserMessageIds.add(stoppedUserMessage.id);
+      const stoppedText = messageVisibleText(stoppedUserMessage);
+      if (stoppedText) {
+        run.pendingBlockedUserTextCounts.set(
+          stoppedText,
+          (run.pendingBlockedUserTextCounts.get(stoppedText) ?? 0) + 1,
+        );
+      }
+    }
+  }
+  for (let index = 0; index < messages.length; index += 1) {
+    const message = messages[index];
+    if (!message) continue;
+    if (message.role === "user") run.observedUserMessageIds.add(message.id);
+    if (message.role === "assistant") {
+      run.observedAssistantMessageIds.add(message.id);
+      if (index > stoppedUserIndex) {
+        run.preservedAssistantMessageIds.add(message.id);
+        blockInterruptedAssistantMessage(run, message.id);
+      }
+    }
+  }
+  interruptedRuns.set(key, run);
+  for (const entry of syncs.values()) {
+    if (entry.input.workspaceId !== workspace) continue;
+    entry.deltaFlushBuffer = entry.deltaFlushBuffer.filter((item) => {
+      if (item.sessionId !== session) return true;
+      blockInterruptedAssistantMessage(run, item.messageId, { hide: true });
+      return false;
+    });
+  }
+  queryClient.setQueryData(statusKey(workspace, session), idleStatus);
+  useSessionActivityStore.getState().setRunStatus(workspace, session, idleStatus);
 }
 
 /**
@@ -564,6 +866,7 @@ export function coalescePendingDeltas(items: PendingDelta[]) {
     if (existing) {
       existing.delta += item.delta;
       existing.reasoning = existing.reasoning || item.reasoning;
+      existing.parentUserMessageId ??= item.parentUserMessageId;
       continue;
     }
 
@@ -577,6 +880,12 @@ export function coalescePendingDeltas(items: PendingDelta[]) {
 function applyEvent(entry: SyncEntry, workspaceId: string, event: ConversationEvent) {
   const queryClient = getReactQueryClient();
   const input = entry.input;
+  const eventSessionId = event.type === "permission.asked"
+    ? event.permission.sessionId
+    : event.type === "question.asked"
+      ? event.question.sessionId
+      : event.sessionId;
+  const interrupted = interruptedRun(workspaceId, eventSessionId);
 
   if (event.type === "session.updated") {
     if (!isTrackedSession(entry, event.sessionId)) return;
@@ -600,11 +909,16 @@ function applyEvent(entry: SyncEntry, workspaceId: string, event: ConversationEv
   }
 
   if (event.type === "session.deleted") {
+    interruptedRuns.delete(interruptedRunKey(workspaceId, event.sessionId));
     useSessionActivityStore.getState().removeSession(workspaceId, event.sessionId);
     return;
   }
 
   if (event.type === "session.error") {
+    if (
+      interrupted?.interrupted
+      || Boolean(event.parentUserMessageId && interrupted?.blockedUserMessageIds.has(event.parentUserMessageId))
+    ) return;
     const errorText = describeConversationSessionError(event.errorText);
     const runStartedAt = takeTaskRunStart(event.sessionId);
     if (runStartedAt !== null) {
@@ -624,11 +938,13 @@ function applyEvent(entry: SyncEntry, workspaceId: string, event: ConversationEv
   }
 
   if (event.type === "session.compaction") {
+    if (interrupted?.interrupted) return;
     useSessionActivityStore.getState().setCompacting(workspaceId, event.sessionId, event.running);
     return;
   }
 
   if (event.type === "session.status") {
+    if (interrupted?.interrupted) return;
     useSessionActivityStore.getState().setRunStatus(workspaceId, event.sessionId, event.status);
     const tracked = isTrackedSession(entry, event.sessionId);
     if (tracked) queryClient.setQueryData(statusKey(workspaceId, event.sessionId), event.status);
@@ -645,6 +961,7 @@ function applyEvent(entry: SyncEntry, workspaceId: string, event: ConversationEv
   }
 
   if (event.type === "permission.asked") {
+    if (interrupted?.interrupted) return;
     const permission = event.permission;
     notifyDesktopEvent({
       type: "permission.asked",
@@ -673,6 +990,7 @@ function applyEvent(entry: SyncEntry, workspaceId: string, event: ConversationEv
   }
 
   if (event.type === "question.asked") {
+    if (interrupted?.interrupted) return;
     const question = event.question;
     notifyDesktopEvent({
       type: "question.asked",
@@ -701,6 +1019,17 @@ function applyEvent(entry: SyncEntry, workspaceId: string, event: ConversationEv
   }
 
   if (event.type === "message.upsert") {
+    if (event.message.role === "user" && interrupted) {
+      const disposition = observeInterruptedUserMessage(interrupted, event.message);
+      if (disposition === "ignore") return;
+    } else if (event.message.role === "assistant" && interrupted) {
+      const parentUserMessageId = conversationMessageParentUserMessageId(event.message);
+      if (shouldSuppressAssistantMessage(interrupted, event.message.id, parentUserMessageId)) {
+        removeHiddenAssistantMessage(workspaceId, event.sessionId, event.message.id);
+        return;
+      }
+      interrupted.observedAssistantMessageIds.add(event.message.id);
+    }
     useSessionActivityStore.getState().markMessageRole(workspaceId, event.sessionId, event.message.id, event.message.role);
     if (!isTrackedSession(entry, event.sessionId)) return;
     // Some engines publish their authoritative assistant message immediately
@@ -714,6 +1043,10 @@ function applyEvent(entry: SyncEntry, workspaceId: string, event: ConversationEv
   }
 
   if (event.type === "message.completed") {
+    if (shouldSuppressAssistantMessage(interrupted, event.messageId, event.parentUserMessageId)) {
+      removeHiddenAssistantMessage(workspaceId, event.sessionId, event.messageId);
+      return;
+    }
     if (!isTrackedSession(entry, event.sessionId)) return;
     if (entry.deltaFlushBuffer.length > 0) flushDeltas(entry, workspaceId);
     queryClient.setQueryData<UIMessage[]>(transcriptKey(workspaceId, event.sessionId), (current = []) =>
@@ -727,6 +1060,7 @@ function applyEvent(entry: SyncEntry, workspaceId: string, event: ConversationEv
   }
 
   if (event.type === "message.removed") {
+    if (interrupted?.interrupted || interrupted?.blockedAssistantMessageIds.has(event.messageId)) return;
     if (!isTrackedSession(entry, event.sessionId)) return;
     queryClient.setQueryData<UIMessage[]>(transcriptKey(workspaceId, event.sessionId), (current = []) =>
       current.filter((message) => message.id !== event.messageId),
@@ -741,6 +1075,23 @@ function applyEvent(entry: SyncEntry, workspaceId: string, event: ConversationEv
   }
 
   if (event.type === "message.parts") {
+    if (interrupted) {
+      const eventRole = event.messageRole;
+      if (eventRole === "user") {
+        const disposition = observeInterruptedUserMessage(interrupted, {
+          id: event.messageId,
+          role: "user",
+          parts: event.parts,
+        });
+        if (disposition === "ignore") return;
+      } else {
+        if (shouldSuppressAssistantMessage(interrupted, event.messageId, event.parentUserMessageId)) {
+          removeHiddenAssistantMessage(workspaceId, event.sessionId, event.messageId);
+          return;
+        }
+        interrupted.observedAssistantMessageIds.add(event.messageId);
+      }
+    }
     if (event.visibleAssistantOutput) {
       useSessionActivityStore.getState().markAssistantOutput(workspaceId, event.sessionId, event.messageId);
     }
@@ -768,13 +1119,21 @@ function applyEvent(entry: SyncEntry, workspaceId: string, event: ConversationEv
         const attachmentId = getPartMetadataId(attachment);
         if (attachmentId) next = upsertPart(next, event.messageId, attachmentId, attachment);
       }
-      return removeAcknowledgedOptimisticUserMessages(next);
+      return removeAcknowledgedOptimisticUserMessages(
+        next,
+        interrupted?.protectedOptimisticUserMessageIds,
+      );
     });
     if (pending) entry.pendingDeltas.delete(event.partId);
     return;
   }
 
   if (event.type === "message.chunk") {
+    if (shouldSuppressAssistantMessage(interrupted, event.messageId, event.parentUserMessageId)) {
+      removeHiddenAssistantMessage(workspaceId, event.sessionId, event.messageId);
+      return;
+    }
+    interrupted?.observedAssistantMessageIds.add(event.messageId);
     useSessionActivityStore.getState().markAssistantOutput(
       workspaceId,
       event.sessionId,
@@ -788,12 +1147,14 @@ function applyEvent(entry: SyncEntry, workspaceId: string, event: ConversationEv
       partId: event.chunk.id,
       reasoning: event.chunk.type === "reasoning-delta",
       delta: event.chunk.delta,
+      ...(event.parentUserMessageId ? { parentUserMessageId: event.parentUserMessageId } : {}),
     });
     scheduleDeltaFlush(entry, workspaceId);
     return;
   }
 
   if (event.type === "session.idle") {
+    if (interrupted?.interrupted) return;
     const runStartedAt = takeTaskRunStart(event.sessionId);
     if (runStartedAt !== null) {
       captureAnalyticsEvent("task_run_completed", { duration_ms: Date.now() - runStartedAt });
@@ -844,6 +1205,16 @@ function flushDeltas(entry: SyncEntry, workspaceId: string) {
   }
 
   for (const [sessionId, items] of bySession) {
+    const interrupted = interruptedRun(workspaceId, sessionId);
+    const visibleItems = items.filter((item) => {
+      if (shouldSuppressAssistantMessage(interrupted, item.messageId, item.parentUserMessageId)) {
+        removeHiddenAssistantMessage(workspaceId, sessionId, item.messageId);
+        return false;
+      }
+      interrupted?.observedAssistantMessageIds.add(item.messageId);
+      return true;
+    });
+    if (visibleItems.length === 0) continue;
     queryClient.setQueryData<UIMessage[]>(
       transcriptKey(workspaceId, sessionId),
       (current = []) => {
@@ -852,7 +1223,7 @@ function flushDeltas(entry: SyncEntry, workspaceId: string) {
         // Track which message shells we've ensured exist this flush so we
         // don't call upsertMessage for the same message on every delta.
         const ensuredMessageIds = new Set<string>();
-        for (const item of items) {
+        for (const item of visibleItems) {
           if (!ensuredMessageIds.has(item.messageId)) {
             // Preserve the existing role if the message is already in
             // state; otherwise infer it from the alternation pattern
@@ -1014,29 +1385,63 @@ function releaseWorkspaceSessionSync(input: SyncScope & Pick<SyncOptions, "onSes
   }
 }
 
+export function sanitizeInterruptedSessionSnapshot(
+  workspaceId: string,
+  snapshot: ConversationSnapshot,
+): ConversationSnapshot {
+  const run = interruptedRun(workspaceId, snapshot.session.id);
+  if (!run) return snapshot;
+  let changed = false;
+  const messages: UIMessage[] = [];
+  for (const message of snapshot.messages) {
+    if (message.role === "user") {
+      const disposition = observeInterruptedUserMessage(run, message);
+      if (disposition === "ignore") {
+        changed = true;
+        continue;
+      }
+      messages.push(message);
+      continue;
+    }
+    if (message.role === "assistant") {
+      const parentUserMessageId = conversationMessageParentUserMessageId(message);
+      if (shouldSuppressAssistantMessage(run, message.id, parentUserMessageId)) {
+        changed = true;
+        continue;
+      }
+      run.observedAssistantMessageIds.add(message.id);
+    }
+    messages.push(message);
+  }
+  return changed ? { ...snapshot, messages } : snapshot;
+}
+
 export function seedSessionState(workspaceId: string, snapshot: ConversationSnapshot) {
   const queryClient = getReactQueryClient();
-  const key = transcriptKey(workspaceId, snapshot.session.id);
-  const incoming = snapshot.messages;
+  const safeSnapshot = sanitizeInterruptedSessionSnapshot(workspaceId, snapshot);
+  const key = transcriptKey(workspaceId, safeSnapshot.session.id);
+  const interrupted = interruptedRun(workspaceId, safeSnapshot.session.id);
   const existingRaw = queryClient.getQueryData<UIMessage[]>(key);
+  if (interrupted?.interrupted) {
+    queryClient.setQueryData(todoKey(workspaceId, safeSnapshot.session.id), safeSnapshot.todos);
+    return;
+  }
+  const incoming = safeSnapshot.messages;
   const existing = existingRaw && incoming.length > 0
-    ? existingRaw.filter((message) =>
-        !isOptimisticUserMessage(message) ||
-        !incoming.some((snapshotMessage) =>
-          snapshotMessage.role === "user" &&
-          !isOptimisticUserMessage(snapshotMessage) &&
-          messageVisibleText(snapshotMessage) === messageVisibleText(message)
-        )
+    ? removeSnapshotAcknowledgedOptimisticUserMessages(
+        existingRaw,
+        incoming,
+        interrupted?.protectedOptimisticUserMessageIds,
       )
     : existingRaw;
-  const preserveOptimisticBusy = snapshot.status.type === "idle"
+  const preserveOptimisticBusy = safeSnapshot.status.type === "idle"
     && existing?.some(isOptimisticUserMessage) === true;
 
   if (!preserveOptimisticBusy) {
     useSessionActivityStore.getState().seedSessionRun(
       workspaceId,
-      snapshot.session.id,
-      snapshot.status,
+      safeSnapshot.session.id,
+      safeSnapshot.status,
       assistantOutputAfterLatestUser(incoming),
     );
   }
@@ -1050,13 +1455,14 @@ export function seedSessionState(workspaceId: string, snapshot: ConversationSnap
       snapshotMessages: incoming,
       reason: "snapshot",
     }),
-    snapshot.session.revertMessageId ?? null,
+    safeSnapshot.session.revertMessageId ?? null,
+    { preserveOptimisticUserMessages: true },
   ));
 
   if (!preserveOptimisticBusy) {
-    queryClient.setQueryData(statusKey(workspaceId, snapshot.session.id), snapshot.status);
+    queryClient.setQueryData(statusKey(workspaceId, safeSnapshot.session.id), safeSnapshot.status);
   }
-  queryClient.setQueryData(todoKey(workspaceId, snapshot.session.id), snapshot.todos);
+  queryClient.setQueryData(todoKey(workspaceId, safeSnapshot.session.id), safeSnapshot.todos);
 }
 
 /**

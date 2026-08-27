@@ -105,7 +105,9 @@ import { usePanelTabStore } from "@/react-app/domains/session/panel/panel-tab-st
 import {
   beginOptimisticSessionPrompt,
   rollbackOptimisticSessionPrompt,
+  sanitizeInterruptedSessionSnapshot,
   seedSessionState,
+  settleInterruptedSessionRun,
   snapshotKey as reactSnapshotKey,
   statusKey as reactStatusKey,
   transcriptKey as reactTranscriptKey,
@@ -659,6 +661,7 @@ export function SessionSurface(props: SessionSurfaceProps) {
   const prependQueuedDrafts = useComposerStateStore((state) => state.prependQueuedDrafts);
   const [error, setError] = useState<SessionError | null>(null);
   const [sending, setSending] = useState(false);
+  const [stopAcknowledged, setStopAcknowledged] = useState(false);
   const [artifactRequestOwnership, setArtifactRequestOwnership] = useState<ArtifactRequestOwnership[]>([]);
   const [showDelayedLoading, setShowDelayedLoading] = useState(false);
   const [awaitingAssistantBaseline, setAwaitingAssistantBaseline] = useState<number | null>(null);
@@ -683,6 +686,8 @@ export function SessionSurface(props: SessionSurfaceProps) {
   const pendingArtifactCompletionRef = useRef<PendingArtifactCompletionValidation | null>(null);
   const artifactCompletionValidationInFlightRef = useRef(false);
   const artifactCompletionRequirementKeyRef = useRef<string | null>(null);
+  const promptDispatchAbortRef = useRef<AbortController | null>(null);
+  const activeClientUserMessageIdRef = useRef<string | null>(null);
 
   useEffect(() => {
     const addAnimationReference = (event: Event) => {
@@ -759,8 +764,11 @@ export function SessionSurface(props: SessionSurfaceProps) {
   );
   const snapshotQuery = useQuery<ConversationSnapshot>({
     queryKey: snapshotQueryKey,
-    queryFn: async () => props.conversation.mapSnapshot(
-      (await props.client.getSessionSnapshot(props.workspaceId, props.sessionId, { limit: 140 })).item,
+    queryFn: async () => sanitizeInterruptedSessionSnapshot(
+      props.workspaceId,
+      props.conversation.mapSnapshot(
+        (await props.client.getSessionSnapshot(props.workspaceId, props.sessionId, { limit: 140 })).item,
+      ),
     ),
     staleTime: 500,
   });
@@ -778,6 +786,8 @@ export function SessionSurface(props: SessionSurfaceProps) {
     hydratedKeyRef.current = null;
     setError(null);
     setSending(false);
+    setStopAcknowledged(false);
+    activeClientUserMessageIdRef.current = null;
     runActivityObservedRef.current = false;
     stalledAtProgressRef.current = null;
     pendingVideoDeliveryRef.current = null;
@@ -910,8 +920,13 @@ export function SessionSurface(props: SessionSurfaceProps) {
   }, [props.onModeSelectionLockedChange]);
   const liveStatus = statusState ?? snapshot?.status ?? IDLE_STATUS;
   const activityRunActive = ACTIVE_SESSION_ACTIVITY_STATUSES.has(sessionActivityStatus);
-  const chatStreaming = sending || liveStatus.type === "busy" || liveStatus.type === "retry" || activityRunActive;
+  const chatStreaming = !stopAcknowledged
+    && (sending || liveStatus.type === "busy" || liveStatus.type === "retry" || activityRunActive);
   const status = useMemo((): ThreadStatus => {
+    if (stopAcknowledged) {
+      return "ready";
+    }
+
     if (sending) {
       return "submitted";
     }
@@ -925,7 +940,7 @@ export function SessionSurface(props: SessionSurfaceProps) {
     }
 
     return "ready";
-  }, [activityRunActive, liveStatus, sending]);
+  }, [activityRunActive, liveStatus, sending, stopAcknowledged]);
   const renderedMessages = useMemo(
     () => deriveRenderedSessionMessages({ transcriptState, snapshot }),
     [snapshot, transcriptState],
@@ -1136,6 +1151,7 @@ export function SessionSurface(props: SessionSurfaceProps) {
   // in the local queue until the current run has completed.
   const sendDraft = useCallback(async (nextDraft: ComposerDraft, draftAttachments: ComposerAttachment[]) => {
     setError(null);
+    setStopAcknowledged(false);
     runActivityObservedRef.current = false;
     setSending(true);
     setAwaitingAssistantBaseline(renderedMessages.length);
@@ -1146,6 +1162,9 @@ export function SessionSurface(props: SessionSurfaceProps) {
     const clientUserMessageId = !recoveryDraft
       ? beginOptimisticSessionPrompt(props.workspaceId, props.sessionId, nextDraft.text)
       : null;
+    activeClientUserMessageIdRef.current = clientUserMessageId;
+    const dispatchAbort = new AbortController();
+    promptDispatchAbortRef.current = dispatchAbort;
     const templateEntryPath = props.templateEntryPath?.replace(/\\/g, "/") ?? "";
     const videoTask = newConversationMode === "video"
       || props.artifactContext?.kind === "video"
@@ -1176,8 +1195,15 @@ export function SessionSurface(props: SessionSurfaceProps) {
       const dispatchOutcome = await props.onSendDraft(
         nextDraft,
         props.sessionId,
-        clientUserMessageId ? { clientUserMessageId } : undefined,
+        {
+          ...(clientUserMessageId ? { clientUserMessageId } : {}),
+          signal: dispatchAbort.signal,
+        },
       );
+      if (dispatchAbort.signal.aborted) {
+        draftAttachments.forEach(revokeAttachmentPreview);
+        return;
+      }
       const dispatched = promptWasDispatched(dispatchOutcome);
       const artifactCompletionTargets = promptArtifactCompletionTargets(dispatchOutcome);
       if (dispatched && artifactCompletionTargets.length > 0) {
@@ -1202,16 +1228,24 @@ export function SessionSurface(props: SessionSurfaceProps) {
       // promptAsync resolves once the run is accepted, before generation
       // finishes. Keep the optimistic busy latch until the session's idle
       // event; only release immediately when the route did not dispatch.
-      if (!dispatched) {
+      if (!dispatched && !dispatchAbort.signal.aborted) {
         rollbackOptimisticSessionPrompt(props.workspaceId, props.sessionId, clientUserMessageId);
         setAwaitingAssistantBaseline(null);
         runActivityObservedRef.current = false;
         setSending(false);
       }
     } catch (nextError) {
-      rollbackOptimisticSessionPrompt(props.workspaceId, props.sessionId, clientUserMessageId);
+      if (!dispatchAbort.signal.aborted) {
+        rollbackOptimisticSessionPrompt(props.workspaceId, props.sessionId, clientUserMessageId);
+      }
       if (pendingVideoDeliveryRef.current === pendingDelivery) pendingVideoDeliveryRef.current = null;
       if (!artifactRecoveryDraft) pendingArtifactCompletionRef.current = null;
+      if (dispatchAbort.signal.aborted) {
+        setAwaitingAssistantBaseline(null);
+        runActivityObservedRef.current = false;
+        setSending(false);
+        return;
+      }
       const parsed = parseSessionError(nextError);
       captureAnalyticsEvent("task_send_failed", {});
       setError(parsed);
@@ -1446,26 +1480,68 @@ export function SessionSurface(props: SessionSurfaceProps) {
   const handleAbort = useCallback(async () => {
     if (!chatStreaming) return;
     setError(null);
+    // Establish the transcript tombstone at click time, before awaiting a
+    // native interrupt or an idle snapshot. Otherwise a late snapshot can
+    // replay this run while the engine adapter is still confirming Stop.
+    settleInterruptedSessionRun(
+      props.workspaceId,
+      props.sessionId,
+      activeClientUserMessageIdRef.current,
+    );
+    activeClientUserMessageIdRef.current = null;
+    // Stop preflight work immediately. This closes the race where the user
+    // presses Stop before the engine has created a native run/turn; the route
+    // observes this signal and must not dispatch the model request later.
+    promptDispatchAbortRef.current?.abort();
     // Abort only the active run. Queued follow-ups stay intact and the drain
     // effect below starts the next one after the session reports idle.
     // The prompt was sent through a directory-scoped client (session-route
     // passes the workspace root), so the abort must target the same scope —
     // without it the server resolves the default project, finds no live run,
     // and answers `200: false` while the stream keeps going (#2014).
+    // Do not wait for prompt dispatch here. DSH keeps session.prompt pending
+    // while the turn runs, so waiting would prevent session.cancel from ever
+    // being sent. Each engine adapter owns its native startup/interrupt race.
     let aborted = false;
     try {
       aborted = await props.conversation.abort(
         props.sessionId,
         props.workspaceRoot.trim() || undefined,
       );
-    } catch {}
-    if (!aborted) {
-      setError({ message: t("session.stop_failed") });
-      return;
+    } catch {
+      // A failed interrupt can still mean the engine completed between the
+      // click and the request. The snapshot reconciliation below is the
+      // authoritative fallback for every engine.
     }
-    captureAnalyticsEvent("task_run_stopped", {});
-    await snapshotQuery.refetch();
-  }, [chatStreaming, props.conversation, props.sessionId, props.workspaceRoot, snapshotQuery.refetch]);
+    if (!aborted) {
+      try {
+        const refreshed = await snapshotQuery.refetch();
+        if (refreshed.isError || !refreshed.data) {
+          setError({ message: t("session.stop_failed") });
+          return;
+        }
+        const refreshedStatus = refreshed.data.status.type;
+        if (refreshedStatus === "busy" || refreshedStatus === "retry") {
+          setError({ message: t("session.stop_failed") });
+          return;
+        }
+      } catch {
+        setError({ message: t("session.stop_failed") });
+        return;
+      }
+    }
+    // Once the engine accepts the interrupt (or confirms it is already
+    // idle), release every local latch owned by this run. Late busy events
+    // remain suppressed until the user starts the next run.
+    pendingVideoDeliveryRef.current = null;
+    pendingArtifactCompletionRef.current = null;
+    setAwaitingAssistantBaseline(null);
+    runActivityObservedRef.current = false;
+    setSending(false);
+    setStopAcknowledged(true);
+    if (aborted) captureAnalyticsEvent("task_run_stopped", {});
+    void snapshotQuery.refetch();
+  }, [chatStreaming, props.conversation, props.sessionId, props.workspaceId, props.workspaceRoot, snapshotQuery.refetch]);
 
   const handleDismissError = useCallback(() => {
     setError(null);

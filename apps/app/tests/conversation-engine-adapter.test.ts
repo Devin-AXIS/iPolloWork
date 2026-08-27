@@ -21,6 +21,7 @@ import {
   normalizeDeepSeekHarnessErrorText,
 } from "../src/react-app/domains/session/engine/deepseek-harness-conversation-mapper";
 import {
+  createOpenCodeConversationLiveState,
   mapOpenCodeConversationEvent,
   mapOpenCodeConversationSnapshot,
 } from "../src/react-app/domains/session/engine/opencode-conversation-mapper";
@@ -42,6 +43,43 @@ describe("conversation engine adapters", () => {
     expect(() => conversationEngineAdapters.get("unknown")).toThrow(
       "Conversation engine is not registered: unknown",
     );
+  });
+
+  test("does not start any engine when prompt preflight was already stopped", async () => {
+    const originalFetch = globalThis.fetch;
+    let requestCount = 0;
+    globalThis.fetch = (async () => {
+      requestCount += 1;
+      throw new Error("An aborted prompt must not reach the network");
+    }) as typeof fetch;
+    const signal = AbortSignal.abort();
+
+    try {
+      const connections = [
+        conversationEngineAdapters.get(DEFAULT_ENGINE_ID).connect({ baseUrl: "http://opencode.test" }),
+        conversationEngineAdapters.get(CODEX_HARNESS_ENGINE_ID).connect({
+          baseUrl: "http://unused.test",
+          serverBaseUrl: "http://ipollowork.test",
+          workspaceId: "ws_codex",
+        }),
+        conversationEngineAdapters.get(DEEPSEEK_HARNESS_ENGINE_ID).connect({
+          baseUrl: "http://unused.test",
+          serverBaseUrl: "http://ipollowork.test",
+          workspaceId: "ws_dsh",
+        }),
+      ];
+      for (const connection of connections) {
+        expect(await connection.sendPrompt({
+          sessionId: "session-stopped-during-preflight",
+          signal,
+          parts: [{ type: "text", text: "123" }],
+        })).toEqual({ sessionId: "session-stopped-during-preflight" });
+      }
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+
+    expect(requestCount).toBe(0);
   });
 
   test("keeps plugin agents and the iPolloWork runtime agent out of OpenCode work modes", async () => {
@@ -257,6 +295,110 @@ describe("conversation engine adapters", () => {
     }));
   });
 
+  test("interrupts Codex with the prompt turn id and recovers it from the thread after reconnect", async () => {
+    const originalFetch = globalThis.fetch;
+    const requests: Record<string, unknown>[] = [];
+    const interruptedTurns = new Set<string>();
+    globalThis.fetch = (async (input, init) => {
+      const request = input instanceof Request ? input : new Request(input, init);
+      const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
+      requests.push(body);
+      if (request.url.endsWith("/prompt")) {
+        return Response.json({ ok: true, sessionId: "codex-live", turnId: "turn-from-start" });
+      }
+      if (body.method === "turn/interrupt") {
+        const payload = body.payload as { turnId?: string };
+        if (payload.turnId) interruptedTurns.add(payload.turnId);
+      }
+      if (body.method === "thread/read") {
+        const payload = body.payload as { threadId?: string };
+        const turnId = payload.threadId === "codex-live" ? "turn-from-start" : "turn-recovered";
+        return Response.json({ value: {
+          thread: {
+            id: payload.threadId,
+            turns: [
+              { id: "turn-complete", status: "completed" },
+              { id: turnId, status: interruptedTurns.has(turnId) ? "interrupted" : "inProgress" },
+            ],
+          },
+        } });
+      }
+      return Response.json({ value: {} });
+    }) as typeof fetch;
+
+    try {
+      const adapter = conversationEngineAdapters.get(CODEX_HARNESS_ENGINE_ID);
+      const liveConnection = adapter.connect({
+        baseUrl: "http://unused.test",
+        serverBaseUrl: "http://ipollowork.test",
+        workspaceId: "ws_codex",
+      });
+      await liveConnection.sendPrompt({
+        sessionId: "codex-live",
+        parts: [{ type: "text", text: "Run" }],
+      });
+      expect(await liveConnection.abort("codex-live")).toBe(true);
+
+      const reconnectedConnection = adapter.connect({
+        baseUrl: "http://unused.test",
+        serverBaseUrl: "http://ipollowork.test",
+        workspaceId: "ws_codex",
+      });
+      expect(await reconnectedConnection.abort("codex-reconnected")).toBe(true);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+
+    expect(requests).toContainEqual({ method: "turn/interrupt", payload: { threadId: "codex-live", turnId: "turn-from-start" } });
+    expect(requests).toContainEqual({ method: "thread/read", payload: { threadId: "codex-live", includeTurns: true } });
+    expect(requests).toContainEqual({ method: "turn/interrupt", payload: { threadId: "codex-reconnected", turnId: "turn-recovered" } });
+    expect(requests.filter((request) => request.method === "thread/read").length).toBeGreaterThanOrEqual(3);
+  });
+
+  test("routes OpenCode and DeepSeek Harness stop requests through their native engines", async () => {
+    const originalFetch = globalThis.fetch;
+    const requests: Array<{ url: string; body: unknown }> = [];
+    globalThis.fetch = (async (input, init) => {
+      const request = input instanceof Request ? input : new Request(input, init);
+      const body = init?.body ? JSON.parse(String(init.body)) : null;
+      requests.push({ url: request.url, body });
+      if (request.url.includes("/session/opencode-active/abort")) return Response.json(true);
+      if (request.url.includes("/session/status")) {
+        return Response.json({ "opencode-active": { type: "idle" } });
+      }
+      if ((body as { method?: string } | null)?.method === "session.list") {
+        return Response.json({ value: { items: [{ sessionId: "dsh-active", running: false }] } });
+      }
+      return Response.json({ value: {} });
+    }) as typeof fetch;
+
+    try {
+      const openCode = conversationEngineAdapters.get(DEFAULT_ENGINE_ID).connect({
+        baseUrl: "http://opencode.test",
+      });
+      expect(await openCode.abort("opencode-active", "C:\\workspace\\project")).toBe(true);
+
+      const deepSeek = conversationEngineAdapters.get(DEEPSEEK_HARNESS_ENGINE_ID).connect({
+        baseUrl: "http://unused.test",
+        serverBaseUrl: "http://ipollowork.test",
+        workspaceId: "ws_dsh",
+      });
+      expect(await deepSeek.abort("dsh-active")).toBe(true);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+
+    expect(requests[0]?.url).toContain("/session/opencode-active/abort");
+    expect(requests[0]?.url).toContain("directory=C%3A%5Cworkspace%5Cproject");
+    expect(requests).toContainEqual(expect.objectContaining({
+      url: expect.stringContaining("/engine/deepseek-harness/rpc"),
+      body: { method: "session.cancel", payload: { sessionId: "dsh-active" } },
+    }));
+    expect(requests).toContainEqual(expect.objectContaining({
+      body: { method: "session.list", payload: {} },
+    }));
+  });
+
   test("maps Codex app-server turns, streaming output, and approvals into the shared protocol", () => {
     const state = createCodexLiveState();
     expect(mapCodexHarnessEvent({
@@ -320,7 +462,13 @@ describe("conversation engine adapters", () => {
       },
     }, state)).toEqual([expect.objectContaining({
       type: "message.upsert",
-      message: expect.objectContaining({ id: "answer-1", role: "assistant" }),
+      message: expect.objectContaining({
+        id: "answer-1",
+        role: "assistant",
+        metadata: expect.objectContaining({
+          ipollowork: expect.objectContaining({ parentUserMessageId: "ipollowork-user-1" }),
+        }),
+      }),
     })]);
 
     expect(mapCodexHarnessEvent({
@@ -330,6 +478,7 @@ describe("conversation engine adapters", () => {
     }, state)).toEqual([expect.objectContaining({
       type: "message.chunk",
       messageId: "answer-1",
+      parentUserMessageId: "ipollowork-user-1",
       chunk: expect.objectContaining({ type: "text-delta", delta: "完成" }),
     })]);
 
@@ -509,6 +658,52 @@ describe("conversation engine adapters", () => {
       expect.objectContaining({ type: "session.error", sessionId: "codex-thread" }),
       { type: "session.idle", sessionId: "codex-thread" },
     ]));
+  });
+
+  test("does not let an interrupted Codex turn settle a newer turn", () => {
+    const state = createCodexLiveState();
+    mapCodexHarnessEvent({
+      type: "notification",
+      method: "turn/started",
+      params: { threadId: "codex-thread", turn: { id: "turn-interrupted" } },
+    }, state);
+    mapCodexHarnessEvent({
+      type: "notification",
+      method: "turn/started",
+      params: { threadId: "codex-thread", turn: { id: "turn-new" } },
+    }, state);
+
+    expect(mapCodexHarnessEvent({
+      type: "notification",
+      method: "item/completed",
+      params: {
+        threadId: "codex-thread",
+        turnId: "turn-interrupted",
+        item: { type: "agentMessage", id: "late-old-answer", text: "late answer" },
+      },
+    }, state)).toEqual([]);
+    expect(mapCodexHarnessEvent({
+      type: "notification",
+      method: "item/agentMessage/delta",
+      params: {
+        threadId: "codex-thread",
+        turnId: "turn-interrupted",
+        itemId: "late-old-answer",
+        delta: "late chunk",
+      },
+    }, state)).toEqual([]);
+
+    expect(mapCodexHarnessEvent({
+      type: "notification",
+      method: "turn/completed",
+      params: { threadId: "codex-thread", turn: { id: "turn-interrupted", status: "interrupted" } },
+    }, state)).not.toContainEqual({ type: "session.idle", sessionId: "codex-thread" });
+
+    expect(mapCodexHarnessEvent({
+      type: "notification",
+      method: "turn/completed",
+      params: { threadId: "codex-thread", turn: { id: "turn-new", status: "interrupted" } },
+    }, state)).toContainEqual({ type: "session.idle", sessionId: "codex-thread" });
   });
 
   test("keeps Codex always-allow effective for later shell requests in the same task", async () => {
@@ -798,6 +993,56 @@ describe("conversation engine adapters", () => {
     });
   });
 
+  test("carries the OpenCode parent user message through live parts and chunks", () => {
+    const state = createOpenCodeConversationLiveState();
+    const message = mapOpenCodeConversationEvent({
+      type: "message.updated",
+      properties: {
+        info: {
+          id: "assistant-old",
+          sessionID: "ses",
+          role: "assistant",
+          parentID: "user-stopped",
+        },
+      },
+    }, state);
+    const parts = mapOpenCodeConversationEvent({
+      type: "message.part.updated",
+      properties: {
+        part: {
+          id: "part-old",
+          sessionID: "ses",
+          messageID: "assistant-old",
+          type: "text",
+          text: "late",
+        },
+      },
+    }, state);
+    const chunk = mapOpenCodeConversationEvent({
+      type: "message.part.delta",
+      properties: {
+        sessionID: "ses",
+        messageID: "assistant-old",
+        partID: "part-old",
+        delta: " answer",
+      },
+    }, state);
+
+    expect(message).toMatchObject({
+      type: "message.upsert",
+      message: { metadata: { ipollowork: { parentUserMessageId: "user-stopped" } } },
+    });
+    expect(parts).toMatchObject({
+      type: "message.parts",
+      messageRole: "assistant",
+      parentUserMessageId: "user-stopped",
+    });
+    expect(chunk).toMatchObject({
+      type: "message.chunk",
+      parentUserMessageId: "user-stopped",
+    });
+  });
+
   test("maps snapshots directly into AI SDK UI messages", () => {
     const snapshot = mapOpenCodeConversationSnapshot({
       session: { id: "ses", title: "Title", time: { created: 1, updated: 2 } },
@@ -806,6 +1051,7 @@ describe("conversation engine adapters", () => {
           id: "msg",
           role: "assistant",
           sessionID: "ses",
+          parentID: "user-msg",
           time: { created: 1 },
           tokens: { input: 5_000, output: 400, reasoning: 0, cache: { read: 1_000, write: 0 } },
         },
@@ -818,6 +1064,9 @@ describe("conversation engine adapters", () => {
     expect(snapshot.messages).toEqual([expect.objectContaining({
       id: "msg",
       role: "assistant",
+      metadata: expect.objectContaining({
+        ipollowork: expect.objectContaining({ parentUserMessageId: "user-msg" }),
+      }),
       parts: [expect.objectContaining({ type: "text", text: "Hello" })],
     })]);
     expect(snapshot.todos).toEqual([expect.objectContaining({ content: "Ship" })]);
@@ -916,7 +1165,12 @@ describe("conversation engine adapters", () => {
       expect.objectContaining({
         id: "dsh:dsh-session:assistant:1:1",
         role: "assistant",
-        metadata: expect.objectContaining({ ipollowork: expect.objectContaining({ completed: 40 }) }),
+        metadata: expect.objectContaining({
+          ipollowork: expect.objectContaining({
+            completed: 40,
+            parentUserMessageId: "user-1",
+          }),
+        }),
         parts: [expect.objectContaining({ text: "Done", state: "done" })],
       }),
     ]);
@@ -1617,6 +1871,34 @@ describe("conversation engine adapters", () => {
 
   test("streams DeepSeek Harness output after the user message without waiting for completion", () => {
     const state = { parts: new Set<string>(), tools: new Map() };
+    mapDeepSeekHarnessEnvelope({
+      type: "server-request",
+      rpcId: "rpc-turn",
+      payload: {
+        type: "session/event",
+        sessionId: "dsh-session",
+        event: { type: "turn/start", seq: 5, time: 8, data: { turn: 1 } },
+      },
+    }, state);
+    mapDeepSeekHarnessEnvelope({
+      type: "server-request",
+      rpcId: "rpc-user",
+      payload: {
+        type: "session/event",
+        sessionId: "dsh-session",
+        event: {
+          type: "user/message",
+          seq: 6,
+          time: 9,
+          data: {
+            id: "ipollowork-user-1",
+            role: "user",
+            source: { kind: "user" },
+            content: [{ type: "text", text: "123" }],
+          },
+        },
+      },
+    }, state);
     const stepStart = mapDeepSeekHarnessEnvelope({
       type: "server-request",
       rpcId: "rpc-step",
@@ -1661,13 +1943,22 @@ describe("conversation engine adapters", () => {
       expect.objectContaining({
         type: "message.parts",
         messageRole: "assistant",
+        parentUserMessageId: "ipollowork-user-1",
         parts: [expect.objectContaining({ type: "text", text: "", state: "streaming" })],
       }),
-      expect.objectContaining({ type: "message.chunk", chunk: expect.objectContaining({ delta: "你" }) }),
+      expect.objectContaining({
+        type: "message.chunk",
+        parentUserMessageId: "ipollowork-user-1",
+        chunk: expect.objectContaining({ delta: "你" }),
+      }),
     ]);
     expect(nextChunk).toEqual([
       { type: "session.status", sessionId: "dsh-session", status: { type: "busy" } },
-      expect.objectContaining({ type: "message.chunk", chunk: expect.objectContaining({ delta: "好" }) }),
+      expect.objectContaining({
+        type: "message.chunk",
+        parentUserMessageId: "ipollowork-user-1",
+        chunk: expect.objectContaining({ delta: "好" }),
+      }),
     ]);
   });
 
@@ -1720,6 +2011,50 @@ describe("conversation engine adapters", () => {
       { type: "session.status", sessionId: "dsh-session", status: { type: "idle" } },
       { type: "session.idle", sessionId: "dsh-session" },
     ]);
+  });
+
+  test("drops late DeepSeek Harness events from an interrupted turn after a new turn starts", () => {
+    const state = { parts: new Set<string>(), tools: new Map() };
+    const envelope = (rpcId: string, event: Record<string, unknown>) => ({
+      type: "server-request" as const,
+      rpcId,
+      payload: { type: "session/event", sessionId: "dsh-session", event },
+    });
+
+    mapDeepSeekHarnessEnvelope(envelope("old-start", {
+      type: "turn/start",
+      seq: 1,
+      time: 10,
+      data: { turn: 1 },
+    }), state);
+    mapDeepSeekHarnessEnvelope(envelope("new-start", {
+      type: "turn/start",
+      seq: 2,
+      time: 20,
+      data: { turn: 2 },
+    }), state);
+
+    expect(mapDeepSeekHarnessEnvelope(envelope("old-chunk", {
+      type: "assistant/chunk",
+      seq: 3,
+      time: 30,
+      data: { turn: 1, step: 1, chunk: { type: "text-delta", index: 0, text: "late" } },
+    }), state)).toEqual([]);
+    expect(mapDeepSeekHarnessEnvelope(envelope("old-end", {
+      type: "turn/end",
+      seq: 4,
+      time: 40,
+      data: { turn: 1, reason: { kind: "cancelled" } },
+    }), state)).toEqual([]);
+    expect(mapDeepSeekHarnessEnvelope(envelope("new-chunk", {
+      type: "assistant/chunk",
+      seq: 5,
+      time: 50,
+      data: { turn: 2, step: 1, chunk: { type: "text-delta", index: 0, text: "new" } },
+    }), state)).toContainEqual(expect.objectContaining({
+      type: "message.chunk",
+      chunk: expect.objectContaining({ delta: "new" }),
+    }));
   });
 
   test("normalizes DeepSeek Harness tool arguments into the shared tool schema", () => {

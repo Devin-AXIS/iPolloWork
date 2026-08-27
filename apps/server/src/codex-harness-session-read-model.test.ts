@@ -26,26 +26,39 @@ describe("Codex Harness session read model", () => {
               image_url: { url: "data:image/png;base64,abc123" },
             },
           ],
+        }, {
+          type: "agentMessage",
+          id: "assistant-1",
+          text: "已看见图片",
         }],
       }],
     } satisfies CodexThread);
 
-    expect(messages).toEqual([expect.objectContaining({
-      info: expect.objectContaining({ id: "client-user-1", role: "user" }),
-      parts: [
-        expect.objectContaining({
-          id: "client-user-1:0",
-          type: "text",
-          text: "看这张图",
+    expect(messages).toEqual([
+      expect.objectContaining({
+        info: expect.objectContaining({ id: "client-user-1", role: "user" }),
+        parts: [
+          expect.objectContaining({
+            id: "client-user-1:0",
+            type: "text",
+            text: "看这张图",
+          }),
+          expect.objectContaining({
+            id: "client-user-1:1",
+            type: "file",
+            url: "data:image/png;base64,abc123",
+            mediaType: "image/png",
+          }),
+        ],
+      }),
+      expect.objectContaining({
+        info: expect.objectContaining({
+          id: "assistant-1",
+          role: "assistant",
+          parentID: "client-user-1",
         }),
-        expect.objectContaining({
-          id: "client-user-1:1",
-          type: "file",
-          url: "data:image/png;base64,abc123",
-          mediaType: "image/png",
-        }),
-      ],
-    })]);
+      }),
+    ]);
   });
 
   test("preserves Codex base64 image source content as file parts", () => {
