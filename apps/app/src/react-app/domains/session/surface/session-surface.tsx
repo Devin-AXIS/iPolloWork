@@ -22,15 +22,23 @@ import {
   hyperframesSelectionPayload,
 } from "@/app/lib/hyperframes-effect-params";
 import type {
+  ArtifactCompletionTarget,
   ComposerAttachment,
   ComposerDraft,
   McpServerEntry,
   McpStatusMap,
   ModelRef,
   PromptDispatchOptions,
+  PromptDispatchOutcome,
   SkillCard,
   TodoItem,
 } from "@/app/types";
+import {
+  artifactCompletionRecoveryInstruction,
+  checkArtifactCompletion,
+  promptArtifactCompletionTargets,
+  promptWasDispatched,
+} from "../artifacts/artifact-completion";
 import type {
   ConversationAgent,
   ConversationEngineConnection,
@@ -111,7 +119,11 @@ import {
   useComposerStateStore,
 } from "./composer-state-store";
 import { MessageList } from "@/components/chat/message-list";
-import type { ArtifactInteractionContext } from "@/lib/artifacts";
+import {
+  assignArtifactRequestOwnership,
+  type ArtifactInteractionContext,
+  type ArtifactRequestOwnership,
+} from "@/lib/artifacts";
 import { NewConversationStarter, newConversationPlaceholder, type NewConversationMode, type StarterCapability } from "@/components/chat/new-conversation-starter";
 import { MessageListProvider, type DispatchAction } from "@/components/chat/message-list-provider";
 import { OpenTargetProvider, type OpenTargetOptions } from "@/lib/target-provider";
@@ -149,6 +161,13 @@ type PendingVideoDeliveryValidation = {
   requirements: VideoDeliveryRequirements;
   baselineFingerprint: string | null;
   mustChange: boolean;
+  recoveryAttempted: boolean;
+};
+
+type PendingArtifactCompletionValidation = {
+  targets: ArtifactCompletionTarget[];
+  assistantMessageBaseline: number;
+  requestOrdinal: number;
   recoveryAttempted: boolean;
 };
 
@@ -196,7 +215,7 @@ export type SessionSurfaceProps = {
     draft: ComposerDraft,
     sessionId: string,
     options?: PromptDispatchOptions,
-  ) => boolean | Promise<boolean>;
+  ) => PromptDispatchOutcome | Promise<PromptDispatchOutcome>;
   onDraftChange: (draft: ComposerDraft) => void;
   supportsNativeAttachments: boolean;
   modelVariantLabel: string;
@@ -233,7 +252,7 @@ export type SessionSurfaceProps = {
   /** Marks the first prompt as a video task before it reaches the agent. */
   onActivateVideoStudio?: (sessionId: string) => void;
   /** Opens the session-owned Video Studio for a generated video artifact. */
-  onOpenVideoStudio?: () => void;
+  onOpenVideoStudio?: (displayName?: string) => void;
   /** Opens iPolloWork Schedule focused on an imported task. */
   onOpenSchedule?: (focusAt: number) => void;
   /** Opens the installed plugin's Workspace App when selected from the extension menu. */
@@ -640,6 +659,7 @@ export function SessionSurface(props: SessionSurfaceProps) {
   const prependQueuedDrafts = useComposerStateStore((state) => state.prependQueuedDrafts);
   const [error, setError] = useState<SessionError | null>(null);
   const [sending, setSending] = useState(false);
+  const [artifactRequestOwnership, setArtifactRequestOwnership] = useState<ArtifactRequestOwnership[]>([]);
   const [showDelayedLoading, setShowDelayedLoading] = useState(false);
   const [awaitingAssistantBaseline, setAwaitingAssistantBaseline] = useState<number | null>(null);
   const [rendered, setRendered] = useState<{ sessionId: string; snapshot: ConversationSnapshot } | null>(null);
@@ -660,6 +680,8 @@ export function SessionSurface(props: SessionSurfaceProps) {
   const stalledAtProgressRef = useRef<string | null>(null);
   const pendingVideoDeliveryRef = useRef<PendingVideoDeliveryValidation | null>(null);
   const videoDeliveryValidationInFlightRef = useRef(false);
+  const pendingArtifactCompletionRef = useRef<PendingArtifactCompletionValidation | null>(null);
+  const artifactCompletionValidationInFlightRef = useRef(false);
   const artifactCompletionRequirementKeyRef = useRef<string | null>(null);
 
   useEffect(() => {
@@ -760,6 +782,9 @@ export function SessionSurface(props: SessionSurfaceProps) {
     stalledAtProgressRef.current = null;
     pendingVideoDeliveryRef.current = null;
     videoDeliveryValidationInFlightRef.current = false;
+    pendingArtifactCompletionRef.current = null;
+    artifactCompletionValidationInFlightRef.current = false;
+    setArtifactRequestOwnership([]);
     setShowDelayedLoading(false);
     setAwaitingAssistantBaseline(null);
     // Composer draft state lives in the shared store keyed by session id, so
@@ -904,6 +929,12 @@ export function SessionSurface(props: SessionSurfaceProps) {
   const renderedMessages = useMemo(
     () => deriveRenderedSessionMessages({ transcriptState, snapshot }),
     [snapshot, transcriptState],
+  );
+  const visibleUserRequestCount = useMemo(
+    () => renderedMessages.filter(
+      (message) => message.role === "user" && message.parts.length > 0,
+    ).length,
+    [renderedMessages],
   );
   const contextUsage = useMemo(() => (
     [...renderedMessages]
@@ -1108,7 +1139,10 @@ export function SessionSurface(props: SessionSurfaceProps) {
     runActivityObservedRef.current = false;
     setSending(true);
     setAwaitingAssistantBaseline(renderedMessages.length);
-    const recoveryDraft = nextDraft.capability?.instruction.includes("authoritative delivery validation") === true;
+    const requestOrdinal = visibleUserRequestCount;
+    const artifactRecoveryDraft = nextDraft.capability?.id === "artifact-delivery-recovery";
+    const recoveryDraft = artifactRecoveryDraft
+      || nextDraft.capability?.instruction.includes("authoritative delivery validation") === true;
     const clientUserMessageId = !recoveryDraft
       ? beginOptimisticSessionPrompt(props.workspaceId, props.sessionId, nextDraft.text)
       : null;
@@ -1139,11 +1173,21 @@ export function SessionSurface(props: SessionSurfaceProps) {
           pendingVideoDeliveryRef.current = pendingDelivery;
         }
       }
-      const dispatched = await props.onSendDraft(
+      const dispatchOutcome = await props.onSendDraft(
         nextDraft,
         props.sessionId,
         clientUserMessageId ? { clientUserMessageId } : undefined,
       );
+      const dispatched = promptWasDispatched(dispatchOutcome);
+      const artifactCompletionTargets = promptArtifactCompletionTargets(dispatchOutcome);
+      if (dispatched && artifactCompletionTargets.length > 0) {
+        pendingArtifactCompletionRef.current = {
+          targets: artifactCompletionTargets,
+          assistantMessageBaseline: renderedMessages.length,
+          requestOrdinal,
+          recoveryAttempted: false,
+        };
+      }
       if (selectedAnimations.length) {
         recordInspectorEvent("composer.hyperframes_sent", {
           workspaceId: props.workspaceId,
@@ -1167,6 +1211,7 @@ export function SessionSurface(props: SessionSurfaceProps) {
     } catch (nextError) {
       rollbackOptimisticSessionPrompt(props.workspaceId, props.sessionId, clientUserMessageId);
       if (pendingVideoDeliveryRef.current === pendingDelivery) pendingVideoDeliveryRef.current = null;
+      if (!artifactRecoveryDraft) pendingArtifactCompletionRef.current = null;
       const parsed = parseSessionError(nextError);
       captureAnalyticsEvent("task_send_failed", {});
       setError(parsed);
@@ -1179,7 +1224,68 @@ export function SessionSurface(props: SessionSurfaceProps) {
       setSending(false);
       throw nextError;
     }
-  }, [newConversationMode, props.artifactContext, props.engineId, props.onSendDraft, props.sessionId, props.templateEntryPath, props.workspaceId, renderedMessages.length, selectedAnimations]);
+  }, [newConversationMode, props.artifactContext, props.engineId, props.onSendDraft, props.sessionId, props.templateEntryPath, props.workspaceId, renderedMessages.length, selectedAnimations, visibleUserRequestCount]);
+
+  const validatePendingArtifactCompletion = useCallback(async () => {
+    const pending = pendingArtifactCompletionRef.current;
+    if (!pending || artifactCompletionValidationInFlightRef.current) return;
+    artifactCompletionValidationInFlightRef.current = true;
+    try {
+      const currentEntries = await Promise.all(pending.targets.map(async (target) => {
+        const content = await props.client
+          .readWorkspaceFile(props.workspaceId, target.sourcePath)
+          .then((file) => file.content)
+          .catch(() => null);
+        return [target.sourcePath, content] as const;
+      }));
+      if (pendingArtifactCompletionRef.current !== pending) return;
+      const assistantOutput = renderedMessages
+        .slice(pending.assistantMessageBaseline)
+        .filter((message) => message.role === "assistant")
+        .flatMap((message) => message.parts.flatMap((part) => part.type === "text" ? [part.text] : []))
+        .join("\n");
+      const check = checkArtifactCompletion(pending.targets, new Map(currentEntries), assistantOutput);
+      if (check.unchangedPaths.length === 0 && check.unreportedPaths.length === 0) {
+        setArtifactRequestOwnership((current) => assignArtifactRequestOwnership(
+          current,
+          pending.requestOrdinal,
+          pending.targets.map((target) => target.sourcePath),
+        ));
+        pendingArtifactCompletionRef.current = null;
+        setSending(false);
+        return;
+      }
+      if (!pending.recoveryAttempted) {
+        pending.recoveryAttempted = true;
+        toast.warning(t("session.artifact_delivery_repairing"));
+        const recoveryInstruction = artifactCompletionRecoveryInstruction(check);
+        await sendDraft({
+          mode: "prompt",
+          parts: [{ type: "text", text: recoveryInstruction, synthetic: true }],
+          attachments: [],
+          text: "Continue the unfinished artifact delivery.",
+          resolvedText: "Continue the unfinished artifact delivery.",
+          capability: { id: "artifact-delivery-recovery", instruction: recoveryInstruction },
+        }, []);
+        return;
+      }
+      setError({
+        kind: "generic",
+        message: t("session.artifact_delivery_failed"),
+      });
+      setSending(false);
+    } catch (validationError) {
+      if (pendingArtifactCompletionRef.current === pending) {
+        setError({
+          kind: "generic",
+          message: validationError instanceof Error ? validationError.message : t("session.artifact_delivery_failed"),
+        });
+      }
+      setSending(false);
+    } finally {
+      artifactCompletionValidationInFlightRef.current = false;
+    }
+  }, [props.client, props.workspaceId, renderedMessages, sendDraft]);
 
   const validatePendingVideoDelivery = useCallback(async () => {
     const pending = pendingVideoDeliveryRef.current;
@@ -1382,21 +1488,27 @@ export function SessionSurface(props: SessionSurfaceProps) {
     // though a reasoning-only/tool-only turn were a finished task.
     const timeout = window.setTimeout(() => {
       runActivityObservedRef.current = false;
-      if (assistantOutputAfterAwaitStart && !latestAssistantCompleted) {
+      // Artifact delivery is authoritative for this turn. Validate it before
+      // ordinary assistant-completion metadata so a tool-only/incomplete turn
+      // cannot release a queued follow-up and overwrite this turn's gate.
+      if (pendingArtifactCompletionRef.current) {
+        void validatePendingArtifactCompletion();
+      } else if (pendingVideoDeliveryRef.current) {
+        void validatePendingVideoDelivery();
+      } else if (assistantOutputAfterAwaitStart && !latestAssistantCompleted) {
         setSending(false);
         setError((current) => current ?? {
           kind: "stalled",
           message: t("session.run_ended_incomplete"),
         });
       } else if (latestAssistantCompleted) {
-        if (pendingVideoDeliveryRef.current) void validatePendingVideoDelivery();
-        else setSending(false);
+        setSending(false);
       } else {
         setSending(false);
       }
     }, 1_200);
     return () => window.clearTimeout(timeout);
-  }, [activityRunActive, assistantOutputAfterAwaitStart, latestAssistantCompleted, liveStatus.type, sending, validatePendingVideoDelivery]);
+  }, [activityRunActive, assistantOutputAfterAwaitStart, latestAssistantCompleted, liveStatus.type, sending, validatePendingArtifactCompletion, validatePendingVideoDelivery]);
 
   // Drain one queued follow-up each time the session goes idle. The ref guards
   // against re-entrancy while the send is in flight.
@@ -1405,6 +1517,11 @@ export function SessionSurface(props: SessionSurfaceProps) {
     if (drainingQueueRef.current) return;
     if (queuedDrafts.length === 0) return;
     if (chatStreaming || liveStatus.type !== "idle") return;
+    // A queued user request belongs after the current turn's deliverables,
+    // including any automatic recovery pass. Keep it queued until the gate
+    // succeeds; on terminal validation failure the error and queue stay
+    // visible instead of the next send clearing or replacing them.
+    if (pendingArtifactCompletionRef.current || pendingVideoDeliveryRef.current) return;
     const next = queuedDrafts[0];
     if (!next) return;
     drainingQueueRef.current = true;
@@ -2121,6 +2238,7 @@ export function SessionSurface(props: SessionSurfaceProps) {
                         retryStatus={liveStatus.type === "retry" ? liveStatus : null}
                         templateEntryPath={props.templateEntryPath}
                         artifactFiles={props.artifactFiles}
+                        artifactRequestOwnership={artifactRequestOwnership}
                         artifactContext={props.artifactContext}
                         activeMessageBaseline={awaitingAssistantBaseline}
                         assistantWaitLabel={props.assistantWaitLabel}

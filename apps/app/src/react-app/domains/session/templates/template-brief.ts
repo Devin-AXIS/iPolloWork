@@ -122,6 +122,39 @@ export function conversationArtifactSessionId(sessionId: string, category: Templ
   return `${sessionId.slice(0, 256 - suffix.length)}${suffix}`;
 }
 
+const CONVERSATION_ARTIFACT_SESSION_PATTERN = /^(.*)-artifact-(site|video|app|slides|poster|cards|report|article|other)(?:-(\d+))?$/;
+
+/**
+ * Template instances use their own runtime session and artifact directory,
+ * while remaining owned by the conversation that created them. Exact matches
+ * preserve sessions created before multi-template conversations were added.
+ */
+export function isConversationTemplateSessionId(conversationId: string, templateSessionId: string) {
+  if (templateSessionId === conversationId) return true;
+  const match = CONVERSATION_ARTIFACT_SESSION_PATTERN.exec(templateSessionId);
+  if (!match) return false;
+  const embeddedConversationId = match[1] ?? "";
+  return embeddedConversationId === conversationId.slice(0, embeddedConversationId.length);
+}
+
+export function nextConversationArtifactSessionId(
+  conversationId: string,
+  category: TemplateCategory,
+  existingSessionIds: readonly string[],
+) {
+  const occupied = new Set(existingSessionIds);
+  const first = conversationArtifactSessionId(conversationId, category);
+  if (!occupied.has(first)) return first;
+
+  for (let instance = 2; instance < 10_000; instance += 1) {
+    const instanceSuffix = `-artifact-${category}-${instance}`;
+    const candidate = `${conversationId.slice(0, 256 - instanceSuffix.length)}${instanceSuffix}`;
+    if (!occupied.has(candidate)) return candidate;
+  }
+
+  throw new Error("This conversation has too many template instances.");
+}
+
 export function conversationTemplateBrief(prompt: string): TemplateBrief {
   const normalized = prompt.trim().replace(/\s+/g, " ");
   const title = normalized

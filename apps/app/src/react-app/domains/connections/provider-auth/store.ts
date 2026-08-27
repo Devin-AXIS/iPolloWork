@@ -420,6 +420,7 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
   let started = false;
   let denSessionCleanup: (() => void) | null = null;
   let lastWorkspaceKey = "";
+  let lastProviderClient: unknown | null = null;
 
   let state: MutableState = {
     providerAuthModalOpen: false,
@@ -2503,11 +2504,20 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
   const syncFromOptions = () => {
     const workspaceKey = currentWorkspaceKey();
     const workspaceChanged = workspaceKey !== lastWorkspaceKey;
+    const providerClient = options.client();
+    const providerClientChanged = providerClient !== lastProviderClient;
     lastWorkspaceKey = workspaceKey;
+    lastProviderClient = providerClient;
     refreshSnapshot();
     emitChange();
     if (workspaceChanged) {
       void refreshImportedCloudProviders();
+    }
+    // SessionRoute can mount before the shared provider client is ready. The
+    // initial refresh still hydrates account IDs, but cannot read the model
+    // catalog. Retry exactly once when that client arrives instead of relying
+    // on Settings to remount the store and act as a manual refresh.
+    if (providerClient && (workspaceChanged || providerClientChanged)) {
       void refreshProviders().catch(() => null);
     }
     if (!hasCloudProviderSyncPrerequisites()) {
@@ -2530,6 +2540,7 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
     disposed = false;
     started = true;
     lastWorkspaceKey = currentWorkspaceKey();
+    lastProviderClient = options.client();
     if (typeof window !== "undefined") {
       const handleDenSessionUpdate = (event: Event) => {
         cloudOrgProvidersLoadKey = "";

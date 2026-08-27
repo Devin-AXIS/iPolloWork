@@ -13,6 +13,7 @@ import { appMentionInstruction } from "@/react-app/domains/session/surface/compo
 type DesignSelectionScope = {
   sessionId: string;
   workspaceId: string;
+  acceptsSessionId?: (sessionId: string) => boolean;
 };
 
 type DesignSelectionWorkspaceClient = {
@@ -158,7 +159,7 @@ export function designSelectionContextsForDraft(
       errors.push("The selected Design element is no longer available.");
       continue;
     }
-    if (!scope || context.sessionId !== scope.sessionId) {
+    if (!scope || (context.sessionId !== scope.sessionId && !scope.acceptsSessionId?.(context.sessionId))) {
       errors.push("The selected Design element does not belong to this session.");
       continue;
     }

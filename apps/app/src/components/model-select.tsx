@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { ChevronDown, Settings2 } from "lucide-react";
+import { ChevronDown, LoaderCircle, Settings2 } from "lucide-react";
 
 import type { ModelOption, ModelRef } from "@/app/types";
 import { t } from "@/i18n";
@@ -152,7 +152,8 @@ function useModelOptions(open: boolean) {
 
   return {
     options,
-    loading: (catalogQuery.isLoading || runtimeQuery.isLoading) && options.length === 0,
+    loading: catalogQuery.isFetching && options.length === 0,
+    loadingMore: catalogQuery.isFetching && options.length > 0,
   };
 }
 
@@ -225,7 +226,7 @@ export function ModelListContent({
 }: ModelListContentProps) {
   const [search, setSearch] = React.useState("");
   const searchInputRef = React.useRef<HTMLInputElement>(null);
-  const { loading, options: modelOptions } = useModelOptions(true);
+  const { loading, loadingMore, options: modelOptions } = useModelOptions(true);
 
   React.useEffect(() => {
     if (!autoFocus) return;
@@ -250,10 +251,20 @@ export function ModelListContent({
     <Command items={groups} value={search} onValueChange={setSearch}>
       <CommandHeader>
         <CommandInput ref={searchInputRef} placeholder={t("model_picker.search_models")} />
+        {loadingMore ? (
+          <div
+            role="status"
+            aria-live="polite"
+            className="flex items-center gap-2 px-3 pb-1 text-xs text-muted-foreground"
+          >
+            <LoaderCircle className="size-3.5 animate-spin" />
+            {t("model_picker.partial_models_loading")}
+          </div>
+        ) : null}
       </CommandHeader>
       <CommandEmpty>
         {loading
-          ? t("settings.loading_providers")
+          ? t("model_picker.partial_models_loading")
           : search.trim()
             ? t("model_picker.no_results")
             : t("model_picker.no_models_available")}

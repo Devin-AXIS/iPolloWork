@@ -691,7 +691,7 @@ describe("HyperFrames Video Studio", () => {
     expect(tabStoreSource).toContain('tab.type === "artifact" || tab.type === "design" || tab.type === "video"');
     expect(sessionPageSource).toContain('id: videoTabId');
     expect(sessionPageSource).toContain('type: "video"');
-    expect(sessionPageSource).toContain('setSidePanelState(props.selectedSessionId, "panel")');
+    expect(sessionPageSource).toContain('setSidePanelState(props.selectedSessionId ?? sessionId, "panel")');
     expect(sidePanelSource).toContain('activeTab?.type === "video"');
     expect(sidePanelSource).toContain("<VideoPanel");
     expect(sidePanelSource).toContain("title={activeTab.label}");

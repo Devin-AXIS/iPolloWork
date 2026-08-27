@@ -29,9 +29,9 @@ import { trackSessionActive, trackTaskStarted } from "@/app/lib/den-telemetry";
 import { buildDiagnosticsBundleJson } from "@/app/lib/diagnostics-bundle";
 import { downloadTextAsFile } from "@/app/lib/download";
 import {
-  htmlArtifactFilenameFromTitle,
   isDefaultSessionTitle,
   sessionTitleFromFirstPrompt,
+  uniqueHtmlArtifactFilenameFromTitle,
 } from "@/app/lib/session-title";
 import {
   resolveWorkspaceEndpoint,
@@ -48,14 +48,17 @@ import {
   type iPolloWorkServerInfo,
 } from "@/app/lib/desktop";
 import type {
+  ArtifactCompletionTarget,
   ComposerDraft,
   ModelRef,
   PromptDispatchOptions,
+  PromptDispatchOutcome,
   SlashCommandOption,
   WorkspaceConnectionState,
   ProviderListItem,
   ProviderListResponse,
 } from "@/app/types";
+import { artifactContentFingerprint } from "@/react-app/domains/session/artifacts/artifact-completion";
 import {
   getWorkspaceTaskLoadErrorDisplay,
   isDesktopRuntime,
@@ -104,9 +107,10 @@ import { useDesignAiSelectionStore } from "@/react-app/domains/session/design/de
 import { readAppliedDesignSystemId } from "@/react-app/domains/session/design/design-system-theme-contract";
 import { templateAuthoringKickoff, templateAuthoringSystemContext } from "@/react-app/domains/session/templates/template-authoring";
 import {
-  conversationArtifactSessionId,
   conversationTemplateBrief,
   inferConversationTemplateIntents,
+  isConversationTemplateSessionId,
+  nextConversationArtifactSessionId,
   selectConversationTemplate,
   templateBriefPrompt,
 } from "@/react-app/domains/session/templates/template-brief";
@@ -117,6 +121,7 @@ import {
 } from "@/react-app/domains/session/surface/use-model-behavior";
 import { tokenStarModelSupportsEffort } from "@/app/lib/model-behavior";
 import { useSessionFindStore } from "@/react-app/domains/session/surface/find-store";
+import { usePanelTabStore } from "@/react-app/domains/session/panel/panel-tab-store";
 import { useModelPicker } from "@/react-app/domains/session/modals/use-model-picker";
 import { CreateRemoteWorkspaceModal } from "@/react-app/domains/workspace/create-remote-workspace-modal";
 import { useSessionProviderAuth } from "@/react-app/domains/connections/provider-auth/use-session-provider-auth";
@@ -183,6 +188,7 @@ import {
   ensureProviderListQuery,
   getModelContextWindow,
   getRunnableChatModelSnapshot,
+  getSelectableChatModelSnapshot,
   projectAccountProviderConnections,
   type ProviderListQueryInput,
   useMergedProviderListQuery,
@@ -324,6 +330,10 @@ export function SessionRoute() {
   const activeEngineId = selectedWorkspace?.engineId?.trim() || DEFAULT_ENGINE_ID;
   const activeEnginePreferences = getEnginePreferences(local.prefs, activeEngineId);
   const selectedModel = local.prefs.model;
+  const [engineModelSelection, setEngineModelSelection] = useState<{
+    engineId: string;
+    model: ModelRef;
+  } | null>(null);
   const selectedMode = activeEnginePreferences.mode;
   const [modeSelectionLocked, setModeSelectionLocked] = useState(false);
   useEffect(() => {
@@ -799,6 +809,7 @@ export function SessionRoute() {
     disabledProviderIds: hiddenProviderIds,
   });
   const setSelectedModel = useCallback((model: ModelRef) => {
+    setEngineModelSelection({ engineId: activeEngineId, model });
     local.setPrefs((previous) => updateModelPreferences(
       previous,
       (selection) => ({
@@ -809,7 +820,7 @@ export function SessionRoute() {
           : null,
       }),
     ));
-  }, [local.setPrefs]);
+  }, [activeEngineId, local.setPrefs]);
   const setModelVariant = useCallback((modelVariant: string | null) => {
     local.setPrefs((previous) => updateModelPreferences(
       previous,
@@ -833,13 +844,27 @@ export function SessionRoute() {
       )
     )
   ));
-  const activeSelectedModel = activeProviderList
+  const accountSelectableModels = getSelectableChatModelSnapshot(accountProviderList);
+  const explicitlySelectedModel = engineModelSelection?.engineId === activeEngineId
+    && selectedModel?.providerID === engineModelSelection.model.providerID
+    && selectedModel.modelID === engineModelSelection.model.modelID
+    && accountSelectableModels.some((provider) => (
+      provider.providerID === engineModelSelection.model.providerID
+      && provider.modelIDs.includes(engineModelSelection.model.modelID)
+    ))
+    ? engineModelSelection.model
+    : null;
+  // A user click is authoritative for the current engine. Runtime discovery
+  // can still be catching up during first launch; silently substituting its
+  // default here makes the picker and the composer show different models and
+  // can send the task with a model the user did not choose.
+  const activeSelectedModel = explicitlySelectedModel ?? (activeProviderList
     ? resolveEngineSelectableChatModel({
         providers: permittedSelectableModels,
         defaults: activeProviderList.default,
         preferred: selectedModel,
       })
-    : null;
+    : null);
   const usesSharedModelPreference = Boolean(
     selectedModel &&
     activeSelectedModel &&
@@ -1148,7 +1173,7 @@ export function SessionRoute() {
         draft: ComposerDraft,
         sessionId: string,
         dispatchOptions?: PromptDispatchOptions,
-      ) => {
+      ): Promise<PromptDispatchOutcome> => {
         const targetSessionId = sessionId.trim() || selectedSessionId;
         if (!targetSessionId) return false;
         const projectBuilderActive = isProjectBuilderSession(selectedWorkspaceId, targetSessionId);
@@ -1330,7 +1355,11 @@ export function SessionRoute() {
 
         try {
         const designSelectionScope = selectedWorkspaceEndpoint
-          ? { sessionId: targetSessionId, workspaceId: selectedWorkspaceEndpoint.workspaceId }
+          ? {
+              sessionId: targetSessionId,
+              workspaceId: selectedWorkspaceEndpoint.workspaceId,
+              acceptsSessionId: (sessionId: string) => isConversationTemplateSessionId(targetSessionId, sessionId),
+            }
           : undefined;
         const designSelectionContexts = designSelectionContextsForDraft(
           draft,
@@ -1362,22 +1391,49 @@ export function SessionRoute() {
         // Template-session metadata is authoritative. The in-memory surface
         // cache is used only for legacy sessions created before that record
         // existed, so an already-open Video Studio still gets its contract.
-        const [envSystemContext, initialSessionTemplate] = await Promise.all([
+        const [envSystemContext, workspaceTemplateSessions] = await Promise.all([
           buildiPolloWorkEnvSystemContext(client, {
             cacheKey: targetSessionId,
             runtimeKey: environmentRuntimeKey,
           }),
           selectedWorkspaceEndpoint
-            ? selectedWorkspaceEndpoint.client.getTemplateSession(selectedWorkspaceEndpoint.workspaceId, targetSessionId).catch(() => null)
-            : Promise.resolve(null),
+            ? selectedWorkspaceEndpoint.client.listTemplateSessions(selectedWorkspaceEndpoint.workspaceId).catch(() => ({ items: [] }))
+            : Promise.resolve({ items: [] as TemplateSessionSnapshot[] }),
         ]);
-        const sessionTemplates: TemplateSessionSnapshot[] = initialSessionTemplate ? [initialSessionTemplate] : [];
+        const conversationTemplates = workspaceTemplateSessions.items.filter((template) =>
+          isConversationTemplateSessionId(targetSessionId, template.sessionId),
+        );
+        const activePanelState = usePanelTabStore.getState().sessions[targetSessionId];
+        const activePanelTab = activePanelState?.tabs.find((tab) => tab.id === activePanelState.activeTabId);
+        const activeTemplateSessionId = activePanelTab?.type === "design" || activePanelTab?.type === "video"
+          ? activePanelTab.sessionId
+          : null;
+        const explicitlyTargetedTemplateSessionIds = new Set([
+          ...designSelectionContexts.map((context) => context.sessionId),
+          ...conversationTemplates
+            .filter((template) => parts.some((part) =>
+              part.type === "text"
+              && (part.text.includes(template.state.entry) || part.text.includes(template.state.briefPath)),
+            ))
+            .map((template) => template.sessionId),
+        ]);
+        const promptTemplateSessionIds = new Set(explicitlyTargetedTemplateSessionIds);
+        if (promptTemplateSessionIds.size === 0 && activeTemplateSessionId) {
+          promptTemplateSessionIds.add(activeTemplateSessionId);
+        }
+        const sessionTemplates: TemplateSessionSnapshot[] = promptTemplateSessionIds.size > 0
+          ? conversationTemplates.filter((template) => promptTemplateSessionIds.has(template.sessionId))
+          : conversationTemplates.slice(0, 1);
         let automaticTemplateInstruction: string | null = null;
-        const sessionTypeBeforeRouting = readSessionType(targetSessionId);
-        const automaticTemplateIntents = sessionTypeBeforeRouting === "work"
-          ? inferConversationTemplateIntents(text)
-          : [];
-        if (sessionTemplates.length === 0 && automaticTemplateIntents.length > 0 && selectedWorkspaceEndpoint) {
+        let automaticTemplateRoutingAttempted = false;
+        const automaticTemplateIntents = inferConversationTemplateIntents(text);
+        if (
+          explicitlyTargetedTemplateSessionIds.size === 0
+          && automaticTemplateIntents.length > 0
+          && selectedWorkspaceEndpoint
+        ) {
+          automaticTemplateRoutingAttempted = true;
+          sessionTemplates.length = 0;
           const templateInstructions: string[] = [];
           try {
             const templateScope = readActiveWorkContextId();
@@ -1385,43 +1441,43 @@ export function SessionRoute() {
               selectedWorkspaceEndpoint.workspaceId,
               templateScope,
             );
+            const occupiedTemplateSessionIds = conversationTemplates.map((template) => template.sessionId);
             for (const intent of automaticTemplateIntents) {
-              const artifactSessionId = automaticTemplateIntents.length === 1
-                ? targetSessionId
-                : conversationArtifactSessionId(targetSessionId, intent.category);
-              let artifactTemplate = await selectedWorkspaceEndpoint.client
-                .getTemplateSession(selectedWorkspaceEndpoint.workspaceId, artifactSessionId)
-                .catch(() => null);
-              if (!artifactTemplate) {
-                const selectedTemplate = selectConversationTemplate(text, catalog.items, intent.category);
-                if (selectedTemplate) {
-                  const materialized = await selectedWorkspaceEndpoint.client.materializeTemplate(
-                    selectedWorkspaceEndpoint.workspaceId,
-                    selectedTemplate.manifest.id,
-                    artifactSessionId,
-                    conversationTemplateBrief(text),
-                    templateScope,
-                  );
-                  artifactTemplate = {
+              const artifactSessionId = nextConversationArtifactSessionId(
+                targetSessionId,
+                intent.category,
+                occupiedTemplateSessionIds,
+              );
+              occupiedTemplateSessionIds.push(artifactSessionId);
+              const selectedTemplate = selectConversationTemplate(text, catalog.items, intent.category);
+              let artifactTemplate: TemplateSessionSnapshot;
+              if (selectedTemplate) {
+                const materialized = await selectedWorkspaceEndpoint.client.materializeTemplate(
+                  selectedWorkspaceEndpoint.workspaceId,
+                  selectedTemplate.manifest.id,
+                  artifactSessionId,
+                  conversationTemplateBrief(text),
+                  templateScope,
+                );
+                artifactTemplate = {
+                  sessionId: artifactSessionId,
+                  surface: materialized.manifest.surface,
+                  authoring: false,
+                  state: materialized.state,
+                  manifest: materialized.manifest,
+                } satisfies TemplateSessionSnapshot;
+              } else {
+                artifactTemplate = await selectedWorkspaceEndpoint.client.createTemplateAuthoringSession(
+                  selectedWorkspaceEndpoint.workspaceId,
+                  {
                     sessionId: artifactSessionId,
-                    surface: materialized.manifest.surface,
-                    authoring: false,
-                    state: materialized.state,
-                    manifest: materialized.manifest,
-                  } satisfies TemplateSessionSnapshot;
-                } else {
-                  artifactTemplate = await selectedWorkspaceEndpoint.client.createTemplateAuthoringSession(
-                    selectedWorkspaceEndpoint.workspaceId,
-                    {
-                      sessionId: artifactSessionId,
-                      category: intent.category,
-                      pptxCompatibility: intent.category === "slides" && /\bpptx?\b|可编辑|导出.{0,5}ppt/i.test(text)
-                        ? "native-editable"
-                        : undefined,
-                      purpose: "artifact-delivery",
-                    },
-                  );
-                }
+                    category: intent.category,
+                    pptxCompatibility: intent.category === "slides" && /\bpptx?\b|可编辑|导出.{0,5}ppt/i.test(text)
+                      ? "native-editable"
+                      : undefined,
+                    purpose: "artifact-delivery",
+                  },
+                );
               }
               sessionTemplates.push(artifactTemplate);
               setSessionType(artifactSessionId, sessionTypeForTemplate(artifactTemplate.manifest));
@@ -1437,6 +1493,9 @@ export function SessionRoute() {
                 `Multi-artifact delivery contract: this request requires all ${templateInstructions.length} prepared artifacts. Complete every entry above in this turn; do not replace one artifact with a description, outline, export, or link to another. In the final answer, mention every exact entry path so iPolloWork renders one separate clickable output card for each artifact.`,
               ] : []),
             ].join("\n\n");
+            // A conversation can own independent Design and Video children;
+            // its root is an engine-neutral container, not an artifact type.
+            setSessionType(targetSessionId, "work");
           } catch (error) {
             // Automatic surface selection is an interaction enhancement. If
             // the local template service is unavailable, preserve normal chat
@@ -1448,7 +1507,12 @@ export function SessionRoute() {
         // Claim a pre-template Studio project before the prompt is sent. This
         // is the one-time migration that makes the persisted session record,
         // the agent contract, and the right-side Studio point at one path.
-        if (sessionTemplates.length === 0 && selectedWorkspaceEndpoint && readSessionType(targetSessionId) === "video") {
+        if (
+          sessionTemplates.length === 0
+          && !automaticTemplateRoutingAttempted
+          && selectedWorkspaceEndpoint
+          && readSessionType(targetSessionId) === "video"
+        ) {
           const adoptedTemplate = await selectedWorkspaceEndpoint.client
             .adoptLegacyVideoSession(selectedWorkspaceEndpoint.workspaceId, targetSessionId)
             .catch(() => null);
@@ -1456,7 +1520,9 @@ export function SessionRoute() {
         }
         const cachedSessionType = readSessionType(targetSessionId);
         const videoSessionTemplates = sessionTemplates.filter((template) => template.manifest.surface === "video");
-        const isLegacyVideoTask = videoSessionTemplates.length === 0 && shouldInjectVideoTaskContext(null, cachedSessionType);
+        const isLegacyVideoTask = sessionTemplates.length === 0
+          && !automaticTemplateRoutingAttempted
+          && shouldInjectVideoTaskContext(null, cachedSessionType);
         const videoPromptText = draft.resolvedText ?? draft.text;
         const videoDeliveryRequirements = videoDeliveryRequirementsForPrompt({
           capabilityId: draft.capability?.id,
@@ -1549,6 +1615,24 @@ export function SessionRoute() {
             }
           }
         }
+        const completionTemplates = automaticTemplateInstruction
+          ? sessionTemplates
+          : sessionTemplates.filter((template) => (
+              template.manifest.surface !== "video"
+              && explicitlyTargetedTemplateSessionIds.has(template.sessionId)
+            ));
+        const artifactCompletionTargets: ArtifactCompletionTarget[] = selectedWorkspaceEndpoint
+          ? await Promise.all(completionTemplates.map(async (template) => {
+              const source = await selectedWorkspaceEndpoint.client.readWorkspaceFile(
+                selectedWorkspaceEndpoint.workspaceId,
+                template.state.entry,
+              );
+              return {
+                sourcePath: template.state.entry,
+                baselineFingerprint: artifactContentFingerprint(source.content),
+              };
+            }))
+          : [];
         const capabilityPromptPart = draft.capability
           ? [{
               type: "text" as const,
@@ -1563,10 +1647,13 @@ export function SessionRoute() {
               synthetic: true,
             }]
           : [];
-        const suggestedHtmlFilename = htmlArtifactFilenameFromTitle(text) ?? "output.html";
+        const artifactRequestId = dispatchOptions?.clientUserMessageId ?? crypto.randomUUID();
+        const requestSuffix = artifactRequestId.replace(/[^a-z0-9]+/gi, "").slice(-10).toLowerCase();
+        const suggestedHtmlFilename = uniqueHtmlArtifactFilenameFromTitle(text, artifactRequestId)
+          ?? `output-${requestSuffix || Date.now().toString(36)}.html`;
         const artifactNamingPromptPart = [{
           type: "text" as const,
-          text: `When creating a new user-facing HTML deliverable without an exact target path, use a short task-specific filename instead of entry.html or index.html. The suggested primary filename for this request is \`${suggestedHtmlFilename}\`. Keep an exact iPolloWork template entry path unchanged when one is supplied.`,
+          text: `When creating a new user-facing HTML deliverable without an exact target path, use the unique task-specific filename \`${suggestedHtmlFilename}\`. Do not create a new deliverable named entry.html or index.html, and do not reuse a filename from an earlier user turn. If this request creates multiple HTML deliverables, add a short deliverable-type suffix before .html so every new filename is distinct. Keep an exact iPolloWork template entry path unchanged when one is supplied because it is the template's technical runtime entry.`,
           synthetic: true,
         }];
         const promptParts = [
@@ -1636,7 +1723,9 @@ export function SessionRoute() {
           void conversation.rename(targetSessionId, pendingTitlePersist, selectedWorkspaceRoot || undefined)
             .catch((error) => console.warn("[session-title] Could not persist the first-prompt title", error));
         }
-        return true;
+        return artifactCompletionTargets.length > 0
+          ? { dispatched: true, artifactCompletionTargets }
+          : true;
         } catch (error) {
           await finishStartedExecution("failed", describeRouteError(error));
           throw error;
@@ -2799,6 +2888,7 @@ export function SessionRoute() {
     <ModelPickerModal
       open={modelPicker.open}
       options={modelPicker.options}
+      modelsLoading={modelPicker.modelsLoading}
 
       query={modelPicker.query}
       setQuery={modelPicker.setQuery}

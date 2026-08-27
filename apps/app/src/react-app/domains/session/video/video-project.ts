@@ -6,6 +6,7 @@ import {
   videoProjectId,
   videoProjectEntryPath,
 } from "@ipollowork/video-studio/project";
+import { artifactContentFingerprint } from "../artifacts/artifact-completion";
 
 export {
   hyperframesStudioPort,
@@ -134,15 +135,6 @@ export type VideoArtifactCompletionRequirement = {
   assistantMessageBaseline: number;
 };
 
-export function videoArtifactFingerprint(content: string) {
-  let hash = 2_166_136_261;
-  for (let index = 0; index < content.length; index += 1) {
-    hash ^= content.charCodeAt(index);
-    hash = Math.imul(hash, 16_777_619);
-  }
-  return `${content.length}:${(hash >>> 0).toString(16)}`;
-}
-
 export function createVideoArtifactCompletionRequirement(
   sourcePath: string,
   content: string,
@@ -150,13 +142,13 @@ export function createVideoArtifactCompletionRequirement(
 ): VideoArtifactCompletionRequirement {
   return {
     sourcePath,
-    baselineFingerprint: videoArtifactFingerprint(content),
+    baselineFingerprint: artifactContentFingerprint(content),
     assistantMessageBaseline,
   };
 }
 
 export function unchangedVideoArtifactIssue(beforeFingerprint: string | null, after: string) {
-  if (beforeFingerprint === null || beforeFingerprint !== videoArtifactFingerprint(after)) return null;
+  if (beforeFingerprint === null || beforeFingerprint !== artifactContentFingerprint(after)) return null;
   return {
     code: "artifact_unchanged",
     message: "The video source was not modified before the run ended.",

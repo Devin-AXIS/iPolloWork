@@ -180,6 +180,67 @@ describe("model runtime adapters", () => {
     queryClient.clear();
   });
 
+  test("hydrates the provider catalog when the session client becomes ready after startup", async () => {
+    const queryClient = getReactQueryClient();
+    queryClient.clear();
+    const { client } = createOpenCodeProviderClient();
+    let activeClient: unknown | null = null;
+    let providers: ProviderListItem[] = [];
+    let connectedProviderIds: string[] = [];
+    let providerDefaults: Record<string, string> = {};
+    let disabledProviderIds: string[] = [];
+    let resolveProvidersReady = () => {};
+    const providersReady = new Promise<void>((resolve) => {
+      resolveProvidersReady = resolve;
+    });
+    const store = createProviderAuthStore({
+      client: () => activeClient,
+      providers: () => providers,
+      providerDefaults: () => providerDefaults,
+      providerConnectedIds: () => connectedProviderIds,
+      disabledProviders: () => disabledProviderIds,
+      checkDesktopAppRestriction: () => false,
+      selectedWorkspaceDisplay: () => ({
+        id: "workspace-delayed-client",
+        name: "Delayed client",
+        path: "C:\\workspace-delayed-client",
+        preset: "starter",
+        workspaceType: "local",
+        engineId: DEFAULT_ENGINE_ID,
+      }),
+      providerBaseUrl: () => "http://localhost/provider-delayed-client",
+      selectedWorkspaceRoot: () => "C:\\workspace-delayed-client",
+      runtimeWorkspaceId: () => "workspace-delayed-client",
+      ipolloworkServer: {
+        getSnapshot: () => ({
+          ipolloworkServerStatus: "disconnected",
+          ipolloworkServerClient: null,
+          ipolloworkServerCapabilities: null,
+        }),
+      },
+      setProviders: (value) => {
+        providers = value;
+        if (value.length > 0) resolveProvidersReady();
+      },
+      setProviderDefaults: (value) => { providerDefaults = value; },
+      setProviderConnectedIds: (value) => { connectedProviderIds = value; },
+      setDisabledProviders: (value) => { disabledProviderIds = value; },
+      markEngineConfigReloadRequired: () => {},
+    });
+
+    store.start();
+    expect(providers).toEqual([]);
+
+    activeClient = client;
+    store.syncFromOptions();
+    await providersReady;
+
+    expect(providers.some((provider) => provider.id === "opencode")).toBe(true);
+    expect(store.getSnapshot().connectedProviderIds).toContain("opencode");
+    store.dispose();
+    queryClient.clear();
+  });
+
   test("waits for the provider client during settings startup", async () => {
     const queryClient = getReactQueryClient();
     queryClient.clear();

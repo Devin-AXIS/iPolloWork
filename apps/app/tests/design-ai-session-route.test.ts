@@ -128,8 +128,10 @@ describe("Design AI session lifecycle", () => {
     const namingPromptIndex = routeSource.indexOf("const artifactNamingPromptPart");
     const sendIndex = routeSource.indexOf("conversation.sendPrompt({");
 
-    expect(routeSource).toContain("htmlArtifactFilenameFromTitle(text)");
-    expect(routeSource).toContain("instead of entry.html or index.html");
+    expect(routeSource).toContain("uniqueHtmlArtifactFilenameFromTitle(text, artifactRequestId)");
+    expect(routeSource).toContain("Do not create a new deliverable named entry.html or index.html");
+    expect(routeSource).toContain("do not reuse a filename from an earlier user turn");
+    expect(routeSource).toContain("so every new filename is distinct");
     expect(routeSource).toContain("Keep an exact iPolloWork template entry path unchanged");
     expect(namingPromptIndex).toBeGreaterThan(-1);
     expect(routeSource.indexOf("...artifactNamingPromptPart", namingPromptIndex)).toBeGreaterThan(namingPromptIndex);

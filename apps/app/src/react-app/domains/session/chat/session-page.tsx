@@ -18,7 +18,7 @@ import { currentLocale, t } from "../../../../i18n";
 import { downloadTextAsFile } from "@/app/lib/download";
 import { publicAssetUrl } from "../../../../app/lib/public-asset";
 import { IPOLLOWORK_EXTENSION_CATALOG } from "../../../../app/constants";
-import { iPolloWorkServerError, type iPolloWorkPluginPackageItem, type iPolloWorkServerClient, type iPolloWorkServerStatus } from "../../../../app/lib/ipollowork-server";
+import { type iPolloWorkPluginPackageItem, type iPolloWorkServerClient, type iPolloWorkServerStatus } from "../../../../app/lib/ipollowork-server";
 import {
   PERSONAL_WORK_CONTEXT_ID,
   readActiveWorkContextId,
@@ -117,11 +117,16 @@ import { workspaceSettingsRoute } from "../../../shell/workspace-routes";
 
 import { isElectronRuntime } from "../../../../app/utils";
 import { isCollectibleArtifactTarget, isLocalhostBrowserTarget, isOpenableFileTarget, type OpenTarget } from "../artifacts/open-target";
+import { promptWasDispatched } from "../artifacts/artifact-completion";
 import type { OpenTargetOptions } from "@/lib/target-provider";
 import { VoicePanel } from "../voice/voice-panel";
 import { designAiSelectionToken, type DesignAiSelectionContext } from "@ipollowork/design-studio";
 import { useDesignAiSelectionStore } from "../design/design-ai-selection-store";
-import { designProjectSessionIdFromEntryPath, waitForTemplateEntrySurface } from "../templates/template-entry-route";
+import {
+  designProjectSessionIdFromEntryPath,
+  resolveTemplateEntryContentSurface,
+  waitForTemplateEntrySurface,
+} from "../templates/template-entry-route";
 import { loadTemplateSession } from "../templates/template-session-probe";
 import { TemplateSaveDialog, type TemplateSaveInput, type TemplateSaveMode } from "../templates/template-save-dialog";
 import {
@@ -132,6 +137,8 @@ import {
 } from "../video/video-project";
 import { isStreamingSessionStatus } from "../sidebar/utils";
 import {
+  isConversationTemplateSessionId,
+  nextConversationArtifactSessionId,
   templateBriefConfigFor,
   templateBriefPrompt,
   type TemplateBrief,
@@ -196,14 +203,10 @@ const ENGINE_STARTUP_TRANSITION_MS = 900;
 type SessionPanelView = SidePanelItem | "launcher";
 type TemplateApplyMode = "market" | "new-conversation" | "current-conversation";
 
-type PendingTemplateApplication =
-  | { item: TemplateCatalogItem; origin: "market"; resourceScope: WorkContextId }
-  | { item: TemplateCatalogItem; origin: "conversation-conflict"; resourceScope: WorkContextId; existingTemplateTitle?: string };
-
-function isTemplateSessionConflict(error: unknown) {
-  return error instanceof iPolloWorkServerError
-    && (error.code === "template_session_exists" || error.code === "template_session_surface_conflict");
-}
+type PendingTemplateApplication = {
+  item: TemplateCatalogItem;
+  resourceScope: WorkContextId;
+};
 
 type TemplateSessionData = {
   sessionId: string;
@@ -1330,13 +1333,11 @@ function DesignStarter({ client, workspaceId, templates, loading, busyId, error,
   </>);
 }
 
-function TemplateApplyDialog({ open, mode, template, destinationName, newTaskRequired = false, conflictTemplateTitle, projects, selectedProjectId, onProjectChange, onRequestNewProject, onSubmit, onClose }: {
+function TemplateApplyDialog({ open, mode, template, destinationName, projects, selectedProjectId, onProjectChange, onRequestNewProject, onSubmit, onClose }: {
   open: boolean;
   mode: TemplateApplyMode;
   template: TemplateManifestV1;
   destinationName?: string;
-  newTaskRequired?: boolean;
-  conflictTemplateTitle?: string;
   projects?: Array<{ id: string; name: string }>;
   selectedProjectId?: string;
   onProjectChange?: (projectId: string) => void;
@@ -1348,7 +1349,6 @@ function TemplateApplyDialog({ open, mode, template, destinationName, newTaskReq
   const [brief, setBrief] = useState<TemplateBrief>({ title: "", audience: "", details: "" });
   const [references, setReferences] = useState<TemplateReferenceItem[]>([]);
   const [referenceBusy, setReferenceBusy] = useState(false);
-  const [conflictConfirmed, setConflictConfirmed] = useState(!newTaskRequired);
   const [submitting, setSubmitting] = useState(false);
   const referenceInputRef = useRef<HTMLInputElement>(null);
   const referencesRef = useRef<TemplateReferenceItem[]>([]);
@@ -1434,30 +1434,6 @@ function TemplateApplyDialog({ open, mode, template, destinationName, newTaskReq
       setSubmitting(false);
     }
   };
-
-  if (newTaskRequired && !conflictConfirmed) {
-    return (
-      <Dialog open={open} onOpenChange={(nextOpen) => { if (!nextOpen) void onClose(); }}>
-        <DialogContent
-          data-testid="template-conflict-dialog"
-          className="w-[calc(100%-32px)] max-w-[520px] gap-0 overflow-hidden rounded-[16px] p-0 ring-0 dark:ring-1 dark:ring-border sm:max-w-[520px]"
-        >
-          <DialogHeader className="gap-2 px-6 py-5 text-left">
-            <DialogTitle className="pe-8 text-base leading-6">{t("templates.brief.conflict_title")}</DialogTitle>
-            <DialogDescription className="text-[13px] leading-5">
-              {conflictTemplateTitle
-                ? t("templates.brief.conflict_description", { title: conflictTemplateTitle })
-                : t("templates.brief.conflict_description_generic")}
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter className="mx-0 mb-0 flex-row gap-3 rounded-none border-t border-border bg-background px-6 py-4 sm:justify-end">
-            <Button type="button" variant="outline" className="h-9 rounded-lg px-4" onClick={() => void onClose()}>{t("common.cancel")}</Button>
-            <Button type="button" className="h-9 rounded-lg px-4" onClick={() => setConflictConfirmed(true)}>{t("templates.brief.continue")}</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-    );
-  }
 
   return (
     <Dialog open={open} onOpenChange={(nextOpen) => { if (!nextOpen && !submitting) void onClose(); }}>
@@ -1557,7 +1533,7 @@ function TemplateApplyDialog({ open, mode, template, destinationName, newTaskReq
         </div>
 
         <DialogFooter className="mx-0 mb-0 shrink-0 flex-row gap-4 rounded-none border-0 bg-transparent p-0 pt-6 sm:justify-end">
-          <Button type="button" variant="outline" className="h-9 rounded-lg px-3" disabled={submitting} onClick={() => { if (newTaskRequired) setConflictConfirmed(false); else void onClose(); }}>{newTaskRequired ? t("common.back") : t("common.cancel")}</Button>
+          <Button type="button" variant="outline" className="h-9 rounded-lg px-3" disabled={submitting} onClick={() => void onClose()}>{t("common.cancel")}</Button>
           <Button type="button" className="h-9 rounded-lg px-3" disabled={completedRequiredFields !== requiredFields.length || referenceBusy || submitting} onClick={() => void submitApplication()}>
             {submitting ? <LoaderCircle className="size-4 animate-spin" /> : null}
             {mode === "current-conversation" ? t("templates.brief.apply_current") : config.submitLabel}
@@ -1701,12 +1677,18 @@ export function SessionPage(props: SessionPageProps) {
   }), [props.selectedSessionId]);
   const isDesignSession = selectedSessionType === "design";
   const isVideoSession = selectedSessionType === "video";
-  const currentVideoEntryPath = props.selectedSessionId && isVideoSession
-    ? videoProjectEntryPath(props.selectedSessionId)
-    : undefined;
-  const currentTemplateSessionData = templateSessionData?.sessionId === props.selectedSessionId
+  const currentTemplateSessionData = props.selectedSessionId
+    && templateSessionData
+    && isConversationTemplateSessionId(props.selectedSessionId, templateSessionData.sessionId)
     ? templateSessionData
     : null;
+  const currentVideoEntryPath = currentTemplateSessionData
+    ? currentTemplateSessionData.manifest.surface === "video"
+      ? currentTemplateSessionData.state.entry
+      : undefined
+    : props.selectedSessionId && isVideoSession
+      ? videoProjectEntryPath(props.selectedSessionId)
+      : undefined;
   const [templateAssistantWait, setTemplateAssistantWait] = useState<{ sessionId: string; label: string } | null>(null);
   const hasTemplateSession = Boolean(currentTemplateSessionData);
   const hasTemplateBrief = currentTemplateSessionData?.hasBrief === true;
@@ -1715,7 +1697,9 @@ export function SessionPage(props: SessionPageProps) {
     ? currentTemplateSessionData.state.entry
     : undefined;
   const isPresentationSession = selectedTemplate?.category === "slides";
+  const hasRootTemplateFocus = currentTemplateSessionData?.sessionId === props.selectedSessionId;
   const artifactContext = useMemo<ArtifactInteractionContext | undefined>(() => {
+    if (!hasRootTemplateFocus) return undefined;
     if (currentVideoEntryPath) {
       return { kind: "video", entryPath: currentVideoEntryPath };
     }
@@ -1723,14 +1707,14 @@ export function SessionPage(props: SessionPageProps) {
       return { kind: "presentation", entryPath: designTemplateEntryPath };
     }
     return undefined;
-  }, [currentVideoEntryPath, designTemplateEntryPath, isPresentationSession]);
+  }, [currentVideoEntryPath, designTemplateEntryPath, hasRootTemplateFocus, isPresentationSession]);
   const artifactDirectory = artifactContext
     ? artifactDirectoryPath(artifactContext.entryPath)
     : "";
   const artifactScopeKey = props.selectedSessionId && artifactDirectory
     ? `${props.selectedSessionId}:${artifactDirectory}`
     : "";
-  const templateEntryPathForArtifacts = isPresentationSession
+  const templateEntryPathForArtifacts = !hasRootTemplateFocus || isPresentationSession
     ? undefined
     : designTemplateEntryPath;
   const [artifactCatalogState, setArtifactCatalogState] = useState<{
@@ -1817,7 +1801,7 @@ export function SessionPage(props: SessionPageProps) {
   const autoOpenedVideoTemplateRef = useRef<string | null>(null);
   const autoOpenedVideoOutputRef = useRef<string | null>(null);
   const templateBriefDismissed = Boolean(
-    props.selectedSessionId && dismissedTemplateBriefSessionIds.has(props.selectedSessionId),
+    currentTemplateSessionData && dismissedTemplateBriefSessionIds.has(currentTemplateSessionData.sessionId),
   );
   const activateVideoStudio = useCallback((sessionId: string) => {
     // Mark the agent turn as a video task so it receives the session-owned
@@ -1836,20 +1820,16 @@ export function SessionPage(props: SessionPageProps) {
     });
     setSidePanelState(props.selectedSessionId ?? sessionId, "panel");
   }, [openTab, prioritizeRightPanel, props.selectedSessionId, selectedSessionTitle, setSidePanelState]);
-  const openCurrentVideoStudio = useCallback((options?: { auto?: boolean }) => {
+  const openCurrentVideoStudio = useCallback((options?: { auto?: boolean; label?: string }) => {
     if (!props.selectedSessionId) return;
-    openVideoStudio(props.selectedSessionId, options);
-  }, [openVideoStudio, props.selectedSessionId]);
-  const requireNewTaskForTemplate = useCallback((item: TemplateCatalogItem, resourceScope: WorkContextId) => {
-    setTemplateMarketOpen(false);
-    setPendingTemplateProjectId(props.selectedWorkspaceId);
-    setPendingTemplateApplication({
-      item,
-      origin: "conversation-conflict",
-      resourceScope,
-      existingTemplateTitle: currentTemplateSessionData?.manifest.title,
-    });
-  }, [currentTemplateSessionData?.manifest.title, props.selectedWorkspaceId]);
+    const videoSessionId = currentTemplateSessionData?.manifest.surface === "video"
+      ? currentTemplateSessionData.sessionId
+      : props.selectedSessionId;
+    openVideoStudio(videoSessionId, options);
+  }, [currentTemplateSessionData, openVideoStudio, props.selectedSessionId]);
+  const openCurrentVideoArtifactStudio = useCallback((displayName?: string) => {
+    openCurrentVideoStudio({ label: displayName });
+  }, [openCurrentVideoStudio]);
   const applyTemplateToCurrentSession = useCallback(async (
     item: TemplateCatalogItem,
     resourceScope: WorkContextId = templateResourceScope,
@@ -1859,18 +1839,30 @@ export function SessionPage(props: SessionPageProps) {
     const templateId = item.manifest.id;
     setTemplateBusyId(templateId);
     try {
+      const existingTemplateSessions = await props.ipolloworkServerClient.listTemplateSessions(props.runtimeWorkspaceId);
+      const conversationTemplateSessionIds = existingTemplateSessions.items
+        .filter((session) => isConversationTemplateSessionId(props.selectedSessionId!, session.sessionId))
+        .map((session) => session.sessionId);
+      const templateSessionId = conversationTemplateSessionIds.length === 0
+        ? props.selectedSessionId
+        : nextConversationArtifactSessionId(
+            props.selectedSessionId,
+            item.manifest.category,
+            existingTemplateSessions.items.map((session) => session.sessionId),
+          );
       const result = await props.ipolloworkServerClient.materializeTemplate(
         props.runtimeWorkspaceId,
         templateId,
-        props.selectedSessionId,
+        templateSessionId,
         undefined,
         resourceScope,
       );
       setSessionType(props.selectedSessionId, sessionTypeForTemplate(result.manifest));
-      setTemplateSessionData({ sessionId: props.selectedSessionId, ...result, hasBrief: false, applyMode });
+      setSessionType(templateSessionId, sessionTypeForTemplate(result.manifest));
+      setTemplateSessionData({ sessionId: templateSessionId, ...result, hasBrief: false, applyMode });
       setDismissedTemplateBriefSessionIds((current) => {
         const next = new Set(current);
-        next.delete(props.selectedSessionId!);
+        next.delete(templateSessionId);
         return next;
       });
       setSessionTypeRevision((value) => value + 1);
@@ -1880,25 +1872,21 @@ export function SessionPage(props: SessionPageProps) {
           id: `design:${props.selectedSessionId}:${encodeURIComponent(result.state.entry)}`,
           type: "design",
           label: result.state.entry.split("/").filter(Boolean).pop() || "Design",
-          sessionId: props.selectedSessionId,
+          sessionId: templateSessionId,
           path: result.state.entry,
         });
         setSidePanelState(props.selectedSessionId, "design");
       } else {
-        openCurrentVideoStudio();
+        openVideoStudio(templateSessionId);
       }
       return true;
     } catch (error) {
-      if (isTemplateSessionConflict(error)) {
-        requireNewTaskForTemplate(item, resourceScope);
-        return false;
-      }
       toast.error(error instanceof Error ? error.message : t("templates.error_apply"));
       return false;
     } finally {
       setTemplateBusyId(null);
     }
-  }, [openCurrentVideoStudio, openTab, props.ipolloworkServerClient, props.runtimeWorkspaceId, props.selectedSessionId, requireNewTaskForTemplate, setSidePanelState, templateResourceScope]);
+  }, [openTab, openVideoStudio, props.ipolloworkServerClient, props.runtimeWorkspaceId, props.selectedSessionId, setSidePanelState, templateResourceScope]);
   const refreshTemplateCatalog = useCallback(async () => {
     if (!props.ipolloworkServerClient || !props.runtimeWorkspaceId) return;
     const requestId = ++templateCatalogRequestIdRef.current;
@@ -1989,10 +1977,10 @@ export function SessionPage(props: SessionPageProps) {
     return getCachedTemplateCover(PERSONAL_WORK_CONTEXT_ID, templateId);
   }, [getCachedTemplateCover]);
   const validateCurrentTemplate = useCallback(async () => {
-    if (!props.ipolloworkServerClient || !props.runtimeWorkspaceId || !props.selectedSessionId) return null;
+    if (!props.ipolloworkServerClient || !props.runtimeWorkspaceId || !currentTemplateSessionData) return null;
     setTemplateValidationBusy(true);
     try {
-      const report = await props.ipolloworkServerClient.validateTemplateFromSession(props.runtimeWorkspaceId, props.selectedSessionId);
+      const report = await props.ipolloworkServerClient.validateTemplateFromSession(props.runtimeWorkspaceId, currentTemplateSessionData.sessionId);
       setTemplateValidationReport(report);
       return report;
     } catch (error) {
@@ -2008,7 +1996,7 @@ export function SessionPage(props: SessionPageProps) {
     } finally {
       setTemplateValidationBusy(false);
     }
-  }, [currentTemplateSessionData, props.ipolloworkServerClient, props.runtimeWorkspaceId, props.selectedSessionId]);
+  }, [currentTemplateSessionData, props.ipolloworkServerClient, props.runtimeWorkspaceId]);
   const openTemplateSave = useCallback(() => {
     if (!currentTemplateSessionData || props.selectedWorkspaceDisplay.workspaceType !== "local") return;
     setTemplateSaveOpen(true);
@@ -2048,7 +2036,7 @@ export function SessionPage(props: SessionPageProps) {
     setTemplateSaveMode(input.mode);
     try {
       const templateRequest = {
-        sessionId: props.selectedSessionId,
+        sessionId: currentTemplateSessionData.sessionId,
         category: currentTemplateSessionData.manifest.category,
         title: input.title,
         description: input.description,
@@ -2110,7 +2098,8 @@ export function SessionPage(props: SessionPageProps) {
       }
       try {
         const materializedType = sessionTypeForTemplate(result.manifest);
-        if (materializedType !== selectedSessionType) {
+        setSessionType(result.sessionId, materializedType);
+        if (result.sessionId === sessionId && materializedType !== selectedSessionType) {
           setSessionType(sessionId, materializedType);
           setSessionTypeRevision((value) => value + 1);
         }
@@ -2127,37 +2116,35 @@ export function SessionPage(props: SessionPageProps) {
     void refreshTemplateCatalog();
     return () => { active = false; };
   }, [templateSessionRevision, props.ipolloworkServerClient, props.runtimeWorkspaceId, props.selectedSessionId, refreshTemplateCatalog, selectedSessionType]);
+  useEffect(() => {
+    if (
+      !props.ipolloworkServerClient
+      || !props.runtimeWorkspaceId
+      || !props.selectedSessionId
+      || (activePanelTab?.type !== "design" && activePanelTab?.type !== "video")
+      || !isConversationTemplateSessionId(props.selectedSessionId, activePanelTab.sessionId)
+      || activePanelTab.sessionId === currentTemplateSessionData?.sessionId
+    ) return;
+
+    let active = true;
+    const client = props.ipolloworkServerClient;
+    const workspaceId = props.runtimeWorkspaceId;
+    const templateSessionId = activePanelTab.sessionId;
+    void client.getTemplateSession(workspaceId, templateSessionId).then(async (result) => {
+      let hasBrief = false;
+      try {
+        const brief = JSON.parse((await client.readWorkspaceFile(workspaceId, result.state.briefPath)).content);
+        hasBrief = Boolean(brief && typeof brief === "object" && Object.keys(brief).length);
+      } catch { hasBrief = false; }
+      if (active) setTemplateSessionData({ ...result, hasBrief });
+    }).catch(() => undefined);
+    return () => { active = false; };
+  }, [activePanelTab, currentTemplateSessionData?.sessionId, props.ipolloworkServerClient, props.runtimeWorkspaceId, props.selectedSessionId]);
   const chooseDesignTemplate = useCallback(async (templateId: iPolloWorkTemplateId) => {
-    if (!props.ipolloworkServerClient || !props.runtimeWorkspaceId || !props.selectedSessionId) return;
     const item = templateCatalog.find((template) => template.manifest.id === templateId);
-    try {
-      setTemplateBusyId(templateId);
-      const result = await props.ipolloworkServerClient.materializeTemplate(props.runtimeWorkspaceId, templateId, props.selectedSessionId, undefined, templateResourceScope);
-      setSessionType(props.selectedSessionId, sessionTypeForTemplate(result.manifest));
-      setTemplateSessionData({ sessionId: props.selectedSessionId, ...result, hasBrief: false, applyMode: "new-conversation" });
-      setDismissedTemplateBriefSessionIds((current) => {
-        const next = new Set(current);
-        next.delete(props.selectedSessionId!);
-        return next;
-      });
-      setSessionTypeRevision((value) => value + 1);
-      setTemplateSessionRevision((value) => value + 1);
-      openTab(props.selectedSessionId, {
-        id: `design:${props.selectedSessionId}:${encodeURIComponent(result.state.entry)}`,
-        type: "design",
-        label: result.state.entry.split("/").filter(Boolean).pop() || "Design",
-        sessionId: props.selectedSessionId,
-        path: result.state.entry,
-      });
-      setSidePanelState(props.selectedSessionId, "panel");
-    } catch (error) {
-      if (item && isTemplateSessionConflict(error)) {
-        requireNewTaskForTemplate(item, templateResourceScope);
-        return;
-      }
-      toast.error(error instanceof Error ? error.message : "Could not create this template.");
-    } finally { setTemplateBusyId(null); }
-  }, [openTab, props.ipolloworkServerClient, props.runtimeWorkspaceId, props.selectedSessionId, requireNewTaskForTemplate, setSidePanelState, templateCatalog, templateResourceScope]);
+    if (!item) return;
+    await applyTemplateToCurrentSession(item, templateResourceScope, "new-conversation");
+  }, [applyTemplateToCurrentSession, templateCatalog, templateResourceScope]);
   const installDesignTemplate = useCallback(async (templateId: string) => {
     if (!props.ipolloworkServerClient || !props.runtimeWorkspaceId) return;
     setTemplateBusyId(templateId);
@@ -2306,12 +2293,12 @@ export function SessionPage(props: SessionPageProps) {
         resolvedText: visibleTemplateMessage,
       }, props.selectedSessionId);
       if (!dispatched) throw new Error("The template task could not be started.");
-      setTemplateSessionData((current) => current?.sessionId === props.selectedSessionId ? { ...current, hasBrief: true } : current);
+      setTemplateSessionData((current) => current?.sessionId === templateSession.sessionId ? { ...current, hasBrief: true } : current);
       setTemplateSessionRevision((value) => value + 1);
       setDismissedTemplateBriefSessionIds((current) => {
-        if (!props.selectedSessionId || !current.has(props.selectedSessionId)) return current;
+        if (!current.has(templateSession.sessionId)) return current;
         const next = new Set(current);
-        next.delete(props.selectedSessionId);
+        next.delete(templateSession.sessionId);
         return next;
       });
     } catch (error) {
@@ -2397,16 +2384,19 @@ export function SessionPage(props: SessionPageProps) {
     })();
   }, [conversationMessages.length, currentTemplateSessionData, pendingTemplateDispatch, props.ipolloworkServerClient, props.runtimeWorkspaceId, props.selectedSessionId, props.surface]);
   const closeTemplateBrief = useCallback(async () => {
-    const sessionId = props.selectedSessionId;
-    if (!sessionId) return;
-    const emptyGeneratedTemplateSession = !currentTemplateSessionData?.hasBrief && conversationMessages.length === 0;
+    const conversationId = props.selectedSessionId;
+    const templateSessionId = currentTemplateSessionData?.sessionId;
+    if (!conversationId || !templateSessionId) return;
+    const emptyGeneratedTemplateSession = templateSessionId === conversationId
+      && !currentTemplateSessionData.hasBrief
+      && conversationMessages.length === 0;
     if (emptyGeneratedTemplateSession && props.onDeleteSession) {
       try {
-        await props.onDeleteSession(sessionId);
+        await props.onDeleteSession(conversationId);
         setTemplateSessionData(null);
         setDismissedTemplateBriefSessionIds((current) => {
           const next = new Set(current);
-          next.delete(sessionId);
+          next.delete(templateSessionId);
           return next;
         });
         return;
@@ -2416,10 +2406,10 @@ export function SessionPage(props: SessionPageProps) {
     }
     setDismissedTemplateBriefSessionIds((current) => {
       const next = new Set(current);
-      next.add(sessionId);
+      next.add(templateSessionId);
       return next;
     });
-  }, [conversationMessages.length, currentTemplateSessionData?.hasBrief, props.onDeleteSession, props.selectedSessionId]);
+  }, [conversationMessages.length, currentTemplateSessionData, props.onDeleteSession, props.selectedSessionId]);
   const [sessionPanelView, setSessionPanelView] = useState<SessionPanelView | null>(null);
   const effectiveSidePanelView = activeSidePanel ?? sessionPanelView;
   const sidePanelOpen = effectiveSidePanelView !== null;
@@ -2670,7 +2660,7 @@ export function SessionPage(props: SessionPageProps) {
     setSidePanelState(props.selectedSessionId, panel);
   }, [designTemplateEntryPath, openTab, props.selectedSessionId, selectTab, sessionPanelState.tabs, setSidePanelState]);
 
-  const openDesignTab = useCallback((path?: string) => {
+  const openDesignTab = useCallback((path?: string, displayName?: string) => {
     if (!props.selectedSessionId) return;
     const normalizedPath = path?.replaceAll("\\", "/").trim() || designTemplateEntryPath?.replaceAll("\\", "/").trim() || "";
     if (!normalizedPath) {
@@ -2680,10 +2670,11 @@ export function SessionPage(props: SessionPageProps) {
     const designTabId = normalizedPath
       ? `design:${props.selectedSessionId}:${encodeURIComponent(normalizedPath)}`
       : `design:${props.selectedSessionId}:entry`;
-    const label = normalizedPath.split("/").filter(Boolean).pop() || "Design";
+    const pathLabel = normalizedPath.split("/").filter(Boolean).pop() || "Design";
     const designSessionId = designProjectSessionIdFromEntryPath(normalizedPath) ?? props.selectedSessionId;
     const existing = sessionPanelState.tabs.find((tab) => tab.id === designTabId);
-    if (!existing) {
+    const label = displayName?.trim() || (existing?.type === "design" ? existing.label : pathLabel);
+    if (!existing || existing.type !== "design" || existing.label !== label) {
       openTab(props.selectedSessionId, {
         id: designTabId,
         type: "design",
@@ -3020,15 +3011,28 @@ export function SessionPage(props: SessionPageProps) {
       return null;
     }
 
-    const binding = templateSessionData?.sessionId === sourceSessionId
-      ? Promise.resolve({ surface: templateSessionData.manifest.surface, entry: templateSessionData.state.entry })
-      : props.ipolloworkServerClient
-        .getTemplateSession(props.runtimeWorkspaceId, sourceSessionId)
-        .then((session) => ({ surface: session.manifest.surface, entry: session.state.entry }))
-        .catch(() => null);
+    const binding = props.ipolloworkServerClient
+      .listTemplateSessions(props.runtimeWorkspaceId)
+      .then(({ items }) => items
+        .filter((session) => isConversationTemplateSessionId(sourceSessionId, session.sessionId))
+        .find((session) => {
+          const directory = artifactDirectoryPath(session.state.entry);
+          return artifactPathMatchesTarget(target.value, session.state.entry)
+            || artifactPathIsWithinDirectory(target.value, directory);
+        }))
+      .then(async (session) => {
+        if (!session) return null;
+        const binding = { surface: session.manifest.surface, entry: session.state.entry } as const;
+        if (binding.surface !== "video") return binding;
+        const source = await props.ipolloworkServerClient
+          ?.readWorkspaceFile(props.runtimeWorkspaceId!, target.value)
+          .catch(() => null);
+        return { ...binding, surface: resolveTemplateEntryContentSurface(binding, source?.content) };
+      })
+      .catch(() => null);
 
     return waitForTemplateEntrySurface(target, binding);
-  }, [props.ipolloworkServerClient, props.runtimeWorkspaceId, props.selectedSessionId, templateSessionData]);
+  }, [props.ipolloworkServerClient, props.runtimeWorkspaceId, props.selectedSessionId]);
   const openArtifactTargetInPanel = useCallback((target: OpenTarget, sessionId: string, auto = false) => {
     if (auto && activePanelTab?.id === target.id) return;
     if (!auto) prioritizeRightPanel();
@@ -3087,7 +3091,7 @@ export function SessionPage(props: SessionPageProps) {
     }
     if (target.kind === "file" && target.preview === "html" && options?.viewer === "design") {
       prioritizeRightPanel();
-      openDesignTab(target.value);
+      openDesignTab(target.value, target.name);
       return;
     }
     if (target.kind === "file" && target.preview === "html" && options?.viewer === "preview") {
@@ -3114,9 +3118,11 @@ export function SessionPage(props: SessionPageProps) {
     if (templateSurface) {
       if (!options?.auto) prioritizeRightPanel();
       if (templateSurface === "design") {
-        openDesignTab(target.value);
+        openDesignTab(target.value, target.name);
       } else {
-        openCurrentVideoStudio();
+        const templateVideoSessionId = videoProjectSessionIdFromEntryPath(target.value);
+        if (templateVideoSessionId) openVideoStudio(templateVideoSessionId);
+        else openCurrentVideoStudio();
       }
       return;
     }
@@ -3653,7 +3659,7 @@ export function SessionPage(props: SessionPageProps) {
       },
     });
   }, [openWorkspaceAppForPlugin]);
-  const sendWorkspaceAppMessage = useCallback((input: {
+  const sendWorkspaceAppMessage = useCallback(async (input: {
     text: string;
     modelContext: WorkspaceAppModelContext | null;
   }) => {
@@ -3664,7 +3670,7 @@ export function SessionPage(props: SessionPageProps) {
           input.modelContext ? `Current workbench context:\n${JSON.stringify(input.modelContext, null, 2)}` : null,
         ].filter(Boolean).join("\n\n")
       : pluginWorkshopSystemInstruction(activePanelTab.pluginId);
-    return sendSessionDraft({
+    const outcome = await sendSessionDraft({
       mode: "prompt",
       parts: [{ type: "text", text: input.text }],
       attachments: [],
@@ -3676,7 +3682,8 @@ export function SessionPage(props: SessionPageProps) {
           : "plugin-workshop",
         instruction: context,
       },
-    }, props.selectedSessionId) ?? false;
+    }, props.selectedSessionId);
+    return outcome ? promptWasDispatched(outcome) : false;
   }, [activePanelTab, props.selectedSessionId, sendSessionDraft]);
   const sidePanelLauncherItems = useMemo<SidePanelLauncherItem[]>(() => [
     {
@@ -4585,7 +4592,7 @@ export function SessionPage(props: SessionPageProps) {
                           ? pendingVideoArtifactCompletion.requirement
                           : undefined}
                         onArtifactCompletionRequirementConsumed={consumePendingVideoArtifactCompletion}
-                        onOpenVideoStudio={openCurrentVideoStudio}
+                        onOpenVideoStudio={openCurrentVideoArtifactStudio}
                         onOpenSchedule={openGlobalSchedule}
                         onOpenWorkspaceApp={openWorkspaceAppForPlugin}
                         onOpenTemplateMarket={() => {
@@ -4817,7 +4824,7 @@ export function SessionPage(props: SessionPageProps) {
                       supplementalFiles={artifactFiles}
                       artifactContext={artifactContext}
                       onOpenTarget={openTarget}
-                      onOpenVideoStudio={openCurrentVideoStudio}
+                      onOpenVideoStudio={openCurrentVideoArtifactStudio}
                     />
                   ) : sidePanelOpen && activeSidePanel === "panel" && props.selectedSessionId ? (
                     <div
@@ -4901,7 +4908,7 @@ export function SessionPage(props: SessionPageProps) {
             ? props.selectedWorkspaceId
             : templateDestinationProjects[0]?.id;
           setTemplateMarketOpen(false);
-          setPendingTemplateApplication({ item: template, origin: "market", resourceScope: templateResourceScope });
+          setPendingTemplateApplication({ item: template, resourceScope: templateResourceScope });
           if (selectedProjectId) {
             setPendingTemplateProjectId(selectedProjectId);
           } else {
@@ -4923,17 +4930,15 @@ export function SessionPage(props: SessionPageProps) {
 
       {pendingTemplateApplication ? (
         <TemplateApplyDialog
-          key={`pending:${pendingTemplateApplication.origin}:${pendingTemplateApplication.item.manifest.id}`}
+          key={`pending:${pendingTemplateApplication.item.manifest.id}`}
           open={!createProjectOpen && templateDestinationProjects.length > 0}
-          mode={pendingTemplateApplication.origin === "market" ? "market" : "new-conversation"}
+          mode="market"
           template={pendingTemplateApplication.item.manifest}
           destinationName={templateDestinationProjects.find((project) => project.id === pendingTemplateProjectId)?.name ?? t("workspace_list.workspace_fallback")}
-          newTaskRequired={pendingTemplateApplication.origin === "conversation-conflict"}
-          conflictTemplateTitle={pendingTemplateApplication.origin === "conversation-conflict" ? pendingTemplateApplication.existingTemplateTitle : undefined}
-          projects={pendingTemplateApplication.origin === "market" ? templateDestinationProjects : undefined}
-          selectedProjectId={pendingTemplateApplication.origin === "market" ? pendingTemplateProjectId : undefined}
-          onProjectChange={pendingTemplateApplication.origin === "market" ? setPendingTemplateProjectId : undefined}
-          onRequestNewProject={pendingTemplateApplication.origin === "market" ? openCreateProjectDialog : undefined}
+          projects={templateDestinationProjects}
+          selectedProjectId={pendingTemplateProjectId}
+          onProjectChange={setPendingTemplateProjectId}
+          onRequestNewProject={openCreateProjectDialog}
           onSubmit={submitPendingTemplateApplication}
           onClose={() => setPendingTemplateApplication(null)}
         />

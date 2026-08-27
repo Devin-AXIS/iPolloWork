@@ -2,9 +2,11 @@ import { describe, expect, test } from "bun:test";
 
 import type { WorkspaceInfo } from "../src/app/lib/desktop-types";
 import {
+  htmlArtifactDisplayFilename,
   htmlArtifactFilenameFromTitle,
   isDefaultSessionTitle,
   sessionTitleFromFirstPrompt,
+  uniqueHtmlArtifactFilenameFromTitle,
 } from "../src/app/lib/session-title";
 import {
   buildTaskPaletteSessionOptions,
@@ -77,9 +79,16 @@ describe("route workspaces", () => {
 
   test("derives a portable HTML filename from the current request title", () => {
     expect(htmlArtifactFilenameFromTitle("给我做一个今日 AI 热点分析的 PPT")).toBe("今日-AI-热点分析.html");
+    expect(htmlArtifactFilenameFromTitle("给我做一个今日 AI 热点分析的视频和 PPT")).toBe("今日-AI-热点分析.html");
+    expect(htmlArtifactFilenameFromTitle("再做一个网页")).toBe("网页.html");
     expect(htmlArtifactFilenameFromTitle("Please create a Q3 market report HTML")).toBe("Q3-market-report.html");
     expect(htmlArtifactFilenameFromTitle("New conversation")).toBeNull();
     expect(htmlArtifactFilenameFromTitle("设计：增长/转化*看板")).toBe("增长-转化-看板.html");
+    expect(uniqueHtmlArtifactFilenameFromTitle("今日 AI 热点分析网页", "msg_abc1234567890"))
+      .toBe("今日-AI-热点分析-1234567890.html");
+    expect(htmlArtifactDisplayFilename("今日 AI 热点分析的视频和 PPT", "video")).toBe("今日-AI-热点分析-视频.html");
+    expect(htmlArtifactDisplayFilename("今日 AI 热点分析的视频和 PPT", "slides")).toBe("今日-AI-热点分析-PPT.html");
+    expect(htmlArtifactDisplayFilename("再做一个网页", "website", 2)).toBe("网页-2.html");
   });
 
   test("uses the running server registry instead of stale local desktop records", () => {

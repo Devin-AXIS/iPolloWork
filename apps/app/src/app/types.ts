@@ -181,6 +181,23 @@ export type PromptDispatchOptions = {
   clientUserMessageId?: string;
 };
 
+/** A workspace artifact that must be changed and reported before a run is complete. */
+export type ArtifactCompletionTarget = {
+  sourcePath: string;
+  baselineFingerprint: string;
+};
+
+/**
+ * Most prompt dispatchers only need a boolean. Artifact-routing dispatchers
+ * return the prepared targets as well so the surface can enforce delivery.
+ */
+export type PromptDispatchResult = {
+  dispatched: boolean;
+  artifactCompletionTargets?: ArtifactCompletionTarget[];
+};
+
+export type PromptDispatchOutcome = boolean | PromptDispatchResult;
+
 export type ArtifactItem = {
   id: string;
   name: string;

@@ -3,13 +3,17 @@ import { describe, expect, test } from "bun:test";
 import {
   type ArtifactInteractionContext,
   type ArtifactItem,
+  assignArtifactRequestOwnership,
   artifactDirectoryPath,
   artifactPathMatchesTarget,
+  artifactRequestOwner,
   canOpenArtifactInContext,
   getArtifactStudioTarget,
   groupConversationOutputArtifacts,
   getArtifactsFromMessages,
   selectArtifactContextOutputs,
+  selectArtifactsForRequest,
+  selectSupplementalArtifactsForRequest,
   selectTemplateEntryArtifacts,
 } from "../src/lib/artifacts";
 import {
@@ -236,5 +240,44 @@ describe("video artifact entry routing", () => {
       type: "markdown",
       target: verifiedTarget,
     }));
+  });
+
+  test("keeps validated artifacts with the request that produced them while a follow-up is queued", () => {
+    const presentationPath = "design/session-slides/entry.html";
+    const websitePath = "design/session-site/entry.html";
+    const ownership = assignArtifactRequestOwnership(
+      assignArtifactRequestOwnership([], 0, [presentationPath]),
+      1,
+      [websitePath],
+    );
+
+    expect(artifactRequestOwner(presentationPath, ownership)).toBe(0);
+    expect(artifactRequestOwner(websitePath, ownership)).toBe(1);
+    expect(selectSupplementalArtifactsForRequest(
+      [presentationPath, websitePath, "design/unreported/readme.md"],
+      0,
+      ownership,
+      false,
+    )).toEqual([presentationPath]);
+    expect(selectSupplementalArtifactsForRequest(
+      [presentationPath, websitePath, "design/unreported/readme.md"],
+      1,
+      ownership,
+      true,
+    )).toEqual([websitePath, "design/unreported/readme.md"]);
+    expect(selectArtifactsForRequest(
+      [htmlArtifact(presentationPath), htmlArtifact(websitePath)],
+      1,
+      ownership,
+    ).map((artifact) => artifact.path)).toEqual([websitePath]);
+  });
+
+  test("moves a reused artifact path only after a later request validates it", () => {
+    const path = "design/session/entry.html";
+    const firstDelivery = assignArtifactRequestOwnership([], 0, [path]);
+    const secondDelivery = assignArtifactRequestOwnership(firstDelivery, 1, [path]);
+
+    expect(firstDelivery).toEqual([{ requestOrdinal: 0, paths: [path] }]);
+    expect(secondDelivery).toEqual([{ requestOrdinal: 1, paths: [path] }]);
   });
 });

@@ -12,7 +12,7 @@ interface MessageListContextValue {
   developerMode: boolean
   displaySuggestions: boolean
   providerConnectedCount: number
-  onOpenVideoStudio?: () => void
+  onOpenVideoStudio?: (displayName?: string) => void
   onOpenSchedule?: (focusAt: number) => void
   dispatchAction: (action: DispatchAction) => void
   setPrompt: (prompt: string) => void
@@ -36,7 +36,7 @@ interface MessageListProviderProps {
   onEditUserMessage: (messageId: string, text: string) => void
   displaySuggestions: boolean
   providerConnectedCount: number
-  onOpenVideoStudio?: () => void
+  onOpenVideoStudio?: (displayName?: string) => void
   onOpenSchedule?: (focusAt: number) => void
   dispatchAction: (action: DispatchAction) => void
   setPrompt: (prompt: string) => void

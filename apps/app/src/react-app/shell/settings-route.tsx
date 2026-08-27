@@ -2331,6 +2331,7 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
       <ModelPickerModal
         open={modelPicker.open}
         options={modelPicker.options}
+        modelsLoading={modelPicker.modelsLoading}
         query={modelPicker.query}
         setQuery={modelPicker.setQuery}
         target="default"

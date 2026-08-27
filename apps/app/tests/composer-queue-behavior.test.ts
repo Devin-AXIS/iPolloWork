@@ -79,6 +79,28 @@ describe("composer queue behavior", () => {
     expect(sessionSurfaceSource).toContain("prependQueuedDrafts(props.sessionId, [next])");
   });
 
+  test("keeps follow-ups queued until the active turn passes artifact validation", () => {
+    const idleCompletion = sessionSurfaceSource.slice(
+      sessionSurfaceSource.indexOf("const timeout = window.setTimeout(() => {", sessionSurfaceSource.indexOf("const handleDismissError")),
+      sessionSurfaceSource.indexOf("// Drain one queued follow-up"),
+    );
+    const queueDrainStart = sessionSurfaceSource.indexOf("// Drain one queued follow-up");
+    const queueDrain = sessionSurfaceSource.slice(
+      queueDrainStart,
+      sessionSurfaceSource.indexOf("const handleAttachFiles", queueDrainStart),
+    );
+
+    expect(idleCompletion.indexOf("pendingArtifactCompletionRef.current")).toBeLessThan(
+      idleCompletion.indexOf("assistantOutputAfterAwaitStart && !latestAssistantCompleted"),
+    );
+    expect(idleCompletion).toContain("void validatePendingArtifactCompletion()");
+    expect(idleCompletion).toContain("void validatePendingVideoDelivery()");
+    expect(queueDrain).toContain("if (pendingArtifactCompletionRef.current || pendingVideoDeliveryRef.current) return;");
+    expect(queueDrain.indexOf("pendingArtifactCompletionRef.current")).toBeLessThan(
+      queueDrain.indexOf("removeQueuedDraftFromStore(props.sessionId, 0)"),
+    );
+  });
+
   test("keeps queued drafts when stopping the active run", () => {
     const abortHandler = sessionSurfaceSource.slice(
       sessionSurfaceSource.indexOf("const handleAbort = useCallback"),

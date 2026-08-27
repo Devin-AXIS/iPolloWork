@@ -9,7 +9,9 @@ import {
   conversationTemplateBrief,
   inferConversationTemplateIntent,
   inferConversationTemplateIntents,
+  isConversationTemplateSessionId,
   isVideoStudioReady,
+  nextConversationArtifactSessionId,
   selectConversationTemplate,
   templateBriefConfigFor,
   templateBriefPrompt,
@@ -168,6 +170,7 @@ describe("template brief", () => {
     expect(inferConversationTemplateIntent("帮我生成一份融资路演PPT")?.category).toBe("slides");
     expect(inferConversationTemplateIntent("制作一个竖屏产品发布视频")?.category).toBe("video");
     expect(inferConversationTemplateIntent("创建一个 AI 产品落地页")?.category).toBe("site");
+    expect(inferConversationTemplateIntent("再做个网页")?.category).toBe("site");
     expect(inferConversationTemplateIntent("请解释 PPT 是什么")).toBeNull();
     expect(inferConversationTemplateIntent("告诉我怎么制作一个网页")).toBeNull();
     expect(inferConversationTemplateIntent("做视频需要什么工具？")).toBeNull();
@@ -185,6 +188,25 @@ describe("template brief", () => {
     ]);
     expect(conversationArtifactSessionId("ses_bank", "slides")).toBe("ses_bank-artifact-slides");
     expect(conversationArtifactSessionId("x".repeat(256), "video")).toHaveLength(256);
+  });
+
+  test("allocates isolated repeated template instances under one conversation", () => {
+    const first = nextConversationArtifactSessionId("ses_bank", "slides", []);
+    const second = nextConversationArtifactSessionId("ses_bank", "slides", [first]);
+    const video = nextConversationArtifactSessionId("ses_bank", "video", [first, second]);
+
+    expect(first).toBe("ses_bank-artifact-slides");
+    expect(second).toBe("ses_bank-artifact-slides-2");
+    expect(video).toBe("ses_bank-artifact-video");
+    expect(isConversationTemplateSessionId("ses_bank", "ses_bank")).toBe(true);
+    expect(isConversationTemplateSessionId("ses_bank", second)).toBe(true);
+    expect(isConversationTemplateSessionId("ses_other", second)).toBe(false);
+    const longConversationId = "x".repeat(256);
+    const longFirst = conversationArtifactSessionId(longConversationId, "slides");
+    const longSecond = nextConversationArtifactSessionId(longConversationId, "slides", [longFirst]);
+    expect(longSecond).toHaveLength(256);
+    expect(longSecond).toEndWith("-artifact-slides-2");
+    expect(isConversationTemplateSessionId(longConversationId, longSecond)).toBe(true);
   });
 
   test("selects an installed semantic match and prefers native-editable templates for PPT", () => {
@@ -226,7 +248,10 @@ describe("template brief", () => {
 
     expect(routeSource).toContain("inferConversationTemplateIntents(text)");
     expect(routeSource).toContain("selectConversationTemplate(text, catalog.items, intent.category)");
-    expect(routeSource).toContain("conversationArtifactSessionId(targetSessionId, intent.category)");
+    expect(routeSource).toContain("nextConversationArtifactSessionId(");
+    expect(routeSource).toContain('setSessionType(targetSessionId, "work")');
+    expect(routeSource).toContain("explicitlyTargetedTemplateSessionIds.size === 0");
+    expect(routeSource).not.toContain('sessionTypeBeforeRouting === "work"');
     expect(routeSource).toContain("Multi-artifact delivery contract");
     expect(routeSource).toContain("conversationTemplateBrief(text)");
     expect(routeSource).toContain('purpose: "artifact-delivery"');

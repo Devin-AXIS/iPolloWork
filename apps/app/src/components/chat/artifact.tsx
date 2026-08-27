@@ -6,7 +6,11 @@ import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 
 import type { iPolloWorkServerClient, iPolloWorkWorkspaceCatalogEntry } from "@/app/lib/ipollowork-server";
-import { htmlArtifactFilenameFromTitle } from "@/app/lib/session-title";
+import {
+  htmlArtifactDisplayFilename,
+  htmlArtifactFilenameFromTitle,
+  type HtmlArtifactDisplayKind,
+} from "@/app/lib/session-title";
 import { ArtifactIcon } from "@/components/chat/artifact-icon";
 import { buildReviseFilePrompt } from "@/components/chat/utils";
 import { t } from "@/i18n";
@@ -27,6 +31,7 @@ import { cn } from "@/lib/utils";
 import {
   type ArtifactInteractionContext,
   type ArtifactItem,
+  type ArtifactRequestOwnership,
   artifactPathMatchesTarget,
   canOpenArtifactInContext,
   canPreviewArtifact,
@@ -36,6 +41,7 @@ import {
   groupConversationOutputArtifacts,
   isConversationOutputArtifact,
   selectArtifactContextOutputs,
+  selectArtifactsForRequest,
   selectTemplateEntryArtifacts,
   useArtifacts,
   usePreviewArtifact,
@@ -46,13 +52,82 @@ interface ArtifactButtonProps {
   displayName?: string
   sessionId?: string
   artifactContext?: ArtifactInteractionContext
-  onOpenVideoStudio?: () => void
+  onOpenVideoStudio?: (displayName?: string) => void
   compact?: boolean
   tile?: boolean
 }
 
 const MAX_ARTIFACT_TITLE_LENGTH = 32;
 const EMPTY_WORKSPACE_FILES: iPolloWorkWorkspaceCatalogEntry[] = [];
+
+export type ArtifactRequestNaming = {
+  title: string
+  occurrence: number
+};
+
+function messageText(message: UIMessage) {
+  return message.parts
+    .filter((part) => part.type === "text")
+    .map((part) => part.text)
+    .join(" ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+export function artifactRequestNamingContext(
+  messages: UIMessage[],
+  assistantMessageIndex: number,
+  fallbackTitle?: string,
+): ArtifactRequestNaming {
+  const userRequests = messages
+    .slice(0, Math.max(0, assistantMessageIndex) + 1)
+    .filter((message) => message.role === "user")
+    .map(messageText)
+    .filter(Boolean);
+  const title = userRequests.at(-1) ?? fallbackTitle?.trim() ?? "";
+  const filename = htmlArtifactFilenameFromTitle(title);
+  const occurrence = filename
+    ? userRequests.filter((request) => htmlArtifactFilenameFromTitle(request) === filename).length
+    : 1;
+  return { title, occurrence: Math.max(1, occurrence) };
+}
+
+function artifactDisplayKind(artifact: ArtifactItem, requestTitle: string): HtmlArtifactDisplayKind {
+  const studioTarget = getArtifactStudioTarget(artifact);
+  if (studioTarget?.surface === "video") return "video";
+  if (/(?:pptx?|幻灯片|演示文稿|slide|deck)/i.test(requestTitle)) return "slides";
+  if (/(?:网页|网站|website|web\s*page|site)/i.test(requestTitle)) return "website";
+  return "design";
+}
+
+function appendFilenameOccurrence(filename: string, occurrence: number) {
+  return occurrence > 1
+    ? filename.replace(/(\.html?)$/i, `-${occurrence}$1`)
+    : filename;
+}
+
+function artifactDisplayNames(
+  artifacts: ArtifactItem[],
+  namingForArtifact: (artifact: ArtifactItem) => ArtifactRequestNaming,
+) {
+  const names = new Map<string, string>();
+  const occurrences = new Map<string, number>();
+  for (const artifact of artifacts) {
+    if (artifact.type !== "html") continue;
+    const naming = namingForArtifact(artifact);
+    const candidate = htmlArtifactDisplayFilename(
+      naming.title,
+      artifactDisplayKind(artifact, naming.title),
+      naming.occurrence,
+    );
+    if (!candidate) continue;
+    const key = candidate.toLocaleLowerCase();
+    const occurrence = (occurrences.get(key) ?? 0) + 1;
+    occurrences.set(key, occurrence);
+    names.set(artifact.id, appendFilenameOccurrence(candidate, occurrence));
+  }
+  return names;
+}
 
 export type WorkspaceFileTreeNode =
   | {
@@ -242,7 +317,7 @@ function ArtifactButton({ artifact, displayName, sessionId, artifactContext, onO
         className={cn("max-w-full items-center whitespace-nowrap", tile ? "min-h-[76px] w-full justify-start gap-3 rounded-2xl border border-border/70 bg-card p-3 text-left shadow-[0_1px_2px_rgb(0_0_0/0.03)] hover:-translate-y-px hover:border-border hover:bg-muted/30 hover:shadow-sm" : compact ? "w-full flex-none justify-start gap-1.5 rounded-xl px-2 py-1.5 hover:bg-muted/70" : "min-h-[72px] w-full min-w-0 gap-4 rounded-2xl px-5 py-4")}
         onClick={() => {
           if (opensCurrentVideoStudio) {
-            onOpenVideoStudio?.();
+            onOpenVideoStudio?.(presentedName);
             return;
           }
           previewArtifact(presentedArtifact, studioTarget ? { viewer: studioTarget.surface } : undefined);
@@ -365,20 +440,32 @@ interface ArtifactListProps {
   messages: UIMessage[]
   sessionId?: string
   sessionTitle?: string
+  requestNaming?: ArtifactRequestNaming
+  requestOrdinal?: number | null
+  artifactRequestOwnership?: readonly ArtifactRequestOwnership[]
   title?: string
   includeTargetFallbacks?: boolean
   entryPath?: string
   supplementalFiles?: readonly string[]
   artifactContext?: ArtifactInteractionContext
-  onOpenVideoStudio?: () => void
+  onOpenVideoStudio?: (displayName?: string) => void
 }
 
-export function ArtifactList({ messages, sessionId, sessionTitle, title, includeTargetFallbacks = false, entryPath, supplementalFiles, artifactContext, onOpenVideoStudio }: ArtifactListProps) {
+export function ArtifactList({ messages, sessionId, sessionTitle, requestNaming, requestOrdinal = null, artifactRequestOwnership = [], title, includeTargetFallbacks = false, entryPath, supplementalFiles, artifactContext, onOpenVideoStudio }: ArtifactListProps) {
   const artifacts = useArtifacts(messages, { includeTargetFallbacks, supplementalFiles });
   const visibleArtifacts = selectArtifactContextOutputs(artifacts, artifactContext);
+  const requestArtifacts = selectArtifactsForRequest(
+    visibleArtifacts,
+    requestOrdinal,
+    artifactRequestOwnership,
+  );
   const displayedArtifacts = entryPath
-    ? selectTemplateEntryArtifacts(visibleArtifacts, entryPath)
-    : visibleArtifacts;
+    ? selectTemplateEntryArtifacts(requestArtifacts, entryPath)
+    : requestArtifacts;
+  const displayNames = artifactDisplayNames(
+    displayedArtifacts,
+    () => requestNaming ?? { title: sessionTitle?.trim() ?? "", occurrence: 1 },
+  );
 
   if (displayedArtifacts.length === 0) {
     return null;
@@ -395,9 +482,7 @@ export function ArtifactList({ messages, sessionId, sessionTitle, title, include
           <ArtifactButton
             key={artifact.id}
             artifact={artifact}
-            displayName={entryPath && artifactPathMatchesTarget(artifact.path, entryPath)
-              ? htmlArtifactFilenameFromTitle(sessionTitle) ?? undefined
-              : undefined}
+            displayName={displayNames.get(artifact.id)}
             sessionId={sessionId}
             artifactContext={artifactContext}
             onOpenVideoStudio={onOpenVideoStudio}
@@ -420,7 +505,7 @@ interface ConversationOutputPanelProps {
   supplementalFiles?: readonly string[]
   artifactContext?: ArtifactInteractionContext
   onOpenTarget?: (target: OpenTarget, options?: OpenTargetOptions) => void
-  onOpenVideoStudio?: () => void
+  onOpenVideoStudio?: (displayName?: string) => void
 }
 
 type ConversationFilesMode = "directory" | "outputs";
@@ -440,7 +525,10 @@ function ConversationOutputPanelContent({ messages, sessionId, sessionTitle, cli
     artifactContext,
   );
   const outputGroups = groupConversationOutputArtifacts(outputs);
-  const templateEntryDisplayName = htmlArtifactFilenameFromTitle(sessionTitle);
+  const outputDisplayNames = artifactDisplayNames(
+    outputGroups.map((group) => group.primary),
+    (artifact) => artifactRequestNamingContext(messages, artifact.messageIndex, sessionTitle),
+  );
   const workspaceFilesQuery = useQuery({
     queryKey: ["conversation-workspace-files", workspaceId, workspaceRoot],
     queryFn: () => client && workspaceId ? client.listWorkspaceFiles(workspaceId) : Promise.resolve(EMPTY_WORKSPACE_FILES),
@@ -537,9 +625,7 @@ function ConversationOutputPanelContent({ messages, sessionId, sessionTitle, cli
               <div key={group.id} className="relative min-w-0">
                 <ArtifactButton
                   artifact={group.primary}
-                  displayName={templateEntryDisplayName && templateEntryPath && artifactPathMatchesTarget(group.primary.path, templateEntryPath)
-                    ? templateEntryDisplayName
-                    : undefined}
+                  displayName={outputDisplayNames.get(group.primary.id)}
                   sessionId={sessionId}
                   artifactContext={artifactContext}
                   onOpenVideoStudio={onOpenVideoStudio}
