@@ -18,7 +18,7 @@ import { currentLocale, t } from "../../../../i18n";
 import { downloadTextAsFile } from "@/app/lib/download";
 import { publicAssetUrl } from "../../../../app/lib/public-asset";
 import { IPOLLOWORK_EXTENSION_CATALOG } from "../../../../app/constants";
-import { type iPolloWorkPluginPackageItem, type iPolloWorkServerClient, type iPolloWorkServerStatus } from "../../../../app/lib/ipollowork-server";
+import { iPolloWorkServerError, type iPolloWorkPluginPackageItem, type iPolloWorkServerClient, type iPolloWorkServerStatus } from "../../../../app/lib/ipollowork-server";
 import {
   PERSONAL_WORK_CONTEXT_ID,
   readActiveWorkContextId,
@@ -197,8 +197,13 @@ type SessionPanelView = SidePanelItem | "launcher";
 type TemplateApplyMode = "market" | "new-conversation" | "current-conversation";
 
 type PendingTemplateApplication =
-  | { item: TemplateCatalogItem; origin: "market" }
-  | { item: TemplateCatalogItem; origin: "conversation-conflict"; existingTemplateTitle: string };
+  | { item: TemplateCatalogItem; origin: "market"; resourceScope: WorkContextId }
+  | { item: TemplateCatalogItem; origin: "conversation-conflict"; resourceScope: WorkContextId; existingTemplateTitle?: string };
+
+function isTemplateSessionConflict(error: unknown) {
+  return error instanceof iPolloWorkServerError
+    && (error.code === "template_session_exists" || error.code === "template_session_surface_conflict");
+}
 
 type TemplateSessionData = {
   sessionId: string;
@@ -1325,11 +1330,12 @@ function DesignStarter({ client, workspaceId, templates, loading, busyId, error,
   </>);
 }
 
-function TemplateApplyDialog({ open, mode, template, destinationName, conflictTemplateTitle, projects, selectedProjectId, onProjectChange, onRequestNewProject, onSubmit, onClose }: {
+function TemplateApplyDialog({ open, mode, template, destinationName, newTaskRequired = false, conflictTemplateTitle, projects, selectedProjectId, onProjectChange, onRequestNewProject, onSubmit, onClose }: {
   open: boolean;
   mode: TemplateApplyMode;
   template: TemplateManifestV1;
   destinationName?: string;
+  newTaskRequired?: boolean;
   conflictTemplateTitle?: string;
   projects?: Array<{ id: string; name: string }>;
   selectedProjectId?: string;
@@ -1342,7 +1348,7 @@ function TemplateApplyDialog({ open, mode, template, destinationName, conflictTe
   const [brief, setBrief] = useState<TemplateBrief>({ title: "", audience: "", details: "" });
   const [references, setReferences] = useState<TemplateReferenceItem[]>([]);
   const [referenceBusy, setReferenceBusy] = useState(false);
-  const [conflictConfirmed, setConflictConfirmed] = useState(!conflictTemplateTitle);
+  const [conflictConfirmed, setConflictConfirmed] = useState(!newTaskRequired);
   const [submitting, setSubmitting] = useState(false);
   const referenceInputRef = useRef<HTMLInputElement>(null);
   const referencesRef = useRef<TemplateReferenceItem[]>([]);
@@ -1429,7 +1435,7 @@ function TemplateApplyDialog({ open, mode, template, destinationName, conflictTe
     }
   };
 
-  if (conflictTemplateTitle && !conflictConfirmed) {
+  if (newTaskRequired && !conflictConfirmed) {
     return (
       <Dialog open={open} onOpenChange={(nextOpen) => { if (!nextOpen) void onClose(); }}>
         <DialogContent
@@ -1439,7 +1445,9 @@ function TemplateApplyDialog({ open, mode, template, destinationName, conflictTe
           <DialogHeader className="gap-2 px-6 py-5 text-left">
             <DialogTitle className="pe-8 text-base leading-6">{t("templates.brief.conflict_title")}</DialogTitle>
             <DialogDescription className="text-[13px] leading-5">
-              {t("templates.brief.conflict_description", { title: conflictTemplateTitle })}
+              {conflictTemplateTitle
+                ? t("templates.brief.conflict_description", { title: conflictTemplateTitle })
+                : t("templates.brief.conflict_description_generic")}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter className="mx-0 mb-0 flex-row gap-3 rounded-none border-t border-border bg-background px-6 py-4 sm:justify-end">
@@ -1549,7 +1557,7 @@ function TemplateApplyDialog({ open, mode, template, destinationName, conflictTe
         </div>
 
         <DialogFooter className="mx-0 mb-0 shrink-0 flex-row gap-4 rounded-none border-0 bg-transparent p-0 pt-6 sm:justify-end">
-          <Button type="button" variant="outline" className="h-9 rounded-lg px-3" disabled={submitting} onClick={() => { if (conflictTemplateTitle) setConflictConfirmed(false); else void onClose(); }}>{conflictTemplateTitle ? t("common.back") : t("common.cancel")}</Button>
+          <Button type="button" variant="outline" className="h-9 rounded-lg px-3" disabled={submitting} onClick={() => { if (newTaskRequired) setConflictConfirmed(false); else void onClose(); }}>{newTaskRequired ? t("common.back") : t("common.cancel")}</Button>
           <Button type="button" className="h-9 rounded-lg px-3" disabled={completedRequiredFields !== requiredFields.length || referenceBusy || submitting} onClick={() => void submitApplication()}>
             {submitting ? <LoaderCircle className="size-4 animate-spin" /> : null}
             {mode === "current-conversation" ? t("templates.brief.apply_current") : config.submitLabel}
@@ -1832,12 +1840,23 @@ export function SessionPage(props: SessionPageProps) {
     if (!props.selectedSessionId) return;
     openVideoStudio(props.selectedSessionId, options);
   }, [openVideoStudio, props.selectedSessionId]);
+  const requireNewTaskForTemplate = useCallback((item: TemplateCatalogItem, resourceScope: WorkContextId) => {
+    setTemplateMarketOpen(false);
+    setPendingTemplateProjectId(props.selectedWorkspaceId);
+    setPendingTemplateApplication({
+      item,
+      origin: "conversation-conflict",
+      resourceScope,
+      existingTemplateTitle: currentTemplateSessionData?.manifest.title,
+    });
+  }, [currentTemplateSessionData?.manifest.title, props.selectedWorkspaceId]);
   const applyTemplateToCurrentSession = useCallback(async (
-    templateId: string,
+    item: TemplateCatalogItem,
     resourceScope: WorkContextId = templateResourceScope,
     applyMode: Exclude<TemplateApplyMode, "market"> = "current-conversation",
   ): Promise<boolean> => {
     if (!props.ipolloworkServerClient || !props.runtimeWorkspaceId || !props.selectedSessionId) return false;
+    const templateId = item.manifest.id;
     setTemplateBusyId(templateId);
     try {
       const result = await props.ipolloworkServerClient.materializeTemplate(
@@ -1870,12 +1889,16 @@ export function SessionPage(props: SessionPageProps) {
       }
       return true;
     } catch (error) {
+      if (isTemplateSessionConflict(error)) {
+        requireNewTaskForTemplate(item, resourceScope);
+        return false;
+      }
       toast.error(error instanceof Error ? error.message : t("templates.error_apply"));
       return false;
     } finally {
       setTemplateBusyId(null);
     }
-  }, [openCurrentVideoStudio, openTab, props.ipolloworkServerClient, props.runtimeWorkspaceId, props.selectedSessionId, setSidePanelState, templateResourceScope]);
+  }, [openCurrentVideoStudio, openTab, props.ipolloworkServerClient, props.runtimeWorkspaceId, props.selectedSessionId, requireNewTaskForTemplate, setSidePanelState, templateResourceScope]);
   const refreshTemplateCatalog = useCallback(async () => {
     if (!props.ipolloworkServerClient || !props.runtimeWorkspaceId) return;
     const requestId = ++templateCatalogRequestIdRef.current;
@@ -2106,6 +2129,7 @@ export function SessionPage(props: SessionPageProps) {
   }, [templateSessionRevision, props.ipolloworkServerClient, props.runtimeWorkspaceId, props.selectedSessionId, refreshTemplateCatalog, selectedSessionType]);
   const chooseDesignTemplate = useCallback(async (templateId: iPolloWorkTemplateId) => {
     if (!props.ipolloworkServerClient || !props.runtimeWorkspaceId || !props.selectedSessionId) return;
+    const item = templateCatalog.find((template) => template.manifest.id === templateId);
     try {
       setTemplateBusyId(templateId);
       const result = await props.ipolloworkServerClient.materializeTemplate(props.runtimeWorkspaceId, templateId, props.selectedSessionId, undefined, templateResourceScope);
@@ -2127,9 +2151,13 @@ export function SessionPage(props: SessionPageProps) {
       });
       setSidePanelState(props.selectedSessionId, "panel");
     } catch (error) {
+      if (item && isTemplateSessionConflict(error)) {
+        requireNewTaskForTemplate(item, templateResourceScope);
+        return;
+      }
       toast.error(error instanceof Error ? error.message : "Could not create this template.");
     } finally { setTemplateBusyId(null); }
-  }, [openTab, props.ipolloworkServerClient, props.runtimeWorkspaceId, props.selectedSessionId, setSidePanelState, templateResourceScope]);
+  }, [openTab, props.ipolloworkServerClient, props.runtimeWorkspaceId, props.selectedSessionId, requireNewTaskForTemplate, setSidePanelState, templateCatalog, templateResourceScope]);
   const installDesignTemplate = useCallback(async (templateId: string) => {
     if (!props.ipolloworkServerClient || !props.runtimeWorkspaceId) return;
     setTemplateBusyId(templateId);
@@ -2492,8 +2520,9 @@ export function SessionPage(props: SessionPageProps) {
     brief: TemplateBrief,
     references: TemplateReferenceItem[],
   ) => {
-    const template = pendingTemplateApplication?.item.manifest;
-    if (!template || !props.onCreateTaskFromTemplate) return;
+    const application = pendingTemplateApplication;
+    if (!application || !props.onCreateTaskFromTemplate) return;
+    const template = application.item.manifest;
     const destination = templateDestinationProjects.find((project) => project.id === pendingTemplateProjectId);
     if (template.surface === "video" && destination?.workspaceType === "remote") {
       toast.error(t("templates.video_local_only"));
@@ -2505,7 +2534,7 @@ export function SessionPage(props: SessionPageProps) {
       referencePayload = await buildTemplateReferenceSubmitPayload(references);
       const createdSessionId = await props.onCreateTaskFromTemplate(pendingTemplateProjectId, {
         templateId: template.id,
-        resourceScope: templateResourceScope,
+        resourceScope: application.resourceScope,
         brief: {
           templateId: template.id,
           template: template.title,
@@ -2541,7 +2570,7 @@ export function SessionPage(props: SessionPageProps) {
         revokeTemplateReferenceAttachmentPreviews(referencePayload.attachments);
       }
     }
-  }, [pendingTemplateApplication, pendingTemplateProjectId, props.onCreateTaskFromTemplate, templateDestinationProjects, templateResourceScope]);
+  }, [pendingTemplateApplication, pendingTemplateProjectId, props.onCreateTaskFromTemplate, templateDestinationProjects]);
 
   useEffect(() => {
     const sessionId = props.selectedSessionId;
@@ -2871,6 +2900,7 @@ export function SessionPage(props: SessionPageProps) {
   }, [rightPanelExpanded]);
   const handleSidebarOpenSession = useCallback((workspaceId: string, sessionId: string) => {
     closeExpandedWorkSurface();
+    setMainWorkspaceView(null);
     props.sidebar.onOpenSession(workspaceId, sessionId);
   }, [closeExpandedWorkSurface, props.sidebar.onOpenSession]);
   const handleSidebarOpenSessionSearch = useCallback(() => {
@@ -3993,14 +4023,6 @@ export function SessionPage(props: SessionPageProps) {
       ? "tasks"
       : "conversation";
   const mainHeaderHidden = mainWorkspaceView === "extensions" || mainWorkspaceView === "schedule";
-  const floatingHeaderActionClosesWorkspaceView = mainHeaderHidden;
-  const floatingHeaderActionLabel = floatingHeaderActionClosesWorkspaceView
-    ? t("common.close")
-    : sidePanelOpen ? t("session.right_panel_close") : t("session.right_panel_open");
-  const visibleWorkspaceWidth = viewportWidth - (shellConfig.sidebar && sidebarOpen ? effectiveLeftSidebarWidth : 0);
-  const floatingRightPanelToggleOffset = sidePanelOpen
-    ? Math.min(effectiveBrowserPanelWidth, Math.max(0, visibleWorkspaceWidth - 40)) + 8
-    : 8;
 
   useEffect(() => {
     if (!showSessionLoadingState) {
@@ -4196,39 +4218,6 @@ export function SessionPage(props: SessionPageProps) {
         <SidebarInset className="relative min-h-0 overflow-hidden bg-background mac:bg-background/80">
           <div className="flex min-h-0 flex-1">
           <div className="relative flex min-h-0 min-w-0 flex-1">
-            {mainHeaderHidden && !showProjectNoTasksState ? (
-              <Tooltip>
-                <TooltipTrigger
-                  render={
-                    <Button
-                      variant="ghost"
-                      size="icon-sm"
-                      className={cn(
-                        "absolute z-50 rounded-lg bg-background/80 text-muted-foreground shadow-sm backdrop-blur transition-colors hover:bg-muted hover:text-foreground mac:titlebar-no-drag",
-                        mainWorkspaceView === "schedule" ? "top-[17px]" : "top-2",
-                      )}
-                      style={{ right: floatingRightPanelToggleOffset }}
-                      aria-label={floatingHeaderActionLabel}
-                      title={floatingHeaderActionLabel}
-                      aria-pressed={floatingHeaderActionClosesWorkspaceView ? undefined : sidePanelOpen}
-                      disabled={!floatingHeaderActionClosesWorkspaceView && !props.selectedSessionId && !sidePanelOpen}
-                      onClick={floatingHeaderActionClosesWorkspaceView ? closeMainWorkspaceView : toggleRightPanel}
-                    >
-                      {floatingHeaderActionClosesWorkspaceView ? (
-                        <X className="size-4" />
-                      ) : (
-                        <img
-                          src={publicAssetUrl(sidePanelOpen ? "sidebar-right-open.svg" : "sidebar-right-closed.svg")}
-                          alt=""
-                          className="h-3 w-4 shrink-0 dark:invert"
-                        />
-                      )}
-                    </Button>
-                  }
-                />
-                <TooltipContent>{floatingHeaderActionLabel}</TooltipContent>
-              </Tooltip>
-            ) : null}
             <div
               className={cn(
                 "min-w-0 flex-1 transition-[width,min-width,opacity]",
@@ -4618,7 +4607,10 @@ export function SessionPage(props: SessionPageProps) {
                           });
                           return null;
                         }}
-                        onMaterializeTemplate={(templateId) => { void applyTemplateToCurrentSession(templateId, PERSONAL_WORK_CONTEXT_ID, "new-conversation"); }}
+                        onMaterializeTemplate={(templateId) => {
+                          const template = starterTemplateCatalog.find((item) => item.manifest.id === templateId);
+                          if (template) void applyTemplateToCurrentSession(template, PERSONAL_WORK_CONTEXT_ID, "new-conversation");
+                        }}
                         onActivateVideoStudio={activateVideoStudio}
                         designTemplates={starterTemplateCatalog}
                         designTemplatesLoading={starterTemplateCatalogLoading}
@@ -4890,20 +4882,7 @@ export function SessionPage(props: SessionPageProps) {
             return;
           }
           if (templateMarketTarget === "current-session" && props.selectedSessionId) {
-            if (
-              currentTemplateSessionData?.manifest.category === "slides"
-              && template.manifest.category === "slides"
-            ) {
-              setTemplateMarketOpen(false);
-              setPendingTemplateProjectId(props.selectedWorkspaceId);
-              setPendingTemplateApplication({
-                item: template,
-                origin: "conversation-conflict",
-                existingTemplateTitle: currentTemplateSessionData.manifest.title,
-              });
-              return;
-            }
-            void applyTemplateToCurrentSession(template.manifest.id).then((applied) => {
+            void applyTemplateToCurrentSession(template).then((applied) => {
               if (applied) setTemplateMarketOpen(false);
             });
             return;
@@ -4912,7 +4891,7 @@ export function SessionPage(props: SessionPageProps) {
             ? props.selectedWorkspaceId
             : templateDestinationProjects[0]?.id;
           setTemplateMarketOpen(false);
-          setPendingTemplateApplication({ item: template, origin: "market" });
+          setPendingTemplateApplication({ item: template, origin: "market", resourceScope: templateResourceScope });
           if (selectedProjectId) {
             setPendingTemplateProjectId(selectedProjectId);
           } else {
@@ -4939,6 +4918,7 @@ export function SessionPage(props: SessionPageProps) {
           mode={pendingTemplateApplication.origin === "market" ? "market" : "new-conversation"}
           template={pendingTemplateApplication.item.manifest}
           destinationName={templateDestinationProjects.find((project) => project.id === pendingTemplateProjectId)?.name ?? t("workspace_list.workspace_fallback")}
+          newTaskRequired={pendingTemplateApplication.origin === "conversation-conflict"}
           conflictTemplateTitle={pendingTemplateApplication.origin === "conversation-conflict" ? pendingTemplateApplication.existingTemplateTitle : undefined}
           projects={pendingTemplateApplication.origin === "market" ? templateDestinationProjects : undefined}
           selectedProjectId={pendingTemplateApplication.origin === "market" ? pendingTemplateProjectId : undefined}

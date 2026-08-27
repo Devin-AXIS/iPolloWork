@@ -87,6 +87,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
+import { TemplateIcon } from "@/components/template-icon";
 
 import { SidebarContext, useSidebarContext } from "./app-sidebar-provider";
 import type { SidebarContextValue, iPolloWorkSessionType, iPolloWorkTemplateId } from "./app-sidebar-provider";
@@ -705,7 +706,7 @@ export function AppSidebar(props: AppSidebarProps) {
                 className={primarySidebarActionClass}
               >
                 <span className="flex size-4 shrink-0 items-center justify-center" aria-hidden="true">
-                  <img src={publicAssetUrl("sidebar-icon/figma-layout-panel-top.svg")} alt="" className="size-3.5 dark:invert" />
+                  <TemplateIcon className="size-3.5" />
                 </span>
                 <span className="flex-1 truncate">{t("template_market.title")}</span>
               </SidebarMenuButton>

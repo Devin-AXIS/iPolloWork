@@ -12,6 +12,7 @@ import {
 import { pickLocalImageFile, readLocalImageAsDataUrl } from "@/app/lib/desktop";
 import { downloadBlobAsFile } from "@/app/lib/download";
 import { Button } from "@/components/ui/button";
+import { TemplateIcon } from "@/components/template-icon";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -2033,7 +2034,7 @@ export function DesignPanel({
       title={templateCatalog.title}
       data-testid="design-template-market-button"
     >
-      <Plus />
+      <TemplateIcon className="size-4" />
     </Button>
   ) : null;
 

@@ -5,6 +5,10 @@ const sidebarSource = readFileSync(
   new URL("../src/react-app/domains/session/sidebar/app-sidebar.tsx", import.meta.url),
   "utf8",
 );
+const templateIconSource = readFileSync(
+  new URL("../src/components/template-icon.tsx", import.meta.url),
+  "utf8",
+);
 const toyBrickIconSource = readFileSync(
   new URL("../public/sidebar-icon/toy-brick.svg", import.meta.url),
   "utf8",
@@ -26,14 +30,19 @@ describe("sidebar primary actions", () => {
   test("uses the exported Figma assets in aligned 16px slots with 14px artwork", () => {
     expect(sidebarSource).toContain('SidebarMenu className="gap-1"');
     expect(sidebarSource).toContain('sidebar-icon/figma-square-pen.svg');
-    expect(sidebarSource).toContain('sidebar-icon/figma-layout-panel-top.svg');
+    expect(templateIconSource).toContain('sidebar-icon/figma-layout-panel-top.svg');
     expect(sidebarSource).toContain('sidebar-icon/toy-brick.svg');
     expect(sidebarSource).toContain('const primarySidebarActionClassName = "h-8 gap-2 rounded-[8px] px-2 py-0 text-sm font-normal leading-4');
     expect(sidebarSource).toContain('figma-square-pen.svg")} alt="" className="size-3.5 dark:invert"');
-    expect(sidebarSource).toContain('figma-layout-panel-top.svg")} alt="" className="size-3.5 dark:invert"');
+    expect(sidebarSource).toContain('<TemplateIcon className="size-3.5" />');
     expect(sidebarSource).toContain('toy-brick.svg")} alt="" className="size-3.5 dark:invert"');
     expect(sidebarSource).toContain('<CalendarDays className="!size-3.5" strokeWidth={1.7} />');
     expect(sidebarSource.match(/className=\{primarySidebarActionClass\}/g)).toHaveLength(5);
+  });
+
+  test("shares the sidebar template artwork across template entry points", () => {
+    expect(templateIconSource).toContain('sidebar-icon/figma-layout-panel-top.svg');
+    expect(sidebarSource).toContain('<TemplateIcon className="size-3.5" />');
   });
 
   test("keeps one-pixel strokes from scaling across sidebar icon viewboxes", () => {

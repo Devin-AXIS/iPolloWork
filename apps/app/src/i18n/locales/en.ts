@@ -647,6 +647,7 @@ export default {
   "templates.brief.create_and_apply": "Create and apply",
   "templates.brief.conflict_title": "Use this template in a new task?",
   "templates.brief.conflict_description": "This task already uses “{title}”. Continue to create a new task in the current project and apply the selected template. The current task and its content will not be changed.",
+  "templates.brief.conflict_description_generic": "This template cannot be applied to the current task. Continue to create a new task in the current project and apply it there. The current task and its content will not be changed.",
   "templates.brief.continue": "Continue",
   "templates.brief.reference_upload": "Upload",
   "templates.brief.reference_remove": "Remove {name}",

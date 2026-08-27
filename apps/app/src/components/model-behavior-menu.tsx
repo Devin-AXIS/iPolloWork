@@ -86,7 +86,8 @@ export function ModelBehaviorMenu({
             : "h-9 w-full justify-between rounded-lg border border-border bg-background px-3 text-[13px] text-foreground shadow-xs hover:bg-gray-2 data-[state=open]:border-ring data-[state=open]:ring-3 data-[state=open]:ring-ring/30",
         )}
       >
-        <span className="truncate">{summary}</span>
+        <span className="truncate @max-[560px]/composer:hidden">{summary}</span>
+        <span className="hidden truncate @max-[560px]/composer:inline">{modelLabel}</span>
         <ChevronDown className="size-4 shrink-0" />
       </PopoverTrigger>
       <PopoverContent

@@ -76,8 +76,9 @@ describe("personal and Enterprise chat entry wiring", () => {
   });
 
   test("keeps market launches scoped while the starter catalog stays personal", () => {
-    expect(sessionPage).toContain("resourceScope: templateResourceScope");
-    expect(sessionPage).toContain('applyTemplateToCurrentSession(templateId, PERSONAL_WORK_CONTEXT_ID, "new-conversation")');
+    expect(sessionPage).toContain('setPendingTemplateApplication({ item: template, origin: "market", resourceScope: templateResourceScope })');
+    expect(sessionPage).toContain("resourceScope: application.resourceScope");
+    expect(sessionPage).toContain('applyTemplateToCurrentSession(template, PERSONAL_WORK_CONTEXT_ID, "new-conversation")');
     expect(sessionPage).toContain("designTemplates={starterTemplateCatalog}");
     expect(sessionRoute).toContain("templateScope ?? readActiveWorkContextId()");
     expect(sessionRoute).toContain("Template unavailable");

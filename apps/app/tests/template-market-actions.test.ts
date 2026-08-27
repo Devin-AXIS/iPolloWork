@@ -208,19 +208,24 @@ describe("template market actions", () => {
     expect(sessionPage).toContain('useState<"new-session" | "current-session">("new-session")');
     expect(sessionPage).toContain('setTemplateMarketTarget("current-session")');
     expect(sessionPage).toContain('templateMarketTarget === "current-session"');
-    expect(sessionPage).toContain("applyTemplateToCurrentSession(template.manifest.id)");
+    expect(sessionPage).toContain("applyTemplateToCurrentSession(template)");
     expect(sessionPage).toContain('setTemplateMarketTarget("new-session")');
     expect(sessionPage).toContain('t("templates.brief.apply_current")');
   });
 
-  test("moves a second presentation template into a confirmed new task", () => {
-    expect(sessionPage).toContain('currentTemplateSessionData?.manifest.category === "slides"');
-    expect(sessionPage).toContain('template.manifest.category === "slides"');
+  test("moves every occupied-session template conflict into a confirmed new task", () => {
+    expect(sessionPage).toContain("function isTemplateSessionConflict(error: unknown)");
+    expect(sessionPage).toContain('error.code === "template_session_exists"');
+    expect(sessionPage).toContain('error.code === "template_session_surface_conflict"');
+    expect(sessionPage).toContain("requireNewTaskForTemplate(item, resourceScope)");
+    expect(sessionPage).toContain("requireNewTaskForTemplate(item, templateResourceScope)");
     expect(sessionPage).toContain('origin: "conversation-conflict"');
     expect(sessionPage).toContain('data-testid="template-conflict-dialog"');
     expect(sessionPage).toContain('t("templates.brief.conflict_description"');
+    expect(sessionPage).toContain('t("templates.brief.conflict_description_generic")');
     expect(sessionPage).toContain('t("templates.brief.continue")');
-    expect(sessionPage).toContain('conflictTemplateTitle ? t("common.back") : t("common.cancel")');
+    expect(sessionPage).toContain('newTaskRequired ? t("common.back") : t("common.cancel")');
+    expect(sessionPage).not.toContain('currentTemplateSessionData?.manifest.category === "slides"');
   });
 
   test("configures a market template before creating a task in the selected project", () => {
@@ -229,6 +234,7 @@ describe("template market actions", () => {
     expect(sessionPage).toContain('pendingTemplateApplication.origin === "market" ? templateDestinationProjects : undefined');
     expect(sessionPage).toContain('pendingTemplateApplication.origin === "market" ? setPendingTemplateProjectId : undefined');
     expect(sessionPage).toContain('pendingTemplateApplication.origin === "market" ? openCreateProjectDialog : undefined');
+    expect(sessionPage).toContain('newTaskRequired={pendingTemplateApplication.origin === "conversation-conflict"}');
     expect(sessionPage).toContain("props.onCreateTaskFromTemplate(pendingTemplateProjectId");
     expect(sessionPage).toContain("setPendingTemplateDispatch({");
     expect(sessionPage).not.toContain("projectFiles: supplemental.projectFiles");

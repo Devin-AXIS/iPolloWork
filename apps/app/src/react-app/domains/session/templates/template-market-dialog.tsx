@@ -12,7 +12,6 @@ import {
   Folders,
   Globe2,
   IdCard,
-  LayoutTemplate,
   Loader2,
   PictureInPicture2,
   Presentation,
@@ -31,6 +30,7 @@ import {
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { TemplateIcon } from "@/components/template-icon";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
@@ -377,7 +377,7 @@ export function TemplateMarketDialog(props: TemplateMarketDialogProps) {
           {props.loading ? <div data-testid="template-catalog-loading" className="grid grid-cols-3 gap-4 max-[800px]:grid-cols-2 max-[540px]:grid-cols-1">{Array.from({ length: 6 }, (_, index) => <div key={index} className="h-[227px] animate-pulse rounded-lg bg-muted" />)}</div> : props.error ? <div className="rounded-lg border border-destructive/20 bg-destructive/5 p-6 text-center"><p className="text-sm">{props.error}</p><Button variant="outline" size="sm" className="mt-3 rounded-lg" onClick={props.onRefresh}>{t("template_market.retry")}</Button></div> : enterpriseMode && view === "explore" ? (visibleEnterpriseResources.length ? <div className="grid grid-cols-3 gap-4 max-[800px]:grid-cols-2 max-[540px]:grid-cols-1">{visibleEnterpriseResources.map((resource) => {
             const installedTemplate = enterpriseTemplateInstallations.get(resource.id);
             return <EnterpriseTemplateCard key={resource.id} resource={resource} installedTemplate={installedTemplate} getCover={props.getCover} sourceLabel={props.enterprise?.shortName ?? resource.enterpriseCategory} busy={props.busyId === resource.id || props.busyId === "import"} disabled={props.busyId !== null} favorite={installedTemplate ? favoriteIds.has(installedTemplate.manifest.id) : false} onToggleFavorite={() => { if (installedTemplate) toggleFavorite(installedTemplate.manifest.id); }} onPreview={(template) => setPreviewSelection({ template, enterpriseResourceId: resource.id })} onInstall={() => props.onInstallEnterprise(resource)} onUse={() => { if (installedTemplate) props.onUse(installedTemplate); }} />;
-          })}</div> : <div className="rounded-lg border border-dashed border-border p-10 text-center"><Building2 className="mx-auto size-5 text-muted-foreground" /><p className="mt-3 text-sm font-medium">{t("enterprise_connection.enterprise_templates_empty")}</p></div>) : visible.length ? <div className="grid grid-cols-3 gap-4 max-[800px]:grid-cols-2 max-[540px]:grid-cols-1">{visible.map((template) => <TemplateCard key={template.manifest.id} template={template} getCover={props.getCover} busy={props.busyId !== null} favorite={favoriteIds.has(template.manifest.id)} onToggleFavorite={() => toggleFavorite(template.manifest.id)} onPreview={() => setPreviewSelection({ template })} onUse={() => props.onUse(template)} onInstall={() => props.onInstall(template.manifest.id)} />)}</div> : <div className="rounded-lg border border-dashed border-border p-10 text-center"><LayoutTemplate className="mx-auto size-5 text-muted-foreground" /><p className="mt-3 text-sm font-medium">{t("template_market.no_match_title")}</p><p className="mt-1 text-xs text-muted-foreground">{t("template_market.no_match_desc")}</p></div>}
+          })}</div> : <div className="rounded-lg border border-dashed border-border p-10 text-center"><Building2 className="mx-auto size-5 text-muted-foreground" /><p className="mt-3 text-sm font-medium">{t("enterprise_connection.enterprise_templates_empty")}</p></div>) : visible.length ? <div className="grid grid-cols-3 gap-4 max-[800px]:grid-cols-2 max-[540px]:grid-cols-1">{visible.map((template) => <TemplateCard key={template.manifest.id} template={template} getCover={props.getCover} busy={props.busyId !== null} favorite={favoriteIds.has(template.manifest.id)} onToggleFavorite={() => toggleFavorite(template.manifest.id)} onPreview={() => setPreviewSelection({ template })} onUse={() => props.onUse(template)} onInstall={() => props.onInstall(template.manifest.id)} />)}</div> : <div className="rounded-lg border border-dashed border-border p-10 text-center"><TemplateIcon className="mx-auto size-5 opacity-60" /><p className="mt-3 text-sm font-medium">{t("template_market.no_match_title")}</p><p className="mt-1 text-xs text-muted-foreground">{t("template_market.no_match_desc")}</p></div>}
         </section>
       </DialogContent>
     </Dialog>

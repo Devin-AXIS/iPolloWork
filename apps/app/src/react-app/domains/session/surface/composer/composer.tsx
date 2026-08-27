@@ -1,7 +1,7 @@
 /** @jsxImportSource react */
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { flushSync } from "react-dom";
-import { AppWindowMac, ArrowUp, Bot, Check, ChevronDown, ChevronRight, CircleGauge, Code2, FileText, LayoutTemplate, ListTodo, Paperclip, Plus, Plug, Settings, Shield, ShieldAlert, ShieldCheck, ShieldQuestion, Sparkles, Square, Terminal, Wrench, X, Zap } from "lucide-react";
+import { AppWindowMac, ArrowUp, Bot, Check, ChevronDown, ChevronRight, CircleGauge, Code2, FileText, ListTodo, Paperclip, Plus, Plug, Settings, Shield, ShieldAlert, ShieldCheck, ShieldQuestion, Sparkles, Square, Terminal, Wrench, X, Zap } from "lucide-react";
 import fuzzysort from "fuzzysort";
 import { toast } from "@/components/ui/sonner";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -24,6 +24,7 @@ import { t } from "@/i18n";
 import { resolveExtensionIconUrl } from "@/react-app/design-system/extension-icon-src";
 import { LexicalPromptEditor, type LexicalPromptEditorHandle } from "./editor";
 import { ModelBehaviorMenu } from "@/components/model-behavior-menu";
+import { TemplateIcon } from "@/components/template-icon";
 import { ConfirmModal } from "@/react-app/design-system/modals/confirm-modal";
 import { listRunningAppsForMention } from "./app-mentions";
 import type { ComposerMentionKind } from "./mention-encoding";
@@ -150,10 +151,10 @@ function ContextHealth({
         type="button"
         data-testid="composer-context-health"
         aria-label={`${t("composer.context_health")}: ${summary}`}
-        className={`inline-flex h-8 shrink-0 items-center gap-1.5 rounded-full px-2.5 text-[12px] font-medium leading-[18px] transition-colors hover:bg-gray-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gray-7 ${health.compressionWarning ? "text-amber-11" : "text-gray-10"}`}
+        className={`inline-flex h-8 shrink-0 items-center gap-1.5 rounded-full px-2.5 text-[12px] font-medium leading-[18px] transition-colors hover:bg-gray-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gray-7 @max-[560px]/composer:w-8 @max-[560px]/composer:justify-center @max-[560px]/composer:px-0 ${health.compressionWarning ? "text-amber-11" : "text-gray-10"}`}
       >
         <CircleGauge className="size-3.5 shrink-0" aria-hidden="true" />
-        <span className="whitespace-nowrap tabular-nums">{summary}</span>
+        <span className="whitespace-nowrap tabular-nums @max-[560px]/composer:hidden">{summary}</span>
       </PopoverTrigger>
       <PopoverContent side="top" align="end" sideOffset={8} className="w-72 gap-0 rounded-2xl p-4">
         <div className="flex items-center justify-between gap-4">
@@ -1355,7 +1356,7 @@ export function ReactSessionComposer(props: ComposerProps) {
       <div className="max-w-[800px] mx-auto">
         {/* Main composer panel */}
         <div
-          className={`relative overflow-visible rounded-[18px] border bg-dls-surface transition-all ${engineSelectedAppearance ? "border-sky-8 shadow-[var(--dls-card-shadow)]" : "border-transparent shadow-[0_4px_12.9px_rgba(80,130,222,0.20)]"} ${props.layout === "inline" ? `new-conversation-composer dark:bg-[#343434] ${engineSelectedAppearance ? "" : "dark:shadow-[0_4px_9.5px_rgba(113,156,234,0.53)]"}` : ""} ${panelRoundedClass}`}
+          className={`@container/composer relative overflow-visible rounded-[18px] border bg-dls-surface transition-all ${engineSelectedAppearance ? "border-sky-8 shadow-[var(--dls-card-shadow)]" : "border-transparent shadow-[0_4px_12.9px_rgba(80,130,222,0.20)]"} ${props.layout === "inline" ? `new-conversation-composer dark:bg-[#343434] ${engineSelectedAppearance ? "" : "dark:shadow-[0_4px_9.5px_rgba(113,156,234,0.53)]"}` : ""} ${panelRoundedClass}`}
           style={engineSelectedAppearance ? undefined : {
             backgroundImage: `linear-gradient(${props.layout === "inline" ? "var(--new-conversation-composer-surface, var(--dls-surface))" : "var(--dls-surface)"}, ${props.layout === "inline" ? "var(--new-conversation-composer-surface, var(--dls-surface))" : "var(--dls-surface)"}), linear-gradient(90deg, #7FCDFF 0%, #FFE67D 100%)`,
             backgroundOrigin: "border-box",
@@ -1566,14 +1567,19 @@ export function ReactSessionComposer(props: ComposerProps) {
                       {props.onOpenTemplateMarket ? (
                         <button
                           type="button"
-                          className="flex w-full items-center gap-2 rounded-[12px] px-3 py-2.5 text-left text-sm text-gray-11 hover:bg-gray-2"
+                          className="flex w-full items-center gap-2 rounded-[12px] px-3 py-2.5 text-left text-sm text-gray-11 transition-colors hover:bg-gray-3 hover:text-gray-12"
+                          onMouseEnter={() => {
+                            setPlusMenuSection(null);
+                            setToolMenuOpen(false);
+                            setDelegationMenuOpen(false);
+                          }}
                           onClick={() => {
                             setPlusMenuOpen(false);
                             setPlusMenuSection(null);
                             props.onOpenTemplateMarket?.();
                           }}
                         >
-                          <LayoutTemplate className="size-4 shrink-0 text-gray-9" aria-hidden />
+                          <TemplateIcon className="size-3.5 opacity-60" />
                           <span>{t("composer.plus_use_template")}</span>
                         </button>
                       ) : null}
@@ -1837,10 +1843,10 @@ export function ReactSessionComposer(props: ComposerProps) {
                       type="button"
                       disabled={props.busy || props.accessModeSelectionDisabled || accessModeBusy}
                       aria-label={`${t("composer.access_mode_label")}: ${activeAccessMode.label}`}
-                      className="inline-flex h-8 items-center gap-1.5 rounded-full bg-transparent px-2 text-[12px] leading-[18px] text-gray-10 transition-colors hover:bg-gray-3 hover:text-gray-12 data-[state=open]:bg-gray-3 data-[state=open]:text-gray-12 disabled:pointer-events-none disabled:opacity-60"
+                      className="inline-flex h-8 items-center gap-1.5 rounded-full bg-transparent px-2 text-[12px] leading-[18px] text-gray-10 transition-colors hover:bg-gray-3 hover:text-gray-12 data-[state=open]:bg-gray-3 data-[state=open]:text-gray-12 disabled:pointer-events-none disabled:opacity-60 @max-[560px]/composer:w-10 @max-[560px]/composer:justify-center @max-[560px]/composer:gap-0.5 @max-[560px]/composer:px-1"
                     >
                       <AccessModeIcon icon={activeAccessMode.icon} className="size-3.5 shrink-0" />
-                      <span>{activeAccessMode.label}</span>
+                      <span className="@max-[560px]/composer:hidden">{activeAccessMode.label}</span>
                       <ChevronDown className="size-4 shrink-0" />
                     </PopoverTrigger>
                     <PopoverContent side="top" align="start" sideOffset={8} className="w-72 gap-0 p-1.5">
@@ -1883,10 +1889,10 @@ export function ReactSessionComposer(props: ComposerProps) {
                     type="button"
                     disabled={props.busy || props.modeSelectionDisabled}
                     aria-label={`${t("composer.work_mode_label")}: ${activeWorkMode.label}`}
-                    className="inline-flex h-8 max-w-32 shrink-0 items-center gap-1.5 rounded-full bg-transparent px-2 text-[12px] leading-[18px] text-gray-10 transition-colors hover:bg-gray-3 hover:text-gray-12 data-[state=open]:bg-gray-3 data-[state=open]:text-gray-12 disabled:pointer-events-none disabled:opacity-60"
+                    className="inline-flex h-8 max-w-32 shrink-0 items-center gap-1.5 rounded-full bg-transparent px-2 text-[12px] leading-[18px] text-gray-10 transition-colors hover:bg-gray-3 hover:text-gray-12 data-[state=open]:bg-gray-3 data-[state=open]:text-gray-12 disabled:pointer-events-none disabled:opacity-60 @max-[560px]/composer:w-10 @max-[560px]/composer:justify-center @max-[560px]/composer:gap-0.5 @max-[560px]/composer:px-1"
                   >
-                    {props.layout === "inline" ? null : <WorkModeIcon icon={activeWorkMode.icon} className="size-3.5 shrink-0" />}
-                    <span className="truncate">{activeWorkMode.label}</span>
+                    <WorkModeIcon icon={activeWorkMode.icon} className={`size-3.5 shrink-0 ${props.layout === "inline" ? "hidden @max-[560px]/composer:block" : ""}`} />
+                    <span className="truncate @max-[560px]/composer:hidden">{activeWorkMode.label}</span>
                     <ChevronDown className="size-4 shrink-0" />
                   </PopoverTrigger>
                   <PopoverContent side="top" align="start" sideOffset={8} className="w-64 gap-0 p-1.5">

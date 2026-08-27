@@ -38,11 +38,23 @@ function plusMenuOutsideClickHandlerSource() {
 
 describe("composer plus entry menu", () => {
   test("routes files, templates, tools, and external delegation from one plus menu", () => {
+    const templateLabelIndex = composerSource.indexOf('t("composer.plus_use_template")');
+    const templateButtonStart = composerSource.lastIndexOf("<button", templateLabelIndex);
+    const templateButtonEnd = composerSource.indexOf("</button>", templateButtonStart);
+    expect(templateButtonStart).toBeGreaterThan(-1);
+    expect(templateButtonEnd).toBeGreaterThan(templateButtonStart);
+    const templateButton = composerSource.slice(templateButtonStart, templateButtonEnd);
+
     expect(composerSource).toContain("plusMenuOpen");
     expect(composerSource).toContain("plusMenuSection");
     expect(composerSource).toContain('title={t("composer.plus_menu_label")}');
     expect(composerSource).toContain('t("composer.plus_attach_files")');
     expect(composerSource).toContain('t("composer.plus_use_template")');
+    expect(templateButton).toContain('text-gray-11 transition-colors hover:bg-gray-3 hover:text-gray-12');
+    expect(templateButton).toContain('<TemplateIcon className="size-3.5 opacity-60" />');
+    expect(templateButton).toContain("setPlusMenuSection(null)");
+    expect(templateButton).toContain("setToolMenuOpen(false)");
+    expect(templateButton).toContain("setDelegationMenuOpen(false)");
     expect(composerSource).toContain('t("composer.plus_tools")');
     expect(composerSource).toContain('t("composer.delegate_external_agents")');
     expect(composerSource).toContain("input?.click()");

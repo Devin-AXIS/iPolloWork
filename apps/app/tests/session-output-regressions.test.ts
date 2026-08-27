@@ -18,7 +18,7 @@ describe("session output issue regressions", () => {
     expect(sessionPageSource).toContain("&& !props.selectedSessionId");
     expect(sessionPageSource).toContain('selectedWorkspaceProject?.status === "ready"');
     expect(sessionPageSource).toContain("selectedWorkspaceProject.sessions.length === 0");
-    expect(sessionPageSource).toContain("{mainHeaderHidden && !showProjectNoTasksState ? (");
+    expect(sessionPageSource).not.toContain("{mainHeaderHidden && !showProjectNoTasksState ? (");
     expect(sessionPageSource).toContain(") : hasSelectedTask ? (");
     expect(sessionPageSource).toContain('{t("workspace.no_tasks")}');
     expect(sessionPageSource).not.toContain("[border-bottom-width:0.5px] dark:border-white/[0.06] dark:bg-background/72");
@@ -139,6 +139,8 @@ describe("session output issue regressions", () => {
     expect(source).not.toContain('t("templates.brief.reference_description")');
     expect(source).toContain('mode === "market" && projects && selectedProjectId && onProjectChange');
     expect(source).toContain('data-testid="template-conflict-dialog"');
+    expect(source).toContain('t("templates.brief.conflict_description_generic")');
+    expect(source).toContain('newTaskRequired={pendingTemplateApplication.origin === "conversation-conflict"}');
     expect(source).not.toContain('t("templates.brief.choose_project_file")');
     expect(source).not.toContain('t("templates.brief.add_link")');
     expect(source).not.toContain('t("templates.brief.use_current_conversation")');

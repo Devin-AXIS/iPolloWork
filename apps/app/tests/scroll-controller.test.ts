@@ -14,7 +14,8 @@ describe("session scroll controller", () => {
     expect(controllerSource).toContain('anchor.scrollIntoView({ block: "start", inline: "nearest", behavior })');
     expect(controllerSource).toContain("anchor.remove()");
     expect(controllerSource).toContain("syncProgrammaticScrollTop(container, container.scrollHeight, behavior)");
-    expect(controllerSource).toContain('const resetDelay = behavior === "smooth" ? 300 : 50');
+    expect(controllerSource).toContain("const SMOOTH_SCROLL_RESET_MS = 700");
+    expect(controllerSource).toContain('const resetDelay = behavior === "smooth" ? SMOOTH_SCROLL_RESET_MS : 50');
     expect(controllerSource).not.toContain('container.scrollTo({ top: clampedTop, behavior: "auto" })');
   });
 
@@ -36,5 +37,14 @@ describe("session scroll controller", () => {
 
     expect(programmaticReturn).toBeGreaterThan(-1);
     expect(manualSync).toBeGreaterThan(programmaticReturn);
+  });
+
+  test("does not mistake an upward programmatic jump for a manual scroll", () => {
+    const start = controllerSource.indexOf("if (programmaticScrollRef.current && userGestured)");
+    const end = controllerSource.indexOf("if (programmaticScrollRef.current)", start + 1);
+    expect(start).toBeGreaterThan(-1);
+    expect(end).toBeGreaterThan(start);
+    expect(controllerSource.slice(start, end)).not.toContain("scrolledUp");
+    expect(controllerSource.match(/lastGestureAtRef\.current = 0;/g)).toHaveLength(2);
   });
 });
