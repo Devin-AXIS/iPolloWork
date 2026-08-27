@@ -70,6 +70,7 @@ declare global {
       shell?: {
         openExternal?: (url: string) => Promise<{ ok: boolean; error?: string } | void>;
         openAuth?: (url: string) => Promise<{ ok: boolean; error?: string } | void>;
+        clearAuthSession?: () => Promise<{ ok: boolean; error?: string } | void>;
         relaunch?: () => Promise<void>;
       };
       system?: {
@@ -424,6 +425,16 @@ export async function openDesktopAuthUrl(url: string): Promise<void> {
   }
   if (typeof window !== "undefined") {
     window.open(url, "_blank", "noopener,noreferrer");
+  }
+}
+
+export async function clearDesktopAuthSession(): Promise<void> {
+  const clearAuthSession = window.__IPOLLOWORK_ELECTRON__?.shell?.clearAuthSession;
+  if (!clearAuthSession) return;
+
+  const result = await clearAuthSession();
+  if (result && result.ok === false) {
+    throw new Error(result.error ?? "Failed to clear sign-in session");
   }
 }
 

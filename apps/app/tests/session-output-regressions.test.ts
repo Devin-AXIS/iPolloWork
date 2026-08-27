@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
+import { buildWorkspaceFileTree, filterWorkspaceFileTree } from "../src/components/chat/artifact";
 import { formatProcessDuration, getAssistantProcessState } from "../src/components/chat/utils";
 
 describe("session output issue regressions", () => {
@@ -57,6 +58,43 @@ describe("session output issue regressions", () => {
     expect(composerSource).toContain('t("composer.context_compression_warning")');
     expect(sessionPageSource).not.toContain('className="pointer-events-none hidden md:flex md:justify-self-center"');
     expect(sessionRouteSource).toContain("modelContextWindow: selectedModelContextWindow");
+  });
+
+  test("switches task files between the full workspace tree and key outputs", () => {
+    const artifactSource = readFileSync(
+      new URL("../src/components/chat/artifact.tsx", import.meta.url),
+      "utf8",
+    );
+    const sessionPageSource = readFileSync(
+      new URL("../src/react-app/domains/session/chat/session-page.tsx", import.meta.url),
+      "utf8",
+    );
+    const messageListSource = readFileSync(
+      new URL("../src/components/chat/message-list.tsx", import.meta.url),
+      "utf8",
+    );
+    const tree = buildWorkspaceFileTree([
+      { path: "design/session-1/entry.html", kind: "file", size: 120, mtimeMs: 1, revision: "a" },
+      { path: "design/session-1/export/deck.pptx", kind: "file", size: 220, mtimeMs: 2, revision: "b" },
+      { path: "src/main.tsx", kind: "file", size: 320, mtimeMs: 3, revision: "c" },
+    ]);
+
+    expect(tree.map((node) => node.name)).toEqual(["design", "src"]);
+    expect(filterWorkspaceFileTree(tree, "deck")).toEqual([
+      expect.objectContaining({
+        name: "design",
+        children: [expect.objectContaining({ name: "session-1" })],
+      }),
+    ]);
+    expect(artifactSource).toContain('data-testid="conversation-files-mode-directory"');
+    expect(artifactSource).toContain('data-testid="conversation-files-mode-outputs"');
+    expect(artifactSource).toContain("client.listWorkspaceFiles(workspaceId)");
+    expect(artifactSource).toContain("htmlArtifactFilenameFromTitle(sessionTitle)");
+    expect(artifactSource).toContain("minmax(220px,1fr)");
+    expect(artifactSource).toContain("min-h-[76px]");
+    expect(sessionPageSource).toContain("workspaceRoot={props.selectedWorkspaceRoot}");
+    expect(sessionPageSource).toContain("sessionTitle={selectedSessionTitle}");
+    expect(messageListSource).toContain("sessionTitle={sessionTitle}");
   });
 
   test("process duration uses a compact clock format", () => {

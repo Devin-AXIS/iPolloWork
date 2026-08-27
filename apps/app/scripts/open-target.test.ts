@@ -2,6 +2,7 @@ import { describe, expect, it } from "bun:test";
 import type { UIMessage } from "ai";
 
 import {
+  createWorkspaceFileOpenTarget,
   deriveOpenTargets,
   isCollectibleArtifactTarget,
   localFilePathFromHref,
@@ -27,6 +28,22 @@ function toolMessage(id: string, toolName: string, input: Record<string, unknown
 }
 
 describe("deriveOpenTargets", () => {
+  it("creates verified open targets from workspace catalog files", () => {
+    expect(createWorkspaceFileOpenTarget({
+      path: "exports\\launch-deck.pptx",
+      size: 4096,
+      mtimeMs: 123,
+    })).toMatchObject({
+      id: "file:exports/launch-deck.pptx",
+      value: "exports/launch-deck.pptx",
+      name: "launch-deck.pptx",
+      preview: "slides",
+      exists: true,
+      size: 4096,
+      updatedAt: 123,
+    });
+  });
+
   it("includes a template entry without assistant file text", () => {
     const targets = deriveOpenTargets([], {
       supplementalFiles: ["design/ses_deck/entry.html"],

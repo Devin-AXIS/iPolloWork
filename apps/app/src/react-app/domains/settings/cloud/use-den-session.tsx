@@ -16,7 +16,7 @@ import {
   writeDenSettings,
   type DenOrgSummary,
 } from "@/app/lib/den";
-import { clearDesktopBootstrapConfig } from "@/app/lib/desktop";
+import { clearDesktopAuthSession, clearDesktopBootstrapConfig } from "@/app/lib/desktop";
 import { exchangeHandoffAndSignIn } from "@/app/lib/den-handoff";
 import {
   denSessionUpdatedEvent,
@@ -502,7 +502,16 @@ export function useDenSession({
       if (authToken.trim()) {
         await client.signOut();
       }
+      let authSessionClearError: unknown = null;
+      try {
+        await clearDesktopAuthSession();
+      } catch (error) {
+        authSessionClearError = error;
+      }
       clearSignedInState(t("den.status_signed_out"));
+      if (authSessionClearError) {
+        setAuthError(t("den.error_signin_session_clear_failed"));
+      }
     } catch (error) {
       setAuthError(
         error instanceof DenApiError

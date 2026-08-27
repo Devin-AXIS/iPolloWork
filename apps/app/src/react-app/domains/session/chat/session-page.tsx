@@ -3032,7 +3032,13 @@ export function SessionPage(props: SessionPageProps) {
           return { ok: false, error: "Workspace client is not ready." };
         }
 
-        await props.ipolloworkServerClient.installTemplate(props.runtimeWorkspaceId, "ipollowork.saas-landing");
+        try {
+          await props.ipolloworkServerClient.installTemplate(props.runtimeWorkspaceId, "ipollowork.saas-landing");
+        } catch (error) {
+          // Development fixtures should remain usable when the installed copy of
+          // this same template version was created by an earlier local build.
+          if ((error as { code?: unknown }).code !== "template_version_conflict") throw error;
+        }
         const materialized = await props.ipolloworkServerClient.materializeTemplate(
           props.runtimeWorkspaceId,
           "ipollowork.saas-landing",
@@ -4153,7 +4159,7 @@ export function SessionPage(props: SessionPageProps) {
             <div data-testid="session-header-actions" className="relative z-10 col-start-3 flex items-center gap-1.5 justify-self-end text-gray-10 mac:titlebar-no-drag">
               <ConversationOutputTrigger
                 active={activeSidePanel === "outputs"}
-                disabled={!conversationMessages.length && !designTemplateEntryPath}
+                disabled={!props.selectedSessionId || !props.ipolloworkServerClient || !props.runtimeWorkspaceId}
                 onClick={() => toggleCurrentSidePanel("outputs")}
               />
               <Tooltip>
@@ -4689,6 +4695,10 @@ export function SessionPage(props: SessionPageProps) {
                     <ConversationOutputPanel
                       messages={conversationMessages}
                       sessionId={props.selectedSessionId ?? undefined}
+                      sessionTitle={selectedSessionTitle}
+                      client={props.ipolloworkServerClient}
+                      workspaceId={props.runtimeWorkspaceId}
+                      workspaceRoot={props.selectedWorkspaceRoot}
                       openTargets={accessibleTargets}
                       templateEntryPath={templateEntryPathForArtifacts}
                       supplementalFiles={artifactFiles}

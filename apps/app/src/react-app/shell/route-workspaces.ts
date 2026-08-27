@@ -264,12 +264,29 @@ export function isInternalSubtaskSession(session: RouteSession) {
   return Boolean(parentID && agent.trim() && agent !== "orchestrator");
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
 export function isUnstartedSession(session: RouteSession) {
   const title = session.title?.trim() ?? "";
   const hasDefaultTitle = isDefaultSessionTitle(title);
+  const dsh = isRecord(session.dsh) ? session.dsh : null;
+  if (typeof dsh?.blank === "boolean") {
+    return dsh.blank && !isInternalSubtaskSession(session);
+  }
 
   const created = session.time?.created;
   const updated = session.time?.updated ?? created;
+  if (isRecord(session.codex)) {
+    return (
+      typeof created === "number" &&
+      typeof updated === "number" &&
+      created === updated &&
+      !isInternalSubtaskSession(session) &&
+      hasDefaultTitle
+    );
+  }
   return (
     typeof created === "number" &&
     typeof updated === "number" &&
