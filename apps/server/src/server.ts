@@ -1741,6 +1741,7 @@ function createRoutes(
       purpose: typeof body.purpose === "string"
         ? body.purpose as import("@ipollowork/types/templates").TemplateAuthoringInput["purpose"]
         : undefined,
+      brief: body.brief,
     }), 201);
   });
 

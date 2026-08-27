@@ -1,4 +1,9 @@
-import type { TemplateCatalogItem, TemplateCategory, TemplateManifestV1 } from "@ipollowork/types/templates";
+import {
+  isArtifactDeliveryManifest,
+  type TemplateCatalogItem,
+  type TemplateCategory,
+  type TemplateManifestV1,
+} from "@ipollowork/types/templates";
 import { t } from "@/i18n";
 
 export type TemplateBrief = {
@@ -36,6 +41,7 @@ export type ConversationTemplateIntent = {
 const CREATIVE_DELIVERABLE_ACTION = /(?:生成|制作|创建|设计|开发|搭建|编写|起草|输出|写(?:一份|一个|一套|一篇)?|做(?:一份|一个|一套|一张|一段|个)?|\b(?:create|build|develop|make|generate|design|produce|draft|write)\b)/i;
 const EXPLANATION_ONLY_REQUEST = /(?:怎么|如何)(?:做|制作|创建|设计|生成)|(?:做|制作|创建|设计|生成).{0,12}(?:需要什么|用什么|有哪些|是什么|怎么|如何)|(?:什么|哪些).{0,8}(?:工具|方法|步骤)|(?:解释|介绍|教程|方法|步骤).{0,12}(?:ppt|幻灯片|演示文稿|视频|网页|网站|海报|报告|文章)|\bhow\s+(?:do|can|should|would)\b|\bhow\s+to\b|\bwhat\s+(?:tools?|steps?|methods?|software)\b|\bwhy\b/i;
 const PLAN_ONLY_REQUEST = /(?:视频|动画|宣传片|短片)\s*(?:脚本|文案|创意方案)|(?:ppt|幻灯片|演示文稿)\s*(?:大纲|提纲)|(?:网页|网站)\s*(?:需求文档|策划方案)/i;
+const CUSTOM_TEMPLATE_REQUEST = /(?:自定义(?:模板|模版|样式|设计)?|空白(?:模板|模版|骨架)?)(?:.{0,12}(?:ppt|幻灯片|演示文稿|视频|网页|网站|海报|卡片|报告|文章))?|(?:不用|不要|不使用|别用)(?:任何)?(?:系统|市场|现有|预设)?\s*(?:模板|模版)|\b(?:custom|blank|from scratch|without (?:a |the )?template|no template)\b/i;
 
 const CATEGORY_INTENT_PATTERNS: ReadonlyArray<{
   category: TemplateCategory;
@@ -169,6 +175,10 @@ export function conversationTemplateBrief(prompt: string): TemplateBrief {
   };
 }
 
+export function requestsCustomTemplate(prompt: string): boolean {
+  return CUSTOM_TEMPLATE_REQUEST.test(prompt.trim());
+}
+
 export function selectConversationTemplate(
   prompt: string,
   catalog: readonly TemplateCatalogItem[],
@@ -178,6 +188,7 @@ export function selectConversationTemplate(
     ? { category: requestedCategory, prompt: prompt.trim() }
     : inferConversationTemplateIntent(prompt);
   if (!intent) return null;
+  if (requestsCustomTemplate(intent.prompt)) return null;
   const candidates = catalog.filter((item) => item.installed && item.manifest.category === intent.category);
   if (candidates.length === 0) return null;
   const terms = promptSearchTerms(intent.prompt);
@@ -377,6 +388,14 @@ export function templateBriefPrompt(input: {
   briefPath: string;
 }): string {
   const checklist = input.template.applyChecklist.join("; ");
+  if (input.template.id && isArtifactDeliveryManifest({ id: input.template.id })) {
+    const categoryContract = input.template.category === "slides" && input.template.pptxCompatibility === "native-editable"
+      ? "Preserve the fixed 16:9 stage and native editable PPTX contract: every visible object must use supported data-pptx-text, data-pptx-shape, or data-pptx-image markers. The Design panel owns slide navigation; do not add scripts, custom keyboard handlers, slide counters, navigation buttons, speaker notes, responsive slide reflow, or breakpoint-specific slide layouts."
+      : input.template.category === "video"
+        ? "Build a complete deterministic HyperFrames composition with the duration, scenes, motion, and editable variables required by the brief."
+        : "Keep the result responsive, semantic, complete, and editable through the existing artifact runtime hooks.";
+    return `Read \`${input.briefPath}\` and use the blank scaffold at \`${input.entryPath}\` to create a complete original ${input.template.category} artifact now. Replace all placeholder content and rebuild the HTML, CSS, and managed design tokens with a coherent visual system chosen for the content and audience. Do not ask the user to choose a style, and do not reply only with confirmation, options, an outline, or a description. ${categoryContract} Never invent facts or metrics; mark missing evidence. Satisfy: ${checklist}.`;
+  }
   const base = `Read \`${input.briefPath}\` and apply it to \`${input.entryPath}\` using the selected \`${input.template.title}\` template. Apply it now in this turn: edit/save target file(s), then report generated files. Do not reply only with confirmation, options, or next-step questions. Derive structure from the brief, replace sample content, keep the template's visual language, and satisfy: ${checklist}. Checklist items guide quality/export, not sample count, order, subject, copy, or assets.`;
   if (input.template.id === "ipollowork.wechat-article") {
     return `${base} Fixed-brand exception: preserve every data-ipw-fixed="true" node, fixed-hero.jpg, fixed-footer-cta.jpg, locked brand colors, and fixed brand images. Update only article copy, non-fixed middle images, and the CTA href when provided.`;

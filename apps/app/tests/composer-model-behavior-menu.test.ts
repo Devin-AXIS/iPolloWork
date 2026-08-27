@@ -252,11 +252,13 @@ describe("Composer model and reasoning menu", () => {
     expect(menu).toContain("modelVariantLabel");
     expect(menu).toContain("onModelVariantChange");
     expect(menu).toContain("min-w-0 max-w-72 flex-[0_1_auto]");
+    expect(menu).toContain('appearance === "composer"\n            ? "me-2 h-8');
     expect(menu).toContain("rounded-full bg-transparent px-2 text-[12px]");
     expect(menu).toContain('className="truncate @max-[560px]/composer:hidden">{summary}</span>');
     expect(menu).toContain('className="hidden truncate @max-[560px]/composer:inline">{modelLabel}</span>');
-    expect(menu).toContain('<ChevronDown className="size-4 shrink-0" />');
+    expect(menu).toContain('appearance === "composer" ? "size-3.5 [stroke-width:1.75]" : "size-4"');
     expect(menu).toContain("hover:bg-gray-3");
+    expect(menu).toContain("focus-visible:ring-2 focus-visible:ring-gray-7");
     expect(model).not.toContain("Connect TokenStar");
     expect(model).not.toContain("tokenstar-connect");
     expect(model).toContain("function groupByProvider(modelOptions: ModelOption[])");
@@ -298,6 +300,9 @@ describe("Composer model and reasoning menu", () => {
     expect(composer).toContain('<span className="truncate @max-[560px]/composer:hidden">{activeWorkMode.label}</span>');
     expect(composer).toContain('@max-[560px]/composer:w-10');
     expect(composer).toContain("hover:bg-gray-3");
+    expect(composer).toContain('<WorkModeIcon icon={activeWorkMode.icon} className="size-4 shrink-0 [stroke-width:1.75]" />');
+    expect(composer).toContain('<ChevronDown className="size-3.5 shrink-0 [stroke-width:1.75]" />');
+    expect(composer).not.toContain('props.layout === "inline" ? "hidden @max-[560px]/composer:block"');
     expect(composer).toContain("props.listModes()")
     expect(composer).toContain("workModes.map((mode)");
     expect(composer).toContain("data-work-mode-option={mode.id}");
@@ -326,8 +331,17 @@ describe("Composer model and reasoning menu", () => {
     expect(composer).toContain("pendingDangerousAccessMode");
     expect(composer).toContain("access_mode_full_access_confirm_title");
     expect(composer).toContain('<span className="@max-[560px]/composer:hidden">{activeAccessMode.label}</span>');
+    expect(composer).toContain('className="me-2 inline-flex h-8');
     expect(composer).toContain("@container/composer");
-    expect(composer).toContain('className="whitespace-nowrap tabular-nums @max-[560px]/composer:hidden"');
+    expect(composer).toContain('<span className="whitespace-nowrap tabular-nums @max-[560px]/composer:hidden">{percentageLabel}</span>');
+    expect(composer).toContain('<AccessModeIcon icon={activeAccessMode.icon} className="size-4 shrink-0 [stroke-width:1.75]" />');
+    expect(composer).toContain("function ContextProgress");
+    expect(composer).toContain('<ContextProgress percentage={health.percentage} />');
+    expect(composer).toContain('stroke="#1FBAC0"');
+    expect(composer).toContain('className="h-full rounded-full bg-[#1FBAC0] transition-[width]"');
+    expect(composer).toContain('strokeWidth="1.75"');
+    expect(composer).toContain("strokeDashoffset={100 - progress}");
+    expect(composer).not.toContain("CircleGauge");
   });
 
   test("new-task composer carries its engine permission preset into the created session", () => {

@@ -28,12 +28,24 @@ const environmentTableSource = readFileSync(
   new URL("../src/react-app/domains/settings/pages/environment-variable-table.tsx", import.meta.url),
   "utf8",
 );
+const environmentViewSource = readFileSync(
+  new URL("../src/react-app/domains/settings/pages/environment-view.tsx", import.meta.url),
+  "utf8",
+);
 const settingsLayoutSource = readFileSync(
   new URL("../src/react-app/domains/settings/settings-layout.tsx", import.meta.url),
   "utf8",
 );
+const cloudAccountViewSource = readFileSync(
+  new URL("../src/react-app/domains/settings/pages/cloud-account-view.tsx", import.meta.url),
+  "utf8",
+);
 const pluginPanelSource = readFileSync(
   new URL("../src/react-app/domains/settings/plugin-packages-panel.tsx", import.meta.url),
+  "utf8",
+);
+const pluginImportSource = readFileSync(
+  new URL("../src/react-app/domains/settings/plugin-package-import-modal.tsx", import.meta.url),
   "utf8",
 );
 const pluginListItemSource = readFileSync(
@@ -42,6 +54,10 @@ const pluginListItemSource = readFileSync(
 );
 const skillsViewSource = readFileSync(
   new URL("../src/react-app/domains/settings/pages/skills-view.tsx", import.meta.url),
+  "utf8",
+);
+const aiViewSource = readFileSync(
+  new URL("../src/react-app/domains/settings/pages/ai-view.tsx", import.meta.url),
   "utf8",
 );
 const modalStylesSource = readFileSync(
@@ -181,6 +197,33 @@ describe("settings route parsing", () => {
     expect(settingsPageSource).toContain('<Sidebar className="!border-e-0');
   });
 
+  test("drives the account page from one current state without a standalone Cloud section", () => {
+    expect(cloudAccountViewSource).not.toContain('t("den.cloud_section_title")');
+    expect(cloudAccountViewSource).not.toContain('t("den.cloud_sleep_hint")');
+    expect(cloudAccountViewSource).toContain('t("den.cloud_section_desc")');
+    expect(cloudAccountViewSource).toContain('t("den.use_signin_code")');
+    expect(cloudAccountViewSource).toContain('variant="outline" disabled={controlsDisabled}');
+    expect(cloudAccountViewSource).toContain('onSignInRequired={() => session.onOpenBrowserAuth("sign-in")}');
+    expect(cloudAccountViewSource).toContain('data-testid="cloud-account-content"');
+    expect(cloudAccountViewSource).toContain('data-state={accountState}');
+    expect(cloudAccountViewSource).toContain('? "signed-in"');
+    expect(cloudAccountViewSource).toContain('? "failed"');
+    expect(cloudAccountViewSource).toContain('? "signing-in"');
+    expect(cloudAccountViewSource).toContain(': "signed-out"');
+    expect(cloudAccountViewSource).not.toContain("<Separator");
+    expect(cloudAccountViewSource).toContain('t("den.error_signin_timeout")');
+    expect(cloudAccountViewSource).toContain('<CloudErrorDetails message={authError} />');
+    expect(settingsRouteSource).toContain(
+      'hideShellHeader={route.tab === "cloud-account" || Boolean(route.pluginPackageId)}',
+    );
+    expect(chineseLocaleSource).toContain(
+      '"settings.tab_description_cloud_account": "管理你的账号和云端空间。"',
+    );
+    expect(chineseLocaleSource).toContain(
+      '"den.cloud_signed_in_desc": "已自动启用个人云空间，可使用云端模板、同步与扩展资源。"',
+    );
+  });
+
   test("aligns navigation icons and shares the Extensions artwork", () => {
     expect(settingsPageSource).toContain("export function SettingsTabIcon");
     expect(settingsPageSource).toContain('className="size-4! [&_*]:[vector-effect:non-scaling-stroke]" strokeWidth={1}');
@@ -221,9 +264,27 @@ describe("settings route parsing", () => {
     expect(settingsShellSource).toContain('data-settings-header-safe-area className="mx-auto flex h-full w-full max-w-[1280px] items-center justify-between"');
     expect(settingsPanelSource).toContain('export const settingsStandardContentClass = "mx-auto w-full max-w-[960px]";');
     expect(settingsLayoutSource).toContain('cn(settingsStandardContentClass, "@container/settings flex flex-col gap-y-6"');
-    expect(pluginPanelSource).toContain('<section className="w-full">');
+    expect(pluginPanelSource).toContain('<section className={settingsStandardContentClass}>');
     expect(settingsShellSource).toContain("px-8 min-[1600px]:px-12 min-[1920px]:px-16 mac:titlebar-drag");
     expect(settingsPanelSource).not.toMatch(/\bp-4\b|md:p-6|lg:p-8/);
+  });
+
+  test("keeps settings forms on the compact divider-free dialog style", () => {
+    for (const source of [pluginImportSource, environmentViewSource]) {
+      expect(source).toContain('showCloseButton={false}');
+      expect(source).toContain('rounded-[16px]');
+      expect(source).toContain('className="absolute end-6 top-6 size-6 rounded-[2px] bg-transparent p-0"');
+      expect(source).toContain('rounded-none border-0 bg-transparent p-0 pt-6');
+    }
+    expect(pluginImportSource).toContain('data-testid="plugin-package-import-dialog"');
+    expect(environmentViewSource).toContain('data-testid="environment-editor-dialog"');
+  });
+
+  test("shows the AI provider title and description only once", () => {
+    expect(settingsRouteSource).toContain('headerTitle={route.tab === "ai" && !props.embedded ? (');
+    expect(settingsRouteSource).toContain('<span className="sr-only">{t("settings.tab_ai")}</span>');
+    expect(aiViewSource).not.toContain('<LayoutSectionTitle>{t("settings.providers_title")}</LayoutSectionTitle>');
+    expect(aiViewSource).not.toContain('<LayoutSectionDescription>{t("settings.providers_desc")}</LayoutSectionDescription>');
   });
 
   test("uses the compact button size throughout settings", () => {

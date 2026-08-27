@@ -1,6 +1,11 @@
 import { beforeEach, describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
-import type { TemplateCatalogItem, TemplateCategory, TemplateManifestV1 } from "@ipollowork/types/templates";
+import {
+  ARTIFACT_DELIVERY_ID_PREFIX,
+  type TemplateCatalogItem,
+  type TemplateCategory,
+  type TemplateManifestV1,
+} from "@ipollowork/types/templates";
 
 import { setLocale } from "../src/i18n";
 
@@ -12,6 +17,7 @@ import {
   isConversationTemplateSessionId,
   isVideoStudioReady,
   nextConversationArtifactSessionId,
+  requestsCustomTemplate,
   selectConversationTemplate,
   templateBriefConfigFor,
   templateBriefPrompt,
@@ -148,6 +154,26 @@ describe("template brief", () => {
     expect(prompt).toContain("responsive slide reflow");
   });
 
+  test("lets every custom artifact delivery derive its own visual system", () => {
+    const prompt = templateBriefPrompt({
+      template: {
+        id: `${ARTIFACT_DELIVERY_ID_PREFIX}pptx`,
+        category: "slides",
+        title: "Custom",
+        applyChecklist: ["Keep editable markers"],
+        pptxCompatibility: "native-editable",
+      },
+      entryPath: "design/ses_custom/entry.html",
+      briefPath: "design/ses_custom/brief.json",
+    });
+
+    expect(prompt).toContain("complete original slides artifact");
+    expect(prompt).toContain("chosen for the content and audience");
+    expect(prompt).toContain("rebuild the HTML, CSS, and managed design tokens");
+    expect(prompt).toContain("native editable PPTX contract");
+    expect(prompt).not.toContain("preserve its current theme");
+  });
+
   test("keeps real template application prompts compact for small provider contexts", () => {
     const manifest = JSON.parse(readFileSync(
       new URL("../../server/bundled-templates/ipollowork.pptx-brand-narrative/manifest.json", import.meta.url),
@@ -217,6 +243,15 @@ describe("template brief", () => {
     ];
 
     expect(selectConversationTemplate("生成一份可编辑的融资路演 PPT", catalog)?.manifest.id).toBe("test.deck-pitch");
+  });
+
+  test("uses market templates by default and only skips them for explicit custom requests", () => {
+    const catalog = [catalogItem({ id: "test.deck-market", category: "slides", title: "Investor Pitch", tags: ["pitch"] })];
+
+    expect(requestsCustomTemplate("生成一份融资路演 PPT")).toBe(false);
+    expect(selectConversationTemplate("生成一份融资路演 PPT", catalog)?.manifest.id).toBe("test.deck-market");
+    expect(requestsCustomTemplate("不用系统模板，帮我自定义一份融资路演 PPT")).toBe(true);
+    expect(selectConversationTemplate("不用系统模板，帮我自定义一份融资路演 PPT", catalog)).toBeNull();
   });
 
   test("routes vertical social video requests to the matching video template", () => {

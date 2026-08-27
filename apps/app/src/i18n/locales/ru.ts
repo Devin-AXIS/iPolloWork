@@ -1199,7 +1199,7 @@ export default {
   "den.cloud_providers_title": "Cloud providers",
   "den.cloud_section_desc": "Войдите, выберите организацию и откройте Cloud-воркеры.",
   "den.cloud_section_title": "iPolloWork Cloud",
-  "den.cloud_sleep_hint": "Войдите в iPolloWork Cloud, чтобы ваши задачи продолжали работать даже когда компьютер уходит в sleep.",
+  "den.cloud_sleep_hint": "Ваши задачи продолжат работать, даже когда компьютер перейдёт в спящий режим.",
   "den.create_account": "Создать аккаунт",
   "den.credentials_ready_badge": "Учетные данные готовы",
   "den.error_base_url": "Введите допустимый Cloud control plane URL с http:// или https://.",

@@ -207,7 +207,7 @@ describe("session output issue regressions", () => {
     expect(source).toContain('mode === "market" && projects && selectedProjectId && onProjectChange');
     expect(source).toContain("nextConversationArtifactSessionId(");
     expect(source).toContain("sessionId: templateSessionId");
-    expect(source).not.toContain('data-testid="template-conflict-dialog"');
+    expect(source).toContain('data-testid="template-conflict-dialog"');
     expect(source).not.toContain('t("templates.brief.choose_project_file")');
     expect(source).not.toContain('t("templates.brief.add_link")');
     expect(source).not.toContain('t("templates.brief.use_current_conversation")');
@@ -299,15 +299,16 @@ describe("session output issue regressions", () => {
     expect(source).toContain('new Event("ipollowork:focusPrompt")');
   });
 
-  test("multiple generated file cards use a visible horizontal overflow rail", () => {
+  test("generated file cards use an equal-size responsive grid", () => {
     const source = readFileSync(
       new URL("../src/components/chat/artifact.tsx", import.meta.url),
       "utf8",
     );
 
-    expect(source).toContain('compact ? "w-full" : "w-[17rem] flex-none snap-start"');
-    expect(source).toContain("overflow-x-auto overscroll-x-contain pb-2 [scrollbar-gutter:stable]");
-    expect(source).not.toContain("no-scrollbar flex min-w-0 flex-nowrap gap-2 overflow-x-auto");
+    expect(source).toContain('compact ? "w-full" : "h-20 w-full min-w-0"');
+    expect(source).toContain("grid-cols-[repeat(auto-fill,minmax(min(100%,17rem),1fr))]");
+    expect(source).not.toContain("overflow-x-auto overscroll-x-contain");
+    expect(source).not.toContain("snap-proximity");
   });
 
   test("generated file links open in the internal right panel by default", () => {

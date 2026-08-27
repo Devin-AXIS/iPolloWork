@@ -41,6 +41,7 @@ export { MAX_TEMPLATE_PACKAGE_BYTES };
 const WITHDRAWN_BUNDLED_TEMPLATE_IDS = new Set([
   "ipollowork.html-anything.deck-xhs-post",
   "ipollowork.html-anything.social-x-post-card",
+  "ipollowork.pptx-custom",
 ]);
 export { isCustomerVisibleBundledTemplate };
 // The market is opened from the account menu, so local templates belong to
@@ -602,7 +603,10 @@ export async function listTemplates(config: ServerConfig, workspaceId: string, s
   const bundled = await bundledTemplates();
   if (!config.readOnly) await purgeWithdrawnBundledTemplates(config, libraryId, bundled);
   for (const item of bundled) {
-    if (!config.readOnly && !db.get(libraryId, item.manifest.id)) await installDirectory({ config, workspaceId: libraryId, sourceType: "bundled", sourceDirectory: item.directory, manifest: item.manifest, hash: item.hash });
+    const current = db.get(libraryId, item.manifest.id);
+    if (!config.readOnly && !current) {
+      await installDirectory({ config, workspaceId: libraryId, sourceType: "bundled", sourceDirectory: item.directory, manifest: item.manifest, hash: item.hash });
+    }
   }
   const rows = db.list(libraryId);
   const byId = new Map(rows.map((row) => [row.templateId, row]));
@@ -868,6 +872,7 @@ async function writeSessionScaffoldPackage(
   directory: string,
   manifest: TemplateManifestV1,
   purpose: NonNullable<TemplateAuthoringInput["purpose"]>,
+  brief: unknown,
 ) {
   await mkdir(directory, { recursive: true });
   await Promise.all([
@@ -875,7 +880,7 @@ async function writeSessionScaffoldPackage(
     writeFile(join(directory, manifest.entry), sessionScaffoldEntry(manifest, purpose), "utf8"),
     writeFile(join(directory, "design-tokens.css"), AUTHORING_DESIGN_TOKENS, "utf8"),
     writeFile(join(directory, "cover.svg"), personalTemplateCover(manifest.title, manifest.category, manifest.style), "utf8"),
-    writeFile(join(directory, "brief.json"), `${JSON.stringify({ mode: purpose, category: manifest.category, pptxCompatibility: manifest.pptxCompatibility ?? null }, null, 2)}\n`, "utf8"),
+    writeFile(join(directory, "brief.json"), `${JSON.stringify(brief ?? { mode: purpose, category: manifest.category, pptxCompatibility: manifest.pptxCompatibility ?? null }, null, 2)}\n`, "utf8"),
   ]);
 }
 
@@ -900,7 +905,7 @@ export async function createTemplateAuthoringSession(
     const staged = `${root}.tmp-${randomUUID()}`;
     let moved = false;
     try {
-      await writeSessionScaffoldPackage(staged, manifest, purpose);
+      await writeSessionScaffoldPackage(staged, manifest, purpose, input.brief);
       await readManifest(staged);
       const now = Date.now();
       const folder = manifest.surface === "video" ? "video" : "design";

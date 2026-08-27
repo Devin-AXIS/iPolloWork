@@ -18,7 +18,7 @@ import { currentLocale, t } from "../../../../i18n";
 import { downloadTextAsFile } from "@/app/lib/download";
 import { publicAssetUrl } from "../../../../app/lib/public-asset";
 import { IPOLLOWORK_EXTENSION_CATALOG } from "../../../../app/constants";
-import { type iPolloWorkPluginPackageItem, type iPolloWorkServerClient, type iPolloWorkServerStatus } from "../../../../app/lib/ipollowork-server";
+import { iPolloWorkServerError, type iPolloWorkPluginPackageItem, type iPolloWorkServerClient, type iPolloWorkServerStatus } from "../../../../app/lib/ipollowork-server";
 import {
   PERSONAL_WORK_CONTEXT_ID,
   readActiveWorkContextId,
@@ -30,6 +30,8 @@ import {
   type EnterpriseResource,
 } from "@/app/lib/enterprise-connections";
 import { getDisplaySessionTitle } from "../../../../app/lib/session-title";
+import { buildDenAuthUrl, readDenSettings } from "../../../../app/lib/den";
+import { tryOpenBrowserAuthUrl } from "../../../../app/lib/open-browser-auth";
 import type { BootPhase } from "../../../../app/lib/startup-boot";
 import { openDesktopPath, pickDirectory, revealDesktopItemInDir, saveFile, type EnginePackageInfo, type WorkspaceInfo } from "../../../../app/lib/desktop";
 import type {
@@ -55,6 +57,7 @@ import {
   getArtifactsFromMessages,
 } from "@/lib/artifacts";
 import { Button } from "@/components/ui/button";
+import { MessageContent } from "@/components/ui/message";
 import { formatBytes } from "@/app/utils";
 import { useEnginePackages } from "@/react-app/domains/engines/use-engine-packages";
 
@@ -76,7 +79,6 @@ import { toast } from "@/components/ui/sonner";
 import { Textarea } from "@/components/ui/textarea";
 import { ConfirmModal } from "../../../design-system/modals/confirm-modal";
 import { useDenAuth } from "../../cloud/den-auth-provider";
-import { CloudSignInComingSoonDialog } from "../../cloud/cloud-signin-coming-soon-dialog";
 import ProviderAuthModal, { type ProviderAuthModalProps } from "../../connections/provider-auth/provider-auth-modal";
 import { RenameSessionModal } from "../modals/rename-session-modal";
 import { AppSidebar } from "../sidebar/app-sidebar";
@@ -202,11 +204,24 @@ const SESSION_SHELL_TRANSITION_EASING = "cubic-bezier(0.22, 1, 0.36, 1)";
 const ENGINE_STARTUP_TRANSITION_MS = 900;
 type SessionPanelView = SidePanelItem | "launcher";
 type TemplateApplyMode = "market" | "new-conversation" | "current-conversation";
+const CUSTOM_TEMPLATE_CATEGORIES: readonly TemplateCategory[] = [
+  "site", "video", "slides", "app", "poster", "cards", "report", "article", "other",
+];
 
-type PendingTemplateApplication = {
-  item: TemplateCatalogItem;
-  resourceScope: WorkContextId;
+type PendingTemplateApplication =
+  | { item: TemplateCatalogItem; origin: "market"; resourceScope: WorkContextId }
+  | { item: TemplateCatalogItem; origin: "conversation-conflict"; resourceScope: WorkContextId; existingTemplateTitle?: string };
+
+type PendingCustomTemplateApplication = {
+  category: TemplateCategory;
+  target: "new-task" | "current-session";
+  allowCategoryChange: boolean;
 };
+
+function isTemplateSessionConflict(error: unknown) {
+  return error instanceof iPolloWorkServerError
+    && (error.code === "template_session_exists" || error.code === "template_session_surface_conflict");
+}
 
 type TemplateSessionData = {
   sessionId: string;
@@ -623,6 +638,12 @@ export type SessionTemplateTaskApplication = {
   brief: Record<string, unknown>;
 };
 
+export type SessionCustomTaskApplication = {
+  category: TemplateCategory;
+  pptxCompatibility?: PptxCompatibility;
+  brief: Record<string, unknown>;
+};
+
 type InitialProjectComposerTooling = Pick<
   ComposerProps,
   | "listSkills"
@@ -730,6 +751,10 @@ export type SessionPageProps = {
     workspaceId: string,
     application: SessionTemplateTaskApplication,
   ) => Promise<string | null>;
+  onCreateTaskFromCustom?: (
+    workspaceId: string,
+    application: SessionCustomTaskApplication,
+  ) => Promise<string | null>;
   sidebar: SessionPageSidebarProps;
   surface?: SessionPageSurfaceProps | null;
   initialTaskDraftPending?: ComposerDraft | null;
@@ -767,6 +792,7 @@ function InitialProjectTaskStarter({
   templateBusyId,
   getTemplateCover,
   onUseTemplate,
+  onUseCustomTemplate,
   onInstallTemplate,
   onRequestTemplates,
   pendingDraft,
@@ -783,6 +809,7 @@ function InitialProjectTaskStarter({
   templateBusyId?: string | null;
   getTemplateCover?: TemplateCoverLoader;
   onUseTemplate?: (templateId: string, surface: "design" | "video") => void;
+  onUseCustomTemplate?: (category: TemplateCategory) => void;
   onInstallTemplate?: (templateId: string) => void;
   onRequestTemplates?: () => void;
   pendingDraft?: ComposerDraft | null;
@@ -1026,9 +1053,9 @@ function InitialProjectTaskStarter({
           <div className="w-full space-y-4" role="status" aria-live="polite" data-testid="initial-project-task-pending">
             {pendingText ? (
               <div className="flex justify-end">
-                <div className="max-w-[min(640px,88%)] rounded-2xl bg-dls-text px-4 py-3 text-sm leading-6 text-dls-surface shadow-sm">
+                <MessageContent className="max-w-[85%] rounded-3xl bg-muted px-5 py-2.5 text-foreground whitespace-pre-wrap sm:max-w-[75%]">
                   {pendingText}
-                </div>
+                </MessageContent>
               </div>
             ) : null}
             <div className="flex items-center gap-2 px-1 text-xs text-dls-secondary">
@@ -1046,6 +1073,7 @@ function InitialProjectTaskStarter({
               templateBusyId={templateBusyId}
               getTemplateCover={getTemplateCover}
               onUseTemplate={onUseTemplate}
+              onUseCustomTemplate={onUseCustomTemplate}
               onInstallTemplate={onInstallTemplate}
               onRequestTemplates={onRequestTemplates}
               onSelectMode={(mode) => {
@@ -1287,7 +1315,7 @@ function TemplateCover({ client, workspaceId, template, className, alt = "" }: {
   return src ? <img src={src} alt={alt} className={cn("h-28 w-full object-cover", className)} /> : <div className={cn("h-28 animate-pulse bg-dls-hover", className)} />;
 }
 
-function DesignStarter({ client, workspaceId, templates, loading, busyId, error, onRefresh, onChoose, onInstall, onUninstall, onImport }: {
+function DesignStarter({ client, workspaceId, templates, loading, busyId, error, onRefresh, onChoose, onCustom, onInstall, onUninstall, onImport }: {
   client: iPolloWorkServerClient;
   workspaceId: string;
   templates: TemplateCatalogItem[];
@@ -1296,6 +1324,7 @@ function DesignStarter({ client, workspaceId, templates, loading, busyId, error,
   error: string | null;
   onRefresh: () => void;
   onChoose: (templateId: iPolloWorkTemplateId) => void;
+  onCustom: (category: TemplateCategory) => void;
   onInstall: (templateId: string) => void;
   onUninstall: (templateId: string) => void;
   onImport: (file: File, category?: TemplateManifestV1["category"]) => Promise<boolean>;
@@ -1324,7 +1353,19 @@ function DesignStarter({ client, workspaceId, templates, loading, busyId, error,
           return <div>
             <div className="mb-3 flex items-center justify-between"><button type="button" className="text-xs text-dls-secondary hover:text-dls-text" onClick={() => setCategory(null)}>← {t("templates.starter.back_to_categories")}</button><button type="button" disabled={busyId !== null} onClick={() => importRef.current?.click()} className="inline-flex h-7 items-center gap-1.5 rounded-lg border border-dls-border px-2 text-[11px] font-medium text-dls-secondary transition hover:bg-dls-hover hover:text-dls-text disabled:opacity-50"><Upload className="size-3" />{t("template_market.import_package")}</button><input ref={importRef} type="file" accept={TEMPLATE_PACKAGE_FILE_ACCEPT} className="hidden" onChange={(event) => { const file = event.currentTarget.files?.[0]; if (file) setPendingImport(file); event.currentTarget.value = ""; }} /></div>
             {pendingImport ? <div className="mb-3 flex items-center gap-3 rounded-xl border border-primary/20 bg-primary/5 p-3"><div className="grid size-8 shrink-0 place-items-center rounded-lg bg-primary/10 text-primary"><Upload className="size-3.5" /></div><div className="min-w-0 flex-1"><div className="truncate text-xs font-medium">{pendingImport.name}</div><div className="text-[10px] text-dls-secondary">{(pendingImport.size / 1024).toFixed(1)} KB / {t("templates.starter.file_type", { type: selectedCategory ? t(selectedCategory.labelKey) : "" })}</div></div><button type="button" disabled={busyId !== null} onClick={() => setPendingImport(null)} className="text-[11px] text-dls-secondary hover:text-dls-text disabled:opacity-50">{t("common.cancel")}</button><button type="button" disabled={busyId !== null} onClick={async () => { if (await onImport(pendingImport, serverCategory)) setPendingImport(null); }} className="inline-flex h-7 items-center rounded-lg bg-primary px-2.5 text-[11px] font-medium text-primary-foreground disabled:opacity-50">{busyId === "import" ? <LoaderCircle className="mr-1.5 size-3 animate-spin" /> : null}{t("template_market.install")}</button></div> : null}
-            {visible.length ? <div className="grid gap-3 sm:grid-cols-2">{visible.map((item) => <article key={item.manifest.id} className="group relative overflow-hidden rounded-2xl border border-dls-border bg-dls-surface transition hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-lg"><button type="button" className="block w-full text-left" onClick={() => setPreviewTemplate(item)} aria-label={t("template_market.preview_aria", { title: item.manifest.title })}><TemplateCover client={client} workspaceId={workspaceId} template={item} alt={t("template_market.cover_alt", { title: item.manifest.title })} /></button><div className="p-4"><div className="flex items-start justify-between gap-2"><div><div className="flex flex-wrap items-center gap-2 text-sm font-semibold">{item.manifest.title}{isPptxCompatibleTemplate(item.manifest) ? <span className="rounded bg-primary/10 px-1.5 py-0.5 text-[9px] font-medium text-primary">{t("template_market.pptx_compatible")}</span> : null}{item.sourceType === "local" ? <span className="rounded bg-dls-hover px-1.5 py-0.5 text-[9px] font-medium text-dls-secondary">{t("new_conversation.templates.local")}</span> : null}{item.updateAvailable ? <span className="rounded bg-primary/10 px-1.5 py-0.5 text-[9px] font-medium text-primary">{t("template_market.update")}</span> : null}</div><div className="mt-1 line-clamp-2 text-xs leading-5 text-dls-secondary">{item.manifest.description}</div><div className="mt-1 text-[10px] text-dls-secondary/75">{item.manifest.source.name}</div></div><details className="relative"><summary className="grid size-7 cursor-pointer list-none place-items-center rounded-lg text-dls-secondary hover:bg-dls-hover"><Ellipsis className="size-4" /></summary><div className="absolute right-0 top-8 z-20 w-36 rounded-xl border border-dls-border bg-dls-surface p-1 text-xs shadow-xl"><div className="px-2 py-1.5 text-[10px] text-dls-secondary">{item.manifest.source.license}</div>{item.installed ? <button type="button" onClick={() => onUninstall(item.manifest.id)} className="w-full rounded-lg px-2 py-1.5 text-left hover:bg-dls-hover">{t("template_market.uninstall_template")}</button> : null}{item.updateAvailable ? <button type="button" onClick={() => onInstall(item.manifest.id)} className="w-full rounded-lg px-2 py-1.5 text-left hover:bg-dls-hover">{t("template_market.update_template")}</button> : null}</div></details></div><div className="mt-4 flex items-center gap-2"><button type="button" onClick={() => setPreviewTemplate(item)} className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-dls-border px-3 text-xs font-medium text-dls-text transition hover:bg-dls-hover"><Eye className="size-3.5" />{t("template_market.preview")}</button><button type="button" disabled={busyId !== null} onClick={() => item.updateAvailable || !item.installed ? onInstall(item.manifest.id) : onChoose(item.manifest.id)} className="inline-flex h-8 items-center rounded-lg bg-primary px-3 text-xs font-medium text-primary-foreground disabled:opacity-50">{busyId === item.manifest.id ? <LoaderCircle className="mr-1.5 size-3 animate-spin" /> : null}{item.updateAvailable ? t("template_market.update") : item.installed ? t("template_market.use_template") : t("template_market.install")}</button></div></div></article>)}</div> : <div className="rounded-2xl border border-dls-border bg-dls-surface p-6 text-center"><p className="text-sm font-medium">{t("templates.starter.empty_title")}</p><p className="mt-1 text-xs text-dls-secondary">{t("templates.starter.empty_description")}</p></div>}
+            <div className="grid gap-3 sm:grid-cols-2">
+              <article className="group overflow-hidden rounded-2xl border border-dls-border bg-dls-surface transition hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-lg">
+                <button type="button" disabled={busyId !== null} className="flex h-28 w-full flex-col items-center justify-center gap-2 text-primary disabled:opacity-50" onClick={() => onCustom(serverCategory)}>
+                  <Plus className="size-6" strokeWidth={1.75} aria-hidden />
+                  <span className="text-sm font-semibold text-dls-text">{t("template_market.custom_title")}</span>
+                </button>
+                <div className="p-4">
+                  <p className="text-xs leading-5 text-dls-secondary">{t("template_market.custom_description")}</p>
+                  <button type="button" disabled={busyId !== null} onClick={() => onCustom(serverCategory)} className="mt-4 inline-flex h-8 items-center rounded-lg bg-primary px-3 text-xs font-medium text-primary-foreground disabled:opacity-50">{t("template_market.use_template")}</button>
+                </div>
+              </article>
+              {visible.map((item) => <article key={item.manifest.id} className="group relative overflow-hidden rounded-2xl border border-dls-border bg-dls-surface transition hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-lg"><button type="button" className="block w-full text-left" onClick={() => setPreviewTemplate(item)} aria-label={t("template_market.preview_aria", { title: item.manifest.title })}><TemplateCover client={client} workspaceId={workspaceId} template={item} alt={t("template_market.cover_alt", { title: item.manifest.title })} /></button><div className="p-4"><div className="flex items-start justify-between gap-2"><div><div className="flex flex-wrap items-center gap-2 text-sm font-semibold">{item.manifest.title}{isPptxCompatibleTemplate(item.manifest) ? <span className="rounded bg-primary/10 px-1.5 py-0.5 text-[9px] font-medium text-primary">{t("template_market.pptx_compatible")}</span> : null}{item.sourceType === "local" ? <span className="rounded bg-dls-hover px-1.5 py-0.5 text-[9px] font-medium text-dls-secondary">{t("new_conversation.templates.local")}</span> : null}{item.updateAvailable ? <span className="rounded bg-primary/10 px-1.5 py-0.5 text-[9px] font-medium text-primary">{t("template_market.update")}</span> : null}</div><div className="mt-1 line-clamp-2 text-xs leading-5 text-dls-secondary">{item.manifest.description}</div><div className="mt-1 text-[10px] text-dls-secondary/75">{item.manifest.source.name}</div></div><details className="relative"><summary className="grid size-7 cursor-pointer list-none place-items-center rounded-lg text-dls-secondary hover:bg-dls-hover"><Ellipsis className="size-4" /></summary><div className="absolute right-0 top-8 z-20 w-36 rounded-xl border border-dls-border bg-dls-surface p-1 text-xs shadow-xl"><div className="px-2 py-1.5 text-[10px] text-dls-secondary">{item.manifest.source.license}</div>{item.installed ? <button type="button" onClick={() => onUninstall(item.manifest.id)} className="w-full rounded-lg px-2 py-1.5 text-left hover:bg-dls-hover">{t("template_market.uninstall_template")}</button> : null}{item.updateAvailable ? <button type="button" onClick={() => onInstall(item.manifest.id)} className="w-full rounded-lg px-2 py-1.5 text-left hover:bg-dls-hover">{t("template_market.update_template")}</button> : null}</div></details></div><div className="mt-4 flex items-center gap-2"><button type="button" onClick={() => setPreviewTemplate(item)} className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-dls-border px-3 text-xs font-medium text-dls-text transition hover:bg-dls-hover"><Eye className="size-3.5" />{t("template_market.preview")}</button><button type="button" disabled={busyId !== null} onClick={() => item.updateAvailable || !item.installed ? onInstall(item.manifest.id) : onChoose(item.manifest.id)} className="inline-flex h-8 items-center rounded-lg bg-primary px-3 text-xs font-medium text-primary-foreground disabled:opacity-50">{busyId === item.manifest.id ? <LoaderCircle className="mr-1.5 size-3 animate-spin" /> : null}{item.updateAvailable ? t("template_market.update") : item.installed ? t("template_market.use_template") : t("template_market.install")}</button></div></div></article>)}
+            </div>
           </div>;
         })()}
       </div>
@@ -1333,11 +1374,15 @@ function DesignStarter({ client, workspaceId, templates, loading, busyId, error,
   </>);
 }
 
-function TemplateApplyDialog({ open, mode, template, destinationName, projects, selectedProjectId, onProjectChange, onRequestNewProject, onSubmit, onClose }: {
+function TemplateApplyDialog({ open, mode, template, customCategory, onCustomCategoryChange, destinationName, newTaskRequired = false, conflictTemplateTitle, projects, selectedProjectId, onProjectChange, onRequestNewProject, onSubmit, onClose }: {
   open: boolean;
   mode: TemplateApplyMode;
-  template: TemplateManifestV1;
+  template: TemplateManifestV1 | null;
+  customCategory?: TemplateCategory;
+  onCustomCategoryChange?: (category: TemplateCategory) => void;
   destinationName?: string;
+  newTaskRequired?: boolean;
+  conflictTemplateTitle?: string;
   projects?: Array<{ id: string; name: string }>;
   selectedProjectId?: string;
   onProjectChange?: (projectId: string) => void;
@@ -1345,10 +1390,11 @@ function TemplateApplyDialog({ open, mode, template, destinationName, projects, 
   onSubmit: (brief: TemplateBrief, references: TemplateReferenceItem[]) => Promise<void>;
   onClose: () => void | Promise<void>;
 }) {
-  const config = templateBriefConfigFor(template);
+  const config = templateBriefConfigFor(template ?? { category: customCategory ?? "slides" });
   const [brief, setBrief] = useState<TemplateBrief>({ title: "", audience: "", details: "" });
   const [references, setReferences] = useState<TemplateReferenceItem[]>([]);
   const [referenceBusy, setReferenceBusy] = useState(false);
+  const [conflictConfirmed, setConflictConfirmed] = useState(!newTaskRequired);
   const [submitting, setSubmitting] = useState(false);
   const referenceInputRef = useRef<HTMLInputElement>(null);
   const referencesRef = useRef<TemplateReferenceItem[]>([]);
@@ -1435,6 +1481,30 @@ function TemplateApplyDialog({ open, mode, template, destinationName, projects, 
     }
   };
 
+  if (newTaskRequired && !conflictConfirmed) {
+    return (
+      <Dialog open={open} onOpenChange={(nextOpen) => { if (!nextOpen) void onClose(); }}>
+        <DialogContent
+          data-testid="template-conflict-dialog"
+          className="w-[calc(100%-32px)] max-w-[520px] gap-0 overflow-hidden rounded-[16px] p-0 ring-0 dark:ring-1 dark:ring-border sm:max-w-[520px]"
+        >
+          <DialogHeader className="gap-2 px-6 py-5 text-left">
+            <DialogTitle className="pe-8 text-base leading-6">{t("templates.brief.conflict_title")}</DialogTitle>
+            <DialogDescription className="text-[13px] leading-5">
+              {conflictTemplateTitle
+                ? t("templates.brief.conflict_description", { title: conflictTemplateTitle })
+                : t("templates.brief.conflict_description_generic")}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="mx-0 mb-0 flex-row gap-3 rounded-none border-t border-border bg-background px-6 py-4 sm:justify-end">
+            <Button type="button" variant="outline" className="h-9 rounded-lg px-4" onClick={() => void onClose()}>{t("common.cancel")}</Button>
+            <Button type="button" className="h-9 rounded-lg px-4" onClick={() => setConflictConfirmed(true)}>{t("templates.brief.continue")}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    );
+  }
+
   return (
     <Dialog open={open} onOpenChange={(nextOpen) => { if (!nextOpen && !submitting) void onClose(); }}>
       <DialogContent
@@ -1455,11 +1525,24 @@ function TemplateApplyDialog({ open, mode, template, destinationName, projects, 
         </Button>
 
         <DialogHeader className="shrink-0 gap-1.5 pb-6 pe-8 text-left">
-          <DialogTitle className="text-ui-title-sm font-semibold leading-6">{template.title}</DialogTitle>
-          <DialogDescription className="max-w-2xl text-ui-control leading-[22px]">{config.description}</DialogDescription>
+          <DialogTitle className="text-ui-title-sm font-semibold leading-6">{template?.title ?? t("template_market.custom_title")}</DialogTitle>
+          <DialogDescription className="max-w-2xl text-ui-control leading-[22px]">{template ? config.description : t("template_market.custom_description")}</DialogDescription>
         </DialogHeader>
 
         <div className="min-h-0 flex-1 space-y-4 overflow-y-auto">
+          {customCategory && onCustomCategoryChange ? (
+            <section className="space-y-1.5">
+              <label className="text-ui-body font-semibold leading-5 text-foreground" htmlFor="custom-template-category">{t("template_market.type_label")}</label>
+              <Select value={customCategory} onValueChange={(value) => { if (value) onCustomCategoryChange(value); }}>
+                <SelectTrigger id="custom-template-category" className="h-[34px] w-full rounded-lg bg-background px-2 text-ui-control data-[size=default]:h-[34px]">
+                  <SelectValue>{t(`template_market.category.${customCategory}`)}</SelectValue>
+                </SelectTrigger>
+                <SelectContent positionerClassName="z-[90]">
+                  {CUSTOM_TEMPLATE_CATEGORIES.map((category) => <SelectItem key={category} value={category}>{t(`template_market.category.${category}`)}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </section>
+          ) : null}
           <section className="space-y-4">
             {config.fields.map((field) => (
               <label key={field.key} className="flex flex-col gap-1.5 text-ui-body font-semibold leading-5 text-foreground">
@@ -1533,7 +1616,7 @@ function TemplateApplyDialog({ open, mode, template, destinationName, projects, 
         </div>
 
         <DialogFooter className="mx-0 mb-0 shrink-0 flex-row gap-4 rounded-none border-0 bg-transparent p-0 pt-6 sm:justify-end">
-          <Button type="button" variant="outline" className="h-9 rounded-lg px-3" disabled={submitting} onClick={() => void onClose()}>{t("common.cancel")}</Button>
+          <Button type="button" variant="outline" className="h-9 rounded-lg px-3" disabled={submitting} onClick={() => { if (newTaskRequired) setConflictConfirmed(false); else void onClose(); }}>{newTaskRequired ? t("common.back") : t("common.cancel")}</Button>
           <Button type="button" className="h-9 rounded-lg px-3" disabled={completedRequiredFields !== requiredFields.length || referenceBusy || submitting} onClick={() => void submitApplication()}>
             {submitting ? <LoaderCircle className="size-4 animate-spin" /> : null}
             {mode === "current-conversation" ? t("templates.brief.apply_current") : config.submitLabel}
@@ -1631,6 +1714,7 @@ export function SessionPage(props: SessionPageProps) {
   const [templateMarketOpen, setTemplateMarketOpen] = useState(false);
   const [templateMarketTarget, setTemplateMarketTarget] = useState<"new-session" | "current-session">("new-session");
   const [pendingTemplateApplication, setPendingTemplateApplication] = useState<PendingTemplateApplication | null>(null);
+  const [pendingCustomTemplateApplication, setPendingCustomTemplateApplication] = useState<PendingCustomTemplateApplication | null>(null);
   const [pendingTemplateProjectId, setPendingTemplateProjectId] = useState(props.selectedWorkspaceId);
   const [pendingTemplateDispatch, setPendingTemplateDispatch] = useState<{
     sessionId: string;
@@ -1638,7 +1722,6 @@ export function SessionPage(props: SessionPageProps) {
     attachments: ComposerAttachment[];
   } | null>(null);
   const templateDispatchInFlightRef = useRef<string | null>(null);
-  const [cloudSignInComingSoonOpen, setCloudSignInComingSoonOpen] = useState(false);
   const [templateSessionData, setTemplateSessionData] = useState<TemplateSessionData | null>(null);
   const [pendingVideoArtifactCompletion, setPendingVideoArtifactCompletion] = useState<{
     sessionId: string;
@@ -1830,6 +1913,16 @@ export function SessionPage(props: SessionPageProps) {
   const openCurrentVideoArtifactStudio = useCallback((displayName?: string) => {
     openCurrentVideoStudio({ label: displayName });
   }, [openCurrentVideoStudio]);
+  const requireNewTaskForTemplate = useCallback((item: TemplateCatalogItem, resourceScope: WorkContextId) => {
+    setTemplateMarketOpen(false);
+    setPendingTemplateProjectId(props.selectedWorkspaceId);
+    setPendingTemplateApplication({
+      item,
+      origin: "conversation-conflict",
+      resourceScope,
+      existingTemplateTitle: currentTemplateSessionData?.manifest.title,
+    });
+  }, [currentTemplateSessionData?.manifest.title, props.selectedWorkspaceId]);
   const applyTemplateToCurrentSession = useCallback(async (
     item: TemplateCatalogItem,
     resourceScope: WorkContextId = templateResourceScope,
@@ -1881,12 +1974,16 @@ export function SessionPage(props: SessionPageProps) {
       }
       return true;
     } catch (error) {
+      if (isTemplateSessionConflict(error)) {
+        requireNewTaskForTemplate(item, resourceScope);
+        return false;
+      }
       toast.error(error instanceof Error ? error.message : t("templates.error_apply"));
       return false;
     } finally {
       setTemplateBusyId(null);
     }
-  }, [openTab, openVideoStudio, props.ipolloworkServerClient, props.runtimeWorkspaceId, props.selectedSessionId, setSidePanelState, templateResourceScope]);
+  }, [openTab, openVideoStudio, props.ipolloworkServerClient, props.runtimeWorkspaceId, props.selectedSessionId, requireNewTaskForTemplate, setSidePanelState, templateResourceScope]);
   const refreshTemplateCatalog = useCallback(async () => {
     if (!props.ipolloworkServerClient || !props.runtimeWorkspaceId) return;
     const requestId = ++templateCatalogRequestIdRef.current;
@@ -2456,14 +2553,17 @@ export function SessionPage(props: SessionPageProps) {
     [],
   );
   const voiceExtensionEnabled = voiceExtension ? isiPolloWorkExtensionEnabled(voiceExtension) : false;
-  const openCloudSignIn = useCallback(() => {
-    setCloudSignInComingSoonOpen(true);
-  }, []);
   const openCloudAccount = useCallback(() => {
     navigate(props.selectedWorkspaceId
       ? workspaceSettingsRoute(props.selectedWorkspaceId, "cloud-account")
       : "/settings/cloud-account");
   }, [navigate, props.selectedWorkspaceId]);
+  const openCloudSignIn = useCallback(() => {
+    const url = buildDenAuthUrl(readDenSettings().baseUrl, "sign-in");
+    void tryOpenBrowserAuthUrl(url).then((opened) => {
+      if (!opened) openCloudAccount();
+    });
+  }, [openCloudAccount]);
 
   useReactRenderWatchdog("SessionPage", {
     selectedSessionId: props.selectedSessionId,
@@ -2506,6 +2606,97 @@ export function SessionPage(props: SessionPageProps) {
     setCreateProjectError(null);
     setCreateProjectOpen(true);
   }, []);
+  const openCustomTemplate = useCallback((category: TemplateCategory, target: PendingCustomTemplateApplication["target"], allowCategoryChange = false) => {
+    setTemplateMarketOpen(false);
+    setPendingCustomTemplateApplication({ category, target, allowCategoryChange });
+    if (target === "new-task") {
+      const selectedProjectId = templateDestinationProjects.some((project) => project.id === props.selectedWorkspaceId)
+        ? props.selectedWorkspaceId
+        : templateDestinationProjects[0]?.id;
+      if (selectedProjectId) setPendingTemplateProjectId(selectedProjectId);
+      else openCreateProjectDialog();
+    }
+  }, [openCreateProjectDialog, props.selectedWorkspaceId, templateDestinationProjects]);
+  const submitPendingCustomTemplateApplication = useCallback(async (
+    brief: TemplateBrief,
+    references: TemplateReferenceItem[],
+  ) => {
+    const application = pendingCustomTemplateApplication;
+    if (!application) return;
+    const pptxCompatibility = application.category === "slides" ? "native-editable" : undefined;
+    const destination = templateDestinationProjects.find((project) => project.id === pendingTemplateProjectId);
+    if (application.category === "video" && destination?.workspaceType === "remote") {
+      toast.error(t("templates.video_local_only"));
+      return;
+    }
+    let referencePayload: Awaited<ReturnType<typeof buildTemplateReferenceSubmitPayload>> | undefined;
+    let dispatchTransferred = false;
+    try {
+      referencePayload = await buildTemplateReferenceSubmitPayload(references);
+      const persistedBrief = {
+        template: t("template_market.custom_title"),
+        category: application.category,
+        surface: application.category === "video" ? "video" : "design",
+        pptxCompatibility,
+        referenceFiles: references.map((reference) => ({
+          name: reference.fileName,
+          mimeType: reference.mimeType,
+          size: reference.size,
+          quality: reference.ingestion?.quality ?? "failed",
+          sourceMode: reference.ingestion?.sourceMode ?? "memory",
+          sentOriginal: reference.sendOriginal && canSendOriginalReference(reference.file),
+        })),
+        ...brief,
+      };
+      let createdSessionId: string | null = null;
+      if (application.target === "new-task") {
+        if (!props.onCreateTaskFromCustom) return;
+        createdSessionId = await props.onCreateTaskFromCustom(pendingTemplateProjectId, {
+          category: application.category,
+          pptxCompatibility,
+          brief: persistedBrief,
+        });
+      } else if (props.ipolloworkServerClient && props.runtimeWorkspaceId && props.selectedSessionId) {
+        const created = await props.ipolloworkServerClient.createTemplateAuthoringSession(props.runtimeWorkspaceId, {
+          sessionId: props.selectedSessionId,
+          category: application.category,
+          pptxCompatibility,
+          purpose: "artifact-delivery",
+          brief: persistedBrief,
+        });
+        createdSessionId = props.selectedSessionId;
+        setSessionType(createdSessionId, sessionTypeForTemplate(created.manifest));
+        setTemplateSessionData({ ...created, hasBrief: true, applyMode: "current-conversation" });
+        setTemplateSessionRevision((value) => value + 1);
+        if (created.manifest.surface === "design") {
+          openTab(createdSessionId, {
+            id: `design:${createdSessionId}:${encodeURIComponent(created.state.entry)}`,
+            type: "design",
+            label: created.state.entry.split("/").filter(Boolean).pop() || "Design",
+            sessionId: createdSessionId,
+            path: created.state.entry,
+          });
+          setSidePanelState(createdSessionId, "panel");
+        } else {
+          openVideoStudio(createdSessionId);
+        }
+      }
+      if (!createdSessionId) return;
+      setPendingTemplateDispatch({
+        sessionId: createdSessionId,
+        referencePrompt: referencePayload.contextPack.promptText.trim(),
+        attachments: referencePayload.attachments,
+      });
+      dispatchTransferred = true;
+      setPendingCustomTemplateApplication(null);
+    } catch (error) {
+      toast.error(t("templates.error_apply"), {
+        description: error instanceof Error ? error.message : undefined,
+      });
+    } finally {
+      if (referencePayload && !dispatchTransferred) revokeTemplateReferenceAttachmentPreviews(referencePayload.attachments);
+    }
+  }, [openTab, openVideoStudio, pendingCustomTemplateApplication, pendingTemplateProjectId, props.ipolloworkServerClient, props.onCreateTaskFromCustom, props.runtimeWorkspaceId, props.selectedSessionId, setSidePanelState, templateDestinationProjects]);
   const submitPendingTemplateApplication = useCallback(async (
     brief: TemplateBrief,
     references: TemplateReferenceItem[],
@@ -4120,7 +4311,7 @@ export function SessionPage(props: SessionPageProps) {
     setCreateProjectError(null);
     try {
       const createdProjectId = await props.sidebar.onCreateProject({ name, folderPath, engineId: createProjectEngineId });
-      if (pendingTemplateApplication && typeof createdProjectId === "string") {
+      if ((pendingTemplateApplication || pendingCustomTemplateApplication) && typeof createdProjectId === "string") {
         setPendingTemplateProjectId(createdProjectId);
       }
       setCreateProjectOpen(false);
@@ -4512,6 +4703,7 @@ export function SessionPage(props: SessionPageProps) {
                       setTemplateBusyId((current) => current === templateId ? null : current);
                     }
                   }}
+                  onUseCustomTemplate={(category) => openCustomTemplate(category, "new-task")}
                   onInstallTemplate={(templateId) => void installStarterTemplate(templateId)}
                   onRequestTemplates={() => void refreshStarterTemplateCatalog()}
                   pendingDraft={props.initialTaskDraftPending}
@@ -4551,6 +4743,7 @@ export function SessionPage(props: SessionPageProps) {
                           error={templateCatalogError}
                           onRefresh={() => void refreshTemplateCatalog()}
                           onChoose={(templateId) => void chooseDesignTemplate(templateId)}
+                          onCustom={(category) => openCustomTemplate(category, "current-session")}
                           onInstall={(templateId) => void installDesignTemplate(templateId)}
                           onUninstall={(templateId) => void uninstallDesignTemplate(templateId)}
                           onImport={importDesignTemplate}
@@ -4889,6 +5082,11 @@ export function SessionPage(props: SessionPageProps) {
         onRefresh={refreshTemplateCatalog}
         onInstall={(templateId) => void installDesignTemplate(templateId)}
         onImport={importDesignTemplate}
+        onCustom={(category) => openCustomTemplate(
+          category,
+          templateMarketTarget === "current-session" && !currentTemplateSessionData ? "current-session" : "new-task",
+          true,
+        )}
         onUse={(template) => {
           if (
             templateMarketTarget === "current-session"
@@ -4908,7 +5106,7 @@ export function SessionPage(props: SessionPageProps) {
             ? props.selectedWorkspaceId
             : templateDestinationProjects[0]?.id;
           setTemplateMarketOpen(false);
-          setPendingTemplateApplication({ item: template, resourceScope: templateResourceScope });
+          setPendingTemplateApplication({ item: template, origin: "market", resourceScope: templateResourceScope });
           if (selectedProjectId) {
             setPendingTemplateProjectId(selectedProjectId);
           } else {
@@ -4920,7 +5118,7 @@ export function SessionPage(props: SessionPageProps) {
       {currentTemplateSessionData ? (
         <TemplateApplyDialog
           key={`${currentTemplateSessionData.sessionId}:${currentTemplateSessionData.manifest.id}:${currentTemplateApplyMode}`}
-          open={!hasTemplateBrief && !templateBriefDismissed && !pendingTemplateApplication}
+          open={!hasTemplateBrief && !templateBriefDismissed && !pendingTemplateApplication && !pendingCustomTemplateApplication}
           mode={currentTemplateApplyMode}
           template={currentTemplateSessionData.manifest}
           onSubmit={submitTemplateBrief}
@@ -4930,17 +5128,39 @@ export function SessionPage(props: SessionPageProps) {
 
       {pendingTemplateApplication ? (
         <TemplateApplyDialog
-          key={`pending:${pendingTemplateApplication.item.manifest.id}`}
+          key={`pending:${pendingTemplateApplication.origin}:${pendingTemplateApplication.item.manifest.id}`}
           open={!createProjectOpen && templateDestinationProjects.length > 0}
-          mode="market"
+          mode={pendingTemplateApplication.origin === "market" ? "market" : "new-conversation"}
           template={pendingTemplateApplication.item.manifest}
           destinationName={templateDestinationProjects.find((project) => project.id === pendingTemplateProjectId)?.name ?? t("workspace_list.workspace_fallback")}
-          projects={templateDestinationProjects}
-          selectedProjectId={pendingTemplateProjectId}
-          onProjectChange={setPendingTemplateProjectId}
-          onRequestNewProject={openCreateProjectDialog}
+          newTaskRequired={pendingTemplateApplication.origin === "conversation-conflict"}
+          conflictTemplateTitle={pendingTemplateApplication.origin === "conversation-conflict" ? pendingTemplateApplication.existingTemplateTitle : undefined}
+          projects={pendingTemplateApplication.origin === "market" ? templateDestinationProjects : undefined}
+          selectedProjectId={pendingTemplateApplication.origin === "market" ? pendingTemplateProjectId : undefined}
+          onProjectChange={pendingTemplateApplication.origin === "market" ? setPendingTemplateProjectId : undefined}
+          onRequestNewProject={pendingTemplateApplication.origin === "market" ? openCreateProjectDialog : undefined}
           onSubmit={submitPendingTemplateApplication}
           onClose={() => setPendingTemplateApplication(null)}
+        />
+      ) : null}
+
+      {pendingCustomTemplateApplication ? (
+        <TemplateApplyDialog
+          key={`custom:${pendingCustomTemplateApplication.target}`}
+          open={!createProjectOpen && (pendingCustomTemplateApplication.target === "current-session" || templateDestinationProjects.length > 0)}
+          mode={pendingCustomTemplateApplication.target === "current-session" ? "current-conversation" : "market"}
+          template={null}
+          customCategory={pendingCustomTemplateApplication.category}
+          onCustomCategoryChange={pendingCustomTemplateApplication.allowCategoryChange
+            ? (category) => setPendingCustomTemplateApplication((current) => current ? { ...current, category } : current)
+            : undefined}
+          destinationName={templateDestinationProjects.find((project) => project.id === pendingTemplateProjectId)?.name ?? t("workspace_list.workspace_fallback")}
+          projects={pendingCustomTemplateApplication.target === "new-task" ? templateDestinationProjects : undefined}
+          selectedProjectId={pendingCustomTemplateApplication.target === "new-task" ? pendingTemplateProjectId : undefined}
+          onProjectChange={pendingCustomTemplateApplication.target === "new-task" ? setPendingTemplateProjectId : undefined}
+          onRequestNewProject={pendingCustomTemplateApplication.target === "new-task" ? openCreateProjectDialog : undefined}
+          onSubmit={submitPendingCustomTemplateApplication}
+          onClose={() => setPendingCustomTemplateApplication(null)}
         />
       ) : null}
 
@@ -4984,6 +5204,9 @@ export function SessionPage(props: SessionPageProps) {
         setCreateProjectOpen(false);
         if (pendingTemplateApplication && templateDestinationProjects.length === 0) {
           setPendingTemplateApplication(null);
+        }
+        if (pendingCustomTemplateApplication?.target === "new-task" && templateDestinationProjects.length === 0) {
+          setPendingCustomTemplateApplication(null);
         }
       }}>
         <DialogContent
@@ -5119,12 +5342,6 @@ export function SessionPage(props: SessionPageProps) {
         variant="danger"
         onConfirm={() => void confirmDeleteProject()}
         onCancel={() => { if (!deleteProjectBusy) setDeleteProjectId(null); }}
-      />
-
-      <CloudSignInComingSoonDialog
-
-        open={cloudSignInComingSoonOpen}
-        onOpenChange={setCloudSignInComingSoonOpen}
       />
 
       {/* Cloud provider notifications are now handled globally by CloudProvidersToast in app-root.tsx */}

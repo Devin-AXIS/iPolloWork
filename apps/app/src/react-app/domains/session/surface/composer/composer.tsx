@@ -1,7 +1,7 @@
 /** @jsxImportSource react */
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { flushSync } from "react-dom";
-import { AppWindowMac, ArrowUp, Bot, Check, ChevronDown, ChevronRight, CircleGauge, Code2, FileText, ListTodo, Paperclip, Plus, Plug, Settings, Shield, ShieldAlert, ShieldCheck, ShieldQuestion, Sparkles, Square, Terminal, Wrench, X, Zap } from "lucide-react";
+import { AppWindowMac, ArrowUp, Bot, Check, ChevronDown, ChevronRight, Code2, FileText, ListTodo, Paperclip, Plus, Plug, Settings, Shield, ShieldAlert, ShieldCheck, ShieldQuestion, Sparkles, Square, Terminal, Wrench, X, Zap } from "lucide-react";
 import fuzzysort from "fuzzysort";
 import { toast } from "@/components/ui/sonner";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -132,6 +132,31 @@ const IMAGE_COMPRESS_QUALITY = 0.82;
 const IMAGE_COMPRESS_TARGET_BYTES = 1_500_000;
 const FILE_URL_RE = /^file:\/\//i;
 const HTTP_URL_RE = /^https?:\/\//i;
+
+function ContextProgress({ percentage }: { percentage: number | null }) {
+  const progress = Math.min(100, Math.max(0, percentage ?? 0));
+
+  return (
+    <svg viewBox="0 0 16 16" className="size-4 shrink-0" aria-hidden="true">
+      <circle cx="8" cy="8" r="6.25" fill="none" className="stroke-gray-5" strokeWidth="1.75" />
+      <circle
+        cx="8"
+        cy="8"
+        r="6.25"
+        fill="none"
+        stroke="#1FBAC0"
+        strokeWidth="1.75"
+        strokeLinecap="round"
+        pathLength={100}
+        strokeDasharray="100"
+        strokeDashoffset={100 - progress}
+        transform="rotate(-90 8 8)"
+        className="transition-[stroke-dashoffset] duration-300 motion-reduce:transition-none"
+      />
+    </svg>
+  );
+}
+
 function ContextHealth({
   usage,
   modelContextWindow,
@@ -151,10 +176,10 @@ function ContextHealth({
         type="button"
         data-testid="composer-context-health"
         aria-label={`${t("composer.context_health")}: ${summary}`}
-        className={`inline-flex h-8 shrink-0 items-center gap-1.5 rounded-full px-2.5 text-[12px] font-medium leading-[18px] transition-colors hover:bg-gray-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gray-7 @max-[560px]/composer:w-8 @max-[560px]/composer:justify-center @max-[560px]/composer:px-0 ${health.compressionWarning ? "text-amber-11" : "text-gray-10"}`}
+        className={`inline-flex h-8 shrink-0 items-center gap-1.5 rounded-full bg-transparent px-2.5 text-[12px] font-medium leading-[18px] transition-colors hover:bg-gray-3 hover:text-gray-12 data-[state=open]:bg-gray-3 data-[state=open]:text-gray-12 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gray-7 @max-[560px]/composer:w-8 @max-[560px]/composer:justify-center @max-[560px]/composer:px-0 ${health.compressionWarning ? "text-amber-11" : "text-gray-10"}`}
       >
-        <CircleGauge className="size-3.5 shrink-0" aria-hidden="true" />
-        <span className="whitespace-nowrap tabular-nums @max-[560px]/composer:hidden">{summary}</span>
+        <ContextProgress percentage={health.percentage} />
+        <span className="whitespace-nowrap tabular-nums @max-[560px]/composer:hidden">{percentageLabel}</span>
       </PopoverTrigger>
       <PopoverContent side="top" align="end" sideOffset={8} className="w-72 gap-0 rounded-2xl p-4">
         <div className="flex items-center justify-between gap-4">
@@ -165,7 +190,7 @@ function ContextHealth({
         </div>
         <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-gray-3" aria-hidden="true">
           <div
-            className={`h-full rounded-full transition-[width] ${health.compressionWarning ? "bg-amber-9" : "bg-blue-9"}`}
+            className="h-full rounded-full bg-[#1FBAC0] transition-[width]"
             style={{ width: `${Math.min(100, health.percentage ?? 0)}%` }}
           />
         </div>
@@ -1520,10 +1545,10 @@ export function ReactSessionComposer(props: ComposerProps) {
                     event.currentTarget.value = "";
                   }}
                 />
-                <div ref={plusMenuRef} className="relative me-1.5 shrink-0">
+                <div ref={plusMenuRef} className="relative me-2 shrink-0">
                   <button
                     type="button"
-                    className={`inline-flex items-center justify-center rounded-md transition-colors ${props.layout === "inline" ? "h-8 px-2" : "h-9 max-h-9 w-9"} ${plusMenuOpen ? "bg-gray-3 text-gray-12" : "bg-transparent text-gray-10 hover:bg-gray-3"}`}
+                    className={`inline-flex size-8 shrink-0 items-center justify-center rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gray-7 ${plusMenuOpen ? "bg-gray-3 text-gray-12" : "bg-transparent text-gray-10 hover:bg-gray-3 hover:text-gray-12"}`}
                     onClick={() => {
                       setWorkModeOpen(false);
                       setToolMenuOpen(false);
@@ -1537,7 +1562,7 @@ export function ReactSessionComposer(props: ComposerProps) {
                     aria-haspopup="menu"
                     title={t("composer.plus_menu_label")}
                   >
-                    <Plus size={18} />
+                    <Plus size={16} strokeWidth={1.75} />
                   </button>
                   {plusMenuOpen ? (
                     <div className="absolute bottom-full left-0 z-40 mb-2 flex items-end gap-1">
@@ -1843,11 +1868,11 @@ export function ReactSessionComposer(props: ComposerProps) {
                       type="button"
                       disabled={props.busy || props.accessModeSelectionDisabled || accessModeBusy}
                       aria-label={`${t("composer.access_mode_label")}: ${activeAccessMode.label}`}
-                      className="inline-flex h-8 items-center gap-1.5 rounded-full bg-transparent px-2 text-[12px] leading-[18px] text-gray-10 transition-colors hover:bg-gray-3 hover:text-gray-12 data-[state=open]:bg-gray-3 data-[state=open]:text-gray-12 disabled:pointer-events-none disabled:opacity-60 @max-[560px]/composer:w-10 @max-[560px]/composer:justify-center @max-[560px]/composer:gap-0.5 @max-[560px]/composer:px-1"
+                      className="me-2 inline-flex h-8 items-center gap-1.5 rounded-full bg-transparent px-2 text-[12px] leading-[18px] text-gray-10 transition-colors hover:bg-gray-3 hover:text-gray-12 data-[state=open]:bg-gray-3 data-[state=open]:text-gray-12 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gray-7 disabled:pointer-events-none disabled:opacity-60 @max-[560px]/composer:w-10 @max-[560px]/composer:justify-center @max-[560px]/composer:gap-0.5 @max-[560px]/composer:px-1"
                     >
-                      <AccessModeIcon icon={activeAccessMode.icon} className="size-3.5 shrink-0" />
+                      <AccessModeIcon icon={activeAccessMode.icon} className="size-4 shrink-0 [stroke-width:1.75]" />
                       <span className="@max-[560px]/composer:hidden">{activeAccessMode.label}</span>
-                      <ChevronDown className="size-4 shrink-0" />
+                      <ChevronDown className="size-3.5 shrink-0 [stroke-width:1.75]" />
                     </PopoverTrigger>
                     <PopoverContent side="top" align="start" sideOffset={8} className="w-72 gap-0 p-1.5">
                       {accessModes.map((mode) => {
@@ -1889,11 +1914,11 @@ export function ReactSessionComposer(props: ComposerProps) {
                     type="button"
                     disabled={props.busy || props.modeSelectionDisabled}
                     aria-label={`${t("composer.work_mode_label")}: ${activeWorkMode.label}`}
-                    className="inline-flex h-8 max-w-32 shrink-0 items-center gap-1.5 rounded-full bg-transparent px-2 text-[12px] leading-[18px] text-gray-10 transition-colors hover:bg-gray-3 hover:text-gray-12 data-[state=open]:bg-gray-3 data-[state=open]:text-gray-12 disabled:pointer-events-none disabled:opacity-60 @max-[560px]/composer:w-10 @max-[560px]/composer:justify-center @max-[560px]/composer:gap-0.5 @max-[560px]/composer:px-1"
+                    className="inline-flex h-8 max-w-32 shrink-0 items-center gap-1.5 rounded-full bg-transparent px-2 text-[12px] leading-[18px] text-gray-10 transition-colors hover:bg-gray-3 hover:text-gray-12 data-[state=open]:bg-gray-3 data-[state=open]:text-gray-12 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gray-7 disabled:pointer-events-none disabled:opacity-60 @max-[560px]/composer:w-10 @max-[560px]/composer:justify-center @max-[560px]/composer:gap-0.5 @max-[560px]/composer:px-1"
                   >
-                    <WorkModeIcon icon={activeWorkMode.icon} className={`size-3.5 shrink-0 ${props.layout === "inline" ? "hidden @max-[560px]/composer:block" : ""}`} />
+                    <WorkModeIcon icon={activeWorkMode.icon} className="size-4 shrink-0 [stroke-width:1.75]" />
                     <span className="truncate @max-[560px]/composer:hidden">{activeWorkMode.label}</span>
-                    <ChevronDown className="size-4 shrink-0" />
+                    <ChevronDown className="size-3.5 shrink-0 [stroke-width:1.75]" />
                   </PopoverTrigger>
                   <PopoverContent side="top" align="start" sideOffset={8} className="w-64 gap-0 p-1.5">
                     {workModes.map((mode) => {
@@ -1938,7 +1963,7 @@ export function ReactSessionComposer(props: ComposerProps) {
                   badge shows how many follow-ups are waiting.
                   Escape arms a "Hit Escape again to stop the agent" prompt.
               */}
-              <div className="ml-auto flex min-w-0 shrink-0 items-end gap-1.5">
+              <div className="ml-auto flex min-w-0 shrink-0 items-end gap-1.5 @max-[560px]/composer:gap-1">
                 <ContextHealth
                   usage={props.contextUsage}
                   modelContextWindow={props.modelContextWindow}

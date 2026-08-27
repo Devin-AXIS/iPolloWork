@@ -275,7 +275,7 @@ export default {
   "den.cloud_providers_title": "Provider Cloud",
   "den.cloud_section_desc": "Đăng nhập, chọn tổ chức và mở worker Cloud hoặc mẫu nhóm.",
   "den.cloud_section_title": "iPolloWork Cloud",
-  "den.cloud_sleep_hint": "Đăng nhập iPolloWork Cloud để giữ task hoạt động khi máy ngủ.",
+  "den.cloud_sleep_hint": "Duy trì task hoạt động ngay cả khi máy tính ngủ.",
   "den.create_account": "Tạo tài khoản",
   "den.credentials_ready_badge": "Thông tin xác thực sẵn sàng",
   "den.error_base_url": "Nhập URL Cloud control plane hợp lệ dạng http:// hoặc https://.",

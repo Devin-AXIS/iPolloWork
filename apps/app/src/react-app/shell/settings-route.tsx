@@ -2206,7 +2206,9 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
         busyHint={loading ? t("session.loading_detail") : busyLabel}
         onClose={props.onClose ?? (() => navigate(selectedWorkspaceId ? workspaceSessionRoute(selectedWorkspaceId, navigationSessionId) : "/session"))}
         compact={props.embedded}
-        headerTitle={route.tab === "extensions" && !route.pluginPackageId && !selectedPluginSettingsPage ? (
+        headerTitle={route.tab === "ai" && !props.embedded ? (
+          <span className="sr-only">{t("settings.tab_ai")}</span>
+        ) : route.tab === "extensions" && !route.pluginPackageId && !selectedPluginSettingsPage ? (
           <SettingsSegmentedTabs
             value={route.extensionsSection === "skills" ? "skills" : "plugins"}
             ariaLabel={t("plugin_library.navigation_label")}
@@ -2258,7 +2260,7 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
         showNotifications={route.tab !== "extensions"}
         hidePageHeader={route.tab === "extensions" || Boolean(route.pluginPackageId) || Boolean(selectedPluginSettingsPage)}
         fullBleed={Boolean(selectedPluginSettingsPage)}
-        hideShellHeader={Boolean(route.pluginPackageId)}
+        hideShellHeader={route.tab === "cloud-account" || Boolean(route.pluginPackageId)}
         hideCloseButton={props.embedded && route.tab === "extensions"}
       >
         {settingsView}

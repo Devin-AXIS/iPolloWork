@@ -1,6 +1,6 @@
 "use client";
 
-import { type ChangeEvent, useEffect, useId, useMemo, useRef, useState } from "react";
+import { type ChangeEvent, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, Ref } from "react";
 import { createPortal } from "react-dom";
 import { LazyMotion, domAnimation, m, useReducedMotion, type Transition } from "motion/react";
@@ -80,6 +80,7 @@ type NewConversationStarterProps = {
   templateBusyId?: string | null;
   getTemplateCover?: TemplateCoverLoader;
   onUseTemplate?: (templateId: string, surface: "design" | "video") => void | Promise<unknown>;
+  onUseCustomTemplate?: (category: TemplateCategory) => void;
   onInstallTemplate?: (templateId: string) => void;
   onRequestTemplates?: () => void;
   animationCatalog?: HyperframesCatalogItem[];
@@ -126,7 +127,7 @@ const MODE_TAB_SPRING = {
   type: "spring",
   mass: 1,
   stiffness: 300,
-  damping: 20,
+  damping: 28,
 } satisfies Transition;
 
 type StarterAction = {
@@ -226,6 +227,7 @@ function TemplateStrip({
   category,
   getTemplateCover,
   onUseTemplate,
+  onUseCustomTemplate,
   onInstallTemplate,
   onRequestTemplates,
 }: {
@@ -235,6 +237,7 @@ function TemplateStrip({
   category: TemplateCategory;
   getTemplateCover?: TemplateCoverLoader;
   onUseTemplate?: (templateId: string, surface: "design" | "video") => void | Promise<unknown>;
+  onUseCustomTemplate?: (category: TemplateCategory) => void;
   onInstallTemplate?: (templateId: string) => void;
   onRequestTemplates?: () => void;
 }) {
@@ -294,9 +297,26 @@ function TemplateStrip({
             <span>{t("new_conversation.templates.loading")}</span>
           </div>
         </div>
-      ) : categoryTemplates.length ? (
+      ) : onUseCustomTemplate || categoryTemplates.length ? (
         <div>
           <div ref={scrollerRef} className="-mx-0.5 flex min-w-0 snap-x snap-mandatory gap-2 overflow-x-auto px-0.5 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+            {onUseCustomTemplate ? (
+              <button
+                type="button"
+                disabled={Boolean(busyId)}
+                aria-label={`${t("new_conversation.templates.use")}: ${t("template_market.custom_title")}`}
+                className="group relative h-[106px] min-w-[172px] snap-start overflow-hidden rounded-lg border border-border/80 bg-background text-left shadow-sm transition-[box-shadow,transform] hover:-translate-y-px hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring active:shadow-md disabled:cursor-not-allowed disabled:opacity-55"
+                onClick={() => onUseCustomTemplate(category)}
+              >
+                <div className="flex h-full w-full flex-col items-center justify-center gap-2 text-primary">
+                  <Plus className="size-6" strokeWidth={1.75} aria-hidden />
+                  <span className="text-[12px] font-medium text-foreground">{t("template_market.custom_title")}</span>
+                </div>
+                <span aria-hidden className="pointer-events-none absolute inset-0 flex items-center justify-center bg-black/60 opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100 group-active:opacity-100">
+                  <span className="flex h-6 items-center rounded-md bg-white px-2 py-0.5 text-[12px] font-medium leading-none text-black shadow-sm">{t("new_conversation.templates.use")}</span>
+                </span>
+              </button>
+            ) : null}
             {categoryTemplates.map((template) => {
               const busy = busyId === template.manifest.id;
               const anyBusy = Boolean(busyId);
@@ -1007,6 +1027,7 @@ export function NewConversationStarter({
   templateBusyId,
   getTemplateCover,
   onUseTemplate,
+  onUseCustomTemplate,
   onInstallTemplate,
   onRequestTemplates,
   animationCatalog = [],
@@ -1017,7 +1038,6 @@ export function NewConversationStarter({
   onChangeAnimationParams,
   onRetryAnimationCatalog,
 }: NewConversationStarterProps) {
-  const modeTabIndicatorId = useId();
   const reduceMotion = useReducedMotion();
   const [activeTemplateCategory, setActiveTemplateCategory] = useState<TemplateCategory | null>(null);
   const [shortcutEditorOpen, setShortcutEditorOpen] = useState(false);
@@ -1108,6 +1128,7 @@ export function NewConversationStarter({
   }, [shortcutEditorOpen]);
 
   const modeDefinitions = MODE_ACTIONS[selectedMode];
+  const modeTabIndicatorX = MODES.findIndex(({ id }) => id === selectedMode) * 100;
   const actions = shortcutIds[selectedMode]
     .map((id) => modeDefinitions.find((action) => action.id === id))
     .filter((action): action is StarterAction => Boolean(action));
@@ -1167,54 +1188,52 @@ export function NewConversationStarter({
 
         <LazyMotion features={domAnimation}>
           <div
-            className="mt-8 flex h-[42px] w-fit max-w-full items-center gap-2 rounded-[40px] bg-[var(--new-conversation-tab-surface)] p-1"
+            className="relative isolate mt-8 flex h-[42px] w-fit max-w-full items-center gap-2 rounded-[40px] bg-[var(--new-conversation-tab-surface)] p-1"
             role="tablist"
             aria-label={t("new_conversation.mode_label")}
           >
-          {MODES.map(({ id, iconSrc, label }) => {
-            const selected = id === selectedMode;
-            return (
-              <button
-                key={id}
-                type="button"
-                role="tab"
-                aria-selected={selected}
-                className={cn(
-                  "relative isolate inline-flex w-[92px] min-w-0 items-center justify-center gap-1 px-3 font-['PingFang_SC'] text-[13px] font-medium leading-[20px] transition-[background-color,border-radius,color] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
-                  selected
-                    ? "h-9 rounded-[40px] text-[var(--new-conversation-tab-text)]"
-                    : "h-[38px] rounded-[12px] text-[var(--new-conversation-tab-muted)] hover:rounded-[40px] hover:bg-[var(--new-conversation-tab-selected)]/70 hover:text-[var(--new-conversation-tab-text)]",
-                )}
-                onClick={() => selectMode(id)}
-              >
-                {selected ? (
-                  <m.span
-                    layoutId={`new-conversation-mode-indicator-${modeTabIndicatorId}`}
-                    data-testid="new-conversation-mode-indicator"
+            <m.span
+              data-testid="new-conversation-mode-indicator"
+              aria-hidden="true"
+              initial={false}
+              animate={{ x: modeTabIndicatorX }}
+              transition={reduceMotion ? { duration: 0 } : MODE_TAB_SPRING}
+              className="pointer-events-none absolute left-1 top-[3px] z-0 h-9 w-[92px] rounded-[40px] bg-[var(--new-conversation-tab-selected)]"
+            />
+            {MODES.map(({ id, iconSrc, label }) => {
+              const selected = id === selectedMode;
+              return (
+                <button
+                  key={id}
+                  type="button"
+                  role="tab"
+                  aria-selected={selected}
+                  className={cn(
+                    "relative z-10 inline-flex w-[92px] min-w-0 items-center justify-center gap-1 px-3 font-['PingFang_SC'] text-[13px] font-medium leading-[20px] transition-[background-color,border-radius,color] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+                    selected
+                      ? "h-9 rounded-[40px] text-[var(--new-conversation-tab-text)]"
+                      : "h-[38px] rounded-[12px] text-[var(--new-conversation-tab-muted)] hover:rounded-[40px] hover:bg-[var(--new-conversation-tab-selected)]/70 hover:text-[var(--new-conversation-tab-text)]",
+                  )}
+                  onClick={() => selectMode(id)}
+                >
+                  <span
                     aria-hidden="true"
-                    initial={false}
-                    transition={reduceMotion ? { duration: 0 } : MODE_TAB_SPRING}
-                    className="pointer-events-none absolute inset-0 -z-10 rounded-[40px] bg-[var(--new-conversation-tab-selected)]"
+                    className="size-[16px] shrink-0 bg-current transition-opacity duration-150"
+                    style={{
+                      WebkitMaskImage: `url(${iconSrc})`,
+                      maskImage: `url(${iconSrc})`,
+                      WebkitMaskPosition: "center",
+                      maskPosition: "center",
+                      WebkitMaskRepeat: "no-repeat",
+                      maskRepeat: "no-repeat",
+                      WebkitMaskSize: "contain",
+                      maskSize: "contain",
+                    }}
                   />
-                ) : null}
-                <span
-                  aria-hidden="true"
-                  className="size-[16px] shrink-0 bg-current transition-opacity duration-150"
-                  style={{
-                    WebkitMaskImage: `url(${iconSrc})`,
-                    maskImage: `url(${iconSrc})`,
-                    WebkitMaskPosition: "center",
-                    maskPosition: "center",
-                    WebkitMaskRepeat: "no-repeat",
-                    maskRepeat: "no-repeat",
-                    WebkitMaskSize: "contain",
-                    maskSize: "contain",
-                  }}
-                />
-                <span className="min-w-0 truncate">{t(label)}</span>
-              </button>
-            );
-          })}
+                  <span className="min-w-0 truncate">{t(label)}</span>
+                </button>
+              );
+            })}
           </div>
         </LazyMotion>
       </div>
@@ -1309,6 +1328,7 @@ export function NewConversationStarter({
             category={activeTemplateCategory}
             getTemplateCover={getTemplateCover}
             onUseTemplate={onUseTemplate}
+            onUseCustomTemplate={onUseCustomTemplate}
             onInstallTemplate={onInstallTemplate}
             onRequestTemplates={onRequestTemplates}
           />
@@ -1332,6 +1352,7 @@ export function NewConversationStarter({
             category="video"
             getTemplateCover={getTemplateCover}
             onUseTemplate={onUseTemplate}
+            onUseCustomTemplate={onUseCustomTemplate}
             onInstallTemplate={onInstallTemplate}
             onRequestTemplates={onRequestTemplates}
           />

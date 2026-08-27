@@ -1348,7 +1348,7 @@ export function createiPolloWorkServerClient(options: { baseUrl: string; token?:
         timeoutMs: timeouts.workspaceImport,
         direct: true,
       }),
-    createTemplateAuthoringSession: (workspaceId: string, input: { sessionId: string; category: TemplateCategory; pptxCompatibility?: PptxCompatibility; purpose?: "template-authoring" | "artifact-delivery" }) =>
+    createTemplateAuthoringSession: (workspaceId: string, input: { sessionId: string; category: TemplateCategory; pptxCompatibility?: PptxCompatibility; purpose?: "template-authoring" | "artifact-delivery"; brief?: unknown }) =>
       requestJson<TemplateSessionSnapshot>(baseUrl, `/workspace/${encodeURIComponent(workspaceId)}/templates/authoring-sessions`, {
         token,
         hostToken,

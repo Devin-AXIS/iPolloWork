@@ -10,14 +10,11 @@ import { ConfirmModal } from "../../../design-system/modals/confirm-modal";
 import { SettingsNotice, SettingsStatusBadge } from "../settings-section";
 import {
   LayoutSection,
-  LayoutSectionDescription,
-  LayoutSectionHeader,
   LayoutSectionItem,
   LayoutSectionItemFootnote,
   LayoutSectionItemHeader,
   LayoutSectionItemHeaderActions,
   LayoutSectionItemTitle,
-  LayoutSectionTitle,
   LayoutStack,
 } from "../settings-layout";
 
@@ -92,11 +89,6 @@ export function AiSettingsView(props: AiSettingsViewProps) {
       <LayoutStack>
       {/* ---- Providers ---- */}
       <LayoutSection>
-        <LayoutSectionHeader>
-          <LayoutSectionTitle>{t("settings.providers_title")}</LayoutSectionTitle>
-          <LayoutSectionDescription>{t("settings.providers_desc")}</LayoutSectionDescription>
-        </LayoutSectionHeader>
-
         <LayoutSectionItem>
           <LayoutSectionItemHeader>
             <LayoutSectionItemTitle>
