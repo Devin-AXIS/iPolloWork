@@ -1651,11 +1651,13 @@ export function SessionRoute() {
         const requestSuffix = artifactRequestId.replace(/[^a-z0-9]+/gi, "").slice(-10).toLowerCase();
         const suggestedHtmlFilename = uniqueHtmlArtifactFilenameFromTitle(text, artifactRequestId)
           ?? `output-${requestSuffix || Date.now().toString(36)}.html`;
-        const artifactNamingPromptPart = [{
-          type: "text" as const,
-          text: `When creating a new user-facing HTML deliverable without an exact target path, use the unique task-specific filename \`${suggestedHtmlFilename}\`. Do not create a new deliverable named entry.html or index.html, and do not reuse a filename from an earlier user turn. If this request creates multiple HTML deliverables, add a short deliverable-type suffix before .html so every new filename is distinct. Keep an exact iPolloWork template entry path unchanged when one is supplied because it is the template's technical runtime entry.`,
-          synthetic: true,
-        }];
+        const artifactNamingPromptPart = automaticTemplateIntents.length > 0 && sessionTemplates.length === 0
+          ? [{
+              type: "text" as const,
+              text: `When creating a new user-facing HTML deliverable without an exact target path, use the unique task-specific filename \`${suggestedHtmlFilename}\`. Do not create a new deliverable named entry.html or index.html, and do not reuse a filename from an earlier user turn. If this request creates multiple HTML deliverables, add a short deliverable-type suffix before .html so every new filename is distinct.`,
+              synthetic: true,
+            }]
+          : [];
         const promptParts = [
           ...capabilityPromptPart,
           ...automaticTemplatePromptPart,
@@ -1968,6 +1970,29 @@ export function SessionRoute() {
         sessionsByWorkspaceIdRef.current = next;
         return next;
       });
+      if (
+        pendingInitialProjectTask?.workspaceId === workspaceId &&
+        !pendingInitialProjectTask.sessionId
+      ) {
+        saveSessionDraft(workspaceId, session.id, {
+          text: pendingInitialProjectTask.draft.text,
+          mode: pendingInitialProjectTask.draft.mode,
+        });
+        const clientUserMessageId = beginOptimisticSessionPrompt(
+          endpoint.workspaceId,
+          session.id,
+          pendingInitialProjectTask.draft.text,
+        );
+        setPendingInitialProjectTask((current) => current?.workspaceId === workspaceId
+          ? {
+              ...current,
+              sessionId: session.id,
+              runtimeWorkspaceId: endpoint.workspaceId,
+              clientUserMessageId,
+            }
+          : current);
+        await new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve()));
+      }
       navigateToWorkspaceSession(workspaceId, session.id);
       focusPromptSoon();
       void refreshRouteState();
@@ -2042,6 +2067,7 @@ export function SessionRoute() {
     ipolloworkServerHostInfoState?.hostToken,
     loading,
     navigateToWorkspaceSession,
+    pendingInitialProjectTask,
     refreshRouteState,
     rememberPendingCreatedSession,
     token,
@@ -2170,38 +2196,13 @@ export function SessionRoute() {
     void handleCreateTaskInWorkspace(pending.workspaceId).then((sessionId) => {
       if (!sessionId) {
         setPendingInitialProjectTask(null);
-        return;
       }
-      saveSessionDraft(pending.workspaceId, sessionId, {
-        text: pending.draft.text,
-        mode: pending.draft.mode,
-      });
-      const workspace = workspaces.find((item) => item.id === pending.workspaceId);
-      const endpoint = workspace ? resolveWorkspaceEndpoint(workspace, {
-        baseUrl,
-        token,
-        hostToken: ipolloworkServerHostInfoState?.hostToken,
-      }) : null;
-      const clientUserMessageId = endpoint
-        ? beginOptimisticSessionPrompt(endpoint.workspaceId, sessionId, pending.draft.text)
-        : null;
-      setPendingInitialProjectTask((current) => current?.workspaceId === pending.workspaceId
-        ? {
-            ...current,
-            sessionId,
-            runtimeWorkspaceId: endpoint?.workspaceId ?? null,
-            clientUserMessageId,
-          }
-        : current);
     }).finally(() => {
       initialProjectSessionCreatingRef.current = false;
     });
   }, [
-    baseUrl,
     handleCreateTaskInWorkspace,
-    ipolloworkServerHostInfoState?.hostToken,
     pendingInitialProjectTask,
-    token,
     workspaces,
   ]);
 
@@ -2780,6 +2781,7 @@ export function SessionRoute() {
           ? pendingInitialProjectTask.draft
           : null
       }
+      initialTaskTransitionPending={Boolean(pendingInitialProjectTask)}
       history={{
         canUndo: false,
         canRedo: false,

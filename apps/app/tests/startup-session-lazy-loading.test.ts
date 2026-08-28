@@ -95,6 +95,11 @@ describe("startup session loading", () => {
       'key={`${props.runtimeWorkspaceId}:${props.selectedSessionId}`}',
     );
     expect(sessionPageSource).toContain("<IPolloLoadingArtwork />");
+    expect(sessionRouteSource).toContain(
+      "initialTaskTransitionPending={Boolean(pendingInitialProjectTask)}",
+    );
+    expect(sessionPageSource).toContain("!props.initialTaskTransitionPending &&");
+    expect(sessionPageSource).toContain("conversationMessages.length === 0 &&");
     expect(sessionPageSource).toContain(
       "const templateEntrySurfaceReady = !templateSessionLoading",
     );
@@ -107,6 +112,29 @@ describe("startup session loading", () => {
     );
     expect(sessionSurfaceSource).toContain("props.onLoadSettled?.(props.sessionId);");
     expect(loadingOverlaySource).toContain("export function IPollo" + "LoadingArtwork()");
+  });
+
+  test("keeps the first prompt visible and delays its compact preparation status", () => {
+    const optimisticPromptIndex = sessionRouteSource.indexOf(
+      "const clientUserMessageId = beginOptimisticSessionPrompt(",
+    );
+    const initialNavigationIndex = sessionRouteSource.indexOf(
+      "navigateToWorkspaceSession(workspaceId, session.id);",
+      optimisticPromptIndex,
+    );
+    expect(optimisticPromptIndex).toBeGreaterThan(-1);
+    expect(initialNavigationIndex).toBeGreaterThan(optimisticPromptIndex);
+    expect(sessionRouteSource).toContain(
+      "await new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve()));",
+    );
+    expect(sessionPageSource).toContain(
+      "const timeout = window.setTimeout(() => setShowPendingStatus(true), 400);",
+    );
+    expect(sessionPageSource).toContain("{showPendingStatus ? (");
+    expect(sessionPageSource).toContain('data-testid="initial-project-task-pending"');
+    expect(sessionPageSource).toContain('<AnimatePresence initial={false}>');
+    expect(sessionPageSource).toContain('exit={{ opacity: 0 }}');
+    expect(sessionPageSource).toContain('transition={{ duration: 0.14, ease: "easeOut" }}');
   });
 
   test("does not render the new-task starter behind the startup skeleton", () => {

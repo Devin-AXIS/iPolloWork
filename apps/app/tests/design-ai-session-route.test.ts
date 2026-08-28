@@ -100,13 +100,21 @@ describe("Design AI session lifecycle", () => {
     const surfaceSource = await Bun.file(surfaceUrl).text();
     const sendIndex = surfaceSource.indexOf("const sendDraft = useCallback");
     const optimisticIndex = surfaceSource.indexOf("beginOptimisticSessionPrompt(props.workspaceId, props.sessionId, nextDraft.text)", sendIndex);
-    const initialTaskIndex = routeSource.indexOf("const clientUserMessageId = endpoint");
+    const initialTaskIndex = routeSource.indexOf("pendingInitialProjectTask?.workspaceId === workspaceId");
+    const initialOptimisticIndex = routeSource.indexOf(
+      "const clientUserMessageId = beginOptimisticSessionPrompt(",
+      initialTaskIndex,
+    );
+    const initialNavigationIndex = routeSource.indexOf(
+      "navigateToWorkspaceSession(workspaceId, session.id);",
+      initialOptimisticIndex,
+    );
 
     expect(surfaceSource).not.toContain("CODEX_HARNESS_ENGINE_ID");
     expect(optimisticIndex).toBeGreaterThan(sendIndex);
     expect(surfaceSource.indexOf("!recoveryDraft", sendIndex)).toBeGreaterThan(sendIndex);
-    expect(routeSource.indexOf("beginOptimisticSessionPrompt(endpoint.workspaceId, sessionId, pending.draft.text)", initialTaskIndex))
-      .toBeGreaterThan(initialTaskIndex);
+    expect(initialOptimisticIndex).toBeGreaterThan(initialTaskIndex);
+    expect(initialNavigationIndex).toBeGreaterThan(initialOptimisticIndex);
   });
 
   test("adds the current app language to the model system context", async () => {
@@ -123,16 +131,16 @@ describe("Design AI session lifecycle", () => {
     expect(routeSource.indexOf("languageSystemContext]", systemContextIndex)).toBeGreaterThan(systemContextIndex);
   });
 
-  test("asks every conversation engine to use a task-specific HTML filename", async () => {
+  test("only asks standalone artifact requests to use a task-specific HTML filename", async () => {
     const routeSource = await Bun.file(routeUrl).text();
     const namingPromptIndex = routeSource.indexOf("const artifactNamingPromptPart");
     const sendIndex = routeSource.indexOf("conversation.sendPrompt({");
 
     expect(routeSource).toContain("uniqueHtmlArtifactFilenameFromTitle(text, artifactRequestId)");
+    expect(routeSource).toContain("automaticTemplateIntents.length > 0 && sessionTemplates.length === 0");
     expect(routeSource).toContain("Do not create a new deliverable named entry.html or index.html");
     expect(routeSource).toContain("do not reuse a filename from an earlier user turn");
     expect(routeSource).toContain("so every new filename is distinct");
-    expect(routeSource).toContain("Keep an exact iPolloWork template entry path unchanged");
     expect(namingPromptIndex).toBeGreaterThan(-1);
     expect(routeSource.indexOf("...artifactNamingPromptPart", namingPromptIndex)).toBeGreaterThan(namingPromptIndex);
     expect(sendIndex).toBeGreaterThan(namingPromptIndex);

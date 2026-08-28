@@ -1856,7 +1856,7 @@ export default {
   "session.outputs.expand_bundle": "展开包含文件",
   "session.outputs.collapse_bundle": "收起包含文件",
   "session.files.title": "文件",
-  "session.files.open": "查看任务文件",
+  "session.files.open": "产出文件",
   "session.files.mode_label": "文件显示模式",
   "session.files.mode_directory": "目录",
   "session.files.mode_outputs": "产出",

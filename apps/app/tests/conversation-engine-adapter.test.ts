@@ -129,6 +129,35 @@ describe("conversation engine adapters", () => {
     }));
   });
 
+  test("keeps OpenCode application instructions out of the authored user message", async () => {
+    const originalFetch = globalThis.fetch;
+    const requests: Array<Record<string, unknown>> = [];
+    globalThis.fetch = (async (input, init) => {
+      const request = input instanceof Request ? input : new Request(input, init);
+      requests.push(await request.clone().json());
+      return new Response(null, { status: 204 });
+    }) as typeof fetch;
+
+    try {
+      const connection = openCodeConversationEngineAdapter.connect({ baseUrl: "http://opencode.test" });
+      await connection.sendPrompt({
+        sessionId: "session-internal-context",
+        parts: [
+          { type: "text", text: "Internal template instructions", synthetic: true },
+          { type: "text", text: "测试首条消息" },
+        ],
+        system: "Internal runtime instructions",
+      });
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+
+    expect(requests).toEqual([expect.objectContaining({
+      parts: [{ type: "text", text: "测试首条消息" }],
+      system: "Internal runtime instructions\n\nInternal template instructions",
+    })]);
+  });
+
   test("updates OpenCode permission rules on the active session", async () => {
     const originalFetch = globalThis.fetch;
     const requests: Array<{ url: string; method: string; body: Record<string, unknown> }> = [];
@@ -1258,15 +1287,15 @@ describe("conversation engine adapters", () => {
       reasoningEffort: "max",
     });
     expect(requests[3]?.payload.content).toEqual([
-      { type: "text", text: "Build it" },
-      {
-        type: "text",
-        text: `${DEEPSEEK_HARNESS_INTERNAL_SYSTEM_PREFIX}Apply the private template checklist\n</system>`,
-      },
       {
         type: "text",
         text: `${DEEPSEEK_HARNESS_INTERNAL_SYSTEM_PREFIX}Internal runtime instructions\n</system>`,
       },
+      {
+        type: "text",
+        text: `${DEEPSEEK_HARNESS_INTERNAL_SYSTEM_PREFIX}Apply the private template checklist\n</system>`,
+      },
+      { type: "text", text: "Build it" },
     ]);
   });
 

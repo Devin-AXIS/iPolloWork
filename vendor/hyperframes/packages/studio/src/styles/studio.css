@@ -204,6 +204,69 @@ body {
   background-color: #444440 !important;
 }
 
+.hf-studio-properties-action,
+.hf-studio-properties-action:hover,
+.hf-studio-properties-action:active {
+  background-color: transparent !important;
+}
+
+.hf-studio-header-title,
+.hf-studio-header-title-text {
+  min-width: 0;
+}
+
+.hf-studio-header-title-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.hf-studio-header-actions {
+  gap: 8px;
+}
+
+.hf-studio-header-utilities {
+  gap: 4px;
+}
+
+@media (max-width: 720px) {
+  .hf-studio-header {
+    gap: 8px;
+  }
+
+  .hf-studio-header-title {
+    padding-right: 0;
+  }
+
+  .hf-studio-header-title-text {
+    max-width: none;
+  }
+
+  .hf-studio-header-views {
+    position: static;
+    left: auto;
+    flex: 0 0 auto;
+    transform: none;
+  }
+
+  .hf-studio-header-actions {
+    flex: 0 0 auto;
+  }
+
+  .hf-studio-header-action {
+    display: grid;
+    width: 36px;
+    min-width: 36px;
+    height: 36px;
+    place-items: center;
+    padding: 0;
+  }
+
+  .hf-studio-header-action-label {
+    display: none;
+  }
+}
+
 .hf-property-ask-ai {
   background-color: #1FBAC0 !important;
   color: #ffffff !important;
