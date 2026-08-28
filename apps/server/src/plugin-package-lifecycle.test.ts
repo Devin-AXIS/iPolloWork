@@ -297,24 +297,52 @@ describe("plugin package lifecycle", () => {
     expect(preview.writes.some((entry) => entry.path === ".opencode/mcps/figma.json")).toBe(false);
   });
 
-  test("rejects pre-release plugin manifest formats instead of converting them", async () => {
+  test("installs signed-era Cloud packages through the portable V2 runtime", async () => {
     const lifecycle = await import("./plugin-package-lifecycle.js");
-    const workspaceRoot = await createRoot("ipollowork-plugin-current-format-workspace-");
-    const packageRoot = await createRoot("ipollowork-plugin-current-format-package-");
+    const workspaceRoot = await createRoot("ipollowork-plugin-legacy-cloud-workspace-");
+    const packageRoot = await createRoot("ipollowork-plugin-legacy-cloud-package-");
     await writeDeclarativePackage(packageRoot);
     const manifestPath = join(packageRoot, "ipollowork.plugin.json");
     const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
     manifest.schemaVersion = 1;
-    await writeFile(manifestPath, JSON.stringify(manifest, null, 2), "utf8");
-
-    await expect(lifecycle.previewPluginPackage({ packageRoot, engineId: ENGINE_ID }))
-      .rejects.toThrow();
-
-    manifest.schemaVersion = 2;
+    manifest.composer = { prompt: "Use the legacy Cloud workflow.", suggestions: ["Run it"] };
+    manifest.package.compatibility = { ipollowork: ">=0.17.0" };
+    manifest.package.entrypoints = {};
     manifest.resources[0].path = ".opencode/skills/acme-research/SKILL.md";
+    await mkdir(join(packageRoot, ".opencode", "skills", "acme-research"), { recursive: true });
+    await copyFile(
+      join(packageRoot, "skills", "acme-research", "SKILL.md"),
+      join(packageRoot, ".opencode", "skills", "acme-research", "SKILL.md"),
+    );
     await writeFile(manifestPath, JSON.stringify(manifest, null, 2), "utf8");
-    await expect(lifecycle.previewPluginPackage({ packageRoot, engineId: ENGINE_ID }))
-      .rejects.toThrow();
+
+    const preview = await lifecycle.previewPluginPackage({ packageRoot, engineId: ENGINE_ID });
+    expect(preview.manifest).toMatchObject({
+      schemaVersion: 2,
+      id: "acme-research",
+      composer: { prompt: "Use the legacy Cloud workflow." },
+      resources: [{ id: "acme-skill", path: "skills/acme-research/SKILL.md" }],
+    });
+    expect(preview.files.some((file) => file.path === ".opencode/skills/acme-research/SKILL.md")).toBe(true);
+    expect(preview.writes.some((file) => file.path === ".opencode/skills/acme-research/SKILL.md")).toBe(true);
+    const legacyVersion = { manifest: preview.manifest, artifactRoot: packageRoot, files: preview.files };
+    expect(deepSeekHarnessPluginEngineAdapter.workspaceFiles(legacyVersion))
+      .toContainEqual(expect.objectContaining({
+        sourcePath: ".opencode/skills/acme-research/SKILL.md",
+        targetPath: ".dsh/skills/acme-research/SKILL.md",
+      }));
+    expect(codexHarnessPluginEngineAdapter.workspaceFiles(legacyVersion))
+      .toContainEqual(expect.objectContaining({
+        sourcePath: ".opencode/skills/acme-research/SKILL.md",
+        targetPath: ".agents/skills/acme-research/SKILL.md",
+      }));
+
+    const config = serverConfig(workspaceRoot);
+    process.env.IPOLLOWORK_RUNTIME_DB = join(workspaceRoot, "runtime.sqlite");
+    const installed = await lifecycle.installPluginPackage({ serverConfig: config, packageRoot });
+    expect(installed).toMatchObject({ status: "installed", pluginId: "acme-research" });
+    expect(await readFile(join(workspaceRoot, ".opencode", "skills", "acme-research", "SKILL.md"), "utf8"))
+      .toBe("# Acme Research\n");
   });
 
   test("installs and serves an enabled Workspace App from immutable package artifacts", async () => {

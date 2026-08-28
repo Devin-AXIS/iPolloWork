@@ -88,7 +88,6 @@ describe("ipollowork runtime config file", () => {
       "mimo-v2.5-free",
       "nemotron-3-ultra-free",
       "nemotron-3.5-lightning-free",
-      "x-preview-f-free",
     ]);
     expect(Object.keys(openCode?.models as Record<string, unknown>)).toEqual(whitelist);
     const models = openCode?.models as Record<string, {
@@ -98,17 +97,10 @@ describe("ipollowork runtime config file", () => {
       maxTokens?: number;
       headers?: Record<string, string>;
     }>;
-    expect(models["x-preview-f-free"]).toMatchObject({
-      name: "Ox Alpha Free",
-      headers: { "x-opencode-session": "" },
-    });
+    expect(models["x-preview-f-free"]).toBeUndefined();
     expect(models["big-pickle"]).toMatchObject({
       contextWindow: 200_000,
       maxTokens: 32_000,
-    });
-    expect(models["x-preview-f-free"]).toMatchObject({
-      contextWindow: 1_000_000,
-      maxTokens: 131_072,
     });
     expect(models["big-pickle"]?.headers).toBeUndefined();
     expect(Object.values(models).every((model) => model.status === "active")).toBe(true);

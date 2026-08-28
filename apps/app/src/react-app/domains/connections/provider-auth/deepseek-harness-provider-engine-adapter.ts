@@ -97,13 +97,26 @@ function connection(client: unknown): ModelRuntimeConnection {
       refsByProvider.set("openai-codex-priority", providerApiKeyCredentialRef("openai-codex"));
       const refs = [...new Set(models.groups.flatMap((group) => refsByProvider.get(group.id) ?? []))];
       const credentialState = await describeCredentials(refs);
+      const connectedRoutes = new Set(models.groups.flatMap((group) => {
+        const ref = refsByProvider.get(group.id);
+        return !ref || credentialState.credentials[ref]?.configured
+          ? [group.id]
+          : [];
+      }));
+      const connectedAccountProviders = new Set(
+        [...connectedRoutes].map(deepSeekHarnessAccountProviderId),
+      );
       const allById = new Map<string, ProviderListItem>();
       const connected = new Set<string>();
       const defaults: Record<string, string> = {};
       for (const group of models.groups) {
         const providerId = deepSeekHarnessAccountProviderId(group.id);
         const ref = refsByProvider.get(group.id) ?? null;
-        const providerModels = Object.fromEntries(group.models.map((model) => {
+        const routeConnected = connectedRoutes.has(group.id);
+        const exposedModels = connectedAccountProviders.has(providerId) && !routeConnected
+          ? []
+          : group.models;
+        const providerModels = Object.fromEntries(exposedModels.map((model) => {
           const efforts = model.reasoning?.efforts ?? [];
           return [model.id, {
             id: model.id,
@@ -132,8 +145,8 @@ function connection(client: unknown): ModelRuntimeConnection {
           env: [...new Set([...(previous?.env ?? []), ...(ref ? [ref] : [])])],
           models: { ...(previous?.models ?? {}), ...providerModels },
         });
-        if (!ref || credentialState.credentials[ref]?.configured) connected.add(providerId);
-        if (!(providerId in defaults) && group.models[0]) defaults[providerId] = group.models[0].id;
+        if (routeConnected) connected.add(providerId);
+        if (!(providerId in defaults) && exposedModels[0]) defaults[providerId] = exposedModels[0].id;
       }
       return {
         all: [...allById.values()],

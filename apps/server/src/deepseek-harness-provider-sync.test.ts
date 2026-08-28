@@ -43,7 +43,6 @@ const OPENCODE_ZEN_PUBLIC_MODELS = [
   { id: "mimo-v2.5-free", name: "MiMo-V2.5 Free", contextWindow: 200_000, maxTokens: 32_000 },
   { id: "nemotron-3-ultra-free", name: "Nemotron 3 Ultra Free", contextWindow: 1_000_000, maxTokens: 128_000 },
   { id: "nemotron-3.5-lightning-free", name: "Nemotron 3.5 Lightning Free", contextWindow: 262_144, maxTokens: 262_144 },
-  { id: "x-preview-f-free", name: "Ox Alpha Free", contextWindow: 1_000_000, maxTokens: 131_072 },
 ];
 
 describe("DeepSeek Harness provider credential sync", () => {
@@ -349,8 +348,8 @@ describe("DeepSeek Harness provider credential sync", () => {
       "mimo-v2.5-free",
       "nemotron-3-ultra-free",
       "nemotron-3.5-lightning-free",
-      "x-preview-f-free",
     ].every(isOpenCodeZenPublicModel)).toBe(true);
+    expect(isOpenCodeZenPublicModel("x-preview-f-free")).toBe(false);
     expect([
       "deepseek-v4-flash-free",
       "laguna-s-2.1-free",

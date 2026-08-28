@@ -382,6 +382,26 @@ async function writeResponseBody(response, targetPath, onProgress) {
   return { downloaded, total };
 }
 
+async function copyFileWithProgress(sourcePath, targetPath, onProgress) {
+  const totalBytes = (await stat(sourcePath)).size;
+  const handle = await open(targetPath, "w");
+  let copiedBytes = 0;
+  try {
+    for await (const chunk of createReadStream(sourcePath)) {
+      let offset = 0;
+      while (offset < chunk.byteLength) {
+        const { bytesWritten } = await handle.write(chunk, offset, chunk.byteLength - offset);
+        if (bytesWritten <= 0) throw new Error("Engine package copy stopped before completion.");
+        offset += bytesWritten;
+        copiedBytes += bytesWritten;
+        onProgress(copiedBytes, totalBytes);
+      }
+    }
+  } finally {
+    await handle.close();
+  }
+}
+
 function engineDescriptor(id, versions, platform, architecture) {
   if (id === DSH_ENGINE_ID) {
     return {
@@ -821,12 +841,8 @@ export function createEnginePackageManager(options) {
     if (sourceDirectory) {
       const sourceArchive = path.join(sourceDirectory, name);
       const expectedSha = parseExpectedSha256(await readFile(`${sourceArchive}.sha256`, "utf8"));
-      await cp(sourceArchive, archivePath);
-      const archiveStat = await stat(archivePath);
-      setOperation(descriptor.id, {
-        status: "downloading",
-        downloadedBytes: archiveStat.size,
-        totalBytes: archiveStat.size,
+      await copyFileWithProgress(sourceArchive, archivePath, (downloadedBytes, totalBytes) => {
+        setOperation(descriptor.id, { status: "downloading", downloadedBytes, totalBytes });
       });
       setOperation(descriptor.id, { status: "verifying" });
       const actualSha = await sha256File(archivePath);

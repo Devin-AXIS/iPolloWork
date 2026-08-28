@@ -233,6 +233,125 @@ test("falls back to the latest mirrored release and rejects a corrupted mirror r
   }
 });
 
+test("reports real streamed byte progress for Codex and DeepSeek engine downloads", async () => {
+  const temporaryRoot = await mkdtemp(path.join(os.tmpdir(), "ipollowork-engine-progress-test-"));
+  const baseUrl = "https://engine-packages.example.test";
+  const version = "9.8.7";
+  const fixtures = [
+    {
+      id: "codex-harness",
+      cliRelativePath: codexCliRelativePath(),
+    },
+    {
+      id: "deepseek-harness",
+      cliRelativePath: path.join("node_modules", "@deepseek-ai", "dsh", "lib", "bin.js"),
+    },
+  ];
+  const archives = new Map();
+  /** @type {NodeJS.ProcessEnv} */
+  const environment = {
+    ...process.env,
+    PATH: path.join(temporaryRoot, "empty-bin"),
+    APPDATA: path.join(temporaryRoot, "app-data"),
+    LOCALAPPDATA: path.join(temporaryRoot, "local-app-data"),
+    ProgramFiles: path.join(temporaryRoot, "program-files"),
+    IPOLLOWORK_ENGINE_PACK_BASE_URL: baseUrl,
+  };
+  delete environment.IPOLLOWORK_CODEX_CLI;
+  delete environment.IPOLLOWORK_DSH_CLI;
+
+  try {
+    for (const fixture of fixtures) {
+      const fixtureRoot = path.join(temporaryRoot, `${fixture.id}-fixture`);
+      const archivePath = path.join(temporaryRoot, `${fixture.id}.tar.gz`);
+      const name = `ipollowork-engine-${fixture.id}-${platformAssetSegment()}-${process.arch}-${version}.tar.gz`;
+      await mkdir(path.join(fixtureRoot, path.dirname(fixture.cliRelativePath)), { recursive: true });
+      await writeFile(path.join(fixtureRoot, fixture.cliRelativePath), `${fixture.id}-runtime\n`);
+      await writeFile(path.join(fixtureRoot, "package.json"), JSON.stringify({ name: fixture.id }));
+      const packed = spawnSync(commandPath("tar"), ["-czf", archivePath, "-C", fixtureRoot, "."], { encoding: "utf8" });
+      assert.equal(packed.status, 0, packed.stderr);
+      const archive = await readFile(archivePath);
+      archives.set(name, {
+        archive,
+        checksum: createHash("sha256").update(archive).digest("hex"),
+      });
+    }
+
+    /** @type {{ current: null | { controller: ReadableStreamDefaultController<Uint8Array>; firstChunkSize: number; ready: Promise<unknown>; remainder: Uint8Array } }} */
+    const activeDownload = { current: null };
+    const manager = createEnginePackageManager({
+      app: {
+        getPath(name) {
+          assert.equal(name, "userData");
+          return path.join(temporaryRoot, "user-data");
+        },
+        getVersion() { return "1.0.0"; },
+        isPackaged: true,
+      },
+      desktopRoot: path.join(temporaryRoot, "desktop"),
+      versions: { opencode: "1.2.3", deepseekHarness: version, codexHarness: version },
+      env: environment,
+      homeDir: path.join(temporaryRoot, "home"),
+      fetch: async (url) => {
+        const requestUrl = String(url);
+        const name = requestUrl.slice(baseUrl.length + 1).replace(/\.sha256$/, "");
+        const fixture = archives.get(name);
+        if (!fixture) return new Response("missing", { status: 404 });
+        if (requestUrl.endsWith(".sha256")) return new Response(`${fixture.checksum}  ${name}\n`);
+
+        const firstChunkSize = Math.max(1, Math.floor(fixture.archive.byteLength / 2));
+        let ready;
+        const readyPromise = new Promise((resolve) => { ready = resolve; });
+        const body = new ReadableStream({
+          start(streamController) {
+            streamController.enqueue(fixture.archive.subarray(0, firstChunkSize));
+            activeDownload.current = {
+              controller: streamController,
+              firstChunkSize,
+              ready: readyPromise,
+              remainder: fixture.archive.subarray(firstChunkSize),
+            };
+            ready();
+          },
+        });
+        return new Response(body, {
+          headers: { "content-length": String(fixture.archive.byteLength) },
+        });
+      },
+    });
+
+    for (const fixture of fixtures) {
+      activeDownload.current = null;
+      const installPromise = manager.install(fixture.id);
+      void installPromise.catch(() => undefined);
+      for (let attempt = 0; attempt < 1_000 && !activeDownload.current; attempt += 1) {
+        await new Promise((resolve) => setTimeout(resolve, 5));
+      }
+      const download = activeDownload.current;
+      assert.ok(download, `${fixture.id} download did not start.`);
+      await download.ready;
+
+      let progress = null;
+      for (let attempt = 0; attempt < 100; attempt += 1) {
+        progress = (await manager.list()).find((engine) => engine.id === fixture.id) ?? null;
+        if (progress?.downloadedBytes === download.firstChunkSize) break;
+        await new Promise((resolve) => setTimeout(resolve, 5));
+      }
+      assert.equal(progress?.status, "downloading");
+      assert.equal(progress?.downloadedBytes, download.firstChunkSize);
+      assert.ok(progress.totalBytes > progress.downloadedBytes);
+
+      download.controller.enqueue(download.remainder);
+      download.controller.close();
+      const installed = await installPromise;
+      assert.equal(installed.status, "ready");
+      assert.equal(installed.source, "downloaded");
+    }
+  } finally {
+    await rm(temporaryRoot, { recursive: true, force: true });
+  }
+});
+
 test("installs a bundled DeepSeek Harness for Apple Silicon without using the network", async () => {
   const temporaryRoot = await mkdtemp(path.join(os.tmpdir(), "ipollowork-engine-macos-bundle-test-"));
   const resourcesPath = path.join(temporaryRoot, "resources");

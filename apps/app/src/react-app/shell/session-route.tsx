@@ -189,6 +189,7 @@ import {
   getModelContextWindow,
   getRunnableChatModelSnapshot,
   getSelectableChatModelSnapshot,
+  providerListExposesModel,
   projectAccountProviderConnections,
   type ProviderListQueryInput,
   useMergedProviderListQuery,
@@ -387,8 +388,25 @@ export function SessionRoute() {
         directory: sharedProviderRoot || undefined,
       });
     }
+    if (engineProviderClient && activeEngineId !== sharedProviderEngineId) {
+      sources.push({
+        client: engineProviderClient,
+        engineId: activeEngineId,
+        baseUrl: selectedWorkspaceEndpoint?.opencodeBaseUrl,
+        directory: selectedWorkspaceRoot || undefined,
+      });
+    }
     return sources;
-  }, [sharedProviderClient, sharedProviderEndpoint?.opencodeBaseUrl, sharedProviderEngineId, sharedProviderRoot]);
+  }, [
+    activeEngineId,
+    engineProviderClient,
+    selectedWorkspaceEndpoint?.opencodeBaseUrl,
+    selectedWorkspaceRoot,
+    sharedProviderClient,
+    sharedProviderEndpoint?.opencodeBaseUrl,
+    sharedProviderEngineId,
+    sharedProviderRoot,
+  ]);
   useSessionMcpMaintenance({
     cloudSignedIn: denAuth.isSignedIn && activeWorkContextId === PERSONAL_WORK_CONTEXT_ID,
     client: selectedWorkspaceEndpoint?.client ?? null,
@@ -852,6 +870,10 @@ export function SessionRoute() {
       provider.providerID === engineModelSelection.model.providerID
       && provider.modelIDs.includes(engineModelSelection.model.modelID)
     ))
+    // Preserve the explicit click while discovery is pending. Once the active
+    // engine has answered, do not keep a model that only exists in another
+    // engine's account catalog (or in an obsolete packaged whitelist).
+    && (!activeProviderList || providerListExposesModel(activeProviderList, engineModelSelection.model))
     ? engineModelSelection.model
     : null;
   // A user click is authoritative for the current engine. Runtime discovery
@@ -1193,6 +1215,55 @@ export function SessionRoute() {
         let effectiveModel = activeSelectedModel;
         let effectiveMode = selectedMode;
         let effectiveModelVariant = modelVariantValue;
+        let effectiveRuntimeProviderList = activeProviderList;
+        if (
+          activeProviderSource
+          && (
+            !effectiveRuntimeProviderList
+            || (effectiveModel && !providerListExposesModel(effectiveRuntimeProviderList, effectiveModel))
+          )
+        ) {
+          try {
+            effectiveRuntimeProviderList = filterProviderList(
+              await ensureProviderListQuery(getReactQueryClient(), {
+                ...activeProviderSource,
+                force: true,
+              }),
+              hiddenProviderIds,
+            );
+          } catch {
+            // Runtime startup errors are reported by the normal conversation
+            // boundary below. An empty/pending directory is not proof that a
+            // selected model is permanently unavailable.
+          }
+        }
+        const effectiveSelectableModels = getRunnableChatModelSnapshot({
+          catalog: accountProviderList,
+          runtime: effectiveRuntimeProviderList,
+          engineId: activeEngineId,
+        }).filter((provider) => (
+          !isDesktopProviderBlocked({
+            providerId: provider.providerID,
+            checkRestriction: checkDesktopRestriction,
+          }) && (
+            !customProvidersRestricted
+            || sessionProviderAuthSnapshot.connectedProviderIds.some(
+              (providerId) => providerId.trim() === provider.providerID.trim(),
+            )
+          )
+        ));
+        if (
+          effectiveRuntimeProviderList
+          && effectiveModel
+          && !providerListExposesModel(effectiveRuntimeProviderList, effectiveModel)
+        ) {
+          effectiveModel = resolveEngineSelectableChatModel({
+            providers: effectiveSelectableModels,
+            defaults: effectiveRuntimeProviderList.default,
+            preferred: effectiveModel,
+          });
+          effectiveModelVariant = null;
+        }
         let projectSystemContext: string | null = null;
         let projectExecutionStarted = false;
         const finishStartedExecution = async (status: "done" | "failed", error?: string | null) => {
@@ -1219,11 +1290,11 @@ export function SessionRoute() {
               title: session?.title?.trim() || t("session.untitled"),
               runtime: {
                 engineId: activeEngineId,
-                model: activeSelectedModel
-                  ? { providerId: activeSelectedModel.providerID, modelId: activeSelectedModel.modelID }
+                model: effectiveModel
+                  ? { providerId: effectiveModel.providerID, modelId: effectiveModel.modelID }
                   : null,
-                mode: selectedMode ?? null,
-                modelVariant: modelVariantValue,
+                mode: effectiveMode ?? null,
+                modelVariant: effectiveModelVariant,
               },
             },
           );
@@ -1243,8 +1314,8 @@ export function SessionRoute() {
         if (await stopDispatchIfRequested()) return false;
 
         const effectiveModelUnavailable = Boolean(
-          providerListQuery.data && (
-            !effectiveModel || !permittedSelectableModels.some((model) => (
+          effectiveRuntimeProviderList && (
+            !effectiveModel || !effectiveSelectableModels.some((model) => (
               model.providerID === effectiveModel.providerID && model.modelIDs.includes(effectiveModel.modelID)
             ))
           ),

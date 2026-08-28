@@ -357,6 +357,14 @@ describe("session transcript sync", () => {
     }
   });
 
+  test("generates OpenCode-compatible optimistic user message ids", () => {
+    const messageId = beginOptimisticSessionPrompt("workspace-a", "session-a", "hello");
+
+    expect(messageId).toStartWith("msg");
+    expect(getReactQueryClient().getQueryData<UIMessage[]>(transcriptKey("workspace-a", "session-a")))
+      .toEqual([expect.objectContaining({ id: messageId, role: "user" })]);
+  });
+
   test("shows an accepted prompt as busy before a stale Codex snapshot catches up", () => {
     const messageId = beginOptimisticSessionPrompt(
       "workspace-a",

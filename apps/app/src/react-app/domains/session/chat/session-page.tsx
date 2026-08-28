@@ -22,7 +22,6 @@ import { IPOLLOWORK_EXTENSION_CATALOG } from "../../../../app/constants";
 import { iPolloWorkServerError, type iPolloWorkPluginPackageItem, type iPolloWorkServerClient, type iPolloWorkServerStatus } from "../../../../app/lib/ipollowork-server";
 import {
   PERSONAL_WORK_CONTEXT_ID,
-  readActiveWorkContextId,
   type WorkContextId,
 } from "@/app/lib/work-context";
 import {
@@ -168,7 +167,6 @@ import { useWorkspaceShellLayout } from "../../../shell/workspace-shell-layout";
 import { useControlAction, type iPolloWorkControlAction } from "../../../shell/control/control-provider";
 import { getExtensionId, isiPolloWorkExtensionEnabled, IPOLLOWORK_EXTENSION_STATE_CHANGED } from "../../settings/extension-state";
 import { cn } from "@/lib/utils";
-import { useActiveEnterpriseConnection } from "@/react-app/domains/enterprise/use-active-enterprise-connection";
 import { useInstalledPluginContributions } from "@/react-app/plugin-ui/plugin-ui-contributions";
 import type { WorkspaceAppModelContext } from "@/react-app/plugin-ui/workspace-app-frame";
 import type { PluginUiHostContextV1 } from "@ipollowork/types/plugins";
@@ -501,7 +499,9 @@ function EngineStartupGate({
     ? t("projects.engine_starting_description")
     : engine.status === "failed"
       ? t("projects.engine_prepare_retry_description")
-      : t("projects.engine_prepare_description");
+      : busy
+        ? t("projects.engine_prepare_description")
+        : t("projects.engine_download_description", { name: engine.name });
 
   return (
     <div
@@ -539,7 +539,15 @@ function EngineStartupGate({
           </div>
         ) : busy ? (
           <div className="mt-6 text-left" role="status" aria-live="polite">
-            <div className="h-1.5 overflow-hidden rounded-full bg-dls-hover">
+            <div
+              className="h-1.5 overflow-hidden rounded-full bg-dls-hover"
+              data-testid="engine-download-progress"
+              role="progressbar"
+              aria-label={status}
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-valuenow={percent ?? undefined}
+            >
               <div
                 className={cn(
                   "h-full rounded-full bg-foreground transition-[width] duration-300",
@@ -554,6 +562,7 @@ function EngineStartupGate({
                 <span className="tabular-nums">
                   {formatBytes(engine.downloadedBytes)}
                   {engine.totalBytes ? ` / ${formatBytes(engine.totalBytes)}` : ""}
+                  {percent != null ? ` · ${percent}%` : ""}
                 </span>
               ) : null}
             </div>
@@ -561,7 +570,7 @@ function EngineStartupGate({
         ) : onInstall ? (
           <Button className="mt-6 min-w-32" onClick={onInstall}>
             <Download className="size-4" />
-            {engine.status === "failed" ? t("common.retry") : t("settings.engine_manager.install")}
+            {engine.status === "failed" ? t("common.retry") : t("projects.engine_download_action")}
           </Button>
         ) : null}
         {engine.error ? <p className="mt-3 text-xs leading-5 text-red-11">{engine.error}</p> : null}
@@ -1654,7 +1663,6 @@ export function SessionPage(props: SessionPageProps) {
   const { config: shellConfig } = useShellConfig();
   const navigate = useNavigate();
   const denAuth = useDenAuth();
-  const activeEnterprise = useActiveEnterpriseConnection();
   const sidebarOpen = useUiStateStore((state) => state.sidebarOpen);
   const setSidebarOpen = useUiStateStore((state) => state.setSidebarOpen);
   const sessionSidePanel = useUiStateStore((state) => (
@@ -1722,8 +1730,8 @@ export function SessionPage(props: SessionPageProps) {
 
   const [templateSessionRevision, setTemplateSessionRevision] = useState(0);
   const [templateCatalog, setTemplateCatalog] = useState<TemplateCatalogItem[]>([]);
-  const [templateResourceScope, setTemplateResourceScope] = useState<WorkContextId>(() => readActiveWorkContextId());
-  const [enterpriseTemplateResources, setEnterpriseTemplateResources] = useState<EnterpriseResource[]>([]);
+  const [templateCloudSourceSelected, setTemplateCloudSourceSelected] = useState(false);
+  const [cloudTemplateResources, setCloudTemplateResources] = useState<EnterpriseResource[]>([]);
   const [templateCatalogLoading, setTemplateCatalogLoading] = useState(false);
   const [templateCatalogError, setTemplateCatalogError] = useState<string | null>(null);
   const [templateBusyId, setTemplateBusyId] = useState<string | null>(null);
@@ -1759,17 +1767,26 @@ export function SessionPage(props: SessionPageProps) {
   const [templateValidationReport, setTemplateValidationReport] = useState<TemplateValidationReport | null>(null);
   const [templateValidationBusy, setTemplateValidationBusy] = useState(false);
   const [templateSaveMode, setTemplateSaveMode] = useState<TemplateSaveMode | null>(null);
-  const changeTemplateResourceScope = useCallback((scope: WorkContextId) => {
+  const clearTemplateCatalog = useCallback(() => {
     templateCatalogRequestIdRef.current += 1;
-    setTemplateResourceScope(scope);
     setTemplateCatalog([]);
-    setEnterpriseTemplateResources([]);
+    setCloudTemplateResources([]);
     setTemplateCatalogLoading(false);
     setTemplateCatalogError(null);
   }, []);
+  const selectBuiltInTemplateSource = useCallback(() => {
+    setTemplateCloudSourceSelected(false);
+    clearTemplateCatalog();
+  }, [clearTemplateCatalog]);
+  const selectCloudTemplateSource = useCallback(() => {
+    if (!denAuth.isSignedIn || templateCloudSourceSelected) return;
+    setTemplateCloudSourceSelected(true);
+    clearTemplateCatalog();
+  }, [clearTemplateCatalog, denAuth.isSignedIn, templateCloudSourceSelected]);
   useEffect(() => {
-    changeTemplateResourceScope(readActiveWorkContextId());
-  }, [activeEnterprise?.id, changeTemplateResourceScope]);
+    if (denAuth.isSignedIn || !templateCloudSourceSelected) return;
+    selectBuiltInTemplateSource();
+  }, [denAuth.isSignedIn, selectBuiltInTemplateSource, templateCloudSourceSelected]);
   const [sessionTypeRevision, setSessionTypeRevision] = useState(0);
   const selectedSessionType = useMemo(() => (
     props.selectedSessionId && typeof window !== "undefined"
@@ -1947,7 +1964,7 @@ export function SessionPage(props: SessionPageProps) {
   }, [currentTemplateSessionData?.manifest.title, props.selectedWorkspaceId]);
   const applyTemplateToCurrentSession = useCallback(async (
     item: TemplateCatalogItem,
-    resourceScope: WorkContextId = templateResourceScope,
+    resourceScope: WorkContextId = PERSONAL_WORK_CONTEXT_ID,
     applyMode: Exclude<TemplateApplyMode, "market"> = "current-conversation",
   ): Promise<boolean> => {
     if (!props.ipolloworkServerClient || !props.runtimeWorkspaceId || !props.selectedSessionId) return false;
@@ -2005,29 +2022,26 @@ export function SessionPage(props: SessionPageProps) {
     } finally {
       setTemplateBusyId(null);
     }
-  }, [openTab, openVideoStudio, props.ipolloworkServerClient, props.runtimeWorkspaceId, props.selectedSessionId, requireNewTaskForTemplate, setSidePanelState, templateResourceScope]);
+  }, [openTab, openVideoStudio, props.ipolloworkServerClient, props.runtimeWorkspaceId, props.selectedSessionId, requireNewTaskForTemplate, setSidePanelState]);
   const refreshTemplateCatalog = useCallback(async () => {
     if (!props.ipolloworkServerClient || !props.runtimeWorkspaceId) return;
     const requestId = ++templateCatalogRequestIdRef.current;
     setTemplateCatalogLoading(true);
     setTemplateCatalogError(null);
     try {
-      if (templateResourceScope === "personal") {
-        const localCatalog = await props.ipolloworkServerClient.listTemplates(props.runtimeWorkspaceId, "personal");
-        if (requestId !== templateCatalogRequestIdRef.current) return;
-        setTemplateCatalog(localCatalog.items);
-        setEnterpriseTemplateResources([]);
-      } else if (activeEnterprise) {
-        const [enterpriseResources, installedCatalog] = await Promise.all([
+      if (templateCloudSourceSelected) {
+        const [cloudResources, installedCatalog] = await Promise.all([
           listEnterpriseResources("template"),
-          props.ipolloworkServerClient.listTemplates(props.runtimeWorkspaceId, templateResourceScope),
+          props.ipolloworkServerClient.listTemplates(props.runtimeWorkspaceId, PERSONAL_WORK_CONTEXT_ID),
         ]);
         if (requestId !== templateCatalogRequestIdRef.current) return;
         setTemplateCatalog(installedCatalog.items.filter((item) => item.sourceType === "local" && item.installed));
-        setEnterpriseTemplateResources(enterpriseResources);
+        setCloudTemplateResources(cloudResources);
       } else {
-        setTemplateCatalog([]);
-        setEnterpriseTemplateResources([]);
+        const localCatalog = await props.ipolloworkServerClient.listTemplates(props.runtimeWorkspaceId, PERSONAL_WORK_CONTEXT_ID);
+        if (requestId !== templateCatalogRequestIdRef.current) return;
+        setTemplateCatalog(localCatalog.items);
+        setCloudTemplateResources([]);
       }
     }
     catch (error) {
@@ -2038,7 +2052,7 @@ export function SessionPage(props: SessionPageProps) {
     finally {
       if (requestId === templateCatalogRequestIdRef.current) setTemplateCatalogLoading(false);
     }
-  }, [activeEnterprise, props.ipolloworkServerClient, props.runtimeWorkspaceId, templateResourceScope]);
+  }, [props.ipolloworkServerClient, props.runtimeWorkspaceId, templateCloudSourceSelected]);
   const refreshStarterTemplateCatalog = useCallback(async () => {
     if (!props.ipolloworkServerClient || !props.runtimeWorkspaceId) return;
     const requestId = ++starterTemplateCatalogRequestIdRef.current;
@@ -2090,8 +2104,8 @@ export function SessionPage(props: SessionPageProps) {
     templateCoverCacheRef.current.clear();
   }, [props.runtimeWorkspaceId]);
   const getTemplateCover = useCallback((templateId: string) => {
-    return getCachedTemplateCover(templateResourceScope, templateId);
-  }, [getCachedTemplateCover, templateResourceScope]);
+    return getCachedTemplateCover(PERSONAL_WORK_CONTEXT_ID, templateId);
+  }, [getCachedTemplateCover]);
   const getStarterTemplateCover = useCallback((templateId: string) => {
     return getCachedTemplateCover(PERSONAL_WORK_CONTEXT_ID, templateId);
   }, [getCachedTemplateCover]);
@@ -2174,7 +2188,6 @@ export function SessionPage(props: SessionPageProps) {
       await props.ipolloworkServerClient.saveTemplateFromSession(props.runtimeWorkspaceId, templateRequest, "personal");
       const personalCatalog = await props.ipolloworkServerClient.listTemplates(props.runtimeWorkspaceId, "personal");
       setTemplateCatalog(personalCatalog.items);
-      setTemplateResourceScope("personal");
       setTemplateSaveOpen(false);
       toast.success(t("template_authoring.saved"), {
         description: t("template_authoring.saved_description"),
@@ -2262,23 +2275,23 @@ export function SessionPage(props: SessionPageProps) {
   const chooseDesignTemplate = useCallback(async (templateId: iPolloWorkTemplateId) => {
     const item = templateCatalog.find((template) => template.manifest.id === templateId);
     if (!item) return;
-    await applyTemplateToCurrentSession(item, templateResourceScope, "new-conversation");
-  }, [applyTemplateToCurrentSession, templateCatalog, templateResourceScope]);
+    await applyTemplateToCurrentSession(item, PERSONAL_WORK_CONTEXT_ID, "new-conversation");
+  }, [applyTemplateToCurrentSession, templateCatalog]);
   const installDesignTemplate = useCallback(async (templateId: string) => {
     if (!props.ipolloworkServerClient || !props.runtimeWorkspaceId) return;
     setTemplateBusyId(templateId);
-    try { await props.ipolloworkServerClient.installTemplate(props.runtimeWorkspaceId, templateId, templateResourceScope); await refreshTemplateCatalog(); }
+    try { await props.ipolloworkServerClient.installTemplate(props.runtimeWorkspaceId, templateId, PERSONAL_WORK_CONTEXT_ID); await refreshTemplateCatalog(); }
     catch (error) { toast.error(error instanceof Error ? error.message : t("templates.error_install")); }
     finally { setTemplateBusyId(null); }
-  }, [props.ipolloworkServerClient, props.runtimeWorkspaceId, refreshTemplateCatalog, templateResourceScope]);
+  }, [props.ipolloworkServerClient, props.runtimeWorkspaceId, refreshTemplateCatalog]);
   const uninstallDesignTemplate = useCallback(async (templateId: string) => {
     if (!props.ipolloworkServerClient || !props.runtimeWorkspaceId) return;
     if (!window.confirm(t("templates.confirm_uninstall"))) return;
     setTemplateBusyId(templateId);
-    try { await props.ipolloworkServerClient.uninstallTemplate(props.runtimeWorkspaceId, templateId, templateResourceScope); await refreshTemplateCatalog(); }
+    try { await props.ipolloworkServerClient.uninstallTemplate(props.runtimeWorkspaceId, templateId, PERSONAL_WORK_CONTEXT_ID); await refreshTemplateCatalog(); }
     catch (error) { toast.error(error instanceof Error ? error.message : t("templates.error_uninstall")); }
     finally { setTemplateBusyId(null); }
-  }, [props.ipolloworkServerClient, props.runtimeWorkspaceId, refreshTemplateCatalog, templateResourceScope]);
+  }, [props.ipolloworkServerClient, props.runtimeWorkspaceId, refreshTemplateCatalog]);
   const installStarterTemplate = useCallback(async (templateId: string) => {
     if (!props.ipolloworkServerClient || !props.runtimeWorkspaceId) return;
     setTemplateBusyId(templateId);
@@ -2289,7 +2302,7 @@ export function SessionPage(props: SessionPageProps) {
         PERSONAL_WORK_CONTEXT_ID,
       );
       await refreshStarterTemplateCatalog();
-      if (templateResourceScope === PERSONAL_WORK_CONTEXT_ID) await refreshTemplateCatalog();
+      await refreshTemplateCatalog();
     } catch (error) {
       toast.error(error instanceof Error ? error.message : t("templates.error_install"));
     } finally {
@@ -2300,7 +2313,6 @@ export function SessionPage(props: SessionPageProps) {
     props.runtimeWorkspaceId,
     refreshStarterTemplateCatalog,
     refreshTemplateCatalog,
-    templateResourceScope,
   ]);
   const exportPersonalTemplate = useCallback(async (template: TemplateCatalogItem) => {
     setTemplateBusyId(`export:${template.manifest.id}`);
@@ -2322,7 +2334,7 @@ export function SessionPage(props: SessionPageProps) {
     templateImportInFlightRef.current = true;
     setTemplateBusyId("import");
     try {
-      const result = await props.ipolloworkServerClient.importTemplate(props.runtimeWorkspaceId, file, category, templateResourceScope);
+      const result = await props.ipolloworkServerClient.importTemplate(props.runtimeWorkspaceId, file, category, PERSONAL_WORK_CONTEXT_ID);
       toast.success(t("templates.toast_installed", { title: result.item.manifest.title }));
       await refreshTemplateCatalog();
       return true;
@@ -2333,9 +2345,9 @@ export function SessionPage(props: SessionPageProps) {
       templateImportInFlightRef.current = false;
       setTemplateBusyId(null);
     }
-  }, [props.ipolloworkServerClient, props.runtimeWorkspaceId, refreshTemplateCatalog, templateResourceScope]);
-  const installEnterpriseTemplate = useCallback(async (resource: EnterpriseResource) => {
-    if (!activeEnterprise || templateResourceScope === "personal") return;
+  }, [props.ipolloworkServerClient, props.runtimeWorkspaceId, refreshTemplateCatalog]);
+  const installCloudTemplate = useCallback(async (resource: EnterpriseResource) => {
+    if (!templateCloudSourceSelected || !denAuth.isSignedIn) return;
     setTemplateBusyId(resource.id);
     try {
       const file = await downloadEnterpriseResource(resource);
@@ -2344,11 +2356,11 @@ export function SessionPage(props: SessionPageProps) {
       const message = error instanceof Error ? error.message : "";
       toast.error(message === "desktop_binary_fetch_requires_restart"
         ? t("enterprise_connection.desktop_restart_required")
-        : message || t("enterprise_connection.enterprise_resources_error"));
+        : message || t("enterprise_connection.cloud_resources_error"));
     } finally {
       setTemplateBusyId(null);
     }
-  }, [activeEnterprise, importDesignTemplate, templateResourceScope]);
+  }, [denAuth.isSignedIn, importDesignTemplate, templateCloudSourceSelected]);
   const submitTemplateBrief = useCallback(async (
     brief: TemplateBrief,
     references: TemplateReferenceItem[],
@@ -4663,7 +4675,7 @@ export function SessionPage(props: SessionPageProps) {
                 <EngineStartupGate
                   engine={selectedEnginePackage}
                   phase="install"
-                  busy={engineInstallBusy || selectedEnginePackage.status === "not-installed"}
+                  busy={engineInstallBusy}
                   onInstall={installSelectedEngine}
                 />
               ) : engineStartupGateActive && selectedEnginePackage ? (
@@ -5100,11 +5112,12 @@ export function SessionPage(props: SessionPageProps) {
         error={templateCatalogError}
         busyId={templateBusyId}
         getCover={getTemplateCover}
-        enterprise={activeEnterprise}
-        resourceScope={templateResourceScope}
-        enterpriseResources={enterpriseTemplateResources}
-        onResourceScopeChange={changeTemplateResourceScope}
-        onInstallEnterprise={(resource) => void installEnterpriseTemplate(resource)}
+        cloudResources={cloudTemplateResources}
+        cloudAvailable={denAuth.isSignedIn}
+        cloudSelected={templateCloudSourceSelected}
+        onSelectBuiltIn={selectBuiltInTemplateSource}
+        onSelectCloud={selectCloudTemplateSource}
+        onInstallCloud={(resource) => void installCloudTemplate(resource)}
         onRefresh={refreshTemplateCatalog}
         onInstall={(templateId) => void installDesignTemplate(templateId)}
         onImport={importDesignTemplate}
@@ -5123,7 +5136,7 @@ export function SessionPage(props: SessionPageProps) {
             return;
           }
           if (templateMarketTarget === "current-session" && props.selectedSessionId) {
-            void applyTemplateToCurrentSession(template).then((applied) => {
+            void applyTemplateToCurrentSession(template, PERSONAL_WORK_CONTEXT_ID).then((applied) => {
               if (applied) setTemplateMarketOpen(false);
             });
             return;
@@ -5132,7 +5145,7 @@ export function SessionPage(props: SessionPageProps) {
             ? props.selectedWorkspaceId
             : templateDestinationProjects[0]?.id;
           setTemplateMarketOpen(false);
-          setPendingTemplateApplication({ item: template, origin: "market", resourceScope: templateResourceScope });
+          setPendingTemplateApplication({ item: template, origin: "market", resourceScope: PERSONAL_WORK_CONTEXT_ID });
           if (selectedProjectId) {
             setPendingTemplateProjectId(selectedProjectId);
           } else {

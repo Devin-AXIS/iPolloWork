@@ -1418,6 +1418,67 @@ describe("conversation engine adapters", () => {
     });
   });
 
+  test("refreshes the DSH model directory and retries the concrete route after cold start", async () => {
+    const originalFetch = globalThis.fetch;
+    const requests: Array<{ method: string; payload: Record<string, unknown> }> = [];
+    let modelDirectoryCalls = 0;
+    let modelSelectionCalls = 0;
+    globalThis.fetch = (async (input, init) => {
+      const body = JSON.parse(String(init?.body)) as {
+        method?: string;
+        payload?: Record<string, unknown>;
+      };
+      if (String(input).endsWith("/prompt")) {
+        requests.push({ method: "session.prompt", payload: body.payload ?? {} });
+        return Response.json({ ok: true });
+      }
+      const method = body.method ?? "";
+      requests.push({ method, payload: body.payload ?? {} });
+      if (method === "llm.models") {
+        modelDirectoryCalls += 1;
+        if (modelDirectoryCalls === 1) {
+          return Response.json({ message: "runtime is starting" }, { status: 503 });
+        }
+        return Response.json({ value: {
+          groups: [{ id: "openai-codex", models: [{ id: "gpt-5.5" }] }],
+        } });
+      }
+      if (method === "session.selectModel") {
+        modelSelectionCalls += 1;
+        if (modelSelectionCalls === 1) {
+          return Response.json({ message: "provider route is not ready" }, { status: 400 });
+        }
+      }
+      return Response.json({ value: {} });
+    }) as typeof fetch;
+
+    try {
+      const connection = conversationEngineAdapters.get(DEEPSEEK_HARNESS_ENGINE_ID).connect({
+        baseUrl: "http://unused.test",
+        serverBaseUrl: "http://ipollowork.test",
+        workspaceId: "ws_dsh",
+        token: "token",
+      });
+      await connection.sendPrompt({
+        sessionId: "session-cold-start",
+        parts: [{ type: "text", text: "Use GPT-5.5" }],
+        model: { providerID: "openai", modelID: "gpt-5.5" },
+      });
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+
+    expect(requests.map((request) => request.method)).toEqual([
+      "llm.models",
+      "session.selectModel",
+      "llm.models",
+      "session.selectModel",
+      "session.prompt",
+    ]);
+    expect(requests[1]?.payload).toMatchObject({ provider: "openai", model: "gpt-5.5" });
+    expect(requests[3]?.payload).toMatchObject({ provider: "openai-codex", model: "gpt-5.5" });
+  });
+
   test("routes OpenAI Fast aliases through DSH's priority Codex adapter", async () => {
     const originalFetch = globalThis.fetch;
     const requests: Array<{ method: string; payload: Record<string, unknown> }> = [];

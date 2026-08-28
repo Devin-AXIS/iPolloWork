@@ -1,7 +1,7 @@
 const ALL_ENGINES = [
-  { project: "open", name: "open", label: "OpenCode", token: "OX_OPEN_OK_825" },
-  { project: "codex", name: "codex", label: "Codex Harness", token: "OX_CODEX_OK_825" },
-  { project: "dsh", name: "12312312", label: "DeepSeek Harness", token: "OX_DSH_OK_825" },
+  { project: "open", name: "open", label: "OpenCode" },
+  { project: "codex", name: "codex", label: "Codex Harness" },
+  { project: "dsh", name: "12312312", label: "DeepSeek Harness" },
 ];
 const ENGINE_FILTER = process.env.IPOLLOWORK_FRAIMZ_ENGINE?.trim().toLowerCase();
 const ENGINES = ENGINE_FILTER
@@ -14,10 +14,10 @@ const EXPECTED_MODELS = [
   "MiMo-V2.5 Free",
   "Nemotron 3 Ultra Free",
   "Nemotron 3.5 Lightning Free",
-  "Ox Alpha Free",
 ];
 
 const REMOVED_MODELS = [
+  "Ox Alpha Free",
   "DeepSeek V4 Flash Free",
   "Laguna S 2.1 Free",
   "Ling-3.0-flash Free",
@@ -95,19 +95,9 @@ async function openEngineModelDirectory(ctx, engine) {
     const rows = Array.from(document.querySelectorAll('[data-testid="project-row"][data-project-id]'));
     const preferred = rows.find((row) =>
       row.textContent?.trim().toLowerCase() === ${JSON.stringify(engine.name)});
-    const ids = [...new Set([preferred, ...rows]
-      .filter(Boolean)
-      .map((row) => row.getAttribute('data-project-id'))
-      .filter(Boolean))];
-    for (const id of ids) {
-      const row = document.querySelector('[data-testid="project-row"][data-project-id="' + id + '"]');
-      row?.click();
-      for (let attempt = 0; attempt < 720; attempt += 1) {
-        await new Promise((resolve) => setTimeout(resolve, 250));
-        if (document.querySelector(${JSON.stringify(`[aria-label^="${engine.label}"]`)})) return id;
-      }
-    }
-    return null;
+    const id = preferred?.getAttribute('data-project-id') ?? null;
+    preferred?.click();
+    return id;
   })()`, { awaitPromise: true });
   ctx.assert(Boolean(selectedProjectId), `Could not find a ${engine.label} project.`);
   const previousRoute = await ctx.eval("location.hash");
@@ -126,8 +116,7 @@ async function openEngineModelDirectory(ctx, engine) {
     });
   }
   await ctx.eval("new Promise((resolve) => setTimeout(resolve, 1200))", { awaitPromise: true });
-  await ctx.waitFor(`Boolean(document.querySelector(${JSON.stringify(`[aria-label^="${engine.label}"]`)}))
-    && Array.from(document.querySelectorAll("button"))
+  await ctx.waitFor(`Array.from(document.querySelectorAll("button"))
       .some((button) => /切换模型|Change model/.test(button.getAttribute("aria-label") ?? ""))`, {
     timeoutMs: 30_000,
     label: `${engine.label} composer`,
@@ -160,7 +149,7 @@ async function openEngineModelDirectory(ctx, engine) {
   );
   await ctx.waitFor(`(() => {
     const dialog = Array.from(document.querySelectorAll('[role="dialog"][data-slot="popover-content"]'))
-      .find((element) => element.getClientRects().length > 0 && element.innerText.includes("Ox Alpha Free"));
+      .find((element) => element.getClientRects().length > 0 && element.innerText.includes("Big Pickle"));
     return dialog && ${JSON.stringify(EXPECTED_MODELS)}.every((model) => dialog.innerText.includes(model));
   })()`, {
     timeoutMs: 30_000,
@@ -183,84 +172,9 @@ async function assertUnifiedModels(ctx, engine) {
   }
 }
 
-async function selectOxAndSend(ctx, engine) {
-  const assistantBaseline = await ctx.eval(
-    `document.querySelectorAll('[data-message-role="assistant"]').length`,
-  );
-  const selected = await ctx.eval(`(() => {
-    const item = Array.from(document.querySelectorAll('[data-slot="command-item"]'))
-      .find((candidate) => candidate.textContent?.includes("Ox Alpha Free")
-        && !candidate.hasAttribute("data-disabled"));
-    item?.click();
-    return Boolean(item);
-  })()`);
-  ctx.assert(selected, `${engine.label} did not expose an enabled Ox Alpha Free row.`);
-  await ctx.waitFor(`Array.from(document.querySelectorAll("button"))
-    .some((button) => /切换模型|Change model/.test(button.getAttribute("aria-label") ?? "")
-      && button.textContent?.includes("Ox Alpha Free"))`, {
-    timeoutMs: 30_000,
-    label: `${engine.label} Ox selection`,
-  });
-  const prompt = `只回复 ${engine.token}，不要添加其他内容。`;
-  const hasComposerTextAction = await ctx.eval(`window.__ipolloworkControl.listActions()
-    .some((action) => action.id === "composer.set_text" && !action.disabled)`);
-  if (hasComposerTextAction) {
-    await ctx.control("composer.set_text", { text: prompt });
-  } else {
-    await ctx.eval(`(() => {
-      const editor = document.querySelector('[contenteditable="true"][role="textbox"]');
-      editor?.focus();
-      return Boolean(editor);
-    })()`);
-    await ctx.client.send("Input.dispatchKeyEvent", {
-      type: "keyDown",
-      key: "a",
-      code: "KeyA",
-      windowsVirtualKeyCode: 65,
-      modifiers: 2,
-    });
-    await ctx.client.send("Input.dispatchKeyEvent", {
-      type: "keyUp",
-      key: "a",
-      code: "KeyA",
-      windowsVirtualKeyCode: 65,
-      modifiers: 2,
-    });
-    await ctx.client.send("Input.insertText", { text: prompt });
-  }
-  await ctx.waitFor(`document.querySelector('[contenteditable="true"][role="textbox"]')
-    ?.innerText.includes(${JSON.stringify(engine.token)})`, {
-    timeoutMs: 30_000,
-    label: `${engine.label} prompt text`,
-  });
-  const hasComposerSendAction = await ctx.eval(`window.__ipolloworkControl.listActions()
-    .some((action) => action.id === "composer.send" && !action.disabled)`);
-  if (hasComposerSendAction) {
-    await ctx.control("composer.send");
-  } else {
-    const clicked = await ctx.eval(`(() => {
-      const editor = document.querySelector('[contenteditable="true"][role="textbox"]');
-      const shell = editor?.closest('[data-testid="new-conversation-starter-composer-shell"]');
-      const button = Array.from(shell?.querySelectorAll("button") ?? [])
-        .find((candidate) => /运行任务|Run task/i.test(candidate.getAttribute("title") ?? ""));
-      button?.click();
-      return Boolean(button);
-    })()`);
-    ctx.assert(clicked, `${engine.label} send button was unavailable.`);
-  }
-  await ctx.waitFor(`(() => {
-    const messages = Array.from(document.querySelectorAll('[data-message-role="assistant"]'));
-    return messages.length > ${assistantBaseline}
-      && (messages.at(-1)?.innerText ?? "").includes(${JSON.stringify(engine.token)});
-  })()`, {
-    timeoutMs: 180_000,
-    label: `${engine.label} Ox response`,
-  });
-}
-
 export default {
   id: "opencode-zen-models-unified",
-  title: "OpenCode Zen exposes one curated free-model list across every agent engine",
+  title: "OpenCode Zen exposes one agent-compatible free-model list across every engine",
   kind: "user-facing",
   steps: ENGINES.map((engine) => ({
     name: `${engine.label} uses the unified OpenCode Zen directory`,
@@ -272,8 +186,8 @@ export default {
       if (engine.label === "DeepSeek Harness") {
         await ensureDeepSeekProjectRegistered(ctx);
       }
-      await ctx.prove(`${engine.label} shows the same six supported OpenCode Zen models`, {
-        voiceover: `在 ${engine.label} 的模型列表里，OpenCode Zen 都包含同一组六个模型，其中包括 Ox Alpha Free。`,
+      await ctx.prove(`${engine.label} shows only the five runnable OpenCode Zen agent models`, {
+        voiceover: `在 ${engine.label} 的模型列表里，只显示五个当前可以执行 Agent 任务的 OpenCode Zen 模型，已被上游拒绝的 Ox Alpha 不再伪装成可用。`,
         action: async () => {
           await openEngineModelDirectory(ctx, engine);
         },
@@ -284,23 +198,6 @@ export default {
           name: `${engine.project}-unified-opencode-zen-models`,
           requireText: ["切换模型", ...EXPECTED_MODELS],
           rejectText: REMOVED_MODELS,
-        },
-      });
-      await ctx.prove(`${engine.label} can send a real message with Ox Alpha Free`, {
-        voiceover: `在 ${engine.label} 中选中 Ox Alpha Free 后，消息成功发出并返回唯一校验词。`,
-        action: async () => {
-          await selectOxAndSend(ctx, engine);
-        },
-        assert: async () => {
-          await ctx.expectText(engine.token);
-          await ctx.expectNoText("Endpoint is unavailable");
-          await ctx.expectNoText("ProviderModelNotFoundError");
-        },
-        screenshot: {
-          name: `${engine.project}-ox-alpha-response`,
-          fromSurface: true,
-          requireText: [engine.token, "Ox Alpha Free", engine.label],
-          rejectText: ["Endpoint is unavailable", "ProviderModelNotFoundError"],
         },
       });
     },

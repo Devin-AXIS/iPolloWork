@@ -597,7 +597,7 @@ function removeSnapshotAcknowledgedOptimisticUserMessages(
 
 function createClientUserMessageId() {
   const randomUUID = globalThis.crypto?.randomUUID?.bind(globalThis.crypto);
-  return `ipollowork-user-${randomUUID ? randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`}`;
+  return `msg_ipollowork_${randomUUID ? randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`}`;
 }
 
 /**

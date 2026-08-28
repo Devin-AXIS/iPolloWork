@@ -261,28 +261,37 @@ function deepSeekHarnessConnection(input: {
     if (request.model.providerID.trim().toLowerCase() === "openai") {
       directory = await client.call<DeepSeekHarnessModelDirectory>("llm.models", {}).catch(() => null);
     }
-    const runtimeProviderId = deepSeekHarnessRuntimeProviderId(
+    let runtimeProviderId = deepSeekHarnessRuntimeProviderId(
       request.model.providerID,
       request.model.modelID,
       directory,
     );
+    const selectRuntimeModel = (provider: string) => client.call("session.selectModel", {
+      sessionId: request.sessionId,
+      provider,
+      model: request.model!.modelID,
+      ...(reasoningEffort ? { reasoningEffort } : {}),
+    });
     try {
-      await client.call("session.selectModel", {
-        sessionId: request.sessionId,
-        provider: runtimeProviderId,
-        model: request.model.modelID,
-        ...(reasoningEffort ? { reasoningEffort } : {}),
-      });
-    } catch (error) {
-      directory ??= await client.call<DeepSeekHarnessModelDirectory>("llm.models", {}).catch(() => null);
-      const modelAvailable = directory?.groups.some((group) => (
-        group.id === runtimeProviderId
+      await selectRuntimeModel(runtimeProviderId);
+    } catch (initialError) {
+      const refreshedDirectory = await client.call<DeepSeekHarnessModelDirectory>("llm.models", {})
+        .catch(() => directory);
+      const refreshedProviderId = deepSeekHarnessRuntimeProviderId(
+        request.model.providerID,
+        request.model.modelID,
+        refreshedDirectory,
+      );
+      const modelAvailable = refreshedDirectory?.groups.some((group) => (
+        group.id === refreshedProviderId
         && group.models.some((model) => model.id === request.model?.modelID)
       ));
-      if (directory && !modelAvailable) {
-        throw new Error(t("session.deepseek_harness_model_unavailable"), { cause: error });
+      if (!refreshedDirectory) throw initialError;
+      if (!modelAvailable) {
+        throw new Error(t("session.deepseek_harness_model_unavailable"), { cause: initialError });
       }
-      throw error;
+      runtimeProviderId = refreshedProviderId;
+      await selectRuntimeModel(runtimeProviderId);
     }
     selectedModels.set(request.sessionId, selectionKey);
   };
