@@ -23,6 +23,7 @@ import {
   conversationMessageCreatedAt,
   conversationMessageMetadata,
   conversationMessageParentUserMessageId,
+  mergeConversationSessionUpdate,
 } from "../engine/conversation-engine";
 import { describeConversationSessionError } from "../engine/opencode-message-adapter";
 
@@ -892,7 +893,7 @@ function applyEvent(entry: SyncEntry, workspaceId: string, event: ConversationEv
     queryClient.setQueryData<ConversationSnapshot>(
       snapshotKey(workspaceId, event.sessionId),
       (current) => current
-        ? { ...current, session: { ...current.session, revertMessageId: event.info.revertMessageId } }
+        ? { ...current, session: mergeConversationSessionUpdate(current.session, event.info) }
         : current,
     );
     for (const listener of entry.sessionUpdatedListeners) listener({ sessionId: event.sessionId, info: event.info });

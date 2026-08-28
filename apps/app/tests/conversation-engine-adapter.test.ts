@@ -1971,6 +1971,32 @@ describe("conversation engine adapters", () => {
       payload: { type: "host/session-status", sessionId: "dsh-session", running: false },
     }, state)).toEqual([]);
 
+    expect(mapDeepSeekHarnessEnvelope({
+      type: "server-request",
+      rpcId: "rpc-turn-start",
+      payload: {
+        type: "session/event",
+        sessionId: "dsh-session",
+        event: {
+          type: "turn/start",
+          seq: 9,
+          time: 10,
+          data: { turn: 2 },
+        },
+      },
+    }, state)).toEqual([
+      {
+        type: "session.updated",
+        sessionId: "dsh-session",
+        info: {
+          id: "dsh-session",
+          time: { updated: 10 },
+          dsh: { blank: false, running: true },
+        },
+      },
+      { type: "session.status", sessionId: "dsh-session", status: { type: "busy" } },
+    ]);
+
     mapDeepSeekHarnessEnvelope({
       type: "server-request",
       rpcId: "rpc-chunk",
@@ -2007,6 +2033,15 @@ describe("conversation engine adapters", () => {
         sessionId: "dsh-session",
         messageId: "dsh:dsh-session:assistant:2:1",
         completedAt: 30,
+      },
+      {
+        type: "session.updated",
+        sessionId: "dsh-session",
+        info: {
+          id: "dsh-session",
+          time: { updated: 30 },
+          dsh: { blank: false, running: false },
+        },
       },
       { type: "session.status", sessionId: "dsh-session", status: { type: "idle" } },
       { type: "session.idle", sessionId: "dsh-session" },
