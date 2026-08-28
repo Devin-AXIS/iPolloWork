@@ -159,6 +159,78 @@ test("installs and removes an optional engine package without touching Work data
   }
 });
 
+test("falls back to the latest mirrored release and rejects a corrupted mirror response", async () => {
+  const temporaryRoot = await mkdtemp(path.join(os.tmpdir(), "ipollowork-engine-mirror-test-"));
+  const fixtureRoot = path.join(temporaryRoot, "fixture");
+  const archivePath = path.join(temporaryRoot, "fixture.tar.gz");
+  const version = "9.8.7";
+  const name = `ipollowork-engine-codex-harness-${platformAssetSegment()}-${process.arch}-${version}.tar.gz`;
+  const requestedUrls = [];
+
+  try {
+    await mkdir(path.join(fixtureRoot, path.dirname(codexCliRelativePath())), { recursive: true });
+    await writeFile(path.join(fixtureRoot, codexCliRelativePath()), "fixture-runtime\n");
+    await writeFile(path.join(fixtureRoot, "package.json"), '{"name":"fixture"}\n');
+    const packed = spawnSync(commandPath("tar"), ["-czf", archivePath, "-C", fixtureRoot, "."], { encoding: "utf8" });
+    assert.equal(packed.status, 0, packed.stderr);
+    const archive = await readFile(archivePath);
+    const checksum = createHash("sha256").update(archive).digest("hex");
+    const officialArchive = `https://github.com/Devin-AXIS/iPolloWork/releases/download/v1.0.0/${name}`;
+    const firstMirror = `https://gh-proxy.com/${officialArchive}`;
+    const secondMirror = `https://ghfast.top/${officialArchive}`;
+    const tagMetadata = "https://api.github.com/repos/Devin-AXIS/iPolloWork/releases/tags/v1.0.1-local";
+    const latestMetadata = "https://api.github.com/repos/Devin-AXIS/iPolloWork/releases/latest";
+    /** @type {NodeJS.ProcessEnv} */
+    const environment = {
+      ...process.env,
+      PATH: path.join(temporaryRoot, "empty-bin"),
+      APPDATA: path.join(temporaryRoot, "app-data"),
+      LOCALAPPDATA: path.join(temporaryRoot, "local-app-data"),
+      ProgramFiles: path.join(temporaryRoot, "program-files"),
+    };
+    delete environment.IPOLLOWORK_CODEX_CLI;
+    delete environment.IPOLLOWORK_ENGINE_PACK_BASE_URL;
+
+    const manager = createEnginePackageManager({
+      app: {
+        getPath(name) {
+          assert.equal(name, "userData");
+          return path.join(temporaryRoot, "user-data");
+        },
+        getVersion() { return "1.0.1-local"; },
+        isPackaged: true,
+      },
+      desktopRoot: path.join(temporaryRoot, "desktop"),
+      versions: { opencode: "1.2.3", deepseekHarness: "4.5.6", codexHarness: version },
+      env: environment,
+      homeDir: path.join(temporaryRoot, "home"),
+      fetch: async (url, init) => {
+        requestedUrls.push(String(url));
+        assert.ok(init?.signal);
+        if (url === tagMetadata) return new Response("missing", { status: 404 });
+        if (url === latestMetadata) return Response.json({
+          assets: [{ name, digest: `sha256:${checksum}`, browser_download_url: officialArchive }],
+        });
+        if (url === officialArchive) return new Response("unavailable", { status: 503 });
+        if (url === firstMirror) return new Response("corrupted archive");
+        if (url === secondMirror) return new Response(archive);
+        return new Response("missing", { status: 404 });
+      },
+    });
+
+    const installed = await manager.install("codex-harness");
+
+    assert.equal(installed.status, "ready");
+    assert.equal(installed.source, "downloaded");
+    assert.ok(requestedUrls.includes(tagMetadata));
+    assert.ok(requestedUrls.includes(latestMetadata));
+    assert.ok(requestedUrls.includes(firstMirror));
+    assert.ok(requestedUrls.includes(secondMirror));
+  } finally {
+    await rm(temporaryRoot, { recursive: true, force: true });
+  }
+});
+
 test("prefers an official Codex Harness and removes a redundant downloaded copy", async () => {
   const temporaryRoot = await mkdtemp(path.join(os.tmpdir(), "ipollowork-codex-precedence-test-"));
   const userData = path.join(temporaryRoot, "user-data");

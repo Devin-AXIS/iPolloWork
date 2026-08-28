@@ -39,6 +39,9 @@ it("ships Harness CLIs as verified optional engine packages instead of app resou
   assert.match(managerSource, /IPOLLOWORK_CODEX_CLI/);
   assert.match(managerSource, /engine-packs/);
   assert.match(managerSource, /checksum verification failed/);
+  assert.match(managerSource, /gh-proxy\.com/);
+  assert.match(managerSource, /ghfast\.top/);
+  assert.match(managerSource, /api\.github\.com\/repos\/Devin-AXIS\/iPolloWork\/releases\/latest/);
   assert.doesNotMatch(buildSource, /prepare-dsh-runtime\.mjs/);
   assert.doesNotMatch(devSource, /prepare-dsh-runtime\.mjs/);
   assert.doesNotMatch(buildSource, /prepare-codex-runtime\.mjs/);

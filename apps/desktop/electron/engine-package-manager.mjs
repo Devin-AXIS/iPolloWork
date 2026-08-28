@@ -21,6 +21,12 @@ const OPENCODE_ENGINE_ID = "opencode";
 const DSH_ENGINE_ID = "deepseek-harness";
 const CODEX_ENGINE_ID = "codex-harness";
 const OPTIONAL_ENGINE_IDS = new Set([DSH_ENGINE_ID, CODEX_ENGINE_ID]);
+const ENGINE_PACK_REQUEST_TIMEOUT_MS = 15_000;
+const ENGINE_PACK_IDLE_TIMEOUT_MS = 30_000;
+const ENGINE_PACK_GITHUB_MIRRORS = [
+  "https://gh-proxy.com/",
+  "https://ghfast.top/",
+];
 
 function normalizeVersion(value) {
   return String(value ?? "").trim().replace(/^v/, "") || "unknown";
@@ -347,16 +353,30 @@ async function writeResponseBody(response, targetPath, onProgress) {
   const handle = await open(targetPath, "w");
   const reader = response.body.getReader();
   let downloaded = 0;
+  let idleTimeout;
+  let rejectIdle;
+  const stalled = new Promise((_, reject) => { rejectIdle = reject; });
+  const resetIdleTimeout = () => {
+    clearTimeout(idleTimeout);
+    idleTimeout = setTimeout(
+      () => rejectIdle(new Error(`Engine package download stalled for ${ENGINE_PACK_IDLE_TIMEOUT_MS / 1_000} seconds.`)),
+      ENGINE_PACK_IDLE_TIMEOUT_MS,
+    );
+  };
+  resetIdleTimeout();
   try {
     while (true) {
-      const result = await reader.read();
+      const result = await Promise.race([reader.read(), stalled]);
       if (result.done) break;
       const chunk = Buffer.from(result.value);
+      if (chunk.byteLength === 0) continue;
       await handle.write(chunk);
       downloaded += chunk.byteLength;
       onProgress(downloaded, total);
+      resetIdleTimeout();
     }
   } finally {
+    clearTimeout(idleTimeout);
     await handle.close();
   }
   return { downloaded, total };
@@ -518,11 +538,63 @@ export function createEnginePackageManager(options) {
     return `ipollowork-engine-${descriptor.id}-${platformAssetSegment(platform)}-${architecture}-${descriptor.version}.tar.gz`;
   }
 
-  function releaseBaseUrl() {
-    const explicit = environment.IPOLLOWORK_ENGINE_PACK_BASE_URL?.trim();
-    if (explicit) return explicit.replace(/\/$/, "");
-    const version = normalizeVersion(options.app.getVersion());
-    return `https://github.com/Devin-AXIS/iPolloWork/releases/download/v${version}`;
+  async function fetchEnginePackage(url, init = {}, consume = null) {
+    const controller = new AbortController();
+    let requestTimedOut = false;
+    const timeout = setTimeout(() => {
+      requestTimedOut = true;
+      controller.abort();
+    }, ENGINE_PACK_REQUEST_TIMEOUT_MS);
+    try {
+      const response = await options.fetch(url, { ...init, signal: controller.signal });
+      clearTimeout(timeout);
+      if (typeof consume !== "function") return response;
+      try {
+        return await consume(response);
+      } finally {
+        controller.abort();
+      }
+    } catch (error) {
+      if (requestTimedOut) {
+        throw new Error(`Engine package request timed out after ${ENGINE_PACK_REQUEST_TIMEOUT_MS / 1_000} seconds.`);
+      }
+      throw error;
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+
+  async function resolveOfficialReleaseAsset(name) {
+    const version = encodeURIComponent(normalizeVersion(options.app.getVersion()));
+    const metadataUrls = [
+      `https://api.github.com/repos/Devin-AXIS/iPolloWork/releases/tags/v${version}`,
+      "https://api.github.com/repos/Devin-AXIS/iPolloWork/releases/latest",
+    ];
+    const failures = [];
+    for (const metadataUrl of metadataUrls) {
+      try {
+        const response = await fetchEnginePackage(metadataUrl, {
+          headers: {
+            Accept: "application/vnd.github+json",
+            "X-GitHub-Api-Version": "2022-11-28",
+          },
+        });
+        if (!response.ok) throw new Error(`metadata returned HTTP ${response.status}`);
+        const metadata = await response.json();
+        const asset = Array.isArray(metadata?.assets)
+          ? metadata.assets.find((candidate) => candidate?.name === name)
+          : null;
+        const digest = String(asset?.digest ?? "").match(/^sha256:([a-fA-F0-9]{64})$/);
+        const url = String(asset?.browser_download_url ?? "");
+        if (!digest || !url.startsWith("https://github.com/Devin-AXIS/iPolloWork/releases/download/")) {
+          throw new Error(`release does not contain a verified ${name} asset`);
+        }
+        return { expectedSha: digest[1].toLowerCase(), url };
+      } catch (error) {
+        failures.push(`${metadataUrl}: ${safeErrorMessage(error)}`);
+      }
+    }
+    throw new Error(`Engine package release metadata could not resolve ${name}. ${failures.join(" | ")}`);
   }
 
   function setOperation(id, patch) {
@@ -689,14 +761,59 @@ export function createEnginePackageManager(options) {
     return true;
   }
 
+  async function downloadVerifiedReleaseArchive(descriptor, name, archivePath) {
+    const explicitBaseUrl = environment.IPOLLOWORK_ENGINE_PACK_BASE_URL?.trim().replace(/\/$/, "");
+    let expectedSha;
+    let sourceUrls;
+    if (explicitBaseUrl) {
+      const url = `${explicitBaseUrl}/${name}`;
+      const checksumResponse = await fetchEnginePackage(`${url}.sha256`);
+      if (!checksumResponse.ok) {
+        throw new Error(`Engine package checksum download returned HTTP ${checksumResponse.status}.`);
+      }
+      expectedSha = parseExpectedSha256(await checksumResponse.text());
+      sourceUrls = [url];
+    } else {
+      const releaseAsset = await resolveOfficialReleaseAsset(name);
+      expectedSha = releaseAsset.expectedSha;
+      sourceUrls = [
+        releaseAsset.url,
+        ...ENGINE_PACK_GITHUB_MIRRORS.map((mirror) => `${mirror}${releaseAsset.url}`),
+      ];
+    }
+    const failures = [];
+    for (const url of sourceUrls) {
+      setOperation(descriptor.id, {
+        status: "downloading",
+        downloadedBytes: null,
+        totalBytes: null,
+      });
+      try {
+        await fetchEnginePackage(url, {}, async (response) => {
+          await writeResponseBody(response, archivePath, (downloadedBytes, totalBytes) => {
+            setOperation(descriptor.id, { status: "downloading", downloadedBytes, totalBytes });
+          });
+        });
+        setOperation(descriptor.id, { status: "verifying" });
+        const actualSha = await sha256File(archivePath);
+        if (actualSha !== expectedSha) throw new Error("checksum verification failed");
+        await assertArchiveEntriesSafe(archivePath);
+        return;
+      } catch (error) {
+        failures.push(`${url}: ${safeErrorMessage(error)}`);
+        await rm(archivePath, { force: true });
+      }
+    }
+    throw new Error(`Engine package download failed from all sources. ${failures.join(" | ")}`);
+  }
+
   async function installFromRelease(descriptor, stagingRoot, temporaryRoot) {
     const name = assetName(descriptor);
     const archivePath = path.join(temporaryRoot, name);
     const sourceDirectory = environment.IPOLLOWORK_ENGINE_PACK_SOURCE_DIR?.trim();
-    let expectedSha;
     if (sourceDirectory) {
       const sourceArchive = path.join(sourceDirectory, name);
-      expectedSha = parseExpectedSha256(await readFile(`${sourceArchive}.sha256`, "utf8"));
+      const expectedSha = parseExpectedSha256(await readFile(`${sourceArchive}.sha256`, "utf8"));
       await cp(sourceArchive, archivePath);
       const archiveStat = await stat(archivePath);
       setOperation(descriptor.id, {
@@ -704,22 +821,13 @@ export function createEnginePackageManager(options) {
         downloadedBytes: archiveStat.size,
         totalBytes: archiveStat.size,
       });
+      setOperation(descriptor.id, { status: "verifying" });
+      const actualSha = await sha256File(archivePath);
+      if (actualSha !== expectedSha) throw new Error("Engine package checksum verification failed.");
+      await assertArchiveEntriesSafe(archivePath);
     } else {
-      const url = `${releaseBaseUrl()}/${name}`;
-      const checksumResponse = await options.fetch(`${url}.sha256`);
-      if (!checksumResponse.ok) {
-        throw new Error(`Engine package checksum download returned HTTP ${checksumResponse.status}.`);
-      }
-      expectedSha = parseExpectedSha256(await checksumResponse.text());
-      const response = await options.fetch(url);
-      await writeResponseBody(response, archivePath, (downloadedBytes, totalBytes) => {
-        setOperation(descriptor.id, { status: "downloading", downloadedBytes, totalBytes });
-      });
+      await downloadVerifiedReleaseArchive(descriptor, name, archivePath);
     }
-    setOperation(descriptor.id, { status: "verifying" });
-    const actualSha = await sha256File(archivePath);
-    if (actualSha !== expectedSha) throw new Error("Engine package checksum verification failed.");
-    await assertArchiveEntriesSafe(archivePath);
     setOperation(descriptor.id, { status: "installing" });
     await mkdir(stagingRoot, { recursive: true });
     await run("tar", ["-xzf", archivePath, "-C", stagingRoot]);
