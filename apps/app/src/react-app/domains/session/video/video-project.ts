@@ -133,17 +133,20 @@ export type VideoArtifactCompletionRequirement = {
   sourcePath: string;
   baselineFingerprint: string;
   assistantMessageBaseline: number;
+  requestOrdinal: number;
 };
 
 export function createVideoArtifactCompletionRequirement(
   sourcePath: string,
   content: string,
   assistantMessageBaseline: number,
+  requestOrdinal: number,
 ): VideoArtifactCompletionRequirement {
   return {
     sourcePath,
     baselineFingerprint: artifactContentFingerprint(content),
     assistantMessageBaseline,
+    requestOrdinal,
   };
 }
 

@@ -525,7 +525,7 @@ describe("session output issue regressions", () => {
     }
   });
 
-  test("template market exposes compact discovery controls, import details, and installed enterprise actions", () => {
+  test("template market exposes compact discovery controls, import details, and installed Cloud actions", () => {
     const source = readFileSync(
       new URL("../src/react-app/domains/session/templates/template-market-dialog.tsx", import.meta.url),
       "utf8",
@@ -540,16 +540,22 @@ describe("session output issue regressions", () => {
     expect(source).toContain('type MyTemplateCollection = "all" | "favorites" | "mine"');
     expect(source).toContain('font-[\'PingFang_SC\',sans-serif] text-xs font-medium text-foreground');
     expect(source).toContain("{pendingImport.name} - {(pendingImport.size / 1024).toFixed(1)} KB");
-    expect(source).toContain('enterpriseMode && view === "explore"');
-    expect(source).toContain("<WorkResourceScopeSwitch");
+    expect(source).toContain('remoteCatalogMode && view === "explore"');
+    expect(source).toContain('view === "explore" && props.cloudAvailable');
+    expect(source).toContain('t("template_market.source_builtin")');
+    expect(source).not.toContain("<WorkResourceScopeSwitch");
     expect(sessionSource).toContain('listTemplates(props.runtimeWorkspaceId, "personal")');
     expect(sessionSource).toContain('listEnterpriseResources("template")');
+    expect(sessionSource).toContain("if (templateCloudSourceSelected)");
+    expect(sessionSource).toContain("cloudAvailable={denAuth.isSignedIn}");
+    expect(sessionSource).toContain("onSelectBuiltIn={selectBuiltInTemplateSource}");
+    expect(sessionSource).toContain("importTemplate(props.runtimeWorkspaceId, file, category, PERSONAL_WORK_CONTEXT_ID)");
     expect(sessionSource).toContain("item.sourceType === \"local\" && item.installed");
     expect(sessionSource).toContain("requestId !== templateCatalogRequestIdRef.current");
-    expect(source).toContain("enterpriseTemplateInstallations");
+    expect(source).toContain("cloudTemplateInstallations");
     expect(source).toContain("resource.manifestId");
     expect(source).toContain("return <TemplateCard template={installedTemplate}");
-    expect(source).toContain("primaryAction={action} primaryLabel={label} sourceLabel={sourceLabel}");
+    expect(source).toContain('primaryAction={action} primaryLabel={label} sourceLabel={t("enterprise_connection.cloud")}');
   });
 
   test("enterprise extensions reflect local package installation versions", () => {

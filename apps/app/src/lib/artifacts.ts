@@ -590,6 +590,45 @@ export function getArtifactsFromMessages(messages: UIMessage[], openTargets: Ope
   });
 }
 
+export function inferArtifactRequestOwnership(
+  messages: UIMessage[],
+  supplementalFiles: readonly string[],
+) {
+  let requestOrdinal = -1;
+  let ownership: ArtifactRequestOwnership[] = [];
+
+  for (const message of messages) {
+    if (message.role === "user" && message.parts.length > 0) {
+      requestOrdinal += 1;
+      continue;
+    }
+    if (message.role !== "assistant" || requestOrdinal < 0) continue;
+
+    const messageArtifacts = getArtifactsFromMessages([message], [], {
+      includeTargetFallbacks: false,
+    });
+    const ownedPaths = new Set<string>();
+    for (const artifact of messageArtifacts) {
+      ownedPaths.add(artifact.path);
+      if (!getArtifactStudioTarget(artifact)) continue;
+      const directory = artifactDirectoryPath(artifact.path);
+      for (const path of supplementalFiles) {
+        if (artifactPathMatchesTarget(path, artifact.path)
+          || artifactPathIsWithinDirectory(path, directory)) {
+          ownedPaths.add(path);
+        }
+      }
+    }
+    ownership = assignArtifactRequestOwnership(
+      ownership,
+      requestOrdinal,
+      [...ownedPaths],
+    );
+  }
+
+  return ownership;
+}
+
 export function useArtifacts(messages: UIMessage[], options: GetArtifactsOptions = {}) {
   const { openTargets } = useOpenTargets();
   const includeTargetFallbacks = options.includeTargetFallbacks ?? false;

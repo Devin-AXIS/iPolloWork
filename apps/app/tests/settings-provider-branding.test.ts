@@ -69,4 +69,10 @@ describe("settings provider branding", () => {
     expect(providerAuthModalSource).toContain("await openDesktopUrl(url)");
     expect(providerAuthModalSource).toContain("openOauthUrl = async (providerId: string, url: string)");
   });
+
+  test("waits for the OpenAI OAuth callback only once per authorization session", () => {
+    expect(providerAuthModalSource).toContain("oauthAutoCompletionKeyRef");
+    expect(providerAuthModalSource).not.toContain("oauthAutoPollRef");
+    expect(providerAuthModalSource).not.toContain("startOauthAutoPolling");
+  });
 });

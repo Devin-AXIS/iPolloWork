@@ -60,7 +60,7 @@ const pty = require(["node", "pty"].join("-"));
 
 function enginePackageVersions() {
   const candidates = app.isPackaged
-    ? [path.join(process.resourcesPath, "server", "dist", "constants.json")]
+    ? [path.join(app.getAppPath(), "server", "dist", "constants.json")]
     : [path.resolve(__dirname, "../../..", "constants.json")];
   for (const candidate of candidates) {
     try {
@@ -1683,6 +1683,7 @@ const runtimeManager = createRuntimeManager({
 const enginePackageManager = createEnginePackageManager({
   app,
   desktopRoot: path.resolve(__dirname, ".."),
+  resourcesPath: process.resourcesPath,
   versions: enginePackageVersions(),
   fetch: electronNet.fetch.bind(electronNet),
   beforeUninstall: async () => {

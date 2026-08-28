@@ -22,6 +22,31 @@ export type ConversationSession = {
   revertMessageId?: string | null;
 };
 
+export type ConversationSessionUpdate = Partial<ConversationSession> & Pick<ConversationSession, "id">;
+
+/**
+ * Apply a live engine update without discarding native session metadata that
+ * was omitted from the event. Harness lifecycle events intentionally publish
+ * small `dsh`/`codex` patches instead of repeating the full session snapshot.
+ */
+export function mergeConversationSessionUpdate<T extends ConversationSession>(
+  current: T,
+  update: ConversationSessionUpdate,
+): T {
+  const mergeRecord = (key: "dsh" | "codex") => {
+    const previous = recordValue(current[key]);
+    const next = recordValue(update[key]);
+    return next ? { ...(previous ?? {}), ...next } : update[key];
+  };
+  return {
+    ...current,
+    ...update,
+    ...(update.time ? { time: { ...(current.time ?? {}), ...update.time } } : {}),
+    ...(update.dsh !== undefined ? { dsh: mergeRecord("dsh") } : {}),
+    ...(update.codex !== undefined ? { codex: mergeRecord("codex") } : {}),
+  } as T;
+}
+
 export type ConversationContextUsage = {
   usedTokens: number;
   inputTokens?: number;
@@ -263,7 +288,7 @@ export function completeConversationMessage(message: UIMessage, completedAt: num
 }
 
 export type ConversationEvent =
-  | { type: "session.updated"; sessionId: string; info: ConversationSession }
+  | { type: "session.updated"; sessionId: string; info: ConversationSessionUpdate }
   | { type: "context.updated"; sessionId: string; usage: ConversationContextUsage }
   | { type: "session.deleted"; sessionId: string }
   | { type: "session.error"; sessionId: string; errorText: string; parentUserMessageId?: string }
