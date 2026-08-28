@@ -37,6 +37,7 @@ it("ships Harness CLIs as verified bundled engine packages with network fallback
   assert.doesNotMatch(builderConfig, /from: codex-runtime\s+to: codex-runtime/);
   assert.match(builderConfig, /from: dist-engine-packs\s+to: engine-packs/);
   assert.match(mainSource, /createEnginePackageManager/);
+  assert.match(mainSource, /app\.getAppPath\(\).*server.*dist.*constants\.json/);
   assert.match(mainSource, /resourcesPath: process\.resourcesPath/);
   assert.match(managerSource, /IPOLLOWORK_DSH_CLI/);
   assert.match(managerSource, /IPOLLOWORK_DSH_NODE_BIN/);

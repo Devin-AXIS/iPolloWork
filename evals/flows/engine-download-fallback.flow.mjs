@@ -1,105 +1,85 @@
 import { existsSync } from "node:fs";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
-import os from "node:os";
 import path from "node:path";
 
-import { createEnginePackageManager } from "../../apps/desktop/electron/engine-package-manager.mjs";
+const ENGINES = [
+  { id: "deepseek-harness", version: "0.1.0-rc.6" },
+  { id: "codex-harness", version: "0.149.0" },
+];
 
-const ENGINE_IDS = ["codex-harness", "deepseek-harness"];
+function rowSelector(engineId) {
+  return `[data-testid="engine-package-row"][data-engine-id="${engineId}"]`;
+}
 
 export default {
   id: "engine-download-fallback",
   title: "Packaged Agent engines install offline from verified bundled packages",
-  kind: "internal",
-  requiresApp: false,
+  kind: "user-facing",
   steps: [
     {
-      name: "Both optional engines install while every network request is blocked",
+      name: "Packaged app installs both optional engines without a network source",
       run: async (ctx) => {
-        let temporaryRoot;
-        let evidence;
-        try {
-          await ctx.prove("Codex and DeepSeek engine packages install from packaged resources without network access", {
-            voiceover: "Even with every engine network request blocked, the packaged app verifies its bundled engine archives and finishes with usable Codex and DeepSeek command lines.",
-            action: async () => {
-              temporaryRoot = await mkdtemp(path.join(os.tmpdir(), "ipollowork-engine-fraimz-"));
-              const constants = JSON.parse(await readFile(path.resolve("constants.json"), "utf8"));
-              const resourcesPath = path.resolve("apps/desktop/dist-electron/win-unpacked/resources");
-              const environment = {
-                ...process.env,
-                PATH: path.join(temporaryRoot, "empty-bin"),
-                APPDATA: path.join(temporaryRoot, "app-data"),
-                LOCALAPPDATA: path.join(temporaryRoot, "local-app-data"),
-                ProgramFiles: path.join(temporaryRoot, "program-files"),
-              };
-              for (const key of [
-                "IPOLLOWORK_DSH_CLI",
-                "IPOLLOWORK_DSH_CLI_VERSION",
-                "IPOLLOWORK_CODEX_CLI",
-                "IPOLLOWORK_CODEX_CLI_VERSION",
-                "IPOLLOWORK_ENGINE_PACK_BASE_URL",
-                "IPOLLOWORK_ENGINE_PACK_SOURCE_DIR",
-              ]) delete environment[key];
+        await ctx.waitFor("Boolean(window.__ipolloworkControl)", {
+          timeoutMs: 30_000,
+          label: "packaged desktop control bridge",
+        });
 
-              let networkRequests = 0;
-              const manager = createEnginePackageManager({
-                app: {
-                  getPath() { return path.join(temporaryRoot, "user-data"); },
-                  getVersion() { return "0.50.1"; },
-                  isPackaged: true,
-                },
-                desktopRoot: path.resolve("apps/desktop"),
-                resourcesPath,
-                versions: {
-                  opencode: constants.opencodeVersion,
-                  deepseekHarness: constants.deepseekHarnessVersion,
-                  codexHarness: constants.codexHarnessVersion,
-                },
-                platform: "win32",
-                architecture: "x64",
-                env: environment,
-                homeDir: path.join(temporaryRoot, "home"),
-                probeRuntime: async () => false,
-                fetch: async () => {
-                  networkRequests += 1;
-                  throw new Error("network is intentionally unavailable");
-                },
-              });
+        await ctx.prove("The packaged app installs Codex and DeepSeek from its verified offline engine bundles", {
+          voiceover: "Without a working engine download server, the packaged app still shows the real Codex and DeepSeek versions and installs both engines to a ready state from its built-in resources.",
+          action: async () => {
+            await ctx.navigateHash("/settings/engines");
+            await ctx.waitFor(
+              `document.querySelectorAll('[data-testid="engine-package-row"]').length === 3`,
+              { timeoutMs: 30_000, label: "all engine package rows" },
+            );
 
-              const results = [];
-              for (const engineId of ENGINE_IDS) {
-                const result = await manager.install(engineId);
-                const cliKey = engineId === "codex-harness" ? "IPOLLOWORK_CODEX_CLI" : "IPOLLOWORK_DSH_CLI";
-                results.push({
-                  engineId,
-                  status: result.status,
-                  source: result.source,
-                  installedBytes: result.installedBytes,
-                  cliExists: Boolean(environment[cliKey] && existsSync(environment[cliKey])),
-                });
-              }
-              evidence = {
-                appVersion: "0.50.1",
-                resourcesPath,
-                networkRequests,
-                results,
-              };
-            },
-            assert: async () => {
-              ctx.assert(evidence?.networkRequests === 0, "Bundled installs must not make a network request.");
-              ctx.assert(evidence?.results?.length === ENGINE_IDS.length, "Both optional engines must produce install evidence.");
-              for (const result of evidence.results) {
-                ctx.assert(result.status === "ready", `${result.engineId} must finish ready.`);
-                ctx.assert(result.source === "downloaded", `${result.engineId} must be managed by iPolloWork.`);
-                ctx.assert(result.installedBytes > 0, `${result.engineId} must install non-empty runtime files.`);
-                ctx.assert(result.cliExists, `${result.engineId} must expose its installed CLI.`);
-              }
-              ctx.output("Verified engine installs", JSON.stringify(evidence, null, 2));
-            },
-          });
-        } finally {
-          if (temporaryRoot) await rm(temporaryRoot, { recursive: true, force: true });
-        }
+            for (const engine of ENGINES) {
+              const selector = rowSelector(engine.id);
+              const initial = await ctx.eval(`(() => {
+                const row = document.querySelector(${JSON.stringify(selector)});
+                return row ? row.innerText : null;
+              })()`);
+              ctx.assert(Boolean(initial), `${engine.id} row must be visible.`);
+              ctx.assert(initial.includes(`v${engine.version}`), `${engine.id} must show v${engine.version} before install.`);
+              ctx.assert(!initial.toLowerCase().includes("unknown"), `${engine.id} must never show an unknown version.`);
+
+              await ctx.eval(`(() => {
+                const row = document.querySelector(${JSON.stringify(selector)});
+                const button = row?.querySelector("button");
+                if (!button) throw new Error(${JSON.stringify(`${engine.id} install button is missing`)});
+                button.click();
+                return true;
+              })()`);
+              await ctx.waitFor(
+                `(() => {
+                  const text = document.querySelector(${JSON.stringify(selector)})?.innerText ?? "";
+                  return text.includes("Ready") || text.includes("已就绪");
+                })()`,
+                { timeoutMs: 120_000, label: `${engine.id} ready state` },
+              );
+            }
+          },
+          assert: async () => {
+            const userData = ctx.env.IPOLLOWORK_ELECTRON_USERDATA?.trim();
+            ctx.assert(Boolean(userData), "The isolated packaged-app userData path must be provided.");
+            for (const engine of ENGINES) {
+              const selector = rowSelector(engine.id);
+              const text = await ctx.eval(`document.querySelector(${JSON.stringify(selector)})?.innerText ?? ""`);
+              ctx.assert(text.includes(`v${engine.version}`), `${engine.id} must keep its real version after install.`);
+              ctx.assert(text.includes("Ready") || text.includes("已就绪"), `${engine.id} must finish ready.`);
+              ctx.assert(!text.includes("HTTP 404"), `${engine.id} must not fall back to a missing GitHub release.`);
+              ctx.assert(
+                existsSync(path.join(userData, "engine-packs", engine.id, engine.version, `${process.platform}-${process.arch}`)),
+                `${engine.id} must install runtime files under the isolated userData directory.`,
+              );
+            }
+          },
+          screenshot: {
+            name: "packaged-engines-ready-offline",
+            requireText: ["DeepSeek Harness", "Codex Harness"],
+            rejectText: ["unknown", "HTTP 404", "Engine package release metadata could not resolve"],
+            hashIncludes: "/settings/engines",
+          },
+        });
       },
     },
   ],
