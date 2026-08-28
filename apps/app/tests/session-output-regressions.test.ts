@@ -109,6 +109,12 @@ describe("session output issue regressions", () => {
     ]);
     expect(artifactSource).toContain('data-testid="conversation-files-mode-directory"');
     expect(artifactSource).toContain('data-testid="conversation-files-mode-outputs"');
+    expect(artifactSource).toContain('<TooltipContent>{t("session.files.open")}</TooltipContent>');
+    expect(artifactSource).toContain('<FilesIcon className="size-4" strokeWidth={1.75} />');
+    expect(artifactSource).not.toContain('active && "bg-muted text-foreground"');
+    expect(artifactSource).toContain('<ListTree className="size-4 text-current" strokeWidth={1.75} />');
+    expect(artifactSource).toContain('<Sparkles className="size-4 text-current" strokeWidth={1.75} />');
+    expect(sessionPageSource).toContain('publicAssetUrl(sidePanelOpen ? "sidebar-right-open.svg" : "sidebar-right-closed.svg")');
     expect(artifactSource).toContain("client.listWorkspaceFiles(workspaceId)");
     expect(artifactSource).toContain("htmlArtifactDisplayFilename(");
     expect(artifactSource).toContain("artifactRequestNamingContext(messages, artifact.messageIndex, sessionTitle)");
@@ -420,7 +426,7 @@ describe("session output issue regressions", () => {
     );
 
     expect(source).toContain('if (liveStatus.type === "busy" || activityRunActive)');
-    expect(source).toContain("}, [activityRunActive, liveStatus, sending]);");
+    expect(source).toContain("}, [activityRunActive, liveStatus, sending, stopAcknowledged]);");
   });
 
   test("the final assistant result enters from the left after a live run", () => {

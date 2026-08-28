@@ -3,6 +3,7 @@ import type { CSSProperties } from "react";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { UIMessage } from "ai";
 import { useNavigate } from "react-router-dom";
+import { AnimatePresence, motion } from "motion/react";
 import { createClient, unwrap } from "@/app/lib/opencode";
 import { Check, ChevronDown, Code2, Download, Ellipsis, Eye, FileText, Film, Folder, FolderPlus, Globe, Image, LoaderCircle, Lock, Mic2, Palette, PanelRightClose, PanelRightOpen, Pencil, Plus, Presentation, Search, Settings2, Trash2, Upload, X, Zap } from "lucide-react";
 import { MAX_TEMPLATE_PACKAGE_BYTES, TEMPLATE_PACKAGE_FILE_ACCEPT, isPptxCompatibleTemplate, type PptxCompatibility, type TemplateCatalogItem, type TemplateCategory, type TemplateManifestV1, type TemplateSessionSnapshot, type TemplateSessionState, type TemplateValidationReport } from "@ipollowork/types/templates";
@@ -758,6 +759,7 @@ export type SessionPageProps = {
   sidebar: SessionPageSidebarProps;
   surface?: SessionPageSurfaceProps | null;
   initialTaskDraftPending?: ComposerDraft | null;
+  initialTaskTransitionPending?: boolean;
   history?: SessionPageHistoryControls | null;
   todos: TodoItem[];
   sessionLoadingById: (sessionId: string | null) => boolean;
@@ -993,6 +995,17 @@ function InitialProjectTaskStarter({
   const visiblePendingDraft = pendingDraft ?? (sending ? submittedDraft : null);
   const pendingText = visiblePendingDraft?.text.trim() ?? "";
   const composerBusy = sending || Boolean(pendingDraft);
+  const hasVisiblePendingDraft = Boolean(visiblePendingDraft);
+  const [showPendingStatus, setShowPendingStatus] = useState(false);
+
+  useEffect(() => {
+    if (!hasVisiblePendingDraft) {
+      setShowPendingStatus(false);
+      return;
+    }
+    const timeout = window.setTimeout(() => setShowPendingStatus(true), 400);
+    return () => window.clearTimeout(timeout);
+  }, [hasVisiblePendingDraft]);
 
   const submit = async () => {
     const text = draft.trim();
@@ -1047,7 +1060,14 @@ function InitialProjectTaskStarter({
   };
 
   return (
-    <div className="flex h-full min-h-0 justify-center overflow-y-auto bg-background px-5" data-testid="initial-project-task-starter">
+    <motion.div
+      initial={false}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      transition={{ duration: 0.14, ease: "easeOut" }}
+      className="absolute inset-0 z-20 flex min-h-0 justify-center overflow-y-auto bg-background px-5"
+      data-testid="initial-project-task-starter"
+    >
       <div className="flex min-h-full w-full max-w-[800px] flex-col justify-center pb-[max(64px,env(safe-area-inset-bottom))] pt-8 has-[[data-testid=new-conversation-template-strip]]:justify-start">
         {visiblePendingDraft ? (
           <div className="w-full space-y-4" role="status" aria-live="polite" data-testid="initial-project-task-pending">
@@ -1058,10 +1078,12 @@ function InitialProjectTaskStarter({
                 </MessageContent>
               </div>
             ) : null}
-            <div className="flex items-center gap-2 px-1 text-xs text-dls-secondary">
-              <LoaderCircle className="size-3.5 animate-spin" aria-hidden />
-              <span>{t("session.status_running")}</span>
-            </div>
+            {showPendingStatus ? (
+              <div className="flex items-center gap-2 px-1 text-xs text-dls-secondary">
+                <LoaderCircle className="size-3.5 animate-spin" aria-hidden />
+                <span>{t("session.status_running")}</span>
+              </div>
+            ) : null}
           </div>
         ) : (
           <div data-testid="new-conversation-starter-slot" className="shrink-0">
@@ -1173,7 +1195,7 @@ function InitialProjectTaskStarter({
           />
         </div>
       </div>
-    </div>
+    </motion.div>
   );
 }
 
@@ -4207,6 +4229,8 @@ export function SessionPage(props: SessionPageProps) {
       canRenderReactSurface &&
       hasSelectedTask &&
       props.selectedSessionId &&
+      !props.initialTaskTransitionPending &&
+      conversationMessages.length === 0 &&
       settledSessionId !== props.selectedSessionId &&
       !templateEntrySurfaceReady,
   );
@@ -4570,7 +4594,7 @@ export function SessionPage(props: SessionPageProps) {
                     <Button
                       variant="ghost"
                       size="icon-sm"
-                      className="rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                      className="size-8 rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
                       aria-label={sidePanelOpen ? t("session.right_panel_close") : t("session.right_panel_open")}
                       title={sidePanelOpen ? t("session.right_panel_close") : t("session.right_panel_open")}
                       aria-pressed={sidePanelOpen}
@@ -4676,42 +4700,44 @@ export function SessionPage(props: SessionPageProps) {
                 </div>
               ) : null}
 
-              {mainWorkspaceView === null && !engineInstallGateActive && !engineStartupGateActive && showNewTaskStarter && !showStartupSkeleton && props.surface ? (
-                <InitialProjectTaskStarter
-                  key={`${props.selectedWorkspaceId}:${props.selectedWorkspaceDisplay.engineId ?? DEFAULT_ENGINE_ID}`}
-                  surface={props.surface}
-                  workspaceClient={props.ipolloworkServerClient}
-                  workspaceId={props.runtimeWorkspaceId}
-                  opencodeBaseUrl={props.opencodeBaseUrl}
-                  ipolloworkToken={props.ipolloworkServerToken}
-                  engineId={props.selectedWorkspaceDisplay.engineId}
-                  templates={starterTemplateCatalog}
-                  templatesLoading={starterTemplateCatalogLoading}
-                  templateBusyId={templateBusyId}
-                  getTemplateCover={getStarterTemplateCover}
-                  onUseTemplate={async (templateId, surface) => {
-                    if (templateBusyId) return;
-                    setTemplateBusyId(templateId);
-                    try {
-                      await Promise.resolve(props.sidebar.onCreateTaskInWorkspace(
-                        props.selectedWorkspaceId,
-                        surface === "video" ? "video" : "design",
-                        templateId,
-                        PERSONAL_WORK_CONTEXT_ID,
-                      ));
-                    } finally {
-                      setTemplateBusyId((current) => current === templateId ? null : current);
-                    }
-                  }}
-                  onUseCustomTemplate={(category) => openCustomTemplate(category, "new-task")}
-                  onInstallTemplate={(templateId) => void installStarterTemplate(templateId)}
-                  onRequestTemplates={() => void refreshStarterTemplateCatalog()}
-                  pendingDraft={props.initialTaskDraftPending}
-                  onSubmit={selectedProject && !selectedProject.workspace.isDefault
-                    ? (draft) => props.sidebar.onCreateTaskFromDraft(props.selectedWorkspaceId, draft)
-                    : (draft) => props.sidebar.onCreateInitialProjectTask(draft)}
-                />
-              ) : null}
+              <AnimatePresence initial={false}>
+                {mainWorkspaceView === null && !engineInstallGateActive && !engineStartupGateActive && showNewTaskStarter && !showStartupSkeleton && props.surface ? (
+                  <InitialProjectTaskStarter
+                    key={`${props.selectedWorkspaceId}:${props.selectedWorkspaceDisplay.engineId ?? DEFAULT_ENGINE_ID}`}
+                    surface={props.surface}
+                    workspaceClient={props.ipolloworkServerClient}
+                    workspaceId={props.runtimeWorkspaceId}
+                    opencodeBaseUrl={props.opencodeBaseUrl}
+                    ipolloworkToken={props.ipolloworkServerToken}
+                    engineId={props.selectedWorkspaceDisplay.engineId}
+                    templates={starterTemplateCatalog}
+                    templatesLoading={starterTemplateCatalogLoading}
+                    templateBusyId={templateBusyId}
+                    getTemplateCover={getStarterTemplateCover}
+                    onUseTemplate={async (templateId, surface) => {
+                      if (templateBusyId) return;
+                      setTemplateBusyId(templateId);
+                      try {
+                        await Promise.resolve(props.sidebar.onCreateTaskInWorkspace(
+                          props.selectedWorkspaceId,
+                          surface === "video" ? "video" : "design",
+                          templateId,
+                          PERSONAL_WORK_CONTEXT_ID,
+                        ));
+                      } finally {
+                        setTemplateBusyId((current) => current === templateId ? null : current);
+                      }
+                    }}
+                    onUseCustomTemplate={(category) => openCustomTemplate(category, "new-task")}
+                    onInstallTemplate={(templateId) => void installStarterTemplate(templateId)}
+                    onRequestTemplates={() => void refreshStarterTemplateCatalog()}
+                    pendingDraft={props.initialTaskDraftPending}
+                    onSubmit={selectedProject && !selectedProject.workspace.isDefault
+                      ? (draft) => props.sidebar.onCreateTaskFromDraft(props.selectedWorkspaceId, draft)
+                      : (draft) => props.sidebar.onCreateInitialProjectTask(draft)}
+                  />
+                ) : null}
+              </AnimatePresence>
 
               {mainWorkspaceView === null && !engineInstallGateActive && !engineStartupGateActive && !showNewTaskStarter && showDelayedSessionLoadingState ? (
                 <div className="px-6 py-16">

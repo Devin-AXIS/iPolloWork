@@ -197,6 +197,7 @@ describe("template brief", () => {
     expect(inferConversationTemplateIntent("制作一个竖屏产品发布视频")?.category).toBe("video");
     expect(inferConversationTemplateIntent("创建一个 AI 产品落地页")?.category).toBe("site");
     expect(inferConversationTemplateIntent("再做个网页")?.category).toBe("site");
+    expect(inferConversationTemplateIntent("测试首条消息")).toBeNull();
     expect(inferConversationTemplateIntent("请解释 PPT 是什么")).toBeNull();
     expect(inferConversationTemplateIntent("告诉我怎么制作一个网页")).toBeNull();
     expect(inferConversationTemplateIntent("做视频需要什么工具？")).toBeNull();

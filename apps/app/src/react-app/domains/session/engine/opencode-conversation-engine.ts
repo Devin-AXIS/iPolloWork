@@ -251,10 +251,16 @@ function openCodeConnection(input: { baseUrl: string; token?: string; directory?
     async sendPrompt(input) {
       if (input.signal?.aborted) return { sessionId: input.sessionId };
       const agent = resolveOpenCodeWorkModeName(input.mode);
+      const syntheticInstructions = input.parts.flatMap((part) => (
+        part.type === "text" && part.synthetic && part.text.trim()
+          ? [part.text.trim()]
+          : []
+      ));
+      const promptParts = input.parts.filter((part) => part.type !== "text" || !part.synthetic);
       const runtimeModelContext = input.model
         ? `Authoritative iPolloWork runtime model selection for this turn: ${JSON.stringify(input.model)}. When asked which model is running, report this selection exactly. Do not infer or claim a different model identity from earlier messages, training data, or generated self-description.`
         : "";
-      const system = [input.system?.trim(), runtimeModelContext].filter(Boolean).join("\n\n");
+      const system = [input.system?.trim(), ...syntheticInstructions, runtimeModelContext].filter(Boolean).join("\n\n");
       const requestAbort = () => {
         void client.session.abort({ sessionID: input.sessionId }).catch(() => undefined);
       };
@@ -264,7 +270,7 @@ function openCodeConnection(input: { baseUrl: string; token?: string; directory?
         const result = await client.session.promptAsync({
           sessionID: input.sessionId,
           messageID: input.clientUserMessageId,
-          parts: input.parts,
+          parts: promptParts,
           model: input.model,
           agent,
           ...(input.reasoningEffort

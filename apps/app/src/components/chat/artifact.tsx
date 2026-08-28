@@ -27,6 +27,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import {
   type ArtifactInteractionContext,
@@ -577,7 +578,7 @@ function ConversationOutputPanelContent({ messages, sessionId, sessionTitle, cli
               aria-label={t("session.files.mode_directory")}
               title={t("session.files.mode_directory")}
             >
-              <ListTree className="size-3.5" />
+              <ListTree className="size-4 text-current" strokeWidth={1.75} />
               <span>{t("session.files.mode_directory")}</span>
             </ToggleGroupItem>
             <ToggleGroupItem
@@ -587,7 +588,7 @@ function ConversationOutputPanelContent({ messages, sessionId, sessionTitle, cli
               aria-label={t("session.files.mode_outputs")}
               title={t("session.files.mode_outputs")}
             >
-              <Sparkles className="size-3.5" />
+              <Sparkles className="size-4 text-current" strokeWidth={1.75} />
               <span>{t("session.files.mode_outputs")}</span>
             </ToggleGroupItem>
           </ToggleGroup>
@@ -670,18 +671,24 @@ function ConversationOutputPanelContent({ messages, sessionId, sessionTitle, cli
 /** Small header control for the mutually-exclusive conversation output panel. */
 export function ConversationOutputTrigger({ active, disabled, onClick }: { active: boolean; disabled: boolean; onClick: () => void }) {
   return (
-    <Button
-      variant="ghost"
-      size="icon-sm"
-      className={cn("rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground", active && "bg-muted text-foreground")}
-      aria-label={t("session.files.open")}
-      title={t("session.files.open")}
-      aria-pressed={active}
-      disabled={disabled}
-      onClick={onClick}
-    >
-      <FilesIcon className="size-4" />
-    </Button>
+    <Tooltip>
+      <TooltipTrigger
+        render={(
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            className="size-8 rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+            aria-label={t("session.files.open")}
+            aria-pressed={active}
+            disabled={disabled}
+            onClick={onClick}
+          >
+            <FilesIcon className="size-4" strokeWidth={1.75} />
+          </Button>
+        )}
+      />
+      <TooltipContent>{t("session.files.open")}</TooltipContent>
+    </Tooltip>
   );
 }
 
