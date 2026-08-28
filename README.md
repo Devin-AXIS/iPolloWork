@@ -48,6 +48,8 @@ OpenCode is the default local execution runtime today. [DeepSeek Harness (DSH)](
 
 The collaboration model keeps iPolloWork as the project workspace: a task can delegate bounded work to DSH subagents when useful, then bring structured progress and results back into the same project. Each runtime retains its own agents, Skills, plugins, and execution model.
 
+For a practical, multilingual guide to installing, configuring, and evaluating DeepSeek Harness from an agent-builder's perspective, see the [DeepSeek Harness Handbook](https://github.com/sandbaseai/deepseek-harness-handbook). It is an independent companion resource, not a fork of iPolloWork or DeepSeek Harness.
+
 ### Run iPolloWork creative plugins directly in DeepSeek Harness
 
 DeepSeek Harness users can install iPolloWork's native Design, PPT, and Video views into the DSH Web UI and start them from any project directory:
