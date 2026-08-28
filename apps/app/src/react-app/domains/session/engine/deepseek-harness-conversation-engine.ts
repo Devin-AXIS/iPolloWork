@@ -15,6 +15,7 @@ import {
   type ConversationPermission,
   type ConversationPromptPart,
   type ConversationQuestion,
+  waitForConversationIdle,
 } from "./conversation-engine";
 import {
   deepSeekHarnessForkSeq,
@@ -437,7 +438,11 @@ function deepSeekHarnessConnection(input: {
     },
     async abort(sessionId) {
       await client.call("session.cancel", { sessionId });
-      return true;
+      return waitForConversationIdle(async () => {
+        const sessions = await client.call<{ items: Array<{ sessionId: string; running: boolean }> }>("session.list", {});
+        const session = sessions.items.find((item) => item.sessionId === sessionId);
+        return session?.running === false;
+      });
     },
     async revert() {
       throw new Error("DeepSeek Harness does not expose conversation revert");
@@ -495,18 +500,42 @@ function deepSeekHarnessConnection(input: {
     },
     async sendPrompt(request) {
       try {
+        if (request.signal?.aborted) return { sessionId: request.sessionId };
         await selectMode(request.sessionId, request.mode);
+        if (request.signal?.aborted) return { sessionId: request.sessionId };
         await selectModel(request);
+        if (request.signal?.aborted) return { sessionId: request.sessionId };
         await applySelectedAccessMode(request.sessionId);
+        if (request.signal?.aborted) return { sessionId: request.sessionId };
         const selectedAgents = [...new Set(
           request.parts.flatMap((part) => part.type === "agent" ? [part.name] : []),
         )];
-        await client.prompt({
-          sessionId: request.sessionId,
-          mode: "queue",
-          content: promptContent(request.parts, request.system),
-          clientTimeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-        }, selectedAgents.length > 0 ? { agents: selectedAgents } : undefined);
+        let promptSettled = false;
+        const cancelPendingPrompt = async () => {
+          const deadline = Date.now() + 5_000;
+          do {
+            await client.call("session.cancel", { sessionId: request.sessionId }).catch(() => undefined);
+            if (promptSettled) return;
+            await new Promise<void>((resolve) => setTimeout(resolve, 100));
+          } while (Date.now() < deadline);
+        };
+        const requestCancel = () => {
+          void cancelPendingPrompt();
+        };
+        request.signal?.addEventListener("abort", requestCancel);
+        try {
+          if (request.signal?.aborted) return { sessionId: request.sessionId };
+          await client.prompt({
+            sessionId: request.sessionId,
+            ...(request.clientUserMessageId ? { clientUserMessageId: request.clientUserMessageId } : {}),
+            mode: "queue",
+            content: promptContent(request.parts, request.system),
+            clientTimeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+          }, selectedAgents.length > 0 ? { agents: selectedAgents } : undefined);
+        } finally {
+          promptSettled = true;
+          request.signal?.removeEventListener("abort", requestCancel);
+        }
         mutableModes.set(request.sessionId, false);
         return { sessionId: request.sessionId };
       } catch (error) {

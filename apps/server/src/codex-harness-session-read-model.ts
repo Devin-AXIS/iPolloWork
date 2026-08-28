@@ -226,31 +226,38 @@ function messagePart(item: CodexThreadItem) {
 }
 
 export function mapCodexMessages(thread: CodexThread) {
-  return (thread.turns ?? []).flatMap((turn) => turn.items.flatMap((item) => {
-    const role = item.type === "userMessage" ? "user" : "assistant";
-    const parts = messagePart(item);
-    if (!parts.length) return [];
-    const messageId = item.type === "userMessage" && item.clientId?.trim()
-      ? item.clientId.trim()
-      : item.id;
-    const created = timestamp(turn.startedAt ?? thread.createdAt);
-    const completed = timestamp(turn.completedAt ?? turn.startedAt ?? thread.updatedAt);
-    return [{
-      info: {
-        id: messageId,
-        sessionID: thread.id,
-        role,
-        time: { created, completed },
-        ...(turn.status === "failed" ? { error: { name: "CodexError", data: { message: turn.error?.message } } } : {}),
-      },
-      parts: parts.map((part, index) => ({
-        ...part,
-        id: `${messageId}:${index}`,
-        messageID: messageId,
-        sessionID: thread.id,
-      })),
-    }];
-  }));
+  return (thread.turns ?? []).flatMap((turn) => {
+    const userItem = turn.items.find((item) => item.type === "userMessage");
+    const parentUserMessageId = userItem
+      ? userItem.clientId?.trim() || userItem.id
+      : undefined;
+    return turn.items.flatMap((item) => {
+      const role = item.type === "userMessage" ? "user" : "assistant";
+      const parts = messagePart(item);
+      if (!parts.length) return [];
+      const messageId = item.type === "userMessage" && item.clientId?.trim()
+        ? item.clientId.trim()
+        : item.id;
+      const created = timestamp(turn.startedAt ?? thread.createdAt);
+      const completed = timestamp(turn.completedAt ?? turn.startedAt ?? thread.updatedAt);
+      return [{
+        info: {
+          id: messageId,
+          sessionID: thread.id,
+          role,
+          ...(role === "assistant" && parentUserMessageId ? { parentID: parentUserMessageId } : {}),
+          time: { created, completed },
+          ...(turn.status === "failed" ? { error: { name: "CodexError", data: { message: turn.error?.message } } } : {}),
+        },
+        parts: parts.map((part, index) => ({
+          ...part,
+          id: `${messageId}:${index}`,
+          messageID: messageId,
+          sessionID: thread.id,
+        })),
+      }];
+    });
+  });
 }
 
 async function listPages(

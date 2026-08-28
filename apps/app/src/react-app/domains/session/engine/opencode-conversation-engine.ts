@@ -8,8 +8,10 @@ import {
   type ConversationEngineAdapter,
   type ConversationEngineConnection,
   type ConversationPermission,
+  waitForConversationIdle,
 } from "./conversation-engine";
 import {
+  createOpenCodeConversationLiveState,
   isOpenCodeV2Permission as isV2Permission,
   mapOpenCodeConversationEvent as mapEvent,
   mapOpenCodeConversationSnapshot as mapSnapshot,
@@ -123,6 +125,7 @@ function openCodeConnection(input: { baseUrl: string; token?: string; directory?
   });
   if (!isOpenCodeClient(client)) throw new Error("OpenCode conversation client is unavailable");
   const selectedAccessModes = new Map<string, OpenCodeAccessModeId>();
+  const liveState = createOpenCodeConversationLiveState();
 
   return {
     mapSnapshot(snapshot) {
@@ -142,7 +145,7 @@ function openCodeConnection(input: { baseUrl: string; token?: string; directory?
       const subscription = await client.event.subscribe(undefined, { signal: input.signal });
       for await (const raw of subscription.stream) {
         if (input.signal.aborted) return;
-        const event = mapEvent(raw);
+        const event = mapEvent(raw, liveState);
         if (event) input.onEvent(event);
       }
     },
@@ -200,7 +203,13 @@ function openCodeConnection(input: { baseUrl: string; token?: string; directory?
       return mapSession(unwrap(await client.session.create({ directory })));
     },
     async abort(sessionId, directory) {
-      return unwrap(await client.session.abort({ sessionID: sessionId, directory })) === true;
+      const accepted = unwrap(await client.session.abort({ sessionID: sessionId, directory })) === true;
+      if (!accepted) return false;
+      return waitForConversationIdle(async () => {
+        const statuses = unwrap(await client.session.status({ directory }));
+        const status = statuses[sessionId];
+        return !status || status.type === "idle";
+      });
     },
     async revert(sessionId, messageId) {
       return mapSession(unwrap(await client.session.revert({ sessionID: sessionId, messageID: messageId })));
@@ -240,6 +249,7 @@ function openCodeConnection(input: { baseUrl: string; token?: string; directory?
       if (result.error !== undefined) unwrap(result);
     },
     async sendPrompt(input) {
+      if (input.signal?.aborted) return { sessionId: input.sessionId };
       const agent = resolveOpenCodeWorkModeName(input.mode);
       const syntheticInstructions = input.parts.flatMap((part) => (
         part.type === "text" && part.synthetic && part.text.trim()
@@ -251,20 +261,33 @@ function openCodeConnection(input: { baseUrl: string; token?: string; directory?
         ? `Authoritative iPolloWork runtime model selection for this turn: ${JSON.stringify(input.model)}. When asked which model is running, report this selection exactly. Do not infer or claim a different model identity from earlier messages, training data, or generated self-description.`
         : "";
       const system = [input.system?.trim(), ...syntheticInstructions, runtimeModelContext].filter(Boolean).join("\n\n");
-      const result = await client.session.promptAsync({
-        sessionID: input.sessionId,
-        parts: promptParts,
-        model: input.model,
-        agent,
-        ...(input.reasoningEffort
-          ? { reasoning_effort: input.reasoningEffort }
-          : input.variant
-            ? { variant: input.variant }
-            : {}),
-        ...(system ? { system } : {}),
-      });
-      if (result.error !== undefined) unwrap(result);
-      return { sessionId: input.sessionId };
+      const requestAbort = () => {
+        void client.session.abort({ sessionID: input.sessionId }).catch(() => undefined);
+      };
+      input.signal?.addEventListener("abort", requestAbort);
+      try {
+        if (input.signal?.aborted) return { sessionId: input.sessionId };
+        const result = await client.session.promptAsync({
+          sessionID: input.sessionId,
+          messageID: input.clientUserMessageId,
+          parts: promptParts,
+          model: input.model,
+          agent,
+          ...(input.reasoningEffort
+            ? { reasoning_effort: input.reasoningEffort }
+            : input.variant
+              ? { variant: input.variant }
+              : {}),
+          ...(system ? { system } : {}),
+        });
+        if (result.error !== undefined) unwrap(result);
+        if (input.signal?.aborted) {
+          await client.session.abort({ sessionID: input.sessionId }).catch(() => undefined);
+        }
+        return { sessionId: input.sessionId };
+      } finally {
+        input.signal?.removeEventListener("abort", requestAbort);
+      }
     },
     async listCommands(directory) {
       try {

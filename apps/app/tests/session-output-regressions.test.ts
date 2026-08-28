@@ -426,7 +426,7 @@ describe("session output issue regressions", () => {
     );
 
     expect(source).toContain('if (liveStatus.type === "busy" || activityRunActive)');
-    expect(source).toContain("}, [activityRunActive, liveStatus, sending]);");
+    expect(source).toContain("}, [activityRunActive, liveStatus, sending, stopAcknowledged]);");
   });
 
   test("the final assistant result enters from the left after a live run", () => {

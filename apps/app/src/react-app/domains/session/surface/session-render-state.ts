@@ -41,7 +41,7 @@ export function deriveRenderedSessionMessages(input: {
     ? mergeSnapshotAndLiveMessages(snapshotMessages, liveMessages, { appendLiveOnlyMessages: true })
     : liveMessages;
 
-  return applyRevertCursor(messages, revertMessageId);
+  return applyRevertCursor(messages, revertMessageId, { preserveOptimisticUserMessages: true });
 }
 
 export function deriveComposerInputHistory(messages: UIMessage[]): string[] {

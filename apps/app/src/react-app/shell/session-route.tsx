@@ -1176,6 +1176,8 @@ export function SessionRoute() {
       ): Promise<PromptDispatchOutcome> => {
         const targetSessionId = sessionId.trim() || selectedSessionId;
         if (!targetSessionId) return false;
+        const dispatchSignal = dispatchOptions?.signal;
+        if (dispatchSignal?.aborted) return false;
         const projectBuilderActive = isProjectBuilderSession(selectedWorkspaceId, targetSessionId);
         if (projectBuilderActive) {
           if (!selectedWorkspaceEndpoint) throw new Error(t("work.project_unavailable"));
@@ -1201,6 +1203,11 @@ export function SessionRoute() {
             { status, error: error ?? null },
           ).catch((finishError) => console.warn("[project-execution] could not persist the send result", finishError));
           invalidateProjectExecutionQueries();
+        };
+        const stopDispatchIfRequested = async () => {
+          if (!dispatchSignal?.aborted) return false;
+          await finishStartedExecution("failed", "Stopped by user before model dispatch");
+          return true;
         };
 
         if (!projectBuilderActive && selectedWorkspaceEndpoint) {
@@ -1233,6 +1240,7 @@ export function SessionRoute() {
           projectSystemContext = projectExecutionSystemContext(item.execution);
           invalidateProjectExecutionQueries();
         }
+        if (await stopDispatchIfRequested()) return false;
 
         const effectiveModelUnavailable = Boolean(
           providerListQuery.data && (
@@ -1383,6 +1391,7 @@ export function SessionRoute() {
               })
             : Promise.resolve([]),
         ]);
+        if (await stopDispatchIfRequested()) return false;
         const attachmentInstruction = persistedAttachmentInstruction(persistedAttachments);
         if (attachmentInstruction) {
           parts.push({ type: "text", text: attachmentInstruction, synthetic: true });
@@ -1400,6 +1409,7 @@ export function SessionRoute() {
             ? selectedWorkspaceEndpoint.client.listTemplateSessions(selectedWorkspaceEndpoint.workspaceId).catch(() => ({ items: [] }))
             : Promise.resolve({ items: [] as TemplateSessionSnapshot[] }),
         ]);
+        if (await stopDispatchIfRequested()) return false;
         const conversationTemplates = workspaceTemplateSessions.items.filter((template) =>
           isConversationTemplateSessionId(targetSessionId, template.sessionId),
         );
@@ -1443,6 +1453,7 @@ export function SessionRoute() {
             );
             const occupiedTemplateSessionIds = conversationTemplates.map((template) => template.sessionId);
             for (const intent of automaticTemplateIntents) {
+              if (await stopDispatchIfRequested()) return false;
               const artifactSessionId = nextConversationArtifactSessionId(
                 targetSessionId,
                 intent.category,
@@ -1583,6 +1594,7 @@ export function SessionRoute() {
         // website-style snapshots before each AI turn.
         if (selectedWorkspaceEndpoint) {
           for (const designTemplate of designSessionTemplates) {
+            if (await stopDispatchIfRequested()) return false;
             if (designTemplate.manifest.category !== "site") continue;
             const designPath = designTemplate.state.entry;
             try {
@@ -1664,6 +1676,7 @@ export function SessionRoute() {
           ...artifactNamingPromptPart,
           ...parts,
         ];
+        if (await stopDispatchIfRequested()) return false;
         if (designSelectionContexts.length > 0 && !selectedWorkspaceEndpoint) {
           throw new Error("The selected Design element is no longer available in this workspace.");
         }
@@ -1676,6 +1689,7 @@ export function SessionRoute() {
           prompt: () => conversation.sendPrompt({
             sessionId: targetSessionId,
             clientUserMessageId: dispatchOptions?.clientUserMessageId,
+            signal: dispatchSignal,
             parts: promptParts,
             model: effectiveModel ?? undefined,
             mode: effectiveMode ?? undefined,
@@ -1873,7 +1887,9 @@ export function SessionRoute() {
         previous.sessionId !== current.sessionId ||
         previous.connectionKey !== current.connectionKey)
     ) {
-      destroyWorkspaceSessionResources(previous, previous.sessionId);
+      destroyWorkspaceSessionResources(previous, previous.sessionId, {
+        preserveInterruptedRun: true,
+      });
     }
     previousSessionScopeRef.current = current;
   }, [
@@ -2905,6 +2921,7 @@ export function SessionRoute() {
       open={modelPicker.open}
       options={modelPicker.options}
       modelsLoading={modelPicker.modelsLoading}
+      engineId={activeEngineId}
 
       query={modelPicker.query}
       setQuery={modelPicker.setQuery}

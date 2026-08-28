@@ -13,6 +13,21 @@ export type ReconcileTranscriptInput = {
   reason?: TranscriptReconcileReason;
 };
 
+type ApplyRevertCursorOptions = {
+  /**
+   * A snapshot can finish after the user has already submitted a replacement
+   * turn. Keep that newer client-owned row visible until the engine confirms
+   * it, even when the snapshot still carries the previous branch's cursor.
+   */
+  preserveOptimisticUserMessages?: boolean;
+};
+
+function isOptimisticUserMessage(message: UIMessage) {
+  if (message.role !== "user" || !message.metadata || typeof message.metadata !== "object") return false;
+  const metadata = "ipollowork" in message.metadata ? message.metadata.ipollowork : null;
+  return Boolean(metadata && typeof metadata === "object" && "optimistic" in metadata && metadata.optimistic === true);
+}
+
 /**
  * Reconcile a server snapshot into the canonical transcript cache.
  *
@@ -41,9 +56,18 @@ export function reconcileTranscriptMessages(input: ReconcileTranscriptInput): UI
  * (every message with `id >= revert.messageID` is reverted), so the cursor
  * message itself must be hidden too.
  */
-export function applyRevertCursor(messages: UIMessage[], revertMessageId: string | null | undefined): UIMessage[] {
+export function applyRevertCursor(
+  messages: UIMessage[],
+  revertMessageId: string | null | undefined,
+  options: ApplyRevertCursorOptions = {},
+): UIMessage[] {
   if (!revertMessageId || messages.length === 0) return messages;
   const idx = messages.findIndex((message) => message.id === revertMessageId);
   if (idx < 0) return messages;
-  return messages.slice(0, idx);
+  const retained = messages.slice(0, idx);
+  if (!options.preserveOptimisticUserMessages) return retained;
+  return [
+    ...retained,
+    ...messages.slice(idx).filter(isOptimisticUserMessage),
+  ];
 }

@@ -11,6 +11,7 @@ import type {
 } from "../src/react-app/domains/session/engine/conversation-engine";
 import { mapOpenCodeConversationEvent } from "../src/react-app/domains/session/engine/opencode-conversation-mapper";
 import { persistentPermissionPatterns } from "../src/react-app/domains/session/sync/use-session-interactions";
+import { deriveRenderedSessionMessages } from "../src/react-app/domains/session/surface/session-render-state";
 import {
   __applySessionSyncEventForTest,
   __createWorkspaceSessionSyncForTest,
@@ -23,9 +24,11 @@ import {
   permissionKey,
   questionKey,
   rollbackOptimisticSessionPrompt,
+  sanitizeInterruptedSessionSnapshot,
   seedPermissionState,
   seedQuestionState,
   seedSessionState,
+  settleInterruptedSessionRun,
   snapshotKey,
   statusKey,
   todoKey,
@@ -90,16 +93,38 @@ function question(id: string, sessionId: string): ConversationQuestion {
   };
 }
 
-function uiMessage(id: string, role: "user" | "assistant", text: string): UIMessage {
+function uiMessage(
+  id: string,
+  role: "user" | "assistant",
+  text: string,
+  options: { created?: number; parentUserMessageId?: string } = {},
+): UIMessage {
+  const ipollowork = {
+    ...(typeof options.created === "number" ? { created: options.created } : {}),
+    ...(options.parentUserMessageId ? { parentUserMessageId: options.parentUserMessageId } : {}),
+  };
   return {
     id,
     role,
+    ...(Object.keys(ipollowork).length > 0 ? { metadata: { ipollowork } } : {}),
     parts: [{ type: "text", text, state: "done" }],
   };
 }
 
+function messageVisibleTextForTest(message: UIMessage) {
+  return message.parts
+    .flatMap((part) => part.type === "text" || part.type === "reasoning" ? [part.text] : [])
+    .join("");
+}
+
 function snapshotWithMessages(
-  messages: Array<{ id: string; role: "user" | "assistant"; text: string }>,
+  messages: Array<{
+    id: string;
+    role: "user" | "assistant";
+    text: string;
+    created?: number;
+    parentUserMessageId?: string;
+  }>,
   sessionId = "session-a",
 ): ConversationSnapshot {
   return {
@@ -108,7 +133,7 @@ function snapshotWithMessages(
       title: "Test session",
       time: { created: 1, updated: 2 },
     },
-    messages: messages.map((message) => uiMessage(message.id, message.role, message.text)),
+    messages: messages.map((message) => uiMessage(message.id, message.role, message.text, message)),
     todos: [],
     status: { type: "idle" },
   };
@@ -127,6 +152,8 @@ function applyOpenCodeEvent(input: typeof syncInput, event: unknown) {
 }
 
 afterEach(() => {
+  destroyWorkspaceSessionResources(syncInput, "session-a");
+  destroyWorkspaceSessionResources(syncInput, "session-b");
   getReactQueryClient().clear();
 });
 
@@ -319,6 +346,38 @@ describe("session transcript sync", () => {
     ]);
   });
 
+  test("keeps a prompt submitted after interruption visible across a stale reverted snapshot", () => {
+    const interruptedSnapshot = snapshotWithMessages([
+      { id: "msg-user-old", role: "user", text: "123" },
+      { id: "msg-assistant-interrupted", role: "assistant", text: "partial" },
+    ]);
+    interruptedSnapshot.session.revertMessageId = "msg-assistant-interrupted";
+    seedSessionState("workspace-a", interruptedSnapshot);
+
+    beginOptimisticSessionPrompt(
+      "workspace-a",
+      "session-a",
+      "暂停后发送的新消息",
+      "ipollowork-user-after-stop",
+    );
+    seedSessionState("workspace-a", interruptedSnapshot);
+
+    const transcript = getReactQueryClient().getQueryData<UIMessage[]>(
+      transcriptKey("workspace-a", "session-a"),
+    ) ?? [];
+    expect(transcript.map((message) => message.id)).toEqual([
+      "msg-user-old",
+      "ipollowork-user-after-stop",
+    ]);
+    expect(deriveRenderedSessionMessages({
+      transcriptState: transcript,
+      snapshot: interruptedSnapshot,
+    }).map((message) => message.id)).toEqual([
+      "msg-user-old",
+      "ipollowork-user-after-stop",
+    ]);
+  });
+
   test("replaces an optimistic user prompt when an OpenCode event confirms the same text", () => {
     const cleanup = __createWorkspaceSessionSyncForTest(syncInput);
     const releaseSession = trackWorkspaceSessionSync(syncInput, "session-a");
@@ -409,6 +468,290 @@ describe("session transcript sync", () => {
         parts: [expect.objectContaining({ text: "snapshot prompt" })],
       }),
     ]);
+  });
+
+  test("keeps a repeated optimistic prompt until a new matching occurrence is confirmed", () => {
+    seedSessionState("workspace-a", snapshotWithMessages([
+      { id: "msg-user-old", role: "user", text: "123" },
+      { id: "msg-assistant-old", role: "assistant", text: "old answer" },
+    ]));
+    beginOptimisticSessionPrompt("workspace-a", "session-a", "123", "ipollowork-user-repeat");
+
+    seedSessionState("workspace-a", snapshotWithMessages([
+      { id: "msg-user-old", role: "user", text: "123" },
+      { id: "msg-assistant-old", role: "assistant", text: "old answer" },
+    ]));
+    expect(getReactQueryClient().getQueryData<UIMessage[]>(transcriptKey("workspace-a", "session-a"))?.map((message) => message.id))
+      .toEqual(["msg-user-old", "msg-assistant-old", "ipollowork-user-repeat"]);
+
+    seedSessionState("workspace-a", snapshotWithMessages([
+      { id: "msg-user-old", role: "user", text: "123" },
+      { id: "msg-assistant-old", role: "assistant", text: "old answer" },
+      { id: "msg-user-repeat", role: "user", text: "123" },
+    ]));
+    expect(getReactQueryClient().getQueryData<UIMessage[]>(transcriptKey("workspace-a", "session-a"))?.map((message) => message.id))
+      .toEqual(["msg-user-old", "msg-assistant-old", "msg-user-repeat"]);
+  });
+
+  test("keeps two identical prompts when both are still optimistic across an immediate stop", () => {
+    beginOptimisticSessionPrompt("workspace-a", "session-a", "123", "ipollowork-user-first");
+    settleInterruptedSessionRun("workspace-a", "session-a");
+    beginOptimisticSessionPrompt("workspace-a", "session-a", "123", "ipollowork-user-second");
+
+    const transcript = getReactQueryClient().getQueryData<UIMessage[]>(
+      transcriptKey("workspace-a", "session-a"),
+    ) ?? [];
+    expect(transcript.map((message) => message.id)).toEqual([
+      "ipollowork-user-first",
+      "ipollowork-user-second",
+    ]);
+    expect(transcript.map(messageVisibleTextForTest)).toEqual(["123", "123"]);
+  });
+
+  test("keeps the stopped duplicate when a snapshot confirms only the newer identical prompt", () => {
+    beginOptimisticSessionPrompt("workspace-a", "session-a", "123", "ipollowork-user-first");
+    settleInterruptedSessionRun("workspace-a", "session-a");
+    beginOptimisticSessionPrompt("workspace-a", "session-a", "123", "ipollowork-user-second");
+    seedSessionState("workspace-a", snapshotWithMessages([
+      { id: "ipollowork-user-second", role: "user", text: "123" },
+    ]));
+    expect(getReactQueryClient().getQueryData<UIMessage[]>(transcriptKey("workspace-a", "session-a"))?.map((message) => message.id))
+      .toEqual(["ipollowork-user-first", "ipollowork-user-second"]);
+
+    beginOptimisticSessionPrompt("workspace-a", "session-b", "123", "ipollowork-user-first-dsh");
+    settleInterruptedSessionRun("workspace-a", "session-b");
+    beginOptimisticSessionPrompt("workspace-a", "session-b", "123", "ipollowork-user-second-dsh");
+    seedSessionState("workspace-a", snapshotWithMessages([
+      { id: "dsh-user-second", role: "user", text: "123", created: Date.now() + 1_000 },
+    ], "session-b"));
+    expect(getReactQueryClient().getQueryData<UIMessage[]>(transcriptKey("workspace-a", "session-b"))?.map((message) => message.id))
+      .toEqual(["ipollowork-user-first-dsh", "dsh-user-second"]);
+  });
+
+  test("does not let live parts for the newer duplicate acknowledge the stopped optimistic row", () => {
+    const cleanup = __createWorkspaceSessionSyncForTest(syncInput);
+    const releaseSession = trackWorkspaceSessionSync(syncInput, "session-a");
+    beginOptimisticSessionPrompt("workspace-a", "session-a", "123", "ipollowork-user-first");
+    settleInterruptedSessionRun("workspace-a", "session-a");
+    beginOptimisticSessionPrompt("workspace-a", "session-a", "123", "ipollowork-user-second");
+
+    try {
+      __applySessionSyncEventForTest(syncInput, {
+        type: "message.upsert",
+        sessionId: "session-a",
+        message: { id: "ipollowork-user-second", role: "user", parts: [] },
+      });
+      __applySessionSyncEventForTest(syncInput, {
+        type: "message.parts",
+        sessionId: "session-a",
+        messageId: "ipollowork-user-second",
+        partId: "second-text",
+        parts: [{ type: "text", text: "123", state: "done" }],
+        messageRole: "user",
+        visibleAssistantOutput: false,
+      });
+      expect(getReactQueryClient().getQueryData<UIMessage[]>(transcriptKey("workspace-a", "session-a"))?.map((message) => message.id))
+        .toEqual(["ipollowork-user-first", "ipollowork-user-second"]);
+    } finally {
+      releaseSession();
+      cleanup();
+    }
+  });
+
+  test("freezes an interrupted run and admits only the next acknowledged turn", () => {
+    const cleanup = __createWorkspaceSessionSyncForTest(syncInput);
+    const releaseSession = trackWorkspaceSessionSync(syncInput, "session-a");
+    seedSessionState("workspace-a", snapshotWithMessages([
+      { id: "msg-user-old", role: "user", text: "123" },
+      { id: "msg-assistant-partial", role: "assistant", text: "partial" },
+    ]));
+    settleInterruptedSessionRun("workspace-a", "session-a");
+
+    try {
+      __applySessionSyncEventForTest(syncInput, {
+        type: "session.status",
+        sessionId: "session-a",
+        status: { type: "busy" },
+      });
+      __applySessionSyncEventForTest(syncInput, {
+        type: "message.upsert",
+        sessionId: "session-a",
+        message: uiMessage("msg-assistant-late", "assistant", "late answer"),
+      });
+      expect(getReactQueryClient().getQueryData(statusKey("workspace-a", "session-a"))).toEqual({ type: "idle" });
+      expect(getReactQueryClient().getQueryData<UIMessage[]>(transcriptKey("workspace-a", "session-a"))?.map((message) => message.id))
+        .toEqual(["msg-user-old", "msg-assistant-partial"]);
+
+      beginOptimisticSessionPrompt("workspace-a", "session-a", "123", "ipollowork-user-repeat");
+      seedSessionState("workspace-a", snapshotWithMessages([
+        { id: "msg-user-old", role: "user", text: "123" },
+        { id: "msg-assistant-partial", role: "assistant", text: "late completed answer" },
+      ]));
+      expect(getReactQueryClient().getQueryData<UIMessage[]>(transcriptKey("workspace-a", "session-a"))?.at(-1)?.id)
+        .toBe("ipollowork-user-repeat");
+
+      __applySessionSyncEventForTest(syncInput, {
+        type: "message.upsert",
+        sessionId: "session-a",
+        message: uiMessage("ipollowork-user-repeat", "user", "123"),
+      });
+      __applySessionSyncEventForTest(syncInput, {
+        type: "session.status",
+        sessionId: "session-a",
+        status: { type: "busy" },
+      });
+      __applySessionSyncEventForTest(syncInput, {
+        type: "message.upsert",
+        sessionId: "session-a",
+        message: uiMessage("msg-assistant-new", "assistant", "new answer"),
+      });
+      expect(getReactQueryClient().getQueryData(statusKey("workspace-a", "session-a"))).toEqual({ type: "busy" });
+      expect(getReactQueryClient().getQueryData<UIMessage[]>(transcriptKey("workspace-a", "session-a"))?.map((message) => message.id))
+        .toEqual(["msg-user-old", "msg-assistant-partial", "ipollowork-user-repeat", "msg-assistant-new"]);
+    } finally {
+      releaseSession();
+      cleanup();
+    }
+  });
+
+  test("never resurrects a stopped turn after the next identical turn completes", () => {
+    const cleanup = __createWorkspaceSessionSyncForTest(syncInput);
+    const releaseSession = trackWorkspaceSessionSync(syncInput, "session-a");
+    beginOptimisticSessionPrompt("workspace-a", "session-a", "123", "ipollowork-user-first");
+    settleInterruptedSessionRun("workspace-a", "session-a", "ipollowork-user-first");
+    beginOptimisticSessionPrompt("workspace-a", "session-a", "123", "ipollowork-user-second");
+
+    try {
+      __applySessionSyncEventForTest(syncInput, {
+        type: "message.upsert",
+        sessionId: "session-a",
+        message: uiMessage("ipollowork-user-second", "user", "123", { created: 200 }),
+      });
+      __applySessionSyncEventForTest(syncInput, {
+        type: "message.upsert",
+        sessionId: "session-a",
+        message: uiMessage("assistant-second", "assistant", "second answer", {
+          created: 210,
+          parentUserMessageId: "ipollowork-user-second",
+        }),
+      });
+      __applySessionSyncEventForTest(syncInput, {
+        type: "message.parts",
+        sessionId: "session-a",
+        messageId: "assistant-first-late",
+        partId: "late-text",
+        parts: [{ type: "text", text: "late", state: "streaming" }],
+        messageRole: "assistant",
+        parentUserMessageId: "ipollowork-user-first",
+        visibleAssistantOutput: true,
+      });
+      __applySessionSyncEventForTest(syncInput, {
+        type: "message.chunk",
+        sessionId: "session-a",
+        messageId: "assistant-first-late",
+        parentUserMessageId: "ipollowork-user-first",
+        chunk: { type: "text-delta", id: "late-text", delta: " first answer" },
+      });
+      __applySessionSyncEventForTest(syncInput, {
+        type: "message.upsert",
+        sessionId: "session-a",
+        message: uiMessage("assistant-first-late", "assistant", "late first answer", {
+          created: 100,
+          parentUserMessageId: "ipollowork-user-first",
+        }),
+      });
+
+      expect(getReactQueryClient().getQueryData<UIMessage[]>(transcriptKey("workspace-a", "session-a"))?.map((message) => message.id))
+        .toEqual(["ipollowork-user-first", "ipollowork-user-second", "assistant-second"]);
+
+      const replayedSnapshot = snapshotWithMessages([
+        { id: "ipollowork-user-first", role: "user", text: "123", created: 90 },
+        {
+          id: "assistant-first-late",
+          role: "assistant",
+          text: "late first answer",
+          created: 100,
+          parentUserMessageId: "ipollowork-user-first",
+        },
+        { id: "ipollowork-user-second", role: "user", text: "123", created: 200 },
+        {
+          id: "assistant-second",
+          role: "assistant",
+          text: "second answer",
+          created: 210,
+          parentUserMessageId: "ipollowork-user-second",
+        },
+      ]);
+      const sanitized = sanitizeInterruptedSessionSnapshot("workspace-a", replayedSnapshot);
+      expect(sanitized.messages.map((message) => message.id)).toEqual([
+        "ipollowork-user-first",
+        "ipollowork-user-second",
+        "assistant-second",
+      ]);
+
+      seedSessionState("workspace-a", replayedSnapshot);
+      const transcript = getReactQueryClient().getQueryData<UIMessage[]>(
+        transcriptKey("workspace-a", "session-a"),
+      ) ?? [];
+      expect(transcript.map((message) => message.id)).toEqual([
+        "ipollowork-user-first",
+        "ipollowork-user-second",
+        "assistant-second",
+      ]);
+      expect(deriveRenderedSessionMessages({ transcriptState: transcript, snapshot: sanitized }).map((message) => message.id))
+        .toEqual(["ipollowork-user-first", "ipollowork-user-second", "assistant-second"]);
+    } finally {
+      releaseSession();
+      cleanup();
+    }
+  });
+
+  test("binds a stop to the authoritative user id after the optimistic id is replaced", () => {
+    const cleanup = __createWorkspaceSessionSyncForTest(syncInput);
+    const releaseSession = trackWorkspaceSessionSync(syncInput, "session-a");
+    beginOptimisticSessionPrompt("workspace-a", "session-a", "123", "ipollowork-user-first");
+
+    try {
+      __applySessionSyncEventForTest(syncInput, {
+        type: "message.upsert",
+        sessionId: "session-a",
+        message: uiMessage("engine-user-first", "user", "123", { created: 100 }),
+      });
+      settleInterruptedSessionRun("workspace-a", "session-a", "ipollowork-user-first");
+      beginOptimisticSessionPrompt("workspace-a", "session-a", "123", "ipollowork-user-second");
+      __applySessionSyncEventForTest(syncInput, {
+        type: "message.upsert",
+        sessionId: "session-a",
+        message: uiMessage("ipollowork-user-second", "user", "123", { created: 200 }),
+      });
+      __applySessionSyncEventForTest(syncInput, {
+        type: "message.upsert",
+        sessionId: "session-a",
+        message: uiMessage("assistant-second", "assistant", "second answer", {
+          created: 210,
+          parentUserMessageId: "ipollowork-user-second",
+        }),
+      });
+      __applySessionSyncEventForTest(syncInput, {
+        type: "message.upsert",
+        sessionId: "session-a",
+        message: uiMessage("assistant-first-late", "assistant", "late first answer", {
+          created: 110,
+          parentUserMessageId: "engine-user-first",
+        }),
+      });
+
+      expect(getReactQueryClient().getQueryData<UIMessage[]>(
+        transcriptKey("workspace-a", "session-a"),
+      )?.map((message) => message.id)).toEqual([
+        "engine-user-first",
+        "ipollowork-user-second",
+        "assistant-second",
+      ]);
+    } finally {
+      releaseSession();
+      cleanup();
+    }
   });
 
   test("rolls back only a prompt that the engine has not acknowledged", () => {
@@ -545,6 +888,53 @@ describe("session transcript sync", () => {
     } finally {
       cleanup();
     }
+  });
+
+  test("keeps a stopped-run tombstone when leaving and re-entering a session", () => {
+    beginOptimisticSessionPrompt("workspace-a", "session-a", "123", "ipollowork-user-first");
+    settleInterruptedSessionRun("workspace-a", "session-a", "ipollowork-user-first");
+    beginOptimisticSessionPrompt("workspace-a", "session-a", "123", "ipollowork-user-second");
+    seedSessionState("workspace-a", snapshotWithMessages([
+      { id: "ipollowork-user-first", role: "user", text: "123", created: 100 },
+      { id: "ipollowork-user-second", role: "user", text: "123", created: Date.now() + 1_000 },
+      {
+        id: "assistant-second",
+        role: "assistant",
+        text: "second answer",
+        created: Date.now() + 1_100,
+        parentUserMessageId: "ipollowork-user-second",
+      },
+    ]));
+
+    destroyWorkspaceSessionResources(syncInput, "session-a", {
+      preserveInterruptedRun: true,
+    });
+    seedSessionState("workspace-a", snapshotWithMessages([
+      { id: "ipollowork-user-first", role: "user", text: "123", created: 100 },
+      {
+        id: "assistant-first-late",
+        role: "assistant",
+        text: "late first answer",
+        created: 110,
+        parentUserMessageId: "ipollowork-user-first",
+      },
+      { id: "ipollowork-user-second", role: "user", text: "123", created: 200 },
+      {
+        id: "assistant-second",
+        role: "assistant",
+        text: "second answer",
+        created: 210,
+        parentUserMessageId: "ipollowork-user-second",
+      },
+    ]));
+
+    expect(getReactQueryClient().getQueryData<UIMessage[]>(
+      transcriptKey("workspace-a", "session-a"),
+    )?.map((message) => message.id)).toEqual([
+      "ipollowork-user-first",
+      "ipollowork-user-second",
+      "assistant-second",
+    ]);
   });
 
   test("keeps workspace stream alive while retained sessions remain after route unmount", async () => {
