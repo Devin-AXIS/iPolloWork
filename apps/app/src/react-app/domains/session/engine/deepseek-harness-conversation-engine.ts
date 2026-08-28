@@ -162,9 +162,20 @@ function promptContent(
     { type: "text"; text: string }
     | { type: "image"; mediaType: "image/png" | "image/jpeg" | "image/webp" | "image/gif"; data: string; name?: string }
   > = [];
+  if (system?.trim()) {
+    content.push({
+      type: "text",
+      text: internalPromptText(system.trim()),
+    });
+  }
+  for (const part of parts) {
+    if (part.type === "text" && part.synthetic && part.text.trim()) {
+      content.push({ type: "text", text: internalPromptText(part.text.trim()) });
+    }
+  }
   for (const part of parts) {
     if (part.type === "text") {
-      content.push({ type: "text", text: part.synthetic ? internalPromptText(part.text) : part.text });
+      if (!part.synthetic) content.push({ type: "text", text: part.text });
       continue;
     }
     if (part.type === "agent") {
@@ -191,12 +202,6 @@ function promptContent(
     content.push({
       type: "text",
       text: `[Attached file: ${part.filename || "file"}]\n${part.url}`,
-    });
-  }
-  if (system?.trim()) {
-    content.push({
-      type: "text",
-      text: internalPromptText(system.trim()),
     });
   }
   return content;

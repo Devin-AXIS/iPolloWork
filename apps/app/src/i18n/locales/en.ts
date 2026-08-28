@@ -2153,7 +2153,7 @@ export default {
   "session.outputs.expand_bundle": "Show included files",
   "session.outputs.collapse_bundle": "Hide included files",
   "session.files.title": "Files",
-  "session.files.open": "Show task files",
+  "session.files.open": "Output files",
   "session.files.mode_label": "File display mode",
   "session.files.mode_directory": "Directory",
   "session.files.mode_outputs": "Outputs",
