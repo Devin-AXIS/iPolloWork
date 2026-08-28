@@ -325,6 +325,38 @@ describe("session question sync", () => {
 });
 
 describe("session transcript sync", () => {
+  test("keeps native session metadata while applying the first DSH turn update", () => {
+    const cleanup = __createWorkspaceSessionSyncForTest(syncInput);
+    const releaseSession = trackWorkspaceSessionSync(syncInput, "session-a");
+    const snapshot = snapshotWithMessages([]);
+    snapshot.session.dsh = { blank: true, running: false, agentPreset: "standard" };
+    getReactQueryClient().setQueryData(snapshotKey("workspace-a", "session-a"), snapshot);
+
+    try {
+      __applySessionSyncEventForTest(syncInput, {
+        type: "session.updated",
+        sessionId: "session-a",
+        info: {
+          id: "session-a",
+          time: { updated: 10 },
+          dsh: { blank: false, running: true },
+        },
+      });
+
+      expect(getReactQueryClient().getQueryData<ConversationSnapshot>(
+        snapshotKey("workspace-a", "session-a"),
+      )?.session).toMatchObject({
+        id: "session-a",
+        title: "Test session",
+        time: { created: 1, updated: 10 },
+        dsh: { blank: false, running: true, agentPreset: "standard" },
+      });
+    } finally {
+      releaseSession();
+      cleanup();
+    }
+  });
+
   test("shows an accepted prompt as busy before a stale Codex snapshot catches up", () => {
     const messageId = beginOptimisticSessionPrompt(
       "workspace-a",
