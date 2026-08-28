@@ -41,6 +41,8 @@ export type ConversationTemplateIntent = {
 const CREATIVE_DELIVERABLE_ACTION = /(?:生成|制作|创建|设计|开发|搭建|编写|起草|输出|写(?:一份|一个|一套|一篇)?|做(?:一份|一个|一套|一张|一段|个)?|\b(?:create|build|develop|make|generate|design|produce|draft|write)\b)/i;
 const EXPLANATION_ONLY_REQUEST = /(?:怎么|如何)(?:做|制作|创建|设计|生成)|(?:做|制作|创建|设计|生成).{0,12}(?:需要什么|用什么|有哪些|是什么|怎么|如何)|(?:什么|哪些).{0,8}(?:工具|方法|步骤)|(?:解释|介绍|教程|方法|步骤).{0,12}(?:ppt|幻灯片|演示文稿|视频|网页|网站|海报|报告|文章)|\bhow\s+(?:do|can|should|would)\b|\bhow\s+to\b|\bwhat\s+(?:tools?|steps?|methods?|software)\b|\bwhy\b/i;
 const PLAN_ONLY_REQUEST = /(?:视频|动画|宣传片|短片)\s*(?:脚本|文案|创意方案)|(?:ppt|幻灯片|演示文稿)\s*(?:大纲|提纲)|(?:网页|网站)\s*(?:需求文档|策划方案)/i;
+const EXISTING_TEMPLATE_EDIT_ACTION = /(?:修改|编辑|调整|优化|更新|完善|修复|改进|改成|改为|换成|换为|替换|重做|重新制作|继续(?:做|改|编辑|调整|优化|完善)|增加|添加|加上|插入|删除|移除|去掉|缩短|延长|放大|缩小|导出|渲染|\b(?:edit|change|update|revise|adjust|optimize|improve|fix|replace|restyle|rewrite|continue|add|insert|remove|delete|shorten|extend|resize|export|render)\b)/i;
+const EXISTING_TEMPLATE_EDIT_QUESTION = /^(?:请)?(?:告诉我)?\s*(?:怎么|如何)|^(?:can you explain\s+)?how\s+(?:do|can|should|would|to)\b/i;
 const CUSTOM_TEMPLATE_REQUEST = /(?:自定义(?:模板|模版|样式|设计)?|空白(?:模板|模版|骨架)?)(?:.{0,12}(?:ppt|幻灯片|演示文稿|视频|网页|网站|海报|卡片|报告|文章))?|(?:不用|不要|不使用|别用)(?:任何)?(?:系统|市场|现有|预设)?\s*(?:模板|模版)|\b(?:custom|blank|from scratch|without (?:a |the )?template|no template)\b/i;
 
 const CATEGORY_INTENT_PATTERNS: ReadonlyArray<{
@@ -121,6 +123,14 @@ export function inferConversationTemplateIntents(prompt: string): ConversationTe
   return CATEGORY_INTENT_PATTERNS
     .filter(({ pattern }) => pattern.test(normalized))
     .map(({ category }) => ({ category, prompt: normalized }));
+}
+
+export function shouldUseExistingTemplateContext(prompt: string) {
+  const normalized = prompt.trim();
+  if (!normalized
+    || EXPLANATION_ONLY_REQUEST.test(normalized)
+    || EXISTING_TEMPLATE_EDIT_QUESTION.test(normalized)) return false;
+  return EXISTING_TEMPLATE_EDIT_ACTION.test(normalized);
 }
 
 export function conversationArtifactSessionId(sessionId: string, category: TemplateCategory) {
@@ -380,6 +390,19 @@ export function isResumeTemplate(template: Pick<TemplateManifestV1, "category"> 
 export function templateBriefConfigFor(template: Pick<TemplateManifestV1, "category"> & Partial<Pick<TemplateManifestV1, "subcategory" | "title">>): TemplateBriefConfig {
   if (isResumeTemplate(template)) return briefConfig(BRIEF_CONFIG_KEYS.resume);
   return briefConfig(BRIEF_CONFIG_KEYS[template.category]);
+}
+
+export function templateBriefUserMessage(input: {
+  template: Pick<TemplateManifestV1, "category" | "title"> & Partial<Pick<TemplateManifestV1, "subcategory">>;
+  brief: TemplateBrief;
+}): string {
+  const fields = templateBriefConfigFor(input.template).fields
+    .map((field) => {
+      const value = input.brief[field.key].trim();
+      return value ? `${field.label}: ${value}` : null;
+    })
+    .filter((line): line is string => Boolean(line));
+  return [t("templates.applied", { title: input.template.title }), ...fields].join("\n");
 }
 
 export function templateBriefPrompt(input: {

@@ -143,6 +143,7 @@ import {
   nextConversationArtifactSessionId,
   templateBriefConfigFor,
   templateBriefPrompt,
+  templateBriefUserMessage,
   type TemplateBrief,
 } from "../templates/template-brief";
 import {
@@ -230,6 +231,37 @@ type TemplateSessionData = {
   manifest: TemplateManifestV1;
   hasBrief: boolean;
 };
+
+type PendingTemplateDispatch = {
+  requestId: string;
+  sessionId: string;
+  visibleText: string;
+  referencePrompt: string;
+  attachments: ComposerAttachment[];
+  draft: ComposerDraft | null;
+};
+
+function createTemplateDispatchRequestId(sessionId: string) {
+  return `${sessionId}:${Date.now().toString(36)}:${Math.random().toString(36).slice(2)}`;
+}
+
+function createTemplateDispatchDraft(
+  template: TemplateManifestV1,
+  state: TemplateSessionState,
+  dispatch: Pick<PendingTemplateDispatch, "visibleText" | "referencePrompt" | "attachments">,
+): ComposerDraft {
+  return {
+    mode: "prompt",
+    parts: [
+      { type: "text", text: dispatch.visibleText },
+      { type: "text", text: templateBriefPrompt({ template, entryPath: state.entry, briefPath: state.briefPath }), synthetic: true },
+      ...(dispatch.referencePrompt ? [{ type: "text" as const, text: dispatch.referencePrompt, synthetic: true }] : []),
+    ],
+    attachments: dispatch.attachments,
+    text: dispatch.visibleText,
+    resolvedText: dispatch.visibleText,
+  };
+}
 
 function workspaceAppCapabilityInstruction(label: string) {
   return `The user explicitly activated the ${label} plugin workbench for this request. Use ${WORKSPACE_APP_LIST_TOOLS_NAME} and ${WORKSPACE_APP_CALL_TOOL_NAME} only when this workbench exposes a relevant tool. If the plugin capability instruction names another declared action path, follow that instruction instead. Do not inspect or operate unrelated Design, Video, Files, or other side-panel surfaces. If the workbench cannot complete the request, explain the concrete tool error.`;
@@ -1746,12 +1778,8 @@ export function SessionPage(props: SessionPageProps) {
   const [pendingTemplateApplication, setPendingTemplateApplication] = useState<PendingTemplateApplication | null>(null);
   const [pendingCustomTemplateApplication, setPendingCustomTemplateApplication] = useState<PendingCustomTemplateApplication | null>(null);
   const [pendingTemplateProjectId, setPendingTemplateProjectId] = useState(props.selectedWorkspaceId);
-  const [pendingTemplateDispatch, setPendingTemplateDispatch] = useState<{
-    sessionId: string;
-    referencePrompt: string;
-    attachments: ComposerAttachment[];
-  } | null>(null);
-  const templateDispatchInFlightRef = useRef<string | null>(null);
+  const [pendingTemplateDispatch, setPendingTemplateDispatch] = useState<PendingTemplateDispatch | null>(null);
+  const templateDispatchPreparationRef = useRef<string | null>(null);
   const [templateSessionData, setTemplateSessionData] = useState<TemplateSessionData | null>(null);
   const [pendingVideoArtifactCompletion, setPendingVideoArtifactCompletion] = useState<{
     sessionId: string;
@@ -1859,6 +1887,9 @@ export function SessionPage(props: SessionPageProps) {
   const conversationMessages = conversationMessageState.sessionId === props.selectedSessionId
     ? conversationMessageState.messages
     : [];
+  const conversationRequestCount = conversationMessages.filter(
+    (message) => message.role === "user" && message.parts.length > 0,
+  ).length;
   const currentTemplateApplyMode = currentTemplateSessionData?.applyMode
     ?? (conversationMessages.length ? "current-conversation" : "new-conversation");
   useEffect(() => {
@@ -2370,6 +2401,7 @@ export function SessionPage(props: SessionPageProps) {
     if (!templateSession) return;
     const { manifest: template, state } = templateSession;
     let referencePayload: Awaited<ReturnType<typeof buildTemplateReferenceSubmitPayload>> | undefined;
+    let dispatchTransferred = false;
     try {
       referencePayload = await buildTemplateReferenceSubmitPayload(references);
       await props.ipolloworkServerClient.writeWorkspaceFile(props.runtimeWorkspaceId, {
@@ -2402,28 +2434,29 @@ export function SessionPage(props: SessionPageProps) {
             state.entry,
             source.content,
             conversationMessages.length,
+            conversationRequestCount,
           ),
         });
       }
-      const prompt = templateBriefPrompt({ template, entryPath: state.entry, briefPath: state.briefPath });
       const referencePrompt = referencePayload.contextPack.promptText.trim();
-      const visibleTemplateMessage = t("templates.applied", { title: template.title });
+      const visibleTemplateMessage = templateBriefUserMessage({ template, brief });
       setTemplateAssistantWait(references.length > 0 ? {
         sessionId: props.selectedSessionId,
         label: t("templates.brief.reference_agent_processing_label", { count: references.length }),
       } : null);
-      const dispatched = await props.surface?.onSendDraft({
-        mode: "prompt",
-        parts: [
-          { type: "text", text: visibleTemplateMessage },
-          { type: "text", text: prompt, synthetic: true },
-          ...(referencePrompt ? [{ type: "text" as const, text: referencePrompt, synthetic: true }] : []),
-        ],
+      const dispatch: PendingTemplateDispatch = {
+        requestId: createTemplateDispatchRequestId(props.selectedSessionId),
+        sessionId: props.selectedSessionId,
+        visibleText: visibleTemplateMessage,
+        referencePrompt,
         attachments: referencePayload.attachments,
-        text: visibleTemplateMessage,
-        resolvedText: visibleTemplateMessage,
-      }, props.selectedSessionId);
-      if (!dispatched) throw new Error("The template task could not be started.");
+        draft: null,
+      };
+      setPendingTemplateDispatch({
+        ...dispatch,
+        draft: createTemplateDispatchDraft(template, state, dispatch),
+      });
+      dispatchTransferred = true;
       setTemplateSessionData((current) => current?.sessionId === templateSession.sessionId ? { ...current, hasBrief: true } : current);
       setTemplateSessionRevision((value) => value + 1);
       setDismissedTemplateBriefSessionIds((current) => {
@@ -2441,25 +2474,24 @@ export function SessionPage(props: SessionPageProps) {
         description: error instanceof Error ? error.message : undefined,
       });
     } finally {
-      if (referencePayload) revokeTemplateReferenceAttachmentPreviews(referencePayload.attachments);
+      if (referencePayload && !dispatchTransferred) revokeTemplateReferenceAttachmentPreviews(referencePayload.attachments);
     }
-  }, [conversationMessages.length, currentTemplateSessionData, props.ipolloworkServerClient, props.runtimeWorkspaceId, props.selectedSessionId, props.surface]);
+  }, [conversationMessages.length, conversationRequestCount, currentTemplateSessionData, props.ipolloworkServerClient, props.runtimeWorkspaceId, props.selectedSessionId]);
   useEffect(() => {
     if (
       !pendingTemplateDispatch
+      || pendingTemplateDispatch.draft
       || pendingTemplateDispatch.sessionId !== props.selectedSessionId
       || currentTemplateSessionData?.sessionId !== pendingTemplateDispatch.sessionId
-      || !props.surface?.onSendDraft
       || !props.ipolloworkServerClient
       || !props.runtimeWorkspaceId
-      || templateDispatchInFlightRef.current === pendingTemplateDispatch.sessionId
+      || templateDispatchPreparationRef.current === pendingTemplateDispatch.requestId
     ) return;
     const dispatch = pendingTemplateDispatch;
     const templateSession = currentTemplateSessionData;
     const client = props.ipolloworkServerClient;
     const workspaceId = props.runtimeWorkspaceId;
-    const sendDraft = props.surface.onSendDraft;
-    templateDispatchInFlightRef.current = dispatch.sessionId;
+    templateDispatchPreparationRef.current = dispatch.requestId;
     void (async () => {
       try {
         setTemplateAssistantWait(dispatch.attachments.length > 0 ? {
@@ -2477,43 +2509,36 @@ export function SessionPage(props: SessionPageProps) {
               templateSession.state.entry,
               source.content,
               conversationMessages.length,
+              conversationRequestCount,
             ),
           });
         }
-        const visibleTemplateMessage = t("templates.applied", { title: templateSession.manifest.title });
-        const sent = await sendDraft({
-          mode: "prompt",
-          parts: [
-            { type: "text", text: visibleTemplateMessage },
-            {
-              type: "text",
-              text: templateBriefPrompt({
-                template: templateSession.manifest,
-                entryPath: templateSession.state.entry,
-                briefPath: templateSession.state.briefPath,
-              }),
-              synthetic: true,
-            },
-            ...(dispatch.referencePrompt ? [{ type: "text" as const, text: dispatch.referencePrompt, synthetic: true }] : []),
-          ],
-          attachments: dispatch.attachments,
-          text: visibleTemplateMessage,
-          resolvedText: visibleTemplateMessage,
-        }, dispatch.sessionId);
-        if (!sent) throw new Error(t("templates.error_apply"));
+        setPendingTemplateDispatch((current) => current?.requestId === dispatch.requestId
+          ? { ...current, draft: createTemplateDispatchDraft(templateSession.manifest, templateSession.state, current) }
+          : current);
       } catch (error) {
         setTemplateAssistantWait((current) => current?.sessionId === dispatch.sessionId ? null : current);
         setPendingVideoArtifactCompletion((current) => current?.sessionId === dispatch.sessionId ? null : current);
+        setPendingTemplateDispatch((current) => current?.requestId === dispatch.requestId ? null : current);
+        revokeTemplateReferenceAttachmentPreviews(dispatch.attachments);
         toast.error(t("templates.error_apply"), {
           description: error instanceof Error ? error.message : undefined,
         });
       } finally {
-        revokeTemplateReferenceAttachmentPreviews(dispatch.attachments);
-        templateDispatchInFlightRef.current = null;
-        setPendingTemplateDispatch((current) => current?.sessionId === dispatch.sessionId ? null : current);
+        templateDispatchPreparationRef.current = null;
       }
     })();
-  }, [conversationMessages.length, currentTemplateSessionData, pendingTemplateDispatch, props.ipolloworkServerClient, props.runtimeWorkspaceId, props.selectedSessionId, props.surface]);
+  }, [conversationMessages.length, conversationRequestCount, currentTemplateSessionData, pendingTemplateDispatch, props.ipolloworkServerClient, props.runtimeWorkspaceId, props.selectedSessionId]);
+  const settlePendingTemplateDispatch = useCallback((requestId: string, dispatched: boolean) => {
+    if (pendingTemplateDispatch?.requestId !== requestId) return;
+    const sessionId = pendingTemplateDispatch.sessionId;
+    setPendingTemplateDispatch(null);
+    if (dispatched) return;
+    setTemplateAssistantWait((current) => current?.sessionId === sessionId ? null : current);
+    setPendingVideoArtifactCompletion((current) => current?.sessionId === sessionId ? null : current);
+    setTemplateSessionData((current) => current?.sessionId === sessionId ? { ...current, hasBrief: false } : current);
+    toast.error(t("templates.error_apply"));
+  }, [pendingTemplateDispatch]);
   const closeTemplateBrief = useCallback(async () => {
     const conversationId = props.selectedSessionId;
     const templateSessionId = currentTemplateSessionData?.sessionId;
@@ -2717,9 +2742,15 @@ export function SessionPage(props: SessionPageProps) {
       }
       if (!createdSessionId) return;
       setPendingTemplateDispatch({
+        requestId: createTemplateDispatchRequestId(createdSessionId),
         sessionId: createdSessionId,
+        visibleText: templateBriefUserMessage({
+          template: { category: application.category, title: t("template_market.custom_title") },
+          brief,
+        }),
         referencePrompt: referencePayload.contextPack.promptText.trim(),
         attachments: referencePayload.attachments,
+        draft: null,
       });
       dispatchTransferred = true;
       setPendingCustomTemplateApplication(null);
@@ -2770,9 +2801,12 @@ export function SessionPage(props: SessionPageProps) {
       });
       if (!createdSessionId) return;
       setPendingTemplateDispatch({
+        requestId: createTemplateDispatchRequestId(createdSessionId),
         sessionId: createdSessionId,
+        visibleText: templateBriefUserMessage({ template, brief }),
         referencePrompt: referencePayload.contextPack.promptText.trim(),
         attachments: referencePayload.attachments,
+        draft: null,
       });
       dispatchTransferred = true;
       setPendingTemplateApplication(null);
@@ -4816,6 +4850,10 @@ export function SessionPage(props: SessionPageProps) {
                         onConversationMessagesChange={handleConversationMessagesChange}
                         onLoadSettled={handleSessionLoadSettled}
                         assistantWaitLabel={templateAssistantWait?.sessionId === props.selectedSessionId ? templateAssistantWait.label : undefined}
+                        pendingProgrammaticDraft={pendingTemplateDispatch?.sessionId === props.selectedSessionId && pendingTemplateDispatch.draft
+                          ? { id: pendingTemplateDispatch.requestId, draft: pendingTemplateDispatch.draft }
+                          : null}
+                        onPendingProgrammaticDraftSettled={settlePendingTemplateDispatch}
                         templateEntryPath={templateEntryPathForArtifacts}
                         artifactFiles={artifactFiles}
                         artifactContext={artifactContext}

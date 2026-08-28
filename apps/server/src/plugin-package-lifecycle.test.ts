@@ -541,6 +541,40 @@ describe("plugin package lifecycle", () => {
     })).resolves.toMatchObject({ status: "uninstalled", version: "1.1.0" });
   });
 
+  test("reconciles package-owned files left at a verified historical version", async () => {
+    const lifecycle = await import("./plugin-package-lifecycle.js");
+    const workspaceRoot = await createRoot("ipollowork-plugin-stale-projection-workspace-");
+    const packageV1 = await createRoot("ipollowork-plugin-stale-projection-v1-");
+    const packageV2 = await createRoot("ipollowork-plugin-stale-projection-v2-");
+    process.env.IPOLLOWORK_RUNTIME_DB = join(workspaceRoot, "runtime.sqlite");
+    await writePackage(packageV1, "1.0.0", "export const version = 'v1'\n", "# Version one\n");
+    await writePackage(packageV2, "1.1.0", "export const version = 'v2'\n", "# Version two\n");
+    const config = serverConfig(workspaceRoot);
+    const target = join(workspaceRoot, ".opencode", "skills", "acme-research", "SKILL.md");
+
+    await lifecycle.installPluginPackage({ serverConfig: config, packageRoot: packageV1 });
+    await lifecycle.updatePluginPackage({ serverConfig: config, packageRoot: packageV2 });
+    await writeFile(target, "# Version one\n", "utf8");
+
+    await lifecycle.reconcilePluginPackagesForWorkspace({
+      serverConfig: config,
+      workspaceId: WORKSPACE_ID,
+      workspaceRoot,
+    });
+    expect(await readFile(target, "utf8")).toBe("# Version two\n");
+
+    await writeFile(target, "# User customization\n", "utf8");
+    await expect(lifecycle.reconcilePluginPackagesForWorkspace({
+      serverConfig: config,
+      workspaceId: WORKSPACE_ID,
+      workspaceRoot,
+    })).rejects.toMatchObject({
+      code: "plugin_package_conflict",
+      details: { paths: [".opencode/skills/acme-research/SKILL.md"] },
+    });
+    expect(await readFile(target, "utf8")).toBe("# User customization\n");
+  });
+
   test("stops an update when an owned file was modified by the user", async () => {
     const lifecycle = await import("./plugin-package-lifecycle.js");
     const workspaceRoot = await createRoot("ipollowork-plugin-workspace-");

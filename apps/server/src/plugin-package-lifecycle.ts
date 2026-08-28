@@ -620,6 +620,31 @@ function workspaceActivationFiles(
   return workspaceEngineAdapter(config, workspaceId).workspaceFiles(engineVersion(config, workspaceId, pluginId, version));
 }
 
+async function matchesHistoricalActivationFile(
+  config: ServerConfig,
+  workspaceId: string,
+  workspaceRoot: string,
+  next: PackageProjection,
+  targetPath: string,
+): Promise<boolean> {
+  const adapter = workspaceEngineAdapter(config, workspaceId);
+  const target = resolveWithin(workspaceRoot, targetPath);
+  for (const version of Object.values(next.installed.versions)) {
+    if (version.version === next.version.version) continue;
+    let manifest: PluginPackageManifest;
+    try {
+      manifest = manifestFromVersion(version);
+    } catch {
+      continue;
+    }
+    if (!pluginEngineCanActivate(adapter, manifest)) continue;
+    const historicalFile = workspaceActivationFiles(config, workspaceId, next.installed.pluginId, version)
+      .find((file) => file.targetPath === targetPath);
+    if (historicalFile && await activationTargetStatus(target, historicalFile.sha256) === "matching") return true;
+  }
+  return false;
+}
+
 function workspaceActivationPaths(
   config: ServerConfig,
   workspaceId: string,
@@ -783,7 +808,16 @@ async function preflightProjection(
     if (currentPaths.has(file.targetPath)) continue;
     const target = resolveWithin(workspaceRoot, file.targetPath);
     const status = await activationTargetStatus(target, file.sha256);
-    if (status === "conflict") conflicts.push(file.targetPath);
+    if (status === "conflict"
+      && !(current === null && next && await matchesHistoricalActivationFile(
+        config,
+        workspaceId,
+        workspaceRoot,
+        next,
+        file.targetPath,
+      ))) {
+      conflicts.push(file.targetPath);
+    }
   }
   if (conflicts.length > 0) {
     throw new ApiError(409, "plugin_package_conflict", "Install targets already exist with different content", {

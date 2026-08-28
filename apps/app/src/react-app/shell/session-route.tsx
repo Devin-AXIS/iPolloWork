@@ -112,6 +112,7 @@ import {
   isConversationTemplateSessionId,
   nextConversationArtifactSessionId,
   selectConversationTemplate,
+  shouldUseExistingTemplateContext,
   templateBriefPrompt,
 } from "@/react-app/domains/session/templates/template-brief";
 import { useSessionInteractions } from "@/react-app/domains/session/sync/use-session-interactions";
@@ -1499,12 +1500,20 @@ export function SessionRoute() {
             .map((template) => template.sessionId),
         ]);
         const promptTemplateSessionIds = new Set(explicitlyTargetedTemplateSessionIds);
-        if (promptTemplateSessionIds.size === 0 && activeTemplateSessionId) {
-          promptTemplateSessionIds.add(activeTemplateSessionId);
+        const existingTemplateEdit = shouldUseExistingTemplateContext(text);
+        if (promptTemplateSessionIds.size === 0) {
+          const authoringTemplate = conversationTemplates.find((template) => template.authoring);
+          if (authoringTemplate) {
+            promptTemplateSessionIds.add(authoringTemplate.sessionId);
+          } else if (existingTemplateEdit && activeTemplateSessionId) {
+            promptTemplateSessionIds.add(activeTemplateSessionId);
+          } else if (existingTemplateEdit && conversationTemplates[0]) {
+            promptTemplateSessionIds.add(conversationTemplates[0].sessionId);
+          }
         }
-        const sessionTemplates: TemplateSessionSnapshot[] = promptTemplateSessionIds.size > 0
-          ? conversationTemplates.filter((template) => promptTemplateSessionIds.has(template.sessionId))
-          : conversationTemplates.slice(0, 1);
+        const sessionTemplates = conversationTemplates.filter((template) =>
+          promptTemplateSessionIds.has(template.sessionId),
+        );
         let automaticTemplateInstruction: string | null = null;
         let automaticTemplateRoutingAttempted = false;
         const automaticTemplateIntents = inferConversationTemplateIntents(text);

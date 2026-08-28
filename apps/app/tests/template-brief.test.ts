@@ -19,8 +19,10 @@ import {
   nextConversationArtifactSessionId,
   requestsCustomTemplate,
   selectConversationTemplate,
+  shouldUseExistingTemplateContext,
   templateBriefConfigFor,
   templateBriefPrompt,
+  templateBriefUserMessage,
 } from "../src/react-app/domains/session/templates/template-brief";
 
 function catalogItem(input: {
@@ -91,6 +93,18 @@ describe("template brief", () => {
     ]);
     expect(config.description).toContain("AI will decide the narration");
     expect(config.fields.some((field) => field.label.includes("narration"))).toBe(false);
+  });
+
+  test("keeps the submitted template brief visible as the user message", () => {
+    expect(templateBriefUserMessage({
+      template: { category: "video", title: "Agent Command Center" },
+      brief: { title: "123", audience: "Operations teams", details: "Explain steps 1-2-3" },
+    })).toBe([
+      "Template applied: Agent Command Center",
+      "Video topic: 123",
+      "Who it is for: Operations teams",
+      "What it should communicate or drive: Explain steps 1-2-3",
+    ].join("\n"));
   });
 
   test("uses a resume-specific brief for templates filed under other", () => {
@@ -264,6 +278,15 @@ describe("template brief", () => {
     expect(selectConversationTemplate("制作一个适合抖音的竖屏短视频", catalog)?.manifest.id).toBe("test.video-vertical");
   });
 
+  test("keeps ordinary questions out of an existing template edit context", () => {
+    expect(shouldUseExistingTemplateContext("你是谁")).toBe(false);
+    expect(shouldUseExistingTemplateContext("为什么这个视频会卡")).toBe(false);
+    expect(shouldUseExistingTemplateContext("如何修改这个视频")).toBe(false);
+    expect(shouldUseExistingTemplateContext("把标题改成红色")).toBe(true);
+    expect(shouldUseExistingTemplateContext("继续优化视频节奏")).toBe(true);
+    expect(shouldUseExistingTemplateContext("Remove the second scene")).toBe(true);
+  });
+
   test("turns the original conversation into the persisted template brief", () => {
     const brief = conversationTemplateBrief("请帮我生成一个面向企业客户的 AI 产品官网");
 
@@ -287,6 +310,8 @@ describe("template brief", () => {
     expect(routeSource).toContain("nextConversationArtifactSessionId(");
     expect(routeSource).toContain('setSessionType(targetSessionId, "work")');
     expect(routeSource).toContain("explicitlyTargetedTemplateSessionIds.size === 0");
+    expect(routeSource).toContain("shouldUseExistingTemplateContext(text)");
+    expect(routeSource).not.toContain("conversationTemplates.slice(0, 1)");
     expect(routeSource).not.toContain('sessionTypeBeforeRouting === "work"');
     expect(routeSource).toContain("Multi-artifact delivery contract");
     expect(routeSource).toContain("conversationTemplateBrief(text)");
@@ -308,8 +333,10 @@ describe("template brief", () => {
     );
 
     expect(pageSource).toContain("createVideoArtifactCompletionRequirement(");
-    expect(pageSource).toContain("const dispatched = await props.surface?.onSendDraft(");
+    expect(pageSource).toContain("pendingProgrammaticDraft={pendingTemplateDispatch");
     expect(pageSource).toContain("artifactCompletionRequirement={pendingVideoArtifactCompletion");
+    expect(surfaceSource).toContain("sendDraft(pending.draft, pending.draft.attachments)");
+    expect(surfaceSource).toContain("beginOptimisticSessionPrompt(");
     expect(surfaceSource).toContain("unchangedVideoArtifactIssue(");
     expect(surfaceSource).toContain("Continue the unfinished video delivery.");
   });

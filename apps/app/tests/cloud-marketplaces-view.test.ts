@@ -111,6 +111,7 @@ describe("Cloud marketplace row visibility", () => {
       .toBeLessThan(panelSource.indexOf('{ value: "marketplace", label: t("plugin_library.marketplace") }'));
     expect(routeSource).toContain('data-testid="plugin-library-navigation-actions"');
     expect(routeSource).toContain('showNotifications={route.tab !== "extensions"}');
+    expect(routeSource).toContain('|| route.tab === "cloud-marketplaces"');
     expect(routeSource).toContain(
       'hideShellHeader={route.tab === "cloud-account" || Boolean(route.pluginPackageId)}',
     );

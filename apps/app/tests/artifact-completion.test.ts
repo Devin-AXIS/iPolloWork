@@ -74,6 +74,8 @@ describe("artifact completion", () => {
     expect(routeSource).toContain("explicitlyTargetedTemplateSessionIds.has(template.sessionId)");
     expect(routeSource).toContain('template.manifest.surface !== "video"');
     expect(surfaceSource).toContain("validatePendingArtifactCompletion");
+    expect(surfaceSource).toContain("pending.requestOrdinal");
+    expect(surfaceSource).toContain("artifactPathIsWithinDirectory(path, directory)");
     expect(surfaceSource).toContain("artifactCompletionRecoveryInstruction(check)");
     expect(surfaceSource).toContain("if (pendingArtifactCompletionRef.current || pendingVideoDeliveryRef.current) return;");
     expect(surfaceSource).toContain('const artifactRecoveryDraft = nextDraft.capability?.id === "artifact-delivery-recovery"');

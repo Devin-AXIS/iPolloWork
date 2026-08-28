@@ -123,6 +123,9 @@ import {
 import { MessageList } from "@/components/chat/message-list";
 import {
   assignArtifactRequestOwnership,
+  artifactDirectoryPath,
+  artifactPathIsWithinDirectory,
+  artifactPathMatchesTarget,
   type ArtifactInteractionContext,
   type ArtifactRequestOwnership,
 } from "@/lib/artifacts";
@@ -162,6 +165,7 @@ type PendingVideoDeliveryValidation = {
   sourcePath: string;
   requirements: VideoDeliveryRequirements;
   baselineFingerprint: string | null;
+  requestOrdinal: number;
   mustChange: boolean;
   recoveryAttempted: boolean;
 };
@@ -245,6 +249,8 @@ export type SessionSurfaceProps = {
   respondQuestion?: (requestID: string, answers: string[][]) => void;
   safeStringify?: (value: unknown) => string;
   assistantWaitLabel?: string;
+  pendingProgrammaticDraft?: { id: string; draft: ComposerDraft } | null;
+  onPendingProgrammaticDraftSettled?: (id: string, dispatched: boolean) => void;
   onChangeModel?: (model: { providerID: string; modelID: string }) => void;
   onConfigureModels?: (providerId?: string) => void;
   onUploadInboxFiles?: ((files: File[], options?: { notify?: boolean }) => void | Promise<unknown>) | null;
@@ -711,13 +717,14 @@ export function SessionSurface(props: SessionSurfaceProps) {
       artifactCompletionRequirementKeyRef.current = null;
       return;
     }
-    const key = `${requirement.sourcePath}:${requirement.baselineFingerprint}:${requirement.assistantMessageBaseline}`;
+    const key = `${requirement.sourcePath}:${requirement.baselineFingerprint}:${requirement.assistantMessageBaseline}:${requirement.requestOrdinal}`;
     if (artifactCompletionRequirementKeyRef.current === key) return;
     artifactCompletionRequirementKeyRef.current = key;
     pendingVideoDeliveryRef.current = {
       sourcePath: requirement.sourcePath,
       requirements: videoDeliveryRequirementsForPrompt({}),
       baselineFingerprint: requirement.baselineFingerprint,
+      requestOrdinal: requirement.requestOrdinal,
       mustChange: true,
       recoveryAttempted: false,
     };
@@ -1186,6 +1193,7 @@ export function SessionSurface(props: SessionSurfaceProps) {
             sourcePath,
             requirements,
             baselineFingerprint: null,
+            requestOrdinal,
             mustChange,
             recoveryAttempted: false,
           };
@@ -1202,7 +1210,7 @@ export function SessionSurface(props: SessionSurfaceProps) {
       );
       if (dispatchAbort.signal.aborted) {
         draftAttachments.forEach(revokeAttachmentPreview);
-        return;
+        return false;
       }
       const dispatched = promptWasDispatched(dispatchOutcome);
       const artifactCompletionTargets = promptArtifactCompletionTargets(dispatchOutcome);
@@ -1234,6 +1242,7 @@ export function SessionSurface(props: SessionSurfaceProps) {
         runActivityObservedRef.current = false;
         setSending(false);
       }
+      return dispatched;
     } catch (nextError) {
       if (!dispatchAbort.signal.aborted) {
         rollbackOptimisticSessionPrompt(props.workspaceId, props.sessionId, clientUserMessageId);
@@ -1259,6 +1268,17 @@ export function SessionSurface(props: SessionSurfaceProps) {
       throw nextError;
     }
   }, [newConversationMode, props.artifactContext, props.engineId, props.onSendDraft, props.sessionId, props.templateEntryPath, props.workspaceId, renderedMessages.length, selectedAnimations, visibleUserRequestCount]);
+
+  const programmaticDraftIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    const pending = props.pendingProgrammaticDraft;
+    if (!pending || programmaticDraftIdRef.current === pending.id) return;
+    programmaticDraftIdRef.current = pending.id;
+    void sendDraft(pending.draft, pending.draft.attachments).then(
+      (dispatched) => props.onPendingProgrammaticDraftSettled?.(pending.id, Boolean(dispatched)),
+      () => props.onPendingProgrammaticDraftSettled?.(pending.id, false),
+    );
+  }, [props.onPendingProgrammaticDraftSettled, props.pendingProgrammaticDraft, sendDraft]);
 
   const validatePendingArtifactCompletion = useCallback(async () => {
     const pending = pendingArtifactCompletionRef.current;
@@ -1353,6 +1373,19 @@ export function SessionSurface(props: SessionSurfaceProps) {
         if (!output) throw new Error("Video delivery validation returned an unreadable result.");
         issues = output.issues;
         if (output.valid) {
+          const directory = artifactDirectoryPath(pending.sourcePath);
+          const ownedPaths = [
+            pending.sourcePath,
+            ...(props.artifactFiles ?? []).filter((path) =>
+              artifactPathMatchesTarget(path, pending.sourcePath)
+              || artifactPathIsWithinDirectory(path, directory),
+            ),
+          ];
+          setArtifactRequestOwnership((current) => assignArtifactRequestOwnership(
+            current,
+            pending.requestOrdinal,
+            ownedPaths,
+          ));
           pendingVideoDeliveryRef.current = null;
           props.onArtifactCompletionRequirementConsumed?.();
           setSending(false);
@@ -1401,7 +1434,7 @@ export function SessionSurface(props: SessionSurfaceProps) {
     } finally {
       videoDeliveryValidationInFlightRef.current = false;
     }
-  }, [props.client, props.onArtifactCompletionRequirementConsumed, props.workspaceId, props.workspaceRoot, sendDraft]);
+  }, [props.artifactFiles, props.client, props.onArtifactCompletionRequirementConsumed, props.workspaceId, props.workspaceRoot, sendDraft]);
 
   const clearComposer = useCallback(() => {
     clearComposerSession(props.sessionId);
