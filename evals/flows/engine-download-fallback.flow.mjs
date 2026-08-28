@@ -1,9 +1,11 @@
 import { existsSync } from "node:fs";
+import { readFile } from "node:fs/promises";
 import path from "node:path";
 
+const constants = JSON.parse(await readFile(new URL("../../constants.json", import.meta.url), "utf8"));
 const ENGINES = [
-  { id: "deepseek-harness", version: "0.1.0-rc.6" },
-  { id: "codex-harness", version: "0.149.0" },
+  { id: "deepseek-harness", version: constants.deepseekHarnessVersion },
+  { id: "codex-harness", version: constants.codexHarnessVersion },
 ];
 
 function rowSelector(engineId) {
