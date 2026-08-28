@@ -1,7 +1,7 @@
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { createReadStream, existsSync, readFileSync, writeFileSync } from "node:fs";
-import { mkdir } from "node:fs/promises";
+import { mkdir, rm } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -83,6 +83,7 @@ async function packageEngine(engineId, outputDirectory) {
 
 const requested = argumentValue("--engine");
 const outputDirectory = resolve(argumentValue("--outdir") || resolve(desktopRoot, "dist-engine-packs"));
+if (process.argv.includes("--clean")) await rm(outputDirectory, { recursive: true, force: true });
 await mkdir(outputDirectory, { recursive: true });
 
 const engineIds = process.argv.includes("--all")

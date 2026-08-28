@@ -1683,6 +1683,7 @@ const runtimeManager = createRuntimeManager({
 const enginePackageManager = createEnginePackageManager({
   app,
   desktopRoot: path.resolve(__dirname, ".."),
+  resourcesPath: process.resourcesPath,
   versions: enginePackageVersions(),
   fetch: electronNet.fetch.bind(electronNet),
   beforeUninstall: async () => {

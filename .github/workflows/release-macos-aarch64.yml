@@ -407,7 +407,7 @@ jobs:
         shell: bash
         env:
           TARGET: ${{ matrix.target_triple }}
-        run: node apps/desktop/scripts/package-engine-runtime.mjs --all --outdir "$RUNNER_TEMP/engine-packs"
+        run: node apps/desktop/scripts/package-engine-runtime.mjs --all --clean --outdir "$GITHUB_WORKSPACE/apps/desktop/dist-engine-packs"
 
       - name: Build Electron app
         shell: bash
@@ -548,7 +548,7 @@ jobs:
           shopt -s nullglob
           assets=(
             apps/desktop/dist-electron/ipollowork-*
-            "$RUNNER_TEMP"/engine-packs/ipollowork-*
+            apps/desktop/dist-engine-packs/ipollowork-*
           )
           if [ ${#assets[@]} -eq 0 ]; then
             echo "No Electron release assets found in apps/desktop/dist-electron" >&2

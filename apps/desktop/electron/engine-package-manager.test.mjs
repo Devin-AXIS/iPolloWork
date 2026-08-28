@@ -37,10 +37,11 @@ function codexCliRelativePath() {
   );
 }
 
-test("installs and removes an optional engine package without touching Work data", async () => {
+test("installs and removes a bundled optional engine package without touching Work data", async () => {
   const temporaryRoot = await mkdtemp(path.join(os.tmpdir(), "ipollowork-engine-package-test-"));
   const userData = path.join(temporaryRoot, "user-data");
-  const sourceDirectory = path.join(temporaryRoot, "source");
+  const resourcesPath = path.join(temporaryRoot, "resources");
+  const sourceDirectory = path.join(resourcesPath, "engine-packs");
   const fixtureRoot = path.join(temporaryRoot, "fixture");
   const workDataRoot = path.join(userData, "runtime-data");
   const sentinelPath = path.join(workDataRoot, "conversation.json");
@@ -75,13 +76,13 @@ test("installs and removes an optional engine package without touching Work data
     APPDATA: path.join(temporaryRoot, "app-data"),
     LOCALAPPDATA: path.join(temporaryRoot, "local-app-data"),
     ProgramFiles: path.join(temporaryRoot, "program-files"),
-    IPOLLOWORK_ENGINE_PACK_SOURCE_DIR: sourceDirectory,
   };
+  delete managerEnvironment.IPOLLOWORK_ENGINE_PACK_SOURCE_DIR;
   delete managerEnvironment.IPOLLOWORK_CODEX_CLI;
   delete managerEnvironment.IPOLLOWORK_CODEX_CLI_VERSION;
   try {
     process.env.PATH = path.dirname(tarPath);
-    process.env.IPOLLOWORK_ENGINE_PACK_SOURCE_DIR = sourceDirectory;
+    delete process.env.IPOLLOWORK_ENGINE_PACK_SOURCE_DIR;
     delete process.env.IPOLLOWORK_CODEX_CLI;
     delete process.env.IPOLLOWORK_CODEX_CLI_VERSION;
     const manager = createEnginePackageManager({
@@ -94,6 +95,7 @@ test("installs and removes an optional engine package without touching Work data
         isPackaged: true,
       },
       desktopRoot: path.join(temporaryRoot, "desktop"),
+      resourcesPath,
       versions: { opencode: "1.2.3", deepseekHarness: "4.5.6", codexHarness: version },
       env: managerEnvironment,
       homeDir: path.join(temporaryRoot, "home"),
@@ -211,7 +213,7 @@ test("falls back to the latest mirrored release and rejects a corrupted mirror r
         if (url === latestMetadata) return Response.json({
           assets: [{ name, digest: `sha256:${checksum}`, browser_download_url: officialArchive }],
         });
-        if (url === officialArchive) return new Response("unavailable", { status: 503 });
+        if (url === officialArchive) throw new Error("net::ERR_CONNECTION_TIMED_OUT");
         if (url === firstMirror) return new Response("corrupted archive");
         if (url === secondMirror) return new Response(archive);
         return new Response("missing", { status: 404 });
@@ -226,6 +228,66 @@ test("falls back to the latest mirrored release and rejects a corrupted mirror r
     assert.ok(requestedUrls.includes(latestMetadata));
     assert.ok(requestedUrls.includes(firstMirror));
     assert.ok(requestedUrls.includes(secondMirror));
+  } finally {
+    await rm(temporaryRoot, { recursive: true, force: true });
+  }
+});
+
+test("installs a bundled DeepSeek Harness for Apple Silicon without using the network", async () => {
+  const temporaryRoot = await mkdtemp(path.join(os.tmpdir(), "ipollowork-engine-macos-bundle-test-"));
+  const resourcesPath = path.join(temporaryRoot, "resources");
+  const sourceDirectory = path.join(resourcesPath, "engine-packs");
+  const fixtureRoot = path.join(temporaryRoot, "fixture");
+  const version = "9.8.7";
+  const emptyHome = path.join(temporaryRoot, "empty-home");
+  const name = `ipollowork-engine-deepseek-harness-macos-arm64-${version}.tar.gz`;
+  const archivePath = path.join(sourceDirectory, name);
+  const cliRelativePath = path.join("node_modules", "@deepseek-ai", "dsh", "lib", "bin.js");
+  /** @type {NodeJS.ProcessEnv} */
+  const environment = {
+    ...process.env,
+    PATH: "",
+  };
+  delete environment.IPOLLOWORK_DSH_CLI;
+  delete environment.IPOLLOWORK_ENGINE_PACK_SOURCE_DIR;
+
+  try {
+    await mkdir(path.join(fixtureRoot, path.dirname(cliRelativePath)), { recursive: true });
+    await mkdir(path.join(fixtureRoot, "node-runtime"), { recursive: true });
+    await mkdir(sourceDirectory, { recursive: true });
+    await writeFile(path.join(fixtureRoot, cliRelativePath), "fixture-runtime\n");
+    await writeFile(path.join(fixtureRoot, "node-runtime", "node"), "fixture-node\n");
+    await writeFile(path.join(fixtureRoot, "ipollowork-host-tools.mjs"), "export {};\n");
+    await writeFile(path.join(fixtureRoot, "package.json"), '{"name":"fixture"}\n');
+    const packed = spawnSync(commandPath("tar"), ["-czf", archivePath, "-C", fixtureRoot, "."], { encoding: "utf8" });
+    assert.equal(packed.status, 0, packed.stderr);
+    const checksum = createHash("sha256").update(readFileSync(archivePath)).digest("hex");
+    await writeFile(`${archivePath}.sha256`, `${checksum}  ${name}\n`);
+
+    const manager = createEnginePackageManager({
+      app: {
+        getPath(pathName) {
+          assert.equal(pathName, "userData");
+          return path.join(temporaryRoot, "user-data");
+        },
+        getVersion() { return "1.0.0"; },
+        isPackaged: true,
+      },
+      desktopRoot: path.join(resourcesPath, "app.asar"),
+      resourcesPath,
+      platform: "darwin",
+      architecture: "arm64",
+      versions: { opencode: "1.2.3", deepseekHarness: version, codexHarness: "4.5.6" },
+      env: environment,
+      homeDir: emptyHome,
+      fetch: async () => { throw new Error("bundled install must not use the network"); },
+    });
+
+    const installed = await manager.install("deepseek-harness");
+    assert.equal(installed.status, "ready");
+    assert.equal(installed.source, "downloaded");
+    assert.match(environment.IPOLLOWORK_DSH_CLI ?? "", /engine-packs[\\/]deepseek-harness/);
+    assert.match(environment.IPOLLOWORK_DSH_NODE_BIN ?? "", /node-runtime[\\/]node$/);
   } finally {
     await rm(temporaryRoot, { recursive: true, force: true });
   }

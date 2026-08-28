@@ -14,13 +14,16 @@ import {
 
 const afterPack = afterPackModule.default ?? afterPackModule;
 
-it("ships Harness CLIs as verified optional engine packages instead of app resources", async () => {
-  const [builderConfig, mainSource, managerSource, packageSource, releaseWorkflow, stdioRuntimeSource, buildSource, devSource, codexPrepareSource, codexRuntimeManifest, workspaceConfig, osxSignPatch] = await Promise.all([
+it("ships Harness CLIs as verified bundled engine packages with network fallback", async () => {
+  const [builderConfig, mainSource, managerSource, packageSource, windowsPackageSource, macPackageSource, releaseWorkflow, desktopBuildWorkflow, stdioRuntimeSource, buildSource, devSource, codexPrepareSource, codexRuntimeManifest, workspaceConfig, osxSignPatch] = await Promise.all([
     readFile(new URL("../electron-builder.yml", import.meta.url), "utf8"),
     readFile(new URL("./main.mjs", import.meta.url), "utf8"),
     readFile(new URL("./engine-package-manager.mjs", import.meta.url), "utf8"),
     readFile(new URL("../scripts/package-engine-runtime.mjs", import.meta.url), "utf8"),
+    readFile(new URL("../scripts/package-windows.mjs", import.meta.url), "utf8"),
+    readFile(new URL("../scripts/package-mac-release.mjs", import.meta.url), "utf8"),
     readFile(new URL("../../../.github/workflows/release-macos-aarch64.yml", import.meta.url), "utf8"),
+    readFile(new URL("../../../.github/workflows/build-electron-desktop.yml", import.meta.url), "utf8"),
     readFile(new URL("../../server/src/stdio-json-rpc-runtime.ts", import.meta.url), "utf8"),
     readFile(new URL("../scripts/electron-build.mjs", import.meta.url), "utf8"),
     readFile(new URL("../scripts/electron-dev.mjs", import.meta.url), "utf8"),
@@ -32,7 +35,9 @@ it("ships Harness CLIs as verified optional engine packages instead of app resou
   assert.doesNotMatch(builderConfig, /from: dsh-runtime\s+to: dsh-runtime/);
   assert.match(builderConfig, /from: \.\.\/\.\.\/examples\/plugin-packages\/deepseek-harness/);
   assert.doesNotMatch(builderConfig, /from: codex-runtime\s+to: codex-runtime/);
+  assert.match(builderConfig, /from: dist-engine-packs\s+to: engine-packs/);
   assert.match(mainSource, /createEnginePackageManager/);
+  assert.match(mainSource, /resourcesPath: process\.resourcesPath/);
   assert.match(managerSource, /IPOLLOWORK_DSH_CLI/);
   assert.match(managerSource, /IPOLLOWORK_DSH_NODE_BIN/);
   assert.match(managerSource, /IPOLLOWORK_DSH_HOST_PLUGIN/);
@@ -49,7 +54,11 @@ it("ships Harness CLIs as verified optional engine packages instead of app resou
   assert.match(packageSource, /prepare-dsh-runtime\.mjs/);
   assert.match(packageSource, /node-runtime/);
   assert.match(packageSource, /prepare-codex-runtime\.mjs/);
-  assert.match(releaseWorkflow, /package-engine-runtime\.mjs --all/);
+  assert.match(packageSource, /--clean/);
+  assert.match(windowsPackageSource, /package-engine-runtime\.mjs/);
+  assert.match(macPackageSource, /package-engine-runtime\.mjs/);
+  assert.match(releaseWorkflow, /package-engine-runtime\.mjs --all --clean --outdir.*apps\/desktop\/dist-engine-packs/);
+  assert.match(desktopBuildWorkflow, /package:engine-runtimes/);
   assert.match(stdioRuntimeSource, /windowsHide: true/);
   assert.match(codexPrepareSource, /Codex native Windows runtime was not installed/);
   assert.match(codexPrepareSource, /CI: process\.env\.CI \|\| "1"/);

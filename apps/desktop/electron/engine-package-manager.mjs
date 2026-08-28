@@ -810,7 +810,14 @@ export function createEnginePackageManager(options) {
   async function installFromRelease(descriptor, stagingRoot, temporaryRoot) {
     const name = assetName(descriptor);
     const archivePath = path.join(temporaryRoot, name);
-    const sourceDirectory = environment.IPOLLOWORK_ENGINE_PACK_SOURCE_DIR?.trim();
+    const configuredSourceDirectory = environment.IPOLLOWORK_ENGINE_PACK_SOURCE_DIR?.trim();
+    const bundledSourceDirectory = options.app.isPackaged
+      ? path.join(options.resourcesPath ?? path.dirname(options.desktopRoot), "engine-packs")
+      : null;
+    const hasBundledPackage = bundledSourceDirectory
+      && await pathExists(path.join(bundledSourceDirectory, name))
+      && await pathExists(path.join(bundledSourceDirectory, `${name}.sha256`));
+    const sourceDirectory = configuredSourceDirectory || (hasBundledPackage ? bundledSourceDirectory : null);
     if (sourceDirectory) {
       const sourceArchive = path.join(sourceDirectory, name);
       const expectedSha = parseExpectedSha256(await readFile(`${sourceArchive}.sha256`, "utf8"));

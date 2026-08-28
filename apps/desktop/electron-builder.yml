@@ -15,6 +15,11 @@ files:
   - "!server/dist/opencode-plugins/**"
   - package.json
 extraResources:
+  - from: dist-engine-packs
+    to: engine-packs
+    filter:
+      - "ipollowork-engine-*.tar.gz"
+      - "ipollowork-engine-*.tar.gz.sha256"
   - from: ../../examples/plugin-packages/figma
     to: plugin-packages/figma
   - from: ../../examples/plugin-packages/notion
