@@ -558,6 +558,11 @@ export function createEnginePackageManager(options) {
     return `ipollowork-engine-${descriptor.id}-${platformAssetSegment(platform)}-${architecture}-${descriptor.version}.tar.gz`;
   }
 
+  function officialReleaseAssetUrl(name) {
+    const version = encodeURIComponent(normalizeVersion(options.app.getVersion()));
+    return `https://github.com/Devin-AXIS/iPolloWork/releases/download/v${version}/${name}`;
+  }
+
   async function fetchEnginePackage(url, init = {}, consume = null) {
     const controller = new AbortController();
     let requestTimedOut = false;
@@ -781,18 +786,29 @@ export function createEnginePackageManager(options) {
     return true;
   }
 
-  async function downloadVerifiedReleaseArchive(descriptor, name, archivePath) {
+  async function downloadVerifiedReleaseArchive(descriptor, name, archivePath, trustedExpectedSha = null) {
     const explicitBaseUrl = environment.IPOLLOWORK_ENGINE_PACK_BASE_URL?.trim().replace(/\/$/, "");
     let expectedSha;
     let sourceUrls;
     if (explicitBaseUrl) {
       const url = `${explicitBaseUrl}/${name}`;
-      const checksumResponse = await fetchEnginePackage(`${url}.sha256`);
-      if (!checksumResponse.ok) {
-        throw new Error(`Engine package checksum download returned HTTP ${checksumResponse.status}.`);
+      if (trustedExpectedSha) {
+        expectedSha = trustedExpectedSha;
+      } else {
+        const checksumResponse = await fetchEnginePackage(`${url}.sha256`);
+        if (!checksumResponse.ok) {
+          throw new Error(`Engine package checksum download returned HTTP ${checksumResponse.status}.`);
+        }
+        expectedSha = parseExpectedSha256(await checksumResponse.text());
       }
-      expectedSha = parseExpectedSha256(await checksumResponse.text());
       sourceUrls = [url];
+    } else if (trustedExpectedSha) {
+      const url = officialReleaseAssetUrl(name);
+      expectedSha = trustedExpectedSha;
+      sourceUrls = [
+        url,
+        ...ENGINE_PACK_GITHUB_MIRRORS.map((mirror) => `${mirror}${url}`),
+      ];
     } else {
       const releaseAsset = await resolveOfficialReleaseAsset(name);
       expectedSha = releaseAsset.expectedSha;
@@ -834,9 +850,15 @@ export function createEnginePackageManager(options) {
     const bundledSourceDirectory = options.app.isPackaged
       ? path.join(options.resourcesPath ?? path.dirname(options.desktopRoot), "engine-packs")
       : null;
-    const hasBundledPackage = bundledSourceDirectory
+    const bundledChecksumPath = bundledSourceDirectory
+      ? path.join(bundledSourceDirectory, `${name}.sha256`)
+      : null;
+    const bundledExpectedSha = bundledChecksumPath && await pathExists(bundledChecksumPath)
+      ? parseExpectedSha256(await readFile(bundledChecksumPath, "utf8"))
+      : null;
+    const hasBundledPackage = Boolean(bundledSourceDirectory
       && await pathExists(path.join(bundledSourceDirectory, name))
-      && await pathExists(path.join(bundledSourceDirectory, `${name}.sha256`));
+      && bundledExpectedSha);
     const sourceDirectory = configuredSourceDirectory || (hasBundledPackage ? bundledSourceDirectory : null);
     if (sourceDirectory) {
       const sourceArchive = path.join(sourceDirectory, name);
@@ -849,7 +871,7 @@ export function createEnginePackageManager(options) {
       if (actualSha !== expectedSha) throw new Error("Engine package checksum verification failed.");
       await assertArchiveEntriesSafe(archivePath);
     } else {
-      await downloadVerifiedReleaseArchive(descriptor, name, archivePath);
+      await downloadVerifiedReleaseArchive(descriptor, name, archivePath, bundledExpectedSha);
     }
     setOperation(descriptor.id, { status: "installing" });
     await mkdir(stagingRoot, { recursive: true });

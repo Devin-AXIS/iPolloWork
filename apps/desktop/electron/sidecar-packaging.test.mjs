@@ -6,6 +6,7 @@ import path from "node:path";
 import { createPackage } from "@electron/asar";
 
 import afterPackModule from "../scripts/electron-after-pack.cjs";
+import afterSignModule from "../scripts/electron-after-sign.cjs";
 import {
   assertServerRuntimeDependencies,
   stageServerConstants,
@@ -13,6 +14,7 @@ import {
 } from "../scripts/server-packaging.mjs";
 
 const afterPack = afterPackModule.default ?? afterPackModule;
+const { assertMacEngineTrustFiles } = afterSignModule;
 
 it("ships Harness CLIs as verified engine packages with platform-safe bundling", async () => {
   const [builderConfig, mainSource, managerSource, packageSource, windowsPackageSource, macPackageSource, releaseWorkflow, desktopBuildWorkflow, stdioRuntimeSource, buildSource, devSource, codexPrepareSource, codexRuntimeManifest, workspaceConfig, osxSignPatch] = await Promise.all([
@@ -35,10 +37,11 @@ it("ships Harness CLIs as verified engine packages with platform-safe bundling",
   assert.doesNotMatch(builderConfig, /from: dsh-runtime\s+to: dsh-runtime/);
   assert.match(builderConfig, /from: \.\.\/\.\.\/examples\/plugin-packages\/deepseek-harness/);
   assert.doesNotMatch(builderConfig, /from: codex-runtime\s+to: codex-runtime/);
-  const macConfig = builderConfig.match(/\nmac:\n[\s\S]*?\nlinux:\n/)?.[0] ?? "";
-  const linuxConfig = builderConfig.match(/\nlinux:\n[\s\S]*?\nwin:\n/)?.[0] ?? "";
-  const windowsConfig = builderConfig.match(/\nwin:\n[\s\S]*$/)?.[0] ?? "";
-  assert.doesNotMatch(macConfig, /from: dist-engine-packs\s+to: engine-packs/);
+  const macConfig = builderConfig.match(/\r?\nmac:\r?\n[\s\S]*?\r?\nlinux:\r?\n/)?.[0] ?? "";
+  const linuxConfig = builderConfig.match(/\r?\nlinux:\r?\n[\s\S]*?\r?\nwin:\r?\n/)?.[0] ?? "";
+  const windowsConfig = builderConfig.match(/\r?\nwin:\r?\n[\s\S]*$/)?.[0] ?? "";
+  assert.match(macConfig, /from: dist-engine-packs\s+to: engine-packs[\s\S]*ipollowork-engine-\*\.tar\.gz\.sha256/);
+  assert.doesNotMatch(macConfig, /^\s+- "ipollowork-engine-\*\.tar\.gz"\s*$/m);
   assert.match(linuxConfig, /from: dist-engine-packs\s+to: engine-packs/);
   assert.match(windowsConfig, /from: dist-engine-packs\s+to: engine-packs/);
   assert.match(mainSource, /createEnginePackageManager/);
@@ -50,6 +53,8 @@ it("ships Harness CLIs as verified engine packages with platform-safe bundling",
   assert.match(managerSource, /IPOLLOWORK_CODEX_CLI/);
   assert.match(managerSource, /engine-packs/);
   assert.match(managerSource, /checksum verification failed/);
+  assert.match(managerSource, /bundledExpectedSha/);
+  assert.match(managerSource, /officialReleaseAssetUrl/);
   assert.match(managerSource, /gh-proxy\.com/);
   assert.match(managerSource, /ghfast\.top/);
   assert.match(managerSource, /api\.github\.com\/repos\/Devin-AXIS\/iPolloWork\/releases\/latest/);
@@ -65,6 +70,7 @@ it("ships Harness CLIs as verified engine packages with platform-safe bundling",
   assert.match(macPackageSource, /package-engine-runtime\.mjs/);
   assert.match(releaseWorkflow, /package-engine-runtime\.mjs --all --clean --outdir.*apps\/desktop\/dist-engine-packs/);
   assert.match(releaseWorkflow, /github\.event_name == 'workflow_dispatch' && github\.ref_name \|\| env\.RELEASE_TAG/);
+  assert.match(releaseWorkflow, /git merge-base --is-ancestor "\$\{RELEASE_TAG\}\^\{\}" HEAD/);
   const afterSignSource = await readFile(new URL("../scripts/electron-after-sign.cjs", import.meta.url), "utf8");
   assert.match(afterSignSource, /notarytool[\s\S]*--output-format[\s\S]*json/);
   assert.match(afterSignSource, /notarytool", "log"/);
@@ -115,6 +121,29 @@ it("hides consoles opened by packaged DSH tool subprocesses on Windows", async (
   assert.match(prepareSource, /CI: process\.env\.CI \|\| "1"/);
   assert.match(prepareSource, /stageNodeRuntime/);
   assert.doesNotMatch(prepareSource, /--ignore-workspace/);
+});
+
+it("keeps native engine archives outside the notarized macOS app while retaining signed checksums", async () => {
+  const appRoot = await mkdtemp(path.join(os.tmpdir(), "ipollowork-mac-engine-trust-"));
+  const appPath = path.join(appRoot, "iPollo.app");
+  const enginePacksPath = path.join(appPath, "Contents", "Resources", "engine-packs");
+  await mkdir(enginePacksPath, { recursive: true });
+  const dshChecksum = path.join(enginePacksPath, "ipollowork-engine-deepseek-harness-macos-arm64-1.0.0.tar.gz.sha256");
+  const codexChecksum = path.join(enginePacksPath, "ipollowork-engine-codex-harness-macos-arm64-1.0.0.tar.gz.sha256");
+  await writeFile(dshChecksum, `${"a".repeat(64)}  dsh.tar.gz\n`);
+  await writeFile(codexChecksum, `${"b".repeat(64)}  codex.tar.gz\n`);
+
+  try {
+    assert.doesNotThrow(() => assertMacEngineTrustFiles(appPath));
+    const archivePath = path.join(enginePacksPath, "ipollowork-engine-deepseek-harness-macos-arm64-1.0.0.tar.gz");
+    await writeFile(archivePath, "native archive");
+    assert.throws(() => assertMacEngineTrustFiles(appPath), /must not contain native engine archives/);
+    await rm(archivePath);
+    await rm(dshChecksum);
+    assert.throws(() => assertMacEngineTrustFiles(appPath), /missing the deepseek-harness engine checksum/);
+  } finally {
+    await rm(appRoot, { recursive: true, force: true });
+  }
 });
 
 it("stages constants beside every compiled server module that imports them", async () => {

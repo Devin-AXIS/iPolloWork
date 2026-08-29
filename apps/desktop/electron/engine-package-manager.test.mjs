@@ -9,10 +9,10 @@ import { test } from "node:test";
 
 import { createEnginePackageManager } from "./engine-package-manager.mjs";
 
-function platformAssetSegment() {
-  if (process.platform === "darwin") return "macos";
-  if (process.platform === "win32") return "windows";
-  return process.platform;
+function platformAssetSegment(platform = process.platform) {
+  if (platform === "darwin") return "macos";
+  if (platform === "win32") return "windows";
+  return platform;
 }
 
 function commandPath(command) {
@@ -35,6 +35,28 @@ function codexCliRelativePath() {
     "bin",
     "codex.exe",
   );
+}
+
+async function createDshArchiveFixture(temporaryRoot, { platform, architecture, version }) {
+  const fixtureRoot = path.join(temporaryRoot, `${platform}-${architecture}-fixture`);
+  const name = `ipollowork-engine-deepseek-harness-${platformAssetSegment(platform)}-${architecture}-${version}.tar.gz`;
+  const archivePath = path.join(temporaryRoot, name);
+  const cliRelativePath = path.join("node_modules", "@deepseek-ai", "dsh", "lib", "bin.js");
+  const nodeRelativePath = path.join("node-runtime", platform === "win32" ? "node.exe" : "node");
+  await mkdir(path.join(fixtureRoot, path.dirname(cliRelativePath)), { recursive: true });
+  await mkdir(path.join(fixtureRoot, path.dirname(nodeRelativePath)), { recursive: true });
+  await writeFile(path.join(fixtureRoot, cliRelativePath), "fixture-runtime\n");
+  await writeFile(path.join(fixtureRoot, nodeRelativePath), "fixture-node\n");
+  await writeFile(path.join(fixtureRoot, "ipollowork-host-tools.mjs"), "export {};\n");
+  await writeFile(path.join(fixtureRoot, "package.json"), '{"name":"fixture"}\n');
+  const packed = spawnSync(commandPath("tar"), ["-czf", archivePath, "-C", fixtureRoot, "."], { encoding: "utf8" });
+  assert.equal(packed.status, 0, packed.stderr);
+  const archive = await readFile(archivePath);
+  return {
+    archive,
+    checksum: createHash("sha256").update(archive).digest("hex"),
+    name,
+  };
 }
 
 test("installs and removes a bundled optional engine package without touching Work data", async () => {
@@ -352,37 +374,26 @@ test("reports real streamed byte progress for Codex and DeepSeek engine download
   }
 });
 
-test("installs a bundled DeepSeek Harness for Apple Silicon without using the network", async () => {
-  const temporaryRoot = await mkdtemp(path.join(os.tmpdir(), "ipollowork-engine-macos-bundle-test-"));
+test("installs a checksum-pinned DeepSeek Harness for Apple Silicon without GitHub metadata", async () => {
+  const temporaryRoot = await mkdtemp(path.join(os.tmpdir(), "ipollowork-engine-macos-download-test-"));
   const resourcesPath = path.join(temporaryRoot, "resources");
   const sourceDirectory = path.join(resourcesPath, "engine-packs");
-  const fixtureRoot = path.join(temporaryRoot, "fixture");
   const version = "9.8.7";
-  const emptyHome = path.join(temporaryRoot, "empty-home");
-  const name = `ipollowork-engine-deepseek-harness-macos-arm64-${version}.tar.gz`;
-  const archivePath = path.join(sourceDirectory, name);
-  const cliRelativePath = path.join("node_modules", "@deepseek-ai", "dsh", "lib", "bin.js");
+  const fixture = await createDshArchiveFixture(temporaryRoot, {
+    platform: "darwin",
+    architecture: "arm64",
+    version,
+  });
+  const officialArchive = `https://github.com/Devin-AXIS/iPolloWork/releases/download/v1.0.0/${fixture.name}`;
+  const requestedUrls = [];
   /** @type {NodeJS.ProcessEnv} */
-  const environment = {
-    ...process.env,
-    PATH: "",
-  };
+  const environment = { ...process.env, PATH: "" };
   delete environment.IPOLLOWORK_DSH_CLI;
   delete environment.IPOLLOWORK_ENGINE_PACK_SOURCE_DIR;
 
   try {
-    await mkdir(path.join(fixtureRoot, path.dirname(cliRelativePath)), { recursive: true });
-    await mkdir(path.join(fixtureRoot, "node-runtime"), { recursive: true });
     await mkdir(sourceDirectory, { recursive: true });
-    await writeFile(path.join(fixtureRoot, cliRelativePath), "fixture-runtime\n");
-    await writeFile(path.join(fixtureRoot, "node-runtime", "node"), "fixture-node\n");
-    await writeFile(path.join(fixtureRoot, "ipollowork-host-tools.mjs"), "export {};\n");
-    await writeFile(path.join(fixtureRoot, "package.json"), '{"name":"fixture"}\n');
-    const packed = spawnSync(commandPath("tar"), ["-czf", archivePath, "-C", fixtureRoot, "."], { encoding: "utf8" });
-    assert.equal(packed.status, 0, packed.stderr);
-    const checksum = createHash("sha256").update(readFileSync(archivePath)).digest("hex");
-    await writeFile(`${archivePath}.sha256`, `${checksum}  ${name}\n`);
-
+    await writeFile(path.join(sourceDirectory, `${fixture.name}.sha256`), `${fixture.checksum}  ${fixture.name}\n`);
     const manager = createEnginePackageManager({
       app: {
         getPath(pathName) {
@@ -398,8 +409,17 @@ test("installs a bundled DeepSeek Harness for Apple Silicon without using the ne
       architecture: "arm64",
       versions: { opencode: "1.2.3", deepseekHarness: version, codexHarness: "4.5.6" },
       env: environment,
-      homeDir: emptyHome,
-      fetch: async () => { throw new Error("bundled install must not use the network"); },
+      homeDir: path.join(temporaryRoot, "empty-home"),
+      fetch: async (url) => {
+        requestedUrls.push(String(url));
+        if (String(url).startsWith("https://api.github.com/")) {
+          throw new Error("trusted packaged checksum must bypass GitHub metadata");
+        }
+        if (url === officialArchive) throw new Error("net::ERR_CONNECTION_TIMED_OUT");
+        if (url === `https://gh-proxy.com/${officialArchive}`) return new Response("corrupted archive");
+        if (url === `https://ghfast.top/${officialArchive}`) return new Response(fixture.archive);
+        return new Response("missing", { status: 404 });
+      },
     });
 
     const installed = await manager.install("deepseek-harness");
@@ -407,6 +427,58 @@ test("installs a bundled DeepSeek Harness for Apple Silicon without using the ne
     assert.equal(installed.source, "downloaded");
     assert.match(environment.IPOLLOWORK_DSH_CLI ?? "", /engine-packs[\\/]deepseek-harness/);
     assert.match(environment.IPOLLOWORK_DSH_NODE_BIN ?? "", /node-runtime[\\/]node$/);
+    assert.ok(requestedUrls.includes(officialArchive));
+    assert.ok(requestedUrls.includes(`https://gh-proxy.com/${officialArchive}`));
+    assert.ok(requestedUrls.includes(`https://ghfast.top/${officialArchive}`));
+    assert.equal(requestedUrls.some((url) => url.startsWith("https://api.github.com/")), false);
+  } finally {
+    await rm(temporaryRoot, { recursive: true, force: true });
+  }
+});
+
+test("installs a bundled DeepSeek Harness for Windows without using the network", async () => {
+  const temporaryRoot = await mkdtemp(path.join(os.tmpdir(), "ipollowork-engine-windows-bundle-test-"));
+  const resourcesPath = path.join(temporaryRoot, "resources");
+  const sourceDirectory = path.join(resourcesPath, "engine-packs");
+  const version = "9.8.7";
+  const fixture = await createDshArchiveFixture(temporaryRoot, {
+    platform: "win32",
+    architecture: "x64",
+    version,
+  });
+  /** @type {NodeJS.ProcessEnv} */
+  const environment = { ...process.env, PATH: "" };
+  delete environment.IPOLLOWORK_DSH_CLI;
+  delete environment.IPOLLOWORK_ENGINE_PACK_SOURCE_DIR;
+
+  try {
+    await mkdir(sourceDirectory, { recursive: true });
+    await writeFile(path.join(sourceDirectory, fixture.name), fixture.archive);
+    await writeFile(path.join(sourceDirectory, `${fixture.name}.sha256`), `${fixture.checksum}  ${fixture.name}\n`);
+    const manager = createEnginePackageManager({
+      app: {
+        getPath(pathName) {
+          assert.equal(pathName, "userData");
+          return path.join(temporaryRoot, "user-data");
+        },
+        getVersion() { return "1.0.0"; },
+        isPackaged: true,
+      },
+      desktopRoot: path.join(resourcesPath, "app.asar"),
+      resourcesPath,
+      platform: "win32",
+      architecture: "x64",
+      versions: { opencode: "1.2.3", deepseekHarness: version, codexHarness: "4.5.6" },
+      env: environment,
+      homeDir: path.join(temporaryRoot, "empty-home"),
+      fetch: async () => { throw new Error("bundled Windows install must not use the network"); },
+    });
+
+    const installed = await manager.install("deepseek-harness");
+    assert.equal(installed.status, "ready");
+    assert.equal(installed.source, "downloaded");
+    assert.match(environment.IPOLLOWORK_DSH_CLI ?? "", /engine-packs[\\/]deepseek-harness/);
+    assert.match(environment.IPOLLOWORK_DSH_NODE_BIN ?? "", /node-runtime[\\/]node\.exe$/);
   } finally {
     await rm(temporaryRoot, { recursive: true, force: true });
   }
