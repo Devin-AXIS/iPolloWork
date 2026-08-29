@@ -12,6 +12,17 @@ function run(command, args) {
   }
 }
 
+function capture(command, args) {
+  const result = spawnSync(command, args, { encoding: "utf8" });
+  if (result.stdout) process.stdout.write(result.stdout);
+  if (result.stderr) process.stderr.write(result.stderr);
+  if (result.error) throw result.error;
+  if (result.status !== 0) {
+    throw new Error(`${command} failed with status ${result.status}`);
+  }
+  return result.stdout;
+}
+
 function requireEnv(name) {
   const value = process.env[name];
   if (!value) {
@@ -60,21 +71,25 @@ async function afterSign(context) {
   const keyPath = requireEnv("APPLE_API_KEY_PATH");
   const keyId = requireEnv("APPLE_API_KEY");
   const issuer = requireEnv("APPLE_API_ISSUER");
+  const credentials = ["--key", keyPath, "--key-id", keyId, "--issuer", issuer];
 
   try {
     run("ditto", ["-c", "-k", "--keepParent", appPath, notaryZipPath]);
-    run("xcrun", [
+    const submission = JSON.parse(capture("xcrun", [
       "notarytool",
       "submit",
       notaryZipPath,
-      "--key",
-      keyPath,
-      "--key-id",
-      keyId,
-      "--issuer",
-      issuer,
+      ...credentials,
       "--wait",
-    ]);
+      "--output-format",
+      "json",
+    ]));
+    if (submission.status !== "Accepted") {
+      if (submission.id) {
+        run("xcrun", ["notarytool", "log", submission.id, ...credentials]);
+      }
+      throw new Error(`Apple notarization returned ${submission.status ?? "an unknown status"}.`);
+    }
     run("xcrun", ["stapler", "staple", appPath]);
     run("xcrun", ["stapler", "validate", appPath]);
   } finally {

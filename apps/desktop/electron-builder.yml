@@ -15,11 +15,6 @@ files:
   - "!server/dist/opencode-plugins/**"
   - package.json
 extraResources:
-  - from: dist-engine-packs
-    to: engine-packs
-    filter:
-      - "ipollowork-engine-*.tar.gz"
-      - "ipollowork-engine-*.tar.gz.sha256"
   - from: ../../examples/plugin-packages/figma
     to: plugin-packages/figma
   - from: ../../examples/plugin-packages/notion
@@ -104,6 +99,8 @@ mac:
   extendInfo:
     NSMicrophoneUsageDescription: iPolloWork uses the microphone when you start Voice Mode so you can speak commands to your agent.
   extraResources:
+    # Optional engine archives contain third-party native executables. Keep
+    # them as verified Release downloads so Apple notarizes only the app.
     - from: resources/icons/mac
       to: icons/mac
       filter:
@@ -130,6 +127,11 @@ mac:
 linux:
   icon: resources/icons/icon.png
   extraResources:
+    - from: dist-engine-packs
+      to: engine-packs
+      filter:
+        - "ipollowork-engine-*.tar.gz"
+        - "ipollowork-engine-*.tar.gz.sha256"
     - from: resources/sidecars
       to: sidecars
       filter:
@@ -148,6 +150,11 @@ linux:
 win:
   icon: resources/icons/windows/icon.ico
   extraResources:
+    - from: dist-engine-packs
+      to: engine-packs
+      filter:
+        - "ipollowork-engine-*.tar.gz"
+        - "ipollowork-engine-*.tar.gz.sha256"
     - from: resources/icons
       to: icons
       filter:

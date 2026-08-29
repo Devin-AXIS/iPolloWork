@@ -254,7 +254,9 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
         with:
-          ref: ${{ env.RELEASE_TAG }}
+          # Dispatch-based recovery builds from the selected workflow ref so a
+          # packaging fix can repair an existing tag without moving that tag.
+          ref: ${{ github.event_name == 'workflow_dispatch' && github.ref_name || env.RELEASE_TAG }}
           fetch-depth: 0
 
       - name: Setup Node
@@ -322,7 +324,9 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
         with:
-          ref: ${{ env.RELEASE_TAG }}
+          # Dispatch-based recovery builds from the selected workflow ref so a
+          # packaging fix can repair an existing tag without moving that tag.
+          ref: ${{ github.event_name == 'workflow_dispatch' && github.ref_name || env.RELEASE_TAG }}
           fetch-depth: 0
 
       - name: Enable git long paths (Windows)
