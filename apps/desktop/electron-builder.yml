@@ -100,7 +100,13 @@ mac:
     NSMicrophoneUsageDescription: iPolloWork uses the microphone when you start Voice Mode so you can speak commands to your agent.
   extraResources:
     # Optional engine archives contain third-party native executables. Keep
-    # them as verified Release downloads so Apple notarizes only the app.
+    # them as verified Release downloads so Apple notarizes only the app. The
+    # signed app still carries their checksums, avoiding a GitHub API lookup
+    # before a direct or mirrored download can start.
+    - from: dist-engine-packs
+      to: engine-packs
+      filter:
+        - "ipollowork-engine-*.tar.gz.sha256"
     - from: resources/icons/mac
       to: icons/mac
       filter:

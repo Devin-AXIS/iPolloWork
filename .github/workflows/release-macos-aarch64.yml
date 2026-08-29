@@ -264,6 +264,16 @@ jobs:
         with:
           node-version: 24
 
+      - name: Verify recovery source contains the release tag
+        if: github.event_name == 'workflow_dispatch'
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! git merge-base --is-ancestor "${RELEASE_TAG}^{}" HEAD; then
+            echo "Recovery ref $(git rev-parse HEAD) does not contain ${RELEASE_TAG}; refusing to replace published assets from unrelated source." >&2
+            exit 1
+          fi
+
       - name: Verify tag matches app versions
         run: node scripts/release/verify-tag.mjs --tag "$RELEASE_TAG"
 

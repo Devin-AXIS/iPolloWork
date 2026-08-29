@@ -1,5 +1,5 @@
 const { spawnSync } = require("node:child_process");
-const { existsSync, mkdtempSync, rmSync } = require("node:fs");
+const { existsSync, mkdtempSync, readdirSync, rmSync } = require("node:fs");
 const { tmpdir } = require("node:os");
 const path = require("node:path");
 
@@ -35,6 +35,23 @@ function computerUseHelperPath(appPath) {
   return path.join(appPath, "Contents", "Resources", "helpers", computerUseHelperAppName);
 }
 
+function assertMacEngineTrustFiles(appPath) {
+  const enginePacksPath = path.join(appPath, "Contents", "Resources", "engine-packs");
+  if (!existsSync(enginePacksPath)) {
+    throw new Error(`macOS engine checksums are missing from packaged app: ${enginePacksPath}`);
+  }
+  const entries = readdirSync(enginePacksPath);
+  const archives = entries.filter((name) => name.endsWith(".tar.gz"));
+  if (archives.length > 0) {
+    throw new Error(`macOS packaged app must not contain native engine archives: ${archives.join(", ")}`);
+  }
+  for (const engineId of ["deepseek-harness", "codex-harness"]) {
+    if (!entries.some((name) => name.startsWith(`ipollowork-engine-${engineId}-macos-`) && name.endsWith(".tar.gz.sha256"))) {
+      throw new Error(`macOS packaged app is missing the ${engineId} engine checksum.`);
+    }
+  }
+}
+
 function verifyComputerUseHelper(appPath, requireDistributionSignature) {
   const helperPath = computerUseHelperPath(appPath);
   if (!existsSync(helperPath)) {
@@ -57,13 +74,15 @@ function verifyComputerUseHelper(appPath, requireDistributionSignature) {
 async function afterSign(context) {
   if (context.electronPlatformName !== "darwin") return;
 
+  const appName = `${context.packager.appInfo.productFilename}.app`;
+  const appPath = path.join(context.appOutDir, appName);
+  assertMacEngineTrustFiles(appPath);
+
   if (process.env.MACOS_NOTARIZE !== "true") {
     console.warn("[electron-after-sign] MACOS_NOTARIZE is not true; skipping notarization.");
     return;
   }
 
-  const appName = `${context.packager.appInfo.productFilename}.app`;
-  const appPath = path.join(context.appOutDir, appName);
   verifyComputerUseHelper(appPath, process.env.MACOS_NOTARIZE === "true");
 
   const notaryTempDir = mkdtempSync(path.join(tmpdir(), "ipollowork-electron-notary-"));
@@ -99,3 +118,4 @@ async function afterSign(context) {
 
 module.exports = afterSign;
 module.exports.default = afterSign;
+module.exports.assertMacEngineTrustFiles = assertMacEngineTrustFiles;
