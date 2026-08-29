@@ -14,7 +14,7 @@ import {
 
 const afterPack = afterPackModule.default ?? afterPackModule;
 
-it("ships Harness CLIs as verified bundled engine packages with network fallback", async () => {
+it("ships Harness CLIs as verified engine packages with platform-safe bundling", async () => {
   const [builderConfig, mainSource, managerSource, packageSource, windowsPackageSource, macPackageSource, releaseWorkflow, desktopBuildWorkflow, stdioRuntimeSource, buildSource, devSource, codexPrepareSource, codexRuntimeManifest, workspaceConfig, osxSignPatch] = await Promise.all([
     readFile(new URL("../electron-builder.yml", import.meta.url), "utf8"),
     readFile(new URL("./main.mjs", import.meta.url), "utf8"),
@@ -35,7 +35,12 @@ it("ships Harness CLIs as verified bundled engine packages with network fallback
   assert.doesNotMatch(builderConfig, /from: dsh-runtime\s+to: dsh-runtime/);
   assert.match(builderConfig, /from: \.\.\/\.\.\/examples\/plugin-packages\/deepseek-harness/);
   assert.doesNotMatch(builderConfig, /from: codex-runtime\s+to: codex-runtime/);
-  assert.match(builderConfig, /from: dist-engine-packs\s+to: engine-packs/);
+  const macConfig = builderConfig.match(/\nmac:\n[\s\S]*?\nlinux:\n/)?.[0] ?? "";
+  const linuxConfig = builderConfig.match(/\nlinux:\n[\s\S]*?\nwin:\n/)?.[0] ?? "";
+  const windowsConfig = builderConfig.match(/\nwin:\n[\s\S]*$/)?.[0] ?? "";
+  assert.doesNotMatch(macConfig, /from: dist-engine-packs\s+to: engine-packs/);
+  assert.match(linuxConfig, /from: dist-engine-packs\s+to: engine-packs/);
+  assert.match(windowsConfig, /from: dist-engine-packs\s+to: engine-packs/);
   assert.match(mainSource, /createEnginePackageManager/);
   assert.match(mainSource, /app\.getAppPath\(\).*server.*dist.*constants\.json/);
   assert.match(mainSource, /resourcesPath: process\.resourcesPath/);
@@ -59,6 +64,10 @@ it("ships Harness CLIs as verified bundled engine packages with network fallback
   assert.match(windowsPackageSource, /package-engine-runtime\.mjs/);
   assert.match(macPackageSource, /package-engine-runtime\.mjs/);
   assert.match(releaseWorkflow, /package-engine-runtime\.mjs --all --clean --outdir.*apps\/desktop\/dist-engine-packs/);
+  assert.match(releaseWorkflow, /github\.event_name == 'workflow_dispatch' && github\.ref_name \|\| env\.RELEASE_TAG/);
+  const afterSignSource = await readFile(new URL("../scripts/electron-after-sign.cjs", import.meta.url), "utf8");
+  assert.match(afterSignSource, /notarytool[\s\S]*--output-format[\s\S]*json/);
+  assert.match(afterSignSource, /notarytool", "log"/);
   assert.match(desktopBuildWorkflow, /package:engine-runtimes/);
   assert.match(stdioRuntimeSource, /windowsHide: true/);
   assert.match(codexPrepareSource, /Codex native Windows runtime was not installed/);
