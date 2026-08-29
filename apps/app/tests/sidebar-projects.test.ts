@@ -1,7 +1,18 @@
 import { describe, expect, test } from "bun:test";
 import { existsSync, readFileSync } from "node:fs";
 
-import { buildSessionTreeState } from "../src/react-app/domains/session/sidebar/utils";
+import {
+  buildSessionTreeState,
+  buildSidebarArchivedSessions,
+  buildSidebarLayoutView,
+  visibleProjectSessionLists,
+} from "../src/react-app/domains/session/sidebar/utils";
+import {
+  createSidebarLayoutSnapshot,
+  normalizeSidebarLayout,
+  sessionLayoutKey,
+} from "../src/react-app/domains/session/sidebar/sidebar-layout-store";
+import type { ProjectSessionList } from "../src/app/types";
 
 const sidebarSource = readFileSync(
   new URL("../src/react-app/domains/session/sidebar/app-sidebar.tsx", import.meta.url),
@@ -53,11 +64,106 @@ const chineseLocaleSource = readFileSync(
 );
 
 describe("sidebar projects", () => {
+  test("normalizes persisted sidebar layout and reorders projects and sessions", () => {
+    const layout = normalizeSidebarLayout({
+      projectOrderByContext: { personal: ["ws_b", "stale", "ws_a"] },
+      sessionOrderByProject: { ws_b: ["stale-session", sessionLayoutKey("ws_a", "ses_a")] },
+      sessionProjectByKey: { [sessionLayoutKey("ws_a", "ses_a")]: "ws_b", stale: "stale" },
+    });
+    const projects: ProjectSessionList[] = [
+      { workspace: { id: "ws_a", name: "A", path: "/a", preset: "starter", workspaceType: "local" }, sessions: [{ id: "ses_a", title: "A task" }], status: "ready" },
+      { workspace: { id: "ws_b", name: "B", path: "/b", preset: "starter", workspaceType: "local" }, sessions: [{ id: "ses_b", title: "B task" }], status: "ready" },
+    ];
+    const view = buildSidebarLayoutView(projects, layout);
+    expect(view.map((project) => project.workspace.id)).toEqual(["ws_b", "ws_a"]);
+    expect(view[0]?.sessions.map((session) => session.id)).toEqual(["ses_a", "ses_b"]);
+    expect(view[0]?.sessions[0]?.sourceWorkspaceId).toBe("ws_a");
+    expect(view[0]?.sessions[0]?.sidebarWorkspaceId).toBe("ws_b");
+  });
+
+  test("keeps archived sessions out of projects and collects them globally", () => {
+    const projects: ProjectSessionList[] = [
+      {
+        workspace: { id: "ws_a", name: "A", path: "/a", preset: "starter", workspaceType: "local" },
+        sessions: [
+          { id: "active", title: "Active" },
+          { id: "archived", title: "Archived", time: { archived: 1 } },
+        ],
+        status: "ready",
+      },
+    ];
+
+    expect(buildSidebarLayoutView(projects, createSidebarLayoutSnapshot())[0]?.sessions.map((session) => session.id))
+      .toEqual(["active"]);
+    expect(buildSidebarArchivedSessions(projects).map((session) => session.id)).toEqual(["archived"]);
+    expect(buildSidebarArchivedSessions(projects)[0]?.sourceWorkspaceId).toBe("ws_a");
+    expect(sidebarSource).toContain("buildSidebarArchivedSessions(props.projectSessionLists)");
+    expect(sidebarSource).not.toContain("<ArchivedSessionsSection\n                      sessions={archivedSessions}");
+    expect(sidebarSource).toContain('className="group/archived px-2"');
+  });
+
+  test("creates a clean empty layout snapshot", () => {
+    expect(createSidebarLayoutSnapshot()).toEqual({
+      projectOrderByContext: {},
+      sessionOrderByProject: {},
+      sessionProjectByKey: {},
+    });
+  });
+
+  test("keeps a default workspace visible when it owns historical sessions", () => {
+    const projects: ProjectSessionList[] = [
+      {
+        workspace: {
+          id: "ws_default",
+          name: "Personal",
+          path: "/Users/test/iPolloWork",
+          preset: "starter",
+          isDefault: true,
+          workspaceType: "local",
+        },
+        sessions: [{ id: "ses_history", title: "Historical task" }],
+        status: "ready",
+      },
+      {
+        workspace: {
+          id: "ws_project",
+          name: "Project",
+          path: "/Users/test/project",
+          preset: "starter",
+          isDefault: false,
+          workspaceType: "local",
+        },
+        sessions: [],
+        status: "ready",
+      },
+    ];
+
+    expect(visibleProjectSessionLists(projects).map((project) => project.workspace.id))
+      .toEqual(["ws_default", "ws_project"]);
+  });
+
+  test("keeps an empty default workspace hidden from the projects section", () => {
+    const projects: ProjectSessionList[] = [{
+      workspace: {
+        id: "ws_default",
+        name: "iPolloWork",
+        path: "/Users/test/iPolloWork",
+        preset: "starter",
+        isDefault: true,
+        workspaceType: "local",
+      },
+      sessions: [],
+      status: "ready",
+    }];
+
+    expect(visibleProjectSessionLists(projects)).toEqual([]);
+  });
+
   test("renders named projects inside an independently collapsible all-projects section", () => {
     expect(sidebarSource).not.toContain("function ProjectSwitcher");
     expect(sidebarSource).not.toContain("selectedProjectSessionLists");
     expect(sidebarSource).toContain("const [projectsExpanded, setProjectsExpanded] = React.useState(true)");
-    expect(sidebarSource).toContain("const namedProjects = props.projectSessionLists.filter((project) => !project.workspace.isDefault)");
+    expect(sidebarSource).toContain("visibleProjectSessionLists(props.projectSessionLists)");
     expect(sidebarSource).toContain("namedProjects.map((project)");
     expect(sidebarSource).toContain('toggleTestId="projects-section-toggle"');
     expect(sidebarSource).toContain('data-testid="project-row"');
@@ -92,8 +198,8 @@ describe("sidebar projects", () => {
     expect(sidebarSource).toContain('<SidebarMenu className="gap-1">');
   });
 
-  test("hides the default workspace and renders only named projects", () => {
-    expect(sidebarSource).toContain("const namedProjects = props.projectSessionLists.filter((project) => !project.workspace.isDefault)");
+  test("hides only an empty default workspace and renders projects with task history", () => {
+    expect(sidebarSource).toContain("visibleProjectSessionLists(props.projectSessionLists)");
     expect(sidebarSource).not.toContain("ungroupedExpanded");
     expect(sidebarSource).not.toContain("ungroupedProject");
     expect(sidebarSource).not.toContain('data-testid="ungrouped-section"');
@@ -413,6 +519,19 @@ describe("sidebar projects", () => {
     expect(sidebarSource).toContain('<SidebarMenuSub className="mt-[2px] translate-x-0 gap-1 pb-2">');
     expect(sidebarSource).toContain('const rowPadding = depth > 0 ? "ps-[68px]" : "ps-8";');
     expect(sidebarSource).not.toContain("GroupedSessionList");
+  });
+
+  test("supports persistent drag/drop layout management without changing engine ownership", () => {
+    expect(sidebarSource).toContain("useSidebarLayoutStore");
+    expect(sidebarSource).toContain('draggable\n              onDragStart');
+    expect(sidebarSource).toContain('kind: "project"');
+    expect(sidebarSource).toContain('kind: "session"');
+    expect(sidebarSource).toContain("onDragOver");
+    expect(sidebarSource).toContain("onDrop");
+    expect(sidebarSource).toContain("session.sourceWorkspaceId");
+    expect(sidebarSource).toContain("ctx.onOpenSession(sourceWorkspaceId, session.id)");
+    expect(sessionPageSource).toContain("workContextId?: string");
+    expect(sessionRouteSource).toContain("workContextId: activeWorkContextId");
   });
 
   test("keeps only the independent pin preference store", () => {
