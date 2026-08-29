@@ -167,6 +167,35 @@ describe("conversation engine adapters", () => {
     }));
   });
 
+  test("keeps OpenCode application instructions out of the authored user message", async () => {
+    const originalFetch = globalThis.fetch;
+    const requests: Array<Record<string, unknown>> = [];
+    globalThis.fetch = (async (input, init) => {
+      const request = input instanceof Request ? input : new Request(input, init);
+      requests.push(await request.clone().json());
+      return new Response(null, { status: 204 });
+    }) as typeof fetch;
+
+    try {
+      const connection = openCodeConversationEngineAdapter.connect({ baseUrl: "http://opencode.test" });
+      await connection.sendPrompt({
+        sessionId: "session-internal-context",
+        parts: [
+          { type: "text", text: "Internal template instructions", synthetic: true },
+          { type: "text", text: "测试首条消息" },
+        ],
+        system: "Internal runtime instructions",
+      });
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+
+    expect(requests).toEqual([expect.objectContaining({
+      parts: [{ type: "text", text: "测试首条消息" }],
+      system: "Internal runtime instructions\n\nInternal template instructions",
+    })]);
+  });
+
   test("updates OpenCode permission rules on the active session", async () => {
     const originalFetch = globalThis.fetch;
     const requests: Array<{ url: string; method: string; body: Record<string, unknown> }> = [];
@@ -1389,6 +1418,67 @@ describe("conversation engine adapters", () => {
     });
   });
 
+  test("refreshes the DSH model directory and retries the concrete route after cold start", async () => {
+    const originalFetch = globalThis.fetch;
+    const requests: Array<{ method: string; payload: Record<string, unknown> }> = [];
+    let modelDirectoryCalls = 0;
+    let modelSelectionCalls = 0;
+    globalThis.fetch = (async (input, init) => {
+      const body = JSON.parse(String(init?.body)) as {
+        method?: string;
+        payload?: Record<string, unknown>;
+      };
+      if (String(input).endsWith("/prompt")) {
+        requests.push({ method: "session.prompt", payload: body.payload ?? {} });
+        return Response.json({ ok: true });
+      }
+      const method = body.method ?? "";
+      requests.push({ method, payload: body.payload ?? {} });
+      if (method === "llm.models") {
+        modelDirectoryCalls += 1;
+        if (modelDirectoryCalls === 1) {
+          return Response.json({ message: "runtime is starting" }, { status: 503 });
+        }
+        return Response.json({ value: {
+          groups: [{ id: "openai-codex", models: [{ id: "gpt-5.5" }] }],
+        } });
+      }
+      if (method === "session.selectModel") {
+        modelSelectionCalls += 1;
+        if (modelSelectionCalls === 1) {
+          return Response.json({ message: "provider route is not ready" }, { status: 400 });
+        }
+      }
+      return Response.json({ value: {} });
+    }) as typeof fetch;
+
+    try {
+      const connection = conversationEngineAdapters.get(DEEPSEEK_HARNESS_ENGINE_ID).connect({
+        baseUrl: "http://unused.test",
+        serverBaseUrl: "http://ipollowork.test",
+        workspaceId: "ws_dsh",
+        token: "token",
+      });
+      await connection.sendPrompt({
+        sessionId: "session-cold-start",
+        parts: [{ type: "text", text: "Use GPT-5.5" }],
+        model: { providerID: "openai", modelID: "gpt-5.5" },
+      });
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+
+    expect(requests.map((request) => request.method)).toEqual([
+      "llm.models",
+      "session.selectModel",
+      "llm.models",
+      "session.selectModel",
+      "session.prompt",
+    ]);
+    expect(requests[1]?.payload).toMatchObject({ provider: "openai", model: "gpt-5.5" });
+    expect(requests[3]?.payload).toMatchObject({ provider: "openai-codex", model: "gpt-5.5" });
+  });
+
   test("routes OpenAI Fast aliases through DSH's priority Codex adapter", async () => {
     const originalFetch = globalThis.fetch;
     const requests: Array<{ method: string; payload: Record<string, unknown> }> = [];
@@ -1512,15 +1602,15 @@ describe("conversation engine adapters", () => {
       reasoningEffort: "max",
     });
     expect(requests[3]?.payload.content).toEqual([
-      { type: "text", text: "Build it" },
-      {
-        type: "text",
-        text: `${DEEPSEEK_HARNESS_INTERNAL_SYSTEM_PREFIX}Apply the private template checklist\n</system>`,
-      },
       {
         type: "text",
         text: `${DEEPSEEK_HARNESS_INTERNAL_SYSTEM_PREFIX}Internal runtime instructions\n</system>`,
       },
+      {
+        type: "text",
+        text: `${DEEPSEEK_HARNESS_INTERNAL_SYSTEM_PREFIX}Apply the private template checklist\n</system>`,
+      },
+      { type: "text", text: "Build it" },
     ]);
   });
 
@@ -1971,6 +2061,32 @@ describe("conversation engine adapters", () => {
       payload: { type: "host/session-status", sessionId: "dsh-session", running: false },
     }, state)).toEqual([]);
 
+    expect(mapDeepSeekHarnessEnvelope({
+      type: "server-request",
+      rpcId: "rpc-turn-start",
+      payload: {
+        type: "session/event",
+        sessionId: "dsh-session",
+        event: {
+          type: "turn/start",
+          seq: 9,
+          time: 10,
+          data: { turn: 2 },
+        },
+      },
+    }, state)).toEqual([
+      {
+        type: "session.updated",
+        sessionId: "dsh-session",
+        info: {
+          id: "dsh-session",
+          time: { updated: 10 },
+          dsh: { blank: false, running: true },
+        },
+      },
+      { type: "session.status", sessionId: "dsh-session", status: { type: "busy" } },
+    ]);
+
     mapDeepSeekHarnessEnvelope({
       type: "server-request",
       rpcId: "rpc-chunk",
@@ -2007,6 +2123,15 @@ describe("conversation engine adapters", () => {
         sessionId: "dsh-session",
         messageId: "dsh:dsh-session:assistant:2:1",
         completedAt: 30,
+      },
+      {
+        type: "session.updated",
+        sessionId: "dsh-session",
+        info: {
+          id: "dsh-session",
+          time: { updated: 30 },
+          dsh: { blank: false, running: false },
+        },
       },
       { type: "session.status", sessionId: "dsh-session", status: { type: "idle" } },
       { type: "session.idle", sessionId: "dsh-session" },

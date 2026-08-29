@@ -769,7 +769,20 @@ export function mapDeepSeekHarnessEnvelope(
   if (event.type === "session/title" && typeof data.title === "string") {
     return [{ type: "session.updated", sessionId, info: { id: sessionId, title: data.title } }];
   }
-  if (event.type === "turn/start") return [{ type: "session.status", sessionId, status: { type: "busy" } }];
+  if (event.type === "turn/start") {
+    return [
+      {
+        type: "session.updated",
+        sessionId,
+        info: {
+          id: sessionId,
+          time: { updated: event.time },
+          dsh: { blank: false, running: true },
+        },
+      },
+      { type: "session.status", sessionId, status: { type: "busy" } },
+    ];
+  }
   if (event.type === "turn/end") {
     const errorText = turnErrorText(data);
     const turn = typeof data.turn === "number" ? data.turn : state.activeTurnBySession.get(sessionId) ?? 0;
@@ -790,6 +803,15 @@ export function mapDeepSeekHarnessEnvelope(
         errorText,
         ...(parentUserMessageId ? { parentUserMessageId } : {}),
       }] : []),
+      {
+        type: "session.updated",
+        sessionId,
+        info: {
+          id: sessionId,
+          time: { updated: event.time },
+          dsh: { blank: false, running: false },
+        },
+      },
       { type: "session.status", sessionId, status: { type: "idle" } },
       { type: "session.idle", sessionId },
     ];

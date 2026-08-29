@@ -40,6 +40,7 @@ import {
 } from "@/react-app/domains/workspace/remote-workspace-diagnostics";
 import { useLocal } from "@/react-app/kernel/local-provider";
 import { setTemplateSessionTypes } from "@/react-app/domains/session/sidebar/session-type";
+import { mergeConversationSessionUpdate } from "@/react-app/domains/session/engine/conversation-engine";
 import { useBootState } from "./boot-state";
 import { ensureDesktopLocaliPolloWorkConnection } from "./desktop-local-ipollowork";
 import { resolveiPolloWorkConnection } from "./ipollowork-connection";
@@ -607,7 +608,10 @@ export function useWorkspaceRouteState(input: UseWorkspaceRouteStateInput) {
       const list = current[selectedWorkspaceId] ?? [];
       const index = list.findIndex((session) => session?.id === update.sessionId);
       if (index < 0) return current;
-      const nextSession = { ...list[index], ...update.info, id: update.sessionId };
+      const nextSession = mergeConversationSessionUpdate(list[index], {
+        ...update.info,
+        id: update.sessionId,
+      });
       if (JSON.stringify(nextSession) === JSON.stringify(list[index])) return current;
       const nextList = [...list];
       nextList[index] = nextSession;

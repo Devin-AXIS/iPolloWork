@@ -112,6 +112,7 @@ import {
   isConversationTemplateSessionId,
   nextConversationArtifactSessionId,
   selectConversationTemplate,
+  shouldUseExistingTemplateContext,
   templateBriefPrompt,
 } from "@/react-app/domains/session/templates/template-brief";
 import { useSessionInteractions } from "@/react-app/domains/session/sync/use-session-interactions";
@@ -189,6 +190,7 @@ import {
   getModelContextWindow,
   getRunnableChatModelSnapshot,
   getSelectableChatModelSnapshot,
+  providerListExposesModel,
   projectAccountProviderConnections,
   type ProviderListQueryInput,
   useMergedProviderListQuery,
@@ -387,8 +389,25 @@ export function SessionRoute() {
         directory: sharedProviderRoot || undefined,
       });
     }
+    if (engineProviderClient && activeEngineId !== sharedProviderEngineId) {
+      sources.push({
+        client: engineProviderClient,
+        engineId: activeEngineId,
+        baseUrl: selectedWorkspaceEndpoint?.opencodeBaseUrl,
+        directory: selectedWorkspaceRoot || undefined,
+      });
+    }
     return sources;
-  }, [sharedProviderClient, sharedProviderEndpoint?.opencodeBaseUrl, sharedProviderEngineId, sharedProviderRoot]);
+  }, [
+    activeEngineId,
+    engineProviderClient,
+    selectedWorkspaceEndpoint?.opencodeBaseUrl,
+    selectedWorkspaceRoot,
+    sharedProviderClient,
+    sharedProviderEndpoint?.opencodeBaseUrl,
+    sharedProviderEngineId,
+    sharedProviderRoot,
+  ]);
   useSessionMcpMaintenance({
     cloudSignedIn: denAuth.isSignedIn && activeWorkContextId === PERSONAL_WORK_CONTEXT_ID,
     client: selectedWorkspaceEndpoint?.client ?? null,
@@ -852,6 +871,10 @@ export function SessionRoute() {
       provider.providerID === engineModelSelection.model.providerID
       && provider.modelIDs.includes(engineModelSelection.model.modelID)
     ))
+    // Preserve the explicit click while discovery is pending. Once the active
+    // engine has answered, do not keep a model that only exists in another
+    // engine's account catalog (or in an obsolete packaged whitelist).
+    && (!activeProviderList || providerListExposesModel(activeProviderList, engineModelSelection.model))
     ? engineModelSelection.model
     : null;
   // A user click is authoritative for the current engine. Runtime discovery
@@ -1193,6 +1216,55 @@ export function SessionRoute() {
         let effectiveModel = activeSelectedModel;
         let effectiveMode = selectedMode;
         let effectiveModelVariant = modelVariantValue;
+        let effectiveRuntimeProviderList = activeProviderList;
+        if (
+          activeProviderSource
+          && (
+            !effectiveRuntimeProviderList
+            || (effectiveModel && !providerListExposesModel(effectiveRuntimeProviderList, effectiveModel))
+          )
+        ) {
+          try {
+            effectiveRuntimeProviderList = filterProviderList(
+              await ensureProviderListQuery(getReactQueryClient(), {
+                ...activeProviderSource,
+                force: true,
+              }),
+              hiddenProviderIds,
+            );
+          } catch {
+            // Runtime startup errors are reported by the normal conversation
+            // boundary below. An empty/pending directory is not proof that a
+            // selected model is permanently unavailable.
+          }
+        }
+        const effectiveSelectableModels = getRunnableChatModelSnapshot({
+          catalog: accountProviderList,
+          runtime: effectiveRuntimeProviderList,
+          engineId: activeEngineId,
+        }).filter((provider) => (
+          !isDesktopProviderBlocked({
+            providerId: provider.providerID,
+            checkRestriction: checkDesktopRestriction,
+          }) && (
+            !customProvidersRestricted
+            || sessionProviderAuthSnapshot.connectedProviderIds.some(
+              (providerId) => providerId.trim() === provider.providerID.trim(),
+            )
+          )
+        ));
+        if (
+          effectiveRuntimeProviderList
+          && effectiveModel
+          && !providerListExposesModel(effectiveRuntimeProviderList, effectiveModel)
+        ) {
+          effectiveModel = resolveEngineSelectableChatModel({
+            providers: effectiveSelectableModels,
+            defaults: effectiveRuntimeProviderList.default,
+            preferred: effectiveModel,
+          });
+          effectiveModelVariant = null;
+        }
         let projectSystemContext: string | null = null;
         let projectExecutionStarted = false;
         const finishStartedExecution = async (status: "done" | "failed", error?: string | null) => {
@@ -1219,11 +1291,11 @@ export function SessionRoute() {
               title: session?.title?.trim() || t("session.untitled"),
               runtime: {
                 engineId: activeEngineId,
-                model: activeSelectedModel
-                  ? { providerId: activeSelectedModel.providerID, modelId: activeSelectedModel.modelID }
+                model: effectiveModel
+                  ? { providerId: effectiveModel.providerID, modelId: effectiveModel.modelID }
                   : null,
-                mode: selectedMode ?? null,
-                modelVariant: modelVariantValue,
+                mode: effectiveMode ?? null,
+                modelVariant: effectiveModelVariant,
               },
             },
           );
@@ -1243,8 +1315,8 @@ export function SessionRoute() {
         if (await stopDispatchIfRequested()) return false;
 
         const effectiveModelUnavailable = Boolean(
-          providerListQuery.data && (
-            !effectiveModel || !permittedSelectableModels.some((model) => (
+          effectiveRuntimeProviderList && (
+            !effectiveModel || !effectiveSelectableModels.some((model) => (
               model.providerID === effectiveModel.providerID && model.modelIDs.includes(effectiveModel.modelID)
             ))
           ),
@@ -1428,12 +1500,20 @@ export function SessionRoute() {
             .map((template) => template.sessionId),
         ]);
         const promptTemplateSessionIds = new Set(explicitlyTargetedTemplateSessionIds);
-        if (promptTemplateSessionIds.size === 0 && activeTemplateSessionId) {
-          promptTemplateSessionIds.add(activeTemplateSessionId);
+        const existingTemplateEdit = shouldUseExistingTemplateContext(text);
+        if (promptTemplateSessionIds.size === 0) {
+          const authoringTemplate = conversationTemplates.find((template) => template.authoring);
+          if (authoringTemplate) {
+            promptTemplateSessionIds.add(authoringTemplate.sessionId);
+          } else if (existingTemplateEdit && activeTemplateSessionId) {
+            promptTemplateSessionIds.add(activeTemplateSessionId);
+          } else if (existingTemplateEdit && conversationTemplates[0]) {
+            promptTemplateSessionIds.add(conversationTemplates[0].sessionId);
+          }
         }
-        const sessionTemplates: TemplateSessionSnapshot[] = promptTemplateSessionIds.size > 0
-          ? conversationTemplates.filter((template) => promptTemplateSessionIds.has(template.sessionId))
-          : conversationTemplates.slice(0, 1);
+        const sessionTemplates = conversationTemplates.filter((template) =>
+          promptTemplateSessionIds.has(template.sessionId),
+        );
         let automaticTemplateInstruction: string | null = null;
         let automaticTemplateRoutingAttempted = false;
         const automaticTemplateIntents = inferConversationTemplateIntents(text);
@@ -1663,11 +1743,13 @@ export function SessionRoute() {
         const requestSuffix = artifactRequestId.replace(/[^a-z0-9]+/gi, "").slice(-10).toLowerCase();
         const suggestedHtmlFilename = uniqueHtmlArtifactFilenameFromTitle(text, artifactRequestId)
           ?? `output-${requestSuffix || Date.now().toString(36)}.html`;
-        const artifactNamingPromptPart = [{
-          type: "text" as const,
-          text: `When creating a new user-facing HTML deliverable without an exact target path, use the unique task-specific filename \`${suggestedHtmlFilename}\`. Do not create a new deliverable named entry.html or index.html, and do not reuse a filename from an earlier user turn. If this request creates multiple HTML deliverables, add a short deliverable-type suffix before .html so every new filename is distinct. Keep an exact iPolloWork template entry path unchanged when one is supplied because it is the template's technical runtime entry.`,
-          synthetic: true,
-        }];
+        const artifactNamingPromptPart = automaticTemplateIntents.length > 0 && sessionTemplates.length === 0
+          ? [{
+              type: "text" as const,
+              text: `When creating a new user-facing HTML deliverable without an exact target path, use the unique task-specific filename \`${suggestedHtmlFilename}\`. Do not create a new deliverable named entry.html or index.html, and do not reuse a filename from an earlier user turn. If this request creates multiple HTML deliverables, add a short deliverable-type suffix before .html so every new filename is distinct.`,
+              synthetic: true,
+            }]
+          : [];
         const promptParts = [
           ...capabilityPromptPart,
           ...automaticTemplatePromptPart,
@@ -1984,6 +2066,29 @@ export function SessionRoute() {
         sessionsByWorkspaceIdRef.current = next;
         return next;
       });
+      if (
+        pendingInitialProjectTask?.workspaceId === workspaceId &&
+        !pendingInitialProjectTask.sessionId
+      ) {
+        saveSessionDraft(workspaceId, session.id, {
+          text: pendingInitialProjectTask.draft.text,
+          mode: pendingInitialProjectTask.draft.mode,
+        });
+        const clientUserMessageId = beginOptimisticSessionPrompt(
+          endpoint.workspaceId,
+          session.id,
+          pendingInitialProjectTask.draft.text,
+        );
+        setPendingInitialProjectTask((current) => current?.workspaceId === workspaceId
+          ? {
+              ...current,
+              sessionId: session.id,
+              runtimeWorkspaceId: endpoint.workspaceId,
+              clientUserMessageId,
+            }
+          : current);
+        await new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve()));
+      }
       navigateToWorkspaceSession(workspaceId, session.id);
       focusPromptSoon();
       void refreshRouteState();
@@ -2058,6 +2163,7 @@ export function SessionRoute() {
     ipolloworkServerHostInfoState?.hostToken,
     loading,
     navigateToWorkspaceSession,
+    pendingInitialProjectTask,
     refreshRouteState,
     rememberPendingCreatedSession,
     token,
@@ -2186,38 +2292,13 @@ export function SessionRoute() {
     void handleCreateTaskInWorkspace(pending.workspaceId).then((sessionId) => {
       if (!sessionId) {
         setPendingInitialProjectTask(null);
-        return;
       }
-      saveSessionDraft(pending.workspaceId, sessionId, {
-        text: pending.draft.text,
-        mode: pending.draft.mode,
-      });
-      const workspace = workspaces.find((item) => item.id === pending.workspaceId);
-      const endpoint = workspace ? resolveWorkspaceEndpoint(workspace, {
-        baseUrl,
-        token,
-        hostToken: ipolloworkServerHostInfoState?.hostToken,
-      }) : null;
-      const clientUserMessageId = endpoint
-        ? beginOptimisticSessionPrompt(endpoint.workspaceId, sessionId, pending.draft.text)
-        : null;
-      setPendingInitialProjectTask((current) => current?.workspaceId === pending.workspaceId
-        ? {
-            ...current,
-            sessionId,
-            runtimeWorkspaceId: endpoint?.workspaceId ?? null,
-            clientUserMessageId,
-          }
-        : current);
     }).finally(() => {
       initialProjectSessionCreatingRef.current = false;
     });
   }, [
-    baseUrl,
     handleCreateTaskInWorkspace,
-    ipolloworkServerHostInfoState?.hostToken,
     pendingInitialProjectTask,
-    token,
     workspaces,
   ]);
 
@@ -2796,6 +2877,7 @@ export function SessionRoute() {
           ? pendingInitialProjectTask.draft
           : null
       }
+      initialTaskTransitionPending={Boolean(pendingInitialProjectTask)}
       history={{
         canUndo: false,
         canRedo: false,

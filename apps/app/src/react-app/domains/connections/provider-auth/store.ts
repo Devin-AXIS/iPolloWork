@@ -166,6 +166,12 @@ export type ProviderOAuthStartResult = {
   authorization: ProviderEngineAuthAuthorization;
 };
 
+type ProviderOAuthCompletionResult = {
+  connected: boolean;
+  pending?: boolean;
+  message?: string;
+};
+
 export type ProviderAuthStoreSnapshot = {
   providerAuthModalOpen: boolean;
   providerAuthBusy: boolean;
@@ -453,6 +459,14 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
   let providerAuthMethodsInFlight: {
     key: "local" | "remote";
     promise: Promise<Record<string, ProviderAuthMethod[]>>;
+  } | null = null;
+  let providerAuthStartInFlight: {
+    key: string;
+    promise: Promise<ProviderOAuthStartResult>;
+  } | null = null;
+  let providerAuthCompletionInFlight: {
+    key: string;
+    promise: Promise<ProviderOAuthCompletionResult>;
   } | null = null;
 
   const emitChange = () => {
@@ -1712,52 +1726,80 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
     }
   };
 
-  async function startProviderAuth(
+  function startProviderAuth(
     providerId?: string,
     methodIndex?: number,
   ): Promise<ProviderOAuthStartResult> {
-    setStateField("providerAuthError", null);
-    const connection = getProviderEngineConnection();
-    try {
-      const authMethods = await ensureProviderAuthMethods(getProviderAuthWorkerType());
-      const providerIds = Object.keys(authMethods).sort();
-      if (!providerIds.length) {
-        throw new Error(t("providers.no_providers_available"));
+    const requestKey = [
+      getProviderAuthWorkerType(),
+      providerId?.trim().toLowerCase() ?? "",
+      methodIndex ?? "default",
+    ].join(":");
+    if (providerAuthStartInFlight) {
+      if (providerAuthStartInFlight.key === requestKey) {
+        return providerAuthStartInFlight.promise;
       }
-
-      const resolved = providerId?.trim() ?? "";
-      if (!resolved) {
-        throw new Error(t("providers.provider_id_required"));
-      }
-      assertProviderAllowedByDesktopPolicy(resolved);
-
-      const methods = authMethods[resolved];
-      if (!methods || !methods.length) {
-        throw new Error(`${t("providers.unknown_provider")}: ${resolved}`);
-      }
-
-      const oauthIndex =
-        methodIndex !== undefined
-          ? methodIndex
-          : methods.find((method) => method.type === "oauth")?.methodIndex ?? -1;
-      if (oauthIndex === -1) {
-        throw new Error(
-          `${t("providers.no_oauth_prefix")} ${resolved}. ${t("providers.use_api_key_suffix")}`,
-        );
-      }
-
-      const selectedMethod = methods.find((method) => method.methodIndex === oauthIndex);
-      if (!selectedMethod || selectedMethod.type !== "oauth") {
-        throw new Error(`${t("providers.not_oauth_flow_prefix")} ${resolved}.`);
-      }
-
-      const auth = await connection.authorizeOAuth(resolved, oauthIndex);
-      return { methodIndex: oauthIndex, authorization: auth };
-    } catch (error) {
-      const message = describeProviderError(error, t("providers.connect_failed"));
-      setStateField("providerAuthError", message);
-      throw error instanceof Error ? error : new Error(message);
+      const error = new Error("Another provider authorization is already starting.");
+      setStateField("providerAuthError", error.message);
+      return Promise.reject(error);
     }
+
+    mutateState((current) => ({
+      ...current,
+      providerAuthBusy: true,
+      providerAuthError: null,
+    }));
+    const request = (async () => {
+      const connection = getProviderEngineConnection();
+      try {
+        const authMethods = await ensureProviderAuthMethods(getProviderAuthWorkerType());
+        const providerIds = Object.keys(authMethods).sort();
+        if (!providerIds.length) {
+          throw new Error(t("providers.no_providers_available"));
+        }
+
+        const resolved = providerId?.trim() ?? "";
+        if (!resolved) {
+          throw new Error(t("providers.provider_id_required"));
+        }
+        assertProviderAllowedByDesktopPolicy(resolved);
+
+        const methods = authMethods[resolved];
+        if (!methods || !methods.length) {
+          throw new Error(`${t("providers.unknown_provider")}: ${resolved}`);
+        }
+
+        const oauthIndex =
+          methodIndex !== undefined
+            ? methodIndex
+            : methods.find((method) => method.type === "oauth")?.methodIndex ?? -1;
+        if (oauthIndex === -1) {
+          throw new Error(
+            `${t("providers.no_oauth_prefix")} ${resolved}. ${t("providers.use_api_key_suffix")}`,
+          );
+        }
+
+        const selectedMethod = methods.find((method) => method.methodIndex === oauthIndex);
+        if (!selectedMethod || selectedMethod.type !== "oauth") {
+          throw new Error(`${t("providers.not_oauth_flow_prefix")} ${resolved}.`);
+        }
+
+        const auth = await connection.authorizeOAuth(resolved, oauthIndex);
+        return { methodIndex: oauthIndex, authorization: auth };
+      } catch (error) {
+        const message = describeProviderError(error, t("providers.connect_failed"));
+        setStateField("providerAuthError", message);
+        throw error instanceof Error ? error : new Error(message);
+      }
+    })();
+    providerAuthStartInFlight = { key: requestKey, promise: request };
+    const clearInFlight = () => {
+      if (providerAuthStartInFlight?.promise !== request) return;
+      providerAuthStartInFlight = null;
+      setStateField("providerAuthBusy", false);
+    };
+    void request.then(clearInFlight, clearInFlight);
+    return request;
   }
 
   const mergeProviderRefreshOptions = (
@@ -1902,11 +1944,11 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
     return request;
   }
 
-  async function completeProviderAuthOAuth(
+  async function runProviderAuthOAuthCompletion(
     providerId: string,
     methodIndex: number,
     code?: string,
-  ) {
+  ): Promise<ProviderOAuthCompletionResult> {
     setStateField("providerAuthError", null);
     const connection = getProviderEngineConnection();
 
@@ -1924,7 +1966,7 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
       const startedAt = Date.now();
       while (Date.now() - startedAt < timeoutMs) {
         try {
-          const updated = await refreshProviders({ dispose: true });
+          const updated = await refreshProviders({ force: true });
           const connected = new Set(updated?.connected ?? []);
           if (connected.has(resolved)) {
             return true;
@@ -1965,7 +2007,11 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
     } catch (error) {
       if (isPendingOauthError(error)) {
         await ensureProjectProviderDisabledState(resolved, false);
-        const updated = await refreshProviders({ dispose: true });
+        // The browser or device callback may still be finishing inside
+        // OpenCode after the renderer-side request times out. Reloading the
+        // provider engine here destroys the pending OAuth state and turns a
+        // valid callback into an "Invalid state" failure.
+        const updated = await refreshProviders({ force: true });
         if (Array.isArray(updated?.connected) && updated.connected.includes(resolved)) {
           return await finishConnectedOAuth();
         }
@@ -1979,6 +2025,30 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
       setStateField("providerAuthError", message);
       throw error instanceof Error ? error : new Error(message);
     }
+  }
+
+  function completeProviderAuthOAuth(
+    providerId: string,
+    methodIndex: number,
+    code?: string,
+  ): Promise<ProviderOAuthCompletionResult> {
+    const requestKey = [providerId.trim().toLowerCase(), methodIndex, code?.trim() ?? ""].join(":");
+    if (providerAuthCompletionInFlight) {
+      if (providerAuthCompletionInFlight.key === requestKey) {
+        return providerAuthCompletionInFlight.promise;
+      }
+      return Promise.reject(new Error("Another provider authorization is already being completed."));
+    }
+
+    const request = runProviderAuthOAuthCompletion(providerId, methodIndex, code);
+    providerAuthCompletionInFlight = { key: requestKey, promise: request };
+    const clearInFlight = () => {
+      if (providerAuthCompletionInFlight?.promise === request) {
+        providerAuthCompletionInFlight = null;
+      }
+    };
+    void request.then(clearInFlight, clearInFlight);
+    return request;
   }
 
   async function submitProviderApiKey(providerId: string, apiKey: string, modelIds?: string[]) {

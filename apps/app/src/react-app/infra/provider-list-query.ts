@@ -133,6 +133,8 @@ export function projectKnownProviderModels(
       changed = true;
       const models = { ...provider.models };
       for (const profile of deepSeekOfficialModels()) {
+        const discovered = models[profile.id];
+        if (!discovered) continue;
         const fallback: ProviderModel = {
           ...profile,
           capabilities: {
@@ -142,9 +144,7 @@ export function projectKnownProviderModels(
             output: { text: true },
           },
         };
-        models[profile.id] = models[profile.id]
-          ? supplementProviderModel(models[profile.id], fallback)
-          : fallback;
+        models[profile.id] = supplementProviderModel(discovered, fallback);
       }
       return { ...provider, models };
     }
@@ -262,11 +262,18 @@ export function projectAccountProviderConnections(
     return { ...provider, source: "config" as const };
   });
   const available = new Set(all.map((provider) => provider.id));
-  // Engine catalogs can report ambient environment credentials as connected.
-  // Account configuration is authoritative for user-selectable providers;
-  // only the built-in OpenCode route remains connected without a credential.
+  // Engine catalogs can report ambient environment credentials as connected,
+  // so those still require an account-center confirmation. Explicit runtime
+  // configurations are already credential-backed (for example DSH's Codex
+  // OAuth bridge) and must remain selectable even when the shared OpenCode
+  // control plane has not projected that credential yet.
+  const providersById = new Map(all.map((provider) => [provider.id, provider]));
   const connected = new Set(
-    value.connected.filter((providerId) => providerId.trim().toLowerCase() === "opencode"),
+    value.connected.filter((providerId) => {
+      const provider = providersById.get(providerId);
+      return providerId.trim().toLowerCase() === "opencode"
+        || Boolean(provider && provider.source !== "env");
+    }),
   );
   for (const providerId of configured) {
     if (!available.has(providerId)) continue;
@@ -475,6 +482,15 @@ export function getRunnableChatModelSnapshot(input: {
     modelIdsByProvider.set(provider.id, modelIds);
   }
   return [...modelIdsByProvider].map(([providerID, modelIDs]) => ({ providerID, modelIDs }));
+}
+
+/** True once an engine directory has positively advertised this model. */
+export function providerListExposesModel(
+  value: ProviderListResponse | null | undefined,
+  model: ModelRef | null | undefined,
+): boolean {
+  if (!value || !model) return false;
+  return Boolean(value.all.find((provider) => provider.id === model.providerID)?.models[model.modelID]);
 }
 
 export function getConnectedProviderSnapshot(

@@ -171,15 +171,42 @@ const CODEX_HARNESS_TARGETS = {
   skills: ".agents/skills/",
 } as const;
 
+const LEGACY_SOURCE_PREFIXES = [
+  ["skills/", ".opencode/skills/"],
+  ["agents/", ".opencode/agents/"],
+  ["commands/", ".opencode/commands/"],
+  ["mcp/", ".opencode/mcps/"],
+  ["engines/opencode/plugins/", ".opencode/plugins/"],
+] as const;
+
 function projectedPath(sourcePath: string, targets: Readonly<Record<string, string>>): string | null {
   for (const [directory, target] of Object.entries(targets)) {
+    if (sourcePath.startsWith(target)) return sourcePath;
     if (sourcePath.startsWith(`${directory}/`)) return `${target}${sourcePath.slice(directory.length + 1)}`;
   }
   return null;
 }
 
 export function pluginEngineSourcePath(version: PluginEngineVersion, portablePath: string): string | null {
-  return version.files.some((file) => file.path === portablePath) ? portablePath : null;
+  const ownedPaths = new Set(version.files.map((file) => file.path));
+  if (ownedPaths.has(portablePath)) return portablePath;
+  for (const [portablePrefix, legacyPrefix] of LEGACY_SOURCE_PREFIXES) {
+    if (!portablePath.startsWith(portablePrefix)) continue;
+    const legacyPath = `${legacyPrefix}${portablePath.slice(portablePrefix.length)}`;
+    if (ownedPaths.has(legacyPath)) return legacyPath;
+  }
+  if (portablePath.startsWith("service/")) {
+    const legacyPath = portablePath.slice("service/".length);
+    if (ownedPaths.has(legacyPath)) return legacyPath;
+  }
+  return null;
+}
+
+export function pluginEnginePortablePath(sourcePath: string): string {
+  for (const [portablePrefix, legacyPrefix] of LEGACY_SOURCE_PREFIXES) {
+    if (sourcePath.startsWith(legacyPrefix)) return `${portablePrefix}${sourcePath.slice(legacyPrefix.length)}`;
+  }
+  return sourcePath;
 }
 
 function workspaceFiles(
@@ -187,7 +214,7 @@ function workspaceFiles(
   targets: Readonly<Record<string, string>>,
 ): PluginWorkspaceFile[] {
   return version.files.flatMap((file) => {
-    const targetPath = projectedPath(file.path, targets);
+    const targetPath = projectedPath(pluginEnginePortablePath(file.path), targets);
     return targetPath ? [{ ...file, sourcePath: file.path, targetPath }] : [];
   });
 }

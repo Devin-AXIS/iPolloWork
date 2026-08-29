@@ -102,7 +102,7 @@ export default function ProviderAuthModal(props: ProviderAuthModalProps) {
 
   const searchInputRef = useRef<HTMLInputElement | null>(null);
   const providerPollRef = useRef<number | null>(null);
-  const oauthAutoPollRef = useRef<number | null>(null);
+  const oauthAutoCompletionKeyRef = useRef<string | null>(null);
   const oauthCodeCopiedResetRef = useRef<number | null>(null);
   const autoOpenedPreferredProviderIdRef = useRef<string | null>(null);
 
@@ -165,7 +165,7 @@ export default function ProviderAuthModal(props: ProviderAuthModalProps) {
   const isOpenAiHeadlessSession = Boolean(
     oauthSession && oauthSession.providerId === "openai" && oauthSession.methodLabel.toLowerCase().includes("headless"),
   );
-  const shouldStartOauthAutoPolling =
+  const shouldStartOauthAutoCompletion =
     props.open &&
     resolvedView === "oauth-auto" &&
     oauthSession &&
@@ -205,6 +205,8 @@ export default function ProviderAuthModal(props: ProviderAuthModalProps) {
     setSearchQuery("");
     setActiveEntryIndex(0);
     setLocalError(null);
+    oauthAutoCompletionKeyRef.current = null;
+    setOauthAutoBusy(false);
     setOauthCodeCopied(false);
     setOauthBrowserOpened(false);
     setShowMoreProviders(false);
@@ -218,16 +220,8 @@ export default function ProviderAuthModal(props: ProviderAuthModalProps) {
     }
   };
 
-  const stopOauthAutoPolling = () => {
-    if (oauthAutoPollRef.current !== null) {
-      window.clearInterval(oauthAutoPollRef.current);
-      oauthAutoPollRef.current = null;
-    }
-  };
-
   const handleClose = () => {
     void props.onRefreshProviders?.();
-    stopOauthAutoPolling();
     stopProviderPolling();
     resetState();
     props.onClose();
@@ -278,7 +272,6 @@ export default function ProviderAuthModal(props: ProviderAuthModalProps) {
 
   useEffect(() => {
     return () => {
-      stopOauthAutoPolling();
       stopProviderPolling();
       if (oauthCodeCopiedResetRef.current !== null) {
         window.clearTimeout(oauthCodeCopiedResetRef.current);
@@ -373,36 +366,26 @@ export default function ProviderAuthModal(props: ProviderAuthModalProps) {
     }
   };
 
-  const attemptOauthAutoCompletion = async () => {
-    const session = oauthSession;
-    if (!session || oauthAutoBusy) return;
+  const attemptOauthAutoCompletion = async (session: ProviderOAuthSession) => {
+    const completionKey = `${session.providerId}:${session.methodIndex}`;
+    if (oauthAutoCompletionKeyRef.current === completionKey) return;
+    oauthAutoCompletionKeyRef.current = completionKey;
     setOauthAutoBusy(true);
     try {
-      const result = await submitOauth(session.providerId, session.methodIndex);
-      if (result?.connected) {
-        stopOauthAutoPolling();
-      }
+      await submitOauth(session.providerId, session.methodIndex);
+    } catch {
+      // submitOauth already exposes the actionable provider error in the modal.
     } finally {
-      setOauthAutoBusy(false);
+      if (oauthAutoCompletionKeyRef.current === completionKey) {
+        setOauthAutoBusy(false);
+      }
     }
-  };
-
-  const startOauthAutoPolling = () => {
-    if (typeof window === "undefined") return;
-    if (oauthAutoPollRef.current !== null) return;
-    void attemptOauthAutoCompletion();
-    oauthAutoPollRef.current = window.setInterval(() => {
-      void attemptOauthAutoCompletion();
-    }, 2000);
   };
 
   useEffect(() => {
-    if (!shouldStartOauthAutoPolling) {
-      stopOauthAutoPolling();
-      return;
-    }
-    startOauthAutoPolling();
-  }, [shouldStartOauthAutoPolling]);
+    if (!shouldStartOauthAutoCompletion || !oauthSession) return;
+    void attemptOauthAutoCompletion(oauthSession);
+  }, [oauthSession, shouldStartOauthAutoCompletion]);
 
   const startOauth = async (entry: ProviderAuthEntry, methodIndex?: number) => {
     if (actionDisabled) return;
@@ -605,6 +588,8 @@ export default function ProviderAuthModal(props: ProviderAuthModalProps) {
       }
       setOauthSession(null);
       setOauthCodeInput("");
+      oauthAutoCompletionKeyRef.current = null;
+      setOauthAutoBusy(false);
       setOauthCodeCopied(false);
       setOauthBrowserOpened(false);
       setLocalError(null);

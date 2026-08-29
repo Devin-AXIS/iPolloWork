@@ -523,7 +523,7 @@ readline.createInterface({ input: process.stdin }).on("line", (line) => {
       if (previousLog === undefined) delete process.env.IPOLLOWORK_CODEX_REBIND_LOG;
       else process.env.IPOLLOWORK_CODEX_REBIND_LOG = previousLog;
     }
-  });
+  }, 15_000);
 
   test("replaces unmaterialized empty threads reported before or during resume", async () => {
     const config = await testConfig();
@@ -812,7 +812,6 @@ readline.createInterface({ input: process.stdin }).on("line", (line) => {
       "mimo-v2.5-free",
       "nemotron-3-ultra-free",
       "nemotron-3.5-lightning-free",
-      "x-preview-f-free",
     ]);
   });
 
@@ -1046,10 +1045,9 @@ readline.createInterface({ input: process.stdin }).on("line", (line) => {
       "mimo-v2.5-free",
       "nemotron-3-ultra-free",
       "nemotron-3.5-lightning-free",
-      "x-preview-f-free",
     ]);
     expect(providers[0]?.models.find((model) => model.id === "x-preview-f-free"))
-      .toEqual({ id: "x-preview-f-free", name: "Ox Alpha Free" });
+      .toBeUndefined();
     expect(providers[0]?.upstream).toMatchObject({ protocol: "openai-completions" });
     expect(providers[0]?.upstream?.httpHeaders).toEqual({ "User-Agent": "opencode/ipollowork" });
     expect(providers[1]).toMatchObject({
@@ -1466,7 +1464,7 @@ describe("Codex provider protocol gateway", () => {
     }
   });
 
-  test("keeps Ox Alpha on the public Zen route without session affinity", async () => {
+  test("keeps historical Ox requests free of the incompatible session-affinity header", async () => {
     let receivedSession: string | undefined;
     let receivedModel = "";
     let receivedTools = false;

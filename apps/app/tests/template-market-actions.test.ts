@@ -131,7 +131,8 @@ describe("template market actions", () => {
     expect(marketDialog).toContain("[&>[data-slot=dialog-close]]:top-[29px]");
     expect(marketDialog).toContain('className="mt-4 w-full shrink-0 px-6"');
     expect(marketDialog).toContain('className="relative mt-4 w-full"');
-    expect(marketDialog).toContain('className="mt-3 flex h-9 items-center gap-4 overflow-x-auto"');
+    expect(marketDialog).toContain('className="mt-3 flex min-h-9 items-center overflow-x-auto"');
+    expect(marketDialog).toContain('className="mt-2 flex h-9 items-center gap-4 overflow-x-auto"');
     expect(marketDialog).toContain('className="mt-3 min-h-0 w-full flex-1 overflow-y-auto px-6 pb-6"');
     expect(marketDialog).not.toContain("showCloseButton={false}");
     expect(marketDialog.match(/positionerClassName="z-\[90\]"/g)).toHaveLength(6);
@@ -158,12 +159,30 @@ describe("template market actions", () => {
     expect(marketDialog).not.toContain('view === "my" ? "mt-4" : "mt-5"');
   });
 
-  test("reuses the HTML cover and preview flow for installed enterprise templates", () => {
+  test("reuses the HTML cover and preview flow for installed Cloud templates", () => {
     expect(marketDialog).toContain("if (installedTemplate) {");
     expect(marketDialog).toContain("<TemplateCard template={installedTemplate} getCover={getCover}");
-    expect(marketDialog).toContain("onPreview={(template) => setPreviewSelection({ template, enterpriseResourceId: resource.id })}");
-    expect(marketDialog).toContain("previewEnterpriseResource.latestVersion.version === previewTemplate?.installedVersion");
-    expect(marketDialog).toContain("props.onInstallEnterprise(enterpriseResource)");
+    expect(marketDialog).toContain("onPreview={(template) => setPreviewSelection({ template, cloudResourceId: resource.id })}");
+    expect(marketDialog).toContain("previewCloudResource.latestVersion.version === previewTemplate?.installedVersion");
+    expect(marketDialog).toContain("props.onInstallCloud(cloudResource)");
+  });
+
+  test("shows Built-in and Cloud only in Explore and keeps Cloud templates usable from Personal storage", () => {
+    expect(marketDialog).toContain('view === "explore" && props.cloudAvailable');
+    expect(marketDialog).toContain('t("template_market.source_builtin")');
+    expect(marketDialog).toContain('onClick={props.onSelectBuiltIn}');
+    expect(marketDialog).toContain('onClick={props.onSelectCloud}');
+    expect(marketDialog).toContain("const remoteCatalogMode = props.cloudSelected");
+    expect(marketDialog).not.toContain("<WorkResourceScopeSwitch");
+    expect(sessionPage).toContain("const [templateCloudSourceSelected, setTemplateCloudSourceSelected] = useState(false)");
+    expect(sessionPage).toContain("if (!denAuth.isSignedIn || templateCloudSourceSelected) return");
+    expect(sessionPage).toContain('listEnterpriseResources("template")');
+    expect(sessionPage).toContain("listTemplates(props.runtimeWorkspaceId, PERSONAL_WORK_CONTEXT_ID)");
+    expect(sessionPage).toContain("importTemplate(props.runtimeWorkspaceId, file, category, PERSONAL_WORK_CONTEXT_ID)");
+    expect(sessionPage).toContain("applyTemplateToCurrentSession(template, PERSONAL_WORK_CONTEXT_ID)");
+    expect(sessionPage).toContain("cloudAvailable={denAuth.isSignedIn}");
+    expect(sessionPage).toContain("onSelectBuiltIn={selectBuiltInTemplateSource}");
+    expect(sessionPage).toContain("onSelectCloud={selectCloudTemplateSource}");
   });
 
   test("keeps preview metadata separated from long descriptions and cover edges", () => {
@@ -217,7 +236,7 @@ describe("template market actions", () => {
     expect(sessionPage).toContain('useState<"new-session" | "current-session">("new-session")');
     expect(sessionPage).toContain('setTemplateMarketTarget("current-session")');
     expect(sessionPage).toContain('templateMarketTarget === "current-session"');
-    expect(sessionPage).toContain("applyTemplateToCurrentSession(template)");
+    expect(sessionPage).toContain("applyTemplateToCurrentSession(template, PERSONAL_WORK_CONTEXT_ID)");
     expect(sessionPage).toContain('setTemplateMarketTarget("new-session")');
     expect(sessionPage).toContain('t("templates.brief.apply_current")');
   });

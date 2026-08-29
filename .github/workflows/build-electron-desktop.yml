@@ -139,5 +139,6 @@ jobs:
           APPLE_API_KEY_PATH: ${{ env.NOTARY_KEY_PATH }}
         run: |
           set -euo pipefail
+          pnpm --filter @ipollowork/desktop run package:engine-runtimes
           pnpm --filter @ipollowork/desktop run build:electron
           pnpm --dir apps/desktop exec electron-builder --config electron-builder.yml --mac dmg zip --publish never

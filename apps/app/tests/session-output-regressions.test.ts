@@ -109,6 +109,12 @@ describe("session output issue regressions", () => {
     ]);
     expect(artifactSource).toContain('data-testid="conversation-files-mode-directory"');
     expect(artifactSource).toContain('data-testid="conversation-files-mode-outputs"');
+    expect(artifactSource).toContain('<TooltipContent>{t("session.files.open")}</TooltipContent>');
+    expect(artifactSource).toContain('<FilesIcon className="size-4" strokeWidth={1.75} />');
+    expect(artifactSource).not.toContain('active && "bg-muted text-foreground"');
+    expect(artifactSource).toContain('<ListTree className="size-4 text-current" strokeWidth={1.75} />');
+    expect(artifactSource).toContain('<Sparkles className="size-4 text-current" strokeWidth={1.75} />');
+    expect(sessionPageSource).toContain('publicAssetUrl(sidePanelOpen ? "sidebar-right-open.svg" : "sidebar-right-closed.svg")');
     expect(artifactSource).toContain("client.listWorkspaceFiles(workspaceId)");
     expect(artifactSource).toContain("htmlArtifactDisplayFilename(");
     expect(artifactSource).toContain("artifactRequestNamingContext(messages, artifact.messageIndex, sessionTitle)");
@@ -420,7 +426,7 @@ describe("session output issue regressions", () => {
     );
 
     expect(source).toContain('if (liveStatus.type === "busy" || activityRunActive)');
-    expect(source).toContain("}, [activityRunActive, liveStatus, sending]);");
+    expect(source).toContain("}, [activityRunActive, liveStatus, sending, stopAcknowledged]);");
   });
 
   test("the final assistant result enters from the left after a live run", () => {
@@ -519,7 +525,7 @@ describe("session output issue regressions", () => {
     }
   });
 
-  test("template market exposes compact discovery controls, import details, and installed enterprise actions", () => {
+  test("template market exposes compact discovery controls, import details, and installed Cloud actions", () => {
     const source = readFileSync(
       new URL("../src/react-app/domains/session/templates/template-market-dialog.tsx", import.meta.url),
       "utf8",
@@ -534,16 +540,22 @@ describe("session output issue regressions", () => {
     expect(source).toContain('type MyTemplateCollection = "all" | "favorites" | "mine"');
     expect(source).toContain('font-[\'PingFang_SC\',sans-serif] text-xs font-medium text-foreground');
     expect(source).toContain("{pendingImport.name} - {(pendingImport.size / 1024).toFixed(1)} KB");
-    expect(source).toContain('enterpriseMode && view === "explore"');
-    expect(source).toContain("<WorkResourceScopeSwitch");
+    expect(source).toContain('remoteCatalogMode && view === "explore"');
+    expect(source).toContain('view === "explore" && props.cloudAvailable');
+    expect(source).toContain('t("template_market.source_builtin")');
+    expect(source).not.toContain("<WorkResourceScopeSwitch");
     expect(sessionSource).toContain('listTemplates(props.runtimeWorkspaceId, "personal")');
     expect(sessionSource).toContain('listEnterpriseResources("template")');
+    expect(sessionSource).toContain("if (templateCloudSourceSelected)");
+    expect(sessionSource).toContain("cloudAvailable={denAuth.isSignedIn}");
+    expect(sessionSource).toContain("onSelectBuiltIn={selectBuiltInTemplateSource}");
+    expect(sessionSource).toContain("importTemplate(props.runtimeWorkspaceId, file, category, PERSONAL_WORK_CONTEXT_ID)");
     expect(sessionSource).toContain("item.sourceType === \"local\" && item.installed");
     expect(sessionSource).toContain("requestId !== templateCatalogRequestIdRef.current");
-    expect(source).toContain("enterpriseTemplateInstallations");
+    expect(source).toContain("cloudTemplateInstallations");
     expect(source).toContain("resource.manifestId");
     expect(source).toContain("return <TemplateCard template={installedTemplate}");
-    expect(source).toContain("primaryAction={action} primaryLabel={label} sourceLabel={sourceLabel}");
+    expect(source).toContain('primaryAction={action} primaryLabel={label} sourceLabel={t("enterprise_connection.cloud")}');
   });
 
   test("enterprise extensions reflect local package installation versions", () => {

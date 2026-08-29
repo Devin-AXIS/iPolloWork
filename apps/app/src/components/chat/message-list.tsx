@@ -48,7 +48,9 @@ import {
   type ArtifactRequestNaming,
 } from "@/components/chat/artifact"
 import {
+  assignArtifactRequestOwnership,
   getArtifactsFromMessages,
+  inferArtifactRequestOwnership,
   selectArtifactsForRequest,
   selectSupplementalArtifactsForRequest,
   type ArtifactInteractionContext,
@@ -1277,6 +1279,17 @@ export function MessageList({ messages, status, retryStatus, templateEntryPath, 
     ])],
     [artifactFiles, artifactRequestOwnership],
   )
+  const resolvedArtifactRequestOwnership = React.useMemo(
+    () => artifactRequestOwnership.reduce(
+      (current, entry) => assignArtifactRequestOwnership(
+        current,
+        entry.requestOrdinal,
+        entry.paths,
+      ),
+      inferArtifactRequestOwnership(messages, supplementalArtifactFiles),
+    ),
+    [artifactRequestOwnership, messages, supplementalArtifactFiles],
+  )
   const latestAssistantMessageId = React.useMemo(
     () => getLatestArtifactAssistantMessageId(messages),
     [messages],
@@ -1303,7 +1316,7 @@ export function MessageList({ messages, status, retryStatus, templateEntryPath, 
               isStreaming={isStreaming}
               templateEntryPath={templateEntryPath}
               artifactFiles={supplementalArtifactFiles}
-              artifactRequestOwnership={artifactRequestOwnership}
+              artifactRequestOwnership={resolvedArtifactRequestOwnership}
               artifactContext={artifactContext}
               latestAssistantMessageId={latestAssistantMessageId}
               activeAssistantMessageId={activeAssistantMessageId}
@@ -1321,7 +1334,7 @@ export function MessageList({ messages, status, retryStatus, templateEntryPath, 
           ? selectSupplementalArtifactsForRequest(
               supplementalArtifactFiles,
               requestOrdinal,
-              artifactRequestOwnership,
+              resolvedArtifactRequestOwnership,
               item.message.id === latestAssistantMessageId,
             )
           : undefined
@@ -1338,7 +1351,7 @@ export function MessageList({ messages, status, retryStatus, templateEntryPath, 
                 ? artifactRequestNamingContext(messages, item.index, sessionTitle)
                 : undefined}
               requestOrdinal={requestOrdinal}
-              artifactRequestOwnership={artifactRequestOwnership}
+              artifactRequestOwnership={resolvedArtifactRequestOwnership}
               templateEntryPath={item.message.id === latestAssistantMessageId ? templateEntryPath : undefined}
               artifactFiles={requestArtifactFiles}
               artifactContext={artifactContext}

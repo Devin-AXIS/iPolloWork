@@ -3,6 +3,7 @@ import type { CSSProperties } from "react";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { UIMessage } from "ai";
 import { useNavigate } from "react-router-dom";
+import { AnimatePresence, motion } from "motion/react";
 import { createClient, unwrap } from "@/app/lib/opencode";
 import { Check, ChevronDown, Code2, Download, Ellipsis, Eye, FileText, Film, Folder, FolderPlus, Globe, Image, LoaderCircle, Lock, Mic2, Palette, PanelRightClose, PanelRightOpen, Pencil, Plus, Presentation, Search, Settings2, Trash2, Upload, X, Zap } from "lucide-react";
 import { MAX_TEMPLATE_PACKAGE_BYTES, TEMPLATE_PACKAGE_FILE_ACCEPT, isPptxCompatibleTemplate, type PptxCompatibility, type TemplateCatalogItem, type TemplateCategory, type TemplateManifestV1, type TemplateSessionSnapshot, type TemplateSessionState, type TemplateValidationReport } from "@ipollowork/types/templates";
@@ -21,7 +22,6 @@ import { IPOLLOWORK_EXTENSION_CATALOG } from "../../../../app/constants";
 import { iPolloWorkServerError, type iPolloWorkPluginPackageItem, type iPolloWorkServerClient, type iPolloWorkServerStatus } from "../../../../app/lib/ipollowork-server";
 import {
   PERSONAL_WORK_CONTEXT_ID,
-  readActiveWorkContextId,
   type WorkContextId,
 } from "@/app/lib/work-context";
 import {
@@ -144,6 +144,7 @@ import {
   nextConversationArtifactSessionId,
   templateBriefConfigFor,
   templateBriefPrompt,
+  templateBriefUserMessage,
   type TemplateBrief,
 } from "../templates/template-brief";
 import {
@@ -168,7 +169,6 @@ import { useWorkspaceShellLayout } from "../../../shell/workspace-shell-layout";
 import { useControlAction, type iPolloWorkControlAction } from "../../../shell/control/control-provider";
 import { getExtensionId, isiPolloWorkExtensionEnabled, IPOLLOWORK_EXTENSION_STATE_CHANGED } from "../../settings/extension-state";
 import { cn } from "@/lib/utils";
-import { useActiveEnterpriseConnection } from "@/react-app/domains/enterprise/use-active-enterprise-connection";
 import { useInstalledPluginContributions } from "@/react-app/plugin-ui/plugin-ui-contributions";
 import type { WorkspaceAppModelContext } from "@/react-app/plugin-ui/workspace-app-frame";
 import type { PluginUiHostContextV1 } from "@ipollowork/types/plugins";
@@ -233,6 +233,37 @@ type TemplateSessionData = {
   manifest: TemplateManifestV1;
   hasBrief: boolean;
 };
+
+type PendingTemplateDispatch = {
+  requestId: string;
+  sessionId: string;
+  visibleText: string;
+  referencePrompt: string;
+  attachments: ComposerAttachment[];
+  draft: ComposerDraft | null;
+};
+
+function createTemplateDispatchRequestId(sessionId: string) {
+  return `${sessionId}:${Date.now().toString(36)}:${Math.random().toString(36).slice(2)}`;
+}
+
+function createTemplateDispatchDraft(
+  template: TemplateManifestV1,
+  state: TemplateSessionState,
+  dispatch: Pick<PendingTemplateDispatch, "visibleText" | "referencePrompt" | "attachments">,
+): ComposerDraft {
+  return {
+    mode: "prompt",
+    parts: [
+      { type: "text", text: dispatch.visibleText },
+      { type: "text", text: templateBriefPrompt({ template, entryPath: state.entry, briefPath: state.briefPath }), synthetic: true },
+      ...(dispatch.referencePrompt ? [{ type: "text" as const, text: dispatch.referencePrompt, synthetic: true }] : []),
+    ],
+    attachments: dispatch.attachments,
+    text: dispatch.visibleText,
+    resolvedText: dispatch.visibleText,
+  };
+}
 
 function workspaceAppCapabilityInstruction(label: string) {
   return `The user explicitly activated the ${label} plugin workbench for this request. Use ${WORKSPACE_APP_LIST_TOOLS_NAME} and ${WORKSPACE_APP_CALL_TOOL_NAME} only when this workbench exposes a relevant tool. If the plugin capability instruction names another declared action path, follow that instruction instead. Do not inspect or operate unrelated Design, Video, Files, or other side-panel surfaces. If the workbench cannot complete the request, explain the concrete tool error.`;
@@ -502,7 +533,9 @@ function EngineStartupGate({
     ? t("projects.engine_starting_description")
     : engine.status === "failed"
       ? t("projects.engine_prepare_retry_description")
-      : t("projects.engine_prepare_description");
+      : busy
+        ? t("projects.engine_prepare_description")
+        : t("projects.engine_download_description", { name: engine.name });
 
   return (
     <div
@@ -540,7 +573,15 @@ function EngineStartupGate({
           </div>
         ) : busy ? (
           <div className="mt-6 text-left" role="status" aria-live="polite">
-            <div className="h-1.5 overflow-hidden rounded-full bg-dls-hover">
+            <div
+              className="h-1.5 overflow-hidden rounded-full bg-dls-hover"
+              data-testid="engine-download-progress"
+              role="progressbar"
+              aria-label={status}
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-valuenow={percent ?? undefined}
+            >
               <div
                 className={cn(
                   "h-full rounded-full bg-foreground transition-[width] duration-300",
@@ -555,6 +596,7 @@ function EngineStartupGate({
                 <span className="tabular-nums">
                   {formatBytes(engine.downloadedBytes)}
                   {engine.totalBytes ? ` / ${formatBytes(engine.totalBytes)}` : ""}
+                  {percent != null ? ` · ${percent}%` : ""}
                 </span>
               ) : null}
             </div>
@@ -562,7 +604,7 @@ function EngineStartupGate({
         ) : onInstall ? (
           <Button className="mt-6 min-w-32" onClick={onInstall}>
             <Download className="size-4" />
-            {engine.status === "failed" ? t("common.retry") : t("settings.engine_manager.install")}
+            {engine.status === "failed" ? t("common.retry") : t("projects.engine_download_action")}
           </Button>
         ) : null}
         {engine.error ? <p className="mt-3 text-xs leading-5 text-red-11">{engine.error}</p> : null}
@@ -760,6 +802,7 @@ export type SessionPageProps = {
   sidebar: SessionPageSidebarProps;
   surface?: SessionPageSurfaceProps | null;
   initialTaskDraftPending?: ComposerDraft | null;
+  initialTaskTransitionPending?: boolean;
   history?: SessionPageHistoryControls | null;
   todos: TodoItem[];
   sessionLoadingById: (sessionId: string | null) => boolean;
@@ -995,6 +1038,17 @@ function InitialProjectTaskStarter({
   const visiblePendingDraft = pendingDraft ?? (sending ? submittedDraft : null);
   const pendingText = visiblePendingDraft?.text.trim() ?? "";
   const composerBusy = sending || Boolean(pendingDraft);
+  const hasVisiblePendingDraft = Boolean(visiblePendingDraft);
+  const [showPendingStatus, setShowPendingStatus] = useState(false);
+
+  useEffect(() => {
+    if (!hasVisiblePendingDraft) {
+      setShowPendingStatus(false);
+      return;
+    }
+    const timeout = window.setTimeout(() => setShowPendingStatus(true), 400);
+    return () => window.clearTimeout(timeout);
+  }, [hasVisiblePendingDraft]);
 
   const submit = async () => {
     const text = draft.trim();
@@ -1049,7 +1103,14 @@ function InitialProjectTaskStarter({
   };
 
   return (
-    <div className="flex h-full min-h-0 justify-center overflow-y-auto bg-background px-5" data-testid="initial-project-task-starter">
+    <motion.div
+      initial={false}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      transition={{ duration: 0.14, ease: "easeOut" }}
+      className="absolute inset-0 z-20 flex min-h-0 justify-center overflow-y-auto bg-background px-5"
+      data-testid="initial-project-task-starter"
+    >
       <div className="flex min-h-full w-full max-w-[800px] flex-col justify-center pb-[max(64px,env(safe-area-inset-bottom))] pt-8 has-[[data-testid=new-conversation-template-strip]]:justify-start">
         {visiblePendingDraft ? (
           <div className="w-full space-y-4" role="status" aria-live="polite" data-testid="initial-project-task-pending">
@@ -1060,10 +1121,12 @@ function InitialProjectTaskStarter({
                 </MessageContent>
               </div>
             ) : null}
-            <div className="flex items-center gap-2 px-1 text-xs text-dls-secondary">
-              <LoaderCircle className="size-3.5 animate-spin" aria-hidden />
-              <span>{t("session.status_running")}</span>
-            </div>
+            {showPendingStatus ? (
+              <div className="flex items-center gap-2 px-1 text-xs text-dls-secondary">
+                <LoaderCircle className="size-3.5 animate-spin" aria-hidden />
+                <span>{t("session.status_running")}</span>
+              </div>
+            ) : null}
           </div>
         ) : (
           <div data-testid="new-conversation-starter-slot" className="shrink-0">
@@ -1175,7 +1238,7 @@ function InitialProjectTaskStarter({
           />
         </div>
       </div>
-    </div>
+    </motion.div>
   );
 }
 
@@ -1634,7 +1697,6 @@ export function SessionPage(props: SessionPageProps) {
   const { config: shellConfig } = useShellConfig();
   const navigate = useNavigate();
   const denAuth = useDenAuth();
-  const activeEnterprise = useActiveEnterpriseConnection();
   const sidebarOpen = useUiStateStore((state) => state.sidebarOpen);
   const setSidebarOpen = useUiStateStore((state) => state.setSidebarOpen);
   const panelSessionId = props.selectedSessionId ?? GLOBAL_BROWSER_SIDE_PANEL_KEY;
@@ -1703,8 +1765,8 @@ export function SessionPage(props: SessionPageProps) {
 
   const [templateSessionRevision, setTemplateSessionRevision] = useState(0);
   const [templateCatalog, setTemplateCatalog] = useState<TemplateCatalogItem[]>([]);
-  const [templateResourceScope, setTemplateResourceScope] = useState<WorkContextId>(() => readActiveWorkContextId());
-  const [enterpriseTemplateResources, setEnterpriseTemplateResources] = useState<EnterpriseResource[]>([]);
+  const [templateCloudSourceSelected, setTemplateCloudSourceSelected] = useState(false);
+  const [cloudTemplateResources, setCloudTemplateResources] = useState<EnterpriseResource[]>([]);
   const [templateCatalogLoading, setTemplateCatalogLoading] = useState(false);
   const [templateCatalogError, setTemplateCatalogError] = useState<string | null>(null);
   const [templateBusyId, setTemplateBusyId] = useState<string | null>(null);
@@ -1719,12 +1781,8 @@ export function SessionPage(props: SessionPageProps) {
   const [pendingTemplateApplication, setPendingTemplateApplication] = useState<PendingTemplateApplication | null>(null);
   const [pendingCustomTemplateApplication, setPendingCustomTemplateApplication] = useState<PendingCustomTemplateApplication | null>(null);
   const [pendingTemplateProjectId, setPendingTemplateProjectId] = useState(props.selectedWorkspaceId);
-  const [pendingTemplateDispatch, setPendingTemplateDispatch] = useState<{
-    sessionId: string;
-    referencePrompt: string;
-    attachments: ComposerAttachment[];
-  } | null>(null);
-  const templateDispatchInFlightRef = useRef<string | null>(null);
+  const [pendingTemplateDispatch, setPendingTemplateDispatch] = useState<PendingTemplateDispatch | null>(null);
+  const templateDispatchPreparationRef = useRef<string | null>(null);
   const [templateSessionData, setTemplateSessionData] = useState<TemplateSessionData | null>(null);
   const [pendingVideoArtifactCompletion, setPendingVideoArtifactCompletion] = useState<{
     sessionId: string;
@@ -1740,17 +1798,26 @@ export function SessionPage(props: SessionPageProps) {
   const [templateValidationReport, setTemplateValidationReport] = useState<TemplateValidationReport | null>(null);
   const [templateValidationBusy, setTemplateValidationBusy] = useState(false);
   const [templateSaveMode, setTemplateSaveMode] = useState<TemplateSaveMode | null>(null);
-  const changeTemplateResourceScope = useCallback((scope: WorkContextId) => {
+  const clearTemplateCatalog = useCallback(() => {
     templateCatalogRequestIdRef.current += 1;
-    setTemplateResourceScope(scope);
     setTemplateCatalog([]);
-    setEnterpriseTemplateResources([]);
+    setCloudTemplateResources([]);
     setTemplateCatalogLoading(false);
     setTemplateCatalogError(null);
   }, []);
+  const selectBuiltInTemplateSource = useCallback(() => {
+    setTemplateCloudSourceSelected(false);
+    clearTemplateCatalog();
+  }, [clearTemplateCatalog]);
+  const selectCloudTemplateSource = useCallback(() => {
+    if (!denAuth.isSignedIn || templateCloudSourceSelected) return;
+    setTemplateCloudSourceSelected(true);
+    clearTemplateCatalog();
+  }, [clearTemplateCatalog, denAuth.isSignedIn, templateCloudSourceSelected]);
   useEffect(() => {
-    changeTemplateResourceScope(readActiveWorkContextId());
-  }, [activeEnterprise?.id, changeTemplateResourceScope]);
+    if (denAuth.isSignedIn || !templateCloudSourceSelected) return;
+    selectBuiltInTemplateSource();
+  }, [denAuth.isSignedIn, selectBuiltInTemplateSource, templateCloudSourceSelected]);
   const [sessionTypeRevision, setSessionTypeRevision] = useState(0);
   const selectedSessionType = useMemo(() => (
     props.selectedSessionId && typeof window !== "undefined"
@@ -1823,6 +1890,9 @@ export function SessionPage(props: SessionPageProps) {
   const conversationMessages = conversationMessageState.sessionId === props.selectedSessionId
     ? conversationMessageState.messages
     : [];
+  const conversationRequestCount = conversationMessages.filter(
+    (message) => message.role === "user" && message.parts.length > 0,
+  ).length;
   const currentTemplateApplyMode = currentTemplateSessionData?.applyMode
     ?? (conversationMessages.length ? "current-conversation" : "new-conversation");
   useEffect(() => {
@@ -1928,7 +1998,7 @@ export function SessionPage(props: SessionPageProps) {
   }, [currentTemplateSessionData?.manifest.title, props.selectedWorkspaceId]);
   const applyTemplateToCurrentSession = useCallback(async (
     item: TemplateCatalogItem,
-    resourceScope: WorkContextId = templateResourceScope,
+    resourceScope: WorkContextId = PERSONAL_WORK_CONTEXT_ID,
     applyMode: Exclude<TemplateApplyMode, "market"> = "current-conversation",
   ): Promise<boolean> => {
     if (!props.ipolloworkServerClient || !props.runtimeWorkspaceId || !props.selectedSessionId) return false;
@@ -1986,29 +2056,26 @@ export function SessionPage(props: SessionPageProps) {
     } finally {
       setTemplateBusyId(null);
     }
-  }, [openTab, openVideoStudio, props.ipolloworkServerClient, props.runtimeWorkspaceId, props.selectedSessionId, requireNewTaskForTemplate, setSidePanelState, templateResourceScope]);
+  }, [openTab, openVideoStudio, props.ipolloworkServerClient, props.runtimeWorkspaceId, props.selectedSessionId, requireNewTaskForTemplate, setSidePanelState]);
   const refreshTemplateCatalog = useCallback(async () => {
     if (!props.ipolloworkServerClient || !props.runtimeWorkspaceId) return;
     const requestId = ++templateCatalogRequestIdRef.current;
     setTemplateCatalogLoading(true);
     setTemplateCatalogError(null);
     try {
-      if (templateResourceScope === "personal") {
-        const localCatalog = await props.ipolloworkServerClient.listTemplates(props.runtimeWorkspaceId, "personal");
-        if (requestId !== templateCatalogRequestIdRef.current) return;
-        setTemplateCatalog(localCatalog.items);
-        setEnterpriseTemplateResources([]);
-      } else if (activeEnterprise) {
-        const [enterpriseResources, installedCatalog] = await Promise.all([
+      if (templateCloudSourceSelected) {
+        const [cloudResources, installedCatalog] = await Promise.all([
           listEnterpriseResources("template"),
-          props.ipolloworkServerClient.listTemplates(props.runtimeWorkspaceId, templateResourceScope),
+          props.ipolloworkServerClient.listTemplates(props.runtimeWorkspaceId, PERSONAL_WORK_CONTEXT_ID),
         ]);
         if (requestId !== templateCatalogRequestIdRef.current) return;
         setTemplateCatalog(installedCatalog.items.filter((item) => item.sourceType === "local" && item.installed));
-        setEnterpriseTemplateResources(enterpriseResources);
+        setCloudTemplateResources(cloudResources);
       } else {
-        setTemplateCatalog([]);
-        setEnterpriseTemplateResources([]);
+        const localCatalog = await props.ipolloworkServerClient.listTemplates(props.runtimeWorkspaceId, PERSONAL_WORK_CONTEXT_ID);
+        if (requestId !== templateCatalogRequestIdRef.current) return;
+        setTemplateCatalog(localCatalog.items);
+        setCloudTemplateResources([]);
       }
     }
     catch (error) {
@@ -2019,7 +2086,7 @@ export function SessionPage(props: SessionPageProps) {
     finally {
       if (requestId === templateCatalogRequestIdRef.current) setTemplateCatalogLoading(false);
     }
-  }, [activeEnterprise, props.ipolloworkServerClient, props.runtimeWorkspaceId, templateResourceScope]);
+  }, [props.ipolloworkServerClient, props.runtimeWorkspaceId, templateCloudSourceSelected]);
   const refreshStarterTemplateCatalog = useCallback(async () => {
     if (!props.ipolloworkServerClient || !props.runtimeWorkspaceId) return;
     const requestId = ++starterTemplateCatalogRequestIdRef.current;
@@ -2071,8 +2138,8 @@ export function SessionPage(props: SessionPageProps) {
     templateCoverCacheRef.current.clear();
   }, [props.runtimeWorkspaceId]);
   const getTemplateCover = useCallback((templateId: string) => {
-    return getCachedTemplateCover(templateResourceScope, templateId);
-  }, [getCachedTemplateCover, templateResourceScope]);
+    return getCachedTemplateCover(PERSONAL_WORK_CONTEXT_ID, templateId);
+  }, [getCachedTemplateCover]);
   const getStarterTemplateCover = useCallback((templateId: string) => {
     return getCachedTemplateCover(PERSONAL_WORK_CONTEXT_ID, templateId);
   }, [getCachedTemplateCover]);
@@ -2155,7 +2222,6 @@ export function SessionPage(props: SessionPageProps) {
       await props.ipolloworkServerClient.saveTemplateFromSession(props.runtimeWorkspaceId, templateRequest, "personal");
       const personalCatalog = await props.ipolloworkServerClient.listTemplates(props.runtimeWorkspaceId, "personal");
       setTemplateCatalog(personalCatalog.items);
-      setTemplateResourceScope("personal");
       setTemplateSaveOpen(false);
       toast.success(t("template_authoring.saved"), {
         description: t("template_authoring.saved_description"),
@@ -2243,23 +2309,23 @@ export function SessionPage(props: SessionPageProps) {
   const chooseDesignTemplate = useCallback(async (templateId: iPolloWorkTemplateId) => {
     const item = templateCatalog.find((template) => template.manifest.id === templateId);
     if (!item) return;
-    await applyTemplateToCurrentSession(item, templateResourceScope, "new-conversation");
-  }, [applyTemplateToCurrentSession, templateCatalog, templateResourceScope]);
+    await applyTemplateToCurrentSession(item, PERSONAL_WORK_CONTEXT_ID, "new-conversation");
+  }, [applyTemplateToCurrentSession, templateCatalog]);
   const installDesignTemplate = useCallback(async (templateId: string) => {
     if (!props.ipolloworkServerClient || !props.runtimeWorkspaceId) return;
     setTemplateBusyId(templateId);
-    try { await props.ipolloworkServerClient.installTemplate(props.runtimeWorkspaceId, templateId, templateResourceScope); await refreshTemplateCatalog(); }
+    try { await props.ipolloworkServerClient.installTemplate(props.runtimeWorkspaceId, templateId, PERSONAL_WORK_CONTEXT_ID); await refreshTemplateCatalog(); }
     catch (error) { toast.error(error instanceof Error ? error.message : t("templates.error_install")); }
     finally { setTemplateBusyId(null); }
-  }, [props.ipolloworkServerClient, props.runtimeWorkspaceId, refreshTemplateCatalog, templateResourceScope]);
+  }, [props.ipolloworkServerClient, props.runtimeWorkspaceId, refreshTemplateCatalog]);
   const uninstallDesignTemplate = useCallback(async (templateId: string) => {
     if (!props.ipolloworkServerClient || !props.runtimeWorkspaceId) return;
     if (!window.confirm(t("templates.confirm_uninstall"))) return;
     setTemplateBusyId(templateId);
-    try { await props.ipolloworkServerClient.uninstallTemplate(props.runtimeWorkspaceId, templateId, templateResourceScope); await refreshTemplateCatalog(); }
+    try { await props.ipolloworkServerClient.uninstallTemplate(props.runtimeWorkspaceId, templateId, PERSONAL_WORK_CONTEXT_ID); await refreshTemplateCatalog(); }
     catch (error) { toast.error(error instanceof Error ? error.message : t("templates.error_uninstall")); }
     finally { setTemplateBusyId(null); }
-  }, [props.ipolloworkServerClient, props.runtimeWorkspaceId, refreshTemplateCatalog, templateResourceScope]);
+  }, [props.ipolloworkServerClient, props.runtimeWorkspaceId, refreshTemplateCatalog]);
   const installStarterTemplate = useCallback(async (templateId: string) => {
     if (!props.ipolloworkServerClient || !props.runtimeWorkspaceId) return;
     setTemplateBusyId(templateId);
@@ -2270,7 +2336,7 @@ export function SessionPage(props: SessionPageProps) {
         PERSONAL_WORK_CONTEXT_ID,
       );
       await refreshStarterTemplateCatalog();
-      if (templateResourceScope === PERSONAL_WORK_CONTEXT_ID) await refreshTemplateCatalog();
+      await refreshTemplateCatalog();
     } catch (error) {
       toast.error(error instanceof Error ? error.message : t("templates.error_install"));
     } finally {
@@ -2281,7 +2347,6 @@ export function SessionPage(props: SessionPageProps) {
     props.runtimeWorkspaceId,
     refreshStarterTemplateCatalog,
     refreshTemplateCatalog,
-    templateResourceScope,
   ]);
   const exportPersonalTemplate = useCallback(async (template: TemplateCatalogItem) => {
     setTemplateBusyId(`export:${template.manifest.id}`);
@@ -2303,7 +2368,7 @@ export function SessionPage(props: SessionPageProps) {
     templateImportInFlightRef.current = true;
     setTemplateBusyId("import");
     try {
-      const result = await props.ipolloworkServerClient.importTemplate(props.runtimeWorkspaceId, file, category, templateResourceScope);
+      const result = await props.ipolloworkServerClient.importTemplate(props.runtimeWorkspaceId, file, category, PERSONAL_WORK_CONTEXT_ID);
       toast.success(t("templates.toast_installed", { title: result.item.manifest.title }));
       await refreshTemplateCatalog();
       return true;
@@ -2314,9 +2379,9 @@ export function SessionPage(props: SessionPageProps) {
       templateImportInFlightRef.current = false;
       setTemplateBusyId(null);
     }
-  }, [props.ipolloworkServerClient, props.runtimeWorkspaceId, refreshTemplateCatalog, templateResourceScope]);
-  const installEnterpriseTemplate = useCallback(async (resource: EnterpriseResource) => {
-    if (!activeEnterprise || templateResourceScope === "personal") return;
+  }, [props.ipolloworkServerClient, props.runtimeWorkspaceId, refreshTemplateCatalog]);
+  const installCloudTemplate = useCallback(async (resource: EnterpriseResource) => {
+    if (!templateCloudSourceSelected || !denAuth.isSignedIn) return;
     setTemplateBusyId(resource.id);
     try {
       const file = await downloadEnterpriseResource(resource);
@@ -2325,11 +2390,11 @@ export function SessionPage(props: SessionPageProps) {
       const message = error instanceof Error ? error.message : "";
       toast.error(message === "desktop_binary_fetch_requires_restart"
         ? t("enterprise_connection.desktop_restart_required")
-        : message || t("enterprise_connection.enterprise_resources_error"));
+        : message || t("enterprise_connection.cloud_resources_error"));
     } finally {
       setTemplateBusyId(null);
     }
-  }, [activeEnterprise, importDesignTemplate, templateResourceScope]);
+  }, [denAuth.isSignedIn, importDesignTemplate, templateCloudSourceSelected]);
   const submitTemplateBrief = useCallback(async (
     brief: TemplateBrief,
     references: TemplateReferenceItem[],
@@ -2339,6 +2404,7 @@ export function SessionPage(props: SessionPageProps) {
     if (!templateSession) return;
     const { manifest: template, state } = templateSession;
     let referencePayload: Awaited<ReturnType<typeof buildTemplateReferenceSubmitPayload>> | undefined;
+    let dispatchTransferred = false;
     try {
       referencePayload = await buildTemplateReferenceSubmitPayload(references);
       await props.ipolloworkServerClient.writeWorkspaceFile(props.runtimeWorkspaceId, {
@@ -2371,28 +2437,29 @@ export function SessionPage(props: SessionPageProps) {
             state.entry,
             source.content,
             conversationMessages.length,
+            conversationRequestCount,
           ),
         });
       }
-      const prompt = templateBriefPrompt({ template, entryPath: state.entry, briefPath: state.briefPath });
       const referencePrompt = referencePayload.contextPack.promptText.trim();
-      const visibleTemplateMessage = t("templates.applied", { title: template.title });
+      const visibleTemplateMessage = templateBriefUserMessage({ template, brief });
       setTemplateAssistantWait(references.length > 0 ? {
         sessionId: props.selectedSessionId,
         label: t("templates.brief.reference_agent_processing_label", { count: references.length }),
       } : null);
-      const dispatched = await props.surface?.onSendDraft({
-        mode: "prompt",
-        parts: [
-          { type: "text", text: visibleTemplateMessage },
-          { type: "text", text: prompt, synthetic: true },
-          ...(referencePrompt ? [{ type: "text" as const, text: referencePrompt, synthetic: true }] : []),
-        ],
+      const dispatch: PendingTemplateDispatch = {
+        requestId: createTemplateDispatchRequestId(props.selectedSessionId),
+        sessionId: props.selectedSessionId,
+        visibleText: visibleTemplateMessage,
+        referencePrompt,
         attachments: referencePayload.attachments,
-        text: visibleTemplateMessage,
-        resolvedText: visibleTemplateMessage,
-      }, props.selectedSessionId);
-      if (!dispatched) throw new Error("The template task could not be started.");
+        draft: null,
+      };
+      setPendingTemplateDispatch({
+        ...dispatch,
+        draft: createTemplateDispatchDraft(template, state, dispatch),
+      });
+      dispatchTransferred = true;
       setTemplateSessionData((current) => current?.sessionId === templateSession.sessionId ? { ...current, hasBrief: true } : current);
       setTemplateSessionRevision((value) => value + 1);
       setDismissedTemplateBriefSessionIds((current) => {
@@ -2410,25 +2477,24 @@ export function SessionPage(props: SessionPageProps) {
         description: error instanceof Error ? error.message : undefined,
       });
     } finally {
-      if (referencePayload) revokeTemplateReferenceAttachmentPreviews(referencePayload.attachments);
+      if (referencePayload && !dispatchTransferred) revokeTemplateReferenceAttachmentPreviews(referencePayload.attachments);
     }
-  }, [conversationMessages.length, currentTemplateSessionData, props.ipolloworkServerClient, props.runtimeWorkspaceId, props.selectedSessionId, props.surface]);
+  }, [conversationMessages.length, conversationRequestCount, currentTemplateSessionData, props.ipolloworkServerClient, props.runtimeWorkspaceId, props.selectedSessionId]);
   useEffect(() => {
     if (
       !pendingTemplateDispatch
+      || pendingTemplateDispatch.draft
       || pendingTemplateDispatch.sessionId !== props.selectedSessionId
       || currentTemplateSessionData?.sessionId !== pendingTemplateDispatch.sessionId
-      || !props.surface?.onSendDraft
       || !props.ipolloworkServerClient
       || !props.runtimeWorkspaceId
-      || templateDispatchInFlightRef.current === pendingTemplateDispatch.sessionId
+      || templateDispatchPreparationRef.current === pendingTemplateDispatch.requestId
     ) return;
     const dispatch = pendingTemplateDispatch;
     const templateSession = currentTemplateSessionData;
     const client = props.ipolloworkServerClient;
     const workspaceId = props.runtimeWorkspaceId;
-    const sendDraft = props.surface.onSendDraft;
-    templateDispatchInFlightRef.current = dispatch.sessionId;
+    templateDispatchPreparationRef.current = dispatch.requestId;
     void (async () => {
       try {
         setTemplateAssistantWait(dispatch.attachments.length > 0 ? {
@@ -2446,43 +2512,36 @@ export function SessionPage(props: SessionPageProps) {
               templateSession.state.entry,
               source.content,
               conversationMessages.length,
+              conversationRequestCount,
             ),
           });
         }
-        const visibleTemplateMessage = t("templates.applied", { title: templateSession.manifest.title });
-        const sent = await sendDraft({
-          mode: "prompt",
-          parts: [
-            { type: "text", text: visibleTemplateMessage },
-            {
-              type: "text",
-              text: templateBriefPrompt({
-                template: templateSession.manifest,
-                entryPath: templateSession.state.entry,
-                briefPath: templateSession.state.briefPath,
-              }),
-              synthetic: true,
-            },
-            ...(dispatch.referencePrompt ? [{ type: "text" as const, text: dispatch.referencePrompt, synthetic: true }] : []),
-          ],
-          attachments: dispatch.attachments,
-          text: visibleTemplateMessage,
-          resolvedText: visibleTemplateMessage,
-        }, dispatch.sessionId);
-        if (!sent) throw new Error(t("templates.error_apply"));
+        setPendingTemplateDispatch((current) => current?.requestId === dispatch.requestId
+          ? { ...current, draft: createTemplateDispatchDraft(templateSession.manifest, templateSession.state, current) }
+          : current);
       } catch (error) {
         setTemplateAssistantWait((current) => current?.sessionId === dispatch.sessionId ? null : current);
         setPendingVideoArtifactCompletion((current) => current?.sessionId === dispatch.sessionId ? null : current);
+        setPendingTemplateDispatch((current) => current?.requestId === dispatch.requestId ? null : current);
+        revokeTemplateReferenceAttachmentPreviews(dispatch.attachments);
         toast.error(t("templates.error_apply"), {
           description: error instanceof Error ? error.message : undefined,
         });
       } finally {
-        revokeTemplateReferenceAttachmentPreviews(dispatch.attachments);
-        templateDispatchInFlightRef.current = null;
-        setPendingTemplateDispatch((current) => current?.sessionId === dispatch.sessionId ? null : current);
+        templateDispatchPreparationRef.current = null;
       }
     })();
-  }, [conversationMessages.length, currentTemplateSessionData, pendingTemplateDispatch, props.ipolloworkServerClient, props.runtimeWorkspaceId, props.selectedSessionId, props.surface]);
+  }, [conversationMessages.length, conversationRequestCount, currentTemplateSessionData, pendingTemplateDispatch, props.ipolloworkServerClient, props.runtimeWorkspaceId, props.selectedSessionId]);
+  const settlePendingTemplateDispatch = useCallback((requestId: string, dispatched: boolean) => {
+    if (pendingTemplateDispatch?.requestId !== requestId) return;
+    const sessionId = pendingTemplateDispatch.sessionId;
+    setPendingTemplateDispatch(null);
+    if (dispatched) return;
+    setTemplateAssistantWait((current) => current?.sessionId === sessionId ? null : current);
+    setPendingVideoArtifactCompletion((current) => current?.sessionId === sessionId ? null : current);
+    setTemplateSessionData((current) => current?.sessionId === sessionId ? { ...current, hasBrief: false } : current);
+    toast.error(t("templates.error_apply"));
+  }, [pendingTemplateDispatch]);
   const closeTemplateBrief = useCallback(async () => {
     const conversationId = props.selectedSessionId;
     const templateSessionId = currentTemplateSessionData?.sessionId;
@@ -2687,9 +2746,15 @@ export function SessionPage(props: SessionPageProps) {
       }
       if (!createdSessionId) return;
       setPendingTemplateDispatch({
+        requestId: createTemplateDispatchRequestId(createdSessionId),
         sessionId: createdSessionId,
+        visibleText: templateBriefUserMessage({
+          template: { category: application.category, title: t("template_market.custom_title") },
+          brief,
+        }),
         referencePrompt: referencePayload.contextPack.promptText.trim(),
         attachments: referencePayload.attachments,
+        draft: null,
       });
       dispatchTransferred = true;
       setPendingCustomTemplateApplication(null);
@@ -2740,9 +2805,12 @@ export function SessionPage(props: SessionPageProps) {
       });
       if (!createdSessionId) return;
       setPendingTemplateDispatch({
+        requestId: createTemplateDispatchRequestId(createdSessionId),
         sessionId: createdSessionId,
+        visibleText: templateBriefUserMessage({ template, brief }),
         referencePrompt: referencePayload.contextPack.promptText.trim(),
         attachments: referencePayload.attachments,
+        draft: null,
       });
       dispatchTransferred = true;
       setPendingTemplateApplication(null);
@@ -4269,6 +4337,8 @@ export function SessionPage(props: SessionPageProps) {
       canRenderReactSurface &&
       hasSelectedTask &&
       props.selectedSessionId &&
+      !props.initialTaskTransitionPending &&
+      conversationMessages.length === 0 &&
       settledSessionId !== props.selectedSessionId &&
       !templateEntrySurfaceReady,
   );
@@ -4635,7 +4705,7 @@ export function SessionPage(props: SessionPageProps) {
                     <Button
                       variant="ghost"
                       size="icon-sm"
-                      className="rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                      className="size-8 rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
                       aria-label={sidePanelOpen ? t("session.right_panel_close") : t("session.right_panel_open")}
                       title={sidePanelOpen ? t("session.right_panel_close") : t("session.right_panel_open")}
                       aria-pressed={sidePanelOpen}
@@ -4710,7 +4780,7 @@ export function SessionPage(props: SessionPageProps) {
                 <EngineStartupGate
                   engine={selectedEnginePackage}
                   phase="install"
-                  busy={engineInstallBusy || selectedEnginePackage.status === "not-installed"}
+                  busy={engineInstallBusy}
                   onInstall={installSelectedEngine}
                 />
               ) : engineStartupGateActive && selectedEnginePackage ? (
@@ -4747,42 +4817,44 @@ export function SessionPage(props: SessionPageProps) {
                 </div>
               ) : null}
 
-              {mainWorkspaceView === null && !engineInstallGateActive && !engineStartupGateActive && showNewTaskStarter && !showStartupSkeleton && props.surface ? (
-                <InitialProjectTaskStarter
-                  key={`${props.selectedWorkspaceId}:${props.selectedWorkspaceDisplay.engineId ?? DEFAULT_ENGINE_ID}`}
-                  surface={props.surface}
-                  workspaceClient={props.ipolloworkServerClient}
-                  workspaceId={props.runtimeWorkspaceId}
-                  opencodeBaseUrl={props.opencodeBaseUrl}
-                  ipolloworkToken={props.ipolloworkServerToken}
-                  engineId={props.selectedWorkspaceDisplay.engineId}
-                  templates={starterTemplateCatalog}
-                  templatesLoading={starterTemplateCatalogLoading}
-                  templateBusyId={templateBusyId}
-                  getTemplateCover={getStarterTemplateCover}
-                  onUseTemplate={async (templateId, surface) => {
-                    if (templateBusyId) return;
-                    setTemplateBusyId(templateId);
-                    try {
-                      await Promise.resolve(props.sidebar.onCreateTaskInWorkspace(
-                        props.selectedWorkspaceId,
-                        surface === "video" ? "video" : "design",
-                        templateId,
-                        PERSONAL_WORK_CONTEXT_ID,
-                      ));
-                    } finally {
-                      setTemplateBusyId((current) => current === templateId ? null : current);
-                    }
-                  }}
-                  onUseCustomTemplate={(category) => openCustomTemplate(category, "new-task")}
-                  onInstallTemplate={(templateId) => void installStarterTemplate(templateId)}
-                  onRequestTemplates={() => void refreshStarterTemplateCatalog()}
-                  pendingDraft={props.initialTaskDraftPending}
-                  onSubmit={selectedProject && !selectedProject.workspace.isDefault
-                    ? (draft) => props.sidebar.onCreateTaskFromDraft(props.selectedWorkspaceId, draft)
-                    : (draft) => props.sidebar.onCreateInitialProjectTask(draft)}
-                />
-              ) : null}
+              <AnimatePresence initial={false}>
+                {mainWorkspaceView === null && !engineInstallGateActive && !engineStartupGateActive && showNewTaskStarter && !showStartupSkeleton && props.surface ? (
+                  <InitialProjectTaskStarter
+                    key={`${props.selectedWorkspaceId}:${props.selectedWorkspaceDisplay.engineId ?? DEFAULT_ENGINE_ID}`}
+                    surface={props.surface}
+                    workspaceClient={props.ipolloworkServerClient}
+                    workspaceId={props.runtimeWorkspaceId}
+                    opencodeBaseUrl={props.opencodeBaseUrl}
+                    ipolloworkToken={props.ipolloworkServerToken}
+                    engineId={props.selectedWorkspaceDisplay.engineId}
+                    templates={starterTemplateCatalog}
+                    templatesLoading={starterTemplateCatalogLoading}
+                    templateBusyId={templateBusyId}
+                    getTemplateCover={getStarterTemplateCover}
+                    onUseTemplate={async (templateId, surface) => {
+                      if (templateBusyId) return;
+                      setTemplateBusyId(templateId);
+                      try {
+                        await Promise.resolve(props.sidebar.onCreateTaskInWorkspace(
+                          props.selectedWorkspaceId,
+                          surface === "video" ? "video" : "design",
+                          templateId,
+                          PERSONAL_WORK_CONTEXT_ID,
+                        ));
+                      } finally {
+                        setTemplateBusyId((current) => current === templateId ? null : current);
+                      }
+                    }}
+                    onUseCustomTemplate={(category) => openCustomTemplate(category, "new-task")}
+                    onInstallTemplate={(templateId) => void installStarterTemplate(templateId)}
+                    onRequestTemplates={() => void refreshStarterTemplateCatalog()}
+                    pendingDraft={props.initialTaskDraftPending}
+                    onSubmit={selectedProject && !selectedProject.workspace.isDefault
+                      ? (draft) => props.sidebar.onCreateTaskFromDraft(props.selectedWorkspaceId, draft)
+                      : (draft) => props.sidebar.onCreateInitialProjectTask(draft)}
+                  />
+                ) : null}
+              </AnimatePresence>
 
               {mainWorkspaceView === null && !engineInstallGateActive && !engineStartupGateActive && !showNewTaskStarter && showDelayedSessionLoadingState ? (
                 <div className="px-6 py-16">
@@ -4849,6 +4921,10 @@ export function SessionPage(props: SessionPageProps) {
                         onConversationMessagesChange={handleConversationMessagesChange}
                         onLoadSettled={handleSessionLoadSettled}
                         assistantWaitLabel={templateAssistantWait?.sessionId === props.selectedSessionId ? templateAssistantWait.label : undefined}
+                        pendingProgrammaticDraft={pendingTemplateDispatch?.sessionId === props.selectedSessionId && pendingTemplateDispatch.draft
+                          ? { id: pendingTemplateDispatch.requestId, draft: pendingTemplateDispatch.draft }
+                          : null}
+                        onPendingProgrammaticDraftSettled={settlePendingTemplateDispatch}
                         templateEntryPath={templateEntryPathForArtifacts}
                         artifactFiles={artifactFiles}
                         artifactContext={artifactContext}
@@ -5145,11 +5221,12 @@ export function SessionPage(props: SessionPageProps) {
         error={templateCatalogError}
         busyId={templateBusyId}
         getCover={getTemplateCover}
-        enterprise={activeEnterprise}
-        resourceScope={templateResourceScope}
-        enterpriseResources={enterpriseTemplateResources}
-        onResourceScopeChange={changeTemplateResourceScope}
-        onInstallEnterprise={(resource) => void installEnterpriseTemplate(resource)}
+        cloudResources={cloudTemplateResources}
+        cloudAvailable={denAuth.isSignedIn}
+        cloudSelected={templateCloudSourceSelected}
+        onSelectBuiltIn={selectBuiltInTemplateSource}
+        onSelectCloud={selectCloudTemplateSource}
+        onInstallCloud={(resource) => void installCloudTemplate(resource)}
         onRefresh={refreshTemplateCatalog}
         onInstall={(templateId) => void installDesignTemplate(templateId)}
         onImport={importDesignTemplate}
@@ -5168,7 +5245,7 @@ export function SessionPage(props: SessionPageProps) {
             return;
           }
           if (templateMarketTarget === "current-session" && props.selectedSessionId) {
-            void applyTemplateToCurrentSession(template).then((applied) => {
+            void applyTemplateToCurrentSession(template, PERSONAL_WORK_CONTEXT_ID).then((applied) => {
               if (applied) setTemplateMarketOpen(false);
             });
             return;
@@ -5177,7 +5254,7 @@ export function SessionPage(props: SessionPageProps) {
             ? props.selectedWorkspaceId
             : templateDestinationProjects[0]?.id;
           setTemplateMarketOpen(false);
-          setPendingTemplateApplication({ item: template, origin: "market", resourceScope: templateResourceScope });
+          setPendingTemplateApplication({ item: template, origin: "market", resourceScope: PERSONAL_WORK_CONTEXT_ID });
           if (selectedProjectId) {
             setPendingTemplateProjectId(selectedProjectId);
           } else {

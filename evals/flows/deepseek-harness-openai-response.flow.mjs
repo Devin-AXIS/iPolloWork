@@ -1,4 +1,5 @@
 const RESPONSE_TOKEN = "DSH_GPT_OK_825";
+const EDITOR_SELECTOR = '[contenteditable="true"][data-lexical-editor="true"]';
 
 export default {
   id: "deepseek-harness-openai-response",
@@ -12,24 +13,41 @@ export default {
           timeoutMs: 60_000,
           label: "window.__ipolloworkControl",
         });
-        await ctx.prove("DeepSeek Harness can use GPT-5.5 without another provider login", {
-          voiceover: "在 DeepSeek Harness 项目中选择 GPT-5.5 后，用户可以直接发送消息并收到回复，不再出现 Provider 未配置错误。",
+        await ctx.prove("The first DeepSeek Harness reply is retained in task history", {
+          voiceover: "首次在 DeepSeek Harness 项目中发送消息后，回复正常显示，而且同一任务会立即保留在左侧历史中。",
           action: async () => {
-            await ctx.eval(`(async () => {
+            const workspaceId = await ctx.eval(`(async () => {
               document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
               await new Promise((resolve) => setTimeout(resolve, 80));
-              const project = Array.from(document.querySelectorAll('button, a'))
+              const project = Array.from(document.querySelectorAll('[data-testid="project-row"][data-project-id]'))
                 .find((element) => element.textContent?.trim().toLowerCase() === 'dsh');
               project?.click();
-              return Boolean(project);
+              return project?.getAttribute('data-project-id') ?? null;
+            })()`, { awaitPromise: true });
+            ctx.assert(Boolean(workspaceId), "Could not find the DeepSeek Harness project.");
+            await ctx.waitFor(`Boolean(document.querySelector(
+              ${JSON.stringify(`[data-testid="project-new-conversation-button"][data-project-id="${workspaceId}"]`)},
+            ))`, {
+              timeoutMs: 10_000,
+              label: "DeepSeek Harness new task button",
+            });
+            const openedDeepSeekTask = await ctx.eval(`(() => {
+              const button = document.querySelector(
+                '[data-testid="project-new-conversation-button"][data-project-id="${workspaceId}"]',
+              );
+              button?.click();
+              return Boolean(button);
             })()`);
-            await ctx.waitFor(`Boolean(document.querySelector('[aria-label^="DeepSeek Harness"]'))
-              && window.__ipolloworkControl.listActions()
-                .some((action) => action.id === 'session.create_task' && !action.disabled)`, {
+            ctx.assert(openedDeepSeekTask, "Could not open a DeepSeek Harness task.");
+            await ctx.waitFor(`location.hash.includes(${JSON.stringify(`/workspace/${workspaceId}/session`)})`, {
+              timeoutMs: 45_000,
+              label: "DeepSeek Harness workspace route",
+            });
+            await ctx.waitFor(`Array.from(document.querySelectorAll('button'))
+                .some((button) => /切换模型|Change model/.test(button.getAttribute('aria-label') ?? ''))`, {
               timeoutMs: 45_000,
               label: "ready DeepSeek Harness composer",
             });
-            await ctx.control("session.create_task");
             await ctx.waitFor(`Array.from(document.querySelectorAll('button'))
               .some((button) => /切换模型|Change model/.test(button.getAttribute('aria-label') ?? ''))`, {
               timeoutMs: 30_000,
@@ -75,13 +93,17 @@ export default {
               timeoutMs: 30_000,
               label: "stable GPT-5.5 composer",
             });
-            await ctx.control("composer.set_text", {
-              text: `只回复 ${RESPONSE_TOKEN}，不要添加其他内容。`,
-            });
-            await ctx.waitFor(`window.__ipolloworkControl.listActions()
-              .some((action) => action.id === 'composer.send' && !action.disabled)`, {
-              timeoutMs: 15_000,
-              label: "enabled DeepSeek Harness send action",
+            const prompt = `只回复 ${RESPONSE_TOKEN}，不要添加其他内容。`;
+            await ctx.eval(`(() => {
+              const editor = document.querySelector(${JSON.stringify(EDITOR_SELECTOR)});
+              editor?.focus();
+              return document.activeElement === editor;
+            })()`);
+            await ctx.client.send("Input.insertText", { text: prompt });
+            await ctx.waitFor(`document.querySelector(${JSON.stringify(EDITOR_SELECTOR)})
+              ?.innerText.includes(${JSON.stringify(RESPONSE_TOKEN)})`, {
+              timeoutMs: 10_000,
+              label: "DeepSeek Harness initial prompt",
             });
             const submitted = await ctx.eval(`(() => {
               const submit = Array.from(document.querySelectorAll('button'))
@@ -96,15 +118,51 @@ export default {
             ctx.assert(submitted, "Could not submit the DeepSeek Harness message.");
           },
           assert: async () => {
-            await ctx.waitFor(`(document.body.innerText.match(/${RESPONSE_TOKEN}/g) ?? []).length >= 2`, {
+            await ctx.waitFor(`Array.from(document.querySelectorAll('[data-message-role="assistant"]'))
+              .some((message) => message.innerText.includes(${JSON.stringify(RESPONSE_TOKEN)}))`, {
               timeoutMs: 120_000,
-              label: "GPT response token",
+              label: "assistant GPT response token",
+            });
+            const transcript = await ctx.control("session.read_transcript", { count: 20 });
+            const assistantReply = (transcript?.messages ?? []).findLast((message) => (
+              message.role === "assistant" && message.text.includes(RESPONSE_TOKEN)
+            ));
+            ctx.assert(Boolean(assistantReply), `GPT response is missing from the transcript: ${JSON.stringify(transcript)}`);
+            await ctx.waitFor(`(() => {
+              const actions = window.__ipolloworkControl.listActions();
+              return actions.some((action) => action.id === 'composer.stop' && action.disabled);
+            })()`, {
+              timeoutMs: 30_000,
+              label: "completed DeepSeek Harness turn",
+            });
+            const sessions = await ctx.control("session.list_sessions");
+            const historyItem = sessions.find((session) => (
+              session.sessionId === transcript.sessionId
+              && session.workspace.toLowerCase() === "dsh"
+            ));
+            ctx.assert(Boolean(historyItem), `The completed DSH task is missing from sidebar history: ${JSON.stringify(sessions)}`);
+            await ctx.eval(`(() => {
+              const project = Array.from(document.querySelectorAll('[data-testid="project-row"][data-project-id]'))
+                .find((element) => element.textContent?.trim().toLowerCase() === 'dsh');
+              if (project?.getAttribute('aria-expanded') !== 'true') project?.click();
+              return Boolean(project);
+            })()`);
+            await ctx.waitFor(`(() => {
+              const project = Array.from(document.querySelectorAll('[data-testid="project-row"][data-project-id]'))
+                .find((element) => element.textContent?.trim().toLowerCase() === 'dsh');
+              const group = project?.closest('[data-slot="sidebar-group"]');
+              return project?.getAttribute('aria-expanded') === 'true'
+                && Array.from(group?.querySelectorAll('span[title]') ?? [])
+                  .some((item) => item.getAttribute('title')?.includes(${JSON.stringify(RESPONSE_TOKEN)}));
+            })()`, {
+              timeoutMs: 10_000,
+              label: "completed DSH task in expanded sidebar history",
             });
             await ctx.expectNoText("Provider is not configured");
           },
           screenshot: {
             name: "deepseek-harness-gpt-response",
-            requireText: [RESPONSE_TOKEN, "DeepSeek Harness"],
+            requireText: [RESPONSE_TOKEN, "GPT-5.5"],
             rejectText: ["Provider is not configured"],
           },
         });

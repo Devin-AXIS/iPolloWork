@@ -2258,7 +2258,12 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
           )
         ) : undefined}
         showNotifications={route.tab !== "extensions"}
-        hidePageHeader={route.tab === "extensions" || Boolean(route.pluginPackageId) || Boolean(selectedPluginSettingsPage)}
+        hidePageHeader={
+          route.tab === "extensions"
+          || route.tab === "cloud-marketplaces"
+          || Boolean(route.pluginPackageId)
+          || Boolean(selectedPluginSettingsPage)
+        }
         fullBleed={Boolean(selectedPluginSettingsPage)}
         hideShellHeader={route.tab === "cloud-account" || Boolean(route.pluginPackageId)}
         hideCloseButton={props.embedded && route.tab === "extensions"}
