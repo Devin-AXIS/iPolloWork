@@ -2796,6 +2796,7 @@ export function SessionRoute() {
       )}
       sidebar={{
         projectSessionLists,
+        workContextId: activeWorkContextId,
         selectedWorkspaceId,
         selectedSessionId,
         developerMode: false,

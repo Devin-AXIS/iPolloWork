@@ -8,6 +8,15 @@ import type { iPolloWorkSessionType } from "./session-type";
 export type { iPolloWorkSessionType } from "./session-type";
 export type iPolloWorkTemplateId = string;
 
+export type SidebarDragPayload =
+  | { kind: "project"; id: string }
+  | { kind: "session"; key: string; sourceWorkspaceId: string; sessionId: string };
+
+export type SidebarDropTarget =
+  | { kind: "project"; id: string }
+  | { kind: "session"; key: string }
+  | null;
+
 export type SidebarContextValue = {
   selectedWorkspaceId: string;
   selectedSessionId: string | null;
@@ -34,6 +43,12 @@ export type SidebarContextValue = {
   onEditWorkspaceConnection: (workspaceId: string) => void;
   toggleSessionExpanded: (sessionId: string) => void;
   expandedSessionIds: Set<string>;
+  draggingItem: SidebarDragPayload | null;
+  dropTarget: SidebarDropTarget;
+  onDragStart: (payload: SidebarDragPayload) => void;
+  onDragEnd: () => void;
+  onDragOver: (target: Exclude<SidebarDropTarget, null>, event: React.DragEvent<HTMLElement>) => void;
+  onDrop: (target: Exclude<SidebarDropTarget, null>, event: React.DragEvent<HTMLElement>) => void;
 };
 
 export const SidebarContext = React.createContext<SidebarContextValue | null>(null);

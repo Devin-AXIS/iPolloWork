@@ -627,6 +627,7 @@ export type SessionPageHistoryControls = {
 
 export type SessionPageSidebarProps = {
   projectSessionLists: ProjectSessionList[];
+  workContextId?: string;
   selectedWorkspaceId: string;
   selectedSessionId: string | null;
   developerMode: boolean;
@@ -4432,6 +4433,7 @@ export function SessionPage(props: SessionPageProps) {
       >
         <AppSidebar
           projectSessionLists={props.sidebar.projectSessionLists}
+          workContextId={props.sidebar.workContextId}
           selectedWorkspaceId={props.sidebar.selectedWorkspaceId}
           developerMode={props.sidebar.developerMode}
           selectedSessionId={props.sidebar.selectedSessionId}

@@ -91,18 +91,27 @@ import { Button } from "@/components/ui/button";
 import { TemplateIcon } from "@/components/template-icon";
 
 import { SidebarContext, useSidebarContext } from "./app-sidebar-provider";
-import type { SidebarContextValue, iPolloWorkSessionType, iPolloWorkTemplateId } from "./app-sidebar-provider";
+import type {
+  SidebarContextValue,
+  SidebarDragPayload,
+  SidebarDropTarget,
+  iPolloWorkSessionType,
+  iPolloWorkTemplateId,
+} from "./app-sidebar-provider";
 import {
   MAX_SESSIONS_PREVIEW,
+  buildSidebarArchivedSessions,
   buildSessionTreeState,
+  buildSidebarLayoutView,
   flattenSessionRows,
   getRootSessions,
   isSessionArchived,
   isStreamingSessionStatus,
-  partitionArchivedSessions,
+  visibleProjectSessionLists,
   workspaceLabel,
 } from "./utils";
-import type { FlattenedSessionRow, SessionListItem, SessionTreeState } from "./utils";
+import { sessionLayoutKey, useSidebarLayoutStore } from "./sidebar-layout-store";
+import type { FlattenedSessionRow, SidebarDisplaySession, SessionListItem, SessionTreeState } from "./utils";
 import {
   usePinnedSessionIds,
   useSessionPinStore,
@@ -264,11 +273,13 @@ function SessionActions({ className, sessionId, workspaceId, isPinned, isArchive
     <DropdownMenu>
       <DropdownMenuTrigger className="size-6 text-muted-foreground"
         render={
-          <Button
+            <Button
             variant="ghost"
             size="icon-sm"
             className={cn("size-6", className)}
-            onClick={(event) => event.stopPropagation()}
+              onClick={(event) => event.stopPropagation()}
+              draggable={false}
+              onDragStart={(event) => event.stopPropagation()}
           >
             <span className="flex size-4 items-center justify-center" aria-hidden="true">
               <img src={publicAssetUrl("sidebar-icon/figma-section-ellipsis.svg")} alt="" className="h-[2.33333px] w-[11.6667px]" />
@@ -407,6 +418,7 @@ function RemoteConnectionIssueCard(props: {
 
 export type AppSidebarProps = {
   projectSessionLists: ProjectSessionList[];
+  workContextId?: string;
   selectedWorkspaceId: string;
   developerMode: boolean;
   selectedSessionId: string | null;
@@ -527,12 +539,38 @@ function isSessionActivityStatus(status: string | undefined): status is SessionA
 
 export function AppSidebar(props: AppSidebarProps) {
   const activeEnterprise = useActiveEnterpriseConnection();
+  const layout = useSidebarLayoutStore();
+  const contextId = props.workContextId?.trim() || "personal";
   const [expandedSessionIds, setExpandedSessionIds] = React.useState<Set<string>>(
     () => new Set(),
   );
   const [language, setLanguage] = React.useState<Language>(() => currentLocale());
   const [projectsExpanded, setProjectsExpanded] = React.useState(true);
-  const namedProjects = props.projectSessionLists.filter((project) => !project.workspace.isDefault);
+  const [archivedExpanded, setArchivedExpanded] = React.useState(false);
+  const sourceProjects = React.useMemo(
+    () => visibleProjectSessionLists(props.projectSessionLists),
+    [props.projectSessionLists],
+  );
+  const namedProjects = React.useMemo(
+    () => buildSidebarLayoutView(props.projectSessionLists, layout, contextId),
+    [contextId, layout, props.projectSessionLists],
+  );
+  const archivedSessions = React.useMemo(
+    () => buildSidebarArchivedSessions(props.projectSessionLists),
+    [props.projectSessionLists],
+  );
+  const sourceProjectBySessionKey = React.useMemo(() => {
+    const result: Record<string, string> = {};
+    for (const project of sourceProjects) {
+      for (const session of project.sessions) {
+        result[sessionLayoutKey(project.workspace.id, session.id)] = project.workspace.id;
+      }
+    }
+    return result;
+  }, [sourceProjects]);
+  const sessionKeys = React.useMemo(() => Object.keys(sourceProjectBySessionKey), [sourceProjectBySessionKey]);
+  const [draggingItem, setDraggingItem] = React.useState<SidebarDragPayload | null>(null);
+  const [dropTarget, setDropTarget] = React.useState<SidebarDropTarget>(null);
   const selectedProject = namedProjects.find((project) => project.workspace.id === props.selectedWorkspaceId)
     ?? namedProjects[0];
   const primarySidebarActionClass = cn(
@@ -543,6 +581,56 @@ export function AppSidebar(props: AppSidebarProps) {
     setLanguage(nextLanguage);
     setLocale(nextLanguage);
   }, []);
+
+  React.useEffect(() => {
+    layout.prune({
+      contextId,
+      projectIds: sourceProjects.map((project) => project.workspace.id),
+      sessionKeys,
+      sourceProjectBySessionKey,
+    });
+  }, [contextId, layout, sessionKeys, sourceProjectBySessionKey, sourceProjects]);
+
+  const handleDragStart = React.useCallback((payload: SidebarDragPayload) => {
+    setDraggingItem(payload);
+  }, []);
+
+  const handleDragEnd = React.useCallback(() => {
+    setDraggingItem(null);
+    setDropTarget(null);
+  }, []);
+
+  const handleDragOver = React.useCallback((target: Exclude<SidebarDropTarget, null>, event: React.DragEvent<HTMLElement>) => {
+    const current = draggingItem;
+    if (!current) return;
+    const allowed = current.kind === "project"
+      ? target.kind === "project" && current.id !== target.id
+      : target.kind === "project" || (target.kind === "session" && current.key !== target.key);
+    if (!allowed) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "move";
+    setDropTarget(target);
+  }, [draggingItem]);
+
+  const handleDrop = React.useCallback((target: Exclude<SidebarDropTarget, null>, event: React.DragEvent<HTMLElement>) => {
+    event.preventDefault();
+    const current = draggingItem;
+    if (!current) return;
+    if (current.kind === "project" && target.kind === "project") {
+      layout.reorderProjects(contextId, current.id, target.id);
+    } else if (current.kind === "session" && target.kind === "project") {
+      layout.moveSession(current.key, target.id);
+    } else if (current.kind === "session" && target.kind === "session") {
+      const targetProject = namedProjects.find((project) => project.sessions.some((session) => (
+        sessionLayoutKey(session.sourceWorkspaceId, session.id) === target.key
+      )));
+      if (targetProject) {
+        layout.moveSession(current.key, targetProject.workspace.id);
+        layout.reorderSessions(targetProject.workspace.id, current.key, target.key);
+      }
+    }
+    handleDragEnd();
+  }, [contextId, draggingItem, handleDragEnd, layout, namedProjects]);
 
   React.useEffect(() => {
     const syncLanguage = () => setLanguage(currentLocale());
@@ -631,6 +719,12 @@ export function AppSidebar(props: AppSidebarProps) {
     onEditWorkspaceConnection: props.onEditWorkspaceConnection,
     toggleSessionExpanded,
     expandedSessionIds,
+    draggingItem,
+    dropTarget,
+    onDragStart: handleDragStart,
+    onDragEnd: handleDragEnd,
+    onDragOver: handleDragOver,
+    onDrop: handleDrop,
   };
 
   const brandLogoUrl = useBrandLogoUrl();
@@ -781,6 +875,14 @@ export function AppSidebar(props: AppSidebarProps) {
                 ))}
               </CollapsibleContent>
             </Collapsible>
+            {archivedSessions.length > 0 ? (
+              <ArchivedSessionsSection
+                sessions={archivedSessions}
+                sessionStatusById={props.sessionStatusById}
+                expanded={archivedExpanded}
+                onToggle={() => setArchivedExpanded((value) => !value)}
+              />
+            ) : null}
           </m.div>
         </LazyMotion>
 
@@ -928,12 +1030,8 @@ function ProjectSidebarContent({
     (connectionState.status === "error" || project.status === "error");
   const pinnedIds = usePinnedSessionIds();
 
-  const { active: activeSessions, archived: archivedSessions } = React.useMemo(
-    () => partitionArchivedSessions(project.sessions),
-    [project.sessions],
-  );
-  const projectRootSessions = getRootSessions(activeSessions);
-  const projectStatuses = activeSessions.map((session) => ctx.sessionStatusById?.[session.id]);
+  const projectRootSessions = getRootSessions(project.sessions);
+  const projectStatuses = project.sessions.map((session) => ctx.sessionStatusById?.[session.id]);
   const projectStreamingStatus = projectStatuses.find(isStreamingSessionStatus);
   const projectActivityStatus = projectStreamingStatus ?? projectStatuses.find((status) => status && status !== "idle");
   const projectIsStreaming = projectRootSessions.some((session) => tree.streamingIds.has(session.id));
@@ -947,8 +1045,7 @@ function ProjectSidebarContent({
     forcedExpandedSessionIds,
     pinnedIds,
   );
-  const remainingSessionCount = Math.max(0, getRootSessions(activeSessions).length - sessionPreviewCount);
-  const [archivedExpanded, setArchivedExpanded] = React.useState(false);
+  const remainingSessionCount = Math.max(0, projectRootSessions.length - sessionPreviewCount);
   const [creatingConversation, setCreatingConversation] = React.useState(false);
   const createConversationInProject = async () => {
     if (creatingConversation) return;
@@ -968,7 +1065,22 @@ function ProjectSidebarContent({
       <SidebarGroupContent>
         <Collapsible open={projectExpanded} onOpenChange={setProjectExpanded} className="group/project">
           {showProjectRow ? <SidebarMenu>
-            <SidebarMenuItem className="group/project-row relative h-8">
+            <SidebarMenuItem
+              className={cn(
+                "group/project-row relative h-8 cursor-grab active:cursor-grabbing",
+                ctx.dropTarget?.kind === "project" && ctx.dropTarget.id === workspace.id && "rounded-lg bg-sidebar-accent/70",
+              )}
+              draggable
+              onDragStart={(event) => {
+                event.dataTransfer.effectAllowed = "move";
+                event.dataTransfer.setData("text/plain", JSON.stringify({ kind: "project", id: workspace.id }));
+                ctx.onDragStart({ kind: "project", id: workspace.id });
+              }}
+              onDragOver={(event) => ctx.onDragOver({ kind: "project", id: workspace.id }, event)}
+              onDrop={(event) => ctx.onDrop({ kind: "project", id: workspace.id }, event)}
+              onDragEnd={ctx.onDragEnd}
+              data-drop-target={ctx.dropTarget?.kind === "project" && ctx.dropTarget.id === workspace.id ? "true" : undefined}
+            >
               <button
                 type="button"
                 onClick={() => setProjectExpanded((expanded) => !expanded)}
@@ -1036,6 +1148,8 @@ function ProjectSidebarContent({
                         title={t("projects.actions")}
                         data-testid="project-actions-menu"
                         data-project-id={workspace.id}
+                        draggable={false}
+                        onDragStart={(event) => event.stopPropagation()}
                       >
                         <span className="flex size-4 items-center justify-center" aria-hidden="true">
                           <img src={publicAssetUrl("sidebar-icon/figma-section-ellipsis.svg")} alt="" className="h-[2.33333px] w-[11.6667px]" />
@@ -1122,16 +1236,6 @@ function ProjectSidebarContent({
                     remainingCount={remainingSessionCount}
                     onShowMore={() => setSessionPreviewCount((count) => count + MAX_SESSIONS_PREVIEW)}
                   />
-                  {archivedSessions.length > 0 ? (
-                    <ArchivedSessionsSection
-                      sessions={archivedSessions}
-                      tree={tree}
-                      workspaceId={workspace.id}
-                      forcedExpandedSessionIds={forcedExpandedSessionIds}
-                      expanded={archivedExpanded}
-                      onToggle={() => setArchivedExpanded((value) => !value)}
-                    />
-                  ) : null}
                 </>
               ) : (
                 <SidebarMenuSubItem>
@@ -1200,7 +1304,7 @@ function PinnedIndicator({ isPinned }: { isPinned: boolean }) {
 }
 
 type SessionMenuItemProps = {
-  session: SessionListItem;
+  session: SessionListItem & Partial<Pick<SidebarDisplaySession, "sourceWorkspaceId" | "sidebarWorkspaceId">>;
   depth: number;
   tree: SessionTreeState;
   workspaceId: string;
@@ -1218,6 +1322,8 @@ function SessionMenuItem({
 }: SessionMenuItemProps) {
   const ctx = useSidebarContext();
   const isSelected = ctx.selectedSessionId === session.id;
+  const sourceWorkspaceId = session.sourceWorkspaceId?.trim() || workspaceId;
+  const sessionKey = sessionLayoutKey(sourceWorkspaceId, session.id);
   const displayTitle = getDisplaySessionTitle(session.title);
   const hasChildren = (tree.descendantCountBySessionId.get(session.id) ?? 0) > 0;
   const isExpanded = ctx.expandedSessionIds.has(session.id) || forcedExpandedSessionIds.has(session.id);
@@ -1231,15 +1337,35 @@ function SessionMenuItem({
   const sessionFontWeight = ctx.language === "zh" ? "font-medium" : "font-normal";
 
   const openSession = () => {
-    ctx.onOpenSession(workspaceId, session.id);
+    ctx.onOpenSession(sourceWorkspaceId, session.id);
   };
 
   const prefetchSession = () => {
-    if (workspaceId !== ctx.selectedWorkspaceId) {
+    if (sourceWorkspaceId !== ctx.selectedWorkspaceId) {
       return;
     }
 
-    ctx.onPrefetchSession?.(workspaceId, session.id);
+    ctx.onPrefetchSession?.(sourceWorkspaceId, session.id);
+  };
+
+  const dragStart = (event: React.DragEvent<HTMLElement>) => {
+    event.stopPropagation();
+    event.dataTransfer.effectAllowed = "move";
+    event.dataTransfer.setData("text/plain", JSON.stringify({
+      kind: "session",
+      key: sessionKey,
+      sourceWorkspaceId,
+      sessionId: session.id,
+    }));
+    ctx.onDragStart({ kind: "session", key: sessionKey, sourceWorkspaceId, sessionId: session.id });
+  };
+  const dragOver = (event: React.DragEvent<HTMLElement>) => {
+    event.stopPropagation();
+    ctx.onDragOver({ kind: "session", key: sessionKey }, event);
+  };
+  const drop = (event: React.DragEvent<HTMLElement>) => {
+    event.stopPropagation();
+    ctx.onDrop({ kind: "session", key: sessionKey }, event);
   };
 
   const item = hasChildren ? (
@@ -1248,8 +1374,17 @@ function SessionMenuItem({
       onOpenChange={() => ctx.toggleSessionExpanded(session.id)}
       className="group/session-collapsible"
     >
-      <SidebarMenuSubItem>
-        <SessionContextMenu sessionId={session.id} workspaceId={workspaceId} isPinned={isPinned} isArchived={isArchived}>
+      <SidebarMenuSubItem
+        draggable
+        onDragStart={dragStart}
+        onDragOver={dragOver}
+        onDrop={drop}
+        onDragEnd={ctx.onDragEnd}
+        data-drop-target={ctx.dropTarget?.kind === "session" && ctx.dropTarget.key === sessionKey ? "true" : undefined}
+        className={cn(ctx.dropTarget?.kind === "session" && ctx.dropTarget.key === sessionKey && "rounded-lg bg-sidebar-accent/70")}
+        style={{ cursor: "grab" }}
+      >
+        <SessionContextMenu sessionId={session.id} workspaceId={sourceWorkspaceId} isPinned={isPinned} isArchived={isArchived}>
           <CollapsibleTrigger
             render={
               <SidebarMenuSubButton
@@ -1275,7 +1410,7 @@ function SessionMenuItem({
         </SessionContextMenu>
         <SessionActions
           sessionId={session.id}
-          workspaceId={workspaceId}
+          workspaceId={sourceWorkspaceId}
           isPinned={isPinned}
           isArchived={isArchived}
           className={cn("absolute top-1/2 -translate-y-1/2 opacity-0 group-hover/menu-sub-item:opacity-100 data-popup-open:opacity-100", nestedActionPosition)}
@@ -1284,8 +1419,17 @@ function SessionMenuItem({
       </SidebarMenuSubItem>
     </Collapsible>
   ) : (
-    <SidebarMenuSubItem>
-      <SessionContextMenu sessionId={session.id} workspaceId={workspaceId} isPinned={isPinned} isArchived={isArchived}>
+    <SidebarMenuSubItem
+      draggable
+      onDragStart={dragStart}
+      onDragOver={dragOver}
+      onDrop={drop}
+      onDragEnd={ctx.onDragEnd}
+      data-drop-target={ctx.dropTarget?.kind === "session" && ctx.dropTarget.key === sessionKey ? "true" : undefined}
+      className={cn(ctx.dropTarget?.kind === "session" && ctx.dropTarget.key === sessionKey && "rounded-lg bg-sidebar-accent/70")}
+      style={{ cursor: "grab" }}
+    >
+      <SessionContextMenu sessionId={session.id} workspaceId={sourceWorkspaceId} isPinned={isPinned} isArchived={isArchived}>
         <SidebarMenuSubButton
           isActive={isSelected}
           onClick={openSession}
@@ -1304,7 +1448,7 @@ function SessionMenuItem({
       </SessionContextMenu>
       <SessionActions
         sessionId={session.id}
-        workspaceId={workspaceId}
+        workspaceId={sourceWorkspaceId}
         isPinned={isPinned}
         isArchived={isArchived}
         className={cn("absolute top-1/2 -translate-y-1/2 opacity-0 group-hover/menu-sub-item:opacity-100 data-popup-open:opacity-100", trailingActionPosition)}
@@ -1322,53 +1466,60 @@ function SessionMenuItem({
 }
 
 type ArchivedSessionsSectionProps = {
-  sessions: SessionListItem[];
-  tree: SessionTreeState;
-  workspaceId: string;
-  forcedExpandedSessionIds: Set<string>;
+  sessions: SidebarDisplaySession[];
+  sessionStatusById?: Record<string, string>;
   expanded: boolean;
   onToggle: () => void;
 };
 
 function ArchivedSessionsSection({
   sessions,
-  tree,
-  workspaceId,
-  forcedExpandedSessionIds,
+  sessionStatusById,
   expanded,
   onToggle,
 }: ArchivedSessionsSectionProps) {
   const pinned = usePinnedSessionIds();
+  const forcedExpandedSessionIds = React.useMemo(() => new Set<string>(), []);
+  const tree = React.useMemo(
+    () => buildSessionTreeState(sessions, sessionStatusById),
+    [sessionStatusById, sessions],
+  );
   return (
-    <Collapsible open={expanded} onOpenChange={onToggle} className="group/archived">
-      <CollapsibleTrigger
-        render={
-          <button
-            type="button"
-            className="group/separator flex w-full cursor-pointer items-center gap-1.5 px-2 pb-1 pt-2.5 rounded transition-colors hover:bg-sidebar-accent/50"
-          >
-            <Archive className="size-3 shrink-0 text-muted-foreground" />
-            <span className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-              {t("session_management.archived_label")}
-            </span>
-            <span className="text-[10px] tabular-nums text-muted-foreground/70">{sessions.length}</span>
-            <ChevronRight className="ml-auto size-3.5 text-muted-foreground transition-transform duration-200 group-data-open/archived:rotate-90" />
-          </button>
-        }
-      />
-      <CollapsibleContent>
-        {sessions.map((session) => (
-          <SessionMenuItem
-            key={session.id}
-            session={session}
-            depth={0}
-            tree={tree}
-            workspaceId={workspaceId}
-            forcedExpandedSessionIds={forcedExpandedSessionIds}
-            isPinned={pinned.has(session.id)}
+    <SidebarGroup className="group/archived px-2">
+      <SidebarGroupContent>
+        <Collapsible open={expanded} onOpenChange={onToggle} className="group/archived-content">
+          <CollapsibleTrigger
+            render={
+              <button
+                type="button"
+                className="group/separator flex h-8 w-full cursor-pointer items-center gap-1.5 rounded px-2 text-left transition-colors hover:bg-sidebar-accent/50"
+              >
+                <Archive className="size-3 shrink-0 text-muted-foreground" />
+                <span className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                  {t("session_management.archived_label")}
+                </span>
+                <span className="text-[10px] tabular-nums text-muted-foreground/70">{sessions.length}</span>
+                <ChevronRight className="ml-auto size-3.5 text-muted-foreground transition-transform duration-200 group-data-open/archived-content:rotate-90" />
+              </button>
+            }
           />
-        ))}
-      </CollapsibleContent>
-    </Collapsible>
+          <CollapsibleContent>
+            <SidebarMenuSub className="mt-[2px] translate-x-0 gap-1 pb-2">
+              {sessions.map((session) => (
+                <SessionMenuItem
+                  key={session.id}
+                  session={session}
+                  depth={0}
+                  tree={tree}
+                  workspaceId={session.sourceWorkspaceId}
+                  forcedExpandedSessionIds={forcedExpandedSessionIds}
+                  isPinned={pinned.has(session.id)}
+                />
+              ))}
+            </SidebarMenuSub>
+          </CollapsibleContent>
+        </Collapsible>
+      </SidebarGroupContent>
+    </SidebarGroup>
   );
 }
