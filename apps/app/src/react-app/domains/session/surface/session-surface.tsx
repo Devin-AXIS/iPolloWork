@@ -104,6 +104,7 @@ import { deriveOpenTargets, type OpenTarget } from "@/react-app/domains/session/
 import { usePanelTabStore } from "@/react-app/domains/session/panel/panel-tab-store";
 import {
   beginOptimisticSessionPrompt,
+  publishSessionErrorForEvaluation,
   rollbackOptimisticSessionPrompt,
   sanitizeInterruptedSessionSnapshot,
   seedSessionState,
@@ -1102,7 +1103,10 @@ export function SessionSurface(props: SessionSurfaceProps) {
     renderedSessionId: renderedMessages.length > 0 || snapshot ? props.sessionId : null,
     hasSnapshot: Boolean(snapshot) || renderedMessages.length > 0,
     isFetching: snapshotQuery.isFetching,
-    isError: snapshotQuery.isError || Boolean(error),
+    // A turn-level provider/runtime error is rendered inside the transcript
+    // and must not put the entire session route into a failed transition.
+    // Only failure to load the session itself disables route-bound actions.
+    isError: snapshotQuery.isError,
   });
 
   const buildDraft = useCallback((text: string, nextAttachments: ComposerAttachment[]): ComposerDraft => {
@@ -1582,6 +1586,19 @@ export function SessionSurface(props: SessionSurfaceProps) {
   }, [props.sessionId, props.workspaceId]);
 
   useEffect(() => {
+    if (sessionActivityStatus !== "error") return;
+    // Every engine error is a terminal boundary for only the current turn.
+    // Release UI-owned latches immediately so a following prompt is sent as
+    // a new turn instead of remaining queued behind a run that already died.
+    pendingVideoDeliveryRef.current = null;
+    pendingArtifactCompletionRef.current = null;
+    activeClientUserMessageIdRef.current = null;
+    setAwaitingAssistantBaseline(null);
+    runActivityObservedRef.current = false;
+    setSending(false);
+  }, [sessionActivityStatus]);
+
+  useEffect(() => {
     if (liveStatus.type === "busy" || liveStatus.type === "retry" || activityRunActive) {
       runActivityObservedRef.current = true;
       return;
@@ -1822,6 +1839,46 @@ export function SessionSurface(props: SessionSurfaceProps) {
     },
   }), [attachments.length, draft, handleSend, model.transitionState, props.modelUnavailable, props.sessionId, selectedAnimations.length, selectedVoiceReference]);
   useControlAction(composerSendControlAction);
+
+  const evalSessionErrorControlAction = useMemo<iPolloWorkControlAction | null>(() => {
+    if (!import.meta.env.DEV) return null;
+    return {
+      id: "eval.session.seed_error",
+      label: "Seed a failed conversation turn",
+      description: "Create a deterministic failed user turn through the live session synchronization boundary.",
+      sideEffect: "mutation",
+      requiresArgs: true,
+      args: [
+        { name: "prompt", type: "string", required: true, description: "Visible user prompt for the failed turn." },
+        { name: "errorText", type: "string", required: true, description: "Visible terminal error." },
+      ],
+      execute: (args) => {
+        const values = args && typeof args === "object" && !Array.isArray(args)
+          ? args as { prompt?: unknown; errorText?: unknown }
+          : {};
+        const prompt = typeof values.prompt === "string" ? values.prompt.trim() : "";
+        const errorText = typeof values.errorText === "string" ? values.errorText.trim() : "";
+        if (!prompt || !errorText) return { ok: false, error: "prompt and errorText are required" };
+        const clientUserMessageId = beginOptimisticSessionPrompt(
+          props.workspaceId,
+          props.sessionId,
+          prompt,
+        );
+        const published = publishSessionErrorForEvaluation({
+          workspaceId: props.workspaceId,
+          sessionId: props.sessionId,
+          parentUserMessageId: clientUserMessageId,
+          errorText,
+        });
+        if (!published) {
+          rollbackOptimisticSessionPrompt(props.workspaceId, props.sessionId, clientUserMessageId);
+          return { ok: false, error: "No tracked session runtime is available" };
+        }
+        return { clientUserMessageId };
+      },
+    };
+  }, [props.sessionId, props.workspaceId]);
+  useControlAction(evalSessionErrorControlAction);
 
   const composerStopControlAction = useMemo<iPolloWorkControlAction>(() => ({
     id: "composer.stop",

@@ -14,6 +14,7 @@ import { getReactQueryClient } from "../src/react-app/infra/query-client";
 import {
   ensureMergedProviderListQuery,
   fetchProviderList,
+  getCachedProviderListForRuntime,
   getChatModelCatalogEntries,
   getChatProviderCatalogItems,
   getEngineChatModelEntries,
@@ -478,6 +479,39 @@ describe("model runtime adapters", () => {
 
   test("keeps provider catalogs cached beyond their background refresh window", () => {
     expect(PROVIDER_LIST_CACHE_MS).toBeGreaterThan(PROVIDER_LIST_STALE_MS);
+  });
+
+  test("reuses an account provider catalog while an enterprise workspace directory is cold", () => {
+    const queryClient = new QueryClient();
+    const personalSource = {
+      engineId: DEFAULT_ENGINE_ID,
+      baseUrl: "http://localhost:43121/workspace/personal/opencode",
+      directory: "C:\\personal",
+    };
+    const enterpriseSource = {
+      engineId: DEFAULT_ENGINE_ID,
+      baseUrl: "http://localhost:43121/workspace/enterprise/opencode",
+      directory: "C:\\enterprise",
+    };
+    const catalog = {
+      all: [{
+        id: "deepseek-official",
+        name: "DeepSeek",
+        source: "config" as const,
+        env: [],
+        models: {},
+      }],
+      connected: ["deepseek-official"],
+      default: {},
+    };
+    queryClient.setQueryData(providerListQueryKey(personalSource), catalog);
+
+    expect(getCachedProviderListForRuntime(queryClient, enterpriseSource)).toEqual(catalog);
+    expect(getCachedProviderListForRuntime(queryClient, {
+      ...enterpriseSource,
+      baseUrl: "http://localhost:43122/workspace/enterprise/opencode",
+    })).toBeUndefined();
+    queryClient.clear();
   });
 
   test("supports an explicit provider catalog refresh when requested", async () => {
@@ -2058,7 +2092,7 @@ describe("model runtime adapters", () => {
     expect(connectedIds).toContain("orcarouter");
   });
 
-  test("imports a DSH API-key connection into OpenCode", async () => {
+  test("imports a shared API key once per workspace across sibling stores", async () => {
     const { calls, client } = createOpenCodeProviderClient();
     const credentialKey = sharedProviderCredentialEnvKey("deepseek-official");
     const profileKey = sharedProviderProfileEnvKey("deepseek-official");
@@ -2071,6 +2105,8 @@ describe("model runtime adapters", () => {
       models: [{ id: "deepseek-v4-pro", name: "DeepSeek-V4-Pro" }],
     });
     const runtimePatches: unknown[] = [];
+    let workspaceId = "workspace-shared-import";
+    let workspaceRoot = "C:\\workspace";
     const serverClient = {
       listUserEnvKeys: async () => ({ keys: [credentialKey, profileKey] }),
       getUserEnv: async (key: string) => ({
@@ -2094,7 +2130,7 @@ describe("model runtime adapters", () => {
       env: [],
       models: {},
     }];
-    const store = createProviderAuthStore({
+    const storeOptions = {
       client: () => client,
       providers: () => providers,
       providerDefaults: () => ({ opencode: "default-model" }),
@@ -2102,16 +2138,16 @@ describe("model runtime adapters", () => {
       disabledProviders: () => [],
       checkDesktopAppRestriction: () => false,
       selectedWorkspaceDisplay: () => ({
-        id: "workspace-shared-import",
+        id: workspaceId,
         name: "Shared import",
-        path: "C:\\workspace",
+        path: workspaceRoot,
         preset: "starter",
         workspaceType: "local",
         engineId: DEFAULT_ENGINE_ID,
       }),
       providerBaseUrl: () => "http://localhost:43122/opencode",
-      selectedWorkspaceRoot: () => "C:\\workspace",
-      runtimeWorkspaceId: () => "workspace-shared-import",
+      selectedWorkspaceRoot: () => workspaceRoot,
+      runtimeWorkspaceId: () => workspaceId,
       ipolloworkServer: {
         getSnapshot: () => ({
           ipolloworkServerStatus: "connected",
@@ -2124,17 +2160,23 @@ describe("model runtime adapters", () => {
       setProviderConnectedIds: () => {},
       setDisabledProviders: () => {},
       markEngineConfigReloadRequired: () => {},
-    });
+    } satisfies Parameters<typeof createProviderAuthStore>[0];
+    const store = createProviderAuthStore(storeOptions);
 
     await store.refreshProviders();
     await store.refreshProviders();
+    workspaceId = "workspace-enterprise-import";
+    workspaceRoot = "C:\\enterprise-workspace";
+    await store.refreshProviders({ force: true });
+    const siblingStore = createProviderAuthStore(storeOptions);
+    await siblingStore.refreshProviders({ force: true });
 
     expect(store.getSnapshot().connectedProviderIds).toEqual([
       "opencode",
       "deepseek-official",
     ]);
 
-    expect(runtimePatches).toEqual([{
+    const expectedRuntimePatch = {
       opencode: {
         provider: {
           "deepseek-official": {
@@ -2151,14 +2193,24 @@ describe("model runtime adapters", () => {
           },
         },
       },
-    }]);
-    expect(calls.filter((call) => call.name === "set")).toEqual([{
-      name: "set",
-      value: {
-        providerID: "deepseek-official",
-        auth: { type: "api", key: "secret" },
+    };
+    expect(runtimePatches).toEqual([expectedRuntimePatch, expectedRuntimePatch]);
+    expect(calls.filter((call) => call.name === "set")).toEqual([
+      {
+        name: "set",
+        value: {
+          providerID: "deepseek-official",
+          auth: { type: "api", key: "secret" },
+        },
       },
-    }]);
+      {
+        name: "set",
+        value: {
+          providerID: "deepseek-official",
+          auth: { type: "api", key: "secret" },
+        },
+      },
+    ]);
     expect(calls.findIndex((call) => call.name === "patch-config")).toBeLessThan(
       calls.findIndex((call) => call.name === "reload-engine"),
     );

@@ -81,6 +81,29 @@ type AccountProviderCatalog = Map<string, {
 }>;
 
 const OPENAI_CODEX_OAUTH_BASE_URL = "https://chatgpt.com/backend-api/codex";
+const LOOPBACK_PROXY_BYPASS_HOSTS: readonly string[] = ["127.0.0.1", "localhost", "::1"];
+
+function codexChildEnvironment(environment: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  const entries = [environment.NO_PROXY, environment.no_proxy]
+    .flatMap((value) => value?.split(",") ?? [])
+    .map((value) => value.trim())
+    .filter(Boolean);
+  const seen = new Set(entries.map((value) => value.toLowerCase()));
+  for (const host of LOOPBACK_PROXY_BYPASS_HOSTS) {
+    if (seen.has(host)) continue;
+    entries.push(host);
+    seen.add(host);
+  }
+  const noProxy = entries.join(",");
+  return {
+    ...environment,
+    // Codex uses the loopback iPolloWork MCP. A desktop VPN/proxy must never
+    // route that request off-device; keep both spellings for child runtimes.
+    NO_PROXY: noProxy,
+    no_proxy: noProxy,
+  };
+}
+
 function tomlString(value: string): string {
   return JSON.stringify(value);
 }
@@ -757,12 +780,12 @@ export class CodexHarnessRuntime {
       },
     });
     await writeFile(join(codexHome, "config.toml"), config, "utf8");
-    const environment: NodeJS.ProcessEnv = {
+    const environment = codexChildEnvironment({
       ...process.env,
       ...sharedProviderChildEnvironment(records),
       CODEX_HOME: codexHome,
       NO_COLOR: "1",
-    };
+    });
     for (const provider of providers) {
       environment[providerEnvironmentKey(codexHarnessRuntimeProviderId(provider.id))] = provider.apiKey;
     }

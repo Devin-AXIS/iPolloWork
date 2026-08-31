@@ -459,10 +459,15 @@ export function mapCodexHarnessEvent(
   }
   if (method === "error" && threadId) {
     const error = isRecord(params.error) ? params.error : null;
+    const activeTurnId = state.activeTurnByThread.get(threadId);
+    const parentUserMessageId = activeTurnId
+      ? state.parentUserMessageIdByTurn.get(`${threadId}:${activeTurnId}`)
+      : undefined;
     return [{
       type: "session.error",
       sessionId: threadId,
       errorText: stringValue(error?.message) ?? stringValue(params.message) ?? "Codex runtime error",
+      ...(parentUserMessageId ? { parentUserMessageId } : {}),
     }];
   }
   return [];

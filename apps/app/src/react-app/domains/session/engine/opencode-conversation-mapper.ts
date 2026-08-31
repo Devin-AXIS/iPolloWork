@@ -176,10 +176,15 @@ function messageFromInfo(info: {
 export type OpenCodeConversationLiveState = {
   parentUserMessageIds: Map<string, string>;
   messageRoles: Map<string, UIMessage["role"]>;
+  latestUserMessageIds: Map<string, string>;
 };
 
 export function createOpenCodeConversationLiveState(): OpenCodeConversationLiveState {
-  return { parentUserMessageIds: new Map(), messageRoles: new Map() };
+  return {
+    parentUserMessageIds: new Map(),
+    messageRoles: new Map(),
+    latestUserMessageIds: new Map(),
+  };
 }
 
 function sessionIdFromProperties(properties: unknown) {
@@ -220,6 +225,9 @@ export function mapOpenCodeConversationEvent(
       type: "session.error",
       sessionId,
       errorText: describeOpencodeSessionError(isRecord(properties) ? properties.error : undefined),
+      ...(state?.latestUserMessageIds.get(sessionId)
+        ? { parentUserMessageId: state.latestUserMessageIds.get(sessionId) }
+        : {}),
     };
   }
 
@@ -296,6 +304,7 @@ export function mapOpenCodeConversationEvent(
       ? info.parentID.trim()
       : "";
     state?.messageRoles.set(info.id, info.role);
+    if (info.role === "user") state?.latestUserMessageIds.set(info.sessionID, info.id);
     if (parentUserMessageId) state?.parentUserMessageIds.set(info.id, parentUserMessageId);
     return {
       type: "message.upsert",
@@ -319,6 +328,9 @@ export function mapOpenCodeConversationEvent(
     if (!isRecord(properties) || typeof properties.sessionID !== "string" || typeof properties.messageID !== "string") return null;
     state?.parentUserMessageIds.delete(properties.messageID);
     state?.messageRoles.delete(properties.messageID);
+    if (state?.latestUserMessageIds.get(properties.sessionID) === properties.messageID) {
+      state.latestUserMessageIds.delete(properties.sessionID);
+    }
     return { type: "message.removed", sessionId: properties.sessionID, messageId: properties.messageID };
   }
 

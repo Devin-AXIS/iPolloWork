@@ -25,7 +25,10 @@ import {
   conversationMessageParentUserMessageId,
   mergeConversationSessionUpdate,
 } from "../engine/conversation-engine";
-import { describeConversationSessionError } from "../engine/opencode-message-adapter";
+import {
+  createSessionErrorUIMessage,
+  describeConversationSessionError,
+} from "../engine/opencode-message-adapter";
 
 type SyncScope = {
   workspaceId: string;
@@ -275,32 +278,32 @@ function questionNotificationText(question: ConversationQuestion) {
   return prompt ? `Question: ${prompt}` : undefined;
 }
 
-function latestAssistantMessageId(messages: UIMessage[]) {
-  // The snapshot keys each error to its errored assistant message id, so the
-  // live event must resolve to that same id to dedupe on reload. Skipping
-  // synthetic error messages ensures a follow-up error keys off the real
-  // assistant turn rather than overwriting the previous error message.
+function latestConversationTurnKey(messages: UIMessage[], parentUserMessageId?: string) {
+  const parentId = parentUserMessageId?.trim();
+  if (parentId) return { turnKey: parentId, parentUserMessageId: parentId };
+
+  // Some runtime-level errors do not carry a turn id. Associate those with
+  // the newest user row so a failed follow-up cannot overwrite an earlier
+  // error or appear beside the previous assistant response.
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index];
+    if (message?.role === "user") {
+      return { turnKey: message.id, parentUserMessageId: message.id };
+    }
+  }
+
   for (let index = messages.length - 1; index >= 0; index -= 1) {
     const message = messages[index];
     if (!message || message.role !== "assistant") continue;
     if (message.id.startsWith(SYNTHETIC_SESSION_ERROR_MESSAGE_PREFIX)) continue;
-    return message.id;
+    const parentId = conversationMessageParentUserMessageId(message)?.trim();
+    return {
+      turnKey: parentId || message.id,
+      ...(parentId ? { parentUserMessageId: parentId } : {}),
+    };
   }
-  return null;
-}
 
-function createSessionErrorUIMessage(turnKey: string, text: string): UIMessage {
-  const id = `${SYNTHETIC_SESSION_ERROR_MESSAGE_PREFIX}${turnKey}`;
-  return {
-    id,
-    role: "assistant",
-    parts: [{
-      type: "text",
-      text,
-      state: "done",
-      providerMetadata: { ipollowork: { partId: `${id}:text` } },
-    }],
-  };
+  return null;
 }
 
 function clearTrackedSession(input: SyncScope, entry: SyncEntry, sessionId: string) {
@@ -479,15 +482,27 @@ function upsertMessage(messages: UIMessage[], next: UIMessage) {
     }
     return [...messages, next];
   }
-  return messages.map((message, messageIndex) =>
-    messageIndex === index
-      ? {
-          ...message,
-          ...next,
-          parts: next.parts.length > 0 ? next.parts : message.parts,
-        }
-      : message,
-  );
+  return messages.map((message, messageIndex) => {
+    if (messageIndex !== index) return message;
+    const acknowledgesOptimisticUser = isOptimisticUserMessage(message)
+      && next.role === "user"
+      && !isOptimisticUserMessage(next);
+    const merged = {
+      ...message,
+      ...next,
+      // An authoritative message shell with the same client id acknowledges
+      // the optimistic row. Drop its unkeyed text before provider parts land,
+      // otherwise the same prompt is appended a second time by part.updated.
+      parts: acknowledgesOptimisticUser
+        ? next.parts
+        : next.parts.length > 0
+          ? next.parts
+          : message.parts,
+    };
+    if (!acknowledgesOptimisticUser || next.metadata !== undefined) return merged;
+    const { metadata: _optimisticMetadata, ...authoritative } = merged;
+    return authoritative;
+  });
 }
 
 function isOptimisticUserMessage(message: UIMessage | undefined) {
@@ -929,10 +944,20 @@ function applyEvent(entry: SyncEntry, workspaceId: string, event: ConversationEv
     notifyDesktopEvent({ type: "task.failed", sessionId: event.sessionId, errorText });
     useSessionActivityStore.getState().setError(workspaceId, event.sessionId, errorText);
     if (isTrackedSession(entry, event.sessionId)) {
+      if (entry.deltaFlushBuffer.length > 0) flushDeltas(entry, workspaceId);
+      queryClient.setQueryData(statusKey(workspaceId, event.sessionId), idleStatus);
       queryClient.setQueryData<UIMessage[]>(transcriptKey(workspaceId, event.sessionId), (current = []) => {
-        const turnKey = latestAssistantMessageId(current) ?? event.sessionId;
-        return upsertMessage(current, createSessionErrorUIMessage(turnKey, errorText));
+        const turn = latestConversationTurnKey(current, event.parentUserMessageId);
+        return upsertMessage(current, createSessionErrorUIMessage(
+          turn?.turnKey ?? event.sessionId,
+          errorText,
+          {
+            created: Date.now(),
+            ...(turn?.parentUserMessageId ? { parentUserMessageId: turn.parentUserMessageId } : {}),
+          },
+        ));
       });
+      releaseRetainedSessionSoon(input, entry, event.sessionId);
     }
     for (const listener of entry.sessionErrorListeners) listener({ sessionId: event.sessionId, errorText });
     return;
@@ -1575,4 +1600,28 @@ export function __applySessionSyncEventForTest(input: SyncScope, event: Conversa
   const entry = syncs.get(syncKey(input));
   if (!entry) return;
   applyEvent(entry, input.workspaceId, event);
+}
+
+/** Dev-only deterministic error boundary used by focused UI proof flows. */
+export function publishSessionErrorForEvaluation(input: {
+  workspaceId: string;
+  sessionId: string;
+  parentUserMessageId: string;
+  errorText: string;
+}) {
+  if (!import.meta.env.DEV) return false;
+  const workspaceId = input.workspaceId.trim();
+  const sessionId = input.sessionId.trim();
+  if (!workspaceId || !sessionId) return false;
+  for (const entry of syncs.values()) {
+    if (entry.input.workspaceId !== workspaceId || !isTrackedSession(entry, sessionId)) continue;
+    applyEvent(entry, workspaceId, {
+      type: "session.error",
+      sessionId,
+      parentUserMessageId: input.parentUserMessageId,
+      errorText: input.errorText,
+    });
+    return true;
+  }
+  return false;
 }

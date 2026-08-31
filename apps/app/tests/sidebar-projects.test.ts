@@ -523,7 +523,7 @@ describe("sidebar projects", () => {
 
   test("supports persistent drag/drop layout management without changing engine ownership", () => {
     expect(sidebarSource).toContain("useSidebarLayoutStore");
-    expect(sidebarSource).toContain('draggable\n              onDragStart');
+    expect(sidebarSource.replaceAll("\r\n", "\n")).toContain('draggable\n              onDragStart');
     expect(sidebarSource).toContain('kind: "project"');
     expect(sidebarSource).toContain('kind: "session"');
     expect(sidebarSource).toContain("onDragOver");

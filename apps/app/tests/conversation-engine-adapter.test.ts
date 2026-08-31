@@ -600,6 +600,35 @@ describe("conversation engine adapters", () => {
     ]));
   });
 
+  test("associates a Codex runtime error with its active user turn", () => {
+    const state = createCodexLiveState();
+    mapCodexHarnessEvent({
+      type: "notification",
+      method: "turn/started",
+      params: { threadId: "codex-thread", turn: { id: "turn-error" } },
+    }, state);
+    mapCodexHarnessEvent({
+      type: "notification",
+      method: "item/started",
+      params: {
+        threadId: "codex-thread",
+        turnId: "turn-error",
+        item: { type: "userMessage", id: "codex-user-error", text: "continue" },
+      },
+    }, state);
+
+    expect(mapCodexHarnessEvent({
+      type: "notification",
+      method: "error",
+      params: { threadId: "codex-thread", error: { message: "provider failed" } },
+    }, state)).toEqual([{
+      type: "session.error",
+      sessionId: "codex-thread",
+      errorText: "provider failed",
+      parentUserMessageId: "codex-user-error",
+    }]);
+  });
+
   test("maps Codex live user image content into visible file parts", () => {
     const state = createCodexLiveState();
     const events = mapCodexHarnessEvent({
@@ -1024,6 +1053,16 @@ describe("conversation engine adapters", () => {
 
   test("carries the OpenCode parent user message through live parts and chunks", () => {
     const state = createOpenCodeConversationLiveState();
+    mapOpenCodeConversationEvent({
+      type: "message.updated",
+      properties: {
+        info: {
+          id: "user-stopped",
+          sessionID: "ses",
+          role: "user",
+        },
+      },
+    }, state);
     const message = mapOpenCodeConversationEvent({
       type: "message.updated",
       properties: {
@@ -1056,6 +1095,10 @@ describe("conversation engine adapters", () => {
         delta: " answer",
       },
     }, state);
+    const error = mapOpenCodeConversationEvent({
+      type: "session.error",
+      properties: { sessionID: "ses", error: "provider failed" },
+    }, state);
 
     expect(message).toMatchObject({
       type: "message.upsert",
@@ -1068,6 +1111,10 @@ describe("conversation engine adapters", () => {
     });
     expect(chunk).toMatchObject({
       type: "message.chunk",
+      parentUserMessageId: "user-stopped",
+    });
+    expect(error).toMatchObject({
+      type: "session.error",
       parentUserMessageId: "user-stopped",
     });
   });
@@ -1332,6 +1379,48 @@ describe("conversation engine adapters", () => {
     const expired = normalizeDeepSeekHarnessErrorText("Provided authentication token is expired.");
     expect(expired.toLowerCase()).toContain("sign in");
     expect(expired).not.toContain("Provided authentication token");
+  });
+
+  test("associates a DeepSeek Harness runtime error with its active user turn", () => {
+    const state = { parts: new Set<string>(), tools: new Map() };
+    mapDeepSeekHarnessEnvelope({
+      type: "server-request",
+      rpcId: "rpc-turn",
+      payload: {
+        type: "session/event",
+        sessionId: "dsh-session",
+        event: { type: "turn/start", seq: 1, time: 1, data: { turn: 4 } },
+      },
+    }, state);
+    mapDeepSeekHarnessEnvelope({
+      type: "server-request",
+      rpcId: "rpc-user",
+      payload: {
+        type: "session/event",
+        sessionId: "dsh-session",
+        event: {
+          type: "user/message",
+          seq: 2,
+          time: 2,
+          data: {
+            id: "dsh-user-4",
+            role: "user",
+            source: { kind: "user" },
+            content: [{ type: "text", text: "continue" }],
+          },
+        },
+      },
+    }, state);
+
+    expect(mapDeepSeekHarnessEnvelope({
+      type: "server-request",
+      rpcId: "rpc-error",
+      payload: { type: "host/agent-error", sessionId: "dsh-session", message: "failed" },
+    }, state)).toEqual([expect.objectContaining({
+      type: "session.error",
+      sessionId: "dsh-session",
+      parentUserMessageId: "dsh-user-4",
+    })]);
   });
 
   test("explains when a selected model is absent from the DeepSeek Harness runtime", async () => {

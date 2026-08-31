@@ -137,6 +137,17 @@ function resetRecordToIdle(record: SessionActivityRecord): SessionActivityRecord
   };
 }
 
+function settleErroredRecord(record: SessionActivityRecord): SessionActivityRecord {
+  return {
+    ...record,
+    runActive: false,
+    assistantOutput: false,
+    compacting: false,
+    waitingPermissionIds: [],
+    waitingQuestionIds: [],
+  };
+}
+
 function removeValue(values: string[], value: string) {
   return values.filter((item) => item !== value);
 }
@@ -226,7 +237,12 @@ export const useSessionActivityStore = create<SessionActivityStore>((set, get) =
     set((state) => updateRecord(state, workspace, session, (record) => {
       const normalized = normalizeRunStatus(status);
       const runActive = normalized === "running" || normalized === "retry";
-      if (!runActive) return resetRecordToIdle(record);
+      // Harnesses commonly publish idle immediately after their terminal
+      // error. Preserve that error as the turn outcome until the next run (or
+      // an explicit dismiss) while still releasing every active-run latch.
+      if (!runActive) return record.errorActive
+        ? settleErroredRecord(record)
+        : resetRecordToIdle(record);
       return {
         ...record,
         runActive,
@@ -298,6 +314,8 @@ export const useSessionActivityStore = create<SessionActivityStore>((set, get) =
       runActive: false,
       assistantOutput: false,
       compacting: false,
+      waitingPermissionIds: [],
+      waitingQuestionIds: [],
     })));
   },
   clearError: (workspaceId, sessionId) => {

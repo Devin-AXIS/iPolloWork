@@ -1,4 +1,9 @@
-import { useQueries, useQuery, type QueryClient } from "@tanstack/react-query";
+import {
+  useQueries,
+  useQuery,
+  useQueryClient,
+  type QueryClient,
+} from "@tanstack/react-query";
 import {
   OPENCODE_ZEN_PUBLIC_DEFAULT_MODEL_ID,
   openCodeZenPublicModels,
@@ -98,6 +103,71 @@ export function providerListQueryKey(input: {
     input.baseUrl?.trim() ?? "",
     input.directory?.trim() ?? "",
   ] as const;
+}
+
+function providerListScopeQueryKey(input: {
+  engineId?: string | null;
+  baseUrl?: string | null;
+}) {
+  return [
+    ...PROVIDER_LIST_QUERY_ROOT,
+    input.engineId?.trim() || DEFAULT_ENGINE_ID,
+    providerRuntimeScopeBaseUrl(input.baseUrl),
+  ] as const;
+}
+
+function providerRuntimeScopeBaseUrl(value?: string | null): string {
+  const baseUrl = value?.trim() ?? "";
+  if (!baseUrl) return "";
+  try {
+    const url = new URL(baseUrl);
+    const segments = url.pathname.split("/").filter(Boolean);
+    const workspaceIndex = segments.findIndex((segment) => (
+      segment === "workspace" || segment === "w"
+    ));
+    if (workspaceIndex >= 0) {
+      url.pathname = `/${segments.slice(0, workspaceIndex).join("/")}`;
+    } else if (segments.at(-1) === "opencode") {
+      url.pathname = `/${segments.slice(0, -1).join("/")}`;
+    }
+    url.search = "";
+    url.hash = "";
+    return url.toString().replace(/\/+$/, "");
+  } catch {
+    return baseUrl
+      .replace(/\/(?:workspace|w)\/[^/?#]+(?:\/opencode)?(?:[?#].*)?$/i, "")
+      .replace(/\/opencode(?:[?#].*)?$/i, "")
+      .replace(/\/+$/, "");
+  }
+}
+
+/**
+ * A workspace directory changes when the user enters an enterprise context,
+ * but provider credentials belong to the account. Keep the most recent
+ * successful catalog from the same runtime while the new directory is cold.
+ */
+export function getCachedProviderListForRuntime(
+  queryClient: QueryClient,
+  input: {
+    engineId?: string | null;
+    baseUrl?: string | null;
+    directory?: string | null;
+  },
+): ProviderListResponse | undefined {
+  const currentKey = providerListQueryKey(input);
+  const scopeKey = providerListScopeQueryKey(input);
+  return queryClient.getQueryCache()
+    .findAll({ queryKey: scopeKey.slice(0, 2) })
+    .filter((query) => (
+      query.state.data !== undefined
+      && JSON.stringify(query.queryKey) !== JSON.stringify(currentKey)
+      && providerRuntimeScopeBaseUrl(
+        typeof query.queryKey[2] === "string" ? query.queryKey[2] : "",
+      ) === scopeKey[2]
+    ))
+    .sort((left, right) => right.state.dataUpdatedAt - left.state.dataUpdatedAt)
+    .map((query) => query.state.data as ProviderListResponse)
+    .at(0);
 }
 
 export async function refreshProviderListQueries(queryClient: QueryClient) {
@@ -317,6 +387,7 @@ export function useMergedProviderListQuery(input: {
   sources: readonly ProviderListQueryInput[];
   enabled?: boolean;
 }) {
+  const queryClient = useQueryClient();
   const results = useQueries({
     queries: input.sources.map((source) => ({
       queryKey: providerListQueryKey(source),
@@ -326,7 +397,12 @@ export function useMergedProviderListQuery(input: {
       queryFn: () => fetchProviderList(source),
     })),
   });
-  const values = results.flatMap((result) => result.data ? [result.data] : []);
+  const values = results.flatMap((result, index) => {
+    if (result.data) return [result.data];
+    const source = input.sources[index];
+    const cached = source ? getCachedProviderListForRuntime(queryClient, source) : undefined;
+    return cached ? [cached] : [];
+  });
   return {
     data: values.length ? mergeProviderListResponses(values) : undefined,
     isLoading: values.length === 0 && results.some((result) => result.isLoading),

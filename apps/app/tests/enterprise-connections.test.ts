@@ -46,11 +46,18 @@ async function sha256Hex(bytes: Uint8Array) {
   return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
-function artifactResponse(bytes: Uint8Array, type: EnterpriseResource["type"], digest: string, contentType: string) {
+function artifactResponse(
+  bytes: Uint8Array,
+  type: EnterpriseResource["type"],
+  digest: string,
+  contentType: string,
+  digestHeader = "x-ipollowork-sha256",
+  typeHeader = "x-ipollowork-resource-type",
+) {
   return new Response(bytes, { headers: {
     "content-type": contentType,
-    "x-ipollowork-sha256": digest,
-    "x-ipollowork-resource-type": type,
+    [digestHeader]: digest,
+    [typeHeader]: type,
   } });
 }
 
@@ -276,7 +283,7 @@ describe("enterprise connections", () => {
     expect(readEnterpriseConnections().map((connection) => connection.id)).toEqual(["ent_medical"]);
   });
 
-  test("loads the documented Enterprise resource catalog and only keeps valid resources", async () => {
+  test("keeps the Cloud resource catalog compatible with its existing contract", async () => {
     const digest = "a".repeat(64);
     const requested: string[] = [];
     const fetcher: typeof fetch = async (input, init) => {
@@ -315,7 +322,7 @@ describe("enterprise connections", () => {
       }, { id: "wrong-type", type: "extension" }] });
     };
 
-    await expect(listEnterpriseResources("template", fetcher)).resolves.toMatchObject([
+    await expect(listEnterpriseResources("template", { fetcher })).resolves.toMatchObject([
       { id: "resource-1", type: "template", manifestId: "personal.medical-report", latestVersion: { version: "1.2.0" } },
       { id: "resource-2", type: "template", latestVersion: null },
     ]);
@@ -324,10 +331,84 @@ describe("enterprise connections", () => {
     ]);
   });
 
+  test("loads resources from the active Enterprise Server with its member session", async () => {
+    const digest = "b".repeat(64);
+    const requested: string[] = [];
+    const fetcher: typeof fetch = async (input, init) => {
+      const url = String(input);
+      requested.push(url);
+      expect(new Headers(init?.headers).get("authorization")).toBe("Bearer enterprise-session");
+      if (!url.includes("cursor=")) {
+        return Response.json({
+          items: [{
+            id: "enterprise-template",
+            type: "template",
+            slug: "brand-deck",
+            name: "Brand deck",
+            description: "Approved enterprise deck",
+            category: "slides",
+            enterpriseCategory: "Brand",
+            access: "all",
+            featured: true,
+            status: "published",
+            sourceTemplateId: "enterprise.brand-deck",
+            ownerMemberId: null,
+            updatedAt: "2026-08-31T00:00:00.000Z",
+            iconPath: "/api/v1/resources/enterprise-template/icon",
+            latestVersion: {
+              version: "1.0.0",
+              digest,
+              downloadPath: "/api/v1/resources/enterprise-template/versions/1.0.0/download",
+            },
+          }],
+          nextCursor: "page-2",
+        });
+      }
+      return Response.json({
+        items: [{
+          id: "enterprise-template-2",
+          type: "template",
+          slug: "brand-site",
+          name: "Brand site",
+          description: "Approved enterprise site",
+          category: "site",
+          enterpriseCategory: "Brand",
+          access: "all",
+          featured: false,
+          status: "published",
+          sourceTemplateId: null,
+          ownerMemberId: null,
+          updatedAt: "2026-08-31T01:00:00.000Z",
+          iconPath: null,
+          latestVersion: null,
+        }, { id: "draft-template", type: "template", status: "draft" }],
+        nextCursor: null,
+      });
+    };
+
+    await expect(listEnterpriseResources("template", {
+      connection: connectedEnterprise,
+      fetcher,
+    })).resolves.toMatchObject([
+      {
+        id: "enterprise-template",
+        name: "Brand deck",
+        manifestId: "enterprise.brand-deck",
+        iconPath: "/api/v1/resources/enterprise-template/icon",
+        latestVersion: { version: "1.0.0", digest },
+      },
+      { id: "enterprise-template-2", name: "Brand site", latestVersion: null },
+    ]);
+    expect(requested).toEqual([
+      "https://enterprise.example.com/api/v1/resources?type=template&limit=50",
+      "https://enterprise.example.com/api/v1/resources?type=template&limit=50&cursor=page-2",
+    ]);
+  });
+
   test("downloads an explicitly selected Enterprise resource with the Cloud session", async () => {
     const bytes = new Uint8Array([1, 2, 3]);
     const digest = await sha256Hex(bytes);
-    const resource = (await listEnterpriseResources("extension", async () => Response.json({ resources: [{
+    const resource = (await listEnterpriseResources("extension", { fetcher: async () => Response.json({ resources: [{
       id: "resource-2",
       type: "extension",
       slug: "github-tools",
@@ -343,16 +424,59 @@ describe("enterprise connections", () => {
         sha256: digest,
         downloadPath: "/api/v1/enterprise-resources/resource-2/versions/2.0.0/download",
       },
-    }] })))[0];
+    }] }) }))[0];
     if (!resource) throw new Error("Expected an Enterprise extension resource");
     const fetcher: typeof fetch = async (input, init) => {
       expect(String(input)).toContain("/api/v1/enterprise-resources/resource-2/versions/2.0.0/download");
       expect(new Headers(init?.headers).get("authorization")).toBe("Bearer cloud-session");
       return artifactResponse(bytes, "extension", digest, "application/zip");
     };
-    const file = await downloadEnterpriseResource(resource, fetcher);
+    const file = await downloadEnterpriseResource(resource, { fetcher });
     expect(file.name).toBe("github-tools-2.0.0.ipollowork-plugin");
     expect(file.size).toBe(3);
+  });
+
+  test("downloads an Enterprise Server resource with its member session", async () => {
+    const bytes = new Uint8Array([4, 5, 6]);
+    const digest = await sha256Hex(bytes);
+    const resource: EnterpriseResource = {
+      id: "enterprise-template",
+      type: "template",
+      slug: "brand-deck",
+      manifestId: "enterprise.brand-deck",
+      name: "Brand deck",
+      description: "Approved enterprise deck",
+      category: "slides",
+      enterpriseCategory: "Brand",
+      iconPath: null,
+      featured: true,
+      updatedAt: "2026-08-31T00:00:00.000Z",
+      latestVersion: {
+        version: "1.0.0",
+        digest,
+        downloadPath: "/api/v1/resources/enterprise-template/versions/1.0.0/download",
+      },
+    };
+    const fetcher: typeof fetch = async (input, init) => {
+      expect(String(input)).toBe(
+        "https://enterprise.example.com/api/v1/resources/enterprise-template/versions/1.0.0/download",
+      );
+      expect(new Headers(init?.headers).get("authorization")).toBe("Bearer enterprise-session");
+      return artifactResponse(
+        bytes,
+        "template",
+        digest,
+        IPOLLOWORK_PACKAGE_MEDIA_TYPE,
+        "x-ipollo-artifact-sha256",
+        "x-ipollo-resource-type",
+      );
+    };
+
+    const file = await downloadEnterpriseResource(resource, {
+      connection: connectedEnterprise,
+      fetcher,
+    });
+    expect(file.name).toBe("brand-deck-1.0.0.ipwp");
   });
 
   test("keeps legacy Enterprise templates importable and names canonical packages .ipwp", async () => {
@@ -376,12 +500,12 @@ describe("enterprise connections", () => {
         downloadPath: "/api/v1/enterprise-resources/resource-template/versions/1.2.0/download",
       },
     };
-    const legacy = await downloadEnterpriseResource(resource, async () => (
+    const legacy = await downloadEnterpriseResource(resource, { fetcher: async () => (
       artifactResponse(bytes, "template", digest, "application/octet-stream")
-    ));
-    const canonical = await downloadEnterpriseResource(resource, async () => (
+    ) });
+    const canonical = await downloadEnterpriseResource(resource, { fetcher: async () => (
       artifactResponse(bytes, "template", digest, IPOLLOWORK_PACKAGE_MEDIA_TYPE)
-    ));
+    ) });
 
     expect(legacy.name).toBe("clinical-report-1.2.0.ipwt");
     expect(canonical.name).toBe("clinical-report-1.2.0.ipwp");
@@ -408,11 +532,11 @@ describe("enterprise connections", () => {
         downloadPath: "/api/v1/enterprise-resources/resource-extension/versions/1.0.0/download",
       },
     };
-    await expect(downloadEnterpriseResource(resource, async () => (
+    await expect(downloadEnterpriseResource(resource, { fetcher: async () => (
       artifactResponse(bytes, "template", digest, "application/zip")
-    ))).rejects.toThrow("enterprise_resource_type_mismatch");
-    await expect(downloadEnterpriseResource(resource, async () => (
+    ) })).rejects.toThrow("enterprise_resource_type_mismatch");
+    await expect(downloadEnterpriseResource(resource, { fetcher: async () => (
       artifactResponse(bytes, "extension", "b".repeat(64), "application/zip")
-    ))).rejects.toThrow("enterprise_resource_digest_mismatch");
+    ) })).rejects.toThrow("enterprise_resource_digest_mismatch");
   });
 });

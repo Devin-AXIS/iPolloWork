@@ -3070,6 +3070,7 @@ export default {
   "enterprise_connection.personal": "个人",
   "enterprise_connection.personal_hint": "个人聊天、会员及公共资源",
   "enterprise_connection.cloud": "Cloud",
+  "enterprise_connection.enterprise": "企业",
   "enterprise_connection.switch_error": "无法切换工作空间，仍保留在原来的空间中。",
   "enterprise_connection.resource_scope": "资源来源",
   "enterprise_connection.cloud_templates_empty": "你的 Cloud 账号中暂无可用模板。",
