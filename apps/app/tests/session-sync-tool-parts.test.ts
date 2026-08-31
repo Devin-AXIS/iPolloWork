@@ -7,10 +7,13 @@ import { getReactQueryClient } from "../src/react-app/infra/query-client";
 import {
   __applySessionSyncEventForTest,
   __createWorkspaceSessionSyncForTest,
+  beginOptimisticSessionPrompt,
+  statusKey,
   trackWorkspaceSessionSync,
   transcriptKey,
 } from "../src/react-app/domains/session/sync/session-sync";
 import { mapOpenCodeConversationEvent } from "../src/react-app/domains/session/engine/opencode-conversation-mapper";
+import { useSessionActivityStore } from "../src/react-app/domains/session/status/session-activity-store";
 
 function applyOpenCodeEvent(
   input: { workspaceId: string; connectionKey: string },
@@ -31,6 +34,10 @@ import { videoVoiceDisplayMetadata } from "../src/react-app/domains/session/vide
 
 afterEach(() => {
   getReactQueryClient().clear();
+  useSessionActivityStore.setState({
+    recordsByWorkspaceId: {},
+    statusesByWorkspaceId: {},
+  });
 });
 
 function writeToolPart(
@@ -329,6 +336,117 @@ describe("tool part mapper", () => {
           parts: [expect.objectContaining({ type: "text", text: "Final result" })],
         }),
       ]);
+    } finally {
+      release();
+      cleanup();
+    }
+  });
+
+  test("acknowledges an exact-id optimistic user message without duplicating its text", () => {
+    const syncInput = { workspaceId: "workspace-a", connectionKey: "test" };
+    const cleanup = __createWorkspaceSessionSyncForTest(syncInput);
+    const release = trackWorkspaceSessionSync(syncInput, "session-a");
+
+    try {
+      beginOptimisticSessionPrompt("workspace-a", "session-a", "当前是什么模型", "user-current-model");
+      __applySessionSyncEventForTest(syncInput, {
+        type: "message.upsert",
+        sessionId: "session-a",
+        message: { id: "user-current-model", role: "user", parts: [] },
+      });
+      __applySessionSyncEventForTest(syncInput, {
+        type: "message.parts",
+        sessionId: "session-a",
+        messageId: "user-current-model",
+        partId: "user-current-model:text",
+        messageRole: "user",
+        parts: [{
+          type: "text",
+          text: "当前是什么模型",
+          state: "done",
+          providerMetadata: { ipollowork: { partId: "user-current-model:text" } },
+        }],
+      });
+
+      const transcript = getReactQueryClient().getQueryData<UIMessage[]>(transcriptKey("workspace-a", "session-a"));
+      expect(transcript).toHaveLength(1);
+      expect(transcript?.[0]).toMatchObject({
+        id: "user-current-model",
+        role: "user",
+        parts: [{ type: "text", text: "当前是什么模型" }],
+      });
+      expect(transcript?.[0]?.metadata).toBeUndefined();
+    } finally {
+      release();
+      cleanup();
+    }
+  });
+
+  test("settles each failed turn independently and allows the next turn to complete", () => {
+    const syncInput = { workspaceId: "workspace-a", connectionKey: "test" };
+    const cleanup = __createWorkspaceSessionSyncForTest(syncInput);
+    const release = trackWorkspaceSessionSync(syncInput, "session-a");
+
+    try {
+      beginOptimisticSessionPrompt("workspace-a", "session-a", "first", "user-first");
+      __applySessionSyncEventForTest(syncInput, {
+        type: "session.error",
+        sessionId: "session-a",
+        parentUserMessageId: "user-first",
+        errorText: "first failed",
+      });
+      __applySessionSyncEventForTest(syncInput, {
+        type: "session.status",
+        sessionId: "session-a",
+        status: { type: "idle" },
+      });
+
+      expect(getReactQueryClient().getQueryData(statusKey("workspace-a", "session-a"))).toEqual({ type: "idle" });
+      expect(useSessionActivityStore.getState().getStatus("workspace-a", "session-a")).toBe("error");
+
+      beginOptimisticSessionPrompt("workspace-a", "session-a", "second", "user-second");
+      expect(useSessionActivityStore.getState().getStatus("workspace-a", "session-a")).toBe("thinking");
+      __applySessionSyncEventForTest(syncInput, {
+        type: "session.error",
+        sessionId: "session-a",
+        parentUserMessageId: "user-second",
+        errorText: "second failed",
+      });
+
+      let transcript = getReactQueryClient().getQueryData<UIMessage[]>(transcriptKey("workspace-a", "session-a")) ?? [];
+      expect(transcript.map((message) => message.id)).toEqual([
+        "user-first",
+        "session-error:user-first",
+        "user-second",
+        "session-error:user-second",
+      ]);
+
+      beginOptimisticSessionPrompt("workspace-a", "session-a", "third", "user-third");
+      __applySessionSyncEventForTest(syncInput, {
+        type: "message.upsert",
+        sessionId: "session-a",
+        message: {
+          id: "assistant-third",
+          role: "assistant",
+          parts: [{ type: "text", text: "third completed", state: "done" }],
+        },
+      });
+      __applySessionSyncEventForTest(syncInput, {
+        type: "message.completed",
+        sessionId: "session-a",
+        messageId: "assistant-third",
+        completedAt: 42,
+      });
+      __applySessionSyncEventForTest(syncInput, { type: "session.idle", sessionId: "session-a" });
+
+      transcript = getReactQueryClient().getQueryData<UIMessage[]>(transcriptKey("workspace-a", "session-a")) ?? [];
+      expect(transcript.at(-2)).toMatchObject({ id: "user-third", role: "user" });
+      expect(transcript.at(-1)).toMatchObject({
+        id: "assistant-third",
+        role: "assistant",
+        parts: [{ type: "text", text: "third completed" }],
+      });
+      expect(useSessionActivityStore.getState().getStatus("workspace-a", "session-a")).toBe("idle");
     } finally {
       release();
       cleanup();

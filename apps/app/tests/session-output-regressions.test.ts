@@ -541,21 +541,22 @@ describe("session output issue regressions", () => {
     expect(source).toContain('font-[\'PingFang_SC\',sans-serif] text-xs font-medium text-foreground');
     expect(source).toContain("{pendingImport.name} - {(pendingImport.size / 1024).toFixed(1)} KB");
     expect(source).toContain('remoteCatalogMode && view === "explore"');
-    expect(source).toContain('view === "explore" && props.cloudAvailable');
+    expect(source).toContain('view === "explore" && (props.cloudAvailable || props.enterpriseAvailable)');
     expect(source).toContain('t("template_market.source_builtin")');
     expect(source).not.toContain("<WorkResourceScopeSwitch");
     expect(sessionSource).toContain('listTemplates(props.runtimeWorkspaceId, "personal")');
-    expect(sessionSource).toContain('listEnterpriseResources("template")');
-    expect(sessionSource).toContain("if (templateCloudSourceSelected)");
+    expect(sessionSource).toContain('listEnterpriseResources("template", resourceOptions)');
+    expect(sessionSource).toContain('templateCatalogSource === "enterprise"');
     expect(sessionSource).toContain("cloudAvailable={denAuth.isSignedIn}");
-    expect(sessionSource).toContain("onSelectBuiltIn={selectBuiltInTemplateSource}");
-    expect(sessionSource).toContain("importTemplate(props.runtimeWorkspaceId, file, category, PERSONAL_WORK_CONTEXT_ID)");
+    expect(sessionSource).toContain("enterpriseAvailable={Boolean(activeEnterprise)}");
+    expect(sessionSource).toContain("onSelectSource={selectTemplateCatalogSource}");
+    expect(sessionSource).toContain("importTemplate(props.runtimeWorkspaceId, file, category, resourceScope)");
     expect(sessionSource).toContain("item.sourceType === \"local\" && item.installed");
     expect(sessionSource).toContain("requestId !== templateCatalogRequestIdRef.current");
-    expect(source).toContain("cloudTemplateInstallations");
+    expect(source).toContain("remoteTemplateInstallations");
     expect(source).toContain("resource.manifestId");
     expect(source).toContain("return <TemplateCard template={installedTemplate}");
-    expect(source).toContain('primaryAction={action} primaryLabel={label} sourceLabel={t("enterprise_connection.cloud")}');
+    expect(source).toContain("primaryAction={action} primaryLabel={label} sourceLabel={sourceLabel}");
   });
 
   test("enterprise extensions reflect local package installation versions", () => {
@@ -565,6 +566,8 @@ describe("session output issue regressions", () => {
     );
 
     expect(source).toContain("listPluginPackages(props.workspaceId)");
+    expect(source).toContain('listEnterpriseResources("extension", { connection: activeEnterprise })');
+    expect(source).toContain("downloadEnterpriseResource(resource, { connection: activeEnterprise })");
     expect(source).toContain("installedEnterpriseExtensionVersions.get(resource.manifestId ?? resource.slug)");
     expect(source).toContain('t("plugin_platform.status.installed")');
     expect(source).toContain("currentVersionInstalled || !resource.latestVersion");

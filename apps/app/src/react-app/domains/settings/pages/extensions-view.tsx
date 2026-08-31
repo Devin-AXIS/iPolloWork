@@ -56,7 +56,7 @@ export function ExtensionsView(props: ExtensionsViewProps) {
       ? props.client.listPluginPackages(props.workspaceId).catch(() => ({ items: [] }))
       : Promise.resolve({ items: [] });
     void Promise.all([
-      listEnterpriseResources("extension"),
+      listEnterpriseResources("extension", { connection: activeEnterprise }),
       installedPackages,
     ]).then(([items, packages]) => {
       if (!current) return;
@@ -74,7 +74,7 @@ export function ExtensionsView(props: ExtensionsViewProps) {
     if (!activeEnterprise || !props.client || !props.workspaceId || !resource.latestVersion) return;
     setEnterpriseBusyId(resource.id);
     try {
-      const file = await downloadEnterpriseResource(resource);
+      const file = await downloadEnterpriseResource(resource, { connection: activeEnterprise });
       const upload = await readPluginPackageArchive(file, "install");
       await props.client.validatePluginPackageUpload(props.workspaceId, upload);
       const result = await props.client.importPluginPackage(props.workspaceId, upload);

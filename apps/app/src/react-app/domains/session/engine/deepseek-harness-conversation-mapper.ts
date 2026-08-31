@@ -578,7 +578,16 @@ export function mapDeepSeekHarnessEnvelope(
   }
   if (type === "host/session-removed" && sessionId) return [{ type: "session.deleted", sessionId }];
   if (type === "host/agent-error" && sessionId) {
-    return [{ type: "session.error", sessionId, errorText: normalizeDeepSeekHarnessErrorText(frame.message) }];
+    const activeTurn = state.activeTurnBySession?.get(sessionId);
+    const parentUserMessageId = activeTurn === undefined
+      ? undefined
+      : state.parentUserMessageIdByTurn?.get(turnKey(sessionId, activeTurn));
+    return [{
+      type: "session.error",
+      sessionId,
+      errorText: normalizeDeepSeekHarnessErrorText(frame.message),
+      ...(parentUserMessageId ? { parentUserMessageId } : {}),
+    }];
   }
   if (type === "approval/requested" && sessionId && typeof frame.approvalId === "string") {
     const permission: ConversationPermission = {

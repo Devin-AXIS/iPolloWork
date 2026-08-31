@@ -2012,6 +2012,7 @@ export default {
   "enterprise_connection.personal": "Personal",
   "enterprise_connection.personal_hint": "Personal chats, membership, and public resources",
   "enterprise_connection.cloud": "Cloud",
+  "enterprise_connection.enterprise": "Enterprise",
   "enterprise_connection.switch_error": "Could not switch work context. Your previous context is still active.",
   "enterprise_connection.resource_scope": "Resource source",
   "enterprise_connection.cloud_templates_empty": "No templates are available in your Cloud account.",

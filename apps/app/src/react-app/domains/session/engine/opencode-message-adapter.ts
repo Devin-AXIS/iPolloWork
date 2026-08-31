@@ -301,16 +301,14 @@ export function snapshotToUIMessages(snapshot: iPolloWorkSessionSnapshot): UIMes
       parts: message.parts.flatMap(mapOpencodePartToUIParts),
     };
 
-    // Surface a failed turn as its own synthetic error message keyed by the
-    // errored assistant message id. The live `session.error` event keys its
-    // message off the latest assistant turn the same way, so the two
-    // reconcile to one message instead of duplicating — while a later turn's
-    // error still gets its own message. An empty assistant carcass for the
-    // errored turn is dropped so the error reads as that turn's outcome.
+    // Surface a failed turn as its own synthetic error message keyed by its
+    // parent user message whenever available. Live runtime errors use that
+    // same turn key, so a snapshot reload dedupes the error while consecutive
+    // failed prompts remain independent rows.
     const error = message.info.role === "assistant" && "error" in message.info ? message.info.error : undefined;
     if (!error) return [uiMessage];
 
-    const errorMessage = createSessionErrorUIMessage(message.info.id, describeOpencodeSessionError(error), {
+    const errorMessage = createSessionErrorUIMessage(parentUserMessageId || message.info.id, describeOpencodeSessionError(error), {
       created,
       ...(parentUserMessageId ? { parentUserMessageId } : {}),
     });

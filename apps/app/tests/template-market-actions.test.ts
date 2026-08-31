@@ -159,30 +159,34 @@ describe("template market actions", () => {
     expect(marketDialog).not.toContain('view === "my" ? "mt-4" : "mt-5"');
   });
 
-  test("reuses the HTML cover and preview flow for installed Cloud templates", () => {
+  test("reuses the HTML cover and preview flow for installed remote templates", () => {
     expect(marketDialog).toContain("if (installedTemplate) {");
     expect(marketDialog).toContain("<TemplateCard template={installedTemplate} getCover={getCover}");
-    expect(marketDialog).toContain("onPreview={(template) => setPreviewSelection({ template, cloudResourceId: resource.id })}");
-    expect(marketDialog).toContain("previewCloudResource.latestVersion.version === previewTemplate?.installedVersion");
-    expect(marketDialog).toContain("props.onInstallCloud(cloudResource)");
+    expect(marketDialog).toContain("onPreview={(template) => setPreviewSelection({ template, remoteResourceId: resource.id })}");
+    expect(marketDialog).toContain("previewRemoteResource.latestVersion.version === previewTemplate?.installedVersion");
+    expect(marketDialog).toContain("props.onInstallRemote(remoteResource)");
   });
 
-  test("shows Built-in and Cloud only in Explore and keeps Cloud templates usable from Personal storage", () => {
-    expect(marketDialog).toContain('view === "explore" && props.cloudAvailable');
+  test("shows Built-in, Cloud, and Enterprise in Explore and keeps remote templates usable from local storage", () => {
+    expect(marketDialog).toContain('view === "explore" && (props.cloudAvailable || props.enterpriseAvailable)');
     expect(marketDialog).toContain('t("template_market.source_builtin")');
-    expect(marketDialog).toContain('onClick={props.onSelectBuiltIn}');
-    expect(marketDialog).toContain('onClick={props.onSelectCloud}');
-    expect(marketDialog).toContain("const remoteCatalogMode = props.cloudSelected");
+    expect(marketDialog).toContain('props.onSelectSource("builtin")');
+    expect(marketDialog).toContain('props.onSelectSource("cloud")');
+    expect(marketDialog).toContain('props.onSelectSource("enterprise")');
+    expect(marketDialog).toContain('t("enterprise_connection.enterprise")');
+    expect(marketDialog).toContain('const remoteCatalogMode = props.source !== "builtin"');
     expect(marketDialog).not.toContain("<WorkResourceScopeSwitch");
-    expect(sessionPage).toContain("const [templateCloudSourceSelected, setTemplateCloudSourceSelected] = useState(false)");
-    expect(sessionPage).toContain("if (!denAuth.isSignedIn || templateCloudSourceSelected) return");
-    expect(sessionPage).toContain('listEnterpriseResources("template")');
-    expect(sessionPage).toContain("listTemplates(props.runtimeWorkspaceId, PERSONAL_WORK_CONTEXT_ID)");
-    expect(sessionPage).toContain("importTemplate(props.runtimeWorkspaceId, file, category, PERSONAL_WORK_CONTEXT_ID)");
-    expect(sessionPage).toContain("applyTemplateToCurrentSession(template, PERSONAL_WORK_CONTEXT_ID)");
+    expect(sessionPage).toContain('useState<TemplateCatalogSource>("builtin")');
+    expect(sessionPage).toContain('source === "enterprise" && !activeEnterprise');
+    expect(sessionPage).toContain('listEnterpriseResources("template", resourceOptions)');
+    expect(sessionPage).toContain("connection: activeEnterprise");
+    expect(sessionPage).toContain("listTemplates(props.runtimeWorkspaceId, templateResourceScope)");
+    expect(sessionPage).toContain("importTemplate(props.runtimeWorkspaceId, file, category, resourceScope)");
+    expect(sessionPage).toContain("applyTemplateToCurrentSession(template, templateResourceScope)");
+    expect(sessionPage).toContain("getCachedTemplateCover(templateResourceScope, templateId)");
     expect(sessionPage).toContain("cloudAvailable={denAuth.isSignedIn}");
-    expect(sessionPage).toContain("onSelectBuiltIn={selectBuiltInTemplateSource}");
-    expect(sessionPage).toContain("onSelectCloud={selectCloudTemplateSource}");
+    expect(sessionPage).toContain("enterpriseAvailable={Boolean(activeEnterprise)}");
+    expect(sessionPage).toContain("onSelectSource={selectTemplateCatalogSource}");
   });
 
   test("keeps preview metadata separated from long descriptions and cover edges", () => {
@@ -236,7 +240,7 @@ describe("template market actions", () => {
     expect(sessionPage).toContain('useState<"new-session" | "current-session">("new-session")');
     expect(sessionPage).toContain('setTemplateMarketTarget("current-session")');
     expect(sessionPage).toContain('templateMarketTarget === "current-session"');
-    expect(sessionPage).toContain("applyTemplateToCurrentSession(template, PERSONAL_WORK_CONTEXT_ID)");
+    expect(sessionPage).toContain("applyTemplateToCurrentSession(template, templateResourceScope)");
     expect(sessionPage).toContain('setTemplateMarketTarget("new-session")');
     expect(sessionPage).toContain('t("templates.brief.apply_current")');
   });

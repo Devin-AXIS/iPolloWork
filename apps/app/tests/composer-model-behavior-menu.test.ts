@@ -209,6 +209,10 @@ describe("Composer model and reasoning menu", () => {
     expect(source).toContain("disabled: false");
     expect(source).toContain("resolveModelRuntime(");
     expect(source).not.toContain("if (opt.runtimePending) return;");
+    expect(source).toContain(
+      "modelsLoading: pickerOpen && modelOptions.length === 0 && catalogQuery.isFetching",
+    );
+    expect(source).not.toContain("catalogQuery.isFetching || runtimeQuery.isFetching");
     expect(modal).not.toContain("if (opt.runtimePending) return;");
   });
 
@@ -252,7 +256,9 @@ describe("Composer model and reasoning menu", () => {
     expect(menu).toContain("modelVariantLabel");
     expect(menu).toContain("onModelVariantChange");
     expect(menu).toContain("min-w-0 max-w-72 flex-[0_1_auto]");
-    expect(menu).toContain('appearance === "composer"\n            ? "me-2 h-8');
+    expect(menu.replaceAll("\r\n", "\n")).toContain(
+      'appearance === "composer"\n            ? "me-2 h-8',
+    );
     expect(menu).toContain("rounded-full bg-transparent px-2 text-[12px]");
     expect(menu).toContain('className="truncate @max-[560px]/composer:hidden">{summary}</span>');
     expect(menu).toContain('className="hidden truncate @max-[560px]/composer:inline">{modelLabel}</span>');

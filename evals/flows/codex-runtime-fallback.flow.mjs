@@ -34,7 +34,9 @@ export default {
             && !document.querySelector('[data-testid="session-loading-animation"]')
             && Boolean(document.querySelector('[data-testid="new-conversation-starter-composer-shell"], [data-testid="composer-placeholder"], [contenteditable="true"]'))
             && !document.body.innerText.includes('launch blocked')
-            && !document.body.innerText.includes('spawn EPERM')`, {
+            && !document.body.innerText.includes('spawn EPERM')
+            && !document.body.innerText.includes('Codex Harness unavailable')
+            && !document.body.innerText.includes('required MCP servers failed')`, {
             timeoutMs: 45_000,
             label: "ready Codex composer",
           });
@@ -46,17 +48,27 @@ export default {
             sessionRoute: location.hash.includes('/session/'),
             launchBlocked: document.body.innerText.includes('launch blocked'),
             spawnEperm: document.body.innerText.includes('spawn EPERM'),
+            harnessUnavailable: document.body.innerText.includes('Codex Harness unavailable'),
+            requiredMcpFailed: document.body.innerText.includes('required MCP servers failed'),
           }))()`);
           ctx.assert(state.composerVisible, "The Codex composer is not visible.");
           ctx.assert(!state.loading, "The Codex session is still loading.");
           ctx.assert(state.sessionRoute, "The Codex session route is not active.");
           ctx.assert(!state.launchBlocked, "A launch-blocked error is still visible.");
           ctx.assert(!state.spawnEperm, "spawn EPERM is still visible.");
+          ctx.assert(!state.harnessUnavailable, "Codex Harness is unavailable.");
+          ctx.assert(!state.requiredMcpFailed, "The required iPolloWork MCP failed to initialize.");
         },
         screenshot: {
           name: "codex-runtime-fallback",
           requireText: ["codex"],
-          rejectText: ["launch blocked", "spawn EPERM", "Codex Harness request failed"],
+          rejectText: [
+            "launch blocked",
+            "spawn EPERM",
+            "Codex Harness request failed",
+            "Codex Harness unavailable",
+            "required MCP servers failed",
+          ],
           hashIncludes: ["/workspace/"],
         },
       });

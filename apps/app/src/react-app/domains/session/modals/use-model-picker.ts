@@ -213,7 +213,7 @@ export function useModelPicker(input: UseModelPickerInput) {
     query,
     setQuery,
     options,
-    modelsLoading: pickerOpen && (catalogQuery.isFetching || runtimeQuery.isFetching),
+    modelsLoading: pickerOpen && modelOptions.length === 0 && catalogQuery.isFetching,
     setRecentProviderIds,
   };
 }

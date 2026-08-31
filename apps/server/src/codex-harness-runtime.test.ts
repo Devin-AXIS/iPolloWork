@@ -214,6 +214,69 @@ describe("Codex Harness provider projection", () => {
     }
   });
 
+  test("keeps the iPolloWork loopback MCP outside desktop proxy routes", async () => {
+    const config = await testConfig();
+    if (!config.configPath) throw new Error("Test config path is required");
+    const root = dirname(config.configPath);
+    const fixturePath = join(root, "codex-proxy-env-fixture.js");
+    const logPath = join(root, "codex-proxy-env-log.json");
+    const envPath = join(root, "env.json");
+    await writeFile(envPath, JSON.stringify({
+      schemaVersion: 1,
+      updatedAt: Date.now(),
+      variables: [
+        { key: "NO_PROXY", value: "corp.example,localhost", updatedAt: Date.now() },
+        { key: "no_proxy", value: "internal.example", updatedAt: Date.now() },
+      ],
+    }), "utf8");
+    await writeFile(fixturePath, String.raw`
+const fs = require("node:fs");
+const readline = require("node:readline");
+readline.createInterface({ input: process.stdin }).on("line", (line) => {
+  const message = JSON.parse(line);
+  if (message.method === "initialize") {
+    fs.writeFileSync(process.env.IPOLLOWORK_CODEX_PROXY_ENV_LOG, JSON.stringify({
+      NO_PROXY: process.env.NO_PROXY,
+      no_proxy: process.env.no_proxy,
+    }));
+  }
+  if (message.method === "initialize" || message.method === "test/ping") {
+    process.stdout.write(JSON.stringify({ id: message.id, result: { ready: true } }) + "\n");
+  }
+});
+`, "utf8");
+    const previousCli = process.env.IPOLLOWORK_CODEX_CLI;
+    const previousLog = process.env.IPOLLOWORK_CODEX_PROXY_ENV_LOG;
+    process.env.IPOLLOWORK_CODEX_CLI = fixturePath;
+    process.env.IPOLLOWORK_CODEX_PROXY_ENV_LOG = logPath;
+    const runtime = new CodexHarnessRuntime({
+      config,
+      env: new EnvService({ path: envPath }),
+      workspace: {
+        id: "codex-proxy-env",
+        name: "Codex proxy env",
+        path: root,
+        preset: "starter",
+        workspaceType: "local",
+        engineId: "codex-harness",
+      },
+    });
+
+    try {
+      await runtime.call("test/ping");
+      expect(JSON.parse(await readFile(logPath, "utf8"))).toEqual({
+        NO_PROXY: "corp.example,localhost,internal.example,127.0.0.1,::1",
+        no_proxy: "corp.example,localhost,internal.example,127.0.0.1,::1",
+      });
+    } finally {
+      await runtime.close();
+      if (previousCli === undefined) delete process.env.IPOLLOWORK_CODEX_CLI;
+      else process.env.IPOLLOWORK_CODEX_CLI = previousCli;
+      if (previousLog === undefined) delete process.env.IPOLLOWORK_CODEX_PROXY_ENV_LOG;
+      else process.env.IPOLLOWORK_CODEX_PROXY_ENV_LOG = previousLog;
+    }
+  });
+
   test("reuses a warm Codex runtime without repeating provider preparation for every RPC", async () => {
     const config = await testConfig();
     if (!config.configPath) throw new Error("Test config path is required");

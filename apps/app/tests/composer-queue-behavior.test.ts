@@ -99,6 +99,24 @@ describe("composer queue behavior", () => {
     expect(sessionSurfaceSource).toContain("inputDisabled={false}");
   });
 
+  test("treats a turn error as recoverable instead of failing the session route", () => {
+    const renderModel = sessionSurfaceSource.slice(
+      sessionSurfaceSource.indexOf("const model = deriveSessionRenderModel"),
+      sessionSurfaceSource.indexOf("const buildDraft", sessionSurfaceSource.indexOf("const model = deriveSessionRenderModel")),
+    );
+    const errorBoundary = sessionSurfaceSource.slice(
+      sessionSurfaceSource.indexOf('if (sessionActivityStatus !== "error") return;'),
+      sessionSurfaceSource.indexOf('if (sessionActivityStatus !== "error") return;') + 900,
+    );
+
+    expect(renderModel).toContain("isError: snapshotQuery.isError");
+    expect(renderModel).not.toContain("Boolean(error)");
+    expect(errorBoundary).toContain("pendingVideoDeliveryRef.current = null");
+    expect(errorBoundary).toContain("pendingArtifactCompletionRef.current = null");
+    expect(errorBoundary).toContain("setAwaitingAssistantBaseline(null)");
+    expect(errorBoundary).toContain("setSending(false)");
+  });
+
   test("drains queued drafts one at a time", () => {
     expect(sessionSurfaceSource).not.toContain("function mergeDrafts(");
     expect(sessionSurfaceSource).toContain("const next = queuedDrafts[0]");

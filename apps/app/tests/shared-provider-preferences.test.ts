@@ -116,8 +116,8 @@ describe("shared AI provider preferences", () => {
     expect(sessionRouteSource).toContain("getSelectableChatModelSnapshot(accountProviderList)");
     expect(sessionRouteSource).toContain("runtime: activeProviderList");
     expect(sessionRouteSource).toContain("runtimeSource: activeProviderSource");
-    expect(sessionRouteSource).toContain("model: activeSelectedModel");
-    expect(sessionRouteSource).toContain("providerId: activeSelectedModel.providerID");
+    expect(sessionRouteSource).toContain("model: effectiveModel");
+    expect(sessionRouteSource).toContain("providerId: effectiveModel.providerID");
     expect(sessionRouteSource).toContain("setEngineModelSelection({ engineId: activeEngineId, model })");
     expect(sessionRouteSource).toContain("const activeSelectedModel = explicitlySelectedModel ?? (activeProviderList");
   });
@@ -128,6 +128,13 @@ describe("shared AI provider preferences", () => {
     expect(providerAuthStoreSource).toContain("providerAuthBusy: false");
     expect(providerAuthStoreSource).toContain("const visibleMethods = hasCachedMethods");
     expect(providerAuthStoreSource).toContain("await ensureProviderAuthMethods(workerType)");
+  });
+
+  test("coordinates provider projection across sibling route stores", () => {
+    expect(providerAuthStoreSource).toContain("runSharedProviderImportOnce");
+    expect(providerAuthStoreSource).toContain("sharedProviderImportsInFlight");
+    expect(providerAuthStoreSource).toContain("if (!credentialsAlreadyImported)");
+    expect(providerAuthStoreSource).not.toContain("let sharedProviderImportFingerprint =");
   });
 
   test("describes compatible providers once for every engine adapter", () => {

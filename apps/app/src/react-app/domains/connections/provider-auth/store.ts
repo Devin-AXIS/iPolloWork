@@ -414,6 +414,62 @@ function providerSharedProfile(
   return persisted ? supplementSharedProviderProfile(persisted, discovered) : discovered;
 }
 
+type SharedProviderImportResult = {
+  changed: boolean;
+  requiresReload: boolean;
+};
+
+type SharedProviderImportFingerprint = {
+  config: string;
+  credentials: string;
+};
+
+const sharedProviderImportFingerprints = new Map<string, SharedProviderImportFingerprint>();
+const sharedProviderImportsInFlight = new Map<string, Promise<SharedProviderImportResult>>();
+const MAX_SHARED_PROVIDER_IMPORT_SCOPES = 50;
+
+async function runSharedProviderImportOnce(
+  scopeKey: string,
+  fingerprint: SharedProviderImportFingerprint,
+  operation: (state: {
+    configAlreadyImported: boolean;
+    credentialsAlreadyImported: boolean;
+  }) => Promise<SharedProviderImportResult>,
+): Promise<SharedProviderImportResult> {
+  const current = sharedProviderImportFingerprints.get(scopeKey);
+  if (current?.config === fingerprint.config && current.credentials === fingerprint.credentials) {
+    return { changed: false, requiresReload: false };
+  }
+
+  const active = sharedProviderImportsInFlight.get(scopeKey);
+  if (active) {
+    await active;
+    return runSharedProviderImportOnce(scopeKey, fingerprint, operation);
+  }
+
+  const pending = operation({
+    configAlreadyImported: current?.config === fingerprint.config,
+    credentialsAlreadyImported: current?.credentials === fingerprint.credentials,
+  }).then((result) => {
+    sharedProviderImportFingerprints.delete(scopeKey);
+    sharedProviderImportFingerprints.set(scopeKey, fingerprint);
+    while (sharedProviderImportFingerprints.size > MAX_SHARED_PROVIDER_IMPORT_SCOPES) {
+      const oldest = sharedProviderImportFingerprints.keys().next().value;
+      if (oldest === undefined) break;
+      sharedProviderImportFingerprints.delete(oldest);
+    }
+    return result;
+  });
+  sharedProviderImportsInFlight.set(scopeKey, pending);
+  try {
+    return await pending;
+  } finally {
+    if (sharedProviderImportsInFlight.get(scopeKey) === pending) {
+      sharedProviderImportsInFlight.delete(scopeKey);
+    }
+  }
+}
+
 export type ProviderAuthStore = ReturnType<typeof createProviderAuthStore>;
 
 export function createProviderAuthStore(options: CreateProviderAuthStoreOptions) {
@@ -447,7 +503,6 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
   let cloudProviderSyncInFlight: Promise<void> | null = null;
   let cloudProviderSyncQueuedReason: CloudProviderSyncReason | null = null;
   let cloudProviderSyncContextKey = "";
-  let sharedProviderImportFingerprint = "";
   let sharedProviderImportInFlight: Promise<{
     changed: boolean;
     requiresReload: boolean;
@@ -1392,72 +1447,98 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
             !== (persistedProfile ? serializeSharedProviderProfile(persistedProfile) : ""),
         };
       }));
-      const fingerprint = JSON.stringify({ workspace: currentWorkspaceKey(), connections });
-      if (fingerprint === sharedProviderImportFingerprint) {
-        return { changed: false, requiresReload: false };
-      }
-
-      const target = await resolveProviderEngineConfigTarget("read");
-      const runtimeProviderIds = new Set(await adapter.runtimeProviderIds(target));
-      let runtimeConfigChanged = false;
-      for (const entry of connections) {
-        if (!entry.apiKey) continue;
-        const profile = entry.profile;
-        if (
-          profile?.baseURL
-          && (!runtimeProviderIds.has(entry.providerId) || entry.profileMetadataChanged)
-        ) {
-          await patchRuntimeProviders(
-            adapter.buildCompatibleProviderPatch({
-              id: entry.providerId,
-              name: profile.displayName,
-              baseURL: profile.baseURL,
-              models: Object.fromEntries(
-                profile.models.map((model) => [model.id, {
-                  name: model.name ?? model.id,
-                  ...(model.contextWindow ? { contextWindow: model.contextWindow } : {}),
-                  ...(model.maxTokens ? { maxTokens: model.maxTokens } : {}),
-                }]),
-              ),
-            }),
-          );
-          runtimeProviderIds.add(entry.providerId);
-          runtimeConfigChanged = true;
+      const configFingerprint = JSON.stringify({
+        workspace: currentWorkspaceKey(),
+        connections: connections.map((entry) => ({
+          providerId: entry.providerId,
+          profile: entry.profile,
+          profileMetadataChanged: entry.profileMetadataChanged,
+        })),
+      });
+      const credentialFingerprint = JSON.stringify(connections.map((entry) => ({
+        providerId: entry.providerId,
+        apiKey: entry.apiKey,
+      })));
+      const importScopeKey = JSON.stringify([
+        adapter.id,
+        options.providerBaseUrl().trim(),
+        currentWorkspaceKey(),
+      ]);
+      // Settings and Session own sibling stores. Coordinate their projection
+      // per workspace so a route switch cannot write the same credentials and
+      // reload the same Windows runtime several times concurrently.
+      return runSharedProviderImportOnce(importScopeKey, {
+        config: configFingerprint,
+        credentials: credentialFingerprint,
+      }, async ({ configAlreadyImported, credentialsAlreadyImported }) => {
+        let runtimeConfigChanged = false;
+        if (!configAlreadyImported) {
+          const target = await resolveProviderEngineConfigTarget("read");
+          const runtimeProviderIds = new Set(await adapter.runtimeProviderIds(target));
+          for (const entry of connections) {
+            if (!entry.apiKey) continue;
+            const profile = entry.profile;
+            if (
+              profile?.baseURL
+              && (!runtimeProviderIds.has(entry.providerId) || entry.profileMetadataChanged)
+            ) {
+              await patchRuntimeProviders(
+                adapter.buildCompatibleProviderPatch({
+                  id: entry.providerId,
+                  name: profile.displayName,
+                  baseURL: profile.baseURL,
+                  models: Object.fromEntries(
+                    profile.models.map((model) => [model.id, {
+                      name: model.name ?? model.id,
+                      ...(model.contextWindow ? { contextWindow: model.contextWindow } : {}),
+                      ...(model.maxTokens ? { maxTokens: model.maxTokens } : {}),
+                    }]),
+                  ),
+                }),
+              );
+              runtimeProviderIds.add(entry.providerId);
+              runtimeConfigChanged = true;
+            }
+          }
         }
-      }
 
-      const enrichedProfiles = connections.filter((entry) => entry.profileMetadataChanged);
-      if (enrichedProfiles.length > 0 && typeof ipolloworkClient.upsertUserEnv === "function") {
-        try {
-          await ipolloworkClient.upsertUserEnv(enrichedProfiles.map((entry) => ({
-            key: sharedProviderProfileEnvKey(entry.providerId),
-            value: serializeSharedProviderProfile(entry.profile),
-          })));
-        } catch {
-          // Runtime projection already carries the enriched metadata. Persisting
-          // it is an optimization and must not make provider import retry.
+        const enrichedProfiles = connections.filter((entry) => entry.profileMetadataChanged);
+        if (enrichedProfiles.length > 0 && typeof ipolloworkClient.upsertUserEnv === "function") {
+          try {
+            await ipolloworkClient.upsertUserEnv(enrichedProfiles.map((entry) => ({
+              key: sharedProviderProfileEnvKey(entry.providerId),
+              value: serializeSharedProviderProfile(entry.profile),
+            })));
+          } catch {
+            // Runtime projection already carries the enriched metadata. Persisting
+            // it is an optimization and must not make provider import retry.
+          }
         }
-      }
 
-      // A provider added to runtime config is not addressable through the
-      // currently running engine. Reload first, then acquire a fresh
-      // connection and write all credentials.
-      if (runtimeConfigChanged) {
-        await reloadProviderEngine(engineClient);
-      }
-      const activeClient = options.client() ?? engineClient;
-      const connection = adapter.connect(activeClient);
-      let credentialsChanged = false;
-      for (const entry of connections) {
-        if (!entry.apiKey) continue;
-        await connection.setApiKey(entry.providerId, entry.apiKey);
-        credentialsChanged = true;
-      }
-      if (credentialsChanged) {
-        await reloadProviderEngine(activeClient);
-      }
-      sharedProviderImportFingerprint = fingerprint;
-      return { changed: connections.length > 0, requiresReload: false };
+        // A provider added to runtime config is not addressable through the
+        // currently running engine. Reload first, then acquire a fresh
+        // connection and write all credentials.
+        if (runtimeConfigChanged) {
+          await reloadProviderEngine(engineClient);
+        }
+        const activeClient = options.client() ?? engineClient;
+        const connection = adapter.connect(activeClient);
+        let credentialsChanged = false;
+        if (!credentialsAlreadyImported) {
+          for (const entry of connections) {
+            if (!entry.apiKey) continue;
+            await connection.setApiKey(entry.providerId, entry.apiKey);
+            credentialsChanged = true;
+          }
+        }
+        if (credentialsChanged) {
+          await reloadProviderEngine(activeClient);
+        }
+        return {
+          changed: runtimeConfigChanged || credentialsChanged || enrichedProfiles.length > 0,
+          requiresReload: false,
+        };
+      });
     })().finally(() => {
       sharedProviderImportInFlight = null;
     });
