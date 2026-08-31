@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { test } from "node:test";
@@ -102,6 +102,8 @@ test("installs and removes a bundled optional engine package without touching Wo
   delete managerEnvironment.IPOLLOWORK_ENGINE_PACK_SOURCE_DIR;
   delete managerEnvironment.IPOLLOWORK_CODEX_CLI;
   delete managerEnvironment.IPOLLOWORK_CODEX_CLI_VERSION;
+  delete managerEnvironment.NPM_CONFIG_PREFIX;
+  delete managerEnvironment.PNPM_HOME;
   try {
     process.env.PATH = path.dirname(tarPath);
     delete process.env.IPOLLOWORK_ENGINE_PACK_SOURCE_DIR;
@@ -121,6 +123,7 @@ test("installs and removes a bundled optional engine package without touching Wo
       versions: { opencode: "1.2.3", deepseekHarness: "4.5.6", codexHarness: version },
       env: managerEnvironment,
       homeDir: path.join(temporaryRoot, "home"),
+      probeRuntime: async () => false,
       fetch: async () => { throw new Error("fixture should not use the network"); },
       beforeUninstall: async () => {
         beforeUninstallCalls += 1;
@@ -214,6 +217,8 @@ test("falls back to the latest mirrored release and rejects a corrupted mirror r
     };
     delete environment.IPOLLOWORK_CODEX_CLI;
     delete environment.IPOLLOWORK_ENGINE_PACK_BASE_URL;
+    delete environment.NPM_CONFIG_PREFIX;
+    delete environment.PNPM_HOME;
 
     const manager = createEnginePackageManager({
       app: {
@@ -228,6 +233,7 @@ test("falls back to the latest mirrored release and rejects a corrupted mirror r
       versions: { opencode: "1.2.3", deepseekHarness: "4.5.6", codexHarness: version },
       env: environment,
       homeDir: path.join(temporaryRoot, "home"),
+      probeRuntime: async () => false,
       fetch: async (url, init) => {
         requestedUrls.push(String(url));
         assert.ok(init?.signal);
@@ -281,6 +287,8 @@ test("reports real streamed byte progress for Codex and DeepSeek engine download
   };
   delete environment.IPOLLOWORK_CODEX_CLI;
   delete environment.IPOLLOWORK_DSH_CLI;
+  delete environment.NPM_CONFIG_PREFIX;
+  delete environment.PNPM_HOME;
 
   try {
     for (const fixture of fixtures) {
@@ -314,6 +322,7 @@ test("reports real streamed byte progress for Codex and DeepSeek engine download
       versions: { opencode: "1.2.3", deepseekHarness: version, codexHarness: version },
       env: environment,
       homeDir: path.join(temporaryRoot, "home"),
+      probeRuntime: async () => false,
       fetch: async (url) => {
         const requestUrl = String(url);
         const name = requestUrl.slice(baseUrl.length + 1).replace(/\.sha256$/, "");
@@ -507,6 +516,7 @@ test("prefers an official Codex Harness and removes a redundant downloaded copy"
     await mkdir(clientResources, { recursive: true });
     await writeFile(managedCli, "redundant-runtime\n");
     await writeFile(officialCli, "official-runtime\n");
+    const resolvedOfficialCli = await realpath(officialCli);
     const manager = createEnginePackageManager({
       app: {
         getPath(name) {
@@ -520,7 +530,7 @@ test("prefers an official Codex Harness and removes a redundant downloaded copy"
       versions: { opencode: "1.2.3", deepseekHarness: "4.5.6", codexHarness: "7.8.9" },
       env: environment,
       homeDir: path.join(temporaryRoot, "home"),
-      probeRuntime: async ({ executablePath }) => executablePath === officialCli,
+      probeRuntime: async ({ executablePath }) => executablePath === resolvedOfficialCli,
       fetch: async () => { throw new Error("fixture should not use the network"); },
     });
 
@@ -530,7 +540,7 @@ test("prefers an official Codex Harness and removes a redundant downloaded copy"
     assert.equal(beforeStartup?.canUninstall, false);
 
     await manager.applyEnvironment();
-    assert.equal(environment.IPOLLOWORK_CODEX_CLI, officialCli);
+    assert.equal(environment.IPOLLOWORK_CODEX_CLI, resolvedOfficialCli);
     assert.equal(existsSync(managedRoot), false);
     const afterStartup = (await manager.list()).find((engine) => engine.id === "codex-harness");
     assert.equal(afterStartup?.source, "official");
@@ -595,6 +605,8 @@ test("discovers an official Codex client outside the inherited PATH", async () =
   };
   delete environment.IPOLLOWORK_DSH_CLI;
   delete environment.IPOLLOWORK_CODEX_CLI;
+  delete environment.NPM_CONFIG_PREFIX;
+  delete environment.PNPM_HOME;
   const blockedCodexPath = process.platform === "win32"
     ? path.join(environment.ProgramFiles, "WindowsApps", "OpenAI.Codex_1.2.3.0_x64__official", "app", "resources", "codex.exe")
     : null;
@@ -612,6 +624,8 @@ test("discovers an official Codex client outside the inherited PATH", async () =
     }
     await mkdir(path.dirname(codexPath), { recursive: true });
     await writeFile(codexPath, "official-runtime\n");
+    const resolvedBlockedCodexPath = blockedCodexPath ? await realpath(blockedCodexPath) : null;
+    const resolvedCodexPath = await realpath(codexPath);
     const manager = createEnginePackageManager({
       app: {
         getPath(name) {
@@ -627,7 +641,7 @@ test("discovers an official Codex client outside the inherited PATH", async () =
       homeDir,
       probeRuntime: async ({ executablePath }) => {
         probedPaths.push(executablePath);
-        return executablePath !== blockedCodexPath;
+        return executablePath === resolvedCodexPath;
       },
       fetch: async () => { throw new Error("fixture should not use the network"); },
     });
@@ -637,9 +651,9 @@ test("discovers an official Codex client outside the inherited PATH", async () =
     assert.equal(codex?.source, "official");
     assert.equal(codex?.canInstall, false);
     assert.equal(codex?.canUninstall, false);
-    assert.equal(environment.IPOLLOWORK_CODEX_CLI, codexPath);
-    if (blockedCodexPath) assert.ok(probedPaths.includes(blockedCodexPath));
-    assert.ok(probedPaths.includes(codexPath));
+    assert.equal(environment.IPOLLOWORK_CODEX_CLI, resolvedCodexPath);
+    if (resolvedBlockedCodexPath) assert.ok(probedPaths.includes(resolvedBlockedCodexPath));
+    assert.ok(probedPaths.includes(resolvedCodexPath));
   } finally {
     await rm(temporaryRoot, { recursive: true, force: true });
   }
@@ -653,7 +667,9 @@ test("uses an official DeepSeek Harness installation without offering another do
     ? path.join(appData, "npm")
     : path.join(homeDir, ".local", "bin");
   const dshCommand = path.join(binDirectory, process.platform === "win32" ? "dsh.cmd" : "dsh");
-  const dshEntrypoint = path.join(binDirectory, "node_modules", "@deepseek-ai", "dsh", "lib", "bin.js");
+  const dshEntrypoint = process.platform === "win32"
+    ? path.join(binDirectory, "node_modules", "@deepseek-ai", "dsh", "lib", "bin.js")
+    : path.join(homeDir, ".local", "lib", "node_modules", "@deepseek-ai", "dsh", "lib", "bin.js");
   /** @type {NodeJS.ProcessEnv} */
   const environment = {
     ...process.env,
@@ -664,11 +680,15 @@ test("uses an official DeepSeek Harness installation without offering another do
   };
   delete environment.IPOLLOWORK_DSH_CLI;
   delete environment.IPOLLOWORK_CODEX_CLI;
+  delete environment.NPM_CONFIG_PREFIX;
+  delete environment.PNPM_HOME;
 
   try {
+    await mkdir(binDirectory, { recursive: true });
     await mkdir(path.dirname(dshEntrypoint), { recursive: true });
     await writeFile(dshCommand, process.platform === "win32" ? "@echo off\r\n" : "#!/usr/bin/env node\n");
     await writeFile(dshEntrypoint, "#!/usr/bin/env node\n");
+    const resolvedDshEntrypoint = await realpath(dshEntrypoint);
     const manager = createEnginePackageManager({
       app: {
         getPath(name) {
@@ -691,7 +711,7 @@ test("uses an official DeepSeek Harness installation without offering another do
     assert.equal(dsh?.source, "official");
     assert.equal(dsh?.canInstall, false);
     assert.equal(dsh?.canUninstall, false);
-    assert.equal(environment.IPOLLOWORK_DSH_CLI, process.platform === "win32" ? dshEntrypoint : dshCommand);
+    assert.equal(environment.IPOLLOWORK_DSH_CLI, resolvedDshEntrypoint);
   } finally {
     await rm(temporaryRoot, { recursive: true, force: true });
   }
@@ -777,12 +797,16 @@ test("discovers official Codex and DeepSeek resources in macOS installation loca
   };
   delete environment.IPOLLOWORK_DSH_CLI;
   delete environment.IPOLLOWORK_CODEX_CLI;
+  delete environment.NPM_CONFIG_PREFIX;
+  delete environment.PNPM_HOME;
 
   try {
     await mkdir(path.dirname(codexPath), { recursive: true });
     await mkdir(path.dirname(dshPath), { recursive: true });
     await writeFile(codexPath, "official-codex-runtime\n");
     await writeFile(dshPath, "#!/usr/bin/env node\n");
+    const resolvedCodexPath = await realpath(codexPath);
+    const resolvedDshPath = await realpath(dshPath);
     const manager = createEnginePackageManager({
       app: {
         getPath(name) {
@@ -798,7 +822,7 @@ test("discovers official Codex and DeepSeek resources in macOS installation loca
       architecture: "arm64",
       env: environment,
       homeDir,
-      probeRuntime: async () => true,
+      probeRuntime: async ({ executablePath }) => executablePath === resolvedCodexPath,
       fetch: async () => { throw new Error("fixture should not use the network"); },
     });
 
@@ -806,8 +830,8 @@ test("discovers official Codex and DeepSeek resources in macOS installation loca
     const optionalEngines = (await manager.list()).filter((engine) => engine.id !== "opencode");
     assert.deepEqual(optionalEngines.map((engine) => engine.source), ["official", "official"]);
     assert.deepEqual(optionalEngines.map((engine) => engine.canUninstall), [false, false]);
-    assert.equal(environment.IPOLLOWORK_DSH_CLI, dshPath);
-    assert.equal(environment.IPOLLOWORK_CODEX_CLI, codexPath);
+    assert.equal(environment.IPOLLOWORK_DSH_CLI, resolvedDshPath);
+    assert.equal(environment.IPOLLOWORK_CODEX_CLI, resolvedCodexPath);
   } finally {
     await rm(temporaryRoot, { recursive: true, force: true });
   }
@@ -827,6 +851,8 @@ test("does not treat unrelated commands with official engine names as official r
   };
   delete environment.IPOLLOWORK_DSH_CLI;
   delete environment.IPOLLOWORK_CODEX_CLI;
+  delete environment.NPM_CONFIG_PREFIX;
+  delete environment.PNPM_HOME;
 
   try {
     await mkdir(binDirectory, { recursive: true });
@@ -845,6 +871,7 @@ test("does not treat unrelated commands with official engine names as official r
       versions: { opencode: "1.2.3", deepseekHarness: "4.5.6", codexHarness: "7.8.9" },
       env: environment,
       homeDir: path.join(temporaryRoot, "home"),
+      probeRuntime: async () => false,
       fetch: async () => { throw new Error("fixture should not use the network"); },
     });
 
