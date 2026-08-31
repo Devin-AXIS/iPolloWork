@@ -36,13 +36,13 @@
     "esbuild": "^0.28.2",
     "fontkit": "^2.0.4",
     "giget": "^3.2.0",
-    "hono": "^4.13.2",
-    "onnxruntime-node": "1.27.0",
+    "hono": "^4.13.5",
+    "onnxruntime-node": "1.29.0",
     "open": "^11.0.1",
     "postcss": "^8.5.26",
     "prettier": "^3.9.6",
     "puppeteer-core": "^25.2.1",
-    "sharp": "^0.35.3"
+    "sharp": "^0.35.4"
   },
   "devDependencies": {
     "@clack/prompts": "^1.1.0",
@@ -56,7 +56,7 @@
     "@types/adm-zip": "^0.5.7",
     "@types/fontkit": "^2.0.9",
     "@types/mime-types": "^3.0.1",
-    "@types/node": "^26.2.0",
+    "@types/node": "^26.4.0",
     "linkedom": "^0.18.12",
     "picocolors": "^1.1.1",
     "tsup": "^8.0.0",
