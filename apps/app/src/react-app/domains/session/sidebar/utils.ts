@@ -121,7 +121,7 @@ export const isStreamingSessionStatus = (status: string | undefined) =>
   status === "streaming" ||
   status === "thinking" ||
   status === "responding" ||
-  status === "waiting";
+  status === "compacting";
 
 const normalizeSessionParentID = (session: SessionListItem) => {
   const parentID = session.parentID?.trim();

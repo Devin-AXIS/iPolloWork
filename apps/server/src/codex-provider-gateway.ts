@@ -23,7 +23,10 @@ export type CodexProviderGatewayRoute = {
   apiKey: string;
 };
 
-type GatewayProvider = CodexProviderGatewayUpstream & { routeToken: string };
+type GatewayProvider = CodexProviderGatewayUpstream & {
+  routeToken: string;
+  sessionToken: string;
+};
 type ProviderGatewayErrorType = "provider_gateway_error" | "invalid_request_error";
 
 type ResponseTool = {
@@ -452,28 +455,7 @@ async function upstreamJson(
   path: string,
   body: Record<string, unknown>,
 ): Promise<Record<string, unknown>> {
-  const headers = new Headers(provider.httpHeaders);
-  headers.set("content-type", "application/json");
-  if (provider.providerId === "opencode") {
-    const modelId = nonEmptyString(body.model);
-    if (!headers.has("user-agent")) headers.set("user-agent", "opencode/ipollowork");
-    if (
-      !headers.has("x-opencode-session")
-      && (!modelId || openCodeZenPublicModelUsesSessionAffinity(modelId))
-    ) {
-      headers.set("x-opencode-session", `ses_${randomBytes(12).toString("hex")}`);
-    }
-    if (!headers.has("x-opencode-request")) {
-      headers.set("x-opencode-request", `msg_${randomBytes(12).toString("hex")}`);
-    }
-    if (!headers.has("x-opencode-client")) headers.set("x-opencode-client", "ipollowork");
-  }
-  if (provider.protocol === "anthropic-messages") {
-    headers.set("x-api-key", provider.apiKey);
-    if (!headers.has("anthropic-version")) headers.set("anthropic-version", "2023-06-01");
-  } else {
-    headers.set("authorization", `Bearer ${provider.apiKey}`);
-  }
+  const headers = upstreamHeaders(provider, body);
   const response = await fetch(endpoint(provider.baseURL, path), {
     method: "POST",
     headers,
@@ -496,6 +478,35 @@ async function upstreamJson(
   }
   if (!isRecord(payload)) throw new Error("Provider returned an invalid JSON response");
   return payload;
+}
+
+function upstreamHeaders(
+  provider: GatewayProvider,
+  body: Record<string, unknown>,
+): Headers {
+  const headers = new Headers(provider.httpHeaders);
+  headers.set("content-type", "application/json");
+  if (provider.providerId === "opencode") {
+    const modelId = nonEmptyString(body.model);
+    if (!headers.has("user-agent")) headers.set("user-agent", "opencode/ipollowork");
+    if (
+      !headers.has("x-opencode-session")
+      && (!modelId || openCodeZenPublicModelUsesSessionAffinity(modelId))
+    ) {
+      headers.set("x-opencode-session", provider.sessionToken);
+    }
+    if (!headers.has("x-opencode-request")) {
+      headers.set("x-opencode-request", `msg_${randomBytes(12).toString("hex")}`);
+    }
+    if (!headers.has("x-opencode-client")) headers.set("x-opencode-client", "ipollowork");
+  }
+  if (provider.protocol === "anthropic-messages") {
+    headers.set("x-api-key", provider.apiKey);
+    if (!headers.has("anthropic-version")) headers.set("anthropic-version", "2023-06-01");
+  } else {
+    headers.set("authorization", `Bearer ${provider.apiKey}`);
+  }
+  return headers;
 }
 
 type GatewayOutput =
@@ -813,6 +824,7 @@ export class CodexProviderGateway {
   #port = 0;
   #providers = new Map<string, GatewayProvider>();
   #tokens = new Map<string, string>();
+  #sessions = new Map<string, string>();
 
   async configure(upstreams: readonly CodexProviderGatewayUpstream[]): Promise<Map<string, CodexProviderGatewayRoute>> {
     if (upstreams.length) await this.#ensureStarted();
@@ -820,8 +832,10 @@ export class CodexProviderGateway {
     const routes = new Map<string, CodexProviderGatewayRoute>();
     for (const upstream of upstreams) {
       const routeToken = this.#tokens.get(upstream.providerId) ?? randomBytes(32).toString("base64url");
+      const sessionToken = this.#sessions.get(upstream.providerId) ?? `ses_${randomBytes(12).toString("hex")}`;
       this.#tokens.set(upstream.providerId, routeToken);
-      next.set(upstream.providerId, { ...upstream, routeToken });
+      this.#sessions.set(upstream.providerId, sessionToken);
+      next.set(upstream.providerId, { ...upstream, routeToken, sessionToken });
       routes.set(upstream.providerId, {
         baseURL: `http://127.0.0.1:${this.#port}/provider/${encodeURIComponent(upstream.providerId)}/v1`,
         apiKey: routeToken,
@@ -837,6 +851,7 @@ export class CodexProviderGateway {
     this.#port = 0;
     this.#providers.clear();
     this.#tokens.clear();
+    this.#sessions.clear();
     if (!server) return;
     await new Promise<void>((resolve, reject) => {
       server.close((error) => error ? reject(error) : resolve());
@@ -867,7 +882,7 @@ export class CodexProviderGateway {
   async #handle(request: IncomingMessage, response: ServerResponse): Promise<void> {
     try {
       const url = new URL(request.url ?? "/", "http://127.0.0.1");
-      const match = /^\/provider\/([^/]+)\/v1\/responses$/u.exec(url.pathname);
+      const match = /^\/provider\/([^/]+)\/v1\/(responses|chat\/completions)$/u.exec(url.pathname);
       const providerId = match ? decodeURIComponent(match[1] ?? "") : "";
       const provider = this.#providers.get(providerId);
       if (request.method !== "POST" || !provider) {
@@ -879,6 +894,10 @@ export class CodexProviderGateway {
         return;
       }
       const body = await readJsonBody(request);
+      if (match?.[2] === "chat/completions") {
+        await this.#proxyChatCompletions(provider, body, response);
+        return;
+      }
       const tools = responseTools(body.tools);
       const result = provider.protocol === "anthropic-messages"
         ? await callAnthropic(provider, body, tools)
@@ -890,6 +909,10 @@ export class CodexProviderGateway {
       });
       response.end(eventStream(provider, body, result));
     } catch (error) {
+      if (response.headersSent) {
+        response.destroy(error instanceof Error ? error : undefined);
+        return;
+      }
       const status = isRecord(error) && typeof error.status === "number" ? error.status : 502;
       const type = isRecord(error) && error.providerGatewayType === "invalid_request_error"
         ? "invalid_request_error"
@@ -901,5 +924,34 @@ export class CodexProviderGateway {
         },
       });
     }
+  }
+
+  async #proxyChatCompletions(
+    provider: GatewayProvider,
+    body: Record<string, unknown>,
+    response: ServerResponse,
+  ): Promise<void> {
+    const upstream = await fetch(endpoint(provider.baseURL, "chat/completions"), {
+      method: "POST",
+      headers: upstreamHeaders(provider, body),
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
+    });
+    const contentType = upstream.headers.get("content-type") ?? "application/json; charset=utf-8";
+    response.writeHead(upstream.status, {
+      "cache-control": upstream.headers.get("cache-control") ?? "no-cache",
+      "content-type": contentType,
+      ...(contentType.includes("text/event-stream") ? { connection: "keep-alive" } : {}),
+    });
+    if (!upstream.body) {
+      response.end();
+      return;
+    }
+    for await (const chunk of upstream.body) {
+      if (!response.write(chunk)) {
+        await new Promise<void>((resolve) => response.once("drain", resolve));
+      }
+    }
+    response.end();
   }
 }

@@ -18,6 +18,10 @@ import {
 } from "@ipollowork/types/workspace";
 
 import type { EnvService } from "./env-file.js";
+import {
+  CodexProviderGateway,
+  type CodexProviderGatewayRoute,
+} from "./codex-provider-gateway.js";
 import { writeDeepSeekHarnessPatchFile } from "./deepseek-harness-patch.js";
 import { onRuntimeMcpConfigWrite } from "./runtime-capability-store.js";
 import { readRuntimeProviderChannels } from "./runtime-opencode-config-store.js";
@@ -147,6 +151,22 @@ const OPENAI_CODEX_PROVIDER_BRIDGE: DeepSeekHarnessProviderBridge = {
 const PROVIDER_MODEL_DISCOVERY_TIMEOUT_MS = 10_000;
 
 const OPENCODE_ZEN_PUBLIC_API_KEY = "public";
+const LOOPBACK_PROXY_BYPASS_HOSTS: readonly string[] = ["127.0.0.1", "localhost", "::1"];
+
+function withLoopbackProxyBypass(environment: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  const entries = [environment.NO_PROXY, environment.no_proxy]
+    .flatMap((value) => value?.split(",") ?? [])
+    .map((value) => value.trim())
+    .filter(Boolean);
+  const seen = new Set(entries.map((value) => value.toLowerCase()));
+  for (const host of LOOPBACK_PROXY_BYPASS_HOSTS) {
+    if (seen.has(host)) continue;
+    entries.push(host);
+    seen.add(host);
+  }
+  const noProxy = entries.join(",");
+  return { ...environment, NO_PROXY: noProxy, no_proxy: noProxy };
+}
 
 function providerBridge(
   providerId: string,
@@ -201,17 +221,33 @@ export function sharedProviderApiCredentials(
 
 export function deepSeekHarnessProviderCredentials(
   records: ReadonlyArray<{ key: string; value: string }>,
-  options: { openAiCodexAccessToken?: string | null } = {},
+  options: {
+    openAiCodexAccessToken?: string | null;
+    openCodeZenRoute?: CodexProviderGatewayRoute;
+  } = {},
 ): Map<string, DeepSeekHarnessProviderCredential> {
+  const openCodeBridge = options.openCodeZenRoute
+    ? { ...OPENCODE_ZEN_PUBLIC_PROVIDER_BRIDGE, baseURL: options.openCodeZenRoute.baseURL }
+    : OPENCODE_ZEN_PUBLIC_PROVIDER_BRIDGE;
   const credentials = new Map<string, DeepSeekHarnessProviderCredential>([[
     OPENCODE_ZEN_PUBLIC_PROVIDER_BRIDGE.providerId,
     {
-      apiKey: OPENCODE_ZEN_PUBLIC_API_KEY,
-      bridge: OPENCODE_ZEN_PUBLIC_PROVIDER_BRIDGE,
+      apiKey: options.openCodeZenRoute?.apiKey ?? OPENCODE_ZEN_PUBLIC_API_KEY,
+      bridge: openCodeBridge,
     },
   ]]);
   const profiles = sharedProviderProfiles(records);
   for (const [providerId, apiKey] of sharedProviderApiCredentials(records)) {
+    if (providerId === OPENCODE_ZEN_PUBLIC_PROVIDER_BRIDGE.providerId && options.openCodeZenRoute) {
+      credentials.set(providerId, {
+        apiKey: options.openCodeZenRoute.apiKey,
+        bridge: {
+          ...openCodeBridge,
+          displayName: profiles.get(providerId)?.displayName || openCodeBridge.displayName,
+        },
+      });
+      continue;
+    }
     const bridge = providerBridge(providerId, profiles.get(providerId));
     const targetProviderId = bridge?.providerId
       ?? deepSeekHarnessRuntimeProviderRouteId(providerId);
@@ -417,6 +453,7 @@ export class DeepSeekHarnessRuntime {
   #syncedCompatibleProviderIds = new Set<string>();
   #syncedCredentialRefs = new Set<string>();
   #syncedRouteProjections: DeepSeekHarnessRouteProjection[] = [];
+  readonly #providerGateway = new CodexProviderGateway();
 
   constructor(input: { config: ServerConfig; env: EnvService; workspace?: WorkspaceInfo }) {
     this.#config = input.config;
@@ -486,6 +523,7 @@ export class DeepSeekHarnessRuntime {
 
   async #performSharedProviderApiCredentialSync(baseUrl: string): Promise<void> {
     const records = await this.#env.list();
+    const sharedApiCredentials = sharedProviderApiCredentials(records);
     const disconnected = new Set(
       sharedProviderDisconnectedIdsFromEnvKeys(records.map((record) => record.key)),
     );
@@ -510,8 +548,17 @@ export class DeepSeekHarnessRuntime {
         }),
       }]).catch(() => {});
     }
+    const gatewayRoutes = await this.#providerGateway.configure([{
+      providerId: OPENCODE_ZEN_PUBLIC_PROVIDER_BRIDGE.providerId,
+      protocol: "openai-completions",
+      baseURL: OPENCODE_ZEN_PUBLIC_PROVIDER_BRIDGE.baseURL ?? "https://opencode.ai/zen/v1",
+      apiKey: sharedApiCredentials.get(OPENCODE_ZEN_PUBLIC_PROVIDER_BRIDGE.providerId)
+        ?? OPENCODE_ZEN_PUBLIC_API_KEY,
+      httpHeaders: { "x-opencode-project": this.#workspace.id },
+    }]);
     const credentials = deepSeekHarnessProviderCredentials(records, {
       openAiCodexAccessToken: openAiCodexOAuth?.accessToken,
+      openCodeZenRoute: gatewayRoutes.get(OPENCODE_ZEN_PUBLIC_PROVIDER_BRIDGE.providerId),
     });
     const compatibleProfiles = deepSeekHarnessCompatibleProviderProfiles(
       await readRuntimeProviderChannels(this.#config).catch(() => ({})),
@@ -791,19 +838,24 @@ export class DeepSeekHarnessRuntime {
     this.#syncedCompatibleProviderIds.clear();
     this.#syncedCredentialRefs.clear();
     this.#syncedRouteProjections = [];
-    if (!child || child.exitCode !== null) return;
-    child.kill("SIGTERM");
-    await Promise.race([
-      new Promise<void>((resolve) => child.once("exit", () => resolve())),
-      new Promise<void>((resolve) => setTimeout(resolve, 3_000)),
-    ]);
-    if (child.exitCode === null) {
-      child.kill("SIGKILL");
+    if (child && child.exitCode === null) {
+      // Stop the gateway client before waiting for its loopback server. This
+      // lets any active streamed request disconnect instead of making server
+      // shutdown wait indefinitely for the DSH child.
+      child.kill("SIGTERM");
       await Promise.race([
         new Promise<void>((resolve) => child.once("exit", () => resolve())),
-        new Promise<void>((resolve) => setTimeout(resolve, 2_000)),
+        new Promise<void>((resolve) => setTimeout(resolve, 3_000)),
       ]);
+      if (child.exitCode === null) {
+        child.kill("SIGKILL");
+        await Promise.race([
+          new Promise<void>((resolve) => child.once("exit", () => resolve())),
+          new Promise<void>((resolve) => setTimeout(resolve, 2_000)),
+        ]);
+      }
     }
+    await this.#providerGateway.close();
   }
 
   async #ensureStarted(): Promise<string> {
@@ -837,7 +889,7 @@ export class DeepSeekHarnessRuntime {
       path: patchPath,
     });
     const storedEnv = deepSeekHarnessChildEnvironment(await this.#env.list());
-    const childEnv = { ...process.env, ...storedEnv };
+    const childEnv = withLoopbackProxyBypass({ ...process.env, ...storedEnv });
     // The Authorization Center owns this media-service credential. A chat
     // provider is enabled only through an explicit shared provider key.
     delete childEnv.DASHSCOPE_API_KEY;

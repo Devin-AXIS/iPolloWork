@@ -331,6 +331,17 @@ export function SessionRoute() {
     [opencodeBaseUrl, selectedWorkspace?.engineId, selectedWorkspaceEndpoint?.baseUrl, selectedWorkspaceEndpoint?.workspaceId, selectedWorkspaceError, selectedWorkspaceRoot, selectedWorkspaceServerToken],
   );
   const conversationConnectionKey = `${selectedWorkspace?.engineId?.trim() || DEFAULT_ENGINE_ID}:${opencodeBaseUrl}:${selectedWorkspaceServerToken}`;
+  const readConversationSnapshot = useCallback(async (sessionId: string) => {
+    if (!conversation || !selectedWorkspaceEndpoint) {
+      throw new Error("Conversation runtime is unavailable");
+    }
+    const response = await selectedWorkspaceEndpoint.client.getSessionSnapshot(
+      selectedWorkspaceEndpoint.workspaceId,
+      sessionId,
+      { limit: 140 },
+    );
+    return conversation.mapSnapshot(response.item);
+  }, [conversation, selectedWorkspaceEndpoint?.client, selectedWorkspaceEndpoint?.workspaceId]);
   const activeEngineId = selectedWorkspace?.engineId?.trim() || DEFAULT_ENGINE_ID;
   const activeEnginePreferences = getEnginePreferences(local.prefs, activeEngineId);
   const selectedModel = local.prefs.model;
@@ -1962,12 +1973,15 @@ export function SessionRoute() {
         }
       : null;
 
+    // Route changes deliberately retain the previous session so its accepted
+    // task can finish in the background. Only replace resources when the same
+    // session itself moves to a different runtime connection.
     if (
-      previous &&
-      (!current ||
-        previous.workspaceId !== current.workspaceId ||
-        previous.sessionId !== current.sessionId ||
-        previous.connectionKey !== current.connectionKey)
+      previous
+      && current
+      && previous.workspaceId === current.workspaceId
+      && previous.sessionId === current.sessionId
+      && previous.connectionKey !== current.connectionKey
     ) {
       destroyWorkspaceSessionResources(previous, previous.sessionId, {
         preserveInterruptedRun: true,
@@ -2688,6 +2702,7 @@ export function SessionRoute() {
         sessionId={selectedSessionId}
         connection={conversation}
         connectionKey={conversationConnectionKey}
+        readSnapshot={readConversationSnapshot}
         onSessionUpdated={handleRuntimeSessionUpdated}
         onSessionStatus={handleSessionStatus}
         onSessionError={handleSessionError}

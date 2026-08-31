@@ -63,6 +63,7 @@ describe("DeepSeek Harness session read model", () => {
     expect(sessions.map((session) => session.id)).toEqual(["owned"]);
     expect(sessions[0]?.title).toBe("New conversation");
     expect(sessions[0]?.agent).toBe("editor");
+    expect(sessions[0]?.status).toEqual({ type: "idle" });
     expect(sessions[0]?.tokens).toEqual({
       input: 40,
       output: 20,

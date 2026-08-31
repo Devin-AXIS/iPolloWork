@@ -87,11 +87,10 @@ describe("startup session loading", () => {
     expect(routeStateSource).not.toContain("markBootRouteReady, routeWorkspaceId, selectedSessionId, workContextId");
   });
 
-  test("destroys the old view and reuses the startup loading artwork while switching", () => {
-    expect(sessionRouteSource).toContain(
-      "destroyWorkspaceSessionResources(previous, previous.sessionId, {",
-    );
-    expect(sessionRouteSource).toContain("preserveInterruptedRun: true,");
+  test("retains the old session runtime and reuses the startup loading artwork while switching", () => {
+    expect(sessionRouteSource).toContain("previous.workspaceId === current.workspaceId");
+    expect(sessionRouteSource).toContain("previous.sessionId === current.sessionId");
+    expect(sessionRouteSource).toContain("previous.connectionKey !== current.connectionKey");
     expect(sessionPageSource).toContain(
       'key={`${props.runtimeWorkspaceId}:${props.selectedSessionId}`}',
     );

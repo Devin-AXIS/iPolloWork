@@ -1889,9 +1889,7 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
         return (
           <AiSettingsView
             busy={busy || loading}
-            providerAuthBusy={
-              providerAuthSnapshot.providerAuthBusy || (loading && !sharedProviderClient)
-            }
+            providerAuthBusy={providerAuthSnapshot.providerAuthBusy}
             providerStatusLabel={providerStatusLabel}
             providerStatusStyle={providerStatusStyle}
             providerSummary={providerSummary}

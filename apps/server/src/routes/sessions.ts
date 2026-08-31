@@ -23,7 +23,7 @@ import {
 } from "../deepseek-harness-session-read-model.js";
 import { ApiError } from "../errors.js";
 import { StdioJsonRpcError } from "../stdio-json-rpc-runtime.js";
-import { buildSession, buildSessionList, buildSessionMessages, buildSessionSnapshot } from "../session-read-model.js";
+import { buildSession, buildSessionList, buildSessionMessages, buildSessionSnapshot, buildSessionStatuses } from "../session-read-model.js";
 import type { ServerConfig, TokenScope, WorkspaceInfo } from "../types.js";
 import type { WorkspaceSessionRuntime } from "../workspace-session-runtime.js";
 import { addRoute, type RequestContext, type Route } from "./registry.js";
@@ -167,17 +167,30 @@ export function registerSessionRoutes(options: RegisterSessionRoutesOptions): vo
         return await listCodexHarnessSessions(codexHarness.forWorkspace(workspace), workspace, input);
       }
       const opencode = createWorkspaceOpencodeClient(config, workspace);
-      return buildSessionList(
-        unwrapOpencodeResult(
-          await opencode.session.list({
-            roots: input.roots,
-            start: input.start,
-            search: input.search,
-            limit: input.limit,
-          }),
-          "/session",
+      const [sessionResult, statuses] = await Promise.all([
+        opencode.session.list({
+          roots: input.roots,
+          start: input.start,
+          search: input.search,
+          limit: input.limit,
+        }),
+        opencode.session.status().then(
+          (result) => {
+            try {
+              return buildSessionStatuses(unwrapOpencodeResult(result, "/session/status"));
+            } catch {
+              return null;
+            }
+          },
+          () => null,
         ),
-      );
+      ]);
+      const sessions = buildSessionList(unwrapOpencodeResult(sessionResult, "/session"));
+      if (!statuses) return sessions;
+      return sessions.map((session) => ({
+        ...session,
+        status: statuses[session.id] ?? { type: "idle" },
+      }));
     } catch (error) {
       remapSessionReadError(error);
     }

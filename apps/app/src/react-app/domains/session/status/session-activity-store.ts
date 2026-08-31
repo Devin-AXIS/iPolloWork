@@ -1,6 +1,7 @@
 /** @jsxImportSource react */
 import { create } from "zustand";
 
+import { readSessionRunStatus } from "../../../../app/utils";
 import { t } from "../../../../i18n";
 
 export type SessionActivityStatus = "idle" | "thinking" | "responding" | "error" | "compacting" | "waiting";
@@ -25,6 +26,8 @@ type SessionLike = {
   status?: unknown;
   state?: unknown;
   runStatus?: unknown;
+  dsh?: unknown;
+  codex?: unknown;
 };
 
 type SessionActivityStore = {
@@ -73,7 +76,7 @@ function normalizeRunStatus(status: unknown): "idle" | "running" | "retry" {
 }
 
 function sessionRunStatus(session: SessionLike) {
-  return session.status ?? session.state ?? session.runStatus;
+  return readSessionRunStatus(session);
 }
 
 function statusForRecord(record: SessionActivityRecord): SessionActivityStatus {
@@ -187,22 +190,23 @@ export const useSessionActivityStore = create<SessionActivityStore>((set, get) =
         const sessionId = session.id.trim();
         if (!sessionId) continue;
         const status = sessionRunStatus(session);
-        if (status === undefined || status === null) continue;
+        if (status === null) continue;
+        const normalized = normalizeRunStatus(status);
+        const runActive = normalized === "running" || normalized === "retry";
+        // Session directory responses are eventually consistent. They can
+        // confirm that a background run is active, but an idle row must not
+        // settle a newer live run while the user switches engines. Terminal
+        // state comes from the event stream or the selected-session snapshot.
+        if (!runActive) continue;
         nextState = {
           ...nextState,
           ...updateRecord(nextState, id, sessionId, (record) => {
-            const normalized = normalizeRunStatus(status);
-            const runActive = normalized === "running" || normalized === "retry";
-            if (!runActive && record.status !== "idle") return resetRecordToIdle(record);
             return {
               ...record,
               runActive,
-              assistantOutput: runActive && record.runActive ? record.assistantOutput : false,
-              errorActive: runActive ? false : record.errorActive,
-              errorMessage: runActive ? null : record.errorMessage,
-              compacting: runActive ? record.compacting : false,
-              waitingPermissionIds: runActive ? record.waitingPermissionIds : [],
-              waitingQuestionIds: runActive ? record.waitingQuestionIds : [],
+              assistantOutput: record.runActive ? record.assistantOutput : false,
+              errorActive: false,
+              errorMessage: null,
             };
           }),
         };

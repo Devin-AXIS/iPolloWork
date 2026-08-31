@@ -47,6 +47,16 @@ export type CodexThread = {
 
 type CodexThreadList = { data?: CodexThread[]; nextCursor?: string | null };
 
+const TERMINAL_CODEX_TURN_STATUSES = new Set([
+  "completed",
+  "failed",
+  "interrupted",
+  "cancelled",
+  "canceled",
+]);
+
+const CODEX_NO_OUTPUT_ERROR = "Codex 已结束处理，但没有返回最终结果。请重试这条需求。";
+
 function timestamp(value: number | null | undefined): number {
   if (typeof value !== "number" || !Number.isFinite(value)) return Date.now();
   return value < 1_000_000_000_000 ? value * 1_000 : value;
@@ -64,12 +74,22 @@ function threadTitle(thread: CodexThread): string {
   return thread.name?.trim() || thread.preview?.trim().split(/\r?\n/u)[0]?.slice(0, 120) || "New conversation";
 }
 
+function codexThreadRunStatus(thread: CodexThread) {
+  if (thread.status?.type === "active") return { type: "busy" } as const;
+  const latestTurn = thread.turns?.at(-1);
+  if (latestTurn && !TERMINAL_CODEX_TURN_STATUSES.has(latestTurn.status)) {
+    return { type: "busy" } as const;
+  }
+  return { type: "idle" } as const;
+}
+
 export function mapCodexThread(thread: CodexThread, archived = false) {
   const created = timestamp(thread.createdAt);
   const updated = timestamp(thread.updatedAt ?? thread.createdAt);
   return {
     id: thread.id,
     title: threadTitle(thread),
+    status: codexThreadRunStatus(thread),
     slug: thread.id,
     ...(thread.parentThreadId ? { parentID: thread.parentThreadId } : {}),
     ...(thread.cwd ? { directory: thread.cwd } : {}),
@@ -179,7 +199,7 @@ function imageFileParts(content: CodexThreadItem["content"]) {
 }
 
 function messagePart(item: CodexThreadItem) {
-  if (item.type === "userMessage" || item.type === "agentMessage") {
+  if (item.type === "userMessage" || item.type === "agentMessage" || item.type === "plan") {
     const text = item.text ?? (item.type === "userMessage" ? userContentText(item.content) : contentText(item.content));
     const textParts = text ? [{ type: "text", text }] : [];
     return item.type === "userMessage" ? [...textParts, ...imageFileParts(item.content)] : textParts;
@@ -231,7 +251,16 @@ export function mapCodexMessages(thread: CodexThread) {
     const parentUserMessageId = userItem
       ? userItem.clientId?.trim() || userItem.id
       : undefined;
-    return turn.items.flatMap((item) => {
+    const hasVisibleResult = turn.items.some((item) => (
+      (item.type === "agentMessage" || item.type === "plan")
+      && Boolean((item.text ?? contentText(item.content)).trim())
+    ));
+    const outcomeError = turn.status === "failed"
+      ? turn.error?.message || "Codex turn failed"
+      : turn.status === "completed" && !hasVisibleResult
+        ? CODEX_NO_OUTPUT_ERROR
+        : null;
+    const mapped = turn.items.flatMap((item) => {
       const role = item.type === "userMessage" ? "user" : "assistant";
       const parts = messagePart(item);
       if (!parts.length) return [];
@@ -247,7 +276,9 @@ export function mapCodexMessages(thread: CodexThread) {
           role,
           ...(role === "assistant" && parentUserMessageId ? { parentID: parentUserMessageId } : {}),
           time: { created, completed },
-          ...(turn.status === "failed" ? { error: { name: "CodexError", data: { message: turn.error?.message } } } : {}),
+          ...(role === "assistant" && outcomeError
+            ? { error: { name: "CodexError", data: { message: outcomeError } } }
+            : {}),
         },
         parts: parts.map((part, index) => ({
           ...part,
@@ -257,6 +288,19 @@ export function mapCodexMessages(thread: CodexThread) {
         })),
       }];
     });
+    if (!outcomeError || mapped.some((message) => message.info.role === "assistant")) return mapped;
+    const completed = timestamp(turn.completedAt ?? turn.startedAt ?? thread.updatedAt);
+    return [...mapped, {
+      info: {
+        id: `codex-turn-outcome:${turn.id}`,
+        sessionID: thread.id,
+        role: "assistant",
+        ...(parentUserMessageId ? { parentID: parentUserMessageId } : {}),
+        time: { created: completed, completed },
+        error: { name: "CodexError", data: { message: outcomeError } },
+      },
+      parts: [],
+    }];
   });
 }
 
@@ -339,6 +383,6 @@ export async function readCodexHarnessSnapshot(runtime: CodexHarnessRuntime, thr
     session: mapCodexThread(thread),
     messages: typeof limit === "number" ? messages.slice(-limit) : messages,
     todos: [],
-    status: thread.status?.type === "active" ? { type: "busy" } : { type: "idle" },
+    status: codexThreadRunStatus(thread),
   };
 }

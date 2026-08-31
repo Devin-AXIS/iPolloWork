@@ -3470,11 +3470,28 @@ function parseOpencodeErrorBody(input: string): unknown {
   }
 }
 
-async function reloadOpencodeEngine(config: ServerConfig, workspace: WorkspaceInfo): Promise<void> {
+async function reloadOpencodeEngine(
+  config: ServerConfig,
+  workspace: WorkspaceInfo,
+  options: { skipIfBusy?: boolean } = {},
+): Promise<void> {
   const connection = resolveWorkspaceOpencodeConnection(config, workspace);
   const baseUrl = connection.baseUrl?.trim() ?? "";
   if (!baseUrl) {
     throw new ApiError(400, "opencode_unconfigured", "OpenCode base URL is missing for this workspace");
+  }
+
+  if (options.skipIfBusy) {
+    try {
+      const result = await createWorkspaceOpencodeClient(config, workspace).session.status();
+      if (result.data == null) return;
+      const busy = Object.values(result.data).some((status) => status.type === "busy" || status.type === "retry");
+      if (busy) return;
+    } catch {
+      // If activity cannot be determined, preserve the running instance. A
+      // later explicit configuration reload can safely retry this operation.
+      return;
+    }
   }
 
   const directory = resolveOpencodeDirectory(workspace);

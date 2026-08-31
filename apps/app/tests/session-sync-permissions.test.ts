@@ -12,11 +12,13 @@ import type {
 import { mapOpenCodeConversationEvent } from "../src/react-app/domains/session/engine/opencode-conversation-mapper";
 import { persistentPermissionPatterns } from "../src/react-app/domains/session/sync/use-session-interactions";
 import { deriveRenderedSessionMessages } from "../src/react-app/domains/session/surface/session-render-state";
+import { useSessionActivityStore } from "../src/react-app/domains/session/status/session-activity-store";
 import {
   __applySessionSyncEventForTest,
   __createWorkspaceSessionSyncForTest,
   __disposeWorkspaceSessionSyncForTest,
   __hasWorkspaceSessionSyncForTest,
+  __reconcileRetainedSessionForTest,
   beginOptimisticSessionPrompt,
   coalescePendingDeltas,
   destroyWorkspaceSessionResources,
@@ -154,6 +156,8 @@ function applyOpenCodeEvent(input: typeof syncInput, event: unknown) {
 afterEach(() => {
   destroyWorkspaceSessionResources(syncInput, "session-a");
   destroyWorkspaceSessionResources(syncInput, "session-b");
+  useSessionActivityStore.getState().removeSession("workspace-a", "session-a");
+  useSessionActivityStore.getState().removeSession("workspace-a", "session-b");
   getReactQueryClient().clear();
 });
 
@@ -384,6 +388,64 @@ describe("session transcript sync", () => {
         parts: [expect.objectContaining({ text: "立即开始处理" })],
       }),
     ]);
+  });
+
+  test("keeps an acknowledged live prompt busy when an older snapshot omits that turn", () => {
+    const cleanup = __createWorkspaceSessionSyncForTest(syncInput);
+    const releaseSession = trackWorkspaceSessionSync(syncInput, "session-a");
+    beginOptimisticSessionPrompt("workspace-a", "session-a", "继续处理", "user-live");
+
+    try {
+      __applySessionSyncEventForTest(syncInput, {
+        type: "message.upsert",
+        sessionId: "session-a",
+        message: uiMessage("user-live", "user", "继续处理"),
+      });
+      seedSessionState("workspace-a", snapshotWithMessages([]));
+
+      expect(getReactQueryClient().getQueryData(statusKey("workspace-a", "session-a"))).toEqual({ type: "busy" });
+      expect(useSessionActivityStore.getState().getStatus("workspace-a", "session-a")).toBe("thinking");
+    } finally {
+      releaseSession();
+      cleanup();
+    }
+  });
+
+  test("marks an acknowledged idle snapshot without final output as an error", () => {
+    const cleanup = __createWorkspaceSessionSyncForTest(syncInput);
+    const releaseSession = trackWorkspaceSessionSync(syncInput, "session-a");
+    beginOptimisticSessionPrompt("workspace-a", "session-a", "生成结果", "user-no-output");
+    try {
+      __applySessionSyncEventForTest(syncInput, {
+        type: "message.upsert",
+        sessionId: "session-a",
+        message: uiMessage("user-no-output", "user", "生成结果"),
+      });
+      __applySessionSyncEventForTest(syncInput, {
+        type: "session.status",
+        sessionId: "session-a",
+        status: { type: "busy" },
+      });
+      seedSessionState("workspace-a", snapshotWithMessages([
+        { id: "user-no-output", role: "user", text: "生成结果" },
+      ]));
+
+      expect(useSessionActivityStore.getState().getStatus("workspace-a", "session-a")).toBe("error");
+      expect(getReactQueryClient().getQueryData<UIMessage[]>(transcriptKey("workspace-a", "session-a")))
+        .toEqual(expect.arrayContaining([
+          expect.objectContaining({
+            id: "session-error:user-no-output",
+            role: "assistant",
+            parts: [expect.objectContaining({
+              type: "text",
+              text: "引擎已结束处理，但没有返回最终结果。请重试这条需求。",
+            })],
+          }),
+        ]));
+    } finally {
+      releaseSession();
+      cleanup();
+    }
   });
 
   test("keeps a prompt submitted after interruption visible across a stale reverted snapshot", () => {
@@ -894,6 +956,53 @@ describe("session transcript sync", () => {
       releaseSessionB();
     } finally {
       cleanup();
+    }
+  });
+
+  test("reconciles a retained background run to its final output", async () => {
+    const completedSnapshot = snapshotWithMessages([
+      { id: "user-background", role: "user", text: "后台完成" },
+      {
+        id: "assistant-background",
+        role: "assistant",
+        text: "后台结果",
+        parentUserMessageId: "user-background",
+      },
+    ]);
+    const liveSyncInput = {
+      ...syncInput,
+      connection: testConnection,
+      readSnapshot: async () => completedSnapshot,
+    };
+    const releaseWorkspace = ensureWorkspaceSessionSync(liveSyncInput);
+    const releaseSession = trackWorkspaceSessionSync(liveSyncInput, "session-a");
+    beginOptimisticSessionPrompt("workspace-a", "session-a", "后台完成", "user-background");
+    __applySessionSyncEventForTest(liveSyncInput, {
+      type: "message.upsert",
+      sessionId: "session-a",
+      message: uiMessage("user-background", "user", "后台完成"),
+    });
+    __applySessionSyncEventForTest(liveSyncInput, {
+      type: "session.status",
+      sessionId: "session-a",
+      status: { type: "busy" },
+    });
+    releaseSession();
+
+    try {
+      await __reconcileRetainedSessionForTest(liveSyncInput, "session-a");
+
+      expect(useSessionActivityStore.getState().getStatus("workspace-a", "session-a")).toBe("idle");
+      expect(getReactQueryClient().getQueryData<UIMessage[]>(transcriptKey("workspace-a", "session-a")))
+        .toEqual(expect.arrayContaining([
+          expect.objectContaining({
+            id: "assistant-background",
+            parts: [expect.objectContaining({ text: "后台结果" })],
+          }),
+        ]));
+    } finally {
+      releaseWorkspace();
+      __disposeWorkspaceSessionSyncForTest(liveSyncInput);
     }
   });
 

@@ -433,7 +433,7 @@ async function runSharedProviderImportOnce(
   fingerprint: SharedProviderImportFingerprint,
   operation: (state: {
     configAlreadyImported: boolean;
-    credentialsAlreadyImported: boolean;
+    credentialAlreadyImported: (providerId: string, apiKey: string) => boolean;
   }) => Promise<SharedProviderImportResult>,
 ): Promise<SharedProviderImportResult> {
   const current = sharedProviderImportFingerprints.get(scopeKey);
@@ -447,9 +447,26 @@ async function runSharedProviderImportOnce(
     return runSharedProviderImportOnce(scopeKey, fingerprint, operation);
   }
 
+  let previousCredentials = new Map<string, string>();
+  try {
+    const parsed: unknown = JSON.parse(current?.credentials ?? "[]");
+    if (Array.isArray(parsed)) {
+      previousCredentials = new Map(parsed.flatMap((entry): Array<[string, string]> => (
+        isRecord(entry)
+        && typeof entry.providerId === "string"
+        && typeof entry.apiKey === "string"
+          ? [[entry.providerId, entry.apiKey]]
+          : []
+      )));
+    }
+  } catch {
+    // A malformed in-memory fingerprint is treated as a cold import.
+  }
   const pending = operation({
     configAlreadyImported: current?.config === fingerprint.config,
-    credentialsAlreadyImported: current?.credentials === fingerprint.credentials,
+    credentialAlreadyImported: (providerId, apiKey) => (
+      previousCredentials.get(providerId) === apiKey
+    ),
   }).then((result) => {
     sharedProviderImportFingerprints.delete(scopeKey);
     sharedProviderImportFingerprints.set(scopeKey, fingerprint);
@@ -1271,6 +1288,7 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
   const mirrorSharedProviderConnection = async (
     apiKey: string,
     profile: SharedProviderProfile,
+    optionsArg?: { refreshProviderLists?: boolean },
   ) => {
     const ipolloworkClient = getProviderServerSnapshot().ipolloworkServerClient;
     if (!ipolloworkClient) return;
@@ -1279,10 +1297,15 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
       "accountConnectedProviderIds",
       [...new Set([...state.accountConnectedProviderIds, profile.providerId])],
     );
-    await refreshProviderListQueries(getReactQueryClient());
+    if (optionsArg?.refreshProviderLists !== false) {
+      await refreshProviderListQueries(getReactQueryClient());
+    }
   };
 
-  const mirrorSharedProviderProfile = async (profile: SharedProviderProfile) => {
+  const mirrorSharedProviderProfile = async (
+    profile: SharedProviderProfile,
+    optionsArg?: { refreshProviderLists?: boolean },
+  ) => {
     const ipolloworkClient = getProviderServerSnapshot().ipolloworkServerClient;
     if (!ipolloworkClient) return;
     await ipolloworkClient.upsertUserEnv([{
@@ -1293,12 +1316,15 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
       "accountConnectedProviderIds",
       [...new Set([...state.accountConnectedProviderIds, profile.providerId])].sort(),
     );
-    await refreshProviderListQueries(getReactQueryClient());
+    if (optionsArg?.refreshProviderLists !== false) {
+      await refreshProviderListQueries(getReactQueryClient());
+    }
   };
 
   const persistProvidersExplicitlyDisconnected = async (
     providerIds: readonly string[],
     disconnected: boolean,
+    optionsArg?: { refreshProviderLists?: boolean },
   ) => {
     const resolvedProviderIds = [
       ...new Set(providerIds.flatMap(accountProviderCredentialIds)),
@@ -1321,7 +1347,9 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
       }
     }
     setProvidersExplicitlyDisconnected(resolvedProviderIds, disconnected);
-    await refreshProviderListQueries(getReactQueryClient());
+    if (optionsArg?.refreshProviderLists !== false) {
+      await refreshProviderListQueries(getReactQueryClient());
+    }
   };
 
   const refreshAccountConnectedProviderIds = async () => {
@@ -1470,16 +1498,22 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
       return runSharedProviderImportOnce(importScopeKey, {
         config: configFingerprint,
         credentials: credentialFingerprint,
-      }, async ({ configAlreadyImported, credentialsAlreadyImported }) => {
+      }, async ({ configAlreadyImported, credentialAlreadyImported }) => {
         let runtimeConfigChanged = false;
         if (!configAlreadyImported) {
           const target = await resolveProviderEngineConfigTarget("read");
           const runtimeProviderIds = new Set(await adapter.runtimeProviderIds(target));
+          const nativeProviderIds = new Set(
+            options.providers()
+              .filter((provider) => provider.source === "api")
+              .map((provider) => provider.id.trim().toLowerCase()),
+          );
           for (const entry of connections) {
             if (!entry.apiKey) continue;
             const profile = entry.profile;
             if (
               profile?.baseURL
+              && !nativeProviderIds.has(entry.providerId)
               && (!runtimeProviderIds.has(entry.providerId) || entry.profileMetadataChanged)
             ) {
               await patchRuntimeProviders(
@@ -1515,24 +1549,18 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
           }
         }
 
-        // A provider added to runtime config is not addressable through the
-        // currently running engine. Reload first, then acquire a fresh
-        // connection and write all credentials.
-        if (runtimeConfigChanged) {
-          await reloadProviderEngine(engineClient);
-        }
-        const activeClient = options.client() ?? engineClient;
-        const connection = adapter.connect(activeClient);
+        // OpenCode's auth store applies credentials live. Persist only changed
+        // credentials and reload solely when the model route itself changed;
+        // credential-only account hydration must not restart an active engine.
+        const connection = adapter.connect(engineClient);
         let credentialsChanged = false;
-        if (!credentialsAlreadyImported) {
-          for (const entry of connections) {
-            if (!entry.apiKey) continue;
-            await connection.setApiKey(entry.providerId, entry.apiKey);
-            credentialsChanged = true;
-          }
+        for (const entry of connections) {
+          if (!entry.apiKey || credentialAlreadyImported(entry.providerId, entry.apiKey)) continue;
+          await connection.setApiKey(entry.providerId, entry.apiKey);
+          credentialsChanged = true;
         }
-        if (credentialsChanged) {
-          await reloadProviderEngine(activeClient);
+        if (runtimeConfigChanged) {
+          await reloadProviderEngine(options.client() ?? engineClient);
         }
         return {
           changed: runtimeConfigChanged || credentialsChanged || enrichedProfiles.length > 0,
@@ -2047,7 +2075,7 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
       const startedAt = Date.now();
       while (Date.now() - startedAt < timeoutMs) {
         try {
-          const updated = await refreshProviders({ force: true });
+          const updated = await refreshProviders({ force: true, skipSharedImport: true });
           const connected = new Set(updated?.connected ?? []);
           if (connected.has(resolved)) {
             return true;
@@ -2066,8 +2094,15 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
     };
 
     const finishConnectedOAuth = async () => {
-      await mirrorSharedProviderProfile(catalogSharedProviderProfile(options.providers(), resolved));
-      await persistProvidersExplicitlyDisconnected([resolved], false);
+      await mirrorSharedProviderProfile(
+        catalogSharedProviderProfile(options.providers(), resolved),
+        { refreshProviderLists: false },
+      );
+      await persistProvidersExplicitlyDisconnected(
+        [resolved],
+        false,
+        { refreshProviderLists: false },
+      );
       return { connected: true, message: `${t("status.connected")} ${resolved}` };
     };
 
@@ -2075,7 +2110,10 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
       const trimmedCode = code?.trim();
       await connection.completeOAuth(resolved, methodIndex, trimmedCode || undefined);
       await ensureProjectProviderDisabledState(resolved, false);
-      const updated = await refreshProviders({ dispose: true });
+      const updated = await refreshProviders({
+        dispose: true,
+        skipSharedImport: true,
+      });
       const connectedNow = Array.isArray(updated?.connected) && updated.connected.includes(resolved);
       if (connectedNow) {
         return await finishConnectedOAuth();
@@ -2092,7 +2130,7 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
         // OpenCode after the renderer-side request times out. Reloading the
         // provider engine here destroys the pending OAuth state and turns a
         // valid callback into an "Invalid state" failure.
-        const updated = await refreshProviders({ force: true });
+        const updated = await refreshProviders({ force: true, skipSharedImport: true });
         if (Array.isArray(updated?.connected) && updated.connected.includes(resolved)) {
           return await finishConnectedOAuth();
         }
@@ -2164,15 +2202,20 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
       // Save the account-level credential and model profile first. Engine
       // reloads can remount this store, so persisting it last can leave a
       // provider configured in one workspace but unavailable everywhere else.
-      await mirrorSharedProviderConnection(trimmed, sharedProfile);
-      await persistProvidersExplicitlyDisconnected([resolvedProviderId], false);
+      await mirrorSharedProviderConnection(
+        trimmed,
+        sharedProfile,
+        { refreshProviderLists: false },
+      );
+      await persistProvidersExplicitlyDisconnected(
+        [resolvedProviderId],
+        false,
+        { refreshProviderLists: false },
+      );
       if (compatibleProfile) {
         await patchRuntimeProviders(
           getProviderEngineAdapter().buildCompatibleProviderPatch(compatibleProfile),
         );
-        if (getProviderEngineAdapter().capabilities.authChangesRequireReload) {
-          await reloadProviderEngine(options.client());
-        }
       }
       await getProviderEngineConnection().setApiKey(resolvedProviderId, trimmed);
       setStateField(
@@ -2181,7 +2224,10 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
       );
       await ensureProjectProviderDisabledState(resolvedProviderId, false);
       await refreshProviders({
-        dispose: getProviderEngineAdapter().capabilities.authChangesRequireReload,
+        dispose: Boolean(
+          compatibleProfile
+          && getProviderEngineAdapter().capabilities.authChangesRequireReload
+        ),
         force: true,
         skipSharedImport: true,
       });

@@ -42,7 +42,7 @@ function auth(token: string) {
   return { Authorization: `Bearer ${token}` };
 }
 
-function startMockOpencode(input?: { invalidList?: boolean; holdCommand?: Promise<void>; promptAsyncNoContent?: boolean }) {
+function startMockOpencode(input?: { invalidList?: boolean; invalidStatus?: boolean; holdCommand?: Promise<void>; promptAsyncNoContent?: boolean }) {
   const requests: Array<{
     method: string;
     pathname: string;
@@ -92,6 +92,9 @@ function startMockOpencode(input?: { invalidList?: boolean; holdCommand?: Promis
       }
 
       if (url.pathname === "/session/status") {
+        if (input?.invalidStatus) {
+          return Response.json({ nope: true });
+        }
         return Response.json({ ses_1: { type: "busy" } });
       }
 
@@ -298,6 +301,7 @@ describe("workspace session read APIs", () => {
           slug: "hostname-check",
           directory: workspaceRoot,
           time: { created: 100, updated: 200 },
+          status: { type: "busy" },
         },
       ],
     });
@@ -478,6 +482,24 @@ describe("workspace session read APIs", () => {
       message: "OpenCode returned invalid session list",
     });
 
+  });
+
+  test("keeps the session directory available when OpenCode status is temporarily invalid", async () => {
+    const workspaceRoot = await createWorkspaceRoot();
+    const mock = startMockOpencode({ invalidStatus: true });
+    const ipollowork = await startiPolloWorkServer({
+      workspaceRoot,
+      opencodeBaseUrl: `http://127.0.0.1:${mock.server.port}`,
+    });
+
+    const response = await fetch(`http://127.0.0.1:${ipollowork.server.port}/workspace/ws_1/sessions`, {
+      headers: auth(ipollowork.token),
+    });
+
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body.items).toHaveLength(1);
+    expect(body.items[0]).not.toHaveProperty("status");
   });
 });
 
