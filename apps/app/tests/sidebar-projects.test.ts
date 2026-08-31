@@ -5,6 +5,7 @@ import {
   buildSessionTreeState,
   buildSidebarArchivedSessions,
   buildSidebarLayoutView,
+  isStreamingSessionStatus,
   visibleProjectSessionLists,
 } from "../src/react-app/domains/session/sidebar/utils";
 import {
@@ -510,6 +511,15 @@ describe("sidebar projects", () => {
     expect(sidebarSource).toContain("!projectExpanded ? (");
     expect(sidebarSource).toContain("isStreaming={projectIsStreaming}");
     expect(sidebarSource).toContain("isActive={projectIsActive}");
+  });
+
+  test("spins for engine work but not while waiting for user input", () => {
+    expect(isStreamingSessionStatus("thinking")).toBe(true);
+    expect(isStreamingSessionStatus("responding")).toBe(true);
+    expect(isStreamingSessionStatus("compacting")).toBe(true);
+    expect(isStreamingSessionStatus("waiting")).toBe(false);
+    expect(sidebarSource).toContain("const projectIsStreaming = Boolean(projectStreamingStatus)");
+    expect(sidebarSource).toContain('Boolean(sessionActivityStatus && sessionActivityStatus !== "idle")');
   });
 
   test("renders conversations directly under each project", () => {

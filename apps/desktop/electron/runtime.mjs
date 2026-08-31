@@ -15,6 +15,34 @@ const DIRECT_RUNTIME = "direct";
 const ORCHESTRATOR_RUNTIME = "ipollowork-orchestrator";
 const IPOLLOWORK_SERVER_PORT_RANGE_START = 48_000;
 const IPOLLOWORK_SERVER_PORT_RANGE_END = 51_000;
+const RUNTIME_PROXY_ENV_KEYS = [
+  "HTTP_PROXY",
+  "HTTPS_PROXY",
+  "ALL_PROXY",
+  "http_proxy",
+  "https_proxy",
+  "all_proxy",
+  "NO_PROXY",
+  "no_proxy",
+  "NODE_USE_ENV_PROXY",
+];
+const RUNTIME_PROXY_ENDPOINT_KEYS = RUNTIME_PROXY_ENV_KEYS.slice(0, 6);
+
+function runtimeProxyEnvironment(sourceEnv = {}) {
+  return Object.fromEntries(RUNTIME_PROXY_ENV_KEYS.flatMap((key) => (
+    Object.prototype.hasOwnProperty.call(sourceEnv, key)
+      ? [[key, sourceEnv[key]]]
+      : []
+  )));
+}
+
+function hasRuntimeProxyEndpoint(sourceEnv = {}) {
+  return RUNTIME_PROXY_ENDPOINT_KEYS.some((key) => String(sourceEnv[key] ?? "").trim());
+}
+
+export function runtimeProxyEnvironmentFingerprint(sourceEnv = {}) {
+  return JSON.stringify(RUNTIME_PROXY_ENV_KEYS.map((key) => [key, sourceEnv[key] ?? null]));
+}
 
 function truncateOutput(value, limit = 8000) {
   const text = String(value ?? "");
@@ -76,6 +104,9 @@ export function applyEmbeddedServerEnvironment(targetEnv, sourceEnv) {
     "OPENCODE_CONFIG_DIR",
     "OPENCODE_TEST_HOME",
   ]);
+  for (const key of RUNTIME_PROXY_ENV_KEYS) {
+    if (!Object.prototype.hasOwnProperty.call(sourceEnv ?? {}, key)) delete targetEnv[key];
+  }
   for (const [key, value] of Object.entries(sourceEnv ?? {})) {
     if (!desktopOnlyKeys.has(key)) targetEnv[key] = value;
   }
@@ -258,6 +289,7 @@ function createiPolloWorkServerState() {
     lastStdout: null,
     lastStderr: null,
     managedOpencodeExecution: null,
+    networkEnvironmentFingerprint: null,
   };
 }
 
@@ -718,6 +750,10 @@ export function createRuntimeManager({ app, desktopRoot, listLocalWorkspacePaths
   const engineState = createEngineState();
   const ipolloworkServerState = createiPolloWorkServerState();
   const orchestratorState = createOrchestratorState();
+  // Capture only the environment inherited when the desktop launched. Proxy
+  // values copied from a previous child environment must never become the
+  // next launch's "explicit" configuration after a VPN/system-proxy change.
+  const inheritedRuntimeProxyEnv = runtimeProxyEnvironment(process.env);
 
   // Serialize engine lifecycle operations. Without this, concurrent renderer
   // invocations of engineStart/engineStop/engineRestart race: each call's
@@ -934,12 +970,21 @@ export function createRuntimeManager({ app, desktopRoot, listLocalWorkspacePaths
     // User env is layered first so process.env + any caller overrides always
     // win. See apps/server/src/env-file.ts and apps/orchestrator/src/cli.ts —
     // all loaders must agree on path + reserved-keys policy.
+    const userEnv = loadUserEnvFile();
     const baseEnv = {
-      ...loadUserEnvFile(),
+      ...userEnv,
       ...process.env,
       BUN_CONFIG_DNS_RESULT_ORDER: "verbatim",
     };
-    Object.assign(baseEnv, resolveWindowsSystemProxyEnv(baseEnv));
+    const explicitProxyEnv = {
+      ...inheritedRuntimeProxyEnv,
+      ...runtimeProxyEnvironment(userEnv),
+    };
+    for (const key of RUNTIME_PROXY_ENV_KEYS) delete baseEnv[key];
+    Object.assign(baseEnv, explicitProxyEnv);
+    if (!hasRuntimeProxyEndpoint(explicitProxyEnv)) {
+      Object.assign(baseEnv, resolveWindowsSystemProxyEnv(explicitProxyEnv));
+    }
     const caEnv = Object.prototype.hasOwnProperty.call(baseEnv, "NODE_EXTRA_CA_CERTS") ? {} : await systemCaEnv();
     // Bun honors Node's NODE_EXTRA_CA_CERTS, so bundled Bun sidecars inherit
     // the exported OS trust store through the same child env variable.
@@ -1419,6 +1464,7 @@ export function createRuntimeManager({ app, desktopRoot, listLocalWorkspacePaths
     ipolloworkServerState.baseUrl = baseUrl;
     ipolloworkServerState.clientToken = tokens.clientToken;
     ipolloworkServerState.hostToken = tokens.hostToken;
+    ipolloworkServerState.networkEnvironmentFingerprint = runtimeProxyEnvironmentFingerprint(serverEnv);
 
     const connectUrls = options.remoteAccessEnabled ? buildConnectUrls(boundPort) : { connectUrl: null, mdnsUrl: null, lanUrl: null };
     ipolloworkServerState.connectUrl = connectUrls.connectUrl;
@@ -1674,12 +1720,16 @@ export function createRuntimeManager({ app, desktopRoot, listLocalWorkspacePaths
     // the sticky preferred port, racing the not-yet-released socket into
     // EADDRINUSE and leaving the runtime in error -> boot screen.
     const requestedRemoteAccess = options.ipolloworkRemoteAccess === true;
+    const currentNetworkEnvironmentFingerprint = ipolloworkServerState.inProcess
+      ? runtimeProxyEnvironmentFingerprint(await buildChildEnv())
+      : null;
     if (
       options.forceRestart !== true &&
       ipolloworkServerState.inProcess &&
       lifecycleState === "healthy" &&
       normalizeWorkspaceKey(engineState.projectDir) === normalizeWorkspaceKey(safeProjectDir) &&
-      ipolloworkServerState.remoteAccessEnabled === requestedRemoteAccess
+      ipolloworkServerState.remoteAccessEnabled === requestedRemoteAccess &&
+      ipolloworkServerState.networkEnvironmentFingerprint === currentNetworkEnvironmentFingerprint
     ) {
       const existing = snapshotiPolloWorkServerState(ipolloworkServerState);
       if (existing.running && existing.baseUrl && (existing.ownerToken || existing.clientToken)) {

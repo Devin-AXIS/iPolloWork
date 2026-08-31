@@ -67,7 +67,7 @@ describe("Codex Harness session read model", () => {
       createdAt: 1,
       turns: [{
         id: "turn-1",
-        status: "completed",
+        status: "inProgress",
         startedAt: 10,
         completedAt: 20,
         items: [{

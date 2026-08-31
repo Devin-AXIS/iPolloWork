@@ -1950,10 +1950,10 @@ describe("model runtime adapters", () => {
       calls.findIndex((call) => call.name === "patch-config"),
     );
     expect(calls.findIndex((call) => call.name === "patch-config")).toBeLessThan(
-      calls.findIndex((call) => call.name === "reload-engine"),
-    );
-    expect(calls.findIndex((call) => call.name === "reload-engine")).toBeLessThan(
       calls.findIndex((call) => call.name === "set"),
+    );
+    expect(calls.findIndex((call) => call.name === "set")).toBeLessThan(
+      calls.findIndex((call) => call.name === "reload-engine"),
     );
     expect(mirroredCredentials[0]).toEqual({
       key: sharedProviderCredentialEnvKey("deepseek-official"),
@@ -2074,10 +2074,10 @@ describe("model runtime adapters", () => {
       calls.findIndex((call) => call.name === "patch-config"),
     );
     expect(calls.findIndex((call) => call.name === "patch-config")).toBeLessThan(
-      calls.findIndex((call) => call.name === "reload-engine"),
-    );
-    expect(calls.findIndex((call) => call.name === "reload-engine")).toBeLessThan(
       calls.findIndex((call) => call.name === "set"),
+    );
+    expect(calls.findIndex((call) => call.name === "set")).toBeLessThan(
+      calls.findIndex((call) => call.name === "reload-engine"),
     );
     expect(mirroredCredentials[0]).toEqual({
       key: sharedProviderCredentialEnvKey("orcarouter"),
@@ -2212,11 +2212,137 @@ describe("model runtime adapters", () => {
       },
     ]);
     expect(calls.findIndex((call) => call.name === "patch-config")).toBeLessThan(
-      calls.findIndex((call) => call.name === "reload-engine"),
-    );
-    expect(calls.findIndex((call) => call.name === "reload-engine")).toBeLessThan(
       calls.findIndex((call) => call.name === "set"),
     );
+    expect(calls.findIndex((call) => call.name === "set")).toBeLessThan(
+      calls.findIndex((call) => call.name === "reload-engine"),
+    );
+  });
+
+  test("imports only OpenAI after DeepSeek is already synchronized", async () => {
+    const queryClient = getReactQueryClient();
+    queryClient.clear();
+    const { calls, client } = createOpenCodeProviderClient();
+    const deepSeekCredentialKey = sharedProviderCredentialEnvKey("deepseek-official");
+    const deepSeekProfileKey = sharedProviderProfileEnvKey("deepseek-official");
+    const openAiCredentialKey = sharedProviderCredentialEnvKey("openai");
+    const openAiProfileKey = sharedProviderProfileEnvKey("openai");
+    const values = new Map<string, string>([
+      [deepSeekCredentialKey, "deepseek-key"],
+      [deepSeekProfileKey, JSON.stringify({
+        schemaVersion: 1,
+        providerId: "deepseek-official",
+        displayName: "DeepSeek",
+        api: "openai-completions",
+        baseURL: "https://api.deepseek.com",
+        models: [{ id: "deepseek-v4-pro", name: "DeepSeek-V4-Pro" }],
+      })],
+    ]);
+    const runtimeProviderIds = new Set<string>();
+    const serverClient = {
+      listUserEnvKeys: async () => ({ keys: [...values.keys()] }),
+      getUserEnv: async (key: string) => ({ item: { key, value: values.get(key) ?? "" } }),
+      getConfig: async () => ({
+        opencode: {
+          provider: Object.fromEntries([...runtimeProviderIds].map((providerId) => [providerId, {}])),
+        },
+      }),
+      patchConfig: async (_workspaceId: string, patch: unknown) => {
+        calls.push({ name: "patch-config" });
+        const providerPatch = (
+          patch
+          && typeof patch === "object"
+          && "opencode" in patch
+          && patch.opencode
+          && typeof patch.opencode === "object"
+          && "provider" in patch.opencode
+          && patch.opencode.provider
+          && typeof patch.opencode.provider === "object"
+        ) ? patch.opencode.provider : {};
+        for (const providerId of Object.keys(providerPatch)) runtimeProviderIds.add(providerId);
+        return { ok: true };
+      },
+      reloadEngine: async () => {
+        calls.push({ name: "reload-engine" });
+        return { ok: true };
+      },
+      upsertUserEnv: async (entries: Array<{ key: string; value: string }>) => {
+        for (const entry of entries) values.set(entry.key, entry.value);
+        return { updated: entries.map((entry) => entry.key) };
+      },
+    };
+    let providers: ProviderListItem[] = [];
+    let connectedProviderIds: string[] = [];
+    const store = createProviderAuthStore({
+      client: () => client,
+      providers: () => providers,
+      providerDefaults: () => ({ opencode: "default-model" }),
+      providerConnectedIds: () => connectedProviderIds,
+      disabledProviders: () => [],
+      checkDesktopAppRestriction: () => false,
+      selectedWorkspaceDisplay: () => ({
+        id: "workspace-deepseek-then-openai",
+        name: "DeepSeek then OpenAI",
+        path: "C:\\workspace-deepseek-then-openai",
+        preset: "starter",
+        workspaceType: "local",
+        engineId: DEFAULT_ENGINE_ID,
+      }),
+      providerBaseUrl: () => "http://localhost:43129/opencode",
+      selectedWorkspaceRoot: () => "C:\\workspace-deepseek-then-openai",
+      runtimeWorkspaceId: () => "workspace-deepseek-then-openai",
+      ipolloworkServer: {
+        getSnapshot: () => ({
+          ipolloworkServerStatus: "connected",
+          ipolloworkServerClient: serverClient as never,
+          ipolloworkServerCapabilities: { config: { read: true, write: true } },
+        }),
+      },
+      setProviders: (value) => { providers = value; },
+      setProviderDefaults: () => {},
+      setProviderConnectedIds: (value) => { connectedProviderIds = value; },
+      setDisabledProviders: () => {},
+      markEngineConfigReloadRequired: () => {},
+    });
+
+    await store.refreshProviders({ force: true });
+    providers = [
+      ...providers,
+      {
+        id: "openai",
+        name: "OpenAI",
+        source: "api",
+        env: [],
+        models: { "gpt-5.4": { id: "gpt-5.4", capabilities: {} } },
+      },
+    ];
+    values.set(openAiCredentialKey, "openai-key");
+    values.set(openAiProfileKey, JSON.stringify({
+      schemaVersion: 1,
+      providerId: "openai",
+      displayName: "OpenAI",
+      models: [{ id: "gpt-5.4", name: "GPT-5.4" }],
+    }));
+    await store.refreshProviders({ force: true });
+
+    expect(calls.filter((call) => call.name === "set").map((call) => call.value)).toEqual([
+      {
+        providerID: "deepseek-official",
+        auth: { type: "api", key: "deepseek-key" },
+      },
+      {
+        providerID: "openai",
+        auth: { type: "api", key: "openai-key" },
+      },
+    ]);
+    expect(calls.filter((call) => call.name === "reload-engine")).toHaveLength(1);
+    expect(store.getSnapshot().connectedProviderIds).toEqual(expect.arrayContaining([
+      "deepseek-official",
+      "openai",
+    ]));
+
+    store.dispose();
+    queryClient.clear();
   });
 
   test("projects DSH's Codex OAuth route into the account OpenAI provider", async () => {

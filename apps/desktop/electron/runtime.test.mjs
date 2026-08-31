@@ -14,6 +14,7 @@ import {
   managedOpencodeEnvironment,
   prioritizeWorkspacePaths,
   resolveiPolloWorkServerConfigPath,
+  runtimeProxyEnvironmentFingerprint,
   seedWorkspacePathsForEmbeddedServer,
   selectStickyiPolloWorkPortWorkspace,
   stageBundledOpencodeRuntime,
@@ -73,6 +74,32 @@ describe("applyEmbeddedServerEnvironment", () => {
     assert.equal(desktopEnv.XDG_CONFIG_HOME, "C:\\Users\\Lenovo\\.config");
     assert.equal(desktopEnv.OPENCODE_CONFIG_DIR, undefined);
     assert.equal(desktopEnv.OPENAI_API_KEY, "test-key");
+  });
+
+  it("replaces and removes stale proxy values after a VPN change", () => {
+    const desktopEnv = {
+      HTTP_PROXY: "http://127.0.0.1:7890",
+      HTTPS_PROXY: "http://127.0.0.1:7890",
+      NODE_USE_ENV_PROXY: "1",
+      KEEP_ME: "desktop",
+    };
+
+    applyEmbeddedServerEnvironment(desktopEnv, {
+      HTTP_PROXY: "http://127.0.0.1:7891",
+      HTTPS_PROXY: "http://127.0.0.1:7891",
+      NODE_USE_ENV_PROXY: "1",
+      KEEP_ME: "child",
+    });
+    assert.equal(desktopEnv.HTTP_PROXY, "http://127.0.0.1:7891");
+    assert.equal(desktopEnv.HTTPS_PROXY, "http://127.0.0.1:7891");
+    assert.equal(desktopEnv.KEEP_ME, "child");
+
+    const beforeDisable = runtimeProxyEnvironmentFingerprint(desktopEnv);
+    applyEmbeddedServerEnvironment(desktopEnv, { KEEP_ME: "without-proxy" });
+    assert.equal(desktopEnv.HTTP_PROXY, undefined);
+    assert.equal(desktopEnv.HTTPS_PROXY, undefined);
+    assert.equal(desktopEnv.NODE_USE_ENV_PROXY, undefined);
+    assert.notEqual(runtimeProxyEnvironmentFingerprint(desktopEnv), beforeDisable);
   });
 });
 

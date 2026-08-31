@@ -13,7 +13,7 @@ import {
 } from "@ipollowork/types/workspace";
 import {
   normalizeDirectoryPath,
-  normalizeSessionStatus,
+  readSessionRunStatus,
   safeStringify,
 } from "@/app/utils";
 import {
@@ -444,6 +444,5 @@ export function isActiveSessionStatus(status: unknown) {
 }
 
 export function getSessionStatus(session: RouteSession | null | undefined) {
-  const status = session?.status ?? session?.state ?? session?.runStatus ?? null;
-  return typeof status === "string" ? status : normalizeSessionStatus(status);
+  return readSessionRunStatus(session) ?? "idle";
 }

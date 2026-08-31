@@ -35,6 +35,10 @@ const providerAuthStoreSource = readFileSync(
   new URL("../src/react-app/domains/connections/provider-auth/store.ts", import.meta.url),
   "utf8",
 );
+const aiViewSource = readFileSync(
+  new URL("../src/react-app/domains/settings/pages/ai-view.tsx", import.meta.url),
+  "utf8",
+);
 
 function preferences(): LocalPreferences {
   return {
@@ -128,12 +132,14 @@ describe("shared AI provider preferences", () => {
     expect(providerAuthStoreSource).toContain("providerAuthBusy: false");
     expect(providerAuthStoreSource).toContain("const visibleMethods = hasCachedMethods");
     expect(providerAuthStoreSource).toContain("await ensureProviderAuthMethods(workerType)");
+    expect(settingsRouteSource).toContain("providerAuthBusy={providerAuthSnapshot.providerAuthBusy}");
+    expect(aiViewSource).toContain("disabled={props.providerAuthBusy}");
   });
 
   test("coordinates provider projection across sibling route stores", () => {
     expect(providerAuthStoreSource).toContain("runSharedProviderImportOnce");
     expect(providerAuthStoreSource).toContain("sharedProviderImportsInFlight");
-    expect(providerAuthStoreSource).toContain("if (!credentialsAlreadyImported)");
+    expect(providerAuthStoreSource).toContain("credentialAlreadyImported(entry.providerId, entry.apiKey)");
     expect(providerAuthStoreSource).not.toContain("let sharedProviderImportFingerprint =");
   });
 

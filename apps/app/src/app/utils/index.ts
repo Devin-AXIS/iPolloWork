@@ -552,12 +552,37 @@ export function upsertSession(list: Session[], next: Session) {
 }
 
 export function normalizeSessionStatus(status: unknown) {
-  if (!status || typeof status !== "object") return "idle";
+  if (typeof status === "string") {
+    if (status === "active" || status === "busy" || status === "running" || status === "streaming") return "running";
+    if (status === "retry") return "retry";
+    return "idle";
+  }
+  if (!status || typeof status !== "object" || Array.isArray(status)) return "idle";
   const record = status as Record<string, unknown>;
   if (record.type === "busy") return "running";
   if (record.type === "retry") return "retry";
   if (record.type === "idle") return "idle";
   return "idle";
+}
+
+export function readSessionRunStatus(session: {
+  status?: unknown;
+  state?: unknown;
+  runStatus?: unknown;
+  dsh?: unknown;
+  codex?: unknown;
+} | null | undefined): string | null {
+  if (!session) return null;
+  const direct = session.status ?? session.state ?? session.runStatus;
+  if (direct !== undefined && direct !== null) return normalizeSessionStatus(direct);
+
+  if (session.dsh && typeof session.dsh === "object" && !Array.isArray(session.dsh) && "running" in session.dsh) {
+    return session.dsh.running === true ? "running" : "idle";
+  }
+  if (session.codex && typeof session.codex === "object" && !Array.isArray(session.codex) && "status" in session.codex) {
+    return normalizeSessionStatus(session.codex.status);
+  }
+  return null;
 }
 
 export function modelFromUserMessage(info: MessageInfo): ModelRef | null {

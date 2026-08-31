@@ -101,7 +101,7 @@ export function AiSettingsView(props: AiSettingsViewProps) {
             <LayoutSectionItemHeaderActions>
               <Button
                 onClick={() => void props.onOpenProviderAuth()}
-                disabled={props.busy || props.providerAuthBusy}
+                disabled={props.providerAuthBusy}
               >
                 {props.providerAuthBusy
                   ? t("settings.loading_providers")

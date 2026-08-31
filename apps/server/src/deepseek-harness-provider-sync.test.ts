@@ -328,6 +328,24 @@ describe("DeepSeek Harness provider credential sync", () => {
     });
   });
 
+  test("routes DSH Zen requests through the authenticated local gateway", () => {
+    expect(deepSeekHarnessProviderCredentials([], {
+      openCodeZenRoute: {
+        baseURL: "http://127.0.0.1:48123/provider/opencode/v1",
+        apiKey: "route-token",
+      },
+    }).get("opencode")).toEqual({
+      apiKey: "route-token",
+      bridge: {
+        providerId: "opencode",
+        displayName: "iPolloWork Built-in Models",
+        api: "openai-completions",
+        baseURL: "http://127.0.0.1:48123/provider/opencode/v1",
+        models: OPENCODE_ZEN_PUBLIC_MODELS,
+      },
+    });
+  });
+
   test("bridges an OpenCode Codex OAuth access token without copying its refresh token", () => {
     expect(deepSeekHarnessProviderCredentials([], {
       openAiCodexAccessToken: "codex-access-token",

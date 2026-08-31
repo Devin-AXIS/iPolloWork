@@ -1034,8 +1034,10 @@ function ProjectSidebarContent({
   const projectStatuses = project.sessions.map((session) => ctx.sessionStatusById?.[session.id]);
   const projectStreamingStatus = projectStatuses.find(isStreamingSessionStatus);
   const projectActivityStatus = projectStreamingStatus ?? projectStatuses.find((status) => status && status !== "idle");
-  const projectIsStreaming = projectRootSessions.some((session) => tree.streamingIds.has(session.id));
-  const projectIsActive = projectRootSessions.some((session) => tree.activeIds.has(session.id));
+  const projectIsStreaming = Boolean(projectStreamingStatus)
+    || projectRootSessions.some((session) => tree.streamingIds.has(session.id));
+  const projectIsActive = Boolean(projectActivityStatus)
+    || projectRootSessions.some((session) => tree.activeIds.has(session.id));
   const [sessionPreviewCount, setSessionPreviewCount] = React.useState(MAX_SESSIONS_PREVIEW);
   const sessionRows = flattenSessionRows(
     project.sessions,
@@ -1328,7 +1330,8 @@ function SessionMenuItem({
   const hasChildren = (tree.descendantCountBySessionId.get(session.id) ?? 0) > 0;
   const isExpanded = ctx.expandedSessionIds.has(session.id) || forcedExpandedSessionIds.has(session.id);
   const sessionActivityStatus = ctx.sessionStatusById?.[session.id];
-  const isSessionActive = tree.activeIds.has(session.id);
+  const isSessionActive = tree.activeIds.has(session.id)
+    || Boolean(sessionActivityStatus && sessionActivityStatus !== "idle");
   const isSessionStreaming = tree.streamingIds.has(session.id) || isStreamingSessionStatus(sessionActivityStatus);
   const isArchived = isSessionArchived(session);
   const rowPadding = depth > 0 ? "ps-[68px]" : "ps-8";

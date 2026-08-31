@@ -27,7 +27,11 @@ interface RegisterWorkspaceRoutesOptions {
   ensureWritable: (config: ServerConfig) => void;
   resolveWorkspace: (config: ServerConfig, id: string) => Promise<WorkspaceInfo>;
   serializeWorkspace: (workspace: ServerConfig["workspaces"][number]) => unknown;
-  reloadOpencodeEngine: (config: ServerConfig, workspace: WorkspaceInfo) => Promise<void>;
+  reloadOpencodeEngine: (
+    config: ServerConfig,
+    workspace: WorkspaceInfo,
+    options?: { skipIfBusy?: boolean },
+  ) => Promise<void>;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -508,9 +512,17 @@ export function registerWorkspaceRoutes(options: RegisterWorkspaceRoutesOptions)
       summary: "Switched active workspace",
       timestamp: Date.now(),
     });
-    // Re-activating the already-active workspace must not dispose its engine instance; switch reloads stay (#870).
-    if (!wasActive && workspace.workspaceType === "local" && resolveWorkspaceOpencodeConnection(config, workspace).baseUrl?.trim()) {
-      await reloadOpencodeEngine(config, workspace);
+    // Activation must never interrupt an accepted task. Harness workspaces do
+    // not need an OpenCode instance reload, and an OpenCode workspace defers
+    // the reload while any of its sessions are active.
+    const engineId = workspace.engineId?.trim() || DEFAULT_ENGINE_ID;
+    if (
+      !wasActive
+      && engineId === DEFAULT_ENGINE_ID
+      && workspace.workspaceType === "local"
+      && resolveWorkspaceOpencodeConnection(config, workspace).baseUrl?.trim()
+    ) {
+      await reloadOpencodeEngine(config, workspace, { skipIfBusy: true });
     }
     return jsonResponse({ activeId: workspace.id, workspace: serializeWorkspace(workspace), persisted });
   });

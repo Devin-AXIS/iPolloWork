@@ -24,6 +24,7 @@ import {
 import {
   listCodexHarnessSessions,
   mapCodexMessages,
+  mapCodexThread,
   readCodexHarnessSnapshot,
 } from "./codex-harness-session-read-model.js";
 import { CodexProviderGateway } from "./codex-provider-gateway.js";
@@ -186,6 +187,39 @@ describe("Codex Harness provider projection", () => {
       type: "text",
       text: "Compare both notes\nTemplate applied: quoted source text",
     })]);
+  });
+
+  test("derives Codex activity from the latest turn when thread status is absent", () => {
+    expect(mapCodexThread({
+      id: "codex-running",
+      turns: [{ id: "turn-running", status: "inProgress", items: [] }],
+    }).status).toEqual({ type: "busy" });
+    expect(mapCodexThread({
+      id: "codex-completed",
+      turns: [{ id: "turn-completed", status: "completed", items: [] }],
+    }).status).toEqual({ type: "idle" });
+  });
+
+  test("surfaces a completed Codex turn without a final result as an error", () => {
+    const messages = mapCodexMessages({
+      id: "codex-thread",
+      turns: [{
+        id: "turn-no-output",
+        status: "completed",
+        items: [{ id: "user-no-output", type: "userMessage", text: "完成这个任务" }],
+      }],
+    });
+
+    expect(messages.at(-1)).toMatchObject({
+      info: {
+        role: "assistant",
+        parentID: "user-no-output",
+        error: {
+          data: { message: "Codex 已结束处理，但没有返回最终结果。请重试这条需求。" },
+        },
+      },
+      parts: [],
+    });
   });
 
   test("lists providers without preparing the Codex task runtime", async () => {
@@ -774,7 +808,7 @@ readline.createInterface({ input: process.stdin }).on("line", (line) => {
 
     try {
       await expect(listCodexHarnessSessions(runtime, workspace, { limit: 200 })).resolves.toEqual([
-        expect.objectContaining({ id: "thread-1", title: "Fast task", directory: root }),
+        expect.objectContaining({ id: "thread-1", title: "Fast task", directory: root, status: { type: "idle" } }),
       ]);
     } finally {
       await runtime.close();
@@ -1467,6 +1501,85 @@ describe("Codex provider protocol gateway", () => {
           { role: "user" },
         ],
       });
+    } finally {
+      await gateway.close();
+    }
+  });
+
+  test("proxies DSH chat completions with stable Zen identity and streaming", async () => {
+    const received: Array<{
+      authorization: string;
+      userAgent: string;
+      client: string;
+      project: string;
+      session: string;
+      request: string;
+    }> = [];
+    const upstream = createServer((request, response) => {
+      request.resume();
+      request.on("end", () => {
+        received.push({
+          authorization: String(request.headers.authorization ?? ""),
+          userAgent: String(request.headers["user-agent"] ?? ""),
+          client: String(request.headers["x-opencode-client"] ?? ""),
+          project: String(request.headers["x-opencode-project"] ?? ""),
+          session: String(request.headers["x-opencode-session"] ?? ""),
+          request: String(request.headers["x-opencode-request"] ?? ""),
+        });
+        response.writeHead(200, { "content-type": "text/event-stream" });
+        response.write('data: {"choices":[{"delta":{"content":"OK"}}]}\n\n');
+        response.end("data: [DONE]\n\n");
+      });
+    });
+    servers.push(upstream);
+    await new Promise<void>((resolve, reject) => {
+      upstream.once("error", reject);
+      upstream.listen(0, "127.0.0.1", () => resolve());
+    });
+    const address = upstream.address();
+    if (!address || typeof address === "string") throw new Error("Mock provider failed to bind");
+
+    const gateway = new CodexProviderGateway();
+    try {
+      const routes = await gateway.configure([{
+        providerId: "opencode",
+        protocol: "openai-completions",
+        baseURL: `http://127.0.0.1:${address.port}/v1`,
+        apiKey: "upstream-key",
+        httpHeaders: { "x-opencode-project": "workspace-dsh" },
+      }]);
+      const route = routes.get("opencode");
+      if (!route) throw new Error("Gateway route was not created");
+
+      for (let index = 0; index < 2; index += 1) {
+        const response = await fetch(`${route.baseURL}/chat/completions`, {
+          method: "POST",
+          headers: {
+            authorization: `Bearer ${route.apiKey}`,
+            "content-type": "application/json",
+          },
+          body: JSON.stringify({
+            model: "nemotron-3-ultra-free",
+            messages: [{ role: "user", content: `Hello ${index}` }],
+            stream: true,
+          }),
+        });
+        expect(response.status).toBe(200);
+        expect(await response.text()).toContain("data: [DONE]");
+      }
+
+      expect(received).toHaveLength(2);
+      expect(received[0]).toMatchObject({
+        authorization: "Bearer upstream-key",
+        userAgent: "opencode/ipollowork",
+        client: "ipollowork",
+        project: "workspace-dsh",
+      });
+      expect(received[0]?.session).toMatch(/^ses_[0-9a-f]{24}$/u);
+      expect(received[1]?.session).toBe(received[0]?.session);
+      expect(received[0]?.request).toMatch(/^msg_[0-9a-f]{24}$/u);
+      expect(received[1]?.request).toMatch(/^msg_[0-9a-f]{24}$/u);
+      expect(received[1]?.request).not.toBe(received[0]?.request);
     } finally {
       await gateway.close();
     }

@@ -6,6 +6,7 @@ import { trackTaskCompleted, trackTaskFailed } from "@/app/lib/den-telemetry";
 import { SYNTHETIC_SESSION_ERROR_MESSAGE_PREFIX } from "@/app/types";
 import { applyRevertCursor, reconcileTranscriptMessages } from "./transcript-reconcile";
 import {
+  type SessionActivityStatus,
   useSessionActivityStore,
 } from "../status/session-activity-store";
 import { notifyDesktopEvent } from "../../../shell/desktop-notifications";
@@ -37,6 +38,7 @@ type SyncScope = {
 
 type SyncOptions = SyncScope & {
   connection: ConversationEngineConnection;
+  readSnapshot?: (sessionId: string) => Promise<ConversationSnapshot>;
   onSessionUpdated?: (update: { sessionId: string; info: Record<string, unknown> }) => void;
   onSessionStatus?: (update: { sessionId: string; status: ConversationStatus }) => void;
   onSessionError?: (update: { sessionId: string; errorText: string }) => void;
@@ -58,6 +60,7 @@ type SyncEntry = {
   disposeTimer: ReturnType<typeof setTimeout> | null;
   trackedSessionRefs: Map<string, number>;
   retainedSessionTimers: Map<string, ReturnType<typeof setTimeout>>;
+  readSnapshot?: SyncOptions["readSnapshot"];
   sessionUpdatedListeners: Set<NonNullable<SyncOptions["onSessionUpdated"]>>;
   sessionStatusListeners: Set<NonNullable<SyncOptions["onSessionStatus"]>>;
   sessionErrorListeners: Set<NonNullable<SyncOptions["onSessionError"]>>;
@@ -92,6 +95,8 @@ const syncs = new Map<string, SyncEntry>();
 const interruptedRuns = new Map<string, InterruptedRun>();
 const retainedSessionTtlMs = 10 * 60_000;
 const idleRetainedSessionTtlMs = 10_000;
+const activeRetainedSessionPollMs = 5_000;
+const NO_FINAL_OUTPUT_ERROR = "引擎已结束处理，但没有返回最终结果。请重试这条需求。";
 
 export const snapshotKey = (workspaceId: string, sessionId: string) =>
   ["react-session-snapshot", workspaceId, sessionId] as const;
@@ -269,6 +274,54 @@ function assistantOutputAfterLatestUser(messages: UIMessage[]) {
   return messages.slice(lastUserIndex + 1).some(messageHasVisibleAssistantOutput);
 }
 
+function finalAssistantOutputAfterLatestUser(messages: UIMessage[]) {
+  let lastUserIndex = -1;
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    if (messages[index]?.role === "user") {
+      lastUserIndex = index;
+      break;
+    }
+  }
+  return messages.slice(lastUserIndex + 1).some((message) => (
+    message.role === "assistant" && message.parts.some((part) => (
+      part.type === "text" && part.text.trim().length > 0
+      || part.type === "dynamic-tool"
+      || part.type === "file"
+    ))
+  ));
+}
+
+function latestUserMessage(messages: UIMessage[]) {
+  return messages.findLast((message) => message.role === "user") ?? null;
+}
+
+function snapshotAcknowledgesLatestUser(current: UIMessage[], incoming: UIMessage[]) {
+  const latestCurrent = latestUserMessage(current);
+  if (!latestCurrent) return true;
+  if (incoming.some((message) => message.role === "user" && message.id === latestCurrent.id)) return true;
+
+  const text = messageVisibleText(latestCurrent);
+  if (!text) return false;
+  const currentCount = current.filter(
+    (message) => message.role === "user" && messageVisibleText(message) === text,
+  ).length;
+  const incomingCount = incoming.filter(
+    (message) => message.role === "user" && messageVisibleText(message) === text,
+  ).length;
+  return incomingCount >= currentCount;
+}
+
+function latestSnapshotErrorAfterLatestUser(messages: UIMessage[]) {
+  const lastUserIndex = messages.findLastIndex((message) => message.role === "user");
+  for (let index = messages.length - 1; index > lastUserIndex; index -= 1) {
+    const message = messages[index];
+    if (!message?.id.startsWith(SYNTHETIC_SESSION_ERROR_MESSAGE_PREFIX)) continue;
+    const text = messageVisibleText(message);
+    if (text) return text;
+  }
+  return null;
+}
+
 function permissionNotificationDetail(permission: ConversationPermission) {
   return `A session is waiting for ${permission.kind.replace(/[._-]/g, " ")} permission.`;
 }
@@ -348,12 +401,47 @@ export function destroyWorkspaceSessionResources(
   }
 }
 
-function retainSession(input: SyncScope, entry: SyncEntry, sessionId: string, ttlMs = retainedSessionTtlMs) {
+function activityIsLive(status: SessionActivityStatus) {
+  return status === "thinking" || status === "responding" || status === "compacting" || status === "waiting";
+}
+
+async function reconcileRetainedSession(input: SyncScope, entry: SyncEntry, sessionId: string) {
+  const readSnapshot = entry.readSnapshot;
+  if (!readSnapshot) return;
+  try {
+    const snapshot = await readSnapshot(sessionId);
+    if (!entry.retainedSessionTimers.has(sessionId)) return;
+    // A terminal live event that arrived while the request was in flight is
+    // newer than this observational snapshot and must win.
+    if (!activityIsLive(useSessionActivityStore.getState().getStatus(input.workspaceId, sessionId))) return;
+    seedSessionState(input.workspaceId, snapshot);
+  } catch {
+    // Event streaming remains the primary path. A failed reconciliation is
+    // retried only while the background session is still active.
+  }
+}
+
+function retainSession(input: SyncScope, entry: SyncEntry, sessionId: string, ttlMs?: number) {
   const existing = entry.retainedSessionTimers.get(sessionId);
   if (existing) clearTimeout(existing);
-  entry.retainedSessionTimers.set(sessionId, setTimeout(() => {
+  const currentActivity = useSessionActivityStore.getState().getStatus(input.workspaceId, sessionId);
+  const delay = ttlMs ?? (activityIsLive(currentActivity) && entry.readSnapshot
+    ? activeRetainedSessionPollMs
+    : retainedSessionTtlMs);
+  const timer = setTimeout(async () => {
+    if (entry.retainedSessionTimers.get(sessionId) !== timer) return;
+    if (activityIsLive(useSessionActivityStore.getState().getStatus(input.workspaceId, sessionId))) {
+      await reconcileRetainedSession(input, entry, sessionId);
+    }
+    if (entry.retainedSessionTimers.get(sessionId) !== timer) return;
+    const activity = useSessionActivityStore.getState().getStatus(input.workspaceId, sessionId);
+    if (activityIsLive(activity)) {
+      retainSession(input, entry, sessionId, entry.readSnapshot ? activeRetainedSessionPollMs : retainedSessionTtlMs);
+      return;
+    }
     clearTrackedSession(input, entry, sessionId);
-  }, ttlMs));
+  }, delay);
+  entry.retainedSessionTimers.set(sessionId, timer);
 }
 
 function disposeWorkspaceSync(key: string, entry: SyncEntry) {
@@ -1372,6 +1460,7 @@ export function ensureWorkspaceSessionSync(input: SyncOptions) {
     if (input.onSessionUpdated) existing.sessionUpdatedListeners.add(input.onSessionUpdated);
     if (input.onSessionStatus) existing.sessionStatusListeners.add(input.onSessionStatus);
     if (input.onSessionError) existing.sessionErrorListeners.add(input.onSessionError);
+    if (input.readSnapshot) existing.readSnapshot = input.readSnapshot;
     existing.refs += 1;
     return () => releaseWorkspaceSessionSync(input);
   }
@@ -1383,6 +1472,7 @@ export function ensureWorkspaceSessionSync(input: SyncOptions) {
     disposeTimer: null,
     trackedSessionRefs: new Map(),
     retainedSessionTimers: new Map(),
+    readSnapshot: input.readSnapshot,
     sessionUpdatedListeners: new Set(input.onSessionUpdated ? [input.onSessionUpdated] : []),
     sessionStatusListeners: new Set(input.onSessionStatus ? [input.onSessionStatus] : []),
     sessionErrorListeners: new Set(input.onSessionError ? [input.onSessionError] : []),
@@ -1453,6 +1543,15 @@ export function seedSessionState(workspaceId: string, snapshot: ConversationSnap
     return;
   }
   const incoming = safeSnapshot.messages;
+  const activityBeforeSeed = useSessionActivityStore.getState().getStatus(
+    workspaceId,
+    safeSnapshot.session.id,
+  );
+  const liveActivityBeforeSeed = activityBeforeSeed === "thinking"
+    || activityBeforeSeed === "responding"
+    || activityBeforeSeed === "compacting"
+    || activityBeforeSeed === "waiting";
+  const snapshotAcknowledgesRun = snapshotAcknowledgesLatestUser(existingRaw ?? [], incoming);
   const existing = existingRaw && incoming.length > 0
     ? removeSnapshotAcknowledgedOptimisticUserMessages(
         existingRaw,
@@ -1461,9 +1560,21 @@ export function seedSessionState(workspaceId: string, snapshot: ConversationSnap
       )
     : existingRaw;
   const preserveOptimisticBusy = safeSnapshot.status.type === "idle"
-    && existing?.some(isOptimisticUserMessage) === true;
+    && existingRaw?.some(isOptimisticUserMessage) === true;
+  const preserveLiveBusy = safeSnapshot.status.type === "idle"
+    && liveActivityBeforeSeed
+    && !snapshotAcknowledgesRun;
+  const preserveBusy = preserveOptimisticBusy || preserveLiveBusy;
+  const snapshotErrorText = latestSnapshotErrorAfterLatestUser(incoming);
+  const terminalWithoutOutput = safeSnapshot.status.type === "idle"
+    && !preserveBusy
+    && liveActivityBeforeSeed
+    && snapshotAcknowledgesRun
+    && latestUserMessage(incoming) !== null
+    && !snapshotErrorText
+    && !finalAssistantOutputAfterLatestUser(incoming);
 
-  if (!preserveOptimisticBusy) {
+  if (!preserveBusy) {
     useSessionActivityStore.getState().seedSessionRun(
       workspaceId,
       safeSnapshot.session.id,
@@ -1485,7 +1596,21 @@ export function seedSessionState(workspaceId: string, snapshot: ConversationSnap
     { preserveOptimisticUserMessages: true },
   ));
 
-  if (!preserveOptimisticBusy) {
+  if (snapshotErrorText) {
+    useSessionActivityStore.getState().setError(workspaceId, safeSnapshot.session.id, snapshotErrorText);
+  } else if (terminalWithoutOutput) {
+    const latestUser = latestUserMessage(incoming);
+    useSessionActivityStore.getState().setError(workspaceId, safeSnapshot.session.id, NO_FINAL_OUTPUT_ERROR);
+    queryClient.setQueryData<UIMessage[]>(key, (current = []) => upsertMessage(
+      current,
+      createSessionErrorUIMessage(latestUser?.id ?? safeSnapshot.session.id, NO_FINAL_OUTPUT_ERROR, {
+        created: Date.now(),
+        ...(latestUser ? { parentUserMessageId: latestUser.id } : {}),
+      }),
+    ));
+  }
+
+  if (!preserveBusy) {
     queryClient.setQueryData(statusKey(workspaceId, safeSnapshot.session.id), safeSnapshot.status);
   }
   queryClient.setQueryData(todoKey(workspaceId, safeSnapshot.session.id), safeSnapshot.todos);
@@ -1568,6 +1693,7 @@ export function __createWorkspaceSessionSyncForTest(input: SyncScope) {
     disposeTimer: null,
     trackedSessionRefs: new Map(),
     retainedSessionTimers: new Map(),
+    readSnapshot: undefined,
     sessionUpdatedListeners: new Set(),
     sessionStatusListeners: new Set(),
     sessionErrorListeners: new Set(),
@@ -1586,6 +1712,12 @@ export function __createWorkspaceSessionSyncForTest(input: SyncScope) {
 
 export function __hasWorkspaceSessionSyncForTest(input: SyncScope) {
   return syncs.has(syncKey(input));
+}
+
+export async function __reconcileRetainedSessionForTest(input: SyncScope, sessionId: string) {
+  const entry = syncs.get(syncKey(input));
+  if (!entry) return;
+  await reconcileRetainedSession(input, entry, sessionId);
 }
 
 export function __disposeWorkspaceSessionSyncForTest(input: SyncScope) {

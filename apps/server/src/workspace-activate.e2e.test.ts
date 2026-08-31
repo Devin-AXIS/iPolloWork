@@ -19,7 +19,7 @@ afterEach(async () => {
     await stops.pop()?.();
   }
   while (roots.length) {
-    await rm(roots.pop()!, { recursive: true, force: true });
+    await rm(roots.pop()!, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
   }
 });
 
@@ -67,7 +67,7 @@ async function readPersistedConfig(configPath: string): Promise<unknown> {
   return JSON.parse(await readFile(configPath, "utf8"));
 }
 
-function startMockOpencode() {
+function startMockOpencode(statuses: Record<string, { type: "busy" | "idle" | "retry" }> = {}) {
   const requests: Array<{ method: string; pathname: string; search: string }> = [];
   const server = Bun.serve({
     hostname: "127.0.0.1",
@@ -76,6 +76,9 @@ function startMockOpencode() {
       const url = new URL(request.url);
       requests.push({ method: request.method, pathname: url.pathname, search: url.search });
 
+      if (url.pathname === "/session/status") {
+        return Response.json(statuses);
+      }
       if (url.pathname === "/instance/dispose") {
         return Response.json({ disposed: true });
       }
@@ -206,6 +209,54 @@ describe("workspace activation", () => {
 
     expect(sameWorkspaceResponse.status).toBe(200);
     expect(disposeCount()).toBe(1);
+  });
+
+  test("does not reload a busy OpenCode workspace during activation", async () => {
+    const firstRoot = await createWorkspaceRoot();
+    const secondRoot = await createWorkspaceRoot();
+    const mock = startMockOpencode({ ses_running: { type: "busy" } });
+    const opencodeBaseUrl = `http://127.0.0.1:${mock.server.port}`;
+    const ipollowork = await startiPolloWorkServerWithWorkspaces({
+      configPath: join(firstRoot, "server.json"),
+      authorizedRoots: [firstRoot, secondRoot],
+      workspaces: [
+        { id: "ws_1", name: "One", path: firstRoot, preset: "starter", workspaceType: "local", baseUrl: opencodeBaseUrl },
+        { id: "ws_2", name: "Two", path: secondRoot, preset: "starter", workspaceType: "local", baseUrl: opencodeBaseUrl },
+      ],
+    });
+
+    const response = await fetch(`http://127.0.0.1:${ipollowork.server.port}/workspaces/ws_2/activate`, {
+      method: "POST",
+      headers: hostAuth(ipollowork.hostToken),
+    });
+
+    expect(response.status).toBe(200);
+    expect(mock.requests.some((request) => request.pathname === "/session/status")).toBe(true);
+    expect(mock.requests.some((request) => request.pathname === "/instance/dispose")).toBe(false);
+  });
+
+  test("does not reload OpenCode when activating a harness workspace", async () => {
+    const firstRoot = await createWorkspaceRoot();
+    const secondRoot = await createWorkspaceRoot();
+    const mock = startMockOpencode();
+    const opencodeBaseUrl = `http://127.0.0.1:${mock.server.port}`;
+    const ipollowork = await startiPolloWorkServerWithWorkspaces({
+      configPath: join(firstRoot, "server.json"),
+      authorizedRoots: [firstRoot, secondRoot],
+      workspaces: [
+        { id: "ws_1", name: "One", path: firstRoot, preset: "starter", workspaceType: "local", baseUrl: opencodeBaseUrl },
+        { id: "ws_dsh", name: "Harness", path: secondRoot, preset: "starter", workspaceType: "local", engineId: "deepseek-harness", baseUrl: opencodeBaseUrl },
+      ],
+    });
+
+    const response = await fetch(`http://127.0.0.1:${ipollowork.server.port}/workspaces/ws_dsh/activate`, {
+      method: "POST",
+      headers: hostAuth(ipollowork.hostToken),
+    });
+
+    expect(response.status).toBe(200);
+    expect(mock.requests.some((request) => request.pathname === "/session/status")).toBe(false);
+    expect(mock.requests.some((request) => request.pathname === "/instance/dispose")).toBe(false);
   });
 
   test("persists activation order only when requested", async () => {
